@@ -450,7 +450,7 @@ La suite `crates/mule-protocol/tests/lab_adversarial.rs` couvre exhaustivement l
 1. **Invariance de permutation sur `RangeSet` (`crates/mule-core/tests/range_set_properties.rs`)** :
    Prouve que pour toute collection de plages d'octets disjointes insérées dans n'importe quel ordre aléatoire (shuffle), l'union canonique `ranges()`, la couverture `covered_len()`, et le calcul des trous `missing_within()` sont strictement identiques.
 2. **Cohérence des états `InFlightTracker` (`crates/mule-protocol/tests/in_flight_properties.rs`)** :
-   Vérifie que la capacité disponible est toujours exactement $8 - len$, qu'aucun bloc ne peut être validé deux fois, et que `cancel_all` restaure toujours `len == 0`.
+   Vérifie que la capacité disponible est toujours exactement 8 - len, qu'aucun bloc ne peut être validé deux fois, et que `cancel_all` restaure toujours `len == 0`.
 
 ### 11.3 Isolation Multi-Téléchargements & Intégrité SQLite (`crates/mule-daemon`)
 La suite `crates/mule-daemon/tests/daemon_adversarial.rs` valide l'étanchéité du démon :
@@ -460,3 +460,50 @@ La suite `crates/mule-daemon/tests/daemon_adversarial.rs` valide l'étanchéité
    Une source retardant ses réponses de 1 seconde est gérée passivement par le planificateur asynchrone sans emballement CPU ni boucle active.
 3. **Résistance à la corruption de base SQLite (`test_corrupted_database_fails_explicitly_in_daemon`)** :
    Une base `mule.db` contenant des octets corrompus provoque un échec explicite au démarrage, **sans jamais supprimer ni écraser silencieusement** les données existantes sur disque.
+
+---
+
+## 12. Phase 5 : Archéologie eD2K Passive, Décodeurs Read-Only & Corpus de Fixtures
+
+La **Phase 5** formalise la spécification documentaire du protocole historique eDonkey2000 / eMule, établit un corpus de fixtures binaires sous contrôle de version avec manifeste cryptographique, et déploie un sous-module de décodeurs en lecture seule (`mule-protocol::ed2k`) strictement découplé et passif.
+
+### 12.1 Périmètre et Règles d'Étanchéité (100 % Hors-Ligne)
+1. **Zéro socket réseau** : Le sous-module `mule-protocol::ed2k` ne crée aucun `TcpStream`, `UdpSocket`, `SocketAddr` ou tâche réseau asynchrone.
+2. **Pas d'émission active** : Aucun encodeur n'est destiné à être émis vers des pairs réels dans cette phase. Seules des structures passives d'observation (`Ed2kHello`, `Ed2kHelloAnswer`, `Ed2kFileStatus`) sont produites.
+3. **Découplage strict avec `lab`** : Les protocoles historiques (`0xE3`, `0xC5`, `0xD4`) sont entièrement séparés du protocole de laboratoire `PR_LAB` (`0xEE`), avec leurs propres plafonds de trames et aucun type de domaine partagé.
+4. **Zéro `unwrap()`, zéro `expect()`** : Toutes les fonctions de décodage sont totalement sûres et vérifient chaque borne avant allocation.
+5. **Rejet de `0xD4` (`PR_EMULE_COMPRESSED`)** : Rejet immédiat avec `Ed2kErrorKind::CompressedProtocolUnsupported` tant que la couche de décompression avec plafonds anti-bombe n'est pas mise en place.
+
+### 12.2 Spécification Documentaire (`docs/ed2k/`)
+L'ensemble de la documentation a été rédigé avec des références précises vers les codebases historiques (eMule v0.50a SourceForge, irwir/eMule, aMule) :
+- `docs/ed2k/scope.md` : Délimitation formelle du mode passif et interdictions de connexion publique.
+- `docs/ed2k/references.md` : Sources et fichiers de référence (`UpDownClient.cpp`, `ListenSocket.cpp`, `Packet.cpp`, `Tag.cpp`).
+- `docs/ed2k/framing.md` : En-tête de trame (protocol 1 octet, longueur little-endian 4 octets, opcode 1 octet), endianness et comparaison de limites.
+- `docs/ed2k/opcodes.md` : Catalogue exhaustif des opcodes pour les protocoles `0xE3`, `0xC5` et `0xD4`.
+- `docs/ed2k/message-catalog.md` : Fiches normalisées détaillant wire format, bornes, décodage, erreurs et références pour `OP_HELLO`, `OP_HELLOANSWER`, `OP_FILESTATUS`, `OP_SETREQFILEID`, `OP_REQUESTPARTS`, `OP_SENDINGPART`.
+- `docs/ed2k/limits.md` : Plafonds stricts par opcode (Hello ≤ 64 KiB, Data ≤ 256 KiB, tags ≤ 256, chaînes ≤ 1024 o).
+- `docs/ed2k/compatibility-notes.md` : Variantes de tags spéciaux (1 octet vs nom), encodages de texte (ASCII / Windows-1252 / UTF-8), HighID vs LowID.
+- `docs/ed2k/decisions/` :
+  - `0001-ed2k-read-only.md` : Décodeurs stricts en lecture seule sans encodeur ni session.
+  - `0002-no-public-network.md` : Interdiction absolue de connectivité réseau externe.
+  - `0003-wire-lab-separation.md` : Découplage strict entre laboratoire et protocole historique.
+
+### 12.3 Corpus de Fixtures & `manifest.json`
+Les fixtures binaires sont hébergées dans `crates/mule-protocol/tests/fixtures/ed2k/` avec un manifeste `manifest.json` vérifiant leur SHA-256 et les comportements attendus :
+- **Fixtures Valides** :
+  - `hello_v1_minimal.bin` : Poignée de main standard minimale (0 tag).
+  - `hello_v1_tags.bin` : Poignée de main complète avec tags typés (`name`, `version`, `prt`) et serveur.
+  - `hello_answer.bin` : Réponse de poignée de main avec métadonnées de pair distant.
+  - `file_status.bin` : Statut de fichier multi-parts avec masque binaire de disponibilité.
+- **Fixtures Malformées (Entrées Hostiles)** :
+  - `malformed/hello_truncated_header.bin` : En-tête tronqué (< 5 octets) $\rightarrow$ `UnexpectedEof` (context: "header", offset: 0).
+  - `malformed/hello_truncated_tag.bin` : Tag déclarant 20 octets mais tronqué après 4 octets $\rightarrow$ `UnexpectedEof` (context: "tag_value_string", offset: 32).
+  - `malformed/oversized_string.bin` : Chaîne de 1500 octets dépassant le plafond de 1024 $\rightarrow$ `OversizedString` (size: 1500, limit: 1024).
+  - `malformed/too_many_tags.bin` : Compteur de 300 tags dépassant le plafond de 256 $\rightarrow$ `TooManyTags` (count: 300, limit: 256).
+  - `malformed/unsupported_protocol_0xd4.bin` : Protocole compressé $0xD4$ $\rightarrow$ `CompressedProtocolUnsupported`.
+
+### 12.4 Bilan des Tests Automatisés
+- **Tests Rust** : **100 tests passés** (`cargo test --workspace --all-features`), dont les 13 nouveaux tests d'intégration dans `ed2k_corpus_tests.rs`.
+- **Tests Flutter** : **31 tests passés** (`flutter test`).
+- **Total général** : **131 tests validés à 100 %**.
+- **Clippy** : 0 avertissement sur l'ensemble du workspace (`--all-targets --all-features` et profil standard).

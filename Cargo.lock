@@ -840,6 +840,8 @@ dependencies = [
  "mule-core",
  "mule-format",
  "proptest",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",

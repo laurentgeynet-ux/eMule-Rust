@@ -4,6 +4,7 @@
 //! `mule-protocol` provides zero-unsafe, deterministic framing, encoding, decoding,
 //! constants, and decoupled scheduling traits for the eD2K wire protocol in Emule-Sion.
 
+pub mod ed2k;
 pub mod error;
 pub mod framing;
 #[cfg(feature = "lab-loopback")]

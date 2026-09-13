@@ -22,6 +22,8 @@ mule-format = { path = "../mule-format" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
 proptest.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 
 [[test]]
 name = "lab_state_machine"
