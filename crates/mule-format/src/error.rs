@@ -20,11 +20,11 @@ pub enum FormatError {
     #[error("Invalid AICH block index {0}: exceeds expected block count {1}")]
     InvalidAichBlockIndex(usize, usize),
 
-    #[error("AICH Merkle verification failed: root mismatch")]
-    AichVerificationFailed,
+    #[error("AICH Merkle verification failed: {0}")]
+    AichVerificationFailed(String),
 
-    #[error("Invalid binary .met format: {0}")]
-    InvalidMet(String),
+    #[error(transparent)]
+    Met(#[from] crate::met::error::MetError),
 
     #[error("Input length exceeds safe threshold: {0} bytes")]
     InputTooLarge(usize),

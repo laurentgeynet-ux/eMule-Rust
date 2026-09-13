@@ -1,103 +1,216 @@
 use sha1::{Digest, Sha1};
+use thiserror::Error;
 
-use crate::aich::hash_tree::{AichHash, AichNode};
+use crate::aich::hash_tree::{AichHash, AichNode, AICH_BLOCK_SIZE};
 
-/// A single step in an AICH Merkle proof.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AichProofStep {
-    pub sibling_hash: AichHash,
-    pub is_sibling_left: bool,
+/// Position of the sibling relative to the current verification node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SiblingPosition {
+    Left,
+    Right,
 }
 
-/// Merkle audit proof to verify an individual AICH block against a trusted root.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A sibling in an AICH Merkle audit path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AichSibling {
+    pub hash: [u8; 20],
+    pub position: SiblingPosition,
+}
+
+/// A structurally and cryptographically auditable AICH Merkle proof.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AichProof {
-    pub block_offset: u64,
-    pub block_size: u64,
-    pub steps: Vec<AichProofStep>,
+    pub leaf_index: u32,
+    pub leaf_count: u32,
+    pub siblings: Vec<AichSibling>,
 }
 
-impl AichProof {
-    /// Verifies that `block_data` matches the `trusted_root` using this proof.
-    pub fn verify(&self, block_data: &[u8], trusted_root: &AichHash) -> bool {
-        if block_data.len() as u64 != self.block_size {
-            return false;
-        }
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum AichProofError {
+    #[error("leaf count must be at least 1")]
+    EmptyTree,
 
-        let mut hasher = Sha1::new();
-        hasher.update(block_data);
-        let mut current_hash = AichHash(hasher.finalize().into());
+    #[error("leaf index {index} is out of bounds (leaf count is {count})")]
+    LeafIndexOutOfBounds { index: u32, count: u32 },
 
-        for step in &self.steps {
-            let mut parent_hasher = Sha1::new();
-            if step.is_sibling_left {
-                parent_hasher.update(step.sibling_hash.as_bytes());
-                parent_hasher.update(current_hash.as_bytes());
-            } else {
-                parent_hasher.update(current_hash.as_bytes());
-                parent_hasher.update(step.sibling_hash.as_bytes());
-            }
-            current_hash = AichHash(parent_hasher.finalize().into());
-        }
+    #[error("invalid proof depth: expected {expected} siblings, got {actual}")]
+    InvalidDepth { expected: usize, actual: usize },
 
-        &current_hash == trusted_root
+    #[error("sibling position mismatch at step {step}: expected {expected:?}, got {actual:?}")]
+    InvalidSiblingPosition {
+        step: usize,
+        expected: SiblingPosition,
+        actual: SiblingPosition,
+    },
+
+    #[error("leaf data length {size} exceeds maximum AICH block size {max}")]
+    LeafTooLarge { size: usize, max: usize },
+
+    #[error("Merkle root mismatch: expected {expected}, computed {computed}")]
+    RootMismatch { expected: String, computed: String },
+}
+
+/// Computes the sequence of expected sibling positions from leaf to root (bottom-up).
+pub fn compute_expected_path(mut index: u32, mut count: u32) -> Result<Vec<SiblingPosition>, AichProofError> {
+    if count == 0 {
+        return Err(AichProofError::EmptyTree);
     }
+    if index >= count {
+        return Err(AichProofError::LeafIndexOutOfBounds { index, count });
+    }
+
+    let mut path_from_root = Vec::new();
+    let mut is_left_branch = true;
+
+    while count > 1 {
+        let left_count = if is_left_branch {
+            (count + 1) / 2
+        } else {
+            count / 2
+        };
+
+        if index < left_count {
+            // Target is in left child, sibling is right child
+            path_from_root.push(SiblingPosition::Right);
+            count = left_count;
+            is_left_branch = true;
+        } else {
+            // Target is in right child, sibling is left child
+            path_from_root.push(SiblingPosition::Left);
+            index -= left_count;
+            count -= left_count;
+            is_left_branch = false;
+        }
+    }
+
+    // Reverse to get bottom-up (leaf to root) order
+    path_from_root.reverse();
+    Ok(path_from_root)
+}
+
+/// Verifies an AICH Merkle proof structurally and cryptographically against an expected root.
+pub fn verify_aich_proof(
+    expected_root: [u8; 20],
+    leaf_bytes: &[u8],
+    proof: &AichProof,
+) -> Result<(), AichProofError> {
+    if proof.leaf_count == 0 {
+        return Err(AichProofError::EmptyTree);
+    }
+    if proof.leaf_index >= proof.leaf_count {
+        return Err(AichProofError::LeafIndexOutOfBounds {
+            index: proof.leaf_index,
+            count: proof.leaf_count,
+        });
+    }
+    if leaf_bytes.len() > AICH_BLOCK_SIZE {
+        return Err(AichProofError::LeafTooLarge {
+            size: leaf_bytes.len(),
+            max: AICH_BLOCK_SIZE,
+        });
+    }
+
+    let expected_positions = compute_expected_path(proof.leaf_index, proof.leaf_count)?;
+    if proof.siblings.len() != expected_positions.len() {
+        return Err(AichProofError::InvalidDepth {
+            expected: expected_positions.len(),
+            actual: proof.siblings.len(),
+        });
+    }
+
+    for (step, (sibling, &expected_pos)) in proof.siblings.iter().zip(&expected_positions).enumerate() {
+        if sibling.position != expected_pos {
+            return Err(AichProofError::InvalidSiblingPosition {
+                step,
+                expected: expected_pos,
+                actual: sibling.position,
+            });
+        }
+    }
+
+    // Cryptographic validation
+    let mut hasher = Sha1::new();
+    hasher.update(leaf_bytes);
+    let mut current_hash: [u8; 20] = hasher.finalize().into();
+
+    for sibling in &proof.siblings {
+        let mut parent_hasher = Sha1::new();
+        match sibling.position {
+            SiblingPosition::Left => {
+                parent_hasher.update(&sibling.hash);
+                parent_hasher.update(&current_hash);
+            }
+            SiblingPosition::Right => {
+                parent_hasher.update(&current_hash);
+                parent_hasher.update(&sibling.hash);
+            }
+        }
+        current_hash = parent_hasher.finalize().into();
+    }
+
+    if current_hash != expected_root {
+        return Err(AichProofError::RootMismatch {
+            expected: AichHash(expected_root).to_base32(),
+            computed: AichHash(current_hash).to_base32(),
+        });
+    }
+
+    Ok(())
 }
 
 impl AichNode {
-    /// Generates an audit proof for a leaf block at `start_pos` with `block_size`.
-    pub fn generate_proof(&self, start_pos: u64, block_size: u64) -> Option<AichProof> {
-        let mut steps = Vec::new();
-        if self.collect_proof_steps(start_pos, block_size, &mut steps) {
+    /// Generates an AICH Merkle proof for the leaf at `leaf_index`.
+    pub fn generate_leaf_proof(&self, leaf_index: u32, total_leaves: u32) -> Option<AichProof> {
+        let mut siblings = Vec::new();
+        if self.collect_leaf_proof(leaf_index, total_leaves, &mut siblings) {
             Some(AichProof {
-                block_offset: start_pos,
-                block_size,
-                steps,
+                leaf_index,
+                leaf_count: total_leaves,
+                siblings,
             })
         } else {
             None
         }
     }
 
-    fn collect_proof_steps(
+    fn collect_leaf_proof(
         &self,
-        start_pos: u64,
-        block_size: u64,
-        steps: &mut Vec<AichProofStep>,
+        index: u32,
+        count: u32,
+        siblings: &mut Vec<AichSibling>,
     ) -> bool {
-        if self.left.is_none() && self.right.is_none() {
-            return self.data_size == block_size && start_pos == 0;
+        if count <= 1 {
+            return index == 0;
         }
 
         let (left, right) = match (&self.left, &self.right) {
             (Some(l), Some(r)) => (l, r),
             _ => return false,
         };
-        let left_size = left.data_size;
 
-        if start_pos < left_size {
-            if start_pos + block_size > left_size {
-                return false;
-            }
-            if left.collect_proof_steps(start_pos, block_size, steps) {
-                if let Some(sibling_hash) = right.hash {
-                    steps.push(AichProofStep {
-                        sibling_hash,
-                        is_sibling_left: false,
+        let left_count = if self.is_left_branch {
+            (count + 1) / 2
+        } else {
+            count / 2
+        };
+
+        if index < left_count {
+            if left.collect_leaf_proof(index, left_count, siblings) {
+                if let Some(right_hash) = right.hash {
+                    siblings.push(AichSibling {
+                        hash: right_hash.0,
+                        position: SiblingPosition::Right,
                     });
                     return true;
                 }
             }
         } else {
-            let rel_pos = start_pos - left_size;
-            if rel_pos + block_size > right.data_size {
-                return false;
-            }
-            if right.collect_proof_steps(rel_pos, block_size, steps) {
-                if let Some(sibling_hash) = left.hash {
-                    steps.push(AichProofStep {
-                        sibling_hash,
-                        is_sibling_left: true,
+            let right_count = count - left_count;
+            if right.collect_leaf_proof(index - left_count, right_count, siblings) {
+                if let Some(left_hash) = left.hash {
+                    siblings.push(AichSibling {
+                        hash: left_hash.0,
+                        position: SiblingPosition::Left,
                     });
                     return true;
                 }

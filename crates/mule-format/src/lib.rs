@@ -1,18 +1,25 @@
 pub mod aich;
 pub mod ed2k;
 pub mod error;
+pub mod fixtures;
 pub mod met;
 
 pub use aich::{
-    calculate_aich_root, AichHash, AichNode, AichProof, AichProofStep, AICH_BLOCK_SIZE,
-    BLOCKS_PER_PART, LAST_BLOCK_SIZE_FULL_PART,
+    calculate_aich_root, compute_expected_path, verify_aich_proof, AichHash, AichNode,
+    AichProof, AichProofError, AichSibling, SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART,
+    LAST_BLOCK_SIZE_FULL_PART,
 };
 pub use ed2k::{
     hash_reader, Ed2kFileLink, Ed2kHash, Ed2kHashResult, Ed2kHasher, PeerSource, ED2K_PART_SIZE,
     MD4_EMPTY_DIGEST,
 };
 pub use error::FormatError;
+pub use fixtures::{
+    BytePatternFixture, PatternReader, FIXTURE_1_BYTE, FIXTURE_EXACT_ONE_PART,
+    FIXTURE_EXACT_TWO_PARTS, FIXTURE_JUST_UNDER_PART, FIXTURE_ONE_PART_PLUS_ONE,
+    REPEATING_0_TO_255,
+};
 pub use met::{
-    read_tag, PartMetFile, Tag, TagValue, PARTFILE_SPLITTEDVERSION, PARTFILE_VERSION,
-    PARTFILE_VERSION_LARGEFILE,
+    read_tag, CountingReader, MetError, PartMetFile, Tag, TagValue, PARTFILE_SPLITTEDVERSION,
+    PARTFILE_VERSION, PARTFILE_VERSION_LARGEFILE,
 };

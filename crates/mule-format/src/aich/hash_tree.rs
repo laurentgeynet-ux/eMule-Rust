@@ -170,7 +170,7 @@ impl AichNode {
         } else if let Some(h) = self.hash {
             Ok(h)
         } else {
-            Err(FormatError::AichVerificationFailed)
+            Err(FormatError::AichVerificationFailed("Incomplete hash tree".to_string()))
         }
     }
 
