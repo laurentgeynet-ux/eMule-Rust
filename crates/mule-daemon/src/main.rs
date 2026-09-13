@@ -119,14 +119,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         data_dir.join("session.json").display()
     );
 
+    let shutdown_notify = state.shutdown_notify.clone();
     let app = create_router(state);
 
     // 5. Run with graceful shutdown
     let data_dir_cleanup = data_dir.clone();
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            println!("\n==> Shutting down mule-daemon...");
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    println!("\n==> Shutting down mule-daemon via Ctrl+C...");
+                }
+                _ = shutdown_notify.notified() => {
+                    println!("\n==> Shutting down mule-daemon via RPC request...");
+                }
+            }
             DaemonSession::remove(&data_dir_cleanup);
         })
         .await?;

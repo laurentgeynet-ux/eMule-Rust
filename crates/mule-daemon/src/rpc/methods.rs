@@ -31,6 +31,7 @@ pub async fn handle_request(
 
     let result: Result<Value, JsonRpcError> = match req.method.as_str() {
         "system.status" => handle_status(state).await,
+        "system.stop" | "system.shutdown" => handle_stop(state).await,
         "downloads.list" => handle_downloads_list(state).await,
         "downloads.get" => handle_downloads_get(state, req.params).await,
         "downloads.addEd2kLink" => handle_add_ed2k_link(state, req.params).await,
@@ -103,6 +104,15 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "downloadsCount": dl_count,
         "instanceId": state.instance_id.to_string()
     }))
+}
+
+async fn handle_stop(state: &AppState) -> Result<Value, JsonRpcError> {
+    let notify = state.shutdown_notify.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        notify.notify_waiters();
+    });
+    Ok(json!({ "stopping": true }))
 }
 
 async fn handle_downloads_list(state: &AppState) -> Result<Value, JsonRpcError> {

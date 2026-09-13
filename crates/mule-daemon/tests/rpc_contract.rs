@@ -206,4 +206,27 @@ async fn test_full_rpc_contract_and_event_streaming() {
         }
     }
     assert_eq!(pause_resp.unwrap()["result"]["status"], "paused");
+
+    // 8. Test system.stop
+    let req_stop = json!({
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "system.stop",
+        "params": {}
+    });
+    write
+        .send(Message::Text(req_stop.to_string().into()))
+        .await
+        .unwrap();
+
+    let mut stop_resp = None;
+    for _ in 0..2 {
+        let msg = read.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val.get("id").is_some() {
+            stop_resp = Some(val);
+            break;
+        }
+    }
+    assert_eq!(stop_resp.unwrap()["result"]["stopping"], true);
 }

@@ -17,6 +17,7 @@ pub struct AppState {
     pub instance_id: Uuid,
     pub session_id: Uuid,
     pub abort_handles: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
+    pub shutdown_notify: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
@@ -30,6 +31,7 @@ impl AppState {
             instance_id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),
             abort_handles: Arc::new(Mutex::new(Vec::new())),
+            shutdown_notify: Arc::new(tokio::sync::Notify::new()),
         }
     }
 

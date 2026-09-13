@@ -152,7 +152,13 @@ try {
     $Endpoint = $SessionData.endpoint
     Write-Host " -> Session discovered: Endpoint = $Endpoint, PID = $($SessionData.pid)" -ForegroundColor Gray
 
-    if ($Endpoint -notmatch '^127\.0\.0\.1:\d+$' -and $Endpoint -notmatch '^\[::1\]:\d+$') {
+    $wsUri = if ($Endpoint.StartsWith("ws://") -or $Endpoint.StartsWith("wss://")) {
+        [System.Uri]::new($Endpoint)
+    } else {
+        [System.Uri]::new("ws://$Endpoint")
+    }
+
+    if ($wsUri.Host -ne "127.0.0.1" -and $wsUri.Host -ne "::1" -and $wsUri.Host -ne "localhost") {
         throw "SECURITY VIOLATION: Endpoint '$Endpoint' is NOT confined to loopback 127.0.0.1!"
     }
 
@@ -177,7 +183,6 @@ try {
     $ws = [System.Net.WebSockets.ClientWebSocket]::new()
     $ws.Options.SetRequestHeader("Authorization", "Bearer $Token")
 
-    $wsUri = [System.Uri]::new("ws://$Endpoint")
     $cts = [System.Threading.CancellationTokenSource]::new(5000)
 
     $connectTask = $ws.ConnectAsync($wsUri, $cts.Token)
@@ -204,8 +209,17 @@ try {
         return [System.Text.Encoding]::UTF8.GetString($recvBuf, 0, $recv.Result.Count)
     }
 
-    # Test system.hello
-    $helloResp = Send-JsonRpc $ws '{"jsonrpc":"2.0","id":1,"method":"system.hello","params":{}}'
+    # Test system.hello (handshake with protocolVersion = 1 and token)
+    $helloPayload = [ordered]@{
+        jsonrpc = "2.0"
+        id = 1
+        method = "system.hello"
+        params = [ordered]@{
+            protocolVersion = 1
+            token = $Token
+        }
+    } | ConvertTo-Json -Compress
+    $helloResp = Send-JsonRpc $ws $helloPayload
     Write-Host " -> system.hello response: $helloResp" -ForegroundColor Gray
     $helloJson = $helloResp | ConvertFrom-Json
     if (!$helloJson.result -or !$helloJson.result.daemonVersion) {
