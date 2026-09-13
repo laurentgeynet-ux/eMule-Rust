@@ -13,4 +13,7 @@ hex.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+mule-core = { path = "../mule-core" }
+mule-format = { path = "../mule-format" }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }

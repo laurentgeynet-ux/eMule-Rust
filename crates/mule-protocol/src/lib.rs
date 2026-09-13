@@ -6,12 +6,14 @@
 
 pub mod error;
 pub mod framing;
+pub mod lab;
 pub mod limits;
 pub mod traits;
 pub mod types;
 
 pub use error::{FramingError, ProtocolError};
 pub use framing::{PacketCodec, RawPacket};
+pub use lab::*;
 pub use limits::*;
 pub use traits::*;
 pub use types::*;

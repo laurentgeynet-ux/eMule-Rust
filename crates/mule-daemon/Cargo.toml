@@ -23,6 +23,7 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 futures-util.workspace = true
 hex.workspace = true
+rand.workspace = true
 fs4 = "1.1.0"
 
 [dev-dependencies]

@@ -8,13 +8,27 @@ pub const PR_ED2K: u8 = 0xE3;
 /// Extended eMule protocol identifier byte (`0xC5`).
 pub const PR_EMULE: u8 = 0xC5;
 
-/// Compressed zlib protocol identifier byte (`0xD4`).
-pub const PR_ZLIB: u8 = 0xD4;
+/// Recognized wire protocol identifier for eMule compressed payloads (`0xD4`).
+///
+/// NOTE: Framing support recognizes and frames these packets at the transport boundary;
+/// compliant decompression and post-decompression safety limits (decompression ratio caps,
+/// message-type length ceilings, and decompression bomb mitigation) are implemented in a
+/// dedicated decompression stage.
+pub const PR_EMULE_COMPRESSED: u8 = 0xD4;
+
+/// Alias for [`PR_EMULE_COMPRESSED`] (`0xD4`).
+pub const PR_ZLIB: u8 = PR_EMULE_COMPRESSED;
+
+/// Laboratory and deterministic loopback testbed protocol identifier (`0xEE`).
+///
+/// Explicitly separated from historical eD2K wire formats to prevent accidental leakage
+/// or premature claims of external eMule network interoperation.
+pub const PR_LAB: u8 = 0xEE;
 
 /// Verifies whether the given byte is a recognized protocol magic byte.
 #[inline]
 pub fn is_valid_protocol(protocol: u8) -> bool {
-    matches!(protocol, PR_ED2K | PR_EMULE | PR_ZLIB)
+    matches!(protocol, PR_ED2K | PR_EMULE | PR_EMULE_COMPRESSED | PR_LAB)
 }
 
 /// 16-byte Peer Identifier (User Hash).

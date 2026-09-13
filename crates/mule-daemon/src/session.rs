@@ -35,7 +35,10 @@ impl DaemonSession {
     }
 
     pub fn generate_token() -> String {
-        format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
+        use rand::RngCore;
+        let mut bytes = [0u8; AUTH_TOKEN_BYTES];
+        rand::rng().fill_bytes(&mut bytes);
+        hex::encode(bytes)
     }
 
     pub fn write_atomic(&self, data_dir: &Path) -> Result<(), DaemonError> {

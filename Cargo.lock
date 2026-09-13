@@ -802,6 +802,7 @@ dependencies = [
  "hex",
  "mule-core",
  "mule-format",
+ "rand",
  "serde",
  "serde_json",
  "tempfile",
@@ -833,6 +834,9 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "hex",
+ "mule-core",
+ "mule-format",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",

@@ -25,6 +25,7 @@ percent-encoding = "2"
 clap = { version = "4", features = ["derive"] }
 proptest = "1"
 hex = "0.4"
+rand = "0.9"
 rusqlite = { version = "0.33", features = ["bundled"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 tempfile = "3"
