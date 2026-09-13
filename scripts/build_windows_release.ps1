@@ -5,6 +5,9 @@
     1. Compiles the Rust backend mule-daemon in release mode.
     2. Builds the Flutter Desktop Windows client in release mode.
     3. Bundles both binaries, version metadata, and dependencies into dist/EmuleSion-Windows.
+.EXAMPLE
+    powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
+    Note: Do not use -ExecutionPolicy Bypass in production environments; use RemoteSigned or sign this script with an Authenticode certificate.
 #>
 
 param(

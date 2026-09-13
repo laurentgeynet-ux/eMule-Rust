@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::Path;
 use uuid::Uuid;
 
@@ -38,13 +39,16 @@ impl DaemonSession {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| DaemonError::Session(format!("Failed to serialize session: {e}")))?;
 
-        std::fs::write(&tmp_path, json)?;
+        // 1. Write completely to tmp file
+        let mut file = std::fs::File::create(&tmp_path)?;
+        file.write_all(json.as_bytes())?;
+        // 2. Ensure data is flushed and synced to disk
+        file.sync_all()?;
+        // 3. Close the file handle before renaming
+        drop(file);
 
-        // On Windows, rename fails if destination exists, so safely remove it first
-        if session_path.exists() {
-            let _ = std::fs::remove_file(&session_path);
-        }
-        std::fs::rename(&tmp_path, &session_path)?;
+        // 4. Atomically replace target file with retries for Windows sharing violations
+        atomic_replace(&tmp_path, &session_path)?;
 
         Ok(())
     }
@@ -52,6 +56,9 @@ impl DaemonSession {
     pub fn read(data_dir: &Path) -> Result<Self, DaemonError> {
         let session_path = data_dir.join("session.json");
         let data = std::fs::read_to_string(&session_path)?;
+        if data.trim().is_empty() {
+            return Err(DaemonError::Session("Session file is empty".to_string()));
+        }
         let session: Self = serde_json::from_str(&data)
             .map_err(|e| DaemonError::Session(format!("Invalid session file format: {e}")))?;
         Ok(session)
@@ -65,17 +72,81 @@ impl DaemonSession {
     }
 
     pub fn write_token(data_dir: &Path, token: &str) -> Result<(), DaemonError> {
+        let trimmed = token.trim();
+        if trimmed.len() < 16 {
+            return Err(DaemonError::Session(
+                "Security error: auth token must be at least 16 characters long".to_string(),
+            ));
+        }
+        if !trimmed.chars().all(|c| c.is_ascii_graphic()) {
+            return Err(DaemonError::Session(
+                "Security error: auth token must contain only printable ASCII characters"
+                    .to_string(),
+            ));
+        }
+
         std::fs::create_dir_all(data_dir)?;
         let token_path = data_dir.join("auth.token");
-        std::fs::write(token_path, token.trim())?;
+        let tmp_path = data_dir.join("auth.token.tmp");
+
+        // Reject if target path is a symlink or reparse point
+        if let Ok(meta) = std::fs::symlink_metadata(&token_path) {
+            if meta.file_type().is_symlink() {
+                return Err(DaemonError::Session(
+                    "Security error: auth.token cannot be a symlink or reparse point".to_string(),
+                ));
+            }
+        }
+
+        let mut file = std::fs::File::create(&tmp_path)?;
+        file.write_all(trimmed.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
+
+        atomic_replace(&tmp_path, &token_path)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600));
+        }
+
         Ok(())
     }
 
     pub fn read_token(data_dir: &Path) -> Option<String> {
         let token_path = data_dir.join("auth.token");
+        if let Ok(meta) = std::fs::symlink_metadata(&token_path) {
+            if meta.file_type().is_symlink() {
+                return None;
+            }
+        }
         std::fs::read_to_string(token_path)
             .ok()
             .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+            .filter(|s| s.len() >= 16 && s.chars().all(|c| c.is_ascii_graphic()))
+    }
+}
+
+/// Robust file replacement with retries to handle temporary sharing violations
+/// on Windows (antivirus, file indexer, or concurrent reader).
+fn atomic_replace(tmp_path: &Path, dest_path: &Path) -> Result<(), DaemonError> {
+    let mut last_err = None;
+    for _ in 0..10 {
+        if dest_path.exists() {
+            let _ = std::fs::remove_file(dest_path);
+        }
+        match std::fs::rename(tmp_path, dest_path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+    }
+    if let Some(e) = last_err {
+        Err(e.into())
+    } else {
+        Ok(())
     }
 }

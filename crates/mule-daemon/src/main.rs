@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let tok = uuid::Uuid::new_v4().to_string();
         DaemonSession::write_token(&data_dir, &tok)?;
-        println!("==> Generated session auth token: {tok}");
+        println!("==> Generated session auth token stored in auth.token (redacted)");
         tok
     };
 

@@ -126,6 +126,9 @@ class DaemonSupervisor {
     }
   }
 
+  final StringBuffer _stderrBuffer = StringBuffer();
+  int? _lastExitCode;
+
   Future<void> start() async {
     _reconnectAttempts = 0;
     _reconnectTimer?.cancel();
@@ -137,13 +140,23 @@ class DaemonSupervisor {
     _setState(SupervisorState.discovering);
 
     final dataDir = resolveDataDir();
-    DaemonSessionFile? session = _readSessionFile(dataDir);
+    DaemonSessionFile? session = await _readSessionFileAsync(dataDir);
     String? token = _readTokenFile(dataDir);
 
+    final String? staleInstanceId = session?.instanceId;
     // 1. Try to connect to existing daemon if session file exists
     if (session != null) {
       final connected = await _tryConnectToSession(session, token);
       if (connected) return;
+      if (_state == SupervisorState.protocolMismatch || _state == SupervisorState.authError) {
+        return;
+      }
+
+      // Existing session was unreachable. Clean up stale session file.
+      try {
+        final f = File('${dataDir.path}/session.json');
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
     }
 
     // 2. If daemon is absent or unreachable, attempt auto-launch
@@ -154,11 +167,28 @@ class DaemonSupervisor {
       return;
     }
 
-    // 3. Wait for session file to be written by the launched process
-    session = await _waitForSessionFile(dataDir, timeout: const Duration(seconds: 10));
+    // 3. Wait for session file to be written by the launched process or a concurrent daemon
+    session = await _waitForSessionFile(
+      dataDir,
+      ignoreInstanceId: staleInstanceId,
+      timeout: const Duration(seconds: 10),
+    );
     if (session == null) {
-      _setState(SupervisorState.error, 'Timeout waiting for mule-daemon session.json initialization.');
+      final errText = _stderrBuffer.toString().trim();
+      if (_lastExitCode != null) {
+        _setState(
+          SupervisorState.error,
+          'mule-daemon exited prematurely with code $_lastExitCode${errText.isNotEmpty ? ": $errText" : ""}',
+        );
+      } else {
+        _setState(SupervisorState.error, 'Timeout waiting for mule-daemon session.json initialization.');
+      }
       return;
+    }
+
+    // If our launched process exited because another daemon won the lock race, clear handle
+    if (_lastExitCode != null) {
+      _managedProcess = null;
     }
 
     token = _readTokenFile(dataDir);
@@ -168,15 +198,47 @@ class DaemonSupervisor {
     }
   }
 
-  DaemonSessionFile? _readSessionFile(Directory dataDir) {
-    try {
-      final file = File('${dataDir.path}/session.json');
-      if (file.existsSync()) {
-        final content = file.readAsStringSync();
-        final json = jsonDecode(content) as Map<String, dynamic>;
-        return DaemonSessionFile.fromJson(json);
+  Future<DaemonSessionFile?> _readSessionFileAsync(
+    Directory dataDir, {
+    int retries = 5,
+    Duration retryDelay = const Duration(milliseconds: 60),
+  }) async {
+    final sessionFile = File('${dataDir.path}/session.json');
+    final tmpFile = File('${dataDir.path}/session.json.tmp');
+
+    for (int i = 0; i < retries; i++) {
+      if (!sessionFile.existsSync()) {
+        // If .tmp file is present, a write is actively in progress
+        if (tmpFile.existsSync() && i < retries - 1) {
+          await Future.delayed(retryDelay);
+          continue;
+        }
+        return null;
       }
-    } catch (_) {}
+
+      try {
+        final content = (await sessionFile.readAsString()).trim();
+        if (content.isEmpty) {
+          if (i < retries - 1) {
+            await Future.delayed(retryDelay);
+            continue;
+          }
+          return null;
+        }
+        final json = jsonDecode(content) as Map<String, dynamic>;
+        if (json.containsKey('protocolVersion') &&
+            json.containsKey('instanceId') &&
+            json.containsKey('endpoint')) {
+          return DaemonSessionFile.fromJson(json);
+        }
+      } catch (_) {
+        // Sharing violation, file locked by atomic rename, or JSON parse error during write
+        if (i < retries - 1) {
+          await Future.delayed(retryDelay);
+          continue;
+        }
+      }
+    }
     return null;
   }
 
@@ -185,7 +247,7 @@ class DaemonSupervisor {
       final file = File('${dataDir.path}/auth.token');
       if (file.existsSync()) {
         final content = file.readAsStringSync().trim();
-        if (content.isNotEmpty) return content;
+        if (content.length >= 16) return content;
       }
     } catch (_) {}
     return null;
@@ -225,6 +287,7 @@ class DaemonSupervisor {
         _setState(SupervisorState.authError, 'Daemon rejected authentication token.');
         return false;
       }
+      _lastError = 'Connection failed to ${session.endpoint}';
       return false;
     }
   }
@@ -271,12 +334,21 @@ class DaemonSupervisor {
 
     try {
       dataDir.createSync(recursive: true);
-      _managedProcess = await Process.start(exePath, [
+      _stderrBuffer.clear();
+      _lastExitCode = null;
+
+      final process = await Process.start(exePath, [
         '--workdir',
         dataDir.path,
       ]);
+      _managedProcess = process;
 
-      _managedProcess!.exitCode.then((exitCode) {
+      process.stderr.transform(utf8.decoder).listen((data) {
+        _stderrBuffer.write(data);
+      });
+
+      process.exitCode.then((exitCode) {
+        _lastExitCode = exitCode;
         if (!_isDisposed && _state == SupervisorState.connected) {
           _scheduleReconnect();
         }
@@ -296,29 +368,39 @@ class DaemonSupervisor {
 
     final exeName = Platform.isWindows ? 'mule-daemon.exe' : 'mule-daemon';
 
-    // 1. Check relative to current process executable (bundle layout)
+    // 1. Check relative to current process executable (packaged bundle layout)
     final appDir = File(Platform.resolvedExecutable).parent;
-    final inAppDir = File('${appDir.path}/$exeName');
-    if (inAppDir.existsSync()) return inAppDir.path;
+    final candidatePaths = [
+      '${appDir.path}/$exeName',
+      '${appDir.path}/bin/$exeName',
+      // 2. Check development build locations
+      '../../target/release/$exeName',
+      '../../target/debug/$exeName',
+      '../target/release/$exeName',
+      '../target/debug/$exeName',
+      'target/release/$exeName',
+      'target/debug/$exeName',
+    ];
 
-    final inBinDir = File('${appDir.path}/bin/$exeName');
-    if (inBinDir.existsSync()) return inBinDir.path;
-
-    // 2. Check development build locations
-    final devRelease = File('../../target/release/$exeName');
-    if (devRelease.existsSync()) return devRelease.path;
-
-    final devDebug = File('../../target/debug/$exeName');
-    if (devDebug.existsSync()) return devDebug.path;
+    for (final candidate in candidatePaths) {
+      final f = File(candidate);
+      if (f.existsSync()) return f.path;
+    }
 
     return null;
   }
 
-  Future<DaemonSessionFile?> _waitForSessionFile(Directory dataDir, {required Duration timeout}) async {
+  Future<DaemonSessionFile?> _waitForSessionFile(
+    Directory dataDir, {
+    String? ignoreInstanceId,
+    required Duration timeout,
+  }) async {
     final stopwatch = Stopwatch()..start();
     while (stopwatch.elapsed < timeout) {
-      final session = _readSessionFile(dataDir);
-      if (session != null) return session;
+      final session = await _readSessionFileAsync(dataDir, retries: 2, retryDelay: const Duration(milliseconds: 50));
+      if (session != null && (ignoreInstanceId == null || session.instanceId != ignoreInstanceId)) {
+        return session;
+      }
       await Future.delayed(const Duration(milliseconds: 150));
     }
     return null;

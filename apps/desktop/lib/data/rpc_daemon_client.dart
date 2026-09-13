@@ -64,6 +64,9 @@ class RpcDaemonClient implements MuleDaemonClient {
         },
       );
 
+      // Ensure underlying socket connection succeeds before proceeding
+      await channel.ready.timeout(const Duration(seconds: 2));
+
       // Perform Handshake
       final helloResp = await _call('system.hello', {
         'protocolVersion': 1,
@@ -255,7 +258,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     _subscription = null;
 
     try {
-      await _channel?.sink.close();
+      await _channel?.sink.close().timeout(const Duration(milliseconds: 500), onTimeout: () {});
     } catch (_) {}
     _channel = null;
 

@@ -35,10 +35,17 @@ fn test_atomic_session_file_and_token() {
 
     // Token management
     assert_eq!(DaemonSession::read_token(path), None);
-    DaemonSession::write_token(path, "my_secure_token_456").unwrap();
+
+    // Invalid tokens (short or invalid characters) must be rejected
+    assert!(DaemonSession::write_token(path, "short").is_err());
+    assert!(DaemonSession::write_token(path, "invalid token with spaces!").is_err());
+    assert!(DaemonSession::write_token(path, "invalid\ntoken\nwith\nnewlines").is_err());
+
+    // Valid token succeeds
+    DaemonSession::write_token(path, "my_secure_token_456_alphanumeric").unwrap();
     assert_eq!(
         DaemonSession::read_token(path),
-        Some("my_secure_token_456".to_string())
+        Some("my_secure_token_456_alphanumeric".to_string())
     );
 
     // Session file management
@@ -54,6 +61,14 @@ fn test_atomic_session_file_and_token() {
     assert_eq!(loaded.endpoint, "ws://127.0.0.1:4660/rpc");
     assert_eq!(loaded.pid, std::process::id());
     assert!(loaded.started_at_unix_ms > 0);
+
+    // Consecutive atomic writes (simulating restart / replacement) succeed
+    let session2 = DaemonSession::new(1, Uuid::new_v4(), "ws://127.0.0.1:4661/rpc");
+    session2
+        .write_atomic(path)
+        .expect("Subsequent atomic session write should succeed");
+    let loaded2 = DaemonSession::read(path).unwrap();
+    assert_eq!(loaded2.endpoint, "ws://127.0.0.1:4661/rpc");
 
     // Cleanup
     DaemonSession::remove(path);
