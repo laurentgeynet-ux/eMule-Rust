@@ -58,13 +58,17 @@ if ($GitDirty) {
 # -----------------------------------------------------------------------------
 Write-Host "`n[2/8] Inspecting compilers and build toolchains..." -ForegroundColor Yellow
 
-$Cargo = if (Get-Command "cargo" -ErrorAction SilentlyContinue) { "cargo" } else { "$env:USERPROFILE\.cargo\bin\cargo.exe" }
-$Rustc = if (Get-Command "rustc" -ErrorAction SilentlyContinue) { "rustc" } else { "$env:USERPROFILE\.cargo\bin\rustc.exe" }
-$Flutter = if (Get-Command "flutter" -ErrorAction SilentlyContinue) { "flutter" } else { "C:\Users\Lou\flutter\bin\flutter.bat" }
+$CargoCmd = Get-Command "cargo" -ErrorAction SilentlyContinue
+$RustcCmd = Get-Command "rustc" -ErrorAction SilentlyContinue
+$FlutterCmd = Get-Command "flutter" -ErrorAction SilentlyContinue
 
-if (!(Test-Path $Cargo)) { throw "Rust cargo not found at $Cargo" }
-if (!(Test-Path $Rustc)) { throw "Rust compiler rustc not found at $Rustc" }
-if (!(Test-Path $Flutter)) { throw "Flutter SDK not found at $Flutter" }
+$Cargo = if ($CargoCmd) { $CargoCmd.Source } elseif (Test-Path "$env:USERPROFILE\.cargo\bin\cargo.exe") { "$env:USERPROFILE\.cargo\bin\cargo.exe" } else { $null }
+$Rustc = if ($RustcCmd) { $RustcCmd.Source } elseif (Test-Path "$env:USERPROFILE\.cargo\bin\rustc.exe") { "$env:USERPROFILE\.cargo\bin\rustc.exe" } else { $null }
+$Flutter = if ($FlutterCmd) { $FlutterCmd.Source } elseif (Test-Path "C:\Users\Lou\flutter\bin\flutter.bat") { "C:\Users\Lou\flutter\bin\flutter.bat" } else { $null }
+
+if (!$Cargo -or !(Test-Path $Cargo)) { throw "Rust cargo not found" }
+if (!$Rustc -or !(Test-Path $Rustc)) { throw "Rust compiler rustc not found" }
+if (!$Flutter -or !(Test-Path $Flutter)) { throw "Flutter SDK not found" }
 
 $RustcVersion = (& $Rustc --version).Trim()
 $CargoVersion = (& $Cargo --version).Trim()
