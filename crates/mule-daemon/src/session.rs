@@ -35,9 +35,12 @@ impl DaemonSession {
     }
 
     pub fn generate_token() -> String {
-        use rand::RngCore;
+        use rand::rngs::OsRng;
+        use rand::TryRngCore;
         let mut bytes = [0u8; AUTH_TOKEN_BYTES];
-        rand::rng().fill_bytes(&mut bytes);
+        OsRng
+            .try_fill_bytes(&mut bytes)
+            .expect("OS CSPRNG must be available");
         hex::encode(bytes)
     }
 

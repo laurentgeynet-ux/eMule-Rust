@@ -1,6 +1,7 @@
 //! Tracking and correlation of in-flight block requests.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 
 use crate::limits::MAX_IN_FLIGHT_REQUESTS;
@@ -30,6 +31,13 @@ pub enum InFlightError {
         start_offset: u64,
     },
 
+    /// Received rejection was never requested.
+    #[error("Unsolicited block rejection received for offset {start_offset}")]
+    UnsolicitedRejection {
+        /// Start offset in file.
+        start_offset: u64,
+    },
+
     /// Received block length does not match the requested size.
     #[error("Block length mismatch for offset {start_offset}: expected {expected}, got {actual}")]
     LengthMismatch {
@@ -42,10 +50,16 @@ pub enum InFlightError {
     },
 }
 
+#[derive(Debug, Clone)]
+struct InFlightEntry {
+    length: u32,
+    requested_at: Instant,
+}
+
 /// Tracks and validates client block requests currently in flight.
 #[derive(Debug, Clone, Default)]
 pub struct InFlightTracker {
-    pending: HashMap<([u8; 16], u64), u32>,
+    pending: HashMap<([u8; 16], u64), InFlightEntry>,
 }
 
 impl InFlightTracker {
@@ -86,7 +100,13 @@ impl InFlightTracker {
             });
         }
 
-        self.pending.insert(key, req.length);
+        self.pending.insert(
+            key,
+            InFlightEntry {
+                length: req.length,
+                requested_at: Instant::now(),
+            },
+        );
         Ok(())
     }
 
@@ -100,13 +120,13 @@ impl InFlightTracker {
         let key = (*file_hash, start_offset);
         match self.pending.remove(&key) {
             None => Err(InFlightError::UnsolicitedBlock { start_offset }),
-            Some(expected) => {
-                if expected as usize != actual_len {
+            Some(entry) => {
+                if entry.length as usize != actual_len {
                     // Re-insert on mismatch to keep state consistent for failure reporting
-                    self.pending.insert(key, expected);
+                    self.pending.insert(key, entry.clone());
                     Err(InFlightError::LengthMismatch {
                         start_offset,
-                        expected,
+                        expected: entry.length,
                         actual: actual_len,
                     })
                 } else {
@@ -114,6 +134,49 @@ impl InFlightTracker {
                 }
             }
         }
+    }
+
+    /// Handles an incoming block rejection, freeing capacity and returning the cancelled request.
+    pub fn handle_rejection(
+        &mut self,
+        file_hash: &[u8; 16],
+        start_offset: u64,
+    ) -> Result<BlockRequest, InFlightError> {
+        let key = (*file_hash, start_offset);
+        match self.pending.remove(&key) {
+            None => Err(InFlightError::UnsolicitedRejection { start_offset }),
+            Some(entry) => Ok(BlockRequest::new(*file_hash, start_offset, entry.length)),
+        }
+    }
+
+    /// Identifies and extracts expired block requests exceeding `timeout`, restoring capacity.
+    pub fn reap_timeouts(&mut self, timeout: Duration) -> Vec<BlockRequest> {
+        let now = Instant::now();
+        let mut expired_keys = Vec::new();
+
+        for (key, entry) in &self.pending {
+            if now.duration_since(entry.requested_at) >= timeout {
+                expired_keys.push(*key);
+            }
+        }
+
+        let mut expired_requests = Vec::with_capacity(expired_keys.len());
+        for key in expired_keys {
+            if let Some(entry) = self.pending.remove(&key) {
+                expired_requests.push(BlockRequest::new(key.0, key.1, entry.length));
+            }
+        }
+
+        expired_requests
+    }
+
+    /// Cancels all pending in-flight requests (e.g. on peer disconnect), restoring full capacity.
+    pub fn cancel_all(&mut self) -> Vec<BlockRequest> {
+        let mut requests = Vec::with_capacity(self.pending.len());
+        for (key, entry) in self.pending.drain() {
+            requests.push(BlockRequest::new(key.0, key.1, entry.length));
+        }
+        requests
     }
 
     /// Clears all pending requests.
