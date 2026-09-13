@@ -1,0 +1,288 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+import '../../domain/models/daemon_event.dart';
+import '../../domain/models/daemon_info.dart';
+import '../../domain/models/download_item.dart';
+import '../../domain/services/mule_daemon_client.dart';
+import 'dto/rpc_dto.dart';
+
+class RpcDaemonClient implements MuleDaemonClient {
+  WebSocketChannel? _channel;
+  StreamSubscription? _subscription;
+
+  int _nextId = 1;
+  int _lastSequence = 0;
+  DaemonConnectionState _state = DaemonConnectionState.disconnected;
+  DaemonInfo? _daemonInfo;
+
+  final Map<int, Completer<dynamic>> _pendingRequests = {};
+  final StreamController<DaemonConnectionState> _connectionController =
+      StreamController<DaemonConnectionState>.broadcast();
+  final StreamController<DownloadUpdatedEvent> _eventsController =
+      StreamController<DownloadUpdatedEvent>.broadcast();
+
+  // Factory constructor or provider callback for custom channel (useful for testing)
+  final WebSocketChannel Function(Uri uri)? channelFactory;
+
+  RpcDaemonClient({this.channelFactory});
+
+  @override
+  DaemonConnectionState get currentConnectionState => _state;
+
+  @override
+  Stream<DaemonConnectionState> get connectionState =>
+      _connectionController.stream;
+
+  @override
+  Stream<DownloadUpdatedEvent> get downloadEvents => _eventsController.stream;
+
+  DaemonInfo? get daemonInfo => _daemonInfo;
+  int get lastSequence => _lastSequence;
+
+  @override
+  Future<DaemonInfo> connect({required Uri url, String? token}) async {
+    _setConnectionState(DaemonConnectionState.connecting);
+
+    try {
+      final factory = channelFactory;
+      final channel = factory != null
+          ? factory(url)
+          : WebSocketChannel.connect(url);
+      _channel = channel;
+
+      _subscription = channel.stream.listen(
+        _handleIncomingMessage,
+        onError: (err) {
+          _setConnectionState(DaemonConnectionState.error);
+        },
+        onDone: () {
+          _setConnectionState(DaemonConnectionState.disconnected);
+        },
+      );
+
+      // Perform Handshake
+      final helloResp = await _call('system.hello', {
+        'protocolVersion': 1,
+        'token': token ?? '',
+      });
+
+      _daemonInfo = RpcDto.daemonInfoFromJson(helloResp as Map<String, dynamic>);
+
+      // Subscribe to real-time events
+      await _call('events.subscribe', {});
+
+      _setConnectionState(DaemonConnectionState.connected);
+      return _daemonInfo!;
+    } catch (e) {
+      _setConnectionState(DaemonConnectionState.error);
+      await disconnect();
+      rethrow;
+    }
+  }
+
+  void _setConnectionState(DaemonConnectionState state) {
+    if (_state != state) {
+      _state = state;
+      if (!_connectionController.isClosed) {
+        _connectionController.add(_state);
+      }
+    }
+  }
+
+  void _handleIncomingMessage(dynamic rawMessage) {
+    try {
+      final Map<String, dynamic> data =
+          jsonDecode(rawMessage.toString()) as Map<String, dynamic>;
+
+      // Check if this is a response to a request with an id
+      if (data.containsKey('id') && data['id'] != null) {
+        final id = data['id'];
+        final int? reqId = id is int ? id : int.tryParse(id.toString());
+        if (reqId != null && _pendingRequests.containsKey(reqId)) {
+          final completer = _pendingRequests.remove(reqId)!;
+          if (data['error'] != null) {
+            final err = data['error'];
+            final msg = err is Map ? err['message'] : err.toString();
+            final code = err is Map ? err['code'] : 0;
+            completer.completeError(
+                RpcException(code: code ?? 0, message: msg?.toString() ?? 'RPC Error'));
+          } else {
+            completer.complete(data['result']);
+          }
+          return;
+        }
+      }
+
+      // Check if this is a streaming notification (method: event.downloadUpdated)
+      final method = data['method'] as String?;
+      if (method == 'event.downloadUpdated') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null) {
+          final seq = (params['sequence'] as num?)?.toInt() ?? 0;
+          if (seq > _lastSequence) {
+            // Gap detection: if seq > lastSequence + 1, we missed messages; trigger resync
+            if (_lastSequence > 0 && seq > _lastSequence + 1) {
+              // Trigger automatic list resync in background
+              unawaited(listDownloads());
+            }
+            _lastSequence = seq;
+
+            final dlJson = params['download'] as Map<String, dynamic>?;
+            if (dlJson != null) {
+              final item = RpcDto.downloadFromSnapshotJson(dlJson);
+              if (!_eventsController.isClosed) {
+                _eventsController.add(DownloadUpdatedEvent(
+                  sequence: seq,
+                  download: item,
+                ));
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Ignore unparseable frames
+    }
+  }
+
+  Future<dynamic> _call(String method, Map<String, dynamic> params) {
+    final channel = _channel;
+    if (channel == null) {
+      return Future.error(StateError('Not connected to daemon'));
+    }
+
+    final id = _nextId++;
+    final completer = Completer<dynamic>();
+    _pendingRequests[id] = completer;
+
+    final requestPayload = jsonEncode({
+      'jsonrpc': '2.0',
+      'id': id,
+      'method': method,
+      'params': params,
+    });
+
+    channel.sink.add(requestPayload);
+
+    return completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        _pendingRequests.remove(id);
+        throw TimeoutException('RPC request $method (id: $id) timed out');
+      },
+    );
+  }
+
+  @override
+  Future<List<DownloadItem>> listDownloads() async {
+    final resp = await _call('downloads.list', {});
+    if (resp is Map<String, dynamic>) {
+      final seq = (resp['sequence'] as num?)?.toInt() ?? 0;
+      _lastSequence = max(_lastSequence, seq);
+
+      final rawList = resp['downloads'] as List<dynamic>? ?? const [];
+      return rawList
+          .map((e) => RpcDto.downloadFromSnapshotJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  @override
+  Future<DownloadItem?> getDownload(String id) async {
+    final resp = await _call('downloads.get', {'id': id});
+    if (resp is Map<String, dynamic>) {
+      return RpcDto.downloadFromSnapshotJson(resp);
+    }
+    return null;
+  }
+
+  @override
+  Future<String> addEd2kLink(
+    String link, {
+    String? targetDirectory,
+    String? allocationPolicy,
+  }) async {
+    final resp = await _call('downloads.addEd2kLink', {
+      'link': link,
+      'targetDirectory': targetDirectory ?? '.',
+      'allocationPolicy': allocationPolicy ?? 'sparse',
+    });
+
+    if (resp is Map<String, dynamic> && resp.containsKey('downloadId')) {
+      return resp['downloadId'] as String;
+    }
+    throw Exception('Unexpected response adding eD2K link: $resp');
+  }
+
+  @override
+  Future<DownloadItem> pauseDownload(String id) async {
+    final resp = await _call('downloads.pause', {'id': id});
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DownloadItem> resumeDownload(String id) async {
+    final resp = await _call('downloads.resume', {'id': id});
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> removeDownload(String id, {bool deleteFiles = false}) async {
+    await _call('downloads.remove', {
+      'id': id,
+      'deleteFiles': deleteFiles,
+    });
+  }
+
+  @override
+  Future<DownloadItem> injectRange(String id, int offset, String hexData) async {
+    final resp = await _call('debug.injectRange', {
+      'id': id,
+      'offset': offset,
+      'dataHex': hexData,
+    });
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> disconnect() async {
+    await _subscription?.cancel();
+    _subscription = null;
+
+    try {
+      await _channel?.sink.close();
+    } catch (_) {}
+    _channel = null;
+
+    for (final c in _pendingRequests.values) {
+      if (!c.isCompleted) {
+        c.completeError(StateError('Client disconnected'));
+      }
+    }
+    _pendingRequests.clear();
+
+    _setConnectionState(DaemonConnectionState.disconnected);
+  }
+
+  @override
+  void dispose() {
+    disconnect();
+    _connectionController.close();
+    _eventsController.close();
+  }
+}
+
+class RpcException implements Exception {
+  final int code;
+  final String message;
+
+  const RpcException({required this.code, required this.message});
+
+  @override
+  String toString() => 'RpcException(code: $code, message: $message)';
+}
