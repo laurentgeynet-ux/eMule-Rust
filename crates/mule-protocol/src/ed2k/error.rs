@@ -145,3 +145,36 @@ impl fmt::Display for Ed2kParseError {
         )
     }
 }
+
+/// Rich, contextual error for eD2K wire encoding failures.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub struct Ed2kEncodeError {
+    /// Operation code being encoded.
+    pub opcode: u8,
+    /// High-level context or field name where encoding failed.
+    pub field: &'static str,
+    /// Specific failure category.
+    pub kind: Ed2kErrorKind,
+}
+
+impl Ed2kEncodeError {
+    /// Creates a new `Ed2kEncodeError`.
+    pub fn new(opcode: u8, field: &'static str, kind: Ed2kErrorKind) -> Self {
+        Self {
+            opcode,
+            field,
+            kind,
+        }
+    }
+}
+
+impl fmt::Display for Ed2kEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "eD2K encode error [opcode=0x{:02X}, field={}]: {}",
+            self.opcode, self.field, self.kind
+        )
+    }
+}
+

@@ -8,6 +8,7 @@
 //! - No connected session state machines.
 
 pub mod decoder;
+pub mod encoder;
 pub mod error;
 pub mod limits;
 pub mod opcodes;
@@ -16,8 +17,14 @@ pub mod protocol;
 pub mod tags;
 
 pub use decoder::Ed2kDecoder;
-pub use error::{Ed2kErrorKind, Ed2kParseError};
+pub use encoder::Ed2kEncoder;
+pub use error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 pub use limits::Ed2kLimits;
 pub use packet::{Ed2kFileStatus, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage};
 pub use protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
-pub use tags::{Ed2kTag, RawTag, TagName, TagReader, TagValue};
+pub use tags::{
+    Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_EMULE_VERSION,
+    TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE, TAG_SPECIAL_MISCOPTIONS1,
+    TAG_SPECIAL_MISCOPTIONS2, TAG_SPECIAL_NAME, TAG_SPECIAL_UDPOPTIONS, TAG_SPECIAL_VERSION,
+};
+
