@@ -5,29 +5,41 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownloadStatus {
     Queued,
+    WaitingForSources,
     Downloading,
+    Verifying,
     Paused,
+    Completing,
     Completed,
     Failed,
+    Removed,
 }
 
 impl DownloadStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Queued => "queued",
+            Self::WaitingForSources => "waiting_for_sources",
             Self::Downloading => "downloading",
+            Self::Verifying => "verifying",
             Self::Paused => "paused",
+            Self::Completing => "completing",
             Self::Completed => "completed",
             Self::Failed => "failed",
+            Self::Removed => "removed",
         }
     }
 
     pub fn from_str(s: &str) -> Self {
         match s {
+            "waiting_for_sources" => Self::WaitingForSources,
             "downloading" => Self::Downloading,
+            "verifying" => Self::Verifying,
             "paused" => Self::Paused,
+            "completing" => Self::Completing,
             "completed" => Self::Completed,
             "failed" => Self::Failed,
+            "removed" => Self::Removed,
             _ => Self::Queued,
         }
     }

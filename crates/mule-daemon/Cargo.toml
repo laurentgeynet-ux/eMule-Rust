@@ -1,0 +1,29 @@
+[package]
+name = "mule-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Local daemon and JSON-RPC WebSocket API for emule-modern"
+
+[features]
+default = []
+debug-rpc = []
+
+[dependencies]
+mule-core = { path = "../mule-core" }
+mule-format = { path = "../mule-format" }
+tokio.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+futures-util.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tokio-tungstenite.workspace = true
+tempfile.workspace = true
