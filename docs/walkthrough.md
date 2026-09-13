@@ -569,3 +569,54 @@ La suite de 15 tests automatisés prouve formellement les deux propriétés d'in
 - **Clippy** : 0 avertissement sur tout le workspace (`cargo clippy --workspace --all-targets --all-features -- -D warnings`).
 - **Garde d'isolation** : Validée (0 socket, 0 import réseau, 0 dépendance lab, 0 unwrap/expect dans `src/ed2k/`).
 
+---
+
+## 14. Phase 6.2 : Sessions Historiques eD2K sur Loopback Fermé (`ed2k-loopback`)
+
+Le **Jalon 6.2** établit les premières sessions réseau actives de poignée de main eD2K (`OP_HELLO` $\rightarrow$ `OP_HELLO_ANSWER` $\rightarrow$ `Ready`), strictement confinées à l'interface locale `127.0.0.1:0` derrière la feature opt-in `ed2k-loopback`.
+
+### 14.1 Feature Cargo Dédiée & Confinement Hors Réseau
+1. **Gating `ed2k-loopback`** :
+   - `mule-protocol` et `mule-daemon` conditionnent l'accès à la session, aux types de pairs et au transport loopback via `feature = "ed2k-loopback"`.
+   - Les builds de production par défaut (`default = []`) n'incluent ni listener eD2K, ni socket connector, ni pair de test.
+2. **Confinement Loopback Stricte** :
+   - Les sockets ne se lient qu'à `127.0.0.1:0`.
+   - `Ed2kLoopbackClient` rejette formellement toute tentative de connexion vers une adresse non loopback (`addr.ip().is_loopback()`).
+   - Zéro résolution DNS, zéro liste de serveurs, zéro bootstrap Kad, zéro découverte réseau.
+   - Le pair de test sert un catalogue statique fermé en mémoire et ne reçoit aucun chemin de fichier, URL ou hôte arbitraire.
+3. **Découplage UI / Daemon** :
+   - L'interface Flutter Desktop ne connaît pas le protocole eD2K et continue d'interagir exclusivement via le protocole JSON-RPC local existant.
+
+### 14.2 Architecture des Composants 6.2
+1. **Machine à états pure `Ed2kSession` (`crates/mule-protocol/src/ed2k/session.rs`)** :
+   - États : `Disconnected`, `Connecting`, `AwaitingHello`, `AwaitingHelloAnswer { local_handshake_id }`, `Ready { peer }`, `Closing`, `Closed`, `Failed { reason }`.
+   - L'identité de handshake repose sur le `user_hash` (MD4 16 octets), `client_id`, port TCP et balises TLV (aucun concept de nonce non standard).
+   - Validation stricte : rejet de double Hello (`DoubleHello`), rejet d'Answer prématuré (`HelloAnswerBeforeHello`), rejet de protocoles inattendus ou compressés `0xD4`.
+   - Erreurs typées : `Ed2kSessionError`.
+2. **Métadonnées de pair `Ed2kPeerInfo` (`crates/mule-protocol/src/ed2k/peer_info.rs`)** :
+   - Extraction des capacités, version logicielle (`version`), version eMule (`emule_version`), options diverses (`misc_options1`, `misc_options2`), serveur connecté et préservation des tags bruts (`unknown_tags`).
+3. **Transport Loopback & Pair de Test (`crates/mule-protocol/src/ed2k/loopback.rs`)** :
+   - `Ed2kTestPeer` : serveur local sur port éphémère `127.0.0.1:0`, supportant les modes d'émulation :
+     - `Nominal` : poignée de main standard complète.
+     - `FragmentedByteByByte` : émission de la réponse 1 octet par 1 octet avec micro-délais pour éprouver le codec de streaming.
+     - `HelloAnswerBeforeHello` : violation d'ordre (envoi d'Answer prématuré).
+     - `DoubleHello` : émission de deux Hello consécutifs.
+     - `UnsupportedProtocol0xD4` : trame avec protocole compressé `0xD4`.
+     - `UnexpectedOpcode` : opcode inconnu (`0x99`).
+     - `ZeroUserHash` : réponse avec hash nul (`[0; 16]`).
+     - `HangTimeout` : absence de réponse pour tester le timeout.
+     - `ImmediateClose` : fermeture TCP immédiate sans données.
+   - `Ed2kLoopbackClient` : pilote TCP asynchrone pour connecter `127.0.0.1`, orchestrer l'encodage/décodage et valider les transitions de session.
+
+### 14.3 Isolation Cryptographique du SHA-256 (`tests/common/sha256.rs`)
+- Implémentation isolée dans `tests/common/sha256.rs`, validée formellement contre les vecteurs de test officiels NIST FIPS 180-4 (chaîne vide, `"abc"`, chaîne de 448 bits).
+
+### 14.4 Bilan Global des Tests (Phase 6.2)
+- **Tests de sessions loopback (`ed2k_session_tests.rs`)** : 13 tests validés à 100 %.
+- **Garde d'isolation mécanique (`ed2k_isolation_guard.rs`)** : 5 tests validés (zéro token réseau dans le protocole pur, confinement 127.0.0.1, feature gating complet).
+- **Tests Rust totaux** : **128 tests passés** (`cargo test --workspace --all-features`).
+- **Tests Flutter** : **31 tests passés** (`flutter test`).
+- **Total général du projet** : **159 tests validés à 100 %**.
+- **Clippy** : 0 avertissement sur l'ensemble du workspace (`cargo clippy --workspace --all-targets --all-features -- -D warnings`).
+
+
