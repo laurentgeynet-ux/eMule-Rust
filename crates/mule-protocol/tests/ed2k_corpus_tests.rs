@@ -3,7 +3,10 @@
 use std::fs;
 use std::path::PathBuf;
 
-use mule_protocol::ed2k::{Ed2kDecoder, Ed2kErrorKind, Ed2kLimits, Ed2kMessage, TagValue, PR_ED2K};
+use mule_protocol::ed2k::{
+    Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kErrorKind, Ed2kLimits, Ed2kMessage, TagValue,
+    PR_ED2K,
+};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -93,7 +96,13 @@ fn test_corpus_manifest_and_hash_integrity() {
             entry.name
         );
 
-        let decoder = Ed2kDecoder::new();
+        let decoder = if entry.opcode.as_deref() == Some("0x49")
+            || entry.opcode.as_deref() == Some("0x4B")
+        {
+            Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey)
+        } else {
+            Ed2kDecoder::new()
+        };
         let decode_result = decoder.decode_packet(&bytes);
 
         if entry.expected == "valid" {
@@ -132,6 +141,12 @@ fn test_corpus_manifest_and_hash_integrity() {
                             err.kind,
                             Ed2kErrorKind::CompressedProtocolUnsupported
                         ));
+                    }
+                    "invalid_block_offsets" => {
+                        assert!(matches!(err.kind, Ed2kErrorKind::InvalidBlockOffsets { .. }));
+                    }
+                    "block_payload_mismatch" => {
+                        assert!(matches!(err.kind, Ed2kErrorKind::BlockPayloadMismatch { .. }));
                     }
                     other => panic!("unknown expected error in manifest: {other}"),
                 }
@@ -239,7 +254,7 @@ fn test_decode_file_status() {
         Ed2kMessage::FileStatus(status) => {
             assert_eq!(status.file_hash, [0xCC; 16]);
             assert_eq!(status.part_count, 12);
-            assert_eq!(status.status_bitfield, vec![0xFF, 0x0F]);
+            assert_eq!(status.raw_bytes(), &[0xFF, 0x0F]);
 
             // Test parts availability inspection
             for i in 0..12 {
@@ -252,6 +267,58 @@ fn test_decode_file_status() {
         }
         other => panic!("expected FileStatus message, got: {other:?}"),
     }
+}
+
+#[test]
+fn test_decode_file_status_multi_parts() {
+    let path = fixtures_root().join("file_status_multi_parts.bin");
+    let bytes = fs::read(path).unwrap();
+
+    let decoder = Ed2kDecoder::new();
+    let msg = decoder.decode_packet(&bytes).expect("decoding failed");
+
+    match msg {
+        Ed2kMessage::FileStatus(status) => {
+            assert_eq!(status.file_hash, [0xDD; 16]);
+            assert_eq!(status.part_count, 10);
+            assert_eq!(status.raw_bytes(), &[0x83, 0x03]);
+
+            // Parts 0, 1, 7, 8, 9 are available
+            assert!(status.has_part(0));
+            assert!(status.has_part(1));
+            assert!(!status.has_part(2));
+            assert!(!status.has_part(6));
+            assert!(status.has_part(7));
+            assert!(status.has_part(8));
+            assert!(status.has_part(9));
+            assert!(!status.has_part(10));
+
+            let available: Vec<u16> = status.availability_mask.available_parts().collect();
+            assert_eq!(available, vec![0, 1, 7, 8, 9]);
+        }
+        other => panic!("expected FileStatus message, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_decode_file_status_req() {
+    let path = fixtures_root().join("file_status_req.bin");
+    let bytes = fs::read(path).unwrap();
+
+    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
+    let msg = decoder.decode_packet(&bytes).expect("decoding failed");
+
+    match msg {
+        Ed2kMessage::FileStatusReq(req) => {
+            assert_eq!(req.file_hash, [0xCC; 16]);
+        }
+        other => panic!("expected FileStatusReq message, got: {other:?}"),
+    }
+
+    // Default Emule050a decoder treats legacy 0x49 as raw packet
+    let default_decoder = Ed2kDecoder::new();
+    let default_msg = default_decoder.decode_packet(&bytes).expect("decoding raw failed");
+    assert!(matches!(default_msg, Ed2kMessage::Raw(_)));
 }
 
 #[test]
@@ -379,5 +446,52 @@ fn test_custom_limits_enforced() {
             assert_eq!(size, 64);
         }
         other => panic!("expected FrameTooLarge, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_decode_request_parts_fixture() {
+    let path = fixtures_root().join("request_parts.bin");
+    let bytes = fs::read(path).unwrap();
+
+    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
+    let msg = decoder.decode_packet(&bytes).expect("decoding failed");
+
+    match msg {
+        Ed2kMessage::RequestParts(req) => {
+            assert_eq!(req.file_hash, [0xCC; 16]);
+            assert_eq!(req.ranges.len(), 1);
+            assert_eq!(req.ranges[0].start, 0);
+            assert_eq!(req.ranges[0].end, 184320);
+            assert_eq!(req.ranges[0].len(), 184320);
+        }
+        other => panic!("expected RequestParts, got: {other:?}"),
+    }
+
+    // Default Emule050a decoder treats legacy 0x4B as raw packet
+    let default_decoder = Ed2kDecoder::new();
+    let default_msg = default_decoder.decode_packet(&bytes).expect("decoding raw failed");
+    assert!(matches!(default_msg, Ed2kMessage::Raw(_)));
+}
+
+#[test]
+fn test_decode_sending_part_fixture() {
+    let path = fixtures_root().join("sending_part.bin");
+    let bytes = fs::read(path).unwrap();
+
+    let decoder = Ed2kDecoder::new();
+    let msg = decoder.decode_packet(&bytes).expect("decoding failed");
+
+    match msg {
+        Ed2kMessage::SendingPart(part) => {
+            assert_eq!(part.file_hash, [0xCC; 16]);
+            assert_eq!(part.start_offset, 0);
+            assert_eq!(part.end_offset, 1024);
+            assert_eq!(part.len(), 1024);
+            for (i, byte) in part.data.iter().enumerate() {
+                assert_eq!(*byte, (i % 256) as u8);
+            }
+        }
+        other => panic!("expected SendingPart, got: {other:?}"),
     }
 }

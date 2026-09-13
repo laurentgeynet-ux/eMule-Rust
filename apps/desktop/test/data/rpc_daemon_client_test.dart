@@ -131,16 +131,14 @@ void main() {
     test('failed handshake triggers error state and RpcException', () async {
       final client = RpcDaemonClient();
 
-      expect(
-        () => client.connect(
+      await expectLater(
+        client.connect(
           url: Uri.parse('ws://127.0.0.1:$port/rpc'),
           token: 'invalid',
         ),
         throwsA(isA<RpcException>()),
       );
 
-      // Wait a tick for error state
-      await Future.delayed(const Duration(milliseconds: 50));
       expect(client.currentConnectionState, DaemonConnectionState.disconnected);
 
       client.dispose();

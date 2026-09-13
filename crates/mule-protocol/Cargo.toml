@@ -10,6 +10,7 @@ description = "Deterministic eD2K wire protocol codec, framing and abstractions 
 default = []
 lab-loopback = []
 ed2k-loopback = ["dep:tokio"]
+ed2k-reference-loopback = ["ed2k-loopback"]
 
 [dependencies]
 bytes.workspace = true
@@ -17,6 +18,7 @@ thiserror.workspace = true
 hex.workspace = true
 tracing.workspace = true
 tokio = { workspace = true, optional = true, features = ["net", "io-util", "time", "sync", "rt"] }
+unicode-normalization.workspace = true
 
 
 [dev-dependencies]
@@ -51,5 +53,17 @@ required-features = ["lab-loopback"]
 [[test]]
 name = "ed2k_session_tests"
 required-features = ["ed2k-loopback"]
+
+[[test]]
+name = "ed2k_file_status_tests"
+required-features = ["ed2k-loopback"]
+
+[[test]]
+name = "ed2k_reference_interop_tests"
+required-features = ["ed2k-reference-loopback"]
+
+[[test]]
+name = "tier3_loopback"
+required-features = ["ed2k-reference-loopback"]
 
 

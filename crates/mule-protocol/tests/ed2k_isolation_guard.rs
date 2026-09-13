@@ -52,8 +52,11 @@ fn test_ed2k_module_has_zero_network_imports_or_sockets_in_core_protocol() {
     ];
 
     for file in &rs_files {
-        // loopback.rs is the dedicated, feature-gated loopback driver audited separately
-        if file.file_name().is_some_and(|n| n == "loopback.rs") {
+        // loopback.rs and reference.rs are the dedicated, feature-gated loopback drivers audited separately
+        if file
+            .file_name()
+            .is_some_and(|n| n == "loopback.rs" || n == "reference.rs")
+        {
             continue;
         }
 
@@ -103,7 +106,7 @@ fn test_ed2k_loopback_transport_strictly_confined_and_feature_gated() {
         "loopback.rs must never bind to 0.0.0.0"
     );
 
-    // Verify mod.rs gates loopback behind feature ed2k-loopback
+    // Verify mod.rs gates loopback behind feature ed2k-loopback while keeping session and peer_info pure
     let mod_file = ed2k_src_dir().join("mod.rs");
     let mod_content = fs::read_to_string(&mod_file).expect("failed to read mod.rs");
 
@@ -112,12 +115,37 @@ fn test_ed2k_loopback_transport_strictly_confined_and_feature_gated() {
         "src/ed2k/mod.rs must gate loopback behind #[cfg(feature = \"ed2k-loopback\")]"
     );
     assert!(
-        mod_content.contains("#[cfg(feature = \"ed2k-loopback\")]\npub mod session;"),
-        "src/ed2k/mod.rs must gate session behind #[cfg(feature = \"ed2k-loopback\")]"
+        mod_content.contains("pub mod session;"),
+        "src/ed2k/mod.rs must keep pure session state machine accessible unconditionally"
     );
     assert!(
-        mod_content.contains("#[cfg(feature = \"ed2k-loopback\")]\npub mod peer_info;"),
-        "src/ed2k/mod.rs must gate peer_info behind #[cfg(feature = \"ed2k-loopback\")]"
+        mod_content.contains("pub mod peer_info;"),
+        "src/ed2k/mod.rs must keep pure peer_info metadata accessible unconditionally"
+    );
+}
+
+#[test]
+fn test_ed2k_reference_transport_strictly_confined_and_feature_gated() {
+    let ref_file = ed2k_src_dir().join("reference.rs");
+    assert!(ref_file.exists(), "src/ed2k/reference.rs must exist");
+
+    let content = fs::read_to_string(&ref_file).expect("failed to read reference.rs");
+
+    assert!(
+        content.contains(".is_loopback()"),
+        "reference.rs must enforce is_loopback() before connecting"
+    );
+    assert!(
+        !content.contains("\"0.0.0.0"),
+        "reference.rs must never bind to 0.0.0.0"
+    );
+
+    let mod_file = ed2k_src_dir().join("mod.rs");
+    let mod_content = fs::read_to_string(&mod_file).expect("failed to read mod.rs");
+
+    assert!(
+        mod_content.contains("#[cfg(feature = \"ed2k-reference-loopback\")]\npub mod reference;"),
+        "src/ed2k/mod.rs must gate reference behind #[cfg(feature = \"ed2k-reference-loopback\")]"
     );
 }
 
@@ -195,5 +223,13 @@ fn test_daemon_rpc_methods_gates_lab_routes_behind_feature() {
     assert!(
         content.contains("\"lab.addPeerSource\""),
         "mule-daemon rpc/methods.rs must declare lab.addPeerSource"
+    );
+    assert!(
+        content.contains("#[cfg(feature = \"ed2k-loopback\")]"),
+        "mule-daemon rpc/methods.rs must conditionally guard ed2k loopback routes"
+    );
+    assert!(
+        content.contains("\"ed2k.probeSource\""),
+        "mule-daemon rpc/methods.rs must declare ed2k.probeSource"
     );
 }

@@ -9,6 +9,8 @@ pub const OP_HELLO: u8 = 0x01;
 
 /// Handshake response packet (`0x4C`).
 pub const OP_HELLO_ANSWER: u8 = 0x4C;
+/// Alias for OP_HELLO_ANSWER (`0x4C`).
+pub const OP_HELLOANSWER: u8 = 0x4C;
 
 /// Announce shared files to server (`0x15`).
 pub const OP_OFFERFILES: u8 = 0x15;
@@ -16,7 +18,10 @@ pub const OP_OFFERFILES: u8 = 0x15;
 /// Data block transfer packet (`0x46`).
 pub const OP_SENDINGPART: u8 = 0x46;
 
-/// Set requested file hash (`0x47`).
+/// Canonical eMule request for block ranges in a part (`0x47`).
+pub const OP_REQUESTPARTS_EMULE: u8 = 0x47;
+
+/// Legacy set requested file hash (`0x47`).
 pub const OP_SETREQFILEID: u8 = 0x47;
 
 /// Response indicating requested file is not shared (`0x48`).
@@ -30,6 +35,9 @@ pub const OP_REQUESTPARTS: u8 = 0x4B;
 
 /// Notify completion of file download (`0x4D`).
 pub const OP_END_OF_DOWNLOAD: u8 = 0x4D;
+
+/// Canonical eMule set requested file hash / file status request (`0x4F`).
+pub const OP_SETREQFILEID_EMULE: u8 = 0x4F;
 
 /// Parts availability bitfield response (`0x50`).
 pub const OP_FILESTATUS: u8 = 0x50;

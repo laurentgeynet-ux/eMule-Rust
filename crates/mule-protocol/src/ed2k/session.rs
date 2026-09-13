@@ -1,14 +1,20 @@
 //! Pure deterministic state machine for eD2K protocol sessions.
 //! Enforces orderly handshake transitions, capability negotiation, and failure tracking.
 
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use super::decoder::Ed2kDecoder;
-use super::error::Ed2kParseError;
+use super::encoder::Ed2kEncoder;
+use super::error::{Ed2kEncodeError, Ed2kParseError};
 use super::opcodes::{OP_HELLO, OP_HELLO_ANSWER};
-use super::packet::{Ed2kHello, Ed2kHelloAnswer, Ed2kMessage};
+use super::packet::{
+    Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts,
+    Ed2kSendingPart,
+};
 use super::peer_info::Ed2kPeerInfo;
-use super::protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE_COMPRESSED};
+use super::profile::Ed2kCompatibilityProfile;
+use super::protocol::{is_valid_ed2k_protocol, PR_EMULE_COMPRESSED};
 use super::tags::Ed2kTag;
 use crate::framing::RawPacket;
 
@@ -44,6 +50,50 @@ pub enum Ed2kSessionError {
     #[error("Invalid user hash: cannot be all zeros")]
     ZeroUserHash,
 
+    /// Attempted to send a request before the session entered the Ready state.
+    #[error("Cannot send request before session is Ready (current state: {0})")]
+    RequestBeforeReady(&'static str),
+
+    /// Received a response before the session entered the Ready state.
+    #[error("Received response before session is Ready (current state: {0})")]
+    ResponseBeforeReady(&'static str),
+
+    /// Received a file status without an in-flight request or with mismatched hash.
+    #[error("Unsolicited file status received for hash {0}")]
+    UnsolicitedFileStatus(String),
+
+    /// A duplicate file status request was initiated for an already in-flight file hash.
+    #[error("Duplicate file status request for hash {0}")]
+    DuplicateFileStatusRequest(String),
+
+    /// In-flight requests exceeded the maximum allowed capacity.
+    #[error("Too many pending file status requests (capacity: {0})")]
+    TooManyPendingRequests(usize),
+
+    /// Received a block without an in-flight request or with mismatched hash/range.
+    #[error("Unsolicited block received: {0}")]
+    UnsolicitedBlock(String),
+
+    /// A duplicate or overlapping block request was initiated.
+    #[error("Duplicate or overlapping block request: {0}")]
+    DuplicateBlockRequest(String),
+
+    /// In-flight block requests exceeded the maximum allowed capacity.
+    #[error("Too many pending block requests (capacity: {0})")]
+    TooManyPendingBlockRequests(usize),
+
+    /// Block request timed out.
+    #[error("Block request timed out: {0}")]
+    BlockTimeout(String),
+
+    /// Invalid block request parameters.
+    #[error("Invalid block request: {0}")]
+    InvalidBlockRequest(String),
+
+    /// Remote peer reported 0 parts in active session for non-empty file.
+    #[error("Zero parts reported in active session for file {0}")]
+    ZeroPartCountInActiveSession(String),
+
     /// Malformed packet structure.
     #[error("Malformed packet: {0}")]
     Malformed(String),
@@ -67,6 +117,10 @@ pub enum Ed2kSessionError {
     #[error("Handshake timeout after {0:?}")]
     Timeout(Duration),
 
+    /// File status request timed out.
+    #[error("File status request timed out for hash {0}")]
+    FileStatusTimeout(String),
+
     /// Connection reset or I/O failure.
     #[error("I/O error: {0}")]
     Io(String),
@@ -75,6 +129,12 @@ pub enum Ed2kSessionError {
 impl From<Ed2kParseError> for Ed2kSessionError {
     fn from(err: Ed2kParseError) -> Self {
         Self::Parse(err.to_string())
+    }
+}
+
+impl From<Ed2kEncodeError> for Ed2kSessionError {
+    fn from(err: Ed2kEncodeError) -> Self {
+        Self::Malformed(err.to_string())
     }
 }
 
@@ -125,6 +185,290 @@ impl Ed2kSessionState {
     }
 }
 
+/// Metadata for an in-flight file status request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileStatusRequest {
+    /// 16-byte MD4 file hash requested.
+    pub file_hash: [u8; 16],
+    /// Instant when the request was dispatched.
+    pub sent_at: Instant,
+}
+
+/// Bounded tracking structure for pending `OP_FILESTATUSREQ` exchanges.
+#[derive(Debug, Clone)]
+pub struct FileStatusTracker {
+    pending: HashMap<[u8; 16], FileStatusRequest>,
+    max_pending: usize,
+}
+
+impl Default for FileStatusTracker {
+    fn default() -> Self {
+        Self::new(16)
+    }
+}
+
+impl FileStatusTracker {
+    /// Creates a new tracker with a maximum in-flight capacity.
+    pub fn new(max_pending: usize) -> Self {
+        Self {
+            pending: HashMap::with_capacity(max_pending.min(32)),
+            max_pending,
+        }
+    }
+
+    /// Registers a newly sent file status request.
+    pub fn register_request(
+        &mut self,
+        file_hash: [u8; 16],
+        now: Instant,
+    ) -> Result<(), Ed2kSessionError> {
+        if self.pending.contains_key(&file_hash) {
+            return Err(Ed2kSessionError::DuplicateFileStatusRequest(hex::encode(file_hash)));
+        }
+        if self.pending.len() >= self.max_pending {
+            return Err(Ed2kSessionError::TooManyPendingRequests(self.max_pending));
+        }
+        self.pending.insert(
+            file_hash,
+            FileStatusRequest {
+                file_hash,
+                sent_at: now,
+            },
+        );
+        Ok(())
+    }
+
+    /// Validates an incoming response and removes the pending entry.
+    pub fn validate_and_remove(
+        &mut self,
+        file_hash: &[u8; 16],
+    ) -> Result<FileStatusRequest, Ed2kSessionError> {
+        self.pending
+            .remove(file_hash)
+            .ok_or_else(|| Ed2kSessionError::UnsolicitedFileStatus(hex::encode(file_hash)))
+    }
+
+    /// Checks if a request is currently pending for the specified hash.
+    pub fn is_pending(&self, file_hash: &[u8; 16]) -> bool {
+        self.pending.contains_key(file_hash)
+    }
+
+    /// Returns the number of currently pending requests.
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Removes and returns hashes of all requests that exceeded the timeout threshold.
+    pub fn expire_timed_out(&mut self, timeout: Duration, now: Instant) -> Vec<[u8; 16]> {
+        let mut expired = Vec::new();
+        self.pending.retain(|hash, req| {
+            if now.saturating_duration_since(req.sent_at) >= timeout {
+                expired.push(*hash);
+                false
+            } else {
+                true
+            }
+        });
+        expired
+    }
+
+    /// Clears all pending requests (e.g. on disconnection).
+    pub fn clear(&mut self) {
+        self.pending.clear();
+    }
+}
+
+/// Default maximum concurrent in-flight block requests per peer (8).
+pub const MAX_IN_FLIGHT_BLOCK_REQUESTS: usize = 8;
+
+/// Composite key uniquely identifying an in-flight eD2K block request.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct BlockRequestKey {
+    /// 16-byte MD4 eD2K file hash.
+    pub file_hash: [u8; 16],
+    /// Absolute start byte offset.
+    pub start: u64,
+    /// Absolute end byte offset (exclusive).
+    pub end: u64,
+}
+
+impl BlockRequestKey {
+    /// Creates a new `BlockRequestKey`.
+    pub fn new(file_hash: [u8; 16], start: u64, end: u64) -> Self {
+        Self {
+            file_hash,
+            start,
+            end,
+        }
+    }
+
+    /// Length in bytes of the requested block range.
+    #[inline]
+    pub fn len(&self) -> u64 {
+        self.end.saturating_sub(self.start)
+    }
+
+    /// Returns true if start >= end.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.start >= self.end
+    }
+}
+
+/// Information tracking an active in-flight block request.
+#[derive(Clone, Debug)]
+pub struct PendingBlockRequest {
+    /// Unique composite key.
+    pub key: BlockRequestKey,
+    /// Timestamp when this request was issued.
+    pub requested_at: Instant,
+    /// Retry attempt counter.
+    pub attempt: u16,
+}
+
+/// Bounded tracking structure for pending `OP_REQUESTPARTS` exchanges.
+#[derive(Debug, Clone)]
+pub struct BlockRequestTracker {
+    pending: HashMap<BlockRequestKey, PendingBlockRequest>,
+    max_pending: usize,
+}
+
+impl Default for BlockRequestTracker {
+    fn default() -> Self {
+        Self::new(MAX_IN_FLIGHT_BLOCK_REQUESTS)
+    }
+}
+
+impl BlockRequestTracker {
+    /// Creates a new tracker with a maximum in-flight capacity.
+    pub fn new(max_pending: usize) -> Self {
+        Self {
+            pending: HashMap::with_capacity(max_pending.min(32)),
+            max_pending,
+        }
+    }
+
+    /// Returns true if the tracker has capacity for more requests.
+    #[inline]
+    pub fn can_request(&self) -> bool {
+        self.pending.len() < self.max_pending
+    }
+
+    /// Returns the number of active in-flight block requests.
+    #[inline]
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Returns true if there are no pending block requests.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.pending.is_empty()
+    }
+
+    /// Checks if an exact request key is currently pending.
+    pub fn is_pending(&self, key: &BlockRequestKey) -> bool {
+        self.pending.contains_key(key)
+    }
+
+    /// Checks if any pending request for the given file hash overlaps [start..end].
+    pub fn has_overlap(&self, file_hash: &[u8; 16], start: u64, end: u64) -> bool {
+        self.pending.keys().any(|k| {
+            &k.file_hash == file_hash && k.start < end && start < k.end
+        })
+    }
+
+    /// Registers a newly sent block request.
+    pub fn register_request(
+        &mut self,
+        key: BlockRequestKey,
+        now: Instant,
+    ) -> Result<(), Ed2kSessionError> {
+        if key.start >= key.end {
+            return Err(Ed2kSessionError::InvalidBlockRequest(format!(
+                "start offset {} must be strictly less than end offset {}",
+                key.start, key.end
+            )));
+        }
+
+        if self.pending.len() >= self.max_pending {
+            return Err(Ed2kSessionError::TooManyPendingBlockRequests(self.max_pending));
+        }
+
+        if self.has_overlap(&key.file_hash, key.start, key.end) {
+            return Err(Ed2kSessionError::DuplicateBlockRequest(format!(
+                "{}:{}-{}",
+                hex::encode(key.file_hash),
+                key.start,
+                key.end
+            )));
+        }
+
+        self.pending.insert(
+            key.clone(),
+            PendingBlockRequest {
+                key,
+                requested_at: now,
+                attempt: 1,
+            },
+        );
+
+        Ok(())
+    }
+
+    /// Validates an incoming response and removes the pending entry.
+    pub fn validate_and_remove(
+        &mut self,
+        file_hash: &[u8; 16],
+        start: u64,
+        end: u64,
+    ) -> Result<PendingBlockRequest, Ed2kSessionError> {
+        let key = BlockRequestKey::new(*file_hash, start, end);
+        self.pending.remove(&key).ok_or_else(|| {
+            Ed2kSessionError::UnsolicitedBlock(format!(
+                "{}:{}-{}",
+                hex::encode(file_hash),
+                start,
+                end
+            ))
+        })
+    }
+
+    /// Removes and returns all requests that exceeded the timeout threshold.
+    pub fn reap_timeouts(&mut self, timeout: Duration, now: Instant) -> Vec<PendingBlockRequest> {
+        let mut expired = Vec::new();
+        self.pending.retain(|_, req| {
+            if now.saturating_duration_since(req.requested_at) >= timeout {
+                expired.push(req.clone());
+                false
+            } else {
+                true
+            }
+        });
+        expired
+    }
+
+    /// Clears all in-flight requests and returns them.
+    pub fn cancel_all(&mut self) -> Vec<PendingBlockRequest> {
+        self.pending.drain().map(|(_, req)| req).collect()
+    }
+}
+
+/// Pure deterministic snapshot capturing the protocol and tracker state of a session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionSnapshot {
+    /// Lifecycle state name.
+    pub state_name: &'static str,
+    /// Whether session is fully established and ready for data transfer.
+    pub is_ready: bool,
+    /// Active in-flight file status request count.
+    pub pending_status_count: usize,
+    /// Active in-flight block request count.
+    pub pending_block_count: usize,
+    /// Count of unhandled / raw packets received.
+    pub unhandled_packets_count: usize,
+}
+
 /// Pure deterministic state machine governing an eD2K peer session.
 #[derive(Debug, Clone)]
 pub struct Ed2kSession {
@@ -140,14 +484,48 @@ pub struct Ed2kSession {
     pub local_tcp_port: u16,
     /// Wire decoder with safety bounds.
     pub decoder: Ed2kDecoder,
+    /// Wire encoder with safety bounds.
+    pub encoder: Ed2kEncoder,
+    /// Pending file status requests tracker.
+    pub status_tracker: FileStatusTracker,
+    /// Pending block requests tracker.
+    pub block_tracker: BlockRequestTracker,
+    /// Counter of unhandled, non-state-mutating raw or extension frames observed.
+    pub unhandled_packets_count: usize,
 }
 
 impl Ed2kSession {
-    /// Creates a new session configured as the connection initiator.
+    /// Takes a deterministic snapshot of the session state and tracker counters.
+    pub fn snapshot(&self) -> SessionSnapshot {
+        SessionSnapshot {
+            state_name: self.state.name(),
+            is_ready: self.is_ready(),
+            pending_status_count: self.status_tracker.pending_count(),
+            pending_block_count: self.block_tracker.pending_count(),
+            unhandled_packets_count: self.unhandled_packets_count,
+        }
+    }
+
+    /// Creates a new session configured as the connection initiator with default profile (`Emule050a`).
     pub fn new_initiator(
         local_user_hash: [u8; 16],
         local_client_id: u32,
         local_tcp_port: u16,
+    ) -> Self {
+        Self::new_initiator_with_profile(
+            local_user_hash,
+            local_client_id,
+            local_tcp_port,
+            Ed2kCompatibilityProfile::default(),
+        )
+    }
+
+    /// Creates a new session configured as the connection initiator with an explicit profile.
+    pub fn new_initiator_with_profile(
+        local_user_hash: [u8; 16],
+        local_client_id: u32,
+        local_tcp_port: u16,
+        profile: Ed2kCompatibilityProfile,
     ) -> Self {
         Self {
             state: Ed2kSessionState::Connecting,
@@ -155,15 +533,34 @@ impl Ed2kSession {
             local_user_hash,
             local_client_id,
             local_tcp_port,
-            decoder: Ed2kDecoder::new(),
+            decoder: Ed2kDecoder::with_profile(profile),
+            encoder: Ed2kEncoder::with_profile(profile),
+            status_tracker: FileStatusTracker::default(),
+            block_tracker: BlockRequestTracker::default(),
+            unhandled_packets_count: 0,
         }
     }
 
-    /// Creates a new session configured as a listener awaiting an incoming handshake.
+    /// Creates a new session configured as a listener awaiting an incoming handshake with default profile.
     pub fn new_listener(
         local_user_hash: [u8; 16],
         local_client_id: u32,
         local_tcp_port: u16,
+    ) -> Self {
+        Self::new_listener_with_profile(
+            local_user_hash,
+            local_client_id,
+            local_tcp_port,
+            Ed2kCompatibilityProfile::default(),
+        )
+    }
+
+    /// Creates a new session configured as a listener with an explicit profile.
+    pub fn new_listener_with_profile(
+        local_user_hash: [u8; 16],
+        local_client_id: u32,
+        local_tcp_port: u16,
+        profile: Ed2kCompatibilityProfile,
     ) -> Self {
         Self {
             state: Ed2kSessionState::AwaitingHello,
@@ -171,7 +568,11 @@ impl Ed2kSession {
             local_user_hash,
             local_client_id,
             local_tcp_port,
-            decoder: Ed2kDecoder::new(),
+            decoder: Ed2kDecoder::with_profile(profile),
+            encoder: Ed2kEncoder::with_profile(profile),
+            status_tracker: FileStatusTracker::default(),
+            block_tracker: BlockRequestTracker::default(),
+            unhandled_packets_count: 0,
         }
     }
 
@@ -326,43 +727,207 @@ impl Ed2kSession {
             return Err(err);
         }
 
-        match (packet.protocol, packet.opcode) {
-            (PR_ED2K, OP_HELLO) => {
-                let hello = self
-                    .decoder
-                    .decode_hello(packet.protocol, packet.opcode, &packet.payload, 0)?;
+        let decoded_msg = match self.decoder.decode_raw_packet(packet) {
+            Ok(m) => m,
+            Err(e) => {
+                let err = Ed2kSessionError::Parse(e.to_string());
+                self.fail(err.clone());
+                return Err(err);
+            }
+        };
+
+        match decoded_msg {
+            Ed2kMessage::Hello(hello) => {
                 let _peer = self.on_hello_received(&hello)?;
                 Ok(Some(Ed2kMessage::Hello(hello)))
             }
-            (PR_ED2K, OP_HELLO_ANSWER) => {
-                let answer = self.decoder.decode_hello_answer(
-                    packet.protocol,
-                    packet.opcode,
-                    &packet.payload,
-                    0,
-                )?;
+            Ed2kMessage::HelloAnswer(answer) => {
                 let _peer = self.on_hello_answer_received(&answer)?;
                 Ok(Some(Ed2kMessage::HelloAnswer(answer)))
             }
-            _ => {
+            Ed2kMessage::FileStatus(status) => {
+                if !self.is_ready() {
+                    let err = Ed2kSessionError::ResponseBeforeReady(self.state.name());
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                self.on_file_status_received(&status)?;
+                Ok(Some(Ed2kMessage::FileStatus(status)))
+            }
+            Ed2kMessage::FileStatusReq(req) => {
+                if !self.is_ready() {
+                    let err = Ed2kSessionError::RequestBeforeReady(self.state.name());
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                Ok(Some(Ed2kMessage::FileStatusReq(req)))
+            }
+            Ed2kMessage::RequestParts(req) => {
+                if !self.is_ready() {
+                    let err = Ed2kSessionError::RequestBeforeReady(self.state.name());
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                Ok(Some(Ed2kMessage::RequestParts(req)))
+            }
+            Ed2kMessage::SendingPart(part) => {
+                if !self.is_ready() {
+                    let err = Ed2kSessionError::ResponseBeforeReady(self.state.name());
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                let _fulfilled = match self.on_sending_part_received(&part) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        self.fail(e.clone());
+                        return Err(e);
+                    }
+                };
+                Ok(Some(Ed2kMessage::SendingPart(part)))
+            }
+            Ed2kMessage::Raw(raw) => {
                 if !self.is_ready() {
                     let err = Ed2kSessionError::UnexpectedMessageInState {
                         state: self.state.name(),
-                        opcode: packet.opcode,
+                        opcode: raw.opcode,
                     };
                     self.fail(err.clone());
                     return Err(err);
                 }
-                // When in Ready state, other opcodes can be decoded or routed
-                let msg = self.decoder.decode_raw_packet(packet)?;
-                Ok(Some(msg))
-
+                self.unhandled_packets_count += 1;
+                Ok(Some(Ed2kMessage::Raw(raw)))
             }
         }
     }
 
+    /// Initiates an `OP_FILESTATUSREQ` exchange and returns the raw wire packet to transmit.
+    pub fn send_file_status_request(
+        &mut self,
+        file_hash: [u8; 16],
+        now: Instant,
+    ) -> Result<RawPacket, Ed2kSessionError> {
+        if !self.is_ready() {
+            let err = Ed2kSessionError::RequestBeforeReady(self.state.name());
+            self.fail(err.clone());
+            return Err(err);
+        }
+
+        self.status_tracker.register_request(file_hash, now)?;
+        let req = Ed2kFileStatusReq { file_hash };
+        let packet = self.encoder.encode_file_status_req(&req)?;
+        Ok(packet)
+    }
+
+    /// Validates an incoming `Ed2kFileStatus` message against in-flight requests.
+    pub fn on_file_status_received(
+        &mut self,
+        status: &Ed2kFileStatus,
+    ) -> Result<(), Ed2kSessionError> {
+        if !self.is_ready() {
+            let err = Ed2kSessionError::ResponseBeforeReady(self.state.name());
+            self.fail(err.clone());
+            return Err(err);
+        }
+
+        // Active session rule: reject 0 parts for real file
+        if status.part_count == 0 {
+            let err = Ed2kSessionError::ZeroPartCountInActiveSession(hex::encode(status.file_hash));
+            self.fail(err.clone());
+            return Err(err);
+        }
+
+        // Must match an in-flight request and remove it
+        if let Err(err) = self.status_tracker.validate_and_remove(&status.file_hash) {
+            self.fail(err.clone());
+            return Err(err);
+        }
+
+        Ok(())
+    }
+
+    /// Purges timed-out requests and returns their hashes.
+    pub fn expire_file_status_requests(
+        &mut self,
+        timeout: Duration,
+        now: Instant,
+    ) -> Vec<[u8; 16]> {
+        self.status_tracker.expire_timed_out(timeout, now)
+    }
+
+    /// Initiates an `OP_REQUESTPARTS` block request and returns the raw wire packet to transmit.
+    pub fn send_block_request(
+        &mut self,
+        file_hash: [u8; 16],
+        start: u64,
+        end: u64,
+        file_size: u64,
+        now: Instant,
+    ) -> Result<RawPacket, Ed2kSessionError> {
+        if !self.is_ready() {
+            let err = Ed2kSessionError::RequestBeforeReady(self.state.name());
+            self.fail(err.clone());
+            return Err(err);
+        }
+
+        if start >= end {
+            return Err(Ed2kSessionError::InvalidBlockRequest(format!(
+                "start offset {start} must be strictly less than end offset {end}"
+            )));
+        }
+
+        if end > file_size {
+            return Err(Ed2kSessionError::InvalidBlockRequest(format!(
+                "end offset {end} exceeds total file size {file_size}"
+            )));
+        }
+
+        let block_len = end - start;
+        if block_len > 184_320 {
+            return Err(Ed2kSessionError::InvalidBlockRequest(format!(
+                "requested block length {block_len} exceeds maximum allowed 184,320 bytes"
+            )));
+        }
+
+        let key = BlockRequestKey::new(file_hash, start, end);
+        self.block_tracker.register_request(key, now)?;
+
+        let req = Ed2kRequestParts::single(file_hash, start as u32, end as u32);
+        self.encoder.encode_request_parts(&req).map_err(Into::into)
+    }
+
+    /// Processes an incoming `Ed2kSendingPart` block and removes the correlated pending request.
+    pub fn on_sending_part_received(
+        &mut self,
+        part: &Ed2kSendingPart,
+    ) -> Result<PendingBlockRequest, Ed2kSessionError> {
+        if !self.is_ready() {
+            let err = Ed2kSessionError::ResponseBeforeReady(self.state.name());
+            self.fail(err.clone());
+            return Err(err);
+        }
+
+        self.block_tracker
+            .validate_and_remove(&part.file_hash, part.start_offset as u64, part.end_offset as u64)
+    }
+
+    /// Purges timed-out block requests and returns them for replanning.
+    pub fn expire_block_requests(
+        &mut self,
+        timeout: Duration,
+        now: Instant,
+    ) -> Vec<PendingBlockRequest> {
+        self.block_tracker.reap_timeouts(timeout, now)
+    }
+
+    /// Cancels all active in-flight block requests (e.g. upon disconnection).
+    pub fn cancel_all_block_requests(&mut self) -> Vec<PendingBlockRequest> {
+        self.block_tracker.cancel_all()
+    }
+
     /// Marks the session as timed out.
     pub fn on_timeout(&mut self, duration: Duration) {
+        self.status_tracker.clear();
+        let _ = self.block_tracker.cancel_all();
         self.state = Ed2kSessionState::Failed {
             reason: Ed2kSessionError::Timeout(duration),
         };
@@ -370,6 +935,8 @@ impl Ed2kSession {
 
     /// Handles remote transport closure.
     pub fn on_remote_closed(&mut self) {
+        self.status_tracker.clear();
+        let _ = self.block_tracker.cancel_all();
         match self.state {
             Ed2kSessionState::Ready { .. } | Ed2kSessionState::Closing => {
                 self.state = Ed2kSessionState::Closed;
@@ -385,6 +952,8 @@ impl Ed2kSession {
 
     /// Transitions to irreversible terminal failed state.
     pub fn fail(&mut self, reason: Ed2kSessionError) {
+        self.status_tracker.clear();
+        let _ = self.block_tracker.cancel_all();
         self.state = Ed2kSessionState::Failed { reason };
     }
 
@@ -393,11 +962,41 @@ impl Ed2kSession {
         matches!(self.state, Ed2kSessionState::Ready { .. })
     }
 
+    /// Returns true if the session is in a terminal Failed state.
+    pub fn is_failed(&self) -> bool {
+        matches!(self.state, Ed2kSessionState::Failed { .. })
+    }
+
+    /// Returns the number of currently active in-flight block requests.
+    pub fn pending_block_request_count(&self) -> usize {
+        self.block_tracker.pending_count()
+    }
+
     /// Returns a reference to the negotiated remote peer info if in `Ready` state.
     pub fn peer_info(&self) -> Option<&Ed2kPeerInfo> {
         match &self.state {
             Ed2kSessionState::Ready { peer } => Some(peer),
             _ => None,
         }
+    }
+
+    /// Returns a reference to the status tracker.
+    pub fn status_tracker(&self) -> &FileStatusTracker {
+        &self.status_tracker
+    }
+
+    /// Returns a mutable reference to the status tracker.
+    pub fn status_tracker_mut(&mut self) -> &mut FileStatusTracker {
+        &mut self.status_tracker
+    }
+
+    /// Returns a reference to the block tracker.
+    pub fn block_tracker(&self) -> &BlockRequestTracker {
+        &self.block_tracker
+    }
+
+    /// Returns a mutable reference to the block tracker.
+    pub fn block_tracker_mut(&mut self) -> &mut BlockRequestTracker {
+        &mut self.block_tracker
     }
 }

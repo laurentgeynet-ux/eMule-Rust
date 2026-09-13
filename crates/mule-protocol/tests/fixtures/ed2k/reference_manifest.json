@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "schemaVersion": 1,
+  "reference": {
+    "kind": "emulated-reference-peer",
+    "implementation": "EmuleSion in-process test harness (EmulatedReferencePeer / ReferenceCompatibleTestPeer)",
+    "basedOn": [
+      {
+        "project": "SomeSupport/eMule",
+        "revision": "v0.50a",
+        "paths": [
+          "srchybrid/DownloadClient.cpp",
+          "srchybrid/ListenSocket.cpp",
+          "srchybrid/UploadClient.cpp",
+          "srchybrid/opcodes.h"
+        ]
+      },
+      {
+        "project": "aMule",
+        "revision": "2.3.3",
+        "paths": [
+          "src/DownloadClient.cpp",
+          "src/UploadClient.cpp"
+        ]
+      }
+    ]
+  },
+  "verificationTiers": {
+    "tier1_corpus": {
+      "description": "Syntactic wire codec compliance against fixed binary fixtures",
+      "manifest": "crates/mule-protocol/tests/fixtures/ed2k/manifest.json",
+      "testSuite": "ed2k_corpus_tests.rs"
+    },
+    "tier2_emulated_peer": {
+      "description": "State machine and multi-part / multi-block transport compliance using local loopback emulated reference peer",
+      "component": "mule_protocol::ed2k::reference::EmulatedReferencePeer",
+      "testSuite": "ed2k_reference_interop_tests.rs"
+    },
+    "tier3_external_binary": {
+      "description": "Validation against external pinned reference binaries (eMule / aMule) in isolated loopback environment",
+      "status": "harness_implemented_test_ignored_by_default",
+      "specTemplate": {
+        "kind": "external-reference-binary",
+        "project": "eMule / aMule",
+        "version": "0.50a / 2.3.3",
+        "compatibilityProfile": "Emule050a",
+        "binarySha256": "to-be-verified-against-pinned-hash",
+        "launchCommandTemplate": "<binary> --loopback-only --port <port>",
+        "loopbackOnly": true
+      }
+    }
+  },
+  "network": {
+    "allowedAddresses": ["127.0.0.1", "::1"],
+    "dns": false,
+    "internet": false,
+    "kad": false,
+    "serverLists": false
+  }
+}

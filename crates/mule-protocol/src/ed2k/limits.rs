@@ -15,8 +15,8 @@ pub const ED2K_MAX_TAGS: usize = 256;
 /// Maximum length in bytes permitted for any string tag value or tag name (1 KiB).
 pub const ED2K_MAX_STRING_BYTES: usize = 1024;
 
-/// Maximum number of file parts in a status bitfield (65,535 parts).
-pub const ED2K_MAX_PARTS: usize = 65_535;
+/// Maximum number of file parts in a status bitfield (65,530 parts).
+pub const ED2K_MAX_PARTS: usize = 65_530;
 
 /// Maximum blob length permitted in a tag (64 KiB).
 pub const ED2K_MAX_BLOB_BYTES: usize = 64 * 1024;

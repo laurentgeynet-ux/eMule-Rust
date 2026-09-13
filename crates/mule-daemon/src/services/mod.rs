@@ -1,3 +1,3 @@
 pub mod downloads;
 
-pub use downloads::DownloadService;
+pub use downloads::{DownloadService, SourceAvailabilitySummary};

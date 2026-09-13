@@ -470,3 +470,109 @@ fn test_session_state_names_and_display() {
         "Failed"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 7. Formal Non-Mutation Invariance Property
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_non_mutation_property_on_raw_and_unhandled_frames() {
+    use bytes::Bytes;
+    use mule_protocol::ed2k::{
+        BlockRequestKey, Ed2kMessage, Ed2kSession,
+        PR_ED2K, PR_EMULE,
+    };
+    use mule_protocol::framing::RawPacket;
+    use std::time::Instant;
+
+    // 1. Establish session in Ready state
+    let mut session = Ed2kSession::new_listener(sample_user_hash(), 0, 4662);
+    let hello = mule_protocol::ed2k::Ed2kHello {
+        user_hash: sample_user_hash(),
+        client_id: 0,
+        tcp_port: 4662,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let peer = session.on_hello_received(&hello).expect("hello accepted");
+    let _answer = session
+        .complete_handshake_as_listener(peer, vec![], 0, 0)
+        .expect("handshake completed");
+    assert!(session.is_ready());
+
+    // 2. Register active in-flight requests in both trackers
+    let file_hash = [0x77; 16];
+    let now = Instant::now();
+    let _status_pkt = session
+        .send_file_status_request(file_hash, now)
+        .expect("status req registered");
+    let _block_pkt = session
+        .send_block_request(file_hash, 0, 184_320, 1_000_000, now)
+        .expect("block req registered");
+
+    assert_eq!(session.status_tracker.pending_count(), 1);
+    assert_eq!(session.block_tracker.pending_count(), 1);
+
+    // 3. Capture baseline immutable snapshot
+    let initial_snapshot = session.snapshot();
+    assert_eq!(initial_snapshot.state_name, "Ready");
+    assert!(initial_snapshot.is_ready);
+    assert_eq!(initial_snapshot.pending_status_count, 1);
+    assert_eq!(initial_snapshot.pending_block_count, 1);
+    assert_eq!(initial_snapshot.unhandled_packets_count, 0);
+
+    // 4. Inject Raw frame 1: 0xC5 PR_EMULE extension
+    let pkt_c5 = RawPacket {
+        protocol: PR_EMULE,
+        opcode: 0x60,
+        payload: Bytes::from_static(b"kademlia_non_mutating_packet"),
+    };
+    let res1 = session.on_packet_received(&pkt_c5).expect("0xC5 raw processed cleanly");
+    assert!(matches!(res1, Some(Ed2kMessage::Raw(_))), "0xC5 must decode to Raw");
+
+    let snap1 = session.snapshot();
+    assert_eq!(snap1.state_name, initial_snapshot.state_name);
+    assert_eq!(snap1.is_ready, initial_snapshot.is_ready);
+    assert_eq!(snap1.pending_status_count, initial_snapshot.pending_status_count);
+    assert_eq!(snap1.pending_block_count, initial_snapshot.pending_block_count);
+    assert_eq!(snap1.unhandled_packets_count, 1, "only diagnostic counter increments");
+
+    // 5. Inject Raw frame 2: Ambiguous opcode under active profile (0x4B under Emule050a)
+    let pkt_4b = RawPacket {
+        protocol: PR_ED2K,
+        opcode: 0x4B,
+        payload: Bytes::from_static(b"legacy_0x4b_request_parts"),
+    };
+    let res2 = session.on_packet_received(&pkt_4b).expect("0x4B processed as Raw");
+    assert!(matches!(res2, Some(Ed2kMessage::Raw(_))), "0x4B under Emule050a must decode to Raw");
+
+    let snap2 = session.snapshot();
+    assert_eq!(snap2.state_name, initial_snapshot.state_name);
+    assert_eq!(snap2.is_ready, initial_snapshot.is_ready);
+    assert_eq!(snap2.pending_status_count, initial_snapshot.pending_status_count);
+    assert_eq!(snap2.pending_block_count, initial_snapshot.pending_block_count);
+    assert_eq!(snap2.unhandled_packets_count, 2);
+
+    // 6. Inject Raw frame 3: Unknown opcode 0xFE
+    let pkt_fe = RawPacket {
+        protocol: PR_ED2K,
+        opcode: 0xFE,
+        payload: Bytes::from_static(b"future_unknown_opcode"),
+    };
+    let res3 = session.on_packet_received(&pkt_fe).expect("0xFE processed as Raw");
+    assert!(matches!(res3, Some(Ed2kMessage::Raw(_))), "0xFE must decode to Raw");
+
+    let snap3 = session.snapshot();
+    assert_eq!(snap3.state_name, initial_snapshot.state_name);
+    assert_eq!(snap3.is_ready, initial_snapshot.is_ready);
+    assert_eq!(snap3.pending_status_count, initial_snapshot.pending_status_count);
+    assert_eq!(snap3.pending_block_count, initial_snapshot.pending_block_count);
+    assert_eq!(snap3.unhandled_packets_count, 3);
+
+    // 7. Verify that in-flight trackers and keys remain strictly intact
+    assert!(session.status_tracker.is_pending(&file_hash), "status tracker must be unmodified");
+    let key = BlockRequestKey::new(file_hash, 0, 184_320);
+    assert!(session.block_tracker.is_pending(&key), "block tracker must be unmodified");
+}

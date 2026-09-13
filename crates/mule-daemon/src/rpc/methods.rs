@@ -39,9 +39,20 @@ pub async fn handle_request(
         "downloads.remove" => handle_remove(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         "debug.injectRange" => handle_inject_range(state, req.params).await,
+        "downloads.getSources" | "ed2k.getSources" => {
+            handle_get_sources(state, req.params).await
+        }
         #[cfg(feature = "lab-loopback")]
         "lab.addPeerSource" | "downloads.addSource" => {
             handle_lab_add_peer_source(state, req.params).await
+        }
+        #[cfg(feature = "ed2k-loopback")]
+        "ed2k.probeSource" | "downloads.probeEd2kSource" => {
+            handle_ed2k_probe_source(state, req.params).await
+        }
+        #[cfg(feature = "ed2k-loopback")]
+        "ed2k.startDownload" | "downloads.startEd2kDownload" => {
+            handle_ed2k_start_download(state, req.params).await
         }
         unknown => Err(JsonRpcError::method_not_found(unknown)),
     };
@@ -262,3 +273,165 @@ async fn handle_lab_add_peer_source(
         "peerAddr": peer_addr.to_string(),
     }))
 }
+
+#[cfg(feature = "ed2k-loopback")]
+async fn handle_ed2k_probe_source(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["downloadId"]
+        .as_str()
+        .or_else(|| params["id"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'downloadId' or 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+
+    let peer_addr_str = params["peerAddr"]
+        .as_str()
+        .or_else(|| params["peerAddress"].as_str())
+        .or_else(|| params["source"].as_str())
+        .or_else(|| params["endpoint"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'peerAddr' parameter"))?;
+    let peer_addr: std::net::SocketAddr = peer_addr_str
+        .parse()
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid socket address: {e}")))?;
+
+    if !peer_addr.ip().is_loopback() {
+        return Err(JsonRpcError::invalid_params(
+            "Non-loopback peer address is strictly forbidden in Phase 6.3",
+        ));
+    }
+
+    let (temp_path, _, ed2k_hash, _total_size) = state
+        .downloads
+        .lock()
+        .await
+        .get_download_file_info(&id)
+        .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
+
+    let size_before = std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
+
+    let local_hash = [0x11; 16];
+    let (mut client, _info) = mule_protocol::ed2k::Ed2kLoopbackClient::connect_and_handshake(
+        peer_addr,
+        local_hash,
+        0x7F000001,
+        4662,
+        vec![
+            mule_protocol::ed2k::Ed2kTag {
+                name: mule_protocol::ed2k::TagName::Id(mule_protocol::ed2k::TAG_SPECIAL_NAME),
+                value: mule_protocol::ed2k::TagValue::String("DaemonLoopbackClient".to_string()),
+            },
+            mule_protocol::ed2k::Ed2kTag {
+                name: mule_protocol::ed2k::TagName::Id(mule_protocol::ed2k::TAG_SPECIAL_VERSION),
+                value: mule_protocol::ed2k::TagValue::UInt32(60),
+            },
+        ],
+        0x7F000001,
+        4661,
+        std::time::Duration::from_millis(1000),
+    )
+    .await
+    .map_err(|e| JsonRpcError::business(format!("eD2K handshake failed: {e}")))?;
+
+    let status = client
+        .request_file_status(ed2k_hash.0, std::time::Duration::from_millis(1000))
+        .await
+        .map_err(|e| JsonRpcError::business(format!("eD2K file status request failed: {e}")))?;
+
+    client.close().await;
+
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .record_source_availability(&id, peer_addr, status.availability_mask.clone())?;
+
+    let size_after = std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
+    if size_after != size_before {
+        return Err(JsonRpcError::business(
+            "CRITICAL: .part file modified during file status probe!",
+        ));
+    }
+
+    state.broadcast_download_update(snapshot.clone());
+
+    let available_parts: Vec<u16> = status.availability_mask.available_parts().collect();
+
+    Ok(json!({
+        "success": true,
+        "downloadId": id.to_string(),
+        "peerAddr": peer_addr.to_string(),
+        "sourceCount": snapshot.source_count,
+        "partCount": status.part_count,
+        "availableParts": available_parts,
+    }))
+}
+
+async fn handle_get_sources(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .or_else(|| params["downloadId"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' or 'downloadId' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+
+    let summaries = state
+        .downloads
+        .lock()
+        .await
+        .get_source_summaries(&id)
+        .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
+
+    Ok(json!({
+        "downloadId": id.to_string(),
+        "sources": summaries,
+    }))
+}
+
+#[cfg(feature = "ed2k-loopback")]
+async fn handle_ed2k_start_download(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["downloadId"]
+        .as_str()
+        .or_else(|| params["id"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'downloadId' or 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+
+    let peer_addr_str = params["peerAddr"]
+        .as_str()
+        .or_else(|| params["peerAddress"].as_str())
+        .or_else(|| params["source"].as_str())
+        .or_else(|| params["endpoint"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'peerAddr' parameter"))?;
+    let peer_addr: std::net::SocketAddr = peer_addr_str
+        .parse()
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid socket address: {e}")))?;
+
+    if !peer_addr.ip().is_loopback() {
+        return Err(JsonRpcError::invalid_params(
+            "Non-loopback peer address is strictly forbidden in Phase 6.4",
+        ));
+    }
+
+    let state_clone = state.clone();
+    let handle = tokio::spawn(async move {
+        if let Err(e) = crate::ed2k::run_ed2k_download(id, peer_addr, state_clone).await {
+            tracing::error!(download_id = %id, error = %e, "eD2K loopback download worker failed");
+        }
+    });
+    state.register_task(handle.abort_handle()).await;
+
+    Ok(json!({
+        "started": true,
+        "downloadId": id.to_string(),
+        "peerAddr": peer_addr.to_string(),
+    }))
+}
+

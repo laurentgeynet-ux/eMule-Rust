@@ -1,187 +1,326 @@
-{
-  "schemaVersion": 1,
-  "description": "Deterministic eD2K passive corpus for read-only decoding validation and adversarial resilience",
-  "fixtures": [
-    {
-      "name": "hello-v1-minimal",
-      "file": "hello_v1_minimal.bin",
-      "sha256": "0fb6cdb1f79f85ddb773b187575e651dc823847d4a2587e521fdc49d764653a3",
-      "protocolByte": "0xE3",
-      "opcode": "0x01",
-      "direction": "peer-to-peer",
-      "origin": "manually constructed from documented layout",
-      "expected": "valid",
-      "expectedError": null,
-      "expectedOffset": null,
-      "expectedDetails": {
-        "type": "hello",
-        "client_id": 3232235777,
-        "tag_count": 0,
-        "user_hash": "0102030405060708090a0b0c0d0e0f10",
-        "server_ip": "0.0.0.0",
-        "server_port": 0,
-        "tcp_port": 4662
-      }
-    },
-    {
-      "name": "hello-v1-tags",
-      "file": "hello_v1_tags.bin",
-      "sha256": "ab600e0f9f0cf2dc5fe1ac4b214cf454d525c4cad4c4de39a375f676e2d16c85",
-      "protocolByte": "0xE3",
-      "opcode": "0x01",
-      "direction": "peer-to-peer",
-      "origin": "derived from eMule/aMule reference source layout",
-      "expected": "valid",
-      "expectedError": null,
-      "expectedOffset": null,
-      "expectedDetails": {
-        "tag_count": 3,
-        "tcp_port": 4662,
-        "server_port": 4661,
-        "tags": [
-          {
-            "name": "name",
-            "value": "EmuleSion"
-          },
-          {
-            "name": "version",
-            "value": 60
-          },
-          {
-            "name": "prt",
-            "value": 4662
-          }
-        ],
-        "client_id": 287454020,
-        "type": "hello",
-        "server_ip": "127.0.0.1",
-        "user_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      }
-    },
-    {
-      "name": "hello-answer",
-      "file": "hello_answer.bin",
-      "sha256": "ee6e5fe017c9be6f079cf116cdcee87b7eee90ff254a0c220f1dad7f0a4c3ed3",
-      "protocolByte": "0xE3",
-      "opcode": "0x4C",
-      "direction": "peer-to-peer",
-      "origin": "derived from eMule/aMule reference source layout",
-      "expected": "valid",
-      "expectedError": null,
-      "expectedOffset": null,
-      "expectedDetails": {
-        "tag_count": 1,
-        "tcp_port": 4662,
-        "server_port": 4661,
-        "tags": [
-          {
-            "name": "name",
-            "value": "RemotePeer"
-          }
-        ],
-        "client_id": 1432778632,
-        "type": "hello_answer",
-        "server_ip": "10.0.0.1",
-        "user_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-      }
-    },
-    {
-      "name": "file-status",
-      "file": "file_status.bin",
-      "sha256": "74d5ceaf89f7f9edff7765f9319fcd00e245de0a5dd1e27b9d236e67306e3f07",
-      "protocolByte": "0xE3",
-      "opcode": "0x50",
-      "direction": "peer-to-peer",
-      "origin": "manually constructed from documented layout",
-      "expected": "valid",
-      "expectedError": null,
-      "expectedOffset": null,
-      "expectedDetails": {
-        "type": "file_status",
-        "part_count": 12,
-        "file_hash": "cccccccccccccccccccccccccccccccc",
-        "bitfield_hex": "ff0f"
-      }
-    },
-    {
-      "name": "hello-truncated-header",
-      "file": "malformed/hello_truncated_header.bin",
-      "sha256": "07ad6574e05b60e01b143184a332ba175fe6bda85a7feb8f2778412b7deeee59",
-      "protocolByte": "0xE3",
-      "opcode": "unknown",
-      "direction": "unknown",
-      "origin": "deliberately malformed entry",
-      "expected": "unexpected_eof",
-      "expectedError": "unexpected_eof",
-      "expectedOffset": 0,
-      "expectedDetails": {
-        "offset": 0,
-        "context": "header"
-      }
-    },
-    {
-      "name": "hello-truncated-tag",
-      "file": "malformed/hello_truncated_tag.bin",
-      "sha256": "f6a4fd33954910daee240579f488d50a1c725e326ff2ea9ce502c31a20ca5422",
-      "protocolByte": "0xE3",
-      "opcode": "0x01",
-      "direction": "peer-to-peer",
-      "origin": "deliberately malformed entry",
-      "expected": "unexpected_eof",
-      "expectedError": "unexpected_eof",
-      "expectedOffset": 32,
-      "expectedDetails": {
-        "offset": 32,
-        "context": "tag_value_string"
-      }
-    },
-    {
-      "name": "oversized-string",
-      "file": "malformed/oversized_string.bin",
-      "sha256": "145b7a6eaec23f50d952ddd13a6604ee2cbba87fe92ce041eb51e2d8009b3060",
-      "protocolByte": "0xE3",
-      "opcode": "0x01",
-      "direction": "peer-to-peer",
-      "origin": "deliberately malformed entry",
-      "expected": "oversized_string",
-      "expectedError": "oversized_string",
-      "expectedOffset": 30,
-      "expectedDetails": {
-        "offset": 30,
-        "context": "tag_value_string"
-      }
-    },
-    {
-      "name": "too-many-tags",
-      "file": "malformed/too_many_tags.bin",
-      "sha256": "7f2ba66a30f07cc2800cea06d28a1c6d08ac79efc49b4b1149e6897237f42ac4",
-      "protocolByte": "0xE3",
-      "opcode": "0x01",
-      "direction": "peer-to-peer",
-      "origin": "deliberately malformed entry",
-      "expected": "too_many_tags",
-      "expectedError": "too_many_tags",
-      "expectedOffset": 28,
-      "expectedDetails": {
-        "offset": 28,
-        "context": "hello_tag_count"
-      }
-    },
-    {
-      "name": "unsupported-protocol-0xd4",
-      "file": "malformed/unsupported_protocol_0xd4.bin",
-      "sha256": "15252f0b509e057bfabe18575cddcaa930873a71378c39f18bb8d66f053c3742",
-      "protocolByte": "0xD4",
-      "opcode": "0x40",
-      "direction": "peer-to-peer",
-      "origin": "deliberately malformed entry",
-      "expected": "compressed_protocol_unsupported",
-      "expectedError": "compressed_protocol_unsupported",
-      "expectedOffset": 0,
-      "expectedDetails": {
-        "offset": 0,
-        "context": "protocol_byte"
-      }
-    }
-  ]
+﻿{
+    "schemaVersion":  1,
+    "description":  "Deterministic eD2K passive corpus for read-only decoding validation and adversarial resilience",
+    "fixtures":  [
+                     {
+                         "name":  "hello-v1-minimal",
+                         "file":  "hello_v1_minimal.bin",
+                         "sha256":  "0fb6cdb1f79f85ddb773b187575e651dc823847d4a2587e521fdc49d764653a3",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x01",
+                         "direction":  "peer-to-peer",
+                         "origin":  "manually constructed from documented layout",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "type":  "hello",
+                                                 "client_id":  3232235777,
+                                                 "tag_count":  0,
+                                                 "user_hash":  "0102030405060708090a0b0c0d0e0f10",
+                                                 "server_ip":  "0.0.0.0",
+                                                 "server_port":  0,
+                                                 "tcp_port":  4662
+                                             }
+                     },
+                     {
+                         "name":  "hello-v1-tags",
+                         "file":  "hello_v1_tags.bin",
+                         "sha256":  "ab600e0f9f0cf2dc5fe1ac4b214cf454d525c4cad4c4de39a375f676e2d16c85",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x01",
+                         "direction":  "peer-to-peer",
+                         "origin":  "derived from eMule/aMule reference source layout",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "tag_count":  3,
+                                                 "tcp_port":  4662,
+                                                 "server_port":  4661,
+                                                 "tags":  [
+                                                              {
+                                                                  "name":  "name",
+                                                                  "value":  "EmuleSion"
+                                                              },
+                                                              {
+                                                                  "name":  "version",
+                                                                  "value":  60
+                                                              },
+                                                              {
+                                                                  "name":  "prt",
+                                                                  "value":  4662
+                                                              }
+                                                          ],
+                                                 "client_id":  287454020,
+                                                 "type":  "hello",
+                                                 "server_ip":  "127.0.0.1",
+                                                 "user_hash":  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                                             }
+                     },
+                     {
+                         "name":  "hello-answer",
+                         "file":  "hello_answer.bin",
+                         "sha256":  "ee6e5fe017c9be6f079cf116cdcee87b7eee90ff254a0c220f1dad7f0a4c3ed3",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x4C",
+                         "direction":  "peer-to-peer",
+                         "origin":  "derived from eMule/aMule reference source layout",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "tag_count":  1,
+                                                 "tcp_port":  4662,
+                                                 "server_port":  4661,
+                                                 "tags":  [
+                                                              {
+                                                                  "name":  "name",
+                                                                  "value":  "RemotePeer"
+                                                              }
+                                                          ],
+                                                 "client_id":  1432778632,
+                                                 "type":  "hello_answer",
+                                                 "server_ip":  "10.0.0.1",
+                                                 "user_hash":  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                             }
+                     },
+                     {
+                         "name":  "file-status",
+                         "file":  "file_status.bin",
+                         "sha256":  "74d5ceaf89f7f9edff7765f9319fcd00e245de0a5dd1e27b9d236e67306e3f07",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x50",
+                         "direction":  "peer-to-peer",
+                         "origin":  "manually constructed from documented layout",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "type":  "file_status",
+                                                 "part_count":  12,
+                                                 "file_hash":  "cccccccccccccccccccccccccccccccc",
+                                                 "bitfield_hex":  "ff0f"
+                                             }
+                     },
+                     {
+                         "name":  "file-status-req",
+                         "file":  "file_status_req.bin",
+                         "sha256":  "f8dac2837f0eec2abe862520dd3d34796839d25c9c6df9596146f97d6de02ee3",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x49",
+                         "direction":  "client-to-peer",
+                         "origin":  "manually constructed from documented layout",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "type":  "file_status_req",
+                                                 "file_hash":  "cccccccccccccccccccccccccccccccc"
+                                             }
+                     },
+                     {
+                         "name":  "file-status-multi-parts",
+                         "file":  "file_status_multi_parts.bin",
+                         "sha256":  "bbc1a1cc0fc20a3e3ab2eff9baab7938e9949dda01e56735f7f08b108d56abeb",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x50",
+                         "direction":  "peer-to-peer",
+                         "origin":  "manually constructed from documented layout",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "type":  "file_status",
+                                                 "part_count":  10,
+                                                 "file_hash":  "dddddddddddddddddddddddddddddddd",
+                                                 "bitfield_hex":  "8303"
+                                             }
+                     },
+                     {
+                         "name":  "hello-truncated-header",
+                         "file":  "malformed/hello_truncated_header.bin",
+                         "sha256":  "07ad6574e05b60e01b143184a332ba175fe6bda85a7feb8f2778412b7deeee59",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "unknown",
+                         "direction":  "unknown",
+                         "origin":  "deliberately malformed entry",
+                         "expected":  "unexpected_eof",
+                         "expectedError":  "unexpected_eof",
+                         "expectedOffset":  0,
+                         "expectedDetails":  {
+                                                 "offset":  0,
+                                                 "context":  "header"
+                                             }
+                     },
+                     {
+                         "name":  "hello-truncated-tag",
+                         "file":  "malformed/hello_truncated_tag.bin",
+                         "sha256":  "f6a4fd33954910daee240579f488d50a1c725e326ff2ea9ce502c31a20ca5422",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x01",
+                         "direction":  "peer-to-peer",
+                         "origin":  "deliberately malformed entry",
+                         "expected":  "unexpected_eof",
+                         "expectedError":  "unexpected_eof",
+                         "expectedOffset":  32,
+                         "expectedDetails":  {
+                                                 "offset":  32,
+                                                 "context":  "tag_value_string"
+                                             }
+                     },
+                     {
+                         "name":  "oversized-string",
+                         "file":  "malformed/oversized_string.bin",
+                         "sha256":  "145b7a6eaec23f50d952ddd13a6604ee2cbba87fe92ce041eb51e2d8009b3060",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x01",
+                         "direction":  "peer-to-peer",
+                         "origin":  "deliberately malformed entry",
+                         "expected":  "oversized_string",
+                         "expectedError":  "oversized_string",
+                         "expectedOffset":  30,
+                         "expectedDetails":  {
+                                                 "offset":  30,
+                                                 "context":  "tag_value_string"
+                                             }
+                     },
+                     {
+                         "name":  "too-many-tags",
+                         "file":  "malformed/too_many_tags.bin",
+                         "sha256":  "7f2ba66a30f07cc2800cea06d28a1c6d08ac79efc49b4b1149e6897237f42ac4",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x01",
+                         "direction":  "peer-to-peer",
+                         "origin":  "deliberately malformed entry",
+                         "expected":  "too_many_tags",
+                         "expectedError":  "too_many_tags",
+                         "expectedOffset":  28,
+                         "expectedDetails":  {
+                                                 "offset":  28,
+                                                 "context":  "hello_tag_count"
+                                             }
+                     },
+                     {
+                         "name":  "unsupported-protocol-0xd4",
+                         "file":  "malformed/unsupported_protocol_0xd4.bin",
+                         "sha256":  "15252f0b509e057bfabe18575cddcaa930873a71378c39f18bb8d66f053c3742",
+                         "protocolByte":  "0xD4",
+                         "opcode":  "0x40",
+                         "direction":  "peer-to-peer",
+                         "origin":  "deliberately malformed entry",
+                         "expected":  "compressed_protocol_unsupported",
+                         "expectedError":  "compressed_protocol_unsupported",
+                         "expectedOffset":  0,
+                         "expectedDetails":  {
+                                                 "offset":  0,
+                                                 "context":  "protocol_byte"
+                                             }
+                     },
+                     {
+                         "name":  "request-parts-single-block",
+                         "file":  "request_parts.bin",
+                         "sha256":  "aea6932a3034566aee7bdc8ce8c9c730d4aa36a4c5ff5d9b0ad018077211ee59",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x4B",
+                         "direction":  "client-to-peer",
+                         "origin":  "standard eMule 3-slot layout with 1 active block",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "file_hash":  "cccccccccccccccccccccccccccccccc",
+                                                 "type":  "request_parts",
+                                                 "ranges":  [
+                                                                {
+                                                                    "start":  0,
+                                                                    "end":  184320
+                                                                }
+                                                            ]
+                                             }
+                     },
+                     {
+                         "name":  "sending-part-1024b",
+                         "file":  "sending_part.bin",
+                         "sha256":  "573fdda76b4aa1c4538cbba4970e61c04d03e7c33abce4268d47a53465dd293a",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x46",
+                         "direction":  "peer-to-client",
+                         "origin":  "standard eMule block delivery with 1024 bytes payload",
+                         "expected":  "valid",
+                         "expectedError":  null,
+                         "expectedOffset":  null,
+                         "expectedDetails":  {
+                                                 "file_hash":  "cccccccccccccccccccccccccccccccc",
+                                                 "end":  1024,
+                                                 "length":  1024,
+                                                 "type":  "sending_part",
+                                                 "start":  0
+                                             }
+                     },
+                     {
+                         "name":  "request-parts-truncated",
+                         "file":  "malformed/request_parts_truncated.bin",
+                         "sha256":  "4c32ddeb690e37201a8e928000ee2eb938dae48b88ad2370a785bbf013b43f49",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x4B",
+                         "direction":  "client-to-peer",
+                         "origin":  "deliberately truncated block request (20 bytes \u003c 24)",
+                         "expected":  "unexpected_eof",
+                         "expectedError":  "unexpected_eof",
+                         "expectedOffset":  26,
+                         "expectedDetails":  {
+                                                 "offset":  26,
+                                                 "context":  "request_parts_header"
+                                             }
+                     },
+                     {
+                         "name":  "sending-part-truncated",
+                         "file":  "malformed/sending_part_truncated.bin",
+                         "sha256":  "f31700afda32e4b9e0d3d049a182795cd4e15390883aebae649df5fb77d06e1a",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x46",
+                         "direction":  "peer-to-client",
+                         "origin":  "deliberately truncated sending part (20 bytes \u003c 24)",
+                         "expected":  "unexpected_eof",
+                         "expectedError":  "unexpected_eof",
+                         "expectedOffset":  26,
+                         "expectedDetails":  {
+                                                 "offset":  26,
+                                                 "context":  "sending_part_header"
+                                             }
+                     },
+                     {
+                         "name":  "sending-part-length-mismatch",
+                         "file":  "malformed/sending_part_length_mismatch.bin",
+                         "sha256":  "0a5c505bb836630fb43f98f8df543380a947b04bfbdf3a1aaa129bc4cf24d82c",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x46",
+                         "direction":  "peer-to-client",
+                         "origin":  "deliberately mismatched block length (end - start = 1024 but data is 512 bytes)",
+                         "expected":  "block_payload_mismatch",
+                         "expectedError":  "block_payload_mismatch",
+                         "expectedOffset":  30,
+                         "expectedDetails":  {
+                                                 "offset":  30,
+                                                 "context":  "sending_part_payload"
+                                             }
+                     },
+                     {
+                         "name":  "sending-part-start-ge-end",
+                         "file":  "malformed/sending_part_start_ge_end.bin",
+                         "sha256":  "51c3b9600e3bbd40dd4c01739a60851dcbc94e149d0bfbc33352e30fe335f92b",
+                         "protocolByte":  "0xE3",
+                         "opcode":  "0x46",
+                         "direction":  "peer-to-client",
+                         "origin":  "deliberately inverted offsets (start 1024 \u003e= end 512)",
+                         "expected":  "invalid_block_offsets",
+                         "expectedError":  "invalid_block_offsets",
+                         "expectedOffset":  22,
+                         "expectedDetails":  {
+                                                 "offset":  22,
+                                                 "context":  "sending_part_offsets"
+                                             }
+                     }
+                 ]
 }

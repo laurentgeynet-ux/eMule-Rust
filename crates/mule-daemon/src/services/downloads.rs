@@ -1,16 +1,42 @@
 use mule_core::{AllocationPolicy, Database, Download, DownloadStatus, PartFile, RangeSet};
 use mule_format::Ed2kFileLink;
+use mule_protocol::ed2k::PartAvailabilityMask;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::error::JsonRpcError;
 use crate::rpc::events::DownloadSnapshot;
 
+/// Neutral availability summary exposed to UI and external clients.
+/// Never leaks raw SocketAddr or network topology.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceAvailabilitySummary {
+    /// Opaque source identifier.
+    pub source_id: String,
+    /// Number of available parts.
+    pub available_part_count: u16,
+    /// Total number of parts in the file.
+    pub total_part_count: u16,
+    /// Timestamp of last observation.
+    pub last_seen_unix_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveSource {
+    source_id: String,
+    _addr: SocketAddr,
+    mask: PartAvailabilityMask,
+    last_seen_unix_ms: i64,
+}
+
 struct ActiveDownload {
     download: Download,
     ranges: RangeSet,
     part_file: Option<PartFile>,
+    sources: HashMap<SocketAddr, ActiveSource>,
 }
 
 pub struct DownloadService {
@@ -38,6 +64,7 @@ impl DownloadService {
                     download: dl,
                     ranges,
                     part_file,
+                    sources: HashMap::new(),
                 },
             );
         }
@@ -105,7 +132,7 @@ impl DownloadService {
             .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
         let ranges = RangeSet::new();
-        let snapshot = make_snapshot(&download, &ranges);
+        let snapshot = make_snapshot(&download, &ranges, 0);
 
         self.active.insert(
             id,
@@ -113,6 +140,7 @@ impl DownloadService {
                 download,
                 ranges,
                 part_file: Some(part_file),
+                sources: HashMap::new(),
             },
         );
 
@@ -122,14 +150,14 @@ impl DownloadService {
     pub fn list_downloads(&self) -> Vec<DownloadSnapshot> {
         self.active
             .values()
-            .map(|a| make_snapshot(&a.download, &a.ranges))
+            .map(|a| make_snapshot(&a.download, &a.ranges, a.sources.len() as u32))
             .collect()
     }
 
     pub fn get_download(&self, id: &Uuid) -> Option<DownloadSnapshot> {
         self.active
             .get(id)
-            .map(|a| make_snapshot(&a.download, &a.ranges))
+            .map(|a| make_snapshot(&a.download, &a.ranges, a.sources.len() as u32))
     }
 
     pub fn pause_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, JsonRpcError> {
@@ -144,7 +172,7 @@ impl DownloadService {
             .update_status(id, DownloadStatus::Paused)
             .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
-        Ok(make_snapshot(&active.download, &active.ranges))
+        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
     }
 
     pub fn resume_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, JsonRpcError> {
@@ -159,7 +187,7 @@ impl DownloadService {
             .update_status(id, DownloadStatus::Downloading)
             .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
-        Ok(make_snapshot(&active.download, &active.ranges))
+        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
     }
 
     pub fn remove_download(&mut self, id: &Uuid, delete_files: bool) -> Result<(), JsonRpcError> {
@@ -213,7 +241,7 @@ impl DownloadService {
         active.download.updated_at = now_ms();
         let _ = self.db.update_status(id, active.download.status);
 
-        Ok(make_snapshot(&active.download, &active.ranges))
+        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
     }
 
     pub fn update_status(
@@ -232,7 +260,7 @@ impl DownloadService {
             .update_status(id, status)
             .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
-        Ok(make_snapshot(&active.download, &active.ranges))
+        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
     }
 
     pub fn get_missing_ranges(&self, id: &Uuid) -> Option<Vec<std::ops::Range<u64>>> {
@@ -252,6 +280,58 @@ impl DownloadService {
                 a.download.ed2k_hash,
                 a.download.total_size,
             )
+        })
+    }
+
+    /// Records peer part availability for a download without writing any block data.
+    pub fn record_source_availability(
+        &mut self,
+        id: &Uuid,
+        source: SocketAddr,
+        mask: PartAvailabilityMask,
+    ) -> Result<DownloadSnapshot, JsonRpcError> {
+        let active = self
+            .active
+            .get_mut(id)
+            .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
+
+        let now = now_ms();
+        let source_id = format!("src_{:08x}", rand::random::<u32>());
+        let entry = active.sources.entry(source).or_insert_with(|| ActiveSource {
+            source_id,
+            _addr: source,
+            mask: mask.clone(),
+            last_seen_unix_ms: now,
+        });
+        entry.mask = mask;
+        entry.last_seen_unix_ms = now;
+        active.download.updated_at = now;
+
+        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
+    }
+
+    /// Returns the sanitized source availability summaries for external clients (neutral DTO, zero raw IP/port).
+    pub fn get_source_summaries(&self, id: &Uuid) -> Option<Vec<SourceAvailabilitySummary>> {
+        self.active.get(id).map(|a| {
+            a.sources
+                .values()
+                .map(|s| SourceAvailabilitySummary {
+                    source_id: s.source_id.clone(),
+                    available_part_count: s.mask.available_parts().count() as u16,
+                    total_part_count: s.mask.part_count(),
+                    last_seen_unix_ms: s.last_seen_unix_ms,
+                })
+                .collect()
+        })
+    }
+
+    /// Returns the active source addresses and masks internally.
+    pub fn get_sources(&self, id: &Uuid) -> Option<HashMap<SocketAddr, PartAvailabilityMask>> {
+        self.active.get(id).map(|a| {
+            a.sources
+                .iter()
+                .map(|(addr, s)| (*addr, s.mask.clone()))
+                .collect()
         })
     }
 
@@ -277,7 +357,7 @@ impl DownloadService {
             .update_status(id, DownloadStatus::Completed)
             .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
-        Ok(make_snapshot(&active.download, &active.ranges))
+        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
     }
 }
 
@@ -288,7 +368,7 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-fn make_snapshot(dl: &Download, ranges: &RangeSet) -> DownloadSnapshot {
+fn make_snapshot(dl: &Download, ranges: &RangeSet, source_count: u32) -> DownloadSnapshot {
     let received_bytes = ranges.covered_len();
     let progress = if dl.total_size > 0 {
         (received_bytes as f64 / dl.total_size as f64).min(1.0)
@@ -305,7 +385,7 @@ fn make_snapshot(dl: &Download, ranges: &RangeSet) -> DownloadSnapshot {
         progress,
         status: dl.status.as_str().to_string(),
         priority: "normal".to_string(),
-        source_count: 0,
+        source_count,
         download_rate_bps: 0,
         uploaded_bytes: 0,
         created_at_unix_ms: dl.created_at,

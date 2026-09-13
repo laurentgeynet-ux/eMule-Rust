@@ -56,11 +56,59 @@ pub enum Ed2kErrorKind {
         /// Diagnostic message.
         message: String,
     },
+    /// Trailing bits in the last byte of an availability bitfield are non-zero.
+    InvalidBitfieldTrailingBits {
+        /// Remainder part count modulo 8.
+        remainder: usize,
+        /// Actual trailing bits mask value found.
+        trailing_bits: u8,
+    },
+    /// Block start offset is greater than or equal to end offset.
+    InvalidBlockOffsets {
+        /// Start byte offset.
+        start: u64,
+        /// End byte offset.
+        end: u64,
+    },
+    /// Block payload byte length does not match declared (end - start) range.
+    BlockPayloadMismatch {
+        /// Expected byte length based on (end - start).
+        expected: usize,
+        /// Actual byte length in frame payload.
+        actual: usize,
+    },
+    /// An opcode is ambiguous or invalid for the active compatibility profile.
+    AmbiguousOpcodeForProfile {
+        /// The opcode that could not be disambiguated.
+        opcode: u8,
+        /// The compatibility profile active during decoding.
+        profile: super::profile::Ed2kCompatibilityProfile,
+        /// Reason / context description.
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for Ed2kErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidBitfieldTrailingBits { remainder, trailing_bits } => {
+                write!(
+                    f,
+                    "invalid bitfield trailing bits: remainder {remainder}, trailing bits 0x{trailing_bits:02X} must be zero"
+                )
+            }
+            Self::InvalidBlockOffsets { start, end } => {
+                write!(
+                    f,
+                    "invalid block offsets: start offset {start} must be strictly less than end offset {end}"
+                )
+            }
+            Self::BlockPayloadMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "block payload length mismatch: expected {expected} bytes, but got {actual}"
+                )
+            }
             Self::UnexpectedEof { needed, available } => {
                 write!(
                     f,
@@ -93,6 +141,12 @@ impl fmt::Display for Ed2kErrorKind {
             }
             Self::MalformedField { message } => {
                 write!(f, "malformed field: {message}")
+            }
+            Self::AmbiguousOpcodeForProfile { opcode, profile, reason } => {
+                write!(
+                    f,
+                    "opcode 0x{opcode:02X} is ambiguous or invalid under compatibility profile {profile}: {reason}"
+                )
             }
         }
     }
