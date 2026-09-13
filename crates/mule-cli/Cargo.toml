@@ -1,0 +1,14 @@
+[package]
+name = "mule-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "CLI inspection tool for eD2K links, hashing, and metadata verification"
+
+[dependencies]
+mule-format = { path = "../mule-format" }
+clap.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+data-encoding.workspace = true

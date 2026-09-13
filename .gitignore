@@ -1,0 +1,6 @@
+/target
+amule-ref/
+**/*.rs.bk
+*.pdb
+.DS_Store
+Thumbs.db

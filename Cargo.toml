@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mule-format",
+    "crates/mule-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-or-later"
+authors = ["Emule-Sion Contributors"]
+
+[workspace.dependencies]
+thiserror = "2"
+md4 = "0.10"
+sha1 = "0.10"
+data-encoding = "2"
+url = "2"
+percent-encoding = "2"
+clap = { version = "4", features = ["derive"] }
+proptest = "1"
+hex = "0.4"

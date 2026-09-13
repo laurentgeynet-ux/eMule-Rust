@@ -1,0 +1,159 @@
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+
+use crate::aich::hash_tree::AichHash;
+use crate::ed2k::hash::Ed2kHash;
+use crate::error::FormatError;
+use crate::met::reader::*;
+use crate::met::tags::*;
+
+pub const PARTFILE_VERSION: u8 = 0xe0;
+pub const PARTFILE_SPLITTEDVERSION: u8 = 0xe1;
+pub const PARTFILE_VERSION_LARGEFILE: u8 = 0xe2;
+
+const MAX_PART_COUNT: usize = 65_536;
+const MAX_TAG_COUNT: usize = 10_000;
+
+/// Parsed eMule `.part.met` file tracking a partial download.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartMetFile {
+    pub version: u8,
+    pub mod_date: u32,
+    pub file_hash: Ed2kHash,
+    pub part_hashes: Vec<[u8; 16]>,
+    pub file_name: Option<String>,
+    pub file_size: Option<u64>,
+    pub transferred: u64,
+    pub aich_hash: Option<AichHash>,
+    pub gaps: Vec<(u64, u64)>,
+    pub tags: Vec<Tag>,
+}
+
+impl PartMetFile {
+    /// Reads and validates a `.part.met` file from disk.
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, FormatError> {
+        let mut file = File::open(path)?;
+        Self::read_from(&mut file)
+    }
+
+    /// Deserializes a `.part.met` structure from any reader.
+    pub fn read_from<R: Read>(reader: &mut R) -> Result<Self, FormatError> {
+        let version = read_u8(reader)?;
+        if version != PARTFILE_VERSION
+            && version != PARTFILE_SPLITTEDVERSION
+            && version != PARTFILE_VERSION_LARGEFILE
+        {
+            return Err(FormatError::InvalidMet(format!(
+                "Unsupported part.met version: 0x{version:02x}"
+            )));
+        }
+
+        let mod_date = read_u32_le(reader)?;
+
+        let mut hash_buf = [0u8; 16];
+        reader.read_exact(&mut hash_buf)?;
+        let file_hash = Ed2kHash(hash_buf);
+
+        let hash_count = read_u16_le(reader)? as usize;
+        if hash_count > MAX_PART_COUNT {
+            return Err(FormatError::InvalidMet(format!(
+                "Excessive part hash count: {hash_count}"
+            )));
+        }
+
+        let mut part_hashes = Vec::with_capacity(hash_count);
+        for _ in 0..hash_count {
+            let mut part_buf = [0u8; 16];
+            reader.read_exact(&mut part_buf)?;
+            part_hashes.push(part_buf);
+        }
+
+        let tag_count = read_u32_le(reader)? as usize;
+        if tag_count > MAX_TAG_COUNT {
+            return Err(FormatError::InvalidMet(format!(
+                "Excessive tag count: {tag_count}"
+            )));
+        }
+
+        let mut tags = Vec::with_capacity(tag_count);
+        let mut file_name = None;
+        let mut file_size: Option<u64> = None;
+        let mut file_size_hi = 0u64;
+        let mut transferred = 0u64;
+        let mut aich_hash = None;
+        let mut gap_starts = Vec::new();
+        let mut gap_ends = Vec::new();
+
+        for _ in 0..tag_count {
+            let tag = read_tag(reader)?;
+
+            match tag.name_id {
+                FT_FILENAME => {
+                    if let Some(name) = tag.as_str() {
+                        file_name = Some(name.to_string());
+                    }
+                }
+                FT_FILESIZE => {
+                    if let Some(sz) = tag.as_u64() {
+                        file_size = Some(sz);
+                    }
+                }
+                FT_FILESIZE_HI => {
+                    if let Some(hi) = tag.as_u64() {
+                        file_size_hi = hi << 32;
+                    }
+                }
+                FT_TRANSFERRED => {
+                    if let Some(tr) = tag.as_u64() {
+                        transferred = tr;
+                    }
+                }
+                FT_AICH_HASH => {
+                    if let Some(s) = tag.as_str() {
+                        if let Ok(h) = AichHash::from_base32(s) {
+                            aich_hash = Some(h);
+                        }
+                    }
+                }
+                FT_GAPSTART => {
+                    if let Some(start) = tag.as_u64() {
+                        gap_starts.push(start);
+                    }
+                }
+                FT_GAPEND => {
+                    if let Some(end) = tag.as_u64() {
+                        gap_ends.push(end);
+                    }
+                }
+                _ => {}
+            }
+
+            tags.push(tag);
+        }
+
+        // Adjust large file size if FT_FILESIZE_HI is present
+        if let Some(sz) = file_size.as_mut() {
+            *sz += file_size_hi;
+        }
+
+        // Pair up gaps
+        let mut gaps = Vec::new();
+        for (start, end) in gap_starts.into_iter().zip(gap_ends) {
+            gaps.push((start, end));
+        }
+
+        Ok(Self {
+            version,
+            mod_date,
+            file_hash,
+            part_hashes,
+            file_name,
+            file_size,
+            transferred,
+            aich_hash,
+            gaps,
+            tags,
+        })
+    }
+}

@@ -1,0 +1,19 @@
+[package]
+name = "mule-format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Pure parser and format library for eD2K hashes, AICH Merkle trees, and eMule binary metadata"
+
+[dependencies]
+thiserror.workspace = true
+md4.workspace = true
+sha1.workspace = true
+data-encoding.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
