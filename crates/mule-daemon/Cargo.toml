@@ -10,6 +10,8 @@ description = "Local daemon and JSON-RPC WebSocket API for emule-modern"
 default = []
 debug-rpc = []
 lab-loopback = ["mule-protocol/lab-loopback"]
+ed2k-loopback = ["mule-protocol/ed2k-loopback"]
+
 
 [dependencies]
 mule-core = { path = "../mule-core" }

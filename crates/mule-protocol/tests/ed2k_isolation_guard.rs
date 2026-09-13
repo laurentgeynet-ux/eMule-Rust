@@ -24,7 +24,7 @@ fn collect_rs_files(dir: &Path, acc: &mut Vec<PathBuf>) {
 }
 
 #[test]
-fn test_ed2k_module_has_zero_network_imports_or_sockets() {
+fn test_ed2k_module_has_zero_network_imports_or_sockets_in_core_protocol() {
     let dir = ed2k_src_dir();
     assert!(dir.exists(), "src/ed2k must exist");
 
@@ -35,7 +35,7 @@ fn test_ed2k_module_has_zero_network_imports_or_sockets() {
         "src/ed2k must contain rust source files"
     );
 
-    // Forbidden identifiers and tokens in mule-protocol::ed2k
+    // Forbidden network identifiers in all core ed2k protocol and session files
     let forbidden_tokens = [
         "std::net",
         "tokio::net",
@@ -52,6 +52,11 @@ fn test_ed2k_module_has_zero_network_imports_or_sockets() {
     ];
 
     for file in &rs_files {
+        // loopback.rs is the dedicated, feature-gated loopback driver audited separately
+        if file.file_name().is_some_and(|n| n == "loopback.rs") {
+            continue;
+        }
+
         let content = fs::read_to_string(file)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", file.display()));
 
@@ -66,7 +71,7 @@ fn test_ed2k_module_has_zero_network_imports_or_sockets() {
             for forbidden in forbidden_tokens {
                 assert!(
                     !line.contains(forbidden),
-                    "Forbidden network token '{}' found in {}: {}",
+                    "Forbidden network token '{}' found in core protocol file {}: {}",
                     forbidden,
                     file.display(),
                     line
@@ -75,6 +80,47 @@ fn test_ed2k_module_has_zero_network_imports_or_sockets() {
         }
     }
 }
+
+#[test]
+fn test_ed2k_loopback_transport_strictly_confined_and_feature_gated() {
+    let loopback_file = ed2k_src_dir().join("loopback.rs");
+    assert!(loopback_file.exists(), "src/ed2k/loopback.rs must exist");
+
+    let content = fs::read_to_string(&loopback_file).expect("failed to read loopback.rs");
+
+    // Must strictly bind to loopback 127.0.0.1
+    assert!(
+        content.contains("\"127.0.0.1:0\""),
+        "loopback.rs must only bind to 127.0.0.1:0"
+    );
+    assert!(
+        content.contains(".is_loopback()"),
+        "loopback.rs must enforce is_loopback() before connecting"
+    );
+    // Must NOT bind to any public / all-interfaces wildcard
+    assert!(
+        !content.contains("\"0.0.0.0"),
+        "loopback.rs must never bind to 0.0.0.0"
+    );
+
+    // Verify mod.rs gates loopback behind feature ed2k-loopback
+    let mod_file = ed2k_src_dir().join("mod.rs");
+    let mod_content = fs::read_to_string(&mod_file).expect("failed to read mod.rs");
+
+    assert!(
+        mod_content.contains("#[cfg(feature = \"ed2k-loopback\")]\npub mod loopback;"),
+        "src/ed2k/mod.rs must gate loopback behind #[cfg(feature = \"ed2k-loopback\")]"
+    );
+    assert!(
+        mod_content.contains("#[cfg(feature = \"ed2k-loopback\")]\npub mod session;"),
+        "src/ed2k/mod.rs must gate session behind #[cfg(feature = \"ed2k-loopback\")]"
+    );
+    assert!(
+        mod_content.contains("#[cfg(feature = \"ed2k-loopback\")]\npub mod peer_info;"),
+        "src/ed2k/mod.rs must gate peer_info behind #[cfg(feature = \"ed2k-loopback\")]"
+    );
+}
+
 
 #[test]
 fn test_ed2k_module_has_zero_lab_dependencies() {

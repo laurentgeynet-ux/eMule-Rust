@@ -159,8 +159,73 @@ impl Ed2kDecoder {
         }
     }
 
+    /// Decodes a pre-framed `RawPacket` into an `Ed2kMessage`.
+    pub fn decode_raw_packet(&self, packet: &RawPacket) -> Result<Ed2kMessage, Ed2kParseError> {
+        if packet.protocol == PR_EMULE_COMPRESSED {
+            return Err(Ed2kParseError::new(
+                packet.protocol,
+                Some(packet.opcode),
+                0,
+                "protocol_byte",
+                Ed2kErrorKind::CompressedProtocolUnsupported,
+            ));
+        }
+        if !is_valid_ed2k_protocol(packet.protocol) {
+            return Err(Ed2kParseError::new(
+                packet.protocol,
+                Some(packet.opcode),
+                0,
+                "protocol_byte",
+                Ed2kErrorKind::UnsupportedProtocol {
+                    byte: packet.protocol,
+                },
+            ));
+        }
+        let frame_len = packet.frame_len();
+        let max_frame = self.limits.max_frame_for_opcode(packet.opcode);
+        if frame_len > max_frame {
+            return Err(Ed2kParseError::new(
+                packet.protocol,
+                Some(packet.opcode),
+                1,
+                "frame_len",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: frame_len,
+                    limit: max_frame,
+                },
+            ));
+        }
+
+        match (packet.protocol, packet.opcode) {
+            (PR_ED2K, OP_HELLO) => {
+                let hello = self.decode_hello(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::Hello(hello))
+            }
+            (PR_ED2K, OP_HELLO_ANSWER) => {
+                let answer = self.decode_hello_answer(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::HelloAnswer(answer))
+            }
+            (PR_ED2K, OP_FILESTATUS) => {
+                let status = self.decode_file_status(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::FileStatus(status))
+            }
+            _ => Ok(Ed2kMessage::Raw(packet.clone())),
+        }
+    }
+
     /// Decodes an `OP_HELLO` payload.
     pub fn decode_hello(
+
         &self,
         protocol: u8,
         opcode: u8,

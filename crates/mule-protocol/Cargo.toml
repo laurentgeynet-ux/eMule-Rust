@@ -9,12 +9,15 @@ description = "Deterministic eD2K wire protocol codec, framing and abstractions 
 [features]
 default = []
 lab-loopback = []
+ed2k-loopback = ["dep:tokio"]
 
 [dependencies]
 bytes.workspace = true
 thiserror.workspace = true
 hex.workspace = true
 tracing.workspace = true
+tokio = { workspace = true, optional = true, features = ["net", "io-util", "time", "sync", "rt"] }
+
 
 [dev-dependencies]
 mule-core = { path = "../mule-core" }
@@ -44,4 +47,9 @@ required-features = ["lab-loopback"]
 [[test]]
 name = "in_flight_properties"
 required-features = ["lab-loopback"]
+
+[[test]]
+name = "ed2k_session_tests"
+required-features = ["ed2k-loopback"]
+
 
