@@ -15,6 +15,9 @@ pub struct DaemonSession {
     pub started_at_unix_ms: i64,
 }
 
+pub const AUTH_TOKEN_BYTES: usize = 32;
+pub const AUTH_TOKEN_HEX_LEN: usize = AUTH_TOKEN_BYTES * 2;
+
 impl DaemonSession {
     pub fn new(protocol_version: u32, instance_id: Uuid, endpoint: impl Into<String>) -> Self {
         let now_ms = std::time::SystemTime::now()
@@ -29,6 +32,10 @@ impl DaemonSession {
             endpoint: endpoint.into(),
             started_at_unix_ms: now_ms,
         }
+    }
+
+    pub fn generate_token() -> String {
+        format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
     }
 
     pub fn write_atomic(&self, data_dir: &Path) -> Result<(), DaemonError> {
@@ -73,15 +80,14 @@ impl DaemonSession {
 
     pub fn write_token(data_dir: &Path, token: &str) -> Result<(), DaemonError> {
         let trimmed = token.trim();
-        if trimmed.len() < 16 {
-            return Err(DaemonError::Session(
-                "Security error: auth token must be at least 16 characters long".to_string(),
-            ));
+        if trimmed.len() != AUTH_TOKEN_HEX_LEN {
+            return Err(DaemonError::Session(format!(
+                "Security error: auth token must be exactly {AUTH_TOKEN_HEX_LEN} hex characters (32 random bytes)"
+            )));
         }
-        if !trimmed.chars().all(|c| c.is_ascii_graphic()) {
+        if !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(DaemonError::Session(
-                "Security error: auth token must contain only printable ASCII characters"
-                    .to_string(),
+                "Security error: auth token must contain only hexadecimal characters".to_string(),
             ));
         }
 
@@ -124,7 +130,7 @@ impl DaemonSession {
         std::fs::read_to_string(token_path)
             .ok()
             .map(|s| s.trim().to_string())
-            .filter(|s| s.len() >= 16 && s.chars().all(|c| c.is_ascii_graphic()))
+            .filter(|s| s.len() == AUTH_TOKEN_HEX_LEN && s.chars().all(|c| c.is_ascii_hexdigit()))
     }
 }
 

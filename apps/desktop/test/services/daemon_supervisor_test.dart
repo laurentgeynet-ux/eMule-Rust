@@ -132,7 +132,8 @@ void main() {
         'startedAtUnixMs': 1726000000000,
       };
       File('${tempDir.path}/session.json').writeAsStringSync(jsonEncode(session));
-      File('${tempDir.path}/auth.token').writeAsStringSync('wrong_token');
+      const testWrongToken = 'bad0000000000000000000000000000000000000000000000000000000000bad';
+      File('${tempDir.path}/auth.token').writeAsStringSync(testWrongToken);
 
       final client = RpcDaemonClient();
       final supervisor = DaemonSupervisor(
@@ -146,7 +147,7 @@ void main() {
       expect(supervisor.state, SupervisorState.authError);
       expect(supervisor.lastError, contains('rejected authentication'));
       // Guarantee that secret token is never exposed in error message
-      expect(supervisor.lastError, isNot(contains('wrong_token')));
+      expect(supervisor.lastError, isNot(contains(testWrongToken)));
 
       await supervisor.stop();
       supervisor.dispose();
@@ -219,7 +220,7 @@ void main() {
       // Write empty session file initially
       final sessionFile = File('${tempDir.path}/session.json');
       sessionFile.writeAsStringSync('');
-      File('${tempDir.path}/auth.token').writeAsStringSync('token_12345678901234');
+      File('${tempDir.path}/auth.token').writeAsStringSync('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
 
       // Schedule proper session file write after 120ms
       Timer(const Duration(milliseconds: 120), () {

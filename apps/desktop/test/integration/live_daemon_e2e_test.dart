@@ -9,7 +9,8 @@ void main() {
     late Process daemonProcess;
     late Directory tempDir;
     const port = 4669;
-    const token = 'live_e2e_secret_token';
+    const token =
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('emule_e2e_');

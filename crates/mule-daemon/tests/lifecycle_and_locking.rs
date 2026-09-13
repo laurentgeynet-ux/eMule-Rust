@@ -36,17 +36,17 @@ fn test_atomic_session_file_and_token() {
     // Token management
     assert_eq!(DaemonSession::read_token(path), None);
 
-    // Invalid tokens (short or invalid characters) must be rejected
+    // Invalid tokens (short, 32 chars, or invalid characters) must be rejected
     assert!(DaemonSession::write_token(path, "short").is_err());
-    assert!(DaemonSession::write_token(path, "invalid token with spaces!").is_err());
-    assert!(DaemonSession::write_token(path, "invalid\ntoken\nwith\nnewlines").is_err());
+    assert!(DaemonSession::write_token(path, "0123456789abcdef0123456789abcdef").is_err()); // 32 chars
+    assert!(DaemonSession::write_token(path, &"z".repeat(64)).is_err()); // Non-hex characters
+    assert!(DaemonSession::write_token(path, &format!("{} with space", "a".repeat(53))).is_err());
 
-    // Valid token succeeds
-    DaemonSession::write_token(path, "my_secure_token_456_alphanumeric").unwrap();
-    assert_eq!(
-        DaemonSession::read_token(path),
-        Some("my_secure_token_456_alphanumeric".to_string())
-    );
+    // Valid 64-hex token succeeds
+    let valid_token = DaemonSession::generate_token();
+    assert_eq!(valid_token.len(), 64);
+    DaemonSession::write_token(path, &valid_token).unwrap();
+    assert_eq!(DaemonSession::read_token(path), Some(valid_token));
 
     // Session file management
     let instance_id = Uuid::new_v4();

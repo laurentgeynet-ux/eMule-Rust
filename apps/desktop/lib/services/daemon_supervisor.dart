@@ -143,6 +143,7 @@ class DaemonSupervisor {
     DaemonSessionFile? session = await _readSessionFileAsync(dataDir);
     String? token = _readTokenFile(dataDir);
 
+    final DaemonSessionFile? initialSession = session;
     final String? staleInstanceId = session?.instanceId;
     // 1. Try to connect to existing daemon if session file exists
     if (session != null) {
@@ -152,11 +153,27 @@ class DaemonSupervisor {
         return;
       }
 
-      // Existing session was unreachable. Clean up stale session file.
-      try {
-        final f = File('${dataDir.path}/session.json');
-        if (f.existsSync()) f.deleteSync();
-      } catch (_) {}
+      // Existing session was unreachable.
+      // Anti-race guard: Re-read session.json to ensure it hasn't changed before deleting it.
+      final currentSession = await _readSessionFileAsync(dataDir, retries: 1);
+      if (currentSession != null) {
+        final isSame = currentSession.instanceId == initialSession!.instanceId &&
+            currentSession.pid == initialSession.pid &&
+            currentSession.endpoint == initialSession.endpoint &&
+            currentSession.startedAtUnixMs == initialSession.startedAtUnixMs;
+
+        if (isSame) {
+          try {
+            final f = File('${dataDir.path}/session.json');
+            if (f.existsSync()) f.deleteSync();
+          } catch (_) {}
+        } else {
+          // A new session was published in the meantime! Restart discovery instead of deleting.
+          _setState(SupervisorState.discovering);
+          await _connectOrLaunch();
+          return;
+        }
+      }
     }
 
     // 2. If daemon is absent or unreachable, attempt auto-launch
@@ -247,7 +264,9 @@ class DaemonSupervisor {
       final file = File('${dataDir.path}/auth.token');
       if (file.existsSync()) {
         final content = file.readAsStringSync().trim();
-        if (content.length >= 16) return content;
+        if (content.length == 64 && RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(content)) {
+          return content;
+        }
       }
     } catch (_) {}
     return null;
