@@ -502,8 +502,70 @@ Les fixtures binaires sont hébergées dans `crates/mule-protocol/tests/fixtures
   - `malformed/too_many_tags.bin` : Compteur de 300 tags dépassant le plafond de 256 $\rightarrow$ `TooManyTags` (count: 300, limit: 256).
   - `malformed/unsupported_protocol_0xd4.bin` : Protocole compressé $0xD4$ $\rightarrow$ `CompressedProtocolUnsupported`.
 
-### 12.4 Bilan des Tests Automatisés
-- **Tests Rust** : **100 tests passés** (`cargo test --workspace --all-features`), dont les 13 nouveaux tests d'intégration dans `ed2k_corpus_tests.rs`.
+### 12.4 Contrôles de Clôture & Garde d'Isolation Mécanique
+Deux contrôles automatisés renforcent la garantie d'isolation :
+1. **Garde d'isolation mécanique (`crates/mule-protocol/tests/ed2k_isolation_guard.rs`)** :
+   - Scan statique automatisé de l'ensemble du sous-module `src/ed2k/` : interdiction formelle et vérifiée de tout import réseau (`std::net`, `tokio::net`, `TcpStream`, `UdpSocket`, `SocketAddr`, `axum`, `hyper`, etc.).
+   - Absence totale de dépendance vers `mule-protocol::lab`.
+   - Règle stricte « zéro `unwrap()`, zéro `expect()` » dans le code source de `ed2k/`.
+   - Vérification que les routes RPC de laboratoire dans `mule-daemon` sont strictement conditionnées par `#[cfg(feature = "lab-loopback")]`.
+2. **Validation dynamique complète du manifeste (`manifest.json`)** :
+   - Schéma enrichi pour chaque fixture : `protocolByte`, `opcode`, `direction`, `origin`, `expected`, `expectedError`, `expectedOffset`.
+   - Vérification dynamique du hash SHA-256 (via algorithme standard FIPS 180-4 sécurisé en pur Rust), des erreurs attendues et des offsets exacts de rejet dans le flux binaire.
+
+### 12.5 Bilan des Tests Phase 5
+- **Tests Rust** : **104 tests passés** (`cargo test --workspace --all-features`), incluant `ed2k_isolation_guard` et `ed2k_corpus_tests`.
 - **Tests Flutter** : **31 tests passés** (`flutter test`).
-- **Total général** : **131 tests validés à 100 %**.
-- **Clippy** : 0 avertissement sur l'ensemble du workspace (`--all-targets --all-features` et profil standard).
+- **Total général** : **135 tests validés à 100 %**.
+
+---
+
+## 13. Phase 6.1 : Encodeurs Déterministes eD2K Hors Réseau & Double Invariance Roundtrip
+
+Le **Jalon 6.1** déploie la couche de sérialisation sur le fil déterministe et bornée pour les messages eD2K historiques (`mule-protocol::ed2k::encoder`), tout en maintenant la politique stricte **100 % hors-ligne**.
+
+### 13.1 Architecture du Module `encoder` (`crates/mule-protocol/src/ed2k/encoder.rs`)
+1. **Structure `Ed2kEncoder`** :
+   - Encapsule `Ed2kLimits` pour contraindre chaque allocation mémoire.
+   - Encodage des balises TLV reconnues (`Ed2kTag`) pour tous les types scalaires, hashes, chaînes et blobs.
+   - Préservation sans altération des balises inconnues (`RawTag`).
+   - Émission conforme des adresses serveur (`server_ip` 4 octets LE et `server_port` 2 octets LE).
+2. **Erreurs typées contextuelles `Ed2kEncodeError`** :
+   - Identifie précisément l'opcode en cours d'encodage, le champ fautif (`field`) et la nature de la violation (`Ed2kErrorKind`).
+3. **Méthodes d'encodage sûres** :
+   - `encode_hello(&self, &Ed2kHello) -> Result<RawPacket, Ed2kEncodeError>`
+   - `encode_hello_answer(&self, &Ed2kHelloAnswer) -> Result<RawPacket, Ed2kEncodeError>`
+   - `encode_file_status(&self, &Ed2kFileStatus) -> Result<RawPacket, Ed2kEncodeError>`
+   - `encode_message(&self, &Ed2kMessage) -> Result<RawPacket, Ed2kEncodeError>`
+   - `encode_to_bytes(&self, &Ed2kMessage) -> Result<Bytes, Ed2kEncodeError>`
+
+### 13.2 Double Invariance Roundtrip (`crates/mule-protocol/tests/ed2k_roundtrip_tests.rs`)
+La suite de 15 tests automatisés prouve formellement les deux propriétés d'invariance :
+
+1. **Invariance de Fixture : `encode(decode(fixture)) == fixture`**
+   - `hello_v1_minimal.bin` : 38 octets identiques au bit près.
+   - `hello_v1_tags.bin` : Poignée de main complète reproduite à l'identique.
+   - `hello_answer.bin` : Réponse avec métadonnées reproduite à l'identique.
+   - `file_status.bin` : Statut multi-parts avec masque binaire reproduit à l'identique.
+
+2. **Invariance Structurelle : `decode(encode(msg)) == msg`**
+   - `test_synthetic_roundtrip_hello_all_tag_types` : Couverture exhaustive de toutes les variantes de `TagValue` (Hash, String, UInt32, Float32, Bool, Blob, UInt16, UInt8, UInt64) avec noms spéciaux et textuels.
+   - `test_synthetic_roundtrip_hello_minimal_no_server_info` : Handshake minimal avec serveur nul.
+   - `test_synthetic_roundtrip_hello_answer` : Réponse synthétique avec tags.
+   - `test_synthetic_roundtrip_unknown_raw_tags_preservation` : Conservation parfaite des tags bruts (`RawTag`).
+   - `test_synthetic_roundtrip_file_status_various_part_counts` : Vérification sur 0, 1, 7, 8, 9 et 53 parts.
+
+3. **Rejets Numériques aux Limites** :
+   - Dépassement du nombre maximal de tags (`TooManyTags`).
+   - Dépassement de la longueur du nom de tag ou de la valeur de chaîne (`OversizedString`).
+   - Dépassement de la taille de blob (`FrameTooLarge`).
+   - Dépassement du plafond de trame pour l'opcode (`FrameTooLarge`).
+   - Incohérence de longueur du masque binaire par rapport au nombre de parts (`MalformedField`).
+
+### 13.3 Bilan Global des Tests (Phase 6.1)
+- **Tests Rust** : **115 tests passés** (`cargo test --workspace --all-features`).
+- **Tests Flutter** : **31 tests passés** (`flutter test`).
+- **Total général du projet** : **146 tests validés à 100 %**.
+- **Clippy** : 0 avertissement sur tout le workspace (`cargo clippy --workspace --all-targets --all-features -- -D warnings`).
+- **Garde d'isolation** : Validée (0 socket, 0 import réseau, 0 dépendance lab, 0 unwrap/expect dans `src/ed2k/`).
+
