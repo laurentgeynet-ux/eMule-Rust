@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../domain/models/download_item.dart';
 import '../../../core/formatters.dart';
+import '../../../core/strings.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
 import '../widgets/add_link_dialog.dart';
@@ -102,7 +103,7 @@ class DownloadsScreen extends StatelessWidget {
 
   Widget _buildTopBar(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
         color: AppTheme.darkSurface,
         border: Border(
@@ -114,22 +115,24 @@ class DownloadsScreen extends StatelessWidget {
           // Filter title
           Text(
             viewModel.currentFilter.label,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(width: 24),
+          const SizedBox(width: 16),
 
-          // Search Field
+          // Search Field (Flexible responsive width)
           Expanded(
             child: SizedBox(
-              height: 38,
+              height: 36,
               child: TextField(
                 onChanged: viewModel.setSearchQuery,
                 style: const TextStyle(fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'Search downloads by filename...',
-                  hintStyle: const TextStyle(fontSize: 13, color: Colors.white38),
-                  prefixIcon: const Icon(Icons.search, size: 18, color: Colors.white38),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                  hintText: AppStrings.searchPlaceholder,
+                  hintStyle: const TextStyle(fontSize: 12, color: Colors.white38),
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 16, color: Colors.white38),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                   filled: true,
                   fillColor: AppTheme.darkCard,
                   border: OutlineInputBorder(
@@ -141,61 +144,125 @@ class DownloadsScreen extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(width: 20),
+          const SizedBox(width: 10),
 
-          // Global Download Speed Badge
+          // Loopback Lab Mode Badge
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
-              color: AppTheme.darkCard,
+              color: Colors.blueGrey.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+              border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3), width: 0.5),
             ),
-            child: Row(
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.arrow_downward_rounded, size: 16, color: AppTheme.statusDownloading),
-                const SizedBox(width: 6),
+                Icon(Icons.science_outlined, size: 14, color: Colors.white70),
+                SizedBox(width: 5),
                 Text(
-                  Formatters.formatSpeed(viewModel.totalDownloadSpeed),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.statusDownloading,
+                  AppStrings.loopbackLabMode,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white70,
                   ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
 
-          // Debug Tools Toggle
-          IconButton(
-            icon: Icon(
-              Icons.bug_report_rounded,
-              color: viewModel.isDebugBarVisible ? Colors.amberAccent : Colors.white54,
-              size: 20,
+          // Global Speed Badge: Download & Upload (↓ 0 B/s   ↑ 0 B/s)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.darkBorder, width: 0.5),
             ),
-            tooltip: 'Toggle Simulation & Debug Tools',
-            onPressed: viewModel.toggleDebugBar,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.arrow_downward_rounded, size: 13, color: AppTheme.statusDownloading),
+                const SizedBox(width: 3),
+                Text(
+                  Formatters.formatSpeed(viewModel.totalDownloadSpeed),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.statusDownloading,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_upward_rounded, size: 13, color: Colors.white38),
+                const SizedBox(width: 3),
+                Text(
+                  Formatters.formatSpeed(viewModel.totalUploadSpeed),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white38,
+                  ),
+                ),
+              ],
+            ),
           ),
+
+          // Dev Tools Gating: Only visible if enabled via --dart-define=ENABLE_DEV_TOOLS=true or fake client
+          if (viewModel.isDevToolsAvailable) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 0.5),
+              ),
+              child: const Text(
+                AppStrings.devModeBadge,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amberAccent,
+                ),
+              ),
+            ),
+            IconButton(
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.bug_report_rounded,
+                color: viewModel.isDebugBarVisible ? Colors.amberAccent : Colors.white54,
+                size: 18,
+              ),
+              tooltip: AppStrings.tooltipDevTools,
+              onPressed: viewModel.toggleDebugBar,
+            ),
+          ],
+
+          const SizedBox(width: 2),
 
           // Refresh Button
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white54, size: 20),
-            tooltip: 'Refresh Downloads',
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white54, size: 18),
+            tooltip: AppStrings.tooltipRefresh,
             onPressed: viewModel.refresh,
           ),
 
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
 
           // Add Link Button
           FilledButton.icon(
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('Add Link'),
+            icon: const Icon(Icons.add_rounded, size: 16),
+            label: const Text(AppStrings.btnAddLink),
             style: FilledButton.styleFrom(
               backgroundColor: AppTheme.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             onPressed: () {
               showDialog(
@@ -222,28 +289,32 @@ class DownloadsScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 color: AppTheme.darkSurface,
                 shape: BoxShape.circle,
                 border: Border.all(color: AppTheme.darkBorder, width: 0.5),
               ),
-              child: const Icon(Icons.inbox_rounded, size: 48, color: Colors.white30),
+              child: const Icon(Icons.cloud_download_outlined, size: 52, color: Colors.white30),
             ),
             const SizedBox(height: 16),
             const Text(
-              'No downloads in this view',
+              AppStrings.emptyStateTitle,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white70),
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'Click "+ Add Link" to paste an eD2K link and begin downloading.',
-              style: TextStyle(fontSize: 13, color: Colors.white38),
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                AppStrings.emptyStateSubtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.white38, height: 1.4),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             FilledButton.icon(
               icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text('Add eD2K Link'),
+              label: const Text(AppStrings.btnAddEd2kLink),
               style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
               onPressed: () {
                 showDialog(

@@ -11,8 +11,10 @@ import 'ui/features/downloads/views/downloads_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Check if user specified fake daemon via dart-define
+  // Check if user specified fake daemon or dev tools via dart-define
   const useFake = bool.fromEnvironment('USE_FAKE_DAEMON', defaultValue: false);
+  const enableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS', defaultValue: false);
+  final isDevToolsAvailable = enableDevTools || useFake;
 
   final MuleDaemonClient client;
   DaemonSupervisor? supervisor;
@@ -25,7 +27,11 @@ void main() async {
     client = rpcClient;
   }
 
-  final viewModel = DownloadsViewModel(client: client, supervisor: supervisor);
+  final viewModel = DownloadsViewModel(
+    client: client,
+    supervisor: supervisor,
+    isDevToolsAvailable: isDevToolsAvailable,
+  );
 
   if (supervisor != null) {
     supervisor.start();

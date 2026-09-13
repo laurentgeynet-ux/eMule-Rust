@@ -58,13 +58,16 @@ class DebugSimulationBar extends StatelessWidget {
               },
               child: const Text('Inject 1 MB Chunk'),
             ),
+            const Spacer(),
           ] else ...[
-            const Text(
-              'Click any download row above to select it for data injection tests.',
-              style: TextStyle(fontSize: 12, color: Colors.white54, fontStyle: FontStyle.italic),
+            const Expanded(
+              child: Text(
+                'Click any download row above to select it for data injection tests.',
+                style: TextStyle(fontSize: 12, color: Colors.white54, fontStyle: FontStyle.italic),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
-          const Spacer(),
           IconButton(
             icon: const Icon(Icons.close, size: 16, color: Colors.white54),
             tooltip: 'Close Debug Bar',

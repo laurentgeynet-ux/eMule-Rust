@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../domain/models/daemon_info.dart';
 import '../../../../services/daemon_supervisor.dart';
+import '../../../core/strings.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
 
@@ -49,7 +50,7 @@ class DownloadsSidebar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Emule-Sion',
+                        AppStrings.appName,
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -58,7 +59,7 @@ class DownloadsSidebar extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        'Modern eD2K Client',
+                        AppStrings.appTagline,
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.white54,
@@ -78,7 +79,7 @@ class DownloadsSidebar extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 6),
             child: Text(
-              'DOWNLOADS',
+              AppStrings.sectionDownloads,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,

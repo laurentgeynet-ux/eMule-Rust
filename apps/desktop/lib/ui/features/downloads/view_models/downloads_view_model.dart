@@ -34,6 +34,7 @@ enum DownloadFilter {
 class DownloadsViewModel extends ChangeNotifier {
   final MuleDaemonClient client;
   final DaemonSupervisor? supervisor;
+  final bool isDevToolsAvailable;
 
   DaemonConnectionState _connectionState = DaemonConnectionState.disconnected;
   SupervisorState _supervisorState = SupervisorState.idle;
@@ -54,7 +55,11 @@ class DownloadsViewModel extends ChangeNotifier {
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
 
-  DownloadsViewModel({required this.client, this.supervisor}) {
+  DownloadsViewModel({
+    required this.client,
+    this.supervisor,
+    this.isDevToolsAvailable = false,
+  }) {
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
       notifyListeners();
@@ -96,7 +101,7 @@ class DownloadsViewModel extends ChangeNotifier {
   DownloadFilter get currentFilter => _currentFilter;
   String get searchQuery => _searchQuery;
   String? get selectedDownloadId => _selectedDownloadId;
-  bool get isDebugBarVisible => _isDebugBarVisible;
+  bool get isDebugBarVisible => isDevToolsAvailable && _isDebugBarVisible;
   String? get statusNotification => _statusNotification;
 
   DownloadItem? get selectedDownload =>
@@ -105,6 +110,9 @@ class DownloadsViewModel extends ChangeNotifier {
   int get totalDownloadSpeed => _downloads.values
       .where((d) => d.status.isActive)
       .fold<int>(0, (sum, d) => sum + d.downloadRateBps);
+
+  /// Always 0 B/s in this offline / loopback lab client without public upload/seeding.
+  int get totalUploadSpeed => 0;
 
   int get countAll => _downloads.length;
   int get countActive => _downloads.values.where((d) => d.status.isActive).length;
@@ -191,6 +199,7 @@ class DownloadsViewModel extends ChangeNotifier {
   }
 
   void toggleDebugBar() {
+    if (!isDevToolsAvailable) return;
     _isDebugBarVisible = !_isDebugBarVisible;
     notifyListeners();
   }

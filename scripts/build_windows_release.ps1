@@ -127,6 +127,9 @@ $BrandedExe = Join-Path $DestPath "EmuleSion.exe"
 if (Test-Path $PrimaryExe) {
     Move-Item -Path $PrimaryExe -Destination $BrandedExe -Force
 }
+if (!(Test-Path $BrandedExe)) {
+    throw "Expected EmuleSion.exe not found in $DestPath"
+}
 
 # Create bin/ directory and bundle mule-daemon.exe
 $BinDir = Join-Path $DestPath "bin"

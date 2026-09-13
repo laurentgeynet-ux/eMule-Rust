@@ -185,5 +185,78 @@ void main() {
       expect(find.text('OpenSourceGame.iso'), findsOneWidget);
       expect(find.byType(DownloadRow), findsNWidgets(4));
     });
+
+    testWidgets('displays Loopback Lab Mode badge and hides dev tools by default',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // Loopback Lab Mode badge is visible
+      expect(find.text('Loopback Lab Mode'), findsOneWidget);
+      expect(find.byIcon(Icons.science_outlined), findsOneWidget);
+
+      // Dev tools badge and bug toggle are strictly hidden
+      expect(find.text('DEV'), findsNothing);
+      expect(find.byIcon(Icons.bug_report_rounded), findsNothing);
+    });
+
+    testWidgets('shows DEV badge and allows toggling debug bar when dev tools enabled',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final devVm = DownloadsViewModel(
+        client: fakeClient,
+        isDevToolsAvailable: true,
+      );
+      addTearDown(devVm.dispose);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: devVm));
+      await tester.pumpAndSettle();
+
+      // DEV badge and bug icon are visible
+      expect(find.text('DEV'), findsOneWidget);
+      expect(find.byIcon(Icons.bug_report_rounded), findsOneWidget);
+
+      // Tap bug icon to show debug simulation bar
+      await tester.tap(find.byIcon(Icons.bug_report_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Dev Simulation Tools:'), findsOneWidget);
+    });
+
+    testWidgets('renders informative empty state with dedicated icon and loopback notice',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      // Empty fake client
+      final emptyFake = FakeMuleDaemonClient(enableAutoSimulation: false);
+      // Remove default seeded downloads
+      for (final id in ['item-1', 'item-2', 'item-3']) {
+        await emptyFake.removeDownload(id);
+      }
+      final emptyVm = DownloadsViewModel(client: emptyFake);
+      addTearDown(emptyVm.dispose);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+      expect(find.text('No downloads in this view'), findsOneWidget);
+      expect(
+        find.text(
+          'Add an eD2K link to create a local download entry.\nThis lab build operates in loopback-only mode.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Add eD2K Link'), findsOneWidget);
+    });
   });
 }
