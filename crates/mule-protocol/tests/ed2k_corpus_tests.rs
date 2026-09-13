@@ -15,13 +15,20 @@ struct Manifest {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct FixtureEntry {
     name: String,
     file: String,
     sha256: String,
-    #[serde(default)]
+    #[serde(rename = "protocolByte")]
+    protocol_byte: Option<String>,
+    opcode: Option<String>,
+    direction: String,
+    origin: String,
     expected: String,
+    #[serde(rename = "expectedError")]
+    expected_error: Option<String>,
+    #[serde(rename = "expectedOffset")]
+    expected_offset: Option<usize>,
 }
 
 fn fixtures_root() -> PathBuf {
@@ -147,6 +154,28 @@ fn test_corpus_manifest_and_hash_integrity() {
     );
 
     for entry in &manifest.fixtures {
+        assert!(!entry.name.is_empty(), "fixture name must not be empty");
+        assert!(
+            !entry.origin.is_empty(),
+            "origin must not be empty for {}",
+            entry.name
+        );
+        assert!(
+            !entry.direction.is_empty(),
+            "direction must not be empty for {}",
+            entry.name
+        );
+        assert!(
+            entry.protocol_byte.is_some(),
+            "protocolByte must be set in manifest for {}",
+            entry.name
+        );
+        assert!(
+            entry.opcode.is_some(),
+            "opcode must be set in manifest for {}",
+            entry.name
+        );
+
         let fixture_path = root.join(&entry.file);
         assert!(
             fixture_path.exists(),
@@ -160,6 +189,58 @@ fn test_corpus_manifest_and_hash_integrity() {
             "SHA-256 mismatch for fixture: {}",
             entry.name
         );
+
+        let decoder = Ed2kDecoder::new();
+        let decode_result = decoder.decode_packet(&bytes);
+
+        if entry.expected == "valid" {
+            assert!(
+                decode_result.is_ok(),
+                "expected valid decoding for {}, got error: {:?}",
+                entry.name,
+                decode_result
+            );
+            assert!(
+                entry.expected_error.is_none(),
+                "expectedError should be null for valid fixture {}",
+                entry.name
+            );
+        } else {
+            assert!(
+                decode_result.is_err(),
+                "expected error for {}, got ok: {:?}",
+                entry.name,
+                decode_result
+            );
+            let err = decode_result.unwrap_err();
+            if let Some(expected_err) = &entry.expected_error {
+                match expected_err.as_str() {
+                    "unexpected_eof" => {
+                        assert!(matches!(err.kind, Ed2kErrorKind::UnexpectedEof { .. }));
+                    }
+                    "oversized_string" => {
+                        assert!(matches!(err.kind, Ed2kErrorKind::OversizedString { .. }));
+                    }
+                    "too_many_tags" => {
+                        assert!(matches!(err.kind, Ed2kErrorKind::TooManyTags { .. }));
+                    }
+                    "compressed_protocol_unsupported" => {
+                        assert!(matches!(
+                            err.kind,
+                            Ed2kErrorKind::CompressedProtocolUnsupported
+                        ));
+                    }
+                    other => panic!("unknown expected error in manifest: {other}"),
+                }
+            }
+            if let Some(expected_offset) = entry.expected_offset {
+                assert_eq!(
+                    err.offset, expected_offset,
+                    "offset mismatch for fixture {}",
+                    entry.name
+                );
+            }
+        }
     }
 }
 
@@ -311,6 +392,7 @@ fn test_malformed_oversized_string() {
     let err = decoder.decode_packet(&bytes).unwrap_err();
 
     assert_eq!(err.context, "tag_value_string");
+    assert_eq!(err.offset, 30);
     match err.kind {
         Ed2kErrorKind::OversizedString { size, limit } => {
             assert_eq!(size, 1500);

@@ -11,6 +11,8 @@
       "direction": "peer-to-peer",
       "origin": "manually constructed from documented layout",
       "expected": "valid",
+      "expectedError": null,
+      "expectedOffset": null,
       "expectedDetails": {
         "type": "hello",
         "client_id": 3232235777,
@@ -30,6 +32,8 @@
       "direction": "peer-to-peer",
       "origin": "derived from eMule/aMule reference source layout",
       "expected": "valid",
+      "expectedError": null,
+      "expectedOffset": null,
       "expectedDetails": {
         "tag_count": 3,
         "tcp_port": 4662,
@@ -63,6 +67,8 @@
       "direction": "peer-to-peer",
       "origin": "derived from eMule/aMule reference source layout",
       "expected": "valid",
+      "expectedError": null,
+      "expectedOffset": null,
       "expectedDetails": {
         "tag_count": 1,
         "tcp_port": 4662,
@@ -88,6 +94,8 @@
       "direction": "peer-to-peer",
       "origin": "manually constructed from documented layout",
       "expected": "valid",
+      "expectedError": null,
+      "expectedOffset": null,
       "expectedDetails": {
         "type": "file_status",
         "part_count": 12,
@@ -99,11 +107,13 @@
       "name": "hello-truncated-header",
       "file": "malformed/hello_truncated_header.bin",
       "sha256": "07ad6574e05b60e01b143184a332ba175fe6bda85a7feb8f2778412b7deeee59",
-      "protocolByte": null,
-      "opcode": null,
-      "direction": "peer-to-peer",
+      "protocolByte": "0xE3",
+      "opcode": "unknown",
+      "direction": "unknown",
       "origin": "deliberately malformed entry",
       "expected": "unexpected_eof",
+      "expectedError": "unexpected_eof",
+      "expectedOffset": 0,
       "expectedDetails": {
         "offset": 0,
         "context": "header"
@@ -118,6 +128,8 @@
       "direction": "peer-to-peer",
       "origin": "deliberately malformed entry",
       "expected": "unexpected_eof",
+      "expectedError": "unexpected_eof",
+      "expectedOffset": 32,
       "expectedDetails": {
         "offset": 32,
         "context": "tag_value_string"
@@ -132,8 +144,10 @@
       "direction": "peer-to-peer",
       "origin": "deliberately malformed entry",
       "expected": "oversized_string",
+      "expectedError": "oversized_string",
+      "expectedOffset": 30,
       "expectedDetails": {
-        "offset": 31,
+        "offset": 30,
         "context": "tag_value_string"
       }
     },
@@ -146,6 +160,8 @@
       "direction": "peer-to-peer",
       "origin": "deliberately malformed entry",
       "expected": "too_many_tags",
+      "expectedError": "too_many_tags",
+      "expectedOffset": 28,
       "expectedDetails": {
         "offset": 28,
         "context": "hello_tag_count"
@@ -156,10 +172,12 @@
       "file": "malformed/unsupported_protocol_0xd4.bin",
       "sha256": "15252f0b509e057bfabe18575cddcaa930873a71378c39f18bb8d66f053c3742",
       "protocolByte": "0xD4",
-      "opcode": null,
+      "opcode": "0x40",
       "direction": "peer-to-peer",
       "origin": "deliberately malformed entry",
       "expected": "compressed_protocol_unsupported",
+      "expectedError": "compressed_protocol_unsupported",
+      "expectedOffset": 0,
       "expectedDetails": {
         "offset": 0,
         "context": "protocol_byte"
