@@ -125,4 +125,4 @@ Pour consulter l'historique complet des versions et la synthèse de la dernière
 - [CHANGELOG.md](CHANGELOG.md)
 - [RELEASE_NOTES_0.1.0-lab.md](RELEASE_NOTES_0.1.0-lab.md)
 - [Protocole de Réception QA](docs/QA_RECEPTION_PROTOCOL.md)
-- [Guide de Référence et Walkthrough](walkthrough.md)
+- [Guide de Référence et Walkthrough](docs/walkthrough.md)

@@ -619,4 +619,718 @@ Le **Jalon 6.2** établit les premières sessions réseau actives de poignée de
 - **Total général du projet** : **159 tests validés à 100 %**.
 - **Clippy** : 0 avertissement sur l'ensemble du workspace (`cargo clippy --workspace --all-targets --all-features -- -D warnings`).
 
+---
+
+## 15. Phase 6.3 : Disponibilité de Fichier sur Loopback Fermé (`OP_FILESTATUSREQ` / `OP_FILESTATUS`)
+
+Le **Jalon 6.3** implémente le protocole d'interrogation de disponibilité de fichier eD2K (`OP_FILESTATUSREQ` = `0x49` / `OP_FILESTATUS` = `0x50`), strictement confiné au loopback `127.0.0.1:0`. Il permet au client d'interroger un pair sur les parts qu'il détient pour un hash eD2K donné sans demander ni transférer de blocs de données.
+
+### 15.1 Invariants et Garanties de Sécurité
+1. **Zéro écriture sur les fichiers `.part`** : L'interrogation de disponibilité n'alloue aucun bloc et n'écrit aucun octet sur le disque. La taille du fichier `.part` physique reste rigoureusement invariante (0 octet si non alloué).
+2. **Zéro demande ou transfert de blocs** : Aucun opcode `OP_REQUESTPARTS` (`0x47`), `OP_SENDINGPART` (`0x46`), ni protocole compressé `0xD4` n'est émis ou accepté.
+3. **Absence de logique de queue / crédits** : Phase limitée à la disponibilité pure.
+4. **Modèles de protocole purs et inconditionnels (`mule-protocol::ed2k`)** :
+   - `PartAvailabilityMask`, `Ed2kFileStatusReq`, `Ed2kFileStatus`, `FileStatusTracker` sont déclarés inconditionnellement publics et ne dépendent d'aucun import réseau.
+   - Seul le transport de test (`Ed2kTestPeer`, `Ed2kLoopbackClient`) est conditionné par la feature `#[cfg(feature = "ed2k-loopback")]`.
+5. **Confinement Loopback Stricte** : Connexions limitées à `127.0.0.1:0` ; rejet immédiat de toute adresse non-loopback.
+
+### 15.2 Architecture Protocolaire (`crates/mule-protocol`)
+
+#### 1. Masque Binaire de Disponibilité (`PartAvailabilityMask`)
+- **Format sur le fil eD2K** :
+  - `part_count` : entier 16 bits little-endian (nombre de parts de 9 728 000 octets).
+  - `mask` : tampon binaire de longueur exacte $\lceil \text{part\_count} / 8 \rceil$ octets.
+- **Ordre des bits (LSB-first)** :
+  - La part $i$ est représentée par le bit $(i \pmod 8)$ de l'octet $(i / 8)$ :
+    $$\text{has\_part}(i) = (\text{byte}[i / 8] \ \& \ (1 \ll (i \pmod 8))) \neq 0$$
+- **Rejet strict des bits de queue non nuls (`InvalidBitfieldTrailingBits`)** :
+  - Si $\text{part\_count} \pmod 8 \neq 0$, les bits résiduels non utilisés dans le dernier octet (bits $\ge \text{part\_count} \pmod 8$) **doivent être strictement à zéro**. Tout bit de queue résiduel à 1 est immédiatement rejeté avec l'erreur `Ed2kErrorKind::InvalidBitfieldTrailingBits`.
+- **Méthodes utilitaires sûres** :
+  - `from_bytes(part_count, raw)`, `from_parts(part_count, &[bool])`, `all_available(part_count)`, `none_available(part_count)`.
+  - `has_part(idx)`, `available_count()`, `is_complete()`, `is_empty()`, `iter()`.
+
+#### 2. Messages sur le Fil
+- **`OP_FILESTATUSREQ` (0x49, Protocole 0xE3)** :
+  - Charge utile : 16 octets (hash MD4 du fichier). Longueur totale sur le fil : 22 octets (en-tête 5 octets + opcode 1 octet + 16 octets).
+  - Émis uniquement lorsque la session est à l'état `Ready`.
+- **`OP_FILESTATUS` (0x50, Protocole 0xE3)** :
+  - Charge utile : 16 octets (`file_hash`) + 2 octets little-endian (`part_count`) + $\lceil \text{part\_count} / 8 \rceil$ octets (`mask`).
+  - Plafond de sécurité : `part_count <= ED2K_MAX_PARTS` (65 530 parts). Tout dépassement lève `OversizedFrame` / `FrameTooLarge`.
+
+#### 3. Suivi Borné des Requêtes (`FileStatusTracker`)
+- Bounded capacity : capacité maximale de **16 requêtes simultanées** (`MAX_PENDING_FILE_STATUS_REQUESTS = 16`).
+- Prévention des doublons : Rejet immédiat de toute requête pour un hash déjà en cours (`DuplicateFileStatusRequest`).
+- Corrélation stricte : Rejet des réponses non sollicitées (`UnsolicitedFileStatus`) ou avec hash discordeur (`FileStatusMismatchHash`).
+- Purge sur timeout et déconnexion : `expire_timed_out()` et `purge_on_close()`.
+
+#### 4. Pair de Test Loopback Multi-Modes (`Ed2kTestPeer`)
+Prend en charge 10 modes de test adverses et de conformité :
+- `Nominal` : Sert le handshake et la disponibilité demandée.
+- `FileStatusBeforeReady` : Émission de FileStatus avant la fin du handshake.
+- `FileStatusMismatchHash` : Réponse avec un hash de fichier différent de celui demandé.
+- `FileStatusShortMask` : Masque tronqué d'un octet.
+- `FileStatusLongMask` : Masque comportant des octets superflus.
+- `FileStatusExcessiveParts` : Part count excessif (65 535).
+- `FileStatusTrailingBitsNonZero` : Bits résiduels du dernier octet non nuls.
+- `FileStatusCompressed0xD4` : Trame compressée non supportée.
+- `FileStatusHangTimeout` : Absence délibérée de réponse pour valider l'expiration.
+- `FileStatusUnsolicited` : Réponse sans requête préalable.
+- `FileStatusDoubleAnswer` : Deux réponses consécutives pour la même requête.
+
+### 15.3 Intégration dans le Démon (`crates/mule-daemon`)
+1. **Stockage en mémoire des sources (`ActiveDownload`)** :
+   - Ajout du champ `pub sources: HashMap<SocketAddr, PartAvailabilityMask>`.
+   - Méthodes `record_source_availability(source_addr, mask)` et `get_sources()`.
+   - `make_snapshot()` renvoie `source_count = sources.len()`.
+2. **Méthode RPC `ed2k.probeSource` / `downloads.probeEd2kSource`** :
+   - Conditionnée par `#[cfg(feature = "ed2k-loopback")]`.
+   - Paramètres : `{ "downloadId": "<uuid>", "sourceAddr": "127.0.0.1:<port>" }`.
+   - Validation stricte de l'IP loopback (`addr.ip().is_loopback()`).
+   - Mesure de la taille du fichier `.part` avant et après la sonde : invariance prouvée (0 octet écrit).
+   - Diffusion de la notification locale `event.downloadUpdated` aux clients WebSocket.
+
+### 15.4 Documentation Protocolaire Dédiée (`docs/ed2k/messages/`)
+- `docs/ed2k/messages/op_filestatusreq.md` : wire format, opcode `0x49`, protocol `PR_ED2K` (`0xE3`), règles de session, références eMule (`PartFile.cpp`, `UploadClient.cpp`).
+- `docs/ed2k/messages/op_filestatus.md` : opcode `0x50`, formule de masquage LSB-first, validation stricte des bits de queue, références eMule (`KnownFile.cpp`, `DownloadClient.cpp`).
+
+### 15.5 Bilan Global des Tests (Phase 6.3)
+- **Tests de statut de fichier (`ed2k_file_status_tests.rs`)** : **17 tests passés** (format sur le fil, masques 1 part, 10 parts, entrées hostiles, déconnexion, isolation, capacité tracker).
+- **Test d'intégration démon (`ed2k_source_discovery.rs`)** : **1 test passé** (sonde RPC loopback, `sourceCount = 1`, événement diffusé, 0 octet écrit sur disque).
+- **Garde d'isolation statique (`ed2k_isolation_guard.rs`)** : **5 tests passés** (zéro socket dans le protocole pur, zéro unwrap/expect, feature gating).
+- **Tests de corpus & roundtrip** : 16 + 16 = **32 tests passés**.
+- **Tests de sessions loopback (`ed2k_session_tests.rs`)** : **13 tests passés**.
+- **Total Tests Rust** : **149 tests passés** (`cargo test --workspace --all-features`).
+- **Total Tests Flutter** : **31 tests passés** (`flutter test`).
+- **Total Général du Projet** : **180 tests validés à 100 %**.
+- **Clippy** : **0 avertissement** sur tout le workspace (`cargo clippy --workspace --all-targets --all-features -- -D warnings`).
+
+---
+
+## 16. Phase 6.4 : Transfert eD2K de Blocs sur Loopback Fermé (`OP_REQUESTPARTS` / `OP_SENDINGPART`)
+
+Le **Jalon 6.4** implémente le transfert actif de blocs de données au format eD2K historique (`OP_REQUESTPARTS` = `0x4B` / `OP_SENDINGPART` = `0x46`), strictement confiné au loopback TCP local `127.0.0.1:0`. Il couple la réception de blocs sur le fil eD2K avec le moteur de persistance incrémentale développé en phase de laboratoire (`DownloadSink`, `RangeSet`, fichiers `.part`, persistance SQLite WAL, reprise de téléchargement après crash et finalisation avec vérification cryptographique par racine MD4 eD2K).
+
+### 16.1 Spécification sur le Fil & Documentation Dédiée (`docs/ed2k/messages/`)
+Deux documents de référence formalisent les structures binaires eD2K historiques :
+1. **`docs/ed2k/messages/op_requestparts.md`** :
+   - Opcode : `0x4B` | Protocole : `PR_ED2K` (`0xE3`).
+   - Format 40 octets (eMule standard, 3 slots de plages) et format 24 octets (1 slot eDonkey).
+   - Validation stricte : `start < end`, `(end - start) <= 184320` (180 KiB), bornage des plages aux limites du fichier.
+2. **`docs/ed2k/messages/op_sendingpart.md`** :
+   - Opcode : `0x46` | Protocole : `PR_ED2K` (`0xE3`).
+   - Structure : En-tête de 24 octets (`file_hash` 16 octets + `start` 4 octets LE + `end` 4 octets LE) suivi des données brutes (`end - start` octets).
+   - Rejet formel du protocole compressé `0xD4` (`PR_EMULE_COMPRESSED`) : levée explicite de `Ed2kErrorKind::CompressedProtocolUnsupported`.
+
+### 16.2 Codecs Déterministes & Fixtures Corpus (`crates/mule-protocol`)
+1. **Structures Découplées** :
+   - `Ed2kBlockRange` : modélise un intervalle demi-ouvert `[start, end[` avec validation `start < end` et contrainte de taille maximale de bloc (`180 KiB`).
+   - `Ed2kRequestParts` : associe un hash de fichier MD4 à 1, 2 ou 3 plages `Ed2kBlockRange`.
+   - `Ed2kSendingPart` : contient le hash MD4, l'intervalle `[start, end[` et le tampon d'octets `Bytes`.
+2. **Erreurs Typées Contextuelles** :
+   - `InvalidBlockOffsets { start, end }` : lève une erreur si `start >= end`.
+   - `BlockPayloadMismatch { expected, actual }` : vérifie que la taille du payload correspond exactement à `end - start`.
+3. **Corpus & Invariance Binaire** :
+   - Création des fixtures canoniques `tests/fixtures/ed2k/request_parts.bin` et `tests/fixtures/ed2k/sending_part.bin` (enregistrées dans `manifest.json` avec validation d'intégrité SHA-256).
+   - 4 fixtures malformées supplémentaires : `request_parts_inverted_offsets.bin`, `request_parts_truncated.bin`, `sending_part_truncated_header.bin`, `sending_part_length_mismatch.bin`.
+   - Invariance vérifiée par `ed2k_corpus_tests` (18 tests) et `ed2k_roundtrip_tests` (24 tests).
+
+### 16.3 Tracker de Blocs & Machine à États (`crates/mule-protocol/src/ed2k/session.rs`)
+1. **`BlockRequestTracker` Dédié** :
+   - Totalement indépendant de `FileStatusTracker`.
+   - Clé composite unique : `BlockRequestKey { file_hash: [u8; 16], start: u64, end: u64 }`.
+   - Plafond d'in-flight borné : `MAX_IN_FLIGHT_BLOCK_REQUESTS = 8`.
+   - Rejet formel des chevauchements d'intervalles (`OverlapBlockRequest`) pour éviter la double écriture d'une même plage.
+   - Purge instantanée lors de la déconnexion ou fermeture de session (`cancel_all_block_requests`).
+   - Purge sur timeout configurable (`expire_block_requests`).
+2. **Garanties Mécaniques** :
+   - Règle « zéro `unwrap()`, zéro `expect()` » maintenue et validée par `ed2k_isolation_guard.rs`.
+   - Zéro socket, zéro import réseau dans le code protocolaire pur.
+
+### 16.4 Banc d'Essai Loopback & Matrice d'Attaque Adverse (`crates/mule-protocol/tests/ed2k_block_transfer_tests.rs`)
+1. **`Ed2kTestPeer` Multi-Connexions** :
+   - Stockage en mémoire des fichiers partagés via `add_shared_file_data(hash, bytes)`.
+   - Serveur de test multi-connexions (`spawn_service`) pour accepter les reconnexions lors des reprises après crash.
+2. **Matrice Complète des 9 Modes Adverses (18/18 tests passés)** :
+   - `SendingPartBeforeReady` : Rejet si un bloc arrive avant l'achèvement de la poignée de main.
+   - `SendingPartUnexpectedHash` : Rejet d'un bloc portant un hash MD4 non demandé.
+   - `SendingPartUnexpectedOffset` : Rejet d'un bloc portant un décalage différent de la demande.
+   - `SendingPartLengthMismatch` : Rejet si la taille des données reçues est inférieure ou supérieure à `end - start`.
+   - `SendingPartUnsolicited` : Rejet d'un bloc reçu sans requête préalable enregistrée dans le tracker.
+   - `SendingPartDuplicate` : Rejet d'une réponse dupliquée pour une requête déjà honorée.
+   - `SendingPartHangTimeout` : Gestion propre du timeout lors de l'absence de réponse du pair.
+   - `SendingPartCompressed0xD4` : Rejet immédiat de toute tentative d'injection de trame compressée `0xD4`.
+   - `SendingPartImmediateClose` : Tolérance aux pannes réseau avec nettoyage intégral du tracker sans fuite mémoire.
+3. **Tests Nominaux** :
+   - Transfert mono-bloc (180 KiB).
+   - Transfert multi-blocs séquentiels.
+   - Transfert multi-blocs avec livraison désordonnée (*out-of-order*).
+
+### 16.5 Intégration Démon, Résilience aux Crashs & Neutralité UI (`crates/mule-daemon`)
+1. **Neutralité Réseau vis-à-vis de l'UI** :
+   - L'interface Flutter et les DTOs RPC externes ne reçoivent jamais de `SocketAddr` brut.
+   - Exposition du type neutre `SourceAvailabilitySummary { source_id, available_part_count, total_part_count, last_seen_unix_ms }` via les méthodes RPC `downloads.getSources` / `ed2k.getSources`.
+2. **Pipeline de Téléchargement `run_ed2k_download`** :
+   - Orchestre la session loopback, le handshake, l'envoi de `OP_REQUESTPARTS` par tranches de 180 KiB et l'injection dans `DownloadSink` (`inject_range`).
+   - Synchronisation continue de la base SQLite WAL (`RangeSet`).
+3. **Validation de Reprise après Crash (`tests/ed2k_transfer_tests.rs`)** :
+   - Transfert d'un fichier de 9 728 000 octets (`FIXTURE_EXACT_ONE_PART`, correspondant exactement à 1 part eD2K complète sans résidu d'octets, exerçant la règle historique eD2K du digest MD4 de part vide terminale).
+   - Interruption abrupte après réception de ~50% des blocs (simulation de crash / déconnexion).
+   - Démarrage à froid d'une nouvelle instance du démon sur le même répertoire de travail.
+   - Le moteur inspecte la base SQLite, recharge le `RangeSet` et ne sollicite sur le fil que les blocs manquants (invariance des blocs déjà acquis).
+   - Finalisation atomique du fichier assemblé sur disque.
+   - Contrôle d'intégrité cryptographique par hash eD2K racine (`mule_format::ed2k::hash_reader`) : identité octet par octet avec la source.
+
+### 16.6 Bilan Global des Tests et Clôture Phase 6.4
+
+```
+=== DÉCOMPTE COMPLET DES TESTS ATTESTÉS (WORKSPACE EMULE-SION) ===
+
+1. mule-core : 12 tests
+2. mule-daemon : 12 tests
+3. mule-format : 19 tests
+4. mule-protocol : 141 tests
+5. Flutter Desktop (apps/desktop) : 31 tests ok
+
+TOTAL DU PROJET : 184 tests Rust + 31 tests Flutter = 215 tests validés à 100 % (0 échec, 0 ignoré).
+GARDE STATIQUE   : 0 unwrap/expect, 0 import réseau dans mule-protocol::ed2k.
+LINTING          : cargo clippy --workspace --all-targets --all-features (0 avertissement).
+ISOLATION        : 100 % loopback 127.0.0.1:0 (zéro socket publique, zéro Kad, zéro serveur distant).
+```
+
+---
+
+## 17. Phase 6.5 : Validation d'Interopérabilité Locale avec Référence eMule/aMule sur Loopback Fermé
+
+### 17.1 Périmètre et Objectifs du Jalon 6.5
+
+Le jalon 6.5 couronne le travail de conformité protocolaire eD2K en validant formellement l'interopérabilité locale avec le comportement wire des implémentations de référence historiques (**eMule 0.50a** et **aMule 2.3.3**), tout en maintenant des barrières d'isolation strictes :
+
+1. **Confinement Loopback Absolu (Zéro Réseau Public)** :
+   - Strictement restreint à `127.0.0.1:0` via la feature Cargo opt-in `ed2k-reference-loopback`.
+   - Zéro résolution DNS, zéro connexion à des serveurs eD2K publics, zéro amorçage Kad/Kademlia, zéro partage de listes `server.met`.
+   - Toute adresse non-loopback passée à `ReferencePeerConfig` ou `ReferenceInteropClient` est **rejetée immédiatement en mémoire** avant toute tentative d'ouverture de socket TCP.
+
+2. **Distinction Formelle des Niveaux de Vérification (`reference_manifest.json`)** :
+   - **Tier 1 (Corpus)** : Conformité syntaxique du décodage/encodage contre des fixtures binaires figées et hachées en SHA-256 (`crates/mule-protocol/tests/fixtures/ed2k/manifest.json`).
+   - **Tier 2 (Émulation de Référence - `EmulatedReferencePeer`)** : Validation de la machine à états et du protocole complet sur loopback via un pair de compatibilité en processus reproduisant strictement les règles des sources officielles (**eMule 0.50a** et **aMule 2.3.3**).
+   - **Tier 3 (Binaire Référence Externe)** : Harnais pilotant un exécutable officiel eMule/aMule épinglé (SHA-256, flags CLI, cycle de vie teardown) documenté dans `reference_manifest.json`.
+
+3. **Matrice Comparative des Opcodes et Formats Wire** :
+   Les opcodes eD2K ont fait l'objet de réattributions et de variantes selon les époques. Emule-Sion fige les correspondances exactes selon la matrice suivante :
+
+| Message Symbolique | Variante & Source | Protocole Wire | Opcode Wire | Direction | Structure & Layout Payload | Support Emule-Sion | Règle / Invariant Associé |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`OP_HELLO`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x01` | Client $\rightarrow$ Pair | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Rejet si hash nul ou version incompatible |
+| **`OP_HELLO_ANSWER`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x4C` | Pair $\rightarrow$ Client | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Préservation des tags inconnus sans désérialisation non sécurisée |
+| **`OP_SETREQFILEID`** | eMule 0.50a (`opcodes.h:73`) & aMule 2.3.3 | `PR_ED2K` (`0xE3`) | `0x4F` | Client $\rightarrow$ Source | Hash MD4 (16B). Déclenche l'envoi de `OP_FILESTATUS` (`0x50`) par la source. | **Complet** | Format canonique 17B (opcode + hash). Pas d'accès disque. |
+| **`OP_FILESTATUSREQ`** | eDonkey legacy / docs alternatifs | `PR_ED2K` (`0xE3`) | `0x49` | Client $\rightarrow$ Source | Hash MD4 (16B). *(Dans eMule 0.50a, 0x49/0x4D = `OP_END_OF_DOWNLOAD`).* | **Complet (compatibilité)** | Décodé et encodé de manière transparente comme `FileStatusReq`. |
+| **`OP_FILESTATUS`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x50` | Source $\rightarrow$ Client | Hash MD4 (16B), Part count (2B LE), Bitfield LSB-first ($\lceil part\_count / 8 \rceil$ bytes). | **Complet** | Validation stricte des bits de fin résiduels (doivent valoir 0). |
+| **`OP_REQUESTPARTS`** | eMule 0.50a (`opcodes.h:71`) & aMule 2.3.3 | `PR_ED2K` (`0xE3`) | `0x47` | Client $\rightarrow$ Source | Hash MD4 (16B), 3× u32 LE start, 3× u32 LE end exclusif (`endpos = block->EndOffset + 1`). Sentinelles `(0, 0)` ou `(u32::MAX, u32::MAX)`. (40B total). | **Complet** | Tracké dans `BlockRequestTracker` (max 8 en vol, zéro chevauchement). |
+| **`OP_REQUESTPARTS`** | eDonkey legacy / docs historiques | `PR_ED2K` (`0xE3`) | `0x4B` | Client $\rightarrow$ Source | 40B (3 slots) ou 24B (1 slot: hash 16B + start 4B + end 4B). *(Dans eMule 0.50a, 0x4B = `OP_ASKSHAREDFILESANSWER`).* | **Complet (compatibilité)** | Décodé de manière transparente dans les deux formats 24B et 40B. |
+| **`OP_SENDINGPART`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x46` | Source $\rightarrow$ Client | Hash MD4 (16B), start (4B LE), end (4B LE exclusif), chunk bytes (`end - start` octets, max 180 KiB). | **Complet** | Écriture exclusive via `DownloadSink` dans `.part` sous verrou WAL. |
+| **`OP_COMPRESSEDPART`** | Extension eMule zlib | `PR_EMULE_COMPRESSED` (`0xD4`) | `0x40` | Source $\rightarrow$ Client | Hash MD4 (16B), start (4B LE), payload compressé zlib. | **Rejet Explicite** | Erreur typée `UnsupportedProtocolByte(0xD4)` tant que les gardes de mémoire de décompression ne sont pas auditées. |
+
+4. **Sémantique des Bornes sur le Fil & Helpers Dédiés** :
+   Dans les sources officielles d'eMule (`srchybrid/DownloadClient.cpp`) :
+   ```cpp
+   filedata->WriteUInt32(block->StartOffset);
+   filedata->WriteUInt32(block->EndOffset + 1);
+   ```
+   Sur le fil, la borne `endpos` transmise est **strictement exclusive** : la taille du bloc transféré est exactement `end - start`.
+   - `Ed2kBlockRange::from_wire_bounds(start, end)` : constructeur canonique direct vérifiant `start < end`.
+   - `Ed2kBlockRange::to_wire_bounds()` : sérialisation directe sans arithmétique superflue.
+   - `Ed2kBlockRange::from_legacy_inclusive_wire_bounds(start, end_inclusive)` : helper spécifique aux variantes legacy à borne inclusive (`end_inclusive.checked_add(1)`).
+
+5. **Anonymisation Stricte des Traces et Non-Exposition des Secrets** :
+   - Le système de trace (`TraceRecord` & `DivergenceReport`) consigne les échanges sur le fil sans jamais enregistrer de chemins locaux de fichiers (ex. `C:\`, `/home/`, `/Users/`), ni jetons d'authentification RPC, ni adresses IP distantes.
+   - Les DTOs et résumés de sources (`downloads.getSources`) n'exposent jamais de `SocketAddr` brute à l'UI.
+
+6. **Transfert E2E du Fichier à Part Résiduelle (9 728 001 octets)** :
+   - Validation de l'assemblage complet de 2 parts (part 0 pleine de 9 728 000 octets + part 1 résiduelle de 1 octet) avec calcul de masque de 2 bits et vérification cryptographique du hash racine eD2K `695b81b1727666818988524bd7fc823c`.
+
+---
+
+### 17.2 Architecture des Composants Phase 6.5
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        crates/mule-protocol                            │
+│  ┌──────────────────────────────┐    ┌──────────────────────────────┐  │
+│  │     Ed2kDecoder/Encoder      │    │    PartAvailabilityMask      │  │
+│  │  - Support double opcodes    │    │  - LSB-first bitfield        │  │
+│  │    (0x47/0x4B, 0x4F/0x49)    │    │  - Validation trailing bits  │  │
+│  │  - Sentinelles (0,0)/(MAX)   │    │  - has_part() / raw_bytes()  │  │
+│  └──────────────┬───────────────┘    └──────────────┬───────────────┘  │
+│                 │                                   │                  │
+│  ┌──────────────▼───────────────────────────────────▼───────────────┐  │
+│  │             crates/mule-protocol::ed2k::reference                │  │
+│  │  - ReferencePeerConfig (Contrôle IP loopback strict)             │  │
+│  │  - EmulatedReferencePeer (Tier 2 : Pair émulé conforme eMule)    │  │
+│  │  - ReferenceInteropClient (Driver interop avec traces)           │  │
+│  │  - TraceRecord & DivergenceReport (Audit sans fuite de données)  │  │
+│  └──────────────────────────────┬───────────────────────────────────┘  │
+└─────────────────────────────────┼──────────────────────────────────────┘
+                                  │ TCP Loopback 127.0.0.1:0
+                                  │ (Feature: ed2k-reference-loopback)
+┌─────────────────────────────────▼──────────────────────────────────────┐
+│                        crates/mule-daemon                              │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                     Download Coordinator                         │  │
+│  │  - Découverte de disponibilité (OP_SETREQFILEID -> OP_FILESTATUS)│  │
+│  │  - Planification par blocs manquants (gap-only planning)         │  │
+│  │  - Requêtes bornées (OP_REQUESTPARTS, max 8 in-flight)           │  │
+│  │  - Réception & écriture atomique (OP_SENDINGPART -> .part file)  │  │
+│  │  - Finalisation et vérification du hash eD2K racine              │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 17.3 Suites de Tests Déployées et Validées
+
+#### 1. Transfert eD2K à Part Résiduelle (`crates/mule-daemon/tests/ed2k_transfer_tests.rs`)
+- `test_ed2k_transfer_residual_part_file_completion` :
+  - Fichier de 9 728 001 octets (`FIXTURE_ONE_PART_PLUS_ONE`).
+  - Échange du masque à 2 parts avec le pair de test loopback.
+  - Découpage en blocs de 180 KiB jusqu'au bloc résiduel final `[9728000, 9728001)` de 1 octet.
+  - Assemblage dans le fichier `.part` temporaire, vérification de complétude.
+  - Finalisation atomique sur disque et contrôle d'empreinte MD4 racine : `695b81b1727666818988524bd7fc823c` concordant à 100 %.
+  - Vérification de neutralité des métadonnées `downloads.getSources` (aucun `peerAddr` brut exposé).
+
+#### 2. Tests d'Interopérabilité Référence (`crates/mule-protocol/tests/ed2k_reference_interop_tests.rs`)
+- `test_reference_peer_config_non_loopback_rejected` : Rejet immédiat d'adresses publiques (ex. `8.8.8.8`) et LAN (ex. `192.168.1.50`).
+- `test_reference_interop_trace_anonymity_enforcement` : Détection et rejet de tout enregistrement contenant des chemins locaux ou jetons de session.
+- `test_reference_interop_handshake_nominal_and_anonymized_traces` : Handshake nominal avec le pair de référence, négociation des tags logiciels et validation de l'anonymat des traces.
+- `test_reference_interop_file_status_exchange_and_bitmask` : Échange d'état de fichier avec 18 parts, vérification bit par bit de la disponibilité LSB-first.
+- `test_reference_interop_block_transfer_canonical_opcodes` : Transfert complet de blocs utilisant les opcodes canoniques `OP_REQUESTPARTS_EMULE` (`0x47`) et `OP_SENDINGPART` (`0x46`), avec validation des intervalles d'octets.
+
+#### 3. Gardes d'Isolation Réseau et Pureté (`crates/mule-protocol/tests/ed2k_isolation_guard.rs`)
+- `test_ed2k_reference_transport_strictly_confined_and_feature_gated` : Vérifie que `reference.rs` n'est exposé que sous la feature opt-in `ed2k-reference-loopback` et applique systématiquement `.is_loopback()`.
+- `test_ed2k_module_has_zero_unwrap_or_expect` : Garantit l'absence totale de panique non contrôlée dans les modules eD2K.
+- `test_ed2k_module_has_zero_network_imports_or_sockets_in_core_protocol` : Vérifie qu'aucun import réseau n'existe en dehors des drivers loopback isolés.
+
+---
+
+#---
+
+## 18. Profils de Compatibilité Explicites & Orchestration Référence Externe (Tier 3)
+
+### 18.1 Profils de Compatibilité Explicites (`Ed2kCompatibilityProfile`)
+
+Afin d'éliminer toute ambiguïté issue de décennies d'évolution du protocole eD2K et d'éviter tout décodage spéculatif heuristique, les décodeurs et encodeurs de `mule-protocol` ont été paramétrés avec un profil de compatibilité explicite :
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Ed2kCompatibilityProfile {
+    #[default]
+    Emule050a,      // Profil eMule 0.50a officiel (opcodes canoniques 0x47, 0x4F, layout 3 slots)
+    Amule233,       // Profil aMule 2.3.3 compatible
+    LegacyEdonkey,  // Profil historique eDonkey 2000 (opcodes 0x4B, 0x49)
+    UnknownStrict,  // Mode d'audit strict : rejette immédiatement tout opcode ambigu
+}
+```
+
+#### Opcodes Surchargés & Désambiguïsation Formelle
+
+| Opcode | Sémantique eDonkey 2000 (`LegacyEdonkey`) | Sémantique eMule / aMule (`Emule050a`) | Comportement sous `UnknownStrict` |
+|---|---|---|---|
+| `0x47` | `OP_SETREQFILEID` | `OP_REQUESTPARTS_EMULE` (demande de blocs) | Erreur immédiate `AmbiguousOpcodeForProfile` |
+| `0x4B` | `OP_REQUESTPARTS` | `OP_ASKSHAREDFILESANSWER` (partage fichiers) | Erreur immédiate `AmbiguousOpcodeForProfile` |
+| `0x49` | `OP_FILESTATUSREQ` | `OP_END_OF_DOWNLOAD` (fin de téléchargement) | Erreur immédiate `AmbiguousOpcodeForProfile` |
+| `0x4F` | Non reconnu | `OP_SETREQFILEID_EMULE` (demande statut fichier)| Erreur immédiate `AmbiguousOpcodeForProfile` |
+
+#### Garanties d'Intégrité Implémentées
+1. **Rejet des layouts single-slot sous profil eMule** : Sous profil `Emule050a`, un paquet de requête de blocs de 24 octets (format single-slot eDonkey legacy) est formellement rejeté avec `Ed2kErrorKind::MalformedField`. Seul le layout 3-slots (40 octets avec sentinelles) est toléré.
+2. **Fallback propre sur `Ed2kMessage::Raw`** : En mode flux non typé (`decode_packet`), un paquet contenant un opcode appartenant à un profil concurrent n'est pas interprété à tort : il est conservé intact sous forme de trame brute non analysée (`Ed2kMessage::Raw(RawPacket)`).
+3. **Erreur typée avec diagnostic** : En mode typé (`decode_request_parts`, `decode_file_status_req`), toute collision déclenche `Ed2kErrorKind::AmbiguousOpcodeForProfile { opcode, profile, reason }`.
+
+---
+
+### 18.2 Orchestration Référence Externe Tier 3 (`tests/tier3_external_reference/`)
+
+Pour distinguer formellement une conformité théorique contre notre propre modèle d'une interopérabilité concrète avec un exécutable compilé, la suite de tests est rigoureusement partitionnée en 3 niveaux d'attestation :
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Niveaux d'Attestation                           │
+│                                                                        │
+│  [Tier 1 : Corpus Statique]                                            │
+│  - Fixtures figées (.bin) & manifest.json                              │
+│  - Invariance syntaxique décodeurs / encodeurs                         │
+│  - AUCUNE exécution de processus                                       │
+│                                                                        │
+│  [Tier 2 : Pair Émulé In-Process]                                      │
+│  - EmulatedReferencePeer (mule-protocol::ed2k::reference)              │
+│  - Interopérabilité contre notre modèle dérivé des sources C++         │
+│  - Closed loopback, zéro réseau externe                                │
+│                                                                        │
+│  [Tier 3 : Orchestration Binaire Externe Épinglé]                      │
+│  - Harnais out-of-process (tests/tier3_external_reference/)            │
+│  - Binaire réel eMule 0.50a / aMule 2.3.3 validé par SHA-256           │
+│  - Environnement éphémère hermétique, neutralisation Kad / serveurs    │
+│  - Rapport de divergence JSON conforme et anonymisé                    │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Composants de l'Adaptateur Tier 3
+- **`Tier3Environment` (`environment.rs`)** :
+  - Génère un répertoire temporaire éphémère (`TempDir`) distinct de tout profil utilisateur `%APPDATA%` ou `~/.aMule`.
+  - Écrit un fichier `preferences.ini` neutralisé : `EnableKad=0`, `NetworkKademlia=0`, `AutoConnect=0`, `AutoUpdateServerList=0`, `ServerUDPPort=0`.
+  - Écrit un fichier `server.met` vide (entête 0xE0 + 0 serveurs) pour éliminer tout risque de requête serveur sortante.
+- **`Tier3BinaryValidator` (`harness.rs`)** :
+  - Calcule l'empreinte cryptographique SHA-256 du binaire fourni via un algorithme autonome FIPS 180-4.
+  - Rejette tout binaire introuvable ou dont le hash ne correspond pas aux empreintes épinglées.
+- **`Tier3ProcessGuard` (`harness.rs`)** :
+  - Garde RAII garantissant la terminaison immédiate (`child.kill()`) et la récolte du processus fils lors de la sortie de portée ou en cas de panique.
+- **`Tier3Harness` (`harness.rs`)** :
+  - Vérification mécanique préalable `addr.ip().is_loopback()` interdisant formellement toute liaison non-loopback.
+  - Confinement de l'espace de travail et passage des variables d'environnement nécessaires.
+- **`Tier3DivergenceReport` (`report.rs`)** :
+  - Génère un rapport JSON conforme au schéma `reference_manifest.json`.
+  - Vérifie mécaniquement l'anonymisation stricte : lève une erreur si des noms d'utilisateurs (`$USERNAME`, `$USER`) ou des chemins de profils hôtes apparaissent dans le rapport.
+- **`tier3_loopback.rs`** :
+  - Suite de tests d'intégration isolée, conditionnée par la feature `ed2k-reference-loopback`.
+  - Le test live est décoré de `#[test] #[ignore]` et ne s'exécute que sur fourniture explicite de la variable `EMULE_REFERENCE_BIN`.
+
+---
+
+### 18.3 Bilan de la Phase 6.5 & Harnais Tier 3
+
+Le harnais Tier 3 fournit l'isolation hermétique et la conformité aux 10 exigences de sécurité pour l'exécution contrôlée de binaires de référence externes.
+
+---
+
+## 19. Phase 6.5 (Option B) : Matrice Multi-Profil, Cas Limites de Bornes et Traces Normalisées CI
+
+En l'absence de binaire de référence externe épinglé dans l'environnement local, les garanties des Tiers 1 et 2 ont été enrichies de manière exhaustive via l'**Option B** :
+
+### 19.1 Matrice d'Invariance Multi-Profil
+
+Testée dans [`test_multi_profile_invariance_matrix`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+- Les quatre opcodes surchargés historiquement (`0x47`, `0x4B`, `0x4F`, `0x49`) sont exécutés contre les quatre profils officiels :
+  - **`Emule050a` & `Amule233`** : acceptent `0x47` (`RequestParts`) et `0x4F` (`FileStatusReq`) ; préservent `0x4B` et `0x49` comme paquets `Raw`.
+  - **`LegacyEdonkey`** : accepte `0x4B` (`RequestParts`) et `0x49` (`FileStatusReq`) ; préserve `0x47` et `0x4F` comme paquets `Raw`.
+  - **`UnknownStrict`** : rejette systématiquement les quatre opcodes ambigus avec `Ed2kErrorKind::AmbiguousOpcodeForProfile`.
+- **Preuve d'Invariance Canonique** : les messages protocolaires universels non-ambigus (`OP_HELLO` 0x01, `OP_HELLOANSWER` 0x4C, `OP_FILESTATUS` 0x50, `OP_SENDINGPART` 0x46) décodent **identiquement** sur tous les profils, y compris sous `UnknownStrict`.
+
+### 19.2 Cas Limites : Bloc Résiduel de 1 Octet et Sentinelles de Slots
+
+Testé dans [`test_boundary_cases_1_byte_residual_and_u32_sentinels`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+- **Bloc résiduel de 1 octet** : plage exacte `[9_728_000, 9_728_001)` sur un fichier de `9_728_001` octets (part complète de 9 728 000 octets + 1 octet terminal).
+- **Sentinelles de slots wire** : dans le format wire eMule 40 octets (3 slots), un bloc résiduel valide suivi des sentinelles `(0, 0)` et `(u32::MAX, u32::MAX)` est décodé correctement en ignorant les slots sentinelles.
+- **Refus des sentinelles pures** : une trame ne contenant que des sentinelles est rejetée (`MalformedField`).
+- **Différenciation de layout wire** : le format monopart 24 octets est formellement rejeté sous `Emule050a` (qui impose le layout 40 octets) et accepté sous `LegacyEdonkey`.
+- **Protection contre les débordements d'offsets** : rejet de `start >= end` (`InvalidBlockOffsets`), rejet des dépassements arithmétiques `u32::MAX + 1` sur les bornes inclusives historiques, et rejet strict des désynchronisations de taille de données (`BlockPayloadMismatch`).
+
+### 19.3 Traces Normalisées JSON & Rapports CI Machine-Readable
+
+Testé dans [`test_reference_interop_normalized_json_snapshots_and_ci_report`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+- Normalisation conforme au schéma strict de traces :
+  ```json
+  {
+    "compatibilityProfile": "Emule050a",
+    "protocolByte": "0xE3",
+    "opcode": "0x47",
+    "direction": "client_to_peer",
+    "payloadLength": 40,
+    "outcome": "accepted"
+  }
+  ```
+- Rapport synthétique CI via [`DivergenceReport::format_ci_summary()`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/ed2k/reference.rs#L204-L222) affichant le profil, le nombre de traces, les opcodes observés, les détections d'opcodes canoniques, et la validation d'anonymisation sans fuite de données d'environnement hôte.
+
+---
+
+### 19.4 Bilan Phase 6.5 (Option B)
+
+- 198 tests Rust (+ 1 ignoré) + 31 tests Flutter = 229 tests validés.
+
+---
+
+## 20. Phase 6.6 : Stabilisation de l'Interopérabilité Locale & Durcissement CI
+
+La Phase 6.6 parachève la stabilisation de l'interopérabilité locale, le durcissement protocolaire face aux trames adverses et la protection contre toute fuite d'environnement dans les artefacts de traçabilité.
+
+### 20.1 Distinction Explicite des Paliers d'Attestation (Tier 2 vs Tier 3)
+
+Pour prévenir toute ambiguïté ou affirmation prématurée d'interopérabilité avec un binaire externe, les enregistrements de traces et rapports de divergence normalisés intègrent désormais explicitement le niveau de test et la nature de la référence :
+- Schéma canonique enrichi :
+  ```json
+  {
+    "schemaVersion": 1,
+    "testTier": 2,
+    "referenceKind": "emulated-reference-peer",
+    "compatibilityProfile": "Emule050a",
+    "protocolByte": "0xE3",
+    "opcode": "0x47",
+    "direction": "client_to_peer",
+    "payloadLength": 40,
+    "outcome": "accepted"
+  }
+  ```
+- **Tier 2** (`testTier = 2`, `referenceKind = "emulated-reference-peer"`) : attestation sur modèle de référence local émulé.
+- **Tier 3** (`testTier = 3`, `referenceKind = "external-reference-binary"`) : attestation réservée exclusivement à l'exécution d'un binaire externe épinglé et audité.
+
+### 20.2 Matrice de Rejet des Combinaisons Protocole / Opcode Illégales
+
+Vérifiée dans [`test_illegal_protocol_opcode_combinations`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+- **Protocole compressé `0xD4`** : inconditionnellement rejeté avec `Ed2kErrorKind::CompressedProtocolUnsupported`.
+- **Octets magiques non assignés (`0x00`, `0x42`, `0xFF`)** : rejetés immédiatement avec `Ed2kErrorKind::UnsupportedProtocol`.
+- **Extension eMule `0xC5`** : décodée en paquet `Raw` sans déclencher de mutation d'état critique.
+- **Opcodes hors bornes / invalides (`0x00`, `0xFE`, `0xFF`)** sous protocole standard `0xE3` : rejetés avec `Ed2kErrorKind::UnknownOpcode`.
+
+### 20.3 Tests Métamorphiques sur les Tags TLV eD2K
+
+Vérifiés dans [`test_metamorphic_tag_permutations_and_unknown_tags`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+- **Invariance de permutation** : permuter l'ordre de sérialisation des tags TLV dans un paquet préserve strictement l'invariant sémantique d'interrogation (`find_tag()`).
+- **Mutation & tags inconnus** : l'injection de tags métadonnées inconnus préserve intacts les tags connus requis par le protocole.
+- **Contrôle strict des limites** : jusqu'à la limite autorisée (`MAX_TAGS_PER_PACKET`), la longueur déclarée de la trame et les allocations tampons restent rigoureusement synchronisées, et tout dépassement est promptement rejeté.
+
+### 20.4 Audit d'Anonymisation Adversariale des Traces
+
+Vérifié dans [`test_reference_interop_anonymization_adversarial_patterns`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+- **Acceptation Unicode international** : les textes contenant des accents, emojis, idéogrammes CJK ou écritures RTL (arabe/hébreu) sont acceptés sans faux positif.
+- **Rejet de 13 vecteurs adversaires d'environnement** :
+  - Chemins absolus Windows (`C:\`, `D:\`) et UNC (`\\server\share`).
+  - Chemins absolus Unix/macOS (`/home/`, `/Users/`, `/tmp/`, `/var/`).
+  - Secrets et jetons d'authentification (`token=`, `bearer `, `secret=`, `password=`).
+  - Caractères de contrôle non imprimables (`\0`, séquences ANSI ESC `\x1b`).
+
+### 20.5 Écriture Sécurisée des Artefacts CI en Répertoire Temporaire
+
+Vérifié dans [`test_safe_ci_artifact_writer_in_tempdir`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+- Fonction `DivergenceReport::write_ci_report_secure` : exécute un contrôle pré-vol d'anonymisation (`validate_anonymity`) **avant** toute écriture sur disque.
+- En cas de trace compromise, l'écriture échoue immédiatement et **aucun fichier** n'est créé sur le disque.
+- Les fichiers générés (`ci_divergence_summary.txt` et `ci_wire_traces.jsonl`) sont cantonnés aux répertoires temporaires isolés (`tempfile::tempdir()`).
+
+---
+
+### 20.6 Bilan Phase 6.6
+
+- 202 tests Rust (+ 1 ignoré) + 31 tests Flutter = 233 tests validés.
+
+---
+
+## 21. Figeage de la Release Interne `0.1.0-lab`
+
+La version interne **`0.1.0-lab`** fige l'état de l'implémentation avant toute considération d'extension vers des réseaux externes. Elle introduit les ultimes finitions de sécurité visuelle Unicode et la propriété formelle de non-mutation pour les trames brutes ou non supportées.
+
+### 21.1 Normalisation Unicode NFC & Sécurité Visuelle Anti-Spoofing
+
+Vérifié dans [`test_unicode_nfc_and_visual_sanitization_for_ci_reports`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+- **Principe de distinction** : les octets bruts sont préservés pour toute comparaison cryptographique ou réseau, tandis qu'une version d'affichage sécurisée est générée pour les rapports CI et les affichages console via `sanitize_unicode_for_display()`.
+- **Normalisation canonique** : application systématique de la forme Unicode NFC via le crate `unicode-normalization`.
+- **Échappement transparent des attaques bidi / invisibles** :
+  - Overrides et isolats de direction (`\u{202A}`..=`\u{202E}`, `\u{2066}`..=`\u{2069}`, `\u{061C}`, `\u{200E}`, `\u{200F}`) échappés sous forme `\u{XXXX}` (ex. `document\u{202E}fdp.exe` devient lisible sans spoofing `document\u{202E}fdp.exe`).
+  - Caractères invisibles et zero-width (`\u{200B}`..=`\u{200D}`, `\u{2060}`, `\u{FEFF}`, `\u{00AD}`) échappés.
+  - Caractères de contrôle non imprimables échappés.
+- **Rejet d'anonymisation strict** : `TraceRecord::is_clean()` rejette formellement toute trame contenant ces caractères non échappés.
+
+### 21.2 Propriété Formelle de Non-Mutation d'État
+
+Vérifié dans [`test_non_mutation_property_on_raw_and_unhandled_frames`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_session_tests.rs) :
+- Introduction de la structure [`SessionSnapshot`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/ed2k/session.rs) figeant :
+  - `state_name` ("Ready")
+  - `is_ready` (true)
+  - `pending_status_count`
+  - `pending_block_count`
+  - `unhandled_packets_count`
+- **Garantie d'invariance testée** : l'injection de trames d'extension `0xC5` (PR_EMULE), d'opcodes ambigus sous le profil actif (`0x4B` sous `Emule050a`), ou d'opcodes inconnus (`0xFE`) :
+  1. Est décodée de façon hermétique en `Ed2kMessage::Raw`.
+  2. N'altère ni l'état de la machine de session, ni les requêtes en vol de statut ou de blocs.
+  3. Ne déclenche aucune écriture dans le pipeline de persistance ou DownloadSink.
+  4. Seul le compteur de diagnostics isolé `unhandled_packets_count` est incrémenté.
+
+### 21.3 Documents de Référence de la Release 0.1.0-lab
+- [`CHANGELOG.md`](file:///d:/Projet/Emule-Sion/CHANGELOG.md) : Historique technique détaillé de l'ensemble des phases 1 à 6.6.
+- [`RELEASE_NOTES_0.1.0-lab.md`](file:///d:/Projet/Emule-Sion/RELEASE_NOTES_0.1.0-lab.md) : Synthèse d'attestation, liste des éléments volontairement absents, versions exactes des dépendances et commandes de reproduction.
+- Tag Git : `v0.1.0-lab`.
+
+---
+
+### 21.4 Bilan Global Final des Tests (Workspace Emule-Sion 0.1.0-lab)
+
+```
+=== DÉCOMPTE COMPLET DES TESTS DU WORKSPACE EMULE-SION ===
+
+1. mule-core : 12 tests
+   - part_file_and_persistence.rs  :  2 tests ok
+   - range_set.rs                  :  7 tests ok
+   - range_set_properties.rs       :  2 tests ok
+   - sqlite_corruption.rs          :  1 test  ok
+
+2. mule-daemon : 13 tests
+   - daemon_adversarial.rs         :  3 tests ok
+   - ed2k_source_discovery.rs      :  1 test  ok
+   - ed2k_transfer_tests.rs        :  2 tests ok (dont residual part 9 728 001 octets)
+   - inter_daemon_transfer.rs      :  1 test  ok
+   - lifecycle_and_locking.rs      :  5 tests ok
+   - rpc_contract.rs               :  1 test  ok
+
+3. mule-format : 19 tests
+   - aich_vectors.rs               :  3 tests ok
+   - ed2k_hash_vectors.rs          :  7 tests ok
+   - link_vectors.rs               :  5 tests ok
+   - part_met_vectors.rs           :  4 tests ok
+
+4. mule-protocol : 160 tests (+ 1 ignoré)
+   - ed2k_block_transfer_tests.rs   : 18 tests ok
+   - ed2k_corpus_tests.rs           : 18 tests ok
+   - ed2k_file_status_tests.rs      : 17 tests ok
+   - ed2k_isolation_guard.rs        :  6 tests ok
+   - ed2k_reference_interop_tests.rs:  9 tests ok (+ sécurité visuelle Unicode NFC & bidi anti-spoofing)
+   - ed2k_roundtrip_tests.rs        : 36 tests ok (+ rejet protocoles illégaux, tests métamorphiques tags TLV)
+   - ed2k_session_tests.rs          : 14 tests ok (+ propriété formelle de non-mutation sur trames Raw)
+   - in_flight_properties.rs        :  2 tests ok
+   - lab_adversarial.rs             : 10 tests ok
+   - lab_in_flight_and_blocks.rs    :  4 tests ok
+   - lab_state_machine.rs           :  8 tests ok
+   - loopback_transfer.rs           :  4 tests ok
+   - malformed_packets.rs           :  5 tests ok
+   - packet_codec.rs                :  7 tests ok
+   - protocol_limits.rs             :  6 tests ok
+   - tier3_loopback.rs              :  4 tests ok (+ 1 test live ignoré en attente de binaire épinglé)
+
+5. Flutter Desktop (apps/desktop) : 31 tests ok
+
+TOTAL DU PROJET : 204 tests Rust (+ 1 ignoré) + 31 tests Flutter = 235 tests validés à 100 %.
+GARDE STATIQUE   : 0 unwrap/expect, 0 import réseau dans mule-protocol::ed2k (hors loopback opt-in).
+LINTING          : cargo clippy --workspace --all-targets --all-features -- -D warnings (0 avertissement).
+ANALYZE FLUTTER  : flutter analyze (0 issue found).
+ISOLATION        : 100 % loopback 127.0.0.1 (zéro socket publique, zéro Kad, zéro serveur externe).
+ANONYMISATION    : 100 % validée mécaniquement sur les traces et rapports.
+```
+
+---
+
+## 22. Phase 7 : Industrialisation Locale & Release Candidate (v0.1.0-lab)
+
+La **Phase 7** dote le projet d'une chaîne de packaging automatisée, reproductible, auditable et hermétique, permettant de produire des livrables Windows x64 complets et vérifiables sans dépendre d'une connexion réseau publique.
+
+```mermaid
+flowchart TD
+    A[Git Clean Repo State] --> B[Compiler Inspection: rustc, cargo, flutter, dart]
+    B --> C[Compile Rust mule-daemon --release]
+    B --> D[Compile Flutter Desktop Windows --release]
+    C --> E[Assemble Bundle: dist/EmuleSion-Windows]
+    D --> E
+    E --> F[Generate CycloneDX 1.5 SBOM: rust, flutter, windows-bundle, consolidated]
+    F --> G{Authenticode Signing?}
+    G -- Yes --> H[signtool sign & verify /pa /all]
+    G -- No --> I[Mark signed: false]
+    H --> J[Post-Signing SHA-256 Hashes: SHA256SUMS.txt & version.json]
+    I --> J
+    J --> K[Package Archive: EmuleSion-v0.1.0-lab-windows-x64.zip & .sha256]
+    K --> L[E2E Smoke Test in Isolated Temp Directory outside Repo]
+    L --> M[100% Cryptographic Match + Loopback Confirmed + RPC Verified]
+```
+
+### 22.1 Sous-jalon 7.1 : Traçabilité, Provenance et Empreintes Cryptographiques
+1. **Manifeste de version machine `dist/EmuleSion-Windows/version.json`** :
+   - Schéma standardisé (`schemaVersion: 1`).
+   - Provenance Git stricte : empreinte SHA-1 complète de commit 40 caractères (`d56d03d2df9365c3907b0ed67e382ebfc8cdb2b5`) et booléen `gitDirty: false` (le build échoue immédiatement si l'arbre est sale, sauf flag explicite `-AllowDirty`).
+   - Horodatage UTC ISO 8601 (`builtAtUtc: 2026-09-13T21:31:34Z`).
+   - Cible binaire : `x86_64-pc-windows-msvc`, mode `release`.
+   - Versions exactes des chaînes de compilation : `rustc 1.98.1`, `cargo 1.98.1`, `Flutter 3.47.2`, `Dart 3.13.2`.
+   - Standardisation du binaire principal : `EmuleSion.exe` (binaire UI Flutter Desktop Windows autonome, `desktop.exe` supprimé du livrable) et `bin/mule-daemon.exe` (moteur local supervisé).
+   - Inventaire exhaustif des 20 fichiers constitutifs du bundle avec chemins relatifs normalisés `/`, tailles en octets et empreintes SHA-256 en minuscules.
+   - Anonymisation totale : zéro chemin absolu hôte, zéro nom d'utilisateur, zéro jeton d'authentification.
+2. **Sommes de contrôle `SHA256SUMS.txt`** :
+   - Fichier universel normalisé au format GNU coreutils (`<sha256>  <relative/path>`) couvrant les 20 fichiers du bundle.
+3. **Archive de distribution ZIP et Empreinte d'archive** :
+   - Génération de `dist/EmuleSion-v0.1.0-lab-windows-x64.zip` (16,4 Mo) avec compression optimale.
+   - Calcul et écriture automatique de l'empreinte de contrôle post-compression dans `dist/EmuleSion-v0.1.0-lab-windows-x64.zip.sha256` :
+     `09023bb37bfb45d5a028ada95f5681a4e42df451badd04ca4b9d4ecc99836245`
+
+### 22.2 Sous-jalon 7.2 : SBOM CycloneDX 1.5 Pragmatique & Audit de Licences
+1. **Générateur modulaire sans dépendance NPM externe (`scripts/generate_sbom.ps1`)** :
+   - `dist/EmuleSion-Windows/sbom/rust.cdx.json` : 191 composants Rust extraits directement depuis `Cargo.lock` et `cargo metadata` (noms, versions, licences SPDX déduites, hashes, PURL).
+   - `dist/EmuleSion-Windows/sbom/flutter.cdx.json` : 33 composants Dart/Flutter extraits depuis `pubspec.lock`.
+   - `dist/EmuleSion-Windows/sbom/windows-bundle.cdx.json` : 14 binaires et bibliothèques dynamiques assemblés (`EmuleSion.exe`, `bin/mule-daemon.exe`, `flutter_windows.dll`, `app.so`, etc.).
+   - `dist/EmuleSion-Windows/sbom/sbom.cdx.json` : SBOM consolidé CycloneDX 1.5 fusionnant les 238 composants du produit complet.
+2. **Classification formelle `licenseEvidence: "declared" | "inferred" | "unknown"`** :
+   - Chaque composant dispose de la propriété standardisée `licenseEvidence`.
+   - `declared` (222 composants, 93.3 %) : licence explicitement déclarée dans les métadonnées de paquet (`Cargo.toml`, fichier `LICENSE` dans `.pub-cache`).
+   - `inferred` (16 composants, 6.7 %) : licence déduite via heuristiques et écosystème officiel documenté (ex: `BSD-3-Clause` Google Flutter engine, Apache 2.0 pour les shaders).
+   - `unknown` (0 composant, 0.0 %) : aucun composant orphelin non identifié.
+3. **Audit de conformité automatique (`deny.toml`)** :
+   - Génération automatique de `dist/EmuleSion-Windows/sbom/license-audit.json` et `license-audit.md`.
+   - 100 % des composants respectent les critères stricts d'autorisation définis dans `deny.toml`.
+   - 133 composants sous licence multiple (dual-licensing permissif, ex: `MIT OR Apache-2.0`).
+   - 0 composant non-conforme.
+
+### 22.3 Sous-jalon 7.3 : Signature Authenticode Intégrée
+1. **Paramétrage optionnel mais rigoureux dans `scripts/build_windows_release.ps1`** :
+   - Paramètres `-Sign`, `-CertificateThumbprint <THUMBPRINT>`, `-TimestampServer <URL>`.
+   - Détection automatique de `signtool.exe` dans le PATH ou dans le SDK Windows 10/11 (`Windows Kits/10/bin/x64`).
+   - Signature de tous les fichiers `.exe` et `.dll` du bundle, suivie d'une vérification immédiate stricte (`signtool verify /pa /all`).
+   - En cas d'erreur de signature ou d'absence du certificat spécifié, la chaîne s'interrompt avec code d'erreur non nul.
+   - Les empreintes cryptographiques de `SHA256SUMS.txt` et `version.json` sont systématiquement calculées **après** l'étape de signature pour garantir l'intégrité exacte du produit distribué.
+   - En l'absence de signature (mode lab interne sans clé privée de release), le manifeste indique explicitement `"signed": false`.
+
+### 22.4 Sous-jalon 7.4 : Validation Post-Packaging & Matrice de Supervision
+1. **Smoke Test E2E Post-Packaging (`scripts/test_packaged_bundle.ps1`)** :
+   - Bac à sable temporaire dans `%TEMP%\EmuleSion-SmokeTest-<UUID>`.
+   - Copie complète du bundle assemblé.
+   - Vérification de l'intégrité cryptographique à 100 % : ré-évaluation de chaque fichier contre `SHA256SUMS.txt` (20/20 fichiers conformes).
+   - Validation de la présence du binaire principal `EmuleSion.exe`.
+   - Validation du schéma de `version.json`.
+   - Démarrage de `bin/mule-daemon.exe --workdir <tmp>`.
+   - Confinement strict sur le loopback (`ws://127.0.0.1:4660/rpc`).
+   - Vérification de `auth.token` (64 hex, 256 bits CSPRNG, non fuité).
+   - Handshake RPC `system.hello`, statut `system.status`, et arrêt gracieux `system.stop`.
+   - Démontage propre (code sortie 0), suppression de `session.json`, et 0 écriture dans le dépôt Git.
+2. **Matrice d'Environnement et de Supervision (`scripts/test_rc_matrix.ps1`)** :
+   - **Test 1 : Chemins Unicode & Espaces** (`Émule Sion Тест 📁 Espaces`) : Démarrage, découverte de session, RPC et arrêt propre validés.
+   - **Test 2 : Port TCP 4660 occupé** : Simulation d'un port 4660 verrouillé par un `TcpListener` tiers ; bascule automatique du démon sur un port éphémère loopback (`127.0.0.1:59560`), publication dans `session.json`, dialogue RPC et arrêt validés.
+   - **Test 3 : Verrou d'exclusivité & Anti-collision** : Tentative de lancement d'un second démon sur le même dossier ; le 2e processus échoue immédiatement avec code d'erreur non nul sur `mule.lock`, sans affecter le démon primaire.
+   - **Test 4 : Crash brutal et récupération** : Tueur de processus (`Kill()`) sans arrêt gracieux ; relance immédiate sur le même dossier avec verrou périmé ; détection, récupération et reprise fonctionnelle validées.
+   - **Test 5 : Déplacement du bundle (Autonomie)** : Copie du bundle dans un répertoire distant isolé ; exécution autonome sans aucune dépendance au dépôt source.
+   - **Test 6 : Répertoire invalide / sans droit** : Lancement ciblant un chemin non inscriptible ; sortie immédiate avec code d'erreur explicite sans panique non rattrapée.
+3. **Protocole de Réception QA Interne (`docs/QA_RECEPTION_PROTOCOL.md`)** :
+   - Guide pas-à-pas pour testeurs internes sur Windows 10/11 en compte utilisateur standard.
+   - Scripts PowerShell prêts à l'emploi pour le contrôle de hachage de l'archive ZIP et des 20 fichiers internes.
+
+---
+
+### 22.5 Bilan Global des Tests & Validation (Release Candidate v0.1.0-lab)
+
+```
+========================================================================
+           BILAN GÉNÉRAL DE VALIDATION - EMULE-SION RC v0.1.0-lab
+========================================================================
+
+1. SUITE DE TESTS UNITAIRES ET D'INTÉGRATION :
+   - mule-core           :  12 tests réussis
+   - mule-daemon         :  13 tests réussis (dont contrat RPC & arrêt propre system.stop)
+   - mule-format         :  19 tests réussis (hachages eD2K, AICH, part.met, liens)
+   - mule-protocol       : 160 tests réussis (+ 1 test live Tier 3 ignoré en l'absence de binaire externe)
+   - Flutter Desktop     :  31 tests réussis (UI, clients de simulation, supervision, E2E loopback)
+   ---------------------------------------------------------------------
+   SOUS-TOTAL ACTIF      : 235 tests réussis à 100 % (0 échec, 0 régression)
+
+2. VALIDATION DU PACKAGING & MATRICE DE SUPERVISION :
+   - Smoke Test E2E      : 20/20 fichiers vérifiés à 100 %, loopback 127.0.0.1, RPC validé
+   - Matrice Environnement: 6/6 scénarios passés (Unicode, port occupé, lock, crash, reloc, unwritable)
+   - Binaire standardisé : EmuleSion.exe vérifié
+   - Démontage propre    : Code sortie 0, suppression session.json, 0 écriture git
+   ---------------------------------------------------------------------
+   SOUS-TOTAL VALIDATION : 2/2 suites de packaging passées à 100 %
+
+3. ANALYSE STATIQUE ET CONFORMITÉ :
+   - Clippy              : cargo clippy --all-targets --all-features -- -D warnings -> 0 avertissement
+   - Flutter analyze     : flutter analyze -> 0 problème
+   - CycloneDX SBOM      : 238 composants répertoriés dans dist/.../sbom/sbom.cdx.json
+   - Audit de licences   : licenseEvidence classé (222 declared, 16 inferred, 0 unknown, 0 non-conforme)
+   - Archive livrable    : EmuleSion-v0.1.0-lab-windows-x64.zip (16 386 637 octets)
+   - Empreinte archive   : 09023bb37bfb45d5a028ada95f5681a4e42df451badd04ca4b9d4ecc99836245
+
+========================================================================
+ATTRIBUTION D'INTEROPÉRABILITÉ CONFORME :
+« Compatibilité eD2K expérimentale validée sur corpus statique et pair
+de référence émulé, en environnement loopback fermé. Le harnais Tier 3
+pour un binaire eMule/aMule externe épinglé est disponible, mais son test
+live reste ignoré par défaut tant qu’un binaire vérifié n’est pas fourni. »
+========================================================================
+```
 

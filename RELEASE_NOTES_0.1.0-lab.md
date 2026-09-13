@@ -113,5 +113,6 @@ Le bundle autonome Windows x64 est généré par `scripts/build_windows_release.
   - `sbom/windows-bundle.cdx.json` : composants binaires Windows assemblés.
   - `sbom/sbom.cdx.json` : 239 composants consolidés.
   - `sbom/license-audit.md` : rapport de conformité confirmant 100% de compatibilité avec `deny.toml`.
-- **Archive Scellée** : `EmuleSion-v0.1.0-lab-windows-x64.zip` et son empreinte `EmuleSion-v0.1.0-lab-windows-x64.zip.sha256`.
+- **Archive Scellée** : `EmuleSion-v0.1.0-lab-windows-x64.zip` (16 386 637 octets) et son empreinte cryptographique `EmuleSion-v0.1.0-lab-windows-x64.zip.sha256` :
+  `09023bb37bfb45d5a028ada95f5681a4e42df451badd04ca4b9d4ecc99836245`
 - **Validation QA** : Protocole détaillé dans [docs/QA_RECEPTION_PROTOCOL.md](docs/QA_RECEPTION_PROTOCOL.md) et scripts de test automatisés (`scripts/test_packaged_bundle.ps1`, `scripts/test_rc_matrix.ps1`).

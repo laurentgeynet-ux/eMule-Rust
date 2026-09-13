@@ -24,7 +24,7 @@ Get-FileHash .\EmuleSion-v0.1.0-lab-windows-x64.zip -Algorithm SHA256
 L'empreinte obtenue doit correspondre rigoureusement à la valeur publiée dans le fichier compagnon `.zip.sha256` :
 
 ```text
-3a9f4e0fb79e86161bba9e69fb9b2f612902e4008fdb6048e9511ef2b32a1c9a
+09023bb37bfb45d5a028ada95f5681a4e42df451badd04ca4b9d4ecc99836245
 ```
 *(ou l'empreinte scellée de la Release Candidate correspondante)*
 
