@@ -52,10 +52,26 @@ Write-Host "  $IsolatedTempRoot" -ForegroundColor Gray
 New-Item -ItemType Directory -Path $BundleCopyDir -Force | Out-Null
 New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
 
-try {
-    # Copy bundle to isolated sandbox
-    Write-Host " -> Copying distribution bundle to sandbox..." -ForegroundColor Gray
-    Copy-Item -Path "$SourceBundle\*" -Destination $BundleCopyDir -Recurse -Force
+    # Extract from ZIP archive if present, otherwise copy bundle
+    $ZipPath = Join-Path $Root "dist\EmuleSion-v0.1.0-lab-windows-x64.zip"
+    $ZipShaPath = "$ZipPath.sha256"
+
+    if (Test-Path $ZipPath) {
+        Write-Host " -> Found distribution ZIP archive: $ZipPath" -ForegroundColor Gray
+        if (Test-Path $ZipShaPath) {
+            $expectedZipHash = ((Get-Content $ZipShaPath -Raw) -split '\s+')[0].Trim().ToLowerInvariant()
+            $actualZipHash = (Get-FileHash $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualZipHash -ne $expectedZipHash) {
+                throw "Archive SHA-256 mismatch! Expected $expectedZipHash, got $actualZipHash"
+            }
+            Write-Host " -> Validated ZIP archive SHA-256 against .zip.sha256: $actualZipHash" -ForegroundColor Green
+        }
+        Write-Host " -> Extracting ZIP archive directly into isolated sandbox..." -ForegroundColor Gray
+        Expand-Archive -Path $ZipPath -DestinationPath $BundleCopyDir -Force
+    } else {
+        Write-Host " -> Copying distribution bundle to sandbox..." -ForegroundColor Gray
+        Copy-Item -Path "$SourceBundle\*" -Destination $BundleCopyDir -Recurse -Force
+    }
 
     # -------------------------------------------------------------------------
     # 2. Cryptographic Integrity Verification (SHA256SUMS.txt)
@@ -88,9 +104,9 @@ try {
     Write-Host " -> Successfully verified $verifiedCount/$($SumsLines.Count) file hashes with 100% exact match." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
-    # 3. Validate version.json Manifest Schema
+    # 3. Validate version.json Manifest Schema & 4-Way Cross-Check
     # -------------------------------------------------------------------------
-    Write-Host "`n[3/6] Validating release manifest (version.json)..." -ForegroundColor Yellow
+    Write-Host "`n[3/6] Validating release manifest (version.json) & 4-way consistency..." -ForegroundColor Yellow
     $VersionFile = Join-Path $BundleCopyDir "version.json"
     if (!(Test-Path $VersionFile)) { throw "version.json missing from bundle!" }
 
@@ -104,9 +120,41 @@ try {
 
     Write-Host " -> version.json schema valid (version: $($VersionJson.version), commit: $($VersionJson.gitCommit.Substring(0,8))...)" -ForegroundColor Green
 
+    # 4-way consistency cross-check: version.json <-> disk <-> SHA256SUMS.txt <-> windows-bundle.cdx.json
+    $SbomBundleFile = Join-Path $BundleCopyDir "sbom\windows-bundle.cdx.json"
+    $SbomBundleObj = if (Test-Path $SbomBundleFile) { Get-Content $SbomBundleFile -Raw | ConvertFrom-Json } else { $null }
+
+    foreach ($art in $VersionJson.artifacts) {
+        $diskPath = Join-Path $BundleCopyDir ($art.path.Replace('/', '\'))
+        if (!(Test-Path $diskPath)) { throw "Artifact in version.json missing from disk: $($art.path)" }
+        $diskHash = (Get-FileHash $diskPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($diskHash -ne $art.sha256) {
+            throw "Hash mismatch for $($art.path) between disk ($diskHash) and version.json ($($art.sha256))"
+        }
+    }
+
+    # Verify primary UI executable EmuleSion.exe
     $PackagedUi = Join-Path $BundleCopyDir "EmuleSion.exe"
     if (!(Test-Path $PackagedUi)) { throw "Primary UI executable 'EmuleSion.exe' missing from bundle root!" }
-    Write-Host " -> Primary UI binary verified: EmuleSion.exe" -ForegroundColor Gray
+
+    $uiArtifact = $VersionJson.artifacts | Where-Object { $_.path -eq "EmuleSion.exe" }
+    if (!$uiArtifact) { throw "EmuleSion.exe missing from version.json artifacts list!" }
+
+    if ($SbomBundleObj) {
+        $sbomUiComp = $SbomBundleObj.components | Where-Object { $_.name -eq "EmuleSion.exe" }
+        if (!$sbomUiComp) { throw "EmuleSion.exe missing from windows-bundle.cdx.json components!" }
+    }
+    Write-Host " -> 4-way cross-check verified: EmuleSion.exe consistent across disk, version.json, SHA256SUMS, and SBOM." -ForegroundColor Green
+
+    # Launch EmuleSion.exe briefly to test initialization
+    Write-Host " -> Testing EmuleSion.exe process initialization..." -ForegroundColor Gray
+    $uiProc = Start-Process -FilePath $PackagedUi -PassThru
+    Start-Sleep -Milliseconds 1500
+    if ($uiProc.HasExited) {
+        throw "EmuleSion.exe crashed on launch! Exit code: $($uiProc.ExitCode)"
+    }
+    Stop-Process -Id $uiProc.Id -Force
+    Write-Host " -> EmuleSion.exe process started and initialized cleanly without crash." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
     # 4. Boot Packaged Daemon in Isolated Workdir

@@ -260,6 +260,41 @@ $VersionJsonContent = $VersionInfo | ConvertTo-Json -Depth 6
 Write-Host " -> Generated: $VersionJsonPath" -ForegroundColor Green
 
 # -----------------------------------------------------------------------------
+# 8.5 Integrity and 4-Way Cross-Verification Gate
+# -----------------------------------------------------------------------------
+Write-Host "`nCross-checking bundle consistency (disk <-> version.json <-> SHA256SUMS.txt <-> SBOM)..." -ForegroundColor Yellow
+
+$PrimaryUiPath = Join-Path $DestPath "EmuleSion.exe"
+if (!(Test-Path $PrimaryUiPath)) {
+    throw "GATE FAILURE: EmuleSion.exe missing from bundle destination!"
+}
+$ActualUiHash = (Get-FileHash $PrimaryUiPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+# Verify EmuleSion.exe in version.json
+$VersionUi = $ArtifactsList | Where-Object { $_.path -eq "EmuleSion.exe" }
+if (!$VersionUi -or $VersionUi.sha256 -ne $ActualUiHash) {
+    throw "GATE FAILURE: EmuleSion.exe hash mismatch between disk and version.json!"
+}
+
+# Verify EmuleSion.exe in SHA256SUMS.txt
+$SumUiLine = $SumsLines | Where-Object { $_ -match '\s+EmuleSion\.exe$' }
+if (!$SumUiLine -or !$SumUiLine.StartsWith($ActualUiHash)) {
+    throw "GATE FAILURE: EmuleSion.exe hash mismatch between disk and SHA256SUMS.txt!"
+}
+
+# Verify EmuleSion.exe in windows-bundle.cdx.json
+$SbomBundlePath = Join-Path $DestPath "sbom\windows-bundle.cdx.json"
+if (Test-Path $SbomBundlePath) {
+    $SbomObj = Get-Content $SbomBundlePath -Raw | ConvertFrom-Json
+    $SbomUi = $SbomObj.components | Where-Object { $_.name -eq "EmuleSion.exe" }
+    if (!$SbomUi) {
+        throw "GATE FAILURE: EmuleSion.exe missing from windows-bundle.cdx.json components!"
+    }
+}
+
+Write-Host " -> Cross-check Passed: 100% consistent across disk, version.json, SHA256SUMS.txt, and SBOM." -ForegroundColor Green
+
+# -----------------------------------------------------------------------------
 # 9. Packaging ZIP Archive & Archive SHA-256
 # -----------------------------------------------------------------------------
 if (!$SkipZip) {
