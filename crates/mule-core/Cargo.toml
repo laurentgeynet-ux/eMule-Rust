@@ -1,0 +1,18 @@
+[package]
+name = "mule-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Deterministic download engine, piece mapping, sparse storage, and persistence"
+
+[dependencies]
+mule-format = { path = "../mule-format" }
+thiserror.workspace = true
+rusqlite.workspace = true
+uuid.workspace = true
+md4.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+proptest.workspace = true

@@ -1,0 +1,121 @@
+use md4::{Digest, Md4};
+use mule_core::{
+    finalize_file, verify_part_hash, AllocationPolicy, CollisionStrategy, CoreError, Database,
+    Download, DownloadStatus, PartFile, RangeSet,
+};
+use mule_format::Ed2kHash;
+use tempfile::tempdir;
+
+#[test]
+fn test_download_storage_persistence_and_corruption_lifecycle() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("mule_state.db");
+    let temp_part_path = dir.path().join("001.part");
+    let target_dest_path = dir.path().join("final_document.bin");
+
+    let total_size = 10_000u64;
+    let dummy_hash = Ed2kHash([0xab; 16]);
+
+    // 1. Initial process: open Database and PartFile
+    let download = Download::new(
+        "final_document.bin",
+        total_size,
+        dummy_hash,
+        None,
+        target_dest_path.clone(),
+        temp_part_path.clone(),
+    );
+    let download_id = download.id;
+
+    {
+        let mut db = Database::open(&db_path).unwrap();
+        db.insert_download(&download).unwrap();
+
+        let mut part = PartFile::open_or_create(&temp_part_path, total_size, AllocationPolicy::None).unwrap();
+
+        // 2. Write segments out of order:
+        // Segment B: offset 5000..10000
+        let seg_b = vec![0x22; 5000];
+        part.write_segment(5000, &seg_b).unwrap();
+
+        // Segment A: offset 0..5000
+        let seg_a = vec![0x11; 5000];
+        part.write_segment(0, &seg_a).unwrap();
+
+        part.flush().unwrap();
+
+        // 3. Update RangeSet and persist
+        let mut range_set = RangeSet::new();
+        range_set.insert(5000..10000).unwrap();
+        range_set.insert(0..5000).unwrap();
+        assert_eq!(range_set.ranges(), vec![0..10000]);
+
+        db.sync_received_ranges(&download_id, &range_set).unwrap();
+    } // Simulated process shutdown/crash
+
+    // 4. Restart: Reopen DB and PartFile
+    {
+        let mut db = Database::open(&db_path).unwrap();
+        let loaded_ranges = db.load_received_ranges(&download_id).unwrap();
+        assert_eq!(loaded_ranges.ranges(), vec![0..10000]);
+        assert_eq!(loaded_ranges.covered_len(), total_size);
+
+        let mut part = PartFile::open_or_create(&temp_part_path, total_size, AllocationPolicy::None).unwrap();
+        let read_back = part.read_range(0, total_size as usize).unwrap();
+
+        // 5. Verify part MD4
+        let mut expected_md4 = Md4::new();
+        expected_md4.update(&vec![0x11; 5000]);
+        expected_md4.update(&vec![0x22; 5000]);
+        let expected_digest: [u8; 16] = expected_md4.finalize().into();
+
+        assert!(verify_part_hash(&read_back, &expected_digest));
+        db.mark_part_verified(&download_id, 0).unwrap();
+        assert_eq!(db.get_verified_parts(&download_id).unwrap(), vec![0]);
+
+        // 6. Inject corruption: flip 1 byte at offset 100
+        part.write_segment(100, &[0xff]).unwrap();
+        part.flush().unwrap();
+
+        let corrupted_read = part.read_range(0, total_size as usize).unwrap();
+        assert!(!verify_part_hash(&corrupted_read, &expected_digest));
+
+        // Part corrupted -> unmark part and evict range
+        db.unmark_part_verified(&download_id, 0).unwrap();
+        assert!(db.get_verified_parts(&download_id).unwrap().is_empty());
+
+        let mut updated_ranges = loaded_ranges;
+        updated_ranges.remove(0..total_size).unwrap();
+        db.sync_received_ranges(&download_id, &updated_ranges).unwrap();
+        assert!(db.load_received_ranges(&download_id).unwrap().is_empty());
+
+        // 7. Repair: rewrite valid byte back
+        part.write_segment(100, &[0x11]).unwrap();
+        part.flush().unwrap();
+
+        let repaired_read = part.read_range(0, total_size as usize).unwrap();
+        assert!(verify_part_hash(&repaired_read, &expected_digest));
+
+        updated_ranges.insert(0..total_size).unwrap();
+        db.sync_received_ranges(&download_id, &updated_ranges).unwrap();
+        db.mark_part_verified(&download_id, 0).unwrap();
+        db.update_status(&download_id, DownloadStatus::Completed).unwrap();
+    }
+
+    // 8. Finalize file
+    // First finalize: should succeed
+    finalize_file(&temp_part_path, &target_dest_path, CollisionStrategy::FailIfExists).unwrap();
+    assert!(target_dest_path.exists());
+    assert!(!temp_part_path.exists());
+
+    // Second finalize with FailIfExists when target exists: must return TargetFileExists
+    let dummy_temp = dir.path().join("dummy.part");
+    std::fs::write(&dummy_temp, b"test").unwrap();
+    assert!(matches!(
+        finalize_file(&dummy_temp, &target_dest_path, CollisionStrategy::FailIfExists).unwrap_err(),
+        CoreError::TargetFileExists(_)
+    ));
+
+    // Overwrite strategy: succeeds
+    finalize_file(&dummy_temp, &target_dest_path, CollisionStrategy::Overwrite).unwrap();
+}

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/mule-format",
+    "crates/mule-core",
     "crates/mule-cli",
 ]
 
@@ -21,3 +22,6 @@ percent-encoding = "2"
 clap = { version = "4", features = ["derive"] }
 proptest = "1"
 hex = "0.4"
+rusqlite = { version = "0.33", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+tempfile = "3"
