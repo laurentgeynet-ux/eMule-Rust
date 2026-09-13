@@ -7,6 +7,7 @@ import '../widgets/add_link_dialog.dart';
 import '../widgets/debug_simulation_bar.dart';
 import '../widgets/download_row.dart';
 import '../widgets/downloads_sidebar.dart';
+import '../widgets/incompatible_version_dialog.dart';
 
 class DownloadsScreen extends StatelessWidget {
   final DownloadsViewModel viewModel;
@@ -29,6 +30,13 @@ class DownloadsScreen extends StatelessWidget {
               Expanded(
                 child: Column(
                   children: [
+                    // Incompatible protocol banner if any
+                    if (viewModel.protocolMismatchError != null)
+                      IncompatibleVersionBanner(
+                        errorMessage: viewModel.protocolMismatchError!,
+                        onRetry: () => viewModel.supervisor?.start(),
+                      ),
+
                     // Top Navigation / Actions Bar
                     _buildTopBar(context),
 

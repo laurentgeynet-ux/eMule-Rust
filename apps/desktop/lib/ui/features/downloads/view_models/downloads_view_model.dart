@@ -6,6 +6,8 @@ import '../../../../domain/models/daemon_info.dart';
 import '../../../../domain/models/download_item.dart';
 import '../../../../domain/services/mule_daemon_client.dart';
 
+import '../../../../services/daemon_supervisor.dart';
+
 enum DownloadFilter {
   all,
   active,
@@ -31,10 +33,13 @@ enum DownloadFilter {
 
 class DownloadsViewModel extends ChangeNotifier {
   final MuleDaemonClient client;
+  final DaemonSupervisor? supervisor;
 
   DaemonConnectionState _connectionState = DaemonConnectionState.disconnected;
+  SupervisorState _supervisorState = SupervisorState.idle;
   DaemonInfo? _daemonInfo;
   String? _errorMessage;
+  String? _protocolMismatchError;
   bool _isLoading = false;
 
   final Map<String, DownloadItem> _downloads = {};
@@ -46,8 +51,10 @@ class DownloadsViewModel extends ChangeNotifier {
 
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
+  StreamSubscription<SupervisorState>? _supervisorSub;
+  StreamSubscription<void>? _instanceSub;
 
-  DownloadsViewModel({required this.client}) {
+  DownloadsViewModel({required this.client, this.supervisor}) {
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
       notifyListeners();
@@ -57,10 +64,32 @@ class DownloadsViewModel extends ChangeNotifier {
       _downloads[event.download.id] = event.download;
       notifyListeners();
     });
+
+    if (supervisor != null) {
+      _supervisorState = supervisor!.state;
+      _supervisorSub = supervisor!.stateStream.listen((sState) {
+        _supervisorState = sState;
+        if (sState == SupervisorState.connected) {
+          _protocolMismatchError = null;
+          refresh();
+        } else if (sState == SupervisorState.protocolMismatch) {
+          _protocolMismatchError = supervisor!.lastError;
+        }
+        notifyListeners();
+      });
+
+      _instanceSub = supervisor!.instanceChangedStream.listen((_) {
+        // Reset downloads and sequence on daemon restart
+        _downloads.clear();
+        refresh();
+      });
+    }
   }
 
   // Getters
   DaemonConnectionState get connectionState => _connectionState;
+  SupervisorState get supervisorState => _supervisorState;
+  String? get protocolMismatchError => _protocolMismatchError;
   DaemonInfo? get daemonInfo => _daemonInfo;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
@@ -245,6 +274,9 @@ class DownloadsViewModel extends ChangeNotifier {
   void dispose() {
     _connSub?.cancel();
     _eventSub?.cancel();
+    _supervisorSub?.cancel();
+    _instanceSub?.cancel();
+    supervisor?.dispose();
     client.dispose();
     super.dispose();
   }

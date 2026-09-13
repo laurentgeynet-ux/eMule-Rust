@@ -33,7 +33,9 @@ async fn test_full_rpc_contract_and_event_streaming() {
     let (addr, token, _dir) = spawn_test_daemon().await;
     let ws_url = format!("ws://{addr}/rpc");
 
-    let (ws_stream, _) = connect_async(&ws_url).await.expect("WebSocket connection failed");
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
+        .expect("WebSocket connection failed");
     let (mut write, mut read) = ws_stream.split();
 
     // 1. Calling method before handshake must be rejected
@@ -43,7 +45,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
         "method": "downloads.list",
         "params": {}
     });
-    write.send(Message::Text(req_unauth.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(req_unauth.to_string().into()))
+        .await
+        .unwrap();
 
     let msg = read.next().await.unwrap().unwrap();
     let resp: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
@@ -59,7 +64,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
             "token": "wrong_token"
         }
     });
-    write.send(Message::Text(req_bad_token.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(req_bad_token.to_string().into()))
+        .await
+        .unwrap();
     let msg = read.next().await.unwrap().unwrap();
     let resp: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
     assert_eq!(resp["error"]["code"], -32000);
@@ -74,7 +82,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
             "token": token
         }
     });
-    write.send(Message::Text(req_hello.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(req_hello.to_string().into()))
+        .await
+        .unwrap();
     let msg = read.next().await.unwrap().unwrap();
     let resp: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
     assert!(resp["result"]["instanceId"].is_string());
@@ -91,7 +102,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
             "targetDirectory": "."
         }
     });
-    write.send(Message::Text(req_add.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(req_add.to_string().into()))
+        .await
+        .unwrap();
 
     // Might receive either the response or the broadcast event
     let mut add_resp: Option<Value> = None;
@@ -108,7 +122,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
     }
 
     let add_resp = add_resp.expect("Expected response for addEd2kLink");
-    let download_id = add_resp["result"]["downloadId"].as_str().unwrap().to_string();
+    let download_id = add_resp["result"]["downloadId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_eq!(add_resp["result"]["status"], "queued");
 
     let add_event = add_event.expect("Expected event.downloadUpdated notification");
@@ -120,7 +137,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
         "id": 5,
         "method": "downloads.list"
     });
-    write.send(Message::Text(req_list.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(req_list.to_string().into()))
+        .await
+        .unwrap();
     let msg = read.next().await.unwrap().unwrap();
     let resp: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
     let list = resp["result"]["downloads"].as_array().unwrap();
@@ -139,7 +159,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
             "dataHex": "1122334455"
         }
     });
-    write.send(Message::Text(req_inject.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(req_inject.to_string().into()))
+        .await
+        .unwrap();
 
     let mut inject_resp: Option<Value> = None;
     let mut inject_event: Option<Value> = None;
@@ -168,7 +191,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
         "method": "downloads.pause",
         "params": { "id": download_id }
     });
-    write.send(Message::Text(req_pause.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(req_pause.to_string().into()))
+        .await
+        .unwrap();
 
     let mut pause_resp = None;
     for _ in 0..2 {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../domain/models/daemon_info.dart';
+import '../../../../services/daemon_supervisor.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
 
@@ -139,10 +140,14 @@ class DownloadsSidebar extends StatelessWidget {
                       height: 10,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: _getConnectionColor(viewModel.connectionState),
+                        color: viewModel.supervisor != null
+                            ? _getSupervisorColor(viewModel.supervisorState)
+                            : _getConnectionColor(viewModel.connectionState),
                         boxShadow: [
                           BoxShadow(
-                            color: _getConnectionColor(viewModel.connectionState)
+                            color: (viewModel.supervisor != null
+                                    ? _getSupervisorColor(viewModel.supervisorState)
+                                    : _getConnectionColor(viewModel.connectionState))
                                 .withValues(alpha: 0.5),
                             blurRadius: 6,
                             spreadRadius: 1,
@@ -151,11 +156,16 @@ class DownloadsSidebar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      viewModel.connectionState.label,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: Text(
+                        viewModel.supervisor != null
+                            ? viewModel.supervisorState.label
+                            : viewModel.connectionState.label,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -251,6 +261,23 @@ class DownloadsSidebar extends StatelessWidget {
       case DaemonConnectionState.error:
         return AppTheme.statusFailed;
       case DaemonConnectionState.disconnected:
+        return AppTheme.statusQueued;
+    }
+  }
+
+  Color _getSupervisorColor(SupervisorState state) {
+    switch (state) {
+      case SupervisorState.connected:
+        return AppTheme.statusCompleted;
+      case SupervisorState.starting:
+      case SupervisorState.discovering:
+      case SupervisorState.reconnecting:
+        return AppTheme.statusPaused;
+      case SupervisorState.protocolMismatch:
+      case SupervisorState.authError:
+      case SupervisorState.error:
+        return AppTheme.statusFailed;
+      case SupervisorState.idle:
         return AppTheme.statusQueued;
     }
   }

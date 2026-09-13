@@ -1,8 +1,8 @@
 use md4::{Digest, Md4};
 use mule_format::{
-    hash_reader, Ed2kHasher, FormatError, PatternReader, FIXTURE_1_BYTE,
-    FIXTURE_EXACT_ONE_PART, FIXTURE_EXACT_TWO_PARTS, FIXTURE_JUST_UNDER_PART,
-    FIXTURE_ONE_PART_PLUS_ONE, REPEATING_0_TO_255,
+    hash_reader, Ed2kHasher, FormatError, PatternReader, FIXTURE_1_BYTE, FIXTURE_EXACT_ONE_PART,
+    FIXTURE_EXACT_TWO_PARTS, FIXTURE_JUST_UNDER_PART, FIXTURE_ONE_PART_PLUS_ONE,
+    REPEATING_0_TO_255,
 };
 use std::io::Cursor;
 
@@ -25,7 +25,10 @@ fn test_fixture_1_byte() {
 
     assert_eq!(res.total_bytes, FIXTURE_1_BYTE.length);
     assert_eq!(res.root_hash.to_hex(), FIXTURE_1_BYTE.expected_ed2k_hex);
-    assert_eq!(res.part_hashes.len(), FIXTURE_1_BYTE.expected_part_hashes_count);
+    assert_eq!(
+        res.part_hashes.len(),
+        FIXTURE_1_BYTE.expected_part_hashes_count
+    );
 }
 
 #[test]
@@ -34,8 +37,14 @@ fn test_fixture_just_under_part() {
     let res = hash_reader(&mut reader).unwrap();
 
     assert_eq!(res.total_bytes, FIXTURE_JUST_UNDER_PART.length);
-    assert_eq!(res.root_hash.to_hex(), FIXTURE_JUST_UNDER_PART.expected_ed2k_hex);
-    assert_eq!(res.part_hashes.len(), FIXTURE_JUST_UNDER_PART.expected_part_hashes_count);
+    assert_eq!(
+        res.root_hash.to_hex(),
+        FIXTURE_JUST_UNDER_PART.expected_ed2k_hex
+    );
+    assert_eq!(
+        res.part_hashes.len(),
+        FIXTURE_JUST_UNDER_PART.expected_part_hashes_count
+    );
 }
 
 #[test]
@@ -45,8 +54,14 @@ fn test_fixture_exact_one_part() {
     let res = hash_reader(&mut reader).unwrap();
 
     assert_eq!(res.total_bytes, FIXTURE_EXACT_ONE_PART.length);
-    assert_eq!(res.root_hash.to_hex(), FIXTURE_EXACT_ONE_PART.expected_ed2k_hex);
-    assert_eq!(res.part_hashes.len(), FIXTURE_EXACT_ONE_PART.expected_part_hashes_count);
+    assert_eq!(
+        res.root_hash.to_hex(),
+        FIXTURE_EXACT_ONE_PART.expected_ed2k_hex
+    );
+    assert_eq!(
+        res.part_hashes.len(),
+        FIXTURE_EXACT_ONE_PART.expected_part_hashes_count
+    );
 }
 
 #[test]
@@ -55,8 +70,14 @@ fn test_fixture_one_part_plus_one() {
     let res = hash_reader(&mut reader).unwrap();
 
     assert_eq!(res.total_bytes, FIXTURE_ONE_PART_PLUS_ONE.length);
-    assert_eq!(res.root_hash.to_hex(), FIXTURE_ONE_PART_PLUS_ONE.expected_ed2k_hex);
-    assert_eq!(res.part_hashes.len(), FIXTURE_ONE_PART_PLUS_ONE.expected_part_hashes_count);
+    assert_eq!(
+        res.root_hash.to_hex(),
+        FIXTURE_ONE_PART_PLUS_ONE.expected_ed2k_hex
+    );
+    assert_eq!(
+        res.part_hashes.len(),
+        FIXTURE_ONE_PART_PLUS_ONE.expected_part_hashes_count
+    );
 }
 
 #[test]
@@ -66,8 +87,14 @@ fn test_fixture_exact_two_parts() {
     let res = hash_reader(&mut reader).unwrap();
 
     assert_eq!(res.total_bytes, FIXTURE_EXACT_TWO_PARTS.length);
-    assert_eq!(res.root_hash.to_hex(), FIXTURE_EXACT_TWO_PARTS.expected_ed2k_hex);
-    assert_eq!(res.part_hashes.len(), FIXTURE_EXACT_TWO_PARTS.expected_part_hashes_count);
+    assert_eq!(
+        res.root_hash.to_hex(),
+        FIXTURE_EXACT_TWO_PARTS.expected_ed2k_hex
+    );
+    assert_eq!(
+        res.part_hashes.len(),
+        FIXTURE_EXACT_TWO_PARTS.expected_part_hashes_count
+    );
 }
 
 #[test]

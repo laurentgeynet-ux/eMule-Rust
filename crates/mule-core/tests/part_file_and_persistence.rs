@@ -31,7 +31,8 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
         let mut db = Database::open(&db_path).unwrap();
         db.insert_download(&download).unwrap();
 
-        let mut part = PartFile::open_or_create(&temp_part_path, total_size, AllocationPolicy::None).unwrap();
+        let mut part =
+            PartFile::open_or_create(&temp_part_path, total_size, AllocationPolicy::None).unwrap();
 
         // 2. Write segments out of order:
         // Segment B: offset 5000..10000
@@ -60,7 +61,8 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
         assert_eq!(loaded_ranges.ranges(), vec![0..10000]);
         assert_eq!(loaded_ranges.covered_len(), total_size);
 
-        let mut part = PartFile::open_or_create(&temp_part_path, total_size, AllocationPolicy::None).unwrap();
+        let mut part =
+            PartFile::open_or_create(&temp_part_path, total_size, AllocationPolicy::None).unwrap();
         let read_back = part.read_range(0, total_size as usize).unwrap();
 
         // 5. Verify part MD4
@@ -86,7 +88,8 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
 
         let mut updated_ranges = loaded_ranges;
         updated_ranges.remove(0..total_size).unwrap();
-        db.sync_received_ranges(&download_id, &updated_ranges).unwrap();
+        db.sync_received_ranges(&download_id, &updated_ranges)
+            .unwrap();
         assert!(db.load_received_ranges(&download_id).unwrap().is_empty());
 
         // 7. Repair: rewrite valid byte back
@@ -97,14 +100,21 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
         assert!(verify_part_hash(&repaired_read, &expected_digest));
 
         updated_ranges.insert(0..total_size).unwrap();
-        db.sync_received_ranges(&download_id, &updated_ranges).unwrap();
+        db.sync_received_ranges(&download_id, &updated_ranges)
+            .unwrap();
         db.mark_part_verified(&download_id, 0).unwrap();
-        db.update_status(&download_id, DownloadStatus::Completed).unwrap();
+        db.update_status(&download_id, DownloadStatus::Completed)
+            .unwrap();
     }
 
     // 8. Finalize file
     // First finalize: should succeed
-    finalize_file(&temp_part_path, &target_dest_path, CollisionStrategy::FailIfExists).unwrap();
+    finalize_file(
+        &temp_part_path,
+        &target_dest_path,
+        CollisionStrategy::FailIfExists,
+    )
+    .unwrap();
     assert!(target_dest_path.exists());
     assert!(!temp_part_path.exists());
 
@@ -112,7 +122,12 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
     let dummy_temp = dir.path().join("dummy.part");
     std::fs::write(&dummy_temp, b"test").unwrap();
     assert!(matches!(
-        finalize_file(&dummy_temp, &target_dest_path, CollisionStrategy::FailIfExists).unwrap_err(),
+        finalize_file(
+            &dummy_temp,
+            &target_dest_path,
+            CollisionStrategy::FailIfExists
+        )
+        .unwrap_err(),
         CoreError::TargetFileExists(_)
     ));
 

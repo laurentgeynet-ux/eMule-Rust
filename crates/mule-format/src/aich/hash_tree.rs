@@ -94,9 +94,9 @@ impl AichNode {
                 right: None,
             }
         } else {
-            let n_blocks = (data_size + base_size - 1) / base_size;
+            let n_blocks = data_size.div_ceil(base_size);
             let left_blocks = if is_left_branch {
-                (n_blocks + 1) / 2
+                n_blocks.div_ceil(2)
             } else {
                 n_blocks / 2
             };
@@ -170,7 +170,9 @@ impl AichNode {
         } else if let Some(h) = self.hash {
             Ok(h)
         } else {
-            Err(FormatError::AichVerificationFailed("Incomplete hash tree".to_string()))
+            Err(FormatError::AichVerificationFailed(
+                "Incomplete hash tree".to_string(),
+            ))
         }
     }
 

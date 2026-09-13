@@ -5,8 +5,8 @@ pub mod fixtures;
 pub mod met;
 
 pub use aich::{
-    calculate_aich_root, compute_expected_path, verify_aich_proof, AichHash, AichNode,
-    AichProof, AichProofError, AichSibling, SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART,
+    calculate_aich_root, compute_expected_path, verify_aich_proof, AichHash, AichNode, AichProof,
+    AichProofError, AichSibling, SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART,
     LAST_BLOCK_SIZE_FULL_PART,
 };
 pub use ed2k::{

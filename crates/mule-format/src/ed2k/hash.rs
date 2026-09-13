@@ -9,8 +9,7 @@ pub const ED2K_PART_SIZE: usize = 9_728_000;
 
 /// MD4 digest of an empty stream (0 bytes).
 pub const MD4_EMPTY_DIGEST: [u8; 16] = [
-    0x31, 0xd6, 0xcf, 0xe0, 0xd1, 0x6a, 0xe9, 0x31,
-    0xb7, 0x3c, 0x59, 0xd7, 0xe0, 0xc0, 0x89, 0xc0,
+    0x31, 0xd6, 0xcf, 0xe0, 0xd1, 0x6a, 0xe9, 0x31, 0xb7, 0x3c, 0x59, 0xd7, 0xe0, 0xc0, 0x89, 0xc0,
 ];
 
 /// A 16-byte eD2K hash (MD4 digest).
@@ -133,7 +132,7 @@ impl Ed2kHasher {
             // There was a trailing partial part
             let last_digest: [u8; 16] = self.current_part_hasher.finalize().into();
             self.part_hashes.push(last_digest);
-        } else if self.total_bytes % (ED2K_PART_SIZE as u64) == 0 {
+        } else if self.total_bytes.is_multiple_of(ED2K_PART_SIZE as u64) {
             // eMule compatibility: exact multiples append MD4(empty)
             self.part_hashes.push(MD4_EMPTY_DIGEST);
         }

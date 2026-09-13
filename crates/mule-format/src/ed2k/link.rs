@@ -106,10 +106,10 @@ impl Ed2kFileLink {
                 for ph in parts_str.split(':') {
                     if ph.len() == 32 {
                         let mut h = [0u8; 16];
-                        if hex::decode_to_slice(ph, &mut h).is_ok() {
-                            if part_hashes.len() < MAX_PART_HASHES_COUNT {
-                                part_hashes.push(h);
-                            }
+                        if hex::decode_to_slice(ph, &mut h).is_ok()
+                            && part_hashes.len() < MAX_PART_HASHES_COUNT
+                        {
+                            part_hashes.push(h);
                         }
                     }
                 }

@@ -36,7 +36,10 @@ impl JsonRpcError {
     }
 
     pub fn method_not_found(method: &str) -> Self {
-        Self::new(CODE_METHOD_NOT_FOUND, format!("Method '{method}' not found"))
+        Self::new(
+            CODE_METHOD_NOT_FOUND,
+            format!("Method '{method}' not found"),
+        )
     }
 
     pub fn invalid_params(details: &str) -> Self {
@@ -66,3 +69,15 @@ impl std::fmt::Display for JsonRpcError {
 }
 
 impl std::error::Error for JsonRpcError {}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DaemonError {
+    #[error("Another daemon instance is already running on data directory: {0}")]
+    AlreadyRunning(std::path::PathBuf),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Core storage error: {0}")]
+    Core(#[from] mule_core::CoreError),
+    #[error("Session file error: {0}")]
+    Session(String),
+}

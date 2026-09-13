@@ -1,7 +1,6 @@
 use mule_format::{
-    calculate_aich_root, verify_aich_proof, AichHash, AichNode, AichProofError,
-    AichSibling, SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART, ED2K_PART_SIZE,
-    LAST_BLOCK_SIZE_FULL_PART,
+    calculate_aich_root, verify_aich_proof, AichHash, AichNode, AichProofError, AichSibling,
+    SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART, ED2K_PART_SIZE, LAST_BLOCK_SIZE_FULL_PART,
 };
 use sha1::{Digest, Sha1};
 
@@ -60,7 +59,9 @@ fn test_aich_full_part_53_blocks_structure_and_proof() {
 
     // 2. Verify valid proof for last leaf #52 (143 360 bytes)
     let last_offset = 52 * AICH_BLOCK_SIZE;
-    let proof52 = tree.generate_leaf_proof(52, BLOCKS_PER_PART as u32).unwrap();
+    let proof52 = tree
+        .generate_leaf_proof(52, BLOCKS_PER_PART as u32)
+        .unwrap();
     assert_eq!(proof52.leaf_index, 52);
     assert!(verify_aich_proof(root.0, &data[last_offset..], &proof52).is_ok());
 
@@ -69,7 +70,10 @@ fn test_aich_full_part_53_blocks_structure_and_proof() {
     invalid_proof.leaf_index = 53;
     assert_eq!(
         verify_aich_proof(root.0, &data[..AICH_BLOCK_SIZE], &invalid_proof).unwrap_err(),
-        AichProofError::LeafIndexOutOfBounds { index: 53, count: 53 }
+        AichProofError::LeafIndexOutOfBounds {
+            index: 53,
+            count: 53
+        }
     );
 
     // 4. Structural test: truncated proof (missing sibling)

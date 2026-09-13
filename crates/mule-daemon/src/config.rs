@@ -21,4 +21,28 @@ impl DaemonConfig {
         self.bind_addr = addr;
         self
     }
+
+    pub fn default_data_dir() -> PathBuf {
+        if let Ok(dir) = std::env::var("MULE_DATA_DIR") {
+            return PathBuf::from(dir);
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                return PathBuf::from(appdata).join("EmuleSion");
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                return PathBuf::from(home).join(".emule_sion");
+            }
+        }
+
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".mule_data")
+    }
 }

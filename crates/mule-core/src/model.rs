@@ -29,9 +29,13 @@ impl DownloadStatus {
             Self::Removed => "removed",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl std::str::FromStr for DownloadStatus {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
             "waiting_for_sources" => Self::WaitingForSources,
             "downloading" => Self::Downloading,
             "verifying" => Self::Verifying,
@@ -41,7 +45,7 @@ impl DownloadStatus {
             "failed" => Self::Failed,
             "removed" => Self::Removed,
             _ => Self::Queued,
-        }
+        })
     }
 }
 

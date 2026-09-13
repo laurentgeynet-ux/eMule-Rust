@@ -89,7 +89,11 @@ impl Database {
     }
 
     /// Atomically replaces received ranges for a download in a single transaction.
-    pub fn sync_received_ranges(&mut self, download_id: &Uuid, ranges: &RangeSet) -> Result<(), CoreError> {
+    pub fn sync_received_ranges(
+        &mut self,
+        download_id: &Uuid,
+        ranges: &RangeSet,
+    ) -> Result<(), CoreError> {
         let tx = self.conn.transaction()?;
         tx.execute(
             "DELETE FROM received_ranges WHERE download_id = ?1",
@@ -101,7 +105,11 @@ impl Database {
                 "INSERT INTO received_ranges (download_id, start_offset, end_offset) VALUES (?1, ?2, ?3)",
             )?;
             for r in ranges.ranges() {
-                stmt.execute(params![download_id.to_string(), r.start as i64, r.end as i64])?;
+                stmt.execute(params![
+                    download_id.to_string(),
+                    r.start as i64,
+                    r.end as i64
+                ])?;
             }
         }
 
@@ -128,7 +136,11 @@ impl Database {
     }
 
     /// Records that a part has been verified.
-    pub fn mark_part_verified(&mut self, download_id: &Uuid, part_index: u32) -> Result<(), CoreError> {
+    pub fn mark_part_verified(
+        &mut self,
+        download_id: &Uuid,
+        part_index: u32,
+    ) -> Result<(), CoreError> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -142,7 +154,11 @@ impl Database {
     }
 
     /// Unmarks a part upon corruption detection.
-    pub fn unmark_part_verified(&mut self, download_id: &Uuid, part_index: u32) -> Result<(), CoreError> {
+    pub fn unmark_part_verified(
+        &mut self,
+        download_id: &Uuid,
+        part_index: u32,
+    ) -> Result<(), CoreError> {
         self.conn.execute(
             "DELETE FROM verified_parts WHERE download_id = ?1 AND part_index = ?2",
             params![download_id.to_string(), part_index as i64],
@@ -165,7 +181,11 @@ impl Database {
     }
 
     /// Updates status of a download.
-    pub fn update_status(&mut self, download_id: &Uuid, status: DownloadStatus) -> Result<(), CoreError> {
+    pub fn update_status(
+        &mut self,
+        download_id: &Uuid,
+        status: DownloadStatus,
+    ) -> Result<(), CoreError> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

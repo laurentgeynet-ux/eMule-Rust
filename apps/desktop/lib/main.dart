@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'data/fake_daemon_client.dart';
 import 'data/rpc_daemon_client.dart';
 import 'domain/services/mule_daemon_client.dart';
+import 'services/daemon_supervisor.dart';
 import 'ui/core/theme.dart';
 import 'ui/features/downloads/view_models/downloads_view_model.dart';
 import 'ui/features/downloads/views/downloads_screen.dart';
@@ -14,16 +15,23 @@ void main() async {
   const useFake = bool.fromEnvironment('USE_FAKE_DAEMON', defaultValue: false);
 
   final MuleDaemonClient client;
+  DaemonSupervisor? supervisor;
+
   if (useFake) {
     client = FakeMuleDaemonClient(enableAutoSimulation: true);
   } else {
-    client = RpcDaemonClient();
+    final rpcClient = RpcDaemonClient();
+    supervisor = DaemonSupervisor(client: rpcClient);
+    client = rpcClient;
   }
 
-  final viewModel = DownloadsViewModel(client: client);
+  final viewModel = DownloadsViewModel(client: client, supervisor: supervisor);
 
-  // Initialize connection in background
-  viewModel.initialize(url: Uri.parse('ws://127.0.0.1:4660/rpc'));
+  if (supervisor != null) {
+    supervisor.start();
+  } else {
+    viewModel.initialize(url: Uri.parse('ws://127.0.0.1:4660/rpc'));
+  }
 
   runApp(EmuleSionApp(viewModel: viewModel));
 }

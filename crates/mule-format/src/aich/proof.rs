@@ -51,7 +51,10 @@ pub enum AichProofError {
 }
 
 /// Computes the sequence of expected sibling positions from leaf to root (bottom-up).
-pub fn compute_expected_path(mut index: u32, mut count: u32) -> Result<Vec<SiblingPosition>, AichProofError> {
+pub fn compute_expected_path(
+    mut index: u32,
+    mut count: u32,
+) -> Result<Vec<SiblingPosition>, AichProofError> {
     if count == 0 {
         return Err(AichProofError::EmptyTree);
     }
@@ -64,7 +67,7 @@ pub fn compute_expected_path(mut index: u32, mut count: u32) -> Result<Vec<Sibli
 
     while count > 1 {
         let left_count = if is_left_branch {
-            (count + 1) / 2
+            count.div_ceil(2)
         } else {
             count / 2
         };
@@ -118,7 +121,9 @@ pub fn verify_aich_proof(
         });
     }
 
-    for (step, (sibling, &expected_pos)) in proof.siblings.iter().zip(&expected_positions).enumerate() {
+    for (step, (sibling, &expected_pos)) in
+        proof.siblings.iter().zip(&expected_positions).enumerate()
+    {
         if sibling.position != expected_pos {
             return Err(AichProofError::InvalidSiblingPosition {
                 step,
@@ -137,12 +142,12 @@ pub fn verify_aich_proof(
         let mut parent_hasher = Sha1::new();
         match sibling.position {
             SiblingPosition::Left => {
-                parent_hasher.update(&sibling.hash);
-                parent_hasher.update(&current_hash);
+                parent_hasher.update(sibling.hash);
+                parent_hasher.update(current_hash);
             }
             SiblingPosition::Right => {
-                parent_hasher.update(&current_hash);
-                parent_hasher.update(&sibling.hash);
+                parent_hasher.update(current_hash);
+                parent_hasher.update(sibling.hash);
             }
         }
         current_hash = parent_hasher.finalize().into();
@@ -173,12 +178,7 @@ impl AichNode {
         }
     }
 
-    fn collect_leaf_proof(
-        &self,
-        index: u32,
-        count: u32,
-        siblings: &mut Vec<AichSibling>,
-    ) -> bool {
+    fn collect_leaf_proof(&self, index: u32, count: u32, siblings: &mut Vec<AichSibling>) -> bool {
         if count <= 1 {
             return index == 0;
         }
@@ -189,7 +189,7 @@ impl AichNode {
         };
 
         let left_count = if self.is_left_branch {
-            (count + 1) / 2
+            count.div_ceil(2)
         } else {
             count / 2
         };

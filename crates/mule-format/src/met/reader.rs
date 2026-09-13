@@ -22,7 +22,11 @@ impl<R: Read> CountingReader<R> {
         self.offset
     }
 
-    pub fn read_exact_bytes(&mut self, len: usize, context: &'static str) -> Result<Vec<u8>, MetError> {
+    pub fn read_exact_bytes(
+        &mut self,
+        len: usize,
+        context: &'static str,
+    ) -> Result<Vec<u8>, MetError> {
         let start_offset = self.offset;
         let mut buf = vec![0u8; len];
         match self.inner.read_exact(&mut buf) {

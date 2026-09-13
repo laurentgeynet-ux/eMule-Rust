@@ -44,7 +44,8 @@ impl<'a> Read for PatternReader<'a> {
             let available_in_pat = self.pattern.len() - pat_offset;
             let chunk = min(to_read - written, available_in_pat);
 
-            buf[written..written + chunk].copy_from_slice(&self.pattern[pat_offset..pat_offset + chunk]);
+            buf[written..written + chunk]
+                .copy_from_slice(&self.pattern[pat_offset..pat_offset + chunk]);
             written += chunk;
         }
 

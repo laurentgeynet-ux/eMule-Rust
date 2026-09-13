@@ -99,7 +99,10 @@ async fn handle_downloads_list(state: &AppState) -> Result<Value, JsonRpcError> 
     }))
 }
 
-async fn handle_downloads_get(state: &AppState, params: Option<Value>) -> Result<Value, JsonRpcError> {
+async fn handle_downloads_get(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let id_str = params["id"]
         .as_str()
@@ -116,7 +119,10 @@ async fn handle_downloads_get(state: &AppState, params: Option<Value>) -> Result
     Ok(serde_json::to_value(dl).unwrap_or_default())
 }
 
-async fn handle_add_ed2k_link(state: &AppState, params: Option<Value>) -> Result<Value, JsonRpcError> {
+async fn handle_add_ed2k_link(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let link = params["link"]
         .as_str()
@@ -178,12 +184,19 @@ async fn handle_remove(state: &AppState, params: Option<Value>) -> Result<Value,
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
     let delete_files = params["deleteFiles"].as_bool().unwrap_or(false);
 
-    state.downloads.lock().await.remove_download(&id, delete_files)?;
+    state
+        .downloads
+        .lock()
+        .await
+        .remove_download(&id, delete_files)?;
 
     Ok(json!({ "success": true }))
 }
 
-async fn handle_inject_range(state: &AppState, params: Option<Value>) -> Result<Value, JsonRpcError> {
+async fn handle_inject_range(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let id_str = params["id"]
         .as_str()
@@ -199,7 +212,11 @@ async fn handle_inject_range(state: &AppState, params: Option<Value>) -> Result<
 
     let data = hex::decode(data_hex).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
 
-    let snapshot = state.downloads.lock().await.inject_range(&id, offset, &data)?;
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .inject_range(&id, offset, &data)?;
     state.broadcast_download_update(snapshot.clone());
 
     Ok(serde_json::to_value(snapshot).unwrap_or_default())

@@ -72,10 +72,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             // Outgoing broadcast events (forwarded only to authenticated sessions)
             event = rx_events.recv() => {
                 if let Ok(event_json) = event {
-                    if is_authenticated {
-                        if sender.send(Message::Text(event_json.into())).await.is_err() {
-                            break;
-                        }
+                    if is_authenticated
+                        && sender.send(Message::Text(event_json.into())).await.is_err()
+                    {
+                        break;
                     }
                 }
             }
