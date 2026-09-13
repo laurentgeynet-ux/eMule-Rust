@@ -1,4 +1,5 @@
 /target
+/dist
 amule-ref/
 **/*.rs.bk
 *.pdb

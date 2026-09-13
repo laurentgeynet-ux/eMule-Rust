@@ -1,17 +1,28 @@
 <#
 .SYNOPSIS
-    Builds and packages the complete standalone Emule-Sion Windows distribution.
+    Builds, signs, and packages the complete standalone Emule-Sion Windows distribution.
 .DESCRIPTION
-    1. Compiles the Rust backend mule-daemon in release mode.
-    2. Builds the Flutter Desktop Windows client in release mode.
-    3. Bundles both binaries, version metadata, and dependencies into dist/EmuleSion-Windows.
+    Phase 7 — Industrialisation Locale & Release Candidate:
+    1. Verifies clean Git repository state (rejects dirty state unless -AllowDirty is set).
+    2. Collects exact toolchain versions (rustc, cargo, flutter, dart).
+    3. Compiles mule-daemon and Flutter Desktop in release mode.
+    4. Assembles standalone distribution in dist/EmuleSion-Windows.
+    5. Generates CycloneDX 1.5 SBOM files in dist/EmuleSion-Windows/sbom.
+    6. Signs executables and DLLs with Authenticode (if -Sign is set).
+    7. Computes SHA-256 hashes of all artifacts post-signing and writes SHA256SUMS.txt and version.json.
+    8. Packages distribution into ZIP archive and calculates its SHA-256 hash.
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
-    Note: Do not use -ExecutionPolicy Bypass in production environments; use RemoteSigned or sign this script with an Authenticode certificate.
+    powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1 -Sign -CertificateThumbprint "<thumbprint>"
 #>
 
 param(
-    [string]$OutputDir = "dist\EmuleSion-Windows"
+    [string]$OutputDir = "dist\EmuleSion-Windows",
+    [switch]$Sign = $false,
+    [string]$CertificateThumbprint = "",
+    [string]$TimestampServer = "http://timestamp.digicert.com",
+    [switch]$AllowDirty = $false,
+    [switch]$SkipZip = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,33 +31,66 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  Emule-Sion Windows Release Packaging Pipeline   " -ForegroundColor Cyan
+Write-Host "  Emule-Sion Windows Release Candidate Pipeline   " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# 1. Check tools
+# -----------------------------------------------------------------------------
+# 1. Inspect Git State & Refuse Dirty Working Tree
+# -----------------------------------------------------------------------------
+Write-Host "`n[1/8] Verifying Git state and commit provenance..." -ForegroundColor Yellow
+
+$GitCommit = try { (& git rev-parse HEAD).Trim() } catch { "0000000000000000000000000000000000000000" }
+$GitStatus = try { (& git status --porcelain).Trim() } catch { "" }
+$GitDirty = ![string]::IsNullOrEmpty($GitStatus)
+
+if ($GitDirty -and !$AllowDirty) {
+    throw "Working tree is dirty! Uncommitted changes detected. Commit changes or specify -AllowDirty for debug builds."
+}
+
+if ($GitDirty) {
+    Write-Host " [WARNING] Building from dirty working tree (-AllowDirty is enabled)" -ForegroundColor Magenta
+} else {
+    Write-Host " -> Clean repository state confirmed at commit: $GitCommit" -ForegroundColor Green
+}
+
+# -----------------------------------------------------------------------------
+# 2. Inspect Toolchains
+# -----------------------------------------------------------------------------
+Write-Host "`n[2/8] Inspecting compilers and build toolchains..." -ForegroundColor Yellow
+
 $Cargo = if (Get-Command "cargo" -ErrorAction SilentlyContinue) { "cargo" } else { "$env:USERPROFILE\.cargo\bin\cargo.exe" }
+$Rustc = if (Get-Command "rustc" -ErrorAction SilentlyContinue) { "rustc" } else { "$env:USERPROFILE\.cargo\bin\rustc.exe" }
 $Flutter = if (Get-Command "flutter" -ErrorAction SilentlyContinue) { "flutter" } else { "C:\Users\Lou\flutter\bin\flutter.bat" }
 
-if (!(Test-Path $Cargo)) {
-    throw "Rust cargo not found at $Cargo"
-}
-if (!(Test-Path $Flutter)) {
-    throw "Flutter SDK not found at $Flutter"
-}
+if (!(Test-Path $Cargo)) { throw "Rust cargo not found at $Cargo" }
+if (!(Test-Path $Rustc)) { throw "Rust compiler rustc not found at $Rustc" }
+if (!(Test-Path $Flutter)) { throw "Flutter SDK not found at $Flutter" }
 
-# 2. Build Rust mule-daemon in release mode
-Write-Host "`n[1/4] Compiling Rust mule-daemon (release)..." -ForegroundColor Yellow
+$RustcVersion = (& $Rustc --version).Trim()
+$CargoVersion = (& $Cargo --version).Trim()
+$FlutterVersion = ((& $Flutter --version | Select-Object -First 1)).Trim()
+$DartVersion = try { (& dart --version 2>&1).Trim() } catch { "Dart (bundled)" }
+
+Write-Host " -> Rustc   : $RustcVersion" -ForegroundColor Gray
+Write-Host " -> Cargo   : $CargoVersion" -ForegroundColor Gray
+Write-Host " -> Flutter : $FlutterVersion" -ForegroundColor Gray
+Write-Host " -> Dart    : $DartVersion" -ForegroundColor Gray
+
+# -----------------------------------------------------------------------------
+# 3. Build Rust mule-daemon (release)
+# -----------------------------------------------------------------------------
+Write-Host "`n[3/8] Compiling Rust mule-daemon (release)..." -ForegroundColor Yellow
 & $Cargo build --release --bin mule-daemon
 if ($LASTEXITCODE -ne 0) { throw "Rust release build failed with code $LASTEXITCODE" }
 
 $DaemonExe = Join-Path $Root "target\release\mule-daemon.exe"
-if (!(Test-Path $DaemonExe)) {
-    throw "Compiled daemon binary not found at $DaemonExe"
-}
+if (!(Test-Path $DaemonExe)) { throw "Compiled daemon binary not found at $DaemonExe" }
 Write-Host " -> Built: $DaemonExe" -ForegroundColor Green
 
-# 3. Build Flutter Windows in release mode
-Write-Host "`n[2/4] Building Flutter Desktop Windows (release)..." -ForegroundColor Yellow
+# -----------------------------------------------------------------------------
+# 4. Build Flutter Desktop Windows (release)
+# -----------------------------------------------------------------------------
+Write-Host "`n[4/8] Building Flutter Desktop Windows (release)..." -ForegroundColor Yellow
 Push-Location "apps\desktop"
 try {
     & $Flutter build windows --release
@@ -60,16 +104,25 @@ if (!(Test-Path $FlutterReleaseDir)) {
     throw "Flutter release output directory not found at $FlutterReleaseDir"
 }
 
-# 4. Assemble distribution bundle
-Write-Host "`n[3/4] Assembling standalone distribution in $OutputDir..." -ForegroundColor Yellow
+# -----------------------------------------------------------------------------
+# 5. Assemble Distribution Bundle
+# -----------------------------------------------------------------------------
+Write-Host "`n[5/8] Assembling distribution bundle in $OutputDir..." -ForegroundColor Yellow
 $DestPath = Join-Path $Root $OutputDir
 if (Test-Path $DestPath) {
     Remove-Item -Recurse -Force $DestPath
 }
 New-Item -ItemType Directory -Path $DestPath -Force | Out-Null
 
-# Copy Flutter release files
+# Copy Flutter release binaries and assets
 Copy-Item -Path "$FlutterReleaseDir\*" -Destination $DestPath -Recurse -Force
+
+# Provide EmuleSion.exe alongside desktop.exe
+$PrimaryExe = Join-Path $DestPath "desktop.exe"
+$BrandedExe = Join-Path $DestPath "EmuleSion.exe"
+if (Test-Path $PrimaryExe) {
+    Copy-Item -Path $PrimaryExe -Destination $BrandedExe -Force
+}
 
 # Create bin/ directory and bundle mule-daemon.exe
 $BinDir = Join-Path $DestPath "bin"
@@ -77,26 +130,153 @@ New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 Copy-Item -Path $DaemonExe -Destination $BinDir -Force
 Copy-Item -Path $DaemonExe -Destination $DestPath -Force
 
-# 5. Generate version.json
-Write-Host "`n[4/4] Writing release metadata (version.json)..." -ForegroundColor Yellow
-$CommitHash = try { (git rev-parse --short HEAD).Trim() } catch { "unknown" }
-$NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+Write-Host " -> Bundle assembled successfully in: $DestPath" -ForegroundColor Green
 
-$VersionInfo = [PSCustomObject]@{
+# -----------------------------------------------------------------------------
+# 6. Generate CycloneDX 1.5 SBOM
+# -----------------------------------------------------------------------------
+Write-Host "`n[6/8] Generating CycloneDX SBOM artifacts..." -ForegroundColor Yellow
+$SbomScript = Join-Path $Root "scripts\generate_sbom.ps1"
+if (Test-Path $SbomScript) {
+    & powershell -NoProfile -ExecutionPolicy RemoteSigned -File $SbomScript -BundleDir $OutputDir
+    if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
+} else {
+    Write-Host " [WARNING] SBOM generator script not found at $SbomScript" -ForegroundColor Magenta
+}
+
+# -----------------------------------------------------------------------------
+# 7. Authenticode Code Signing (Optional Hook)
+# -----------------------------------------------------------------------------
+if ($Sign) {
+    Write-Host "`n[7/8] Signing binaries with Authenticode..." -ForegroundColor Yellow
+    
+    if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+        throw "Code signing requested (-Sign) but -CertificateThumbprint was not provided."
+    }
+
+    $SignTool = $null
+    # Locate signtool in PATH or Windows Kits
+    if (Get-Command "signtool.exe" -ErrorAction SilentlyContinue) {
+        $SignTool = "signtool.exe"
+    } else {
+        $KitsRoots = @(
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin",
+            "${env:ProgramFiles}\Windows Kits\10\bin"
+        )
+        foreach ($kit in $KitsRoots) {
+            if (Test-Path $kit) {
+                $found = Get-ChildItem -Path $kit -Filter "signtool.exe" -Recurse -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+                if ($found) {
+                    $SignTool = $found.FullName
+                    break
+                }
+            }
+        }
+    }
+
+    if (!$SignTool) {
+        throw "signtool.exe not found on system. Ensure Windows 10/11 SDK is installed."
+    }
+
+    Write-Host " -> Using SignTool: $SignTool" -ForegroundColor Gray
+
+    $BinariesToSign = Get-ChildItem -Path $DestPath -Recurse -Include "*.exe", "*.dll"
+    foreach ($bin in $BinariesToSign) {
+        Write-Host "  -> Signing: $($bin.Name)" -ForegroundColor Gray
+        & $SignTool sign /sha1 $CertificateThumbprint /tr $TimestampServer /td sha256 /fd sha256 $bin.FullName
+        if ($LASTEXITCODE -ne 0) { throw "Failed to sign $($bin.FullName)" }
+
+        # Verify signature immediately
+        & $SignTool verify /pa /all $bin.FullName
+        if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $($bin.FullName)" }
+    }
+    Write-Host " -> All binaries successfully signed and verified with Authenticode." -ForegroundColor Green
+} else {
+    Write-Host "`n[7/8] Code signing skipped (-Sign not specified). Production build will be marked unsigned." -ForegroundColor Gray
+}
+
+# -----------------------------------------------------------------------------
+# 8. Post-Signing Integrity Hashing, version.json & SHA256SUMS.txt
+# -----------------------------------------------------------------------------
+Write-Host "`n[8/8] Computing post-signing cryptographic hashes and manifest..." -ForegroundColor Yellow
+
+$NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$AppVersion = "0.1.0-lab"
+
+$ArtifactsList = [System.Collections.Generic.List[PSCustomObject]]::new()
+$SumsLines = [System.Collections.Generic.List[string]]::new()
+
+$AllBundleFiles = Get-ChildItem -Path $DestPath -Recurse -File | Where-Object {
+    $_.Name -ne "SHA256SUMS.txt" -and $_.Name -ne "version.json"
+} | Sort-Object FullName
+
+foreach ($file in $AllBundleFiles) {
+    $relPath = ($file.FullName.Substring($DestPath.Length)).TrimStart('\').Replace('\', '/')
+    $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $size = $file.Length
+
+    $ArtifactsList.Add([ordered]@{
+        path = $relPath
+        sha256 = $hash
+        sizeBytes = $size
+    })
+
+    $SumsLines.Add("$hash  $relPath")
+}
+
+# Write SHA256SUMS.txt
+$SumsPath = Join-Path $DestPath "SHA256SUMS.txt"
+[System.IO.File]::WriteAllLines($SumsPath, $SumsLines, [System.Text.Encoding]::UTF8)
+Write-Host " -> Generated: $SumsPath ($($SumsLines.Count) file entries)" -ForegroundColor Green
+
+# Write version.json manifest
+$VersionInfo = [ordered]@{
+    schemaVersion = 1
     product = "Emule-Sion"
-    platform = "windows-x64"
-    version = "0.1.0"
+    version = $AppVersion
+    gitCommit = $GitCommit
+    gitDirty = $GitDirty
+    builtAtUtc = $NowIso
+    target = "x86_64-pc-windows-msvc"
     protocolVersion = 1
-    commit = $CommitHash
-    buildTimestampUtc = $NowIso
-    daemonExecutable = "bin/mule-daemon.exe"
-    appExecutable = "desktop.exe"
+    buildMode = "release"
+    signed = [bool]$Sign
+    toolchains = [ordered]@{
+        rustc = $RustcVersion
+        cargo = $CargoVersion
+        flutter = $FlutterVersion
+        dart = $DartVersion
+    }
+    artifacts = $ArtifactsList
 }
 
 $VersionJsonPath = Join-Path $DestPath "version.json"
-$VersionInfo | ConvertTo-Json -Depth 4 | Out-File -FilePath $VersionJsonPath -Encoding utf8
+$VersionJsonContent = $VersionInfo | ConvertTo-Json -Depth 6
+[System.IO.File]::WriteAllText($VersionJsonPath, $VersionJsonContent, [System.Text.Encoding]::UTF8)
+Write-Host " -> Generated: $VersionJsonPath" -ForegroundColor Green
+
+# -----------------------------------------------------------------------------
+# 9. Packaging ZIP Archive & Archive SHA-256
+# -----------------------------------------------------------------------------
+if (!$SkipZip) {
+    $ZipName = "EmuleSion-v${AppVersion}-windows-x64.zip"
+    $ZipPath = Join-Path (Split-Path $DestPath -Parent) $ZipName
+    
+    Write-Host "`nCreating distribution archive: $ZipName..." -ForegroundColor Yellow
+    if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
+
+    Compress-Archive -Path "$DestPath\*" -DestinationPath $ZipPath -CompressionLevel Optimal
+    
+    $ZipHash = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $ZipHashPath = "$ZipPath.sha256"
+    [System.IO.File]::WriteAllText($ZipHashPath, "$ZipHash  $ZipName`n", [System.Text.Encoding]::UTF8)
+    
+    Write-Host " -> Archive built: $ZipPath" -ForegroundColor Green
+    Write-Host " -> Archive SHA-256: $ZipHash" -ForegroundColor Green
+}
 
 Write-Host "`n==================================================" -ForegroundColor Green
-Write-Host "  Build Succeeded! Distribution ready at:         " -ForegroundColor Green
-Write-Host "  $DestPath" -ForegroundColor Cyan
+Write-Host "  Release Candidate Packaging Succeeded!          " -ForegroundColor Green
+Write-Host "  Destination: $DestPath" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Green
