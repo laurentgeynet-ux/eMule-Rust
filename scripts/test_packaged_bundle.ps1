@@ -104,6 +104,10 @@ try {
 
     Write-Host " -> version.json schema valid (version: $($VersionJson.version), commit: $($VersionJson.gitCommit.Substring(0,8))...)" -ForegroundColor Green
 
+    $PackagedUi = Join-Path $BundleCopyDir "EmuleSion.exe"
+    if (!(Test-Path $PackagedUi)) { throw "Primary UI executable 'EmuleSion.exe' missing from bundle root!" }
+    Write-Host " -> Primary UI binary verified: EmuleSion.exe" -ForegroundColor Gray
+
     # -------------------------------------------------------------------------
     # 4. Boot Packaged Daemon in Isolated Workdir
     # -------------------------------------------------------------------------

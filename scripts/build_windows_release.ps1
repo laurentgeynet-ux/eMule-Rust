@@ -121,18 +121,17 @@ New-Item -ItemType Directory -Path $DestPath -Force | Out-Null
 # Copy Flutter release binaries and assets
 Copy-Item -Path "$FlutterReleaseDir\*" -Destination $DestPath -Recurse -Force
 
-# Provide EmuleSion.exe alongside desktop.exe
+# Standardize executable naming: EmuleSion.exe is the sole desktop UI binary
 $PrimaryExe = Join-Path $DestPath "desktop.exe"
 $BrandedExe = Join-Path $DestPath "EmuleSion.exe"
 if (Test-Path $PrimaryExe) {
-    Copy-Item -Path $PrimaryExe -Destination $BrandedExe -Force
+    Move-Item -Path $PrimaryExe -Destination $BrandedExe -Force
 }
 
 # Create bin/ directory and bundle mule-daemon.exe
 $BinDir = Join-Path $DestPath "bin"
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 Copy-Item -Path $DaemonExe -Destination $BinDir -Force
-Copy-Item -Path $DaemonExe -Destination $DestPath -Force
 
 Write-Host " -> Bundle assembled successfully in: $DestPath" -ForegroundColor Green
 

@@ -97,3 +97,21 @@ LINTING           : cargo clippy sans avertissement (-D warnings).
 ISOLATION         : 100 % loopback 127.0.0.1 strict.
 ANONYMISATION     : 100 % validée mécaniquement (Unicode NFC + bidi/ctrl échappés).
 ```
+
+---
+
+## 7. Livrables de la Release Candidate (Industrialisation Locale)
+
+Le bundle autonome Windows x64 est généré par `scripts/build_windows_release.ps1` :
+- **Exécutable Principal** : `EmuleSion.exe` (binaire UI Flutter Desktop Windows autonome).
+- **Démon d'Arrière-Plan** : `bin/mule-daemon.exe` (moteur local supervisé).
+- **Manifeste de Traçabilité** : `version.json` (commit Git exact, horodatage UTC, versions des toolchains, `gitDirty: false`).
+- **Sommes de Contrôle** : `SHA256SUMS.txt` pour les fichiers du bundle.
+- **Inventaire SBOM CycloneDX 1.5** :
+  - `sbom/rust.cdx.json` : 191 composants Rust.
+  - `sbom/flutter.cdx.json` : 33 composants Flutter.
+  - `sbom/windows-bundle.cdx.json` : composants binaires Windows assemblés.
+  - `sbom/sbom.cdx.json` : 239 composants consolidés.
+  - `sbom/license-audit.md` : rapport de conformité confirmant 100% de compatibilité avec `deny.toml`.
+- **Archive Scellée** : `EmuleSion-v0.1.0-lab-windows-x64.zip` et son empreinte `EmuleSion-v0.1.0-lab-windows-x64.zip.sha256`.
+- **Validation QA** : Protocole détaillé dans [docs/QA_RECEPTION_PROTOCOL.md](docs/QA_RECEPTION_PROTOCOL.md) et scripts de test automatisés (`scripts/test_packaged_bundle.ps1`, `scripts/test_rc_matrix.ps1`).

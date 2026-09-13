@@ -96,11 +96,26 @@ flutter analyze
 flutter test
 ```
 
-### Packaging Windows Autonome
+### Packaging Windows Autonome & Release Candidate
 ```powershell
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
 ```
-Le bundle final est assemblé dans `dist/EmuleSion-Windows/` avec le manifeste de traçabilité `version.json`.
+Le bundle autonome est assemblé dans `dist/EmuleSion-Windows/` :
+- Binaire principal `EmuleSion.exe` et démon autonome `bin/mule-daemon.exe`.
+- Manifeste de provenance `version.json` et sommes de contrôle `SHA256SUMS.txt`.
+- Inventaire SBOM CycloneDX 1.5 (`sbom/sbom.cdx.json`) et audit de conformité (`sbom/license-audit.md`).
+- Archive de distribution scellée `dist/EmuleSion-v0.1.0-lab-windows-x64.zip` et son empreinte `.sha256`.
+
+### Validation Post-Packaging & Protocole QA
+```powershell
+# 1. Smoke test post-packaging E2E en bac à sable temporaire hors dépôt
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_packaged_bundle.ps1
+
+# 2. Matrice de supervision et d'environnement (Unicode, port 4660 occupé, lock, crash recovery)
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_rc_matrix.ps1
+```
+
+Protocole détaillé de réception pour testeurs internes : [docs/QA_RECEPTION_PROTOCOL.md](docs/QA_RECEPTION_PROTOCOL.md).
 
 ---
 
@@ -109,4 +124,5 @@ Le bundle final est assemblé dans `dist/EmuleSion-Windows/` avec le manifeste d
 Pour consulter l'historique complet des versions et la synthèse de la dernière release interne :
 - [CHANGELOG.md](CHANGELOG.md)
 - [RELEASE_NOTES_0.1.0-lab.md](RELEASE_NOTES_0.1.0-lab.md)
+- [Protocole de Réception QA](docs/QA_RECEPTION_PROTOCOL.md)
 - [Guide de Référence et Walkthrough](walkthrough.md)
