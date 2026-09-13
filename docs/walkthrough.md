@@ -58,7 +58,7 @@ La Phase 3C consolide l'intégration entre le démon Rust (`mule-daemon`) et l'i
 3. **Sécurité et isolation stricte de `auth.token`** :
    - **Non-exposition** : Le secret d'authentification n'est **jamais** placé dans `session.json` ni affiché dans les flux `stdout` du démon (`(redacted)`).
    - **Protection contre les liens** : Rejet formel des liens symboliques ou reparse points Windows (`symlink_metadata`).
-   - **Jeton à haute entropie CSPRNG** : Généré directement à partir de 32 octets aléatoires issus du générateur cryptographique du système d'exploitation (`rand::rng().fill_bytes(&mut bytes)`), encodé sous la forme stricte de 64 caractères hexadécimaux (`AUTH_TOKEN_HEX_LEN = 64`). Tout token non conforme (taille != 64 ou caractères non hexadécimaux) est immédiatement rejeté par Rust et Flutter.
+   - **Jeton à haute entropie CSPRNG** : Généré directement à partir de 32 octets aléatoires issus du générateur cryptographique du système d'exploitation (`rand::rngs::OsRng` via `try_fill_bytes`, dépendant de `rand 0.9` verrouillé dans `Cargo.lock`), encodé sous la forme stricte de 64 caractères hexadécimaux (`AUTH_TOKEN_HEX_LEN = 64`). Tout token non conforme (taille != 64 ou caractères non hexadécimaux) est immédiatement rejeté par Rust et Flutter.
    - **Zéro fuite côté client** : Le client Flutter et son superviseur ne journalisent jamais le token dans les messages d'erreur ou traces d'exceptions.
 
 4. **Superviseur Flutter résilient (`apps/desktop/lib/services/daemon_supervisor.dart`)** :
@@ -104,17 +104,18 @@ Toutes les commandes ci-dessous doivent s'exécuter avec succès :
 & "$env:USERPROFILE\.cargo\bin\cargo.exe" fmt --check
 
 # 2. Analyse statique stricte (zéro warning toléré)
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" clippy --workspace -- -D warnings
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" clippy --workspace --all-targets --all-features -- -D warnings
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" clippy --workspace --all-targets -- -D warnings
 
-# 3. Exécution complète des 69 tests d'intégration et unitaires Rust (avec support lab)
+# 3. Exécution complète des 87 tests d'intégration, unitaires et proptests Rust (avec support lab)
 & "$env:USERPROFILE\.cargo\bin\cargo.exe" test --workspace --all-features
 ```
 
 *Résultats validés :*
 - `mule-format` : 19 tests passés (AICH, eD2K hashing, liens parsing/normalisation, .met parsing & offsets).
-- `mule-core` : 9 tests passés (RangeSet, insertion, fusion, PartFile persistance, restauration SQLite `get_all_downloads` & corruption recovery).
-- `mule-daemon` : 7 tests passés (Verrouillage exclusif, session atomique avec retries & sync_all, validation token, port de repli éphémère, contrat JSON-RPC, transfert inter-démons loopback avec crash à 50% et reprise intègre).
-- `mule-protocol` : 34 tests passés (Framing eD2K zéro unsafe, fragmentation octet par octet, limites strictes, paquets malformés, machine à états de lab, tracker in-flight, indexation des hashes hébergés, et transfert TCP loopback avec blocs désordonnés).
+- `mule-core` : 12 tests passés (RangeSet, insertion, fusion, PartFile persistance, restauration SQLite `get_all_downloads`, invariants proptest de permutation et résistance à la corruption SQLite sans écrasement).
+- `mule-daemon` : 10 tests passés (Verrouillage exclusif, session atomique avec retries & sync_all, validation token, port de repli éphémère, contrat JSON-RPC, transfert inter-démons avec crash à 50% et reprise intègre, isolation multi-téléchargements sans diaphonie, tolérance aux sources lentes).
+- `mule-protocol` : 46 tests passés (Framing eD2K zéro unsafe, fragmentation octet par octet, limites strictes, paquets malformés, machine à états de lab, tracker in-flight, indexation des hashes hébergés, transfert TCP loopback, 10 tests adverses et 2 suites proptest d'invariants de capacité).
 
 ### 3.2 Client Flutter Desktop (Analyse & Tests)
 ```powershell
@@ -350,7 +351,7 @@ lab / loopback wire protocol (PR_LAB = 0xEE) ≠ eD2K / eMule historical wire pr
 ```
 - Le protocole de laboratoire opère sous le magic byte `PR_LAB = 0xEE`.
 - Il utilise des messages typés explicites (`Hello`, `HelloAck`, `FileOffer`, `RequestBlock`, `BlockData`, `BlockRejected`, `Goodbye`, `ProtocolError`).
-- Aucun chemin de fichier local (`PathBuf`) n'est jamais accepté depuis le réseau : le moteur de test [`LabSourceEngine`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/lab/source_engine.rs) sert ses fixtures depuis un catalogue en mémoire indexé uniquement par hash 16 octets.
+- Aucun chemin de fichier local (`PathBuf`) n'est jamais accepté depuis le réseau : le moteur de test [`LabSourceEngine`](crates/mule-protocol/src/lab/source_engine.rs) sert ses fixtures depuis un catalogue en mémoire indexé uniquement par hash 16 octets.
 
 ### 9.2 Machine à États Pure (`PeerStateMachine`)
 - États mutuellement exclusifs : `Disconnected`, `Connecting`, `AwaitingHello`, `AwaitingHelloAck { local_nonce }`, `Ready { remote_peer_id, negotiated_version }`, `Closing`, `Closed`, `Failed { reason }`.
@@ -359,13 +360,13 @@ lab / loopback wire protocol (PR_LAB = 0xEE) ≠ eD2K / eMule historical wire pr
 
 ### 9.3 Pipeline de Transfert et Intégration Core
 1. **Contrôle de congestion et requêtes en vol** :
-   Le composant [`InFlightTracker`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/lab/in_flight.rs) borne les requêtes simultanées à `MAX_IN_FLIGHT_REQUESTS = 8`. Tout bloc reçu sans demande préalable est rejeté avec fermeture immédiate de la session.
+   Le composant [`InFlightTracker`](crates/mule-protocol/src/lab/in_flight.rs) borne les requêtes simultanées à `MAX_IN_FLIGHT_REQUESTS = 8`. Tout bloc reçu sans demande préalable est rejeté avec fermeture immédiate de la session.
 2. **Tolérance prouvée à la livraison désordonnée** :
    Dans le test `test_nominal_loopback_transfer_with_shuffled_blocks`, les 53 blocs composant la part de 9 728 000 octets sont demandés et écrits dans le désordre. Le `RangeSet` de `mule-core` fusionne dynamiquement les intervalles au fur et à mesure de l'écriture sur le fichier `.part`.
 3. **Validation cryptographique finale** :
    À l'issue des 53 blocs, le calcul du hash eD2K sur le fichier `.part` physique confirme une identité parfaite avec `FIXTURE_EXACT_ONE_PART` (`d815a0409aaa0b4279dd86e580bb043f`).
 4. **Détection de corruption et reprise sur coupure** :
-   - L'altération d'un seul octet dans un bloc transmis génère une divergence de digest immédiate, prévenant toute finalisation frauduleuse ou corrompue.
+   - L'altération d'un octet n'est pas détectable instantanément lors de l'écriture sans preuve AICH par bloc ; elle est détectée lors de la vérification cryptographique de la part complète (calcul du hash racine eD2K de 9 728 000 octets) : aucune finalisation n'est permise en cas de discordance.
    - En cas d'interruption réseau après réception partielle (ex. 180 Ko reçus), la reconnexion interroge `RangeSet::missing_within` et ne redemande strictement que les octets manquants, permettant une reprise à chaud intègre.
 
 ---
@@ -419,3 +420,43 @@ Le test d'intégration `test_inter_daemon_loopback_transfer_and_interruption_res
 ### 10.4 Alignement de l'Interface Flutter Desktop (`apps/desktop`)
 - Prise en charge de l'état `DownloadStatus.waitingForSources` dans l'énumération de domaine, le DTO RPC (`RpcDto.parseStatus`), et le thème visuel (`AppTheme.getStatusColor`).
 - Tests unitaires et d'intégration Flutter Desktop : 31/31 passés, `flutter analyze` : zéro warning.
+
+---
+
+## 11. Phase 4.4 : Durcissement du Banc d'Essai (Cas Adverses, Invariants et Proptests)
+
+La Phase 4.4 transforme chaque scénario d'échec critique en propriétés mathématiques et garanties formellement testées, avant toute phase d'archéologie eD2K.
+
+### 11.1 Robustesse d'In-Flight et Gestion des Cas Adverses (`crates/mule-protocol`)
+La suite `crates/mule-protocol/tests/lab_adversarial.rs` couvre exhaustivement les cas limites réseau :
+1. **Neuvième requête en vol (`test_ninth_in_flight_request_rejected_without_leak`)** :
+   Le régulateur `InFlightTracker` bloque toute tentative au-delà de 8 requêtes simultanées avec `InFlightError::CapacityReached { limit: 8 }`. Aucune écriture n'est déclenchée et la capacité reste rigoureusement plafonnée à 8 sans fuite.
+2. **Réponse dupliquée (`test_duplicate_block_response_rejected`)** :
+   La première livraison d'un bloc consomme l'entrée. Une seconde livraison du même bloc renvoie `InFlightError::UnsolicitedBlock` de manière idempotente sans double comptage ni sous-dépassement de capacité.
+3. **Discordance de hash de fichier (`test_wrong_file_hash_response_rejected`)** :
+   Toute réponse portant un hash distinct de la requête en vol est rejetée avec `UnsolicitedBlock`, et la requête initiale demeure protégée en attente.
+4. **Discordance de taille de bloc (`test_length_mismatch_response_rejected`)** :
+   Si un pair retourne une longueur différente de celle attendue (ex: 100 Ko au lieu de 180 Ko), le bloc est rejeté avec `InFlightError::LengthMismatch`.
+5. **Expiration et livraison tardive (`test_reap_timeouts_and_late_block_rejection`)** :
+   `reap_timeouts` extrait les requêtes expirées pour replanification immédiate. Un bloc arrivant en retard est rejeté comme non sollicité.
+6. **Déconnexion abrupte avec 8 requêtes (`test_cancel_all_frees_capacity_on_disconnect`)** :
+   `cancel_all` libère l'intégralité des 8 requêtes pour les remettre en file d'attente, restaurant instantanément la pleine capacité du tracker (`len == 0`, `can_request == true`).
+7. **Rejet de bloc ciblé vs inconnu (`test_valid_block_rejected_frees_single_entry` / `test_unknown_block_rejected_fails`)** :
+   Un `BlockRejected` légitime ne libère que la requête concernée en préservant les 7 autres. Un rejet portant sur un offset inconnu lève une erreur `UnsolicitedRejection`.
+8. **Rejet strict des trames comprimées `0xD4` (`test_compressed_frame_0xd4_explicitly_rejected`)** :
+   Toute trame `PR_EMULE_COMPRESSED` est rejetée au niveau du décodage (`LabMessage::from_raw_packet`) et de la machine à états (`PeerStateMachine::on_raw_packet`) avec `ProtocolViolation::CompressedProtocolUnsupported` tant que la décompression bornée n'est pas déployée.
+
+### 11.2 Invariants et Tests de Propriété Formels (`proptest`)
+1. **Invariance de permutation sur `RangeSet` (`crates/mule-core/tests/range_set_properties.rs`)** :
+   Prouve que pour toute collection de plages d'octets disjointes insérées dans n'importe quel ordre aléatoire (shuffle), l'union canonique `ranges()`, la couverture `covered_len()`, et le calcul des trous `missing_within()` sont strictement identiques.
+2. **Cohérence des états `InFlightTracker` (`crates/mule-protocol/tests/in_flight_properties.rs`)** :
+   Vérifie que la capacité disponible est toujours exactement $8 - len$, qu'aucun bloc ne peut être validé deux fois, et que `cancel_all` restaure toujours `len == 0`.
+
+### 11.3 Isolation Multi-Téléchargements & Intégrité SQLite (`crates/mule-daemon`)
+La suite `crates/mule-daemon/tests/daemon_adversarial.rs` valide l'étanchéité du démon :
+1. **Multi-téléchargements concurrents sans diaphonie (`test_concurrent_downloads_no_crosstalk`)** :
+   Deux fichiers distincts (368 Ko et 552 Ko) sont téléchargés simultanément depuis une source loopback partagée. Vérification sur disque : chaque fichier cible physique est créé, sa taille est exacte, son hash eD2K correspond fidèlement, et aucune interférence n'existe entre leurs fichiers `.part` ou métadonnées SQLite.
+2. **Source à forte latence (`test_slow_source_delayed_delivery_recovers_cleanly`)** :
+   Une source retardant ses réponses de 1 seconde est gérée passivement par le planificateur asynchrone sans emballement CPU ni boucle active.
+3. **Résistance à la corruption de base SQLite (`test_corrupted_database_fails_explicitly_in_daemon`)** :
+   Une base `mule.db` contenant des octets corrompus provoque un échec explicite au démarrage, **sans jamais supprimer ni écraser silencieusement** les données existantes sur disque.

@@ -236,6 +236,9 @@ impl LabMessage {
 
     /// Deserializes a [`RawPacket`] into a [`LabMessage`].
     pub fn from_raw_packet(packet: &RawPacket) -> Result<Self, ProtocolError> {
+        if packet.protocol == crate::types::PR_EMULE_COMPRESSED {
+            return Err(ProtocolError::CompressedProtocolUnsupported);
+        }
         if packet.protocol != PR_LAB {
             return Err(ProtocolError::Framing(
                 crate::error::FramingError::UnsupportedProtocol {

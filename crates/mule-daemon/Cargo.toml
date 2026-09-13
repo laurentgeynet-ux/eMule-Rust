@@ -37,3 +37,7 @@ tempfile.workspace = true
 name = "inter_daemon_transfer"
 required-features = ["lab-loopback"]
 
+[[test]]
+name = "daemon_adversarial"
+required-features = ["lab-loopback"]
+

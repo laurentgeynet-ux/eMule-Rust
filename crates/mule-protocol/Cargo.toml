@@ -21,6 +21,7 @@ mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
+proptest.workspace = true
 
 [[test]]
 name = "lab_state_machine"
@@ -32,5 +33,13 @@ required-features = ["lab-loopback"]
 
 [[test]]
 name = "loopback_transfer"
+required-features = ["lab-loopback"]
+
+[[test]]
+name = "lab_adversarial"
+required-features = ["lab-loopback"]
+
+[[test]]
+name = "in_flight_properties"
 required-features = ["lab-loopback"]
 

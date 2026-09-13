@@ -66,21 +66,25 @@ pub async fn run_lab_download(
     let ack = read_msg(&mut socket, &codec, &mut read_buf).await?;
     sm.on_message(ack)?;
 
-    let offer = read_msg(&mut socket, &codec, &mut read_buf).await?;
-    match offer {
-        LabMessage::FileOffer {
-            file_hash,
-            file_size,
-            ..
-        } => {
-            if file_hash != expected_hash.0 {
-                return Err("Peer offered unexpected file hash".into());
+    // Read FileOffers until we find our expected file offer
+    loop {
+        let msg = read_msg(&mut socket, &codec, &mut read_buf).await?;
+        match msg {
+            LabMessage::FileOffer {
+                file_hash,
+                file_size,
+                ..
+            } => {
+                if file_hash == expected_hash.0 {
+                    if file_size != total_size {
+                        return Err("Peer offered file with size mismatch".into());
+                    }
+                    break;
+                }
+                // If it's another hosted file offered by peer, continue checking
             }
-            if file_size != total_size {
-                return Err("Peer offered file with size mismatch".into());
-            }
+            other => return Err(format!("Expected FileOffer, got {other:?}").into()),
         }
-        other => return Err(format!("Expected FileOffer, got {other:?}").into()),
     }
 
     // 5. Calculate missing blocks
@@ -146,6 +150,18 @@ pub async fn run_lab_download(
                         start_offset,
                         data,
                     } => {
+                        if resp_hash != file_hash {
+                            return Err(
+                                "Protocol violation: BlockData for unexpected file hash".into(),
+                            );
+                        }
+                        if start_offset + data.len() as u64 > total_size {
+                            return Err(format!(
+                                "Protocol violation: BlockData [{start_offset}..{}] exceeds file total size {total_size}",
+                                start_offset + data.len() as u64
+                            )
+                            .into());
+                        }
                         tracker.validate_and_remove(&resp_hash, start_offset, data.len())?;
                         let snap = {
                             let mut dls = state.downloads.lock().await;

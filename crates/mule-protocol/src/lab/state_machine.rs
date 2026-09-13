@@ -3,8 +3,9 @@
 use thiserror::Error;
 
 use super::messages::{LabMessage, LAB_OP_HELLO, LAB_OP_HELLO_ACK};
+use crate::framing::RawPacket;
 use crate::traits::{ReceivedBlock, SourceStateUpdate};
-use crate::types::PeerId;
+use crate::types::{PeerId, PR_EMULE_COMPRESSED, PR_LAB};
 
 /// Protocol violation errors triggering immediate session termination.
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
@@ -42,6 +43,17 @@ pub enum ProtocolViolation {
     /// Payload structure was malformed.
     #[error("Malformed message payload: {0}")]
     Malformed(String),
+
+    /// Compressed frame (0xD4) rejected pending bounded decompression stage.
+    #[error("Compressed frame 0xD4 (PR_EMULE_COMPRESSED) is not supported prior to bounded decompression stage")]
+    CompressedProtocolUnsupported,
+
+    /// Unexpected or unsupported protocol byte.
+    #[error("Unexpected protocol byte 0x{protocol:02X} (expected 0xEE PR_LAB)")]
+    UnexpectedProtocol {
+        /// Rejected protocol byte.
+        protocol: u8,
+    },
 }
 
 /// Cause of terminal session failure.
@@ -189,6 +201,45 @@ impl PeerStateMachine {
         )?;
         self.state = next_state;
         Ok(actions)
+    }
+
+    /// Pure transition handling an incoming raw packet before decoding.
+    ///
+    /// Validates protocol byte (rejecting PR_EMULE_COMPRESSED or unexpected protocols)
+    /// and decodes into a [`LabMessage`].
+    pub fn on_raw_packet(
+        &mut self,
+        packet: &RawPacket,
+    ) -> Result<Vec<PeerAction>, ProtocolViolation> {
+        if packet.protocol == PR_EMULE_COMPRESSED {
+            self.state = PeerState::Failed {
+                reason: PeerFailure::Violation(ProtocolViolation::CompressedProtocolUnsupported),
+            };
+            return Err(ProtocolViolation::CompressedProtocolUnsupported);
+        }
+
+        if packet.protocol != PR_LAB {
+            let violation = ProtocolViolation::UnexpectedProtocol {
+                protocol: packet.protocol,
+            };
+            self.state = PeerState::Failed {
+                reason: PeerFailure::Violation(violation.clone()),
+            };
+            return Err(violation);
+        }
+
+        let msg = match LabMessage::from_raw_packet(packet) {
+            Ok(m) => m,
+            Err(e) => {
+                let violation = ProtocolViolation::Malformed(e.to_string());
+                self.state = PeerState::Failed {
+                    reason: PeerFailure::Violation(violation.clone()),
+                };
+                return Err(violation);
+            }
+        };
+
+        self.on_message(msg)
     }
 
     /// Pure transition function testable without network or side-effects.

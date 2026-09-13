@@ -102,4 +102,8 @@ pub enum ProtocolError {
     /// Download planner error.
     #[error("Download planner error: {0}")]
     Planner(String),
+
+    /// Compressed frame (0xD4) rejected pending bounded decompression stage.
+    #[error("Compressed frame 0xD4 (PR_EMULE_COMPRESSED) is not supported prior to bounded decompression stage")]
+    CompressedProtocolUnsupported,
 }
