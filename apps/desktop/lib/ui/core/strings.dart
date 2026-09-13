@@ -9,8 +9,10 @@ abstract final class AppStrings {
   // Network & Mode Badges
   static const String loopbackLabMode = 'Loopback Lab Mode';
   static const String tooltipLoopbackLabMode =
-      'Laboratory mode: connections are restricted to 127.0.0.1.\n'
-      'No public eD2K servers, Kad nodes, or external peers are contacted.';
+      'Laboratory mode.\n'
+      'Connections are restricted to 127.0.0.1.\n\n'
+      'No public eD2K servers, Kad nodes,\n'
+      'or external peers are contacted.';
   static const String devModeBadge = 'DEV';
 
   // Navigation & Sections

@@ -285,7 +285,7 @@ void main() {
       // "All Downloads" is selected and should NOT be inside an Opacity widget
       // Other filters (Active, Paused, Completed, Failed) should be dimmed
       final opacityWidgets = tester.widgetList<Opacity>(find.byType(Opacity));
-      final dimmedFilters = opacityWidgets.where((o) => o.opacity == 0.5).toList();
+      final dimmedFilters = opacityWidgets.where((o) => o.opacity == 0.55).toList();
 
       // Expect exactly 4 dimmed sidebar filters (Active, Paused, Completed, Failed)
       expect(dimmedFilters.length, 4);

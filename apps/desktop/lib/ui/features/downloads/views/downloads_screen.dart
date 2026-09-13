@@ -150,6 +150,17 @@ class DownloadsScreen extends StatelessWidget {
           Tooltip(
             message: AppStrings.tooltipLoopbackLabMode,
             preferBelow: true,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xF01E2A3A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.4), width: 0.5),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 12,
+              color: Colors.white70,
+              height: 1.4,
+            ),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(

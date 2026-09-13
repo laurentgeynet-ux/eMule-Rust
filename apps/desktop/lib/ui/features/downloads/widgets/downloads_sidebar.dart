@@ -254,7 +254,7 @@ class DownloadsSidebar extends StatelessWidget {
     );
 
     if (isDimmed) {
-      return Opacity(opacity: 0.5, child: item);
+      return Opacity(opacity: 0.55, child: item);
     }
     return item;
   }
