@@ -186,7 +186,7 @@ void main() {
       expect(find.byType(DownloadRow), findsNWidgets(4));
     });
 
-    testWidgets('displays Loopback Lab Mode badge and hides dev tools by default',
+    testWidgets('displays Loopback Lab Mode badge with tooltip and hides dev tools by default',
         (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -195,9 +195,15 @@ void main() {
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
-      // Loopback Lab Mode badge is visible
+      // Loopback Lab Mode badge is visible with security tooltip
       expect(find.text('Loopback Lab Mode'), findsOneWidget);
       expect(find.byIcon(Icons.science_outlined), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Tooltip && w.message != null && w.message!.contains('127.0.0.1'),
+        ),
+        findsOneWidget,
+      );
 
       // Dev tools badge and bug toggle are strictly hidden
       expect(find.text('DEV'), findsNothing);
@@ -257,6 +263,32 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Add eD2K Link'), findsOneWidget);
+    });
+
+    testWidgets('dims sidebar filters with zero count except selected',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      // Empty client = all counts at 0
+      final emptyFake = FakeMuleDaemonClient(enableAutoSimulation: false);
+      for (final id in ['item-1', 'item-2', 'item-3']) {
+        await emptyFake.removeDownload(id);
+      }
+      final emptyVm = DownloadsViewModel(client: emptyFake);
+      addTearDown(emptyVm.dispose);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));
+      await tester.pumpAndSettle();
+
+      // "All Downloads" is selected and should NOT be inside an Opacity widget
+      // Other filters (Active, Paused, Completed, Failed) should be dimmed
+      final opacityWidgets = tester.widgetList<Opacity>(find.byType(Opacity));
+      final dimmedFilters = opacityWidgets.where((o) => o.opacity == 0.5).toList();
+
+      // Expect exactly 4 dimmed sidebar filters (Active, Paused, Completed, Failed)
+      expect(dimmedFilters.length, 4);
     });
   });
 }

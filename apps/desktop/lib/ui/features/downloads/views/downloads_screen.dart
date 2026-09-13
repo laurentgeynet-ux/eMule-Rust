@@ -147,27 +147,31 @@ class DownloadsScreen extends StatelessWidget {
           const SizedBox(width: 10),
 
           // Loopback Lab Mode Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.blueGrey.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3), width: 0.5),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.science_outlined, size: 14, color: Colors.white70),
-                SizedBox(width: 5),
-                Text(
-                  AppStrings.loopbackLabMode,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white70,
+          Tooltip(
+            message: AppStrings.tooltipLoopbackLabMode,
+            preferBelow: true,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.blueGrey.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3), width: 0.5),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.science_outlined, size: 14, color: Colors.white70),
+                  SizedBox(width: 5),
+                  Text(
+                    AppStrings.loopbackLabMode,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white70,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 

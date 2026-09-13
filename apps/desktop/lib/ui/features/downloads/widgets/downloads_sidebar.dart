@@ -193,8 +193,9 @@ class DownloadsSidebar extends StatelessWidget {
     Color? color,
   }) {
     final isSelected = viewModel.currentFilter == filter;
+    final isDimmed = count == 0 && !isSelected;
 
-    return Padding(
+    final item = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: isSelected
@@ -251,6 +252,11 @@ class DownloadsSidebar extends StatelessWidget {
         ),
       ),
     );
+
+    if (isDimmed) {
+      return Opacity(opacity: 0.5, child: item);
+    }
+    return item;
   }
 
   Color _getConnectionColor(DaemonConnectionState state) {
