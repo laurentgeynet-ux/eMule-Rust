@@ -26,10 +26,26 @@ impl DownloadService {
         std::fs::create_dir_all(&temp_dir)
             .map_err(|e| JsonRpcError::business(format!("Failed to create temp dir: {e}")))?;
 
+        let existing = db.get_all_downloads().unwrap_or_default();
+        let mut active = HashMap::new();
+        for dl in existing {
+            let ranges = db.load_received_ranges(&dl.id).unwrap_or_default();
+            let part_file =
+                PartFile::open_or_create(&dl.temp_path, dl.total_size, AllocationPolicy::None).ok();
+            active.insert(
+                dl.id,
+                ActiveDownload {
+                    download: dl,
+                    ranges,
+                    part_file,
+                },
+            );
+        }
+
         Ok(Self {
             db,
             temp_dir,
-            active: HashMap::new(),
+            active,
         })
     }
 
@@ -190,11 +206,76 @@ impl DownloadService {
             .map_err(|e| JsonRpcError::business(format!("DB sync error: {e}")))?;
 
         active.download.status = if active.ranges.covered_len() == active.download.total_size {
-            DownloadStatus::Completed
+            DownloadStatus::Verifying
         } else {
             DownloadStatus::Downloading
         };
         active.download.updated_at = now_ms();
+        let _ = self.db.update_status(id, active.download.status);
+
+        Ok(make_snapshot(&active.download, &active.ranges))
+    }
+
+    pub fn update_status(
+        &mut self,
+        id: &Uuid,
+        status: DownloadStatus,
+    ) -> Result<DownloadSnapshot, JsonRpcError> {
+        let active = self
+            .active
+            .get_mut(id)
+            .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
+
+        active.download.status = status;
+        active.download.updated_at = now_ms();
+        self.db
+            .update_status(id, status)
+            .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
+
+        Ok(make_snapshot(&active.download, &active.ranges))
+    }
+
+    pub fn get_missing_ranges(&self, id: &Uuid) -> Option<Vec<std::ops::Range<u64>>> {
+        self.active
+            .get(id)
+            .map(|a| a.ranges.missing_within(0..a.download.total_size))
+    }
+
+    pub fn get_download_file_info(
+        &self,
+        id: &Uuid,
+    ) -> Option<(PathBuf, PathBuf, mule_format::Ed2kHash, u64)> {
+        self.active.get(id).map(|a| {
+            (
+                a.download.temp_path.clone(),
+                a.download.target_path.clone(),
+                a.download.ed2k_hash,
+                a.download.total_size,
+            )
+        })
+    }
+
+    pub fn finalize_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, JsonRpcError> {
+        let active = self
+            .active
+            .get_mut(id)
+            .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
+
+        // Close part file handle first so file can be moved cleanly
+        let _ = active.part_file.take();
+
+        mule_core::finalize_file(
+            &active.download.temp_path,
+            &active.download.target_path,
+            mule_core::CollisionStrategy::Overwrite,
+        )
+        .map_err(|e| JsonRpcError::business(format!("Finalize error: {e}")))?;
+
+        active.download.status = DownloadStatus::Completed;
+        active.download.updated_at = now_ms();
+        self.db
+            .update_status(id, DownloadStatus::Completed)
+            .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
         Ok(make_snapshot(&active.download, &active.ranges))
     }

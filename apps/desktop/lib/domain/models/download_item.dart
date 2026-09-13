@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 enum DownloadStatus {
   queued,
+  waitingForSources,
   allocating,
   downloading,
   paused,
@@ -14,6 +15,8 @@ enum DownloadStatus {
     switch (this) {
       case DownloadStatus.queued:
         return 'Queued';
+      case DownloadStatus.waitingForSources:
+        return 'Waiting for Sources';
       case DownloadStatus.allocating:
         return 'Allocating';
       case DownloadStatus.downloading:
@@ -34,6 +37,7 @@ enum DownloadStatus {
   bool get isActive =>
       this == DownloadStatus.downloading ||
       this == DownloadStatus.allocating ||
+      this == DownloadStatus.waitingForSources ||
       this == DownloadStatus.verifying ||
       this == DownloadStatus.completing;
 

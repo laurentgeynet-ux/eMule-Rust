@@ -78,7 +78,9 @@ fn test_in_flight_out_of_order_and_duplicates() {
     assert!(tracker.is_empty());
 
     // 2. Duplicate arrival of block A after consumption
-    let dup_err = tracker.validate_and_remove(&file_hash, 0, 1000).unwrap_err();
+    let dup_err = tracker
+        .validate_and_remove(&file_hash, 0, 1000)
+        .unwrap_err();
     assert!(matches!(
         dup_err,
         InFlightError::UnsolicitedBlock { start_offset: 0 }

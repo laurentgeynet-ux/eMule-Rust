@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod framing;
+#[cfg(feature = "lab-loopback")]
 pub mod lab;
 pub mod limits;
 pub mod traits;
@@ -13,6 +14,7 @@ pub mod types;
 
 pub use error::{FramingError, ProtocolError};
 pub use framing::{PacketCodec, RawPacket};
+#[cfg(feature = "lab-loopback")]
 pub use lab::*;
 pub use limits::*;
 pub use traits::*;

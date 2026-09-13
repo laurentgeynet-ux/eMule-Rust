@@ -797,11 +797,13 @@ name = "mule-daemon"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bytes",
  "fs4",
  "futures-util",
  "hex",
  "mule-core",
  "mule-format",
+ "mule-protocol",
  "rand",
  "serde",
  "serde_json",

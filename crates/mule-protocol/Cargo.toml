@@ -6,6 +6,10 @@ license.workspace = true
 authors.workspace = true
 description = "Deterministic eD2K wire protocol codec, framing and abstractions for Emule-Sion"
 
+[features]
+default = []
+lab-loopback = []
+
 [dependencies]
 bytes.workspace = true
 thiserror.workspace = true
@@ -17,3 +21,16 @@ mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
+
+[[test]]
+name = "lab_state_machine"
+required-features = ["lab-loopback"]
+
+[[test]]
+name = "lab_in_flight_and_blocks"
+required-features = ["lab-loopback"]
+
+[[test]]
+name = "loopback_transfer"
+required-features = ["lab-loopback"]
+

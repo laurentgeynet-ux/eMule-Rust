@@ -51,6 +51,11 @@ impl LabSourceEngine {
         );
     }
 
+    /// Returns the hashes of all hosted files.
+    pub fn hosted_hashes(&self) -> Vec<[u8; 16]> {
+        self.files.keys().copied().collect()
+    }
+
     /// Generates a `FileOffer` message for the specified hash if hosted.
     pub fn offer_file(&self, file_hash: &[u8; 16]) -> Option<LabMessage> {
         self.files.get(file_hash).map(|f| LabMessage::FileOffer {

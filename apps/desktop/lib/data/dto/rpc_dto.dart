@@ -4,6 +4,8 @@ import '../../domain/models/download_item.dart';
 class RpcDto {
   static DownloadStatus parseStatus(String? status) {
     switch (status?.toLowerCase()) {
+      case 'waiting_for_sources':
+        return DownloadStatus.waitingForSources;
       case 'allocating':
         return DownloadStatus.allocating;
       case 'downloading':

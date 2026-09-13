@@ -62,6 +62,7 @@ fn test_out_of_order_insertions() {
 }
 
 #[test]
+#[allow(clippy::reversed_empty_ranges)]
 fn test_invalid_ranges_rejected() {
     let mut set = RangeSet::new();
 

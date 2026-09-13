@@ -7,6 +7,8 @@ void main() {
     test('DownloadStatus property helpers work as expected', () {
       expect(DownloadStatus.downloading.isActive, isTrue);
       expect(DownloadStatus.allocating.isActive, isTrue);
+      expect(DownloadStatus.waitingForSources.isActive, isTrue);
+      expect(DownloadStatus.waitingForSources.label, 'Waiting for Sources');
       expect(DownloadStatus.verifying.isActive, isTrue);
       expect(DownloadStatus.completing.isActive, isTrue);
       expect(DownloadStatus.paused.isActive, isFalse);

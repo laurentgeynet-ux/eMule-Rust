@@ -106,15 +106,15 @@ Toutes les commandes ci-dessous doivent s'exécuter avec succès :
 # 2. Analyse statique stricte (zéro warning toléré)
 & "$env:USERPROFILE\.cargo\bin\cargo.exe" clippy --workspace -- -D warnings
 
-# 3. Exécution complète des 65 tests d'intégration et unitaires Rust
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" test --workspace
+# 3. Exécution complète des 69 tests d'intégration et unitaires Rust (avec support lab)
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" test --workspace --all-features
 ```
 
 *Résultats validés :*
 - `mule-format` : 19 tests passés (AICH, eD2K hashing, liens parsing/normalisation, .met parsing & offsets).
-- `mule-core` : 8 tests passés (RangeSet, insertion, fusion, PartFile persistance & corruption recovery).
-- `mule-daemon` : 5 tests passés (Verrouillage exclusif, session atomique avec retries & sync_all, validation token, port de repli éphémère, contrat JSON-RPC).
-- `mule-protocol` : 33 tests passés (Framing eD2K zéro unsafe, fragmentation octet par octet, limites strictes, paquets malformés, machine à états de lab, tracker in-flight, et transfert TCP loopback avec blocs désordonnés).
+- `mule-core` : 9 tests passés (RangeSet, insertion, fusion, PartFile persistance, restauration SQLite `get_all_downloads` & corruption recovery).
+- `mule-daemon` : 7 tests passés (Verrouillage exclusif, session atomique avec retries & sync_all, validation token, port de repli éphémère, contrat JSON-RPC, transfert inter-démons loopback avec crash à 50% et reprise intègre).
+- `mule-protocol` : 34 tests passés (Framing eD2K zéro unsafe, fragmentation octet par octet, limites strictes, paquets malformés, machine à états de lab, tracker in-flight, indexation des hashes hébergés, et transfert TCP loopback avec blocs désordonnés).
 
 ### 3.2 Client Flutter Desktop (Analyse & Tests)
 ```powershell
@@ -367,3 +367,55 @@ lab / loopback wire protocol (PR_LAB = 0xEE) ≠ eD2K / eMule historical wire pr
 4. **Détection de corruption et reprise sur coupure** :
    - L'altération d'un seul octet dans un bloc transmis génère une divergence de digest immédiate, prévenant toute finalisation frauduleuse ou corrompue.
    - En cas d'interruption réseau après réception partielle (ex. 180 Ko reçus), la reconnexion interroge `RangeSet::missing_within` et ne redemande strictement que les octets manquants, permettant une reprise à chaud intègre.
+
+---
+
+## 10. Phase 4.3 : Transfert Loopback Inter-Démons Intégré, Feature Lab et Tolérance aux Pannes
+
+La Phase 4.3 achève l'intégration de bout en bout du pipeline de transfert en exécutant un transfert complet entre deux processus `mule-daemon` distincts, tout en isolant le code de test derrière une feature Cargo dédiée et en prouvant la résilience du stockage en cas de crash brutal.
+
+### 10.1 Feature Cargo `lab-loopback` & Sécurité des Livrables de Production
+- **Isolation stricte** : Les fixtures synthétiques (`FIXTURE_EXACT_ONE_PART`), le moteur de source en mémoire et les routes RPC de test (`lab.addPeerSource`) sont strictement isolés derrière la feature Cargo `lab-loopback` dans `crates/mule-protocol` et `crates/mule-daemon`.
+- **Livrables de production allégés et durcis** : Les builds standards (`cargo build --release`) conservent `default = []`. Ils ne compilent ni n'embarquent le moindre code de mock ou de serveur de test, garantissant une surface d'attaque minimale et aucun résidu de banc d'essai.
+
+### 10.2 Architecture du Transfert Inter-Démons (`crates/mule-daemon`)
+```
+┌────────────────────────────────────────────────────────┐
+│                   Démon A (Source Lab)                │
+│  - Socket TCP loopback éphémère (127.0.0.1:0)          │
+│  - Framing binaire PR_LAB (0xEE)                       │
+│  - Sert FIXTURE_EXACT_ONE_PART (9 728 000 octets)      │
+│  - Catalogue mémoire indexé par hash 16 octets         │
+└───────────────────────────▲────────────────────────────┘
+                            │ TCP Loopback (0xEE)
+┌───────────────────────────▼────────────────────────────┐
+│                  Démon B (Client Démon)                │
+│  - Répertoire isolé (mule.lock, SQLite WAL, .part)     │
+│  - JSON-RPC WebSocket sur port local éphémère          │
+│  - Pipeline run_lab_download :                         │
+│    • InFlightTracker (max 8 requêtes en vol)           │
+│    • RangeSet::missing_within (requêtes ciblées)       │
+│    • Écriture atomique dans .part et sync SQLite WAL   │
+│    • Vérification racine eD2K puis finalisation .txt   │
+└────────────────────────────────────────────────────────┘
+```
+
+1. **Cycle d'états streaming vérifié via WebSocket JSON-RPC** :
+   - `Queued` : Le lien eD2K est soumis via `downloads.addEd2kLink`.
+   - `WaitingForSources` : Le téléchargement attend qu'une source active soit identifiée.
+   - `Downloading` : Connexion établie avec la source loopback, négociation de la machine à états (`Hello` / `HelloAck`), et streaming des blocs de 180 KiB.
+   - `Verifying` : Dès la réception du dernier bloc couvrant les 9 728 000 octets, l'état bascule immédiatement sur `Verifying` pour empêcher toute utilisation prématurée avant le contrôle d'intégrité.
+   - `Completed` : Le hash eD2K racine calculé sur le fichier physique `.part` correspond au hash de référence (`d815a0409aaa0b4279dd86e580bb043f`). Le fichier `.part` est renommé atomiquement vers le fichier de destination finale (`.txt`).
+
+### 10.3 Test d'Interruption Brutale à ~50% et Reprise Intègre (`tests/inter_daemon_transfer.rs`)
+Le test d'intégration `test_inter_daemon_loopback_transfer_and_interruption_resumption` valide de bout en bout la résistance aux pannes :
+1. **Transfert initial jusqu'à mi-parcours** : Le Démon B télécharge les blocs séquentiellement jusqu'à dépasser ~4.5 Mo (sur 9.72 Mo).
+2. **Crash brutal simulé** : Interruption immédiate du serveur Axum et annulation de toutes les tâches asynchrones d'arrière-plan via `AppState::abort_all_tasks()`.
+3. **Persistance WAL vérifiée** : Inspection de la base SQLite et du fichier `.part` : les plages acquises (environ 4.5 Mo à 5.0 Mo) sont intactes et persistées sur disque.
+4. **Redémarrage à froid (Cold Restart)** : Une nouvelle instance du Démon B redémarre sur le **même répertoire de travail**. Le `DownloadService` interroge `Database::get_all_downloads()` et restaure instantanément en mémoire l'état du téléchargement et ses plages acquises.
+5. **Reprise sans re-téléchargement** : Le client WebSocket se reconnecte, réinjecte la source loopback. Le planificateur `missing_within` constate les plages déjà présentes et **ne redemande strictement aucun octet déjà écrit**.
+6. **Finalisation intègre** : Les blocs restants sont reçus, le digest eD2K est validé et le fichier finalisé est strictement identique à la référence.
+
+### 10.4 Alignement de l'Interface Flutter Desktop (`apps/desktop`)
+- Prise en charge de l'état `DownloadStatus.waitingForSources` dans l'énumération de domaine, le DTO RPC (`RpcDto.parseStatus`), et le thème visuel (`AppTheme.getStatusColor`).
+- Tests unitaires et d'intégration Flutter Desktop : 31/31 passés, `flutter analyze` : zéro warning.

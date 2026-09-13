@@ -16,6 +16,7 @@ pub struct AppState {
     pub event_tx: broadcast::Sender<String>,
     pub instance_id: Uuid,
     pub session_id: Uuid,
+    pub abort_handles: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
 }
 
 impl AppState {
@@ -28,6 +29,21 @@ impl AppState {
             event_tx,
             instance_id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),
+            abort_handles: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Registers a background task handle so it can be cleanly aborted on shutdown.
+    pub async fn register_task(&self, handle: tokio::task::AbortHandle) {
+        let mut handles = self.abort_handles.lock().await;
+        handles.push(handle);
+    }
+
+    /// Aborts all active background tasks associated with this daemon state.
+    pub async fn abort_all_tasks(&self) {
+        let mut handles = self.abort_handles.lock().await;
+        for handle in handles.drain(..) {
+            handle.abort();
         }
     }
 

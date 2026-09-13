@@ -67,8 +67,8 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
 
         // 5. Verify part MD4
         let mut expected_md4 = Md4::new();
-        expected_md4.update(&vec![0x11; 5000]);
-        expected_md4.update(&vec![0x22; 5000]);
+        expected_md4.update(vec![0x11; 5000]);
+        expected_md4.update(vec![0x22; 5000]);
         let expected_digest: [u8; 16] = expected_md4.finalize().into();
 
         assert!(verify_part_hash(&read_back, &expected_digest));
@@ -133,4 +133,48 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
 
     // Overwrite strategy: succeeds
     finalize_file(&dummy_temp, &target_dest_path, CollisionStrategy::Overwrite).unwrap();
+}
+
+#[test]
+fn test_get_all_downloads_restoration() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("persistence_test.db");
+
+    let dl1 = Download::new(
+        "file1.bin",
+        1234,
+        Ed2kHash([0x11; 16]),
+        None,
+        dir.path().join("file1.bin"),
+        dir.path().join("001.part"),
+    );
+    let dl2 = Download::new(
+        "file2.bin",
+        5678,
+        Ed2kHash([0x22; 16]),
+        None,
+        dir.path().join("file2.bin"),
+        dir.path().join("002.part"),
+    );
+
+    {
+        let mut db = Database::open(&db_path).unwrap();
+        db.insert_download(&dl1).unwrap();
+        db.insert_download(&dl2).unwrap();
+    }
+
+    {
+        let db = Database::open(&db_path).unwrap();
+        let list = db.get_all_downloads().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].id, dl1.id);
+        assert_eq!(list[0].display_name, "file1.bin");
+        assert_eq!(list[0].total_size, 1234);
+        assert_eq!(list[0].ed2k_hash, Ed2kHash([0x11; 16]));
+
+        assert_eq!(list[1].id, dl2.id);
+        assert_eq!(list[1].display_name, "file2.bin");
+        assert_eq!(list[1].total_size, 5678);
+        assert_eq!(list[1].ed2k_hash, Ed2kHash([0x22; 16]));
+    }
 }

@@ -39,6 +39,10 @@ pub async fn handle_request(
         "downloads.remove" => handle_remove(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         "debug.injectRange" => handle_inject_range(state, req.params).await,
+        #[cfg(feature = "lab-loopback")]
+        "lab.addPeerSource" | "downloads.addSource" => {
+            handle_lab_add_peer_source(state, req.params).await
+        }
         unknown => Err(JsonRpcError::method_not_found(unknown)),
     };
 
@@ -220,4 +224,41 @@ async fn handle_inject_range(
     state.broadcast_download_update(snapshot.clone());
 
     Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+#[cfg(feature = "lab-loopback")]
+async fn handle_lab_add_peer_source(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["downloadId"]
+        .as_str()
+        .or_else(|| params["id"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'downloadId' or 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+
+    let peer_addr_str = params["peerAddr"]
+        .as_str()
+        .or_else(|| params["source"].as_str())
+        .or_else(|| params["endpoint"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'peerAddr' parameter"))?;
+    let peer_addr: std::net::SocketAddr = peer_addr_str
+        .parse()
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid socket address: {e}")))?;
+
+    // Spawn the lab downloader task
+    let state_clone = state.clone();
+    let handle = tokio::spawn(async move {
+        if let Err(e) = crate::lab::run_lab_download(id, peer_addr, state_clone).await {
+            tracing::error!(download_id = %id, error = %e, "Lab download worker failed");
+        }
+    });
+    state.register_task(handle.abort_handle()).await;
+
+    Ok(json!({
+        "started": true,
+        "downloadId": id.to_string(),
+        "peerAddr": peer_addr.to_string(),
+    }))
 }

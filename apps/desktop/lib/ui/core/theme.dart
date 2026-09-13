@@ -34,6 +34,7 @@ class AppTheme {
       case DownloadStatus.completing:
         return statusVerifying;
       case DownloadStatus.queued:
+      case DownloadStatus.waitingForSources:
         return statusQueued;
     }
   }

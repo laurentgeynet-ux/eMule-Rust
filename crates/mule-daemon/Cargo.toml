@@ -9,10 +9,12 @@ description = "Local daemon and JSON-RPC WebSocket API for emule-modern"
 [features]
 default = []
 debug-rpc = []
+lab-loopback = ["mule-protocol/lab-loopback"]
 
 [dependencies]
 mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
+mule-protocol = { path = "../mule-protocol" }
 tokio.workspace = true
 axum.workspace = true
 serde.workspace = true
@@ -25,7 +27,13 @@ futures-util.workspace = true
 hex.workspace = true
 rand.workspace = true
 fs4 = "1.1.0"
+bytes.workspace = true
 
 [dev-dependencies]
 tokio-tungstenite.workspace = true
 tempfile.workspace = true
+
+[[test]]
+name = "inter_daemon_transfer"
+required-features = ["lab-loopback"]
+
