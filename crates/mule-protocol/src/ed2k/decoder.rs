@@ -460,6 +460,12 @@ impl Ed2kDecoder {
     ) -> Result<Ed2kHello, Ed2kParseError> {
         let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
 
+        // In standard eD2K client-to-client handshake, OP_HELLO payload begins with hash length (0x10 = 16).
+        // If present, consume it. If absent (e.g. legacy/synthetic fixtures), read hash directly.
+        if reader.remaining() >= 17 && reader.peek_u8() == Some(0x10) {
+            let _ = reader.read_u8("hello_user_hash_len")?;
+        }
+
         let user_hash = reader.read_hash("hello_user_hash")?;
         let client_id = reader.read_u32_le("hello_client_id")?;
         let tcp_port = reader.read_u16_le("hello_tcp_port")?;

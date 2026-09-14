@@ -235,6 +235,9 @@ impl Ed2kEncoder {
         }
 
         let mut payload = Vec::with_capacity(64);
+        if self.profile != Ed2kCompatibilityProfile::LegacyEdonkey {
+            payload.push(0x10); // Standard eD2K OP_HELLO user hash length prefix (16 bytes)
+        }
         payload.extend_from_slice(&hello.user_hash);
         payload.extend_from_slice(&hello.client_id.to_le_bytes());
         payload.extend_from_slice(&hello.tcp_port.to_le_bytes());

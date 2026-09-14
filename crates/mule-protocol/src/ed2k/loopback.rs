@@ -25,7 +25,7 @@ use super::packet::{
 
 use super::peer_info::Ed2kPeerInfo;
 use super::profile::Ed2kCompatibilityProfile;
-use super::protocol::{PR_ED2K, PR_EMULE_COMPRESSED};
+use super::protocol::{PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
 use super::session::{Ed2kSession, Ed2kSessionError, Ed2kSessionState};
 use super::tags::{Ed2kTag, TagName, TagValue, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION};
 use crate::framing::{PacketCodec, RawPacket};
@@ -1366,6 +1366,10 @@ impl Ed2kLoopbackClient {
                 if let Some(Ed2kMessage::HelloAnswer(answer)) = msg_opt {
                     let peer = Ed2kPeerInfo::from_hello_answer(&answer);
                     return Ok(peer);
+                } else if raw_packet.protocol == PR_EMULE {
+                    // Extended eMule packet (e.g. OP_EMULEINFO under PR_EMULE 0xC5) received alongside handshake.
+                    // Continue awaiting OP_HELLOANSWER in the stream.
+                    continue;
                 } else {
                     return Err(Ed2kSessionError::UnexpectedMessageInState {
                         state: "AwaitingHelloAnswer",

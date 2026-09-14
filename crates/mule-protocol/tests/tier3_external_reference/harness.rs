@@ -33,22 +33,77 @@ pub enum Tier3HarnessError {
     Io(#[from] std::io::Error),
 }
 
-/// RAII Guard ensuring immediate kill & reap of the reference child process upon scope exit or panic.
+/// RAII Guard ensuring immediate kill & reap of the reference child process upon scope exit or panic,
+/// as well as restoration of host registry settings on Windows.
 #[derive(Debug)]
 pub struct Tier3ProcessGuard {
     child: Option<Child>,
+    #[cfg(windows)]
+    previous_registry_val: Option<String>,
+    #[cfg(windows)]
+    registry_existed: bool,
 }
 
 impl Tier3ProcessGuard {
+    #[cfg(windows)]
+    pub fn new(child: Child, registry_existed: bool, previous_registry_val: Option<String>) -> Self {
+        Self {
+            child: Some(child),
+            registry_existed,
+            previous_registry_val,
+        }
+    }
+
+    #[cfg(not(windows))]
     pub fn new(child: Child) -> Self {
         Self { child: Some(child) }
     }
 
-    /// Terminates the child process explicitly.
+    /// Terminates the child process explicitly and restores host settings.
     pub fn terminate(&mut self) {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/IM", "emule.exe", "/F"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            if self.registry_existed {
+                if let Some(ref prev) = self.previous_registry_val {
+                    let _ = Command::new("reg")
+                        .args([
+                            "add",
+                            r"HKCU\Software\eMule",
+                            "/v",
+                            "UsePublicUserDirectories",
+                            "/t",
+                            "REG_DWORD",
+                            "/d",
+                            prev,
+                            "/f",
+                        ])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status();
+                }
+            } else {
+                let _ = Command::new("reg")
+                    .args([
+                        "delete",
+                        r"HKCU\Software\eMule",
+                        "/v",
+                        "UsePublicUserDirectories",
+                        "/f",
+                    ])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            }
         }
     }
 }
@@ -73,9 +128,10 @@ impl Tier3BinaryValidator {
         let actual_hash = compute_sha256_hex(&bytes);
 
         if let Some(expected) = expected_sha256 {
-            if !expected.is_empty() && !actual_hash.eq_ignore_ascii_case(expected) {
+            let expected_trimmed = expected.trim();
+            if !expected_trimmed.is_empty() && !actual_hash.eq_ignore_ascii_case(expected_trimmed) {
                 return Err(Tier3HarnessError::BinaryHashMismatch {
-                    expected: expected.to_string(),
+                    expected: expected_trimmed.to_string(),
                     actual: actual_hash,
                 });
             }
@@ -138,7 +194,75 @@ impl Tier3Harness {
     pub fn spawn_reference_process(&mut self, extra_args: &[&str]) -> Result<(), Tier3HarnessError> {
         self.assert_loopback_confinement();
 
-        let mut cmd = Command::new(&self.binary_path);
+        // Stage reference binary into isolated ephemeral environment so Win32 GetAppDir()
+        // resolves directly to the sandboxed workdir, enforcing local preferences.ini loading.
+        let exe_name = self
+            .binary_path
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("emule.exe"));
+        let staged_bin = self.environment.work_path().join(exe_name);
+        if !staged_bin.exists() {
+            fs::copy(&self.binary_path, &staged_bin)?;
+        }
+
+        // Also mirror adjacent lang/ resources if present to avoid localization dialogs
+        if let Some(parent) = self.binary_path.parent() {
+            let src_lang = parent.join("lang");
+            let dst_lang = self.environment.work_path().join("lang");
+            if src_lang.is_dir() && !dst_lang.exists() {
+                let _ = fs::create_dir_all(&dst_lang);
+                if let Ok(entries) = fs::read_dir(&src_lang) {
+                    for entry in entries.flatten() {
+                        let _ = fs::copy(entry.path(), dst_lang.join(entry.file_name()));
+                    }
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        let (registry_existed, previous_registry_val) = {
+            // Terminate any orphan emule instance so single-instance lock does not exit early
+            let _ = Command::new("taskkill")
+                .args(["/IM", "emule.exe", "/F"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            // Query existing value if any
+            let query_out = Command::new("reg")
+                .args(["query", r"HKCU\Software\eMule", "/v", "UsePublicUserDirectories"])
+                .output();
+            let (existed, val) = match query_out {
+                Ok(out) if out.status.success() => {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    let parsed = text.split_whitespace().last().map(|s| s.to_string());
+                    (true, parsed)
+                }
+                _ => (false, None),
+            };
+
+            // Enforce ExecutableDir mode (UsePublicUserDirectories = 2) so eMule strictly
+            // operates in the ephemeral sandbox and binds to the test-allocated loopback port
+            let _ = Command::new("reg")
+                .args([
+                    "add",
+                    r"HKCU\Software\eMule",
+                    "/v",
+                    "UsePublicUserDirectories",
+                    "/t",
+                    "REG_DWORD",
+                    "/d",
+                    "2",
+                    "/f",
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            (existed, val)
+        };
+
+        let mut cmd = Command::new(&staged_bin);
         cmd.current_dir(self.environment.work_path())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -152,13 +276,29 @@ impl Tier3Harness {
             .spawn()
             .map_err(|e| Tier3HarnessError::ProcessSpawnFailed(e.to_string()))?;
 
-        self.process_guard = Some(Tier3ProcessGuard::new(child));
+        #[cfg(windows)]
+        {
+            self.process_guard = Some(Tier3ProcessGuard::new(child, registry_existed, previous_registry_val));
+        }
+        #[cfg(not(windows))]
+        {
+            self.process_guard = Some(Tier3ProcessGuard::new(child));
+        }
         Ok(())
     }
 
     /// The verified SHA-256 hash of the reference executable.
     pub fn binary_sha256(&self) -> &str {
         &self.binary_sha256
+    }
+
+    /// Truncated redacted hash for safe public logs and divergence reports.
+    pub fn binary_sha256_redacted(&self) -> String {
+        if self.binary_sha256.len() >= 12 {
+            format!("{}...", &self.binary_sha256[..12])
+        } else {
+            self.binary_sha256.clone()
+        }
     }
 
     /// The isolated ephemeral environment.
@@ -169,6 +309,33 @@ impl Tier3Harness {
     /// The target loopback socket address.
     pub fn loopback_addr(&self) -> SocketAddr {
         self.loopback_addr
+    }
+
+    /// Checks whether the child process is still running or has exited.
+    pub fn is_child_running(&mut self) -> bool {
+        if let Some(ref mut guard) = self.process_guard {
+            if let Some(ref mut child) = guard.child {
+                match child.try_wait() {
+                    Ok(None) => return true,
+                    Ok(Some(status)) => {
+                        eprintln!("Reference process exited early with status: {:?}", status);
+                        return false;
+                    }
+                    Err(e) => {
+                        eprintln!("Error checking reference process: {:?}", e);
+                        return false;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Returns the process ID of the child process if running.
+    pub fn child_pid(&self) -> Option<u32> {
+        self.process_guard
+            .as_ref()
+            .and_then(|g| g.child.as_ref().map(|c| c.id()))
     }
 
     /// Explicitly shuts down the reference child process.

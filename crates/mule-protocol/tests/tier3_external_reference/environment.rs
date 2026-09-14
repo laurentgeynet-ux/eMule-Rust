@@ -85,32 +85,38 @@ impl Tier3Environment {
 
     /// Writes a neutralized eMule `preferences.ini` file.
     fn write_emule_preferences_ini(&self) -> io::Result<()> {
-        let ini_path = self.config_dir.join("preferences.ini");
         let ini_content = format!(
             "[eMule]\r\n\
-            Nick=RefPeer050a\r\n\
-            Port={tcp_port}\r\n\
-            UDPPort={udp_port}\r\n\
-            EnableKad=0\r\n\
-            NetworkED2K=1\r\n\
-            NetworkKademlia=0\r\n\
-            AutoConnect=0\r\n\
-            AutoUpdateServerList=0\r\n\
-            ServerUDPPort=0\r\n\
-            UpdateNotify=0\r\n\
-            CheckDiskspace=0\r\n\
-            MinFreeDiskSpace=0\r\n\
-            SafeServerConnect=1\r\n\
-            AutoConnectStaticOnly=1\r\n\
-            Verbose=1\r\n\
-            IncomingDir={incoming}\r\n\
-            TempDir={temp}\r\n",
+UsePublicUserDirectories=0\r\n\
+FirstRuntime=0\r\n\
+ShowSplashScreen=0\r\n\
+StartMinimized=1\r\n\
+Nick=RefPeer050a\r\n\
+Port={tcp_port}\r\n\
+UDPPort={udp_port}\r\n\
+FilterLANIPs=0\r\n\
+EnableKad=0\r\n\
+NetworkED2K=1\r\n\
+NetworkKademlia=0\r\n\
+AutoConnect=0\r\n\
+AutoUpdateServerList=0\r\n\
+ServerUDPPort=0\r\n\
+UpdateNotify=0\r\n\
+CheckDiskspace=0\r\n\
+MinFreeDiskSpace=0\r\n\
+SafeServerConnect=1\r\n\
+AutoConnectStaticOnly=1\r\n\
+Verbose=1\r\n\
+IncomingDir={incoming}\r\n\
+TempDir={temp}\r\n",
             tcp_port = self.tcp_port,
             udp_port = self.udp_port,
             incoming = self.incoming_dir.display(),
             temp = self.temp_dir.display()
         );
-        fs::write(ini_path, ini_content)
+        fs::write(self.config_dir.join("preferences.ini"), &ini_content)?;
+        fs::write(self.work_dir.path().join("preferences.ini"), &ini_content)?;
+        Ok(())
     }
 
     /// Writes an empty `server.met` file to prevent server connection attempts.

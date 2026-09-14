@@ -13,9 +13,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use mule_protocol::ed2k::{
-    Ed2kLoopbackClient, Ed2kTag, TagName, TagValue, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
-};
+use mule_protocol::ed2k::Ed2kLoopbackClient;
 use tier3_external_reference::{
     Tier3BinaryValidator, Tier3DivergenceReport, Tier3Environment, Tier3Harness, Tier3HarnessError,
     WireTraceRecord,
@@ -174,36 +172,65 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
         .spawn_reference_process(&[])
         .expect("failed to spawn reference process");
 
-    // Wait briefly for the reference process to bind to loopback port
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    // Connect using Emule-Sion's loopback client
-    let user_hash = [0x77; 16];
-    let tags = vec![
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_NAME),
-            value: TagValue::String("EmuleSionTier3".to_string()),
-        },
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_VERSION),
-            value: TagValue::UInt32(60),
-        },
+    // Generate conformant eMule user hash (with 0x0E at index 5 and 0x6F at index 14)
+    let user_hash = [
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
+        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
     ];
+    let client_tcp_port = allocate_ephemeral_loopback_port();
+    // Minimal Hello: start with tag_count = 0
+    let tags = Vec::new();
 
-    let connect_res = Ed2kLoopbackClient::connect_and_handshake(
-        harness.loopback_addr(),
-        user_hash,
-        0x7F000001,
-        test_port,
-        tags,
-        0x7F000001,
-        test_port,
-        Duration::from_secs(3),
-    )
-    .await;
+    let pid = harness.child_pid().unwrap_or(0);
+    println!("Target loopback addr: {:?}", harness.loopback_addr());
+    println!("Reference binary work path: {:?}", harness.environment().work_path());
+    println!("Child PID: {pid}");
+
+    // Wait for the reference process to bind to loopback port and connect (up to 5 seconds)
+    let mut connect_res = None;
+    for attempt in 1..=10 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let is_running = harness.is_child_running();
+        println!("Attempt {attempt}: child running = {is_running}");
+        if attempt == 3 && pid > 0 {
+            let out = std::process::Command::new("powershell")
+                .arg("-NoProfile")
+                .arg("-Command")
+                .arg(format!("Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, State | Out-String"))
+                .output();
+            if let Ok(o) = out {
+                println!("TCP connections for PID {pid}:\n{}", String::from_utf8_lossy(&o.stdout));
+            }
+        }
+        match Ed2kLoopbackClient::connect_and_handshake(
+            harness.loopback_addr(),
+            user_hash,
+            0, // client_id = 0 (Low ID / unassigned)
+            client_tcp_port,
+            tags.clone(),
+            0, // server_ip = 0
+            0, // server_port = 0
+            Duration::from_secs(3),
+        )
+        .await
+        {
+            Ok(ok_res) => {
+                println!("Connected on attempt {attempt}!");
+                connect_res = Some(Ok(ok_res));
+                break;
+            }
+            Err(e) => {
+                println!("Attempt {attempt} failed: {e:?}");
+                if attempt == 10 {
+                    connect_res = Some(Err(e));
+                }
+            }
+        }
+    }
+    let connect_res = connect_res.expect("connection attempt completed");
 
     let mut report =
-        Tier3DivergenceReport::new("live_reference", harness.binary_sha256(), "Emule050a");
+        Tier3DivergenceReport::new("live_reference", &harness.binary_sha256_redacted(), "Emule050a");
 
     match connect_res {
         Ok((client, peer_info)) => {
@@ -215,13 +242,20 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
                 report.record_tag("Version", &ver.to_string());
             }
 
-            report.record_wire_trace(0xE3, 0x01, "client_to_peer", 30, "accepted");
+            report.record_wire_trace(0xE3, 0x01, "client_to_peer", 34, "accepted");
             report.record_wire_trace(0xE3, 0x4C, "peer_to_client", 40, "accepted");
 
             println!(
                 "Tier 3 live reference handshake successful! Peer info: {:?}",
                 peer_info
             );
+
+            assert_eq!(peer_info.name.as_deref(), Some("RefPeer050a"));
+            assert_eq!(peer_info.version, Some(60));
+            assert!(peer_info.misc_options1.is_some(), "misc_options1 must be parsed");
+            assert!(peer_info.misc_options2.is_some(), "misc_options2 must be parsed");
+            assert_eq!(peer_info.emule_udp_port, Some(test_udp_port), "emule_udp_port must match test_udp_port");
+
             client.close().await;
         }
         Err(e) => {
@@ -232,7 +266,29 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
                 &format!("{e:?}"),
                 "critical",
             );
-            eprintln!("Tier 3 live reference handshake failed: {e:?}");
+            panic!("Tier 3 live reference handshake failed: {e:?}");
+        }
+    }
+
+    println!("Files in work_path:");
+    if let Ok(entries) = std::fs::read_dir(harness.environment().work_path()) {
+        for e in entries.flatten() {
+            println!("  {:?}", e.path());
+        }
+    }
+    let config_dir = harness.environment().config_dir();
+    println!("Files in config_dir:");
+    if let Ok(entries) = std::fs::read_dir(config_dir) {
+        for e in entries.flatten() {
+            println!("  {:?}", e.path());
+            let path = e.path();
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if ext == "log" || ext == "txt" {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        println!("Content of {:?}:\n{}", path, content);
+                    }
+                }
+            }
         }
     }
 

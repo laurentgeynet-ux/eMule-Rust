@@ -2,14 +2,14 @@
 
 use super::packet::{Ed2kHello, Ed2kHelloAnswer};
 use super::tags::{
-    Ed2kTag, RawTag, TagName, TagValue, TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_MISCOPTIONS1,
-    TAG_SPECIAL_MISCOPTIONS2, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+    Ed2kTag, RawTag, TagName, TagValue, TAG_SPECIAL_EMULE_MISCOPTIONS1,
+    TAG_SPECIAL_EMULE_MISCOPTIONS2, TAG_SPECIAL_EMULE_UDPPORTS, TAG_SPECIAL_EMULE_VERSION,
+    TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_MISCOPTIONS2, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
 
 /// Consolidated information and capabilities for a connected eD2K remote peer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ed2kPeerInfo {
-
     /// 16-byte MD4 User Hash of the remote peer.
     pub user_hash: [u8; 16],
     /// eD2K Client ID (HighID or LowID).
@@ -26,6 +26,8 @@ pub struct Ed2kPeerInfo {
     pub misc_options1: Option<u32>,
     /// Miscellaneous options bitfield 2.
     pub misc_options2: Option<u32>,
+    /// Remote peer's extended eMule UDP port, if announced in tags.
+    pub emule_udp_port: Option<u16>,
     /// IPv4 address of the peer's connected eD2K server (or 0 if none).
     pub server_ip: u32,
     /// Port of the peer's connected eD2K server (or 0 if none).
@@ -77,6 +79,7 @@ impl Ed2kPeerInfo {
         let mut emule_version = None;
         let mut misc_options1 = None;
         let mut misc_options2 = None;
+        let mut emule_udp_port = None;
 
         for tag in &tags {
             match &tag.name {
@@ -95,14 +98,21 @@ impl Ed2kPeerInfo {
                         emule_version = Some(*v);
                     }
                 }
-                TagName::Id(TAG_SPECIAL_MISCOPTIONS1) => {
+                TagName::Id(TAG_SPECIAL_MISCOPTIONS1 | TAG_SPECIAL_EMULE_MISCOPTIONS1) => {
                     if let TagValue::UInt32(v) = &tag.value {
                         misc_options1 = Some(*v);
                     }
                 }
-                TagName::Id(TAG_SPECIAL_MISCOPTIONS2) => {
+                TagName::Id(TAG_SPECIAL_MISCOPTIONS2 | TAG_SPECIAL_EMULE_MISCOPTIONS2) => {
                     if let TagValue::UInt32(v) = &tag.value {
                         misc_options2 = Some(*v);
+                    }
+                }
+                TagName::Id(TAG_SPECIAL_EMULE_UDPPORTS) => {
+                    if let TagValue::UInt32(v) = &tag.value {
+                        emule_udp_port = Some(*v as u16);
+                    } else if let TagValue::UInt16(v) = &tag.value {
+                        emule_udp_port = Some(*v);
                     }
                 }
                 TagName::Text(t) if t.eq_ignore_ascii_case("name") => {
@@ -124,6 +134,7 @@ impl Ed2kPeerInfo {
             emule_version,
             misc_options1,
             misc_options2,
+            emule_udp_port,
             server_ip,
             server_port,
             tags,

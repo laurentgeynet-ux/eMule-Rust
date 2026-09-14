@@ -14,7 +14,7 @@ use super::packet::{
 };
 use super::peer_info::Ed2kPeerInfo;
 use super::profile::Ed2kCompatibilityProfile;
-use super::protocol::{is_valid_ed2k_protocol, PR_EMULE_COMPRESSED};
+use super::protocol::{is_valid_ed2k_protocol, PR_EMULE, PR_EMULE_COMPRESSED};
 use super::tags::Ed2kTag;
 use crate::framing::RawPacket;
 
@@ -786,7 +786,7 @@ impl Ed2kSession {
                 Ok(Some(Ed2kMessage::SendingPart(part)))
             }
             Ed2kMessage::Raw(raw) => {
-                if !self.is_ready() {
+                if !self.is_ready() && raw.protocol != PR_EMULE {
                     let err = Ed2kSessionError::UnexpectedMessageInState {
                         state: self.state.name(),
                         opcode: raw.opcode,

@@ -576,3 +576,39 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
     let key = BlockRequestKey::new(file_hash, 0, 184_320);
     assert!(session.block_tracker.is_pending(&key), "block tracker must be unmodified");
 }
+
+#[test]
+fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_answer() {
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 4662);
+    // Initiator starts in AwaitingHelloAnswer
+    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer));
+
+    // 1. Peer delivers PR_EMULE (0xC5) / OP_EMULE_INFO (0x01) first
+    let emule_info_pkt = RawPacket {
+        protocol: mule_protocol::types::PR_EMULE,
+        opcode: 0x01,
+        payload: Bytes::from_static(b"\x3C\x01\x00\x00\x00\x00"), // version 60, proto 1, 0 tags
+    };
+
+    let res1 = session.on_packet_received(&emule_info_pkt).expect("PR_EMULE accepted during handshake");
+    assert!(matches!(res1, Some(Ed2kMessage::Raw(_))), "PR_EMULE decoded as Raw");
+    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer), "state remains AwaitingHelloAnswer");
+
+    // 2. Peer subsequently delivers PR_ED2K (0xE3) / OP_HELLOANSWER (0x4C)
+    let mut answer_payload = Vec::new();
+    answer_payload.extend_from_slice(&[0x22; 16]); // remote hash
+    answer_payload.extend_from_slice(&0u32.to_le_bytes()); // client_id = 0
+    answer_payload.extend_from_slice(&4662u16.to_le_bytes()); // tcp_port
+    answer_payload.extend_from_slice(&0u32.to_le_bytes()); // tag count = 0
+    let hello_answer_pkt = RawPacket {
+        protocol: mule_protocol::types::PR_ED2K,
+        opcode: 0x4C,
+        payload: Bytes::from(answer_payload),
+    };
+
+    let res2 = session.on_packet_received(&hello_answer_pkt).expect("OP_HELLOANSWER accepted");
+    assert!(matches!(res2, Some(Ed2kMessage::HelloAnswer(_))), "decoded as HelloAnswer");
+    assert!(session.is_ready(), "session successfully transitioned to Ready state!");
+    assert_eq!(session.peer_info().expect("peer_info").user_hash, [0x22; 16]);
+}
+

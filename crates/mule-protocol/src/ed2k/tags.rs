@@ -32,12 +32,20 @@ pub const TAG_SPECIAL_FILETYPE: u8 = 0x03;
 pub const TAG_SPECIAL_VERSION: u8 = 0x11;
 /// Standard special eMule version tag ID.
 pub const TAG_SPECIAL_EMULE_VERSION: u8 = 0x5A;
-/// Standard special miscellaneous options 1 tag ID.
+/// Standard special miscellaneous options 1 tag ID (historical 0x5B).
 pub const TAG_SPECIAL_MISCOPTIONS1: u8 = 0x5B;
-/// Standard special miscellaneous options 2 tag ID.
+/// Standard special miscellaneous options 2 tag ID (historical 0x5C).
 pub const TAG_SPECIAL_MISCOPTIONS2: u8 = 0x5C;
-/// Standard special UDP options / port tag ID.
+/// Canonical eMule UDP ports tag ID (`0xF9` = 249).
+pub const TAG_SPECIAL_EMULE_UDPPORTS: u8 = 0xF9;
+/// Canonical eMule miscellaneous options 1 tag ID (`0xFA` = 250).
+pub const TAG_SPECIAL_EMULE_MISCOPTIONS1: u8 = 0xFA;
+/// Canonical eMule UDP options / flags tag ID (`0xFB` = 251).
+pub const TAG_SPECIAL_EMULE_UDPOPTIONS: u8 = 0xFB;
+/// Standard special UDP options / port tag ID (alias to 0xFB).
 pub const TAG_SPECIAL_UDPOPTIONS: u8 = 0xFB;
+/// Canonical eMule miscellaneous options 2 tag ID (`0xFE` = 254).
+pub const TAG_SPECIAL_EMULE_MISCOPTIONS2: u8 = 0xFE;
 
 /// Tag name identifier: either a 1-byte special ID or a textual string.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -58,8 +66,9 @@ impl TagName {
                 TAG_SPECIAL_FILETYPE => "filetype".to_string(),
                 TAG_SPECIAL_VERSION => "version".to_string(),
                 TAG_SPECIAL_EMULE_VERSION => "emule_version".to_string(),
-                TAG_SPECIAL_MISCOPTIONS1 => "misc_options_1".to_string(),
-                TAG_SPECIAL_MISCOPTIONS2 => "misc_options_2".to_string(),
+                TAG_SPECIAL_EMULE_UDPPORTS => "emule_udp_ports".to_string(),
+                TAG_SPECIAL_MISCOPTIONS1 | TAG_SPECIAL_EMULE_MISCOPTIONS1 => "misc_options_1".to_string(),
+                TAG_SPECIAL_MISCOPTIONS2 | TAG_SPECIAL_EMULE_MISCOPTIONS2 => "misc_options_2".to_string(),
                 TAG_SPECIAL_UDPOPTIONS => "udp_options".to_string(),
                 other => format!("special_0x{other:02X}"),
             },
@@ -164,6 +173,11 @@ impl<'a> TagReader<'a> {
         let start = self.pos;
         self.pos += n;
         Ok(&self.buf[start..self.pos])
+    }
+
+    /// Peeks at the next byte without advancing the reader.
+    pub fn peek_u8(&self) -> Option<u8> {
+        self.buf.get(self.pos).copied()
     }
 
     /// Reads a single byte.

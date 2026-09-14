@@ -27,12 +27,12 @@ fn test_fixture_roundtrip_hello_v1_minimal() {
     let raw_bytes = fs::read(fixtures_root().join("hello_v1_minimal.bin"))
         .expect("failed to read hello_v1_minimal.bin");
 
-    let decoder = Ed2kDecoder::new();
+    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
     let msg = decoder
         .decode_packet(&raw_bytes)
         .expect("failed to decode hello_v1_minimal");
 
-    let encoder = Ed2kEncoder::new();
+    let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
     let encoded_bytes = encoder
         .encode_to_bytes(&msg)
         .expect("failed to encode hello_v1_minimal");
@@ -49,12 +49,12 @@ fn test_fixture_roundtrip_hello_v1_tags() {
     let raw_bytes = fs::read(fixtures_root().join("hello_v1_tags.bin"))
         .expect("failed to read hello_v1_tags.bin");
 
-    let decoder = Ed2kDecoder::new();
+    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
     let msg = decoder
         .decode_packet(&raw_bytes)
         .expect("failed to decode hello_v1_tags");
 
-    let encoder = Ed2kEncoder::new();
+    let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
     let encoded_bytes = encoder
         .encode_to_bytes(&msg)
         .expect("failed to encode hello_v1_tags");
@@ -281,8 +281,8 @@ fn test_synthetic_roundtrip_hello_minimal_no_server_info() {
         .encode_to_bytes(&original_msg)
         .expect("encoding failed");
 
-    // 5-byte header + 1 opcode + 16 user hash + 4 client id + 2 port + 4 tag count + 4 server ip + 2 server port = 38 bytes
-    assert_eq!(encoded.len(), 38);
+    // 5-byte header + 1 opcode + 1 hash len (0x10) + 16 user hash + 4 client id + 2 port + 4 tag count + 4 server ip + 2 server port = 39 bytes
+    assert_eq!(encoded.len(), 39);
 
 
     let decoder = Ed2kDecoder::new();
@@ -1381,3 +1381,118 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
     };
     assert_eq!(dec_many.tags.len(), 51);
 }
+
+#[test]
+fn test_tier3_op_hello_wire_framing_emule050a_compliance() {
+    let encoder = Ed2kEncoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
+    let decoder = Ed2kDecoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
+
+    let user_hash = [
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
+        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+    ];
+    let hello = Ed2kHello {
+        user_hash,
+        client_id: 0,
+        tcp_port: 54321,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+
+    let raw = encoder.encode_hello(&hello).expect("encode minimal hello");
+    let wire = encoder
+        .encode_to_bytes(&Ed2kMessage::Hello(hello.clone()))
+        .expect("encode to wire bytes");
+
+    // 1. Total wire frame length must be exactly 39 bytes:
+    // 1 (protocol) + 4 (payload length) + 34 (payload) = 39
+    assert_eq!(wire.len(), 39, "wire frame must be exactly 39 bytes");
+
+    // 2. Exact wire byte assertions:
+    assert_eq!(wire[0], 0xE3, "byte 0: PR_ED2K");
+    assert_eq!(&wire[1..5], &34u32.to_le_bytes(), "bytes 1..5: payload length 34 LE (0x22, 0x00, 0x00, 0x00)");
+    assert_eq!(wire[5], 0x01, "byte 5: OP_HELLO");
+    assert_eq!(wire[6], 0x10, "byte 6: mandatory hash length prefix 0x10 for eMule/eDonkey");
+    assert_eq!(&wire[7..23], &user_hash, "bytes 7..23: 16-byte user hash");
+    assert_eq!(&wire[23..27], &0u32.to_le_bytes(), "bytes 23..27: client_id = 0");
+    assert_eq!(&wire[27..29], &54321u16.to_le_bytes(), "bytes 27..29: tcp_port LE");
+    assert_eq!(&wire[29..33], &0u32.to_le_bytes(), "bytes 29..33: tag_count = 0");
+    assert_eq!(&wire[33..37], &0u32.to_le_bytes(), "bytes 33..37: server_ip = 0");
+    assert_eq!(&wire[37..39], &0u16.to_le_bytes(), "bytes 37..39: server_port = 0");
+
+    // 3. Decoding must roundtrip cleanly
+    let decoded = decoder.decode_raw_packet(&raw).expect("decode wire hello");
+    match decoded {
+        Ed2kMessage::Hello(h) => {
+            assert_eq!(h.user_hash, user_hash);
+            assert_eq!(h.client_id, 0);
+            assert_eq!(h.tcp_port, 54321);
+            assert_eq!(h.tags.len(), 0);
+        }
+        _ => panic!("expected Hello message"),
+    }
+}
+
+#[test]
+fn test_tier3_op_hello_answer_wire_framing_emule050a_compliance() {
+    let decoder = Ed2kDecoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
+
+    // Build raw OP_HELLO_ANSWER payload mimicking official eMule 0.50a response:
+    // No 0x10 prefix! Starts directly with 16-byte hash.
+    let peer_hash = [
+        0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x0E, 0x22, 0x33,
+        0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x6F, 0xEE,
+    ];
+    let client_id: u32 = 0;
+    let tcp_port: u16 = 50000;
+    let tag_count: u32 = 4;
+
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&peer_hash);
+    payload.extend_from_slice(&client_id.to_le_bytes());
+    payload.extend_from_slice(&tcp_port.to_le_bytes());
+    payload.extend_from_slice(&tag_count.to_le_bytes());
+
+    // Tag 1: Name "RefPeer050a" (Type String = 0x02, ID = 0x01)
+    payload.push(0x02); // string
+    payload.extend_from_slice(&1u16.to_le_bytes()); // name length
+    payload.push(0x01); // TAG_SPECIAL_NAME
+    let name_bytes = b"RefPeer050a";
+    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+    payload.extend_from_slice(name_bytes);
+
+    // Tag 2: Version 60 (Type UInt32 = 0x03, ID = 0x11)
+    payload.push(0x03);
+    payload.extend_from_slice(&1u16.to_le_bytes());
+    payload.push(0x11); // TAG_SPECIAL_VERSION
+    payload.extend_from_slice(&60u32.to_le_bytes());
+
+    // Tag 3: Canonical eMule UDP port (Type UInt32 = 0x03, ID = 0xF9)
+    payload.push(0x03);
+    payload.extend_from_slice(&1u16.to_le_bytes());
+    payload.push(0xF9); // TAG_SPECIAL_EMULE_UDPPORTS
+    payload.extend_from_slice(&50001u32.to_le_bytes());
+
+    // Tag 4: Canonical eMule misc options 1 (Type UInt32 = 0x03, ID = 0xFA)
+    payload.push(0x03);
+    payload.extend_from_slice(&1u16.to_le_bytes());
+    payload.push(0xFA); // TAG_SPECIAL_EMULE_MISCOPTIONS1
+    payload.extend_from_slice(&873677342u32.to_le_bytes());
+
+    let raw = mule_protocol::RawPacket::with_vec(0xE3, 0x4C, payload);
+    let msg = decoder.decode_raw_packet(&raw).expect("decode hello answer");
+
+    match msg {
+        Ed2kMessage::HelloAnswer(answer) => {
+            let peer = mule_protocol::ed2k::Ed2kPeerInfo::from_hello_answer(&answer);
+            assert_eq!(peer.name.as_deref(), Some("RefPeer050a"));
+            assert_eq!(peer.version, Some(60));
+            assert_eq!(peer.emule_udp_port, Some(50001));
+            assert_eq!(peer.misc_options1, Some(873677342));
+        }
+        _ => panic!("expected HelloAnswer message"),
+    }
+}
+
