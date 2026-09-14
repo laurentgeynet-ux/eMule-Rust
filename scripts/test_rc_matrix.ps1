@@ -124,10 +124,15 @@ try {
     $PortWorkdir = Join-Path $TestRoot "port-conflict-data"
     New-Item -ItemType Directory -Path $PortWorkdir -Force | Out-Null
 
-    # Block 127.0.0.1:4660 with raw TcpListener
-    $dummyListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 4660)
-    $dummyListener.Start()
-    Write-Host " -> Simulating busy port 4660 with dummy TcpListener..." -ForegroundColor Gray
+    # Block 127.0.0.1:4660 with raw TcpListener (or detect if already in use)
+    $dummyListener = $null
+    try {
+        $dummyListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 4660)
+        $dummyListener.Start()
+        Write-Host " -> Simulating busy port 4660 with dummy TcpListener..." -ForegroundColor Gray
+    } catch {
+        Write-Host " -> Port 4660 is already occupied (valid conflict precondition)." -ForegroundColor Gray
+    }
 
     try {
         $pinfo = [System.Diagnostics.ProcessStartInfo]::new($DaemonBin, "--workdir `"$PortWorkdir`"")
@@ -171,7 +176,7 @@ try {
             if ($proc -and !$proc.HasExited) { try { $proc.Kill() } catch {} }
         }
     } finally {
-        $dummyListener.Stop()
+        if ($dummyListener) { $dummyListener.Stop() }
     }
 
     # -------------------------------------------------------------------------
