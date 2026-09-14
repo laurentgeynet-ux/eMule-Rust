@@ -178,3 +178,55 @@ fn test_get_all_downloads_restoration() {
         assert_eq!(list[1].ed2k_hash, Ed2kHash([0x22; 16]));
     }
 }
+
+#[test]
+fn test_database_delete_download_persists_across_reopen() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("mule_delete.db");
+
+    let dl = Download::new(
+        "tobedeleted.bin",
+        4096,
+        Ed2kHash([0x33; 16]),
+        None,
+        dir.path().join("tobedeleted.bin"),
+        dir.path().join("del.part"),
+    );
+    let dl_id = dl.id;
+
+    // 1. Insert download, received ranges, and verified parts
+    {
+        let mut db = Database::open(&db_path).unwrap();
+        db.insert_download(&dl).unwrap();
+
+        let mut ranges = RangeSet::new();
+        ranges.insert(0..2048).unwrap();
+        db.sync_received_ranges(&dl_id, &ranges).unwrap();
+
+        db.mark_part_verified(&dl_id, 0).unwrap();
+
+        let all = db.get_all_downloads().unwrap();
+        assert_eq!(all.len(), 1);
+    }
+
+    // 2. Delete the download
+    {
+        let mut db = Database::open(&db_path).unwrap();
+        let deleted = db.delete_download(&dl_id).unwrap();
+        assert!(deleted);
+    }
+
+    // 3. Reopen DB in a fresh instance (simulating restart)
+    {
+        let db = Database::open(&db_path).unwrap();
+        let all = db.get_all_downloads().unwrap();
+        assert_eq!(all.len(), 0, "Deleted download must not exist after restart");
+
+        let ranges = db.load_received_ranges(&dl_id).unwrap();
+        assert!(ranges.is_empty(), "Ranges must be purged on delete");
+
+        let parts = db.get_verified_parts(&dl_id).unwrap();
+        assert!(parts.is_empty(), "Verified parts must be purged on delete");
+    }
+}
+

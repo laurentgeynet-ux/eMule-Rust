@@ -233,3 +233,190 @@ async fn test_full_rpc_contract_and_event_streaming() {
     }
     assert_eq!(stop_resp.unwrap()["result"]["stopping"], true);
 }
+
+async fn wait_for_rpc_response<S>(read: &mut S, id: u64) -> Value
+where
+    S: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    while let Some(Ok(msg)) = read.next().await {
+        if let Ok(text) = msg.to_text() {
+            if let Ok(val) = serde_json::from_str::<Value>(text) {
+                if val.get("id").and_then(|v| v.as_u64()) == Some(id) {
+                    return val;
+                }
+            }
+        }
+    }
+    panic!("Never received response for id {id}");
+}
+
+#[tokio::test]
+async fn test_downloads_remove_persistence_across_daemon_restart() {
+    let dir = tempdir().unwrap();
+    let data_dir = dir.path().to_path_buf();
+    let db_path = data_dir.join("mule.db");
+    let temp_dir = data_dir.join("temp");
+    let token = "test_token_persistence".to_string();
+
+    let link = "ed2k://|file|sample_file.iso|1048576|31d6cfe0d16ae931b73c59d7e0c089c0|/";
+    let download_id: String;
+
+    // 1. First run: Start daemon with on-disk SQLite, add link, remove link
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let config = DaemonConfig::new(data_dir.clone(), &token).with_bind_addr(addr);
+        let downloads = DownloadService::new(&db_path, temp_dir.clone()).unwrap();
+        let state = AppState::new(config, downloads);
+        let app = create_router(state);
+        let server_handle = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let ws_url = format!("ws://{addr}/rpc");
+        let (ws_stream, _) = connect_async(&ws_url).await.unwrap();
+        let (mut write, mut read) = ws_stream.split();
+
+        // Handshake
+        write
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "system.hello",
+                    "params": { "protocolVersion": 1, "token": token }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let _ = wait_for_rpc_response(&mut read, 1).await;
+
+        // Add eD2K link
+        write
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "downloads.addEd2kLink",
+                    "params": { "link": link }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let add_val = wait_for_rpc_response(&mut read, 2).await;
+        download_id = add_val["result"]["downloadId"].as_str().unwrap().to_string();
+
+        // List downloads -> must have 1
+        write
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "downloads.list",
+                    "params": {}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let list_val = wait_for_rpc_response(&mut read, 3).await;
+        assert_eq!(list_val["result"]["downloads"].as_array().unwrap().len(), 1);
+
+        // Remove download
+        write
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 4,
+                    "method": "downloads.remove",
+                    "params": { "id": download_id, "deleteFiles": true }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let rem_val = wait_for_rpc_response(&mut read, 4).await;
+        assert_eq!(rem_val["result"]["success"], true);
+
+        // List downloads -> must have 0
+        write
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 5,
+                    "method": "downloads.list",
+                    "params": {}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let list2_val = wait_for_rpc_response(&mut read, 5).await;
+        assert_eq!(list2_val["result"]["downloads"].as_array().unwrap().len(), 0);
+
+        server_handle.abort();
+    }
+
+    // 2. Restart daemon on the SAME database file!
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let config = DaemonConfig::new(data_dir.clone(), &token).with_bind_addr(addr);
+        let downloads = DownloadService::new(&db_path, temp_dir.clone()).unwrap();
+        let state = AppState::new(config, downloads);
+        let app = create_router(state);
+        let server_handle = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let ws_url = format!("ws://{addr}/rpc");
+        let (ws_stream, _) = connect_async(&ws_url).await.unwrap();
+        let (mut write, mut read) = ws_stream.split();
+
+        // Handshake
+        write
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "system.hello",
+                    "params": { "protocolVersion": 1, "token": token }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let _ = wait_for_rpc_response(&mut read, 1).await;
+
+        // List downloads on restarted daemon -> MUST BE 0!
+        write
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "downloads.list",
+                    "params": {}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        let list3_val = wait_for_rpc_response(&mut read, 2).await;
+        assert_eq!(
+            list3_val["result"]["downloads"].as_array().unwrap().len(),
+            0,
+            "Removed download must not reappear after daemon restart!"
+        );
+
+        server_handle.abort();
+    }
+}

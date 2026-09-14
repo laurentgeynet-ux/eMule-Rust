@@ -260,4 +260,24 @@ impl Database {
         }
         Ok(downloads)
     }
+
+    /// Deletes a download record and its associated ranges and verified parts.
+    pub fn delete_download(&mut self, download_id: &Uuid) -> Result<bool, CoreError> {
+        let tx = self.conn.transaction()?;
+        let id_str = download_id.to_string();
+        tx.execute(
+            "DELETE FROM received_ranges WHERE download_id = ?1",
+            params![&id_str],
+        )?;
+        tx.execute(
+            "DELETE FROM verified_parts WHERE download_id = ?1",
+            params![&id_str],
+        )?;
+        let rows_deleted = tx.execute(
+            "DELETE FROM downloads WHERE id = ?1",
+            params![&id_str],
+        )?;
+        tx.commit()?;
+        Ok(rows_deleted > 0)
+    }
 }

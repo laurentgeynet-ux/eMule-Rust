@@ -257,25 +257,49 @@ class DownloadRow extends StatelessWidget {
   }
 
   void _confirmRemove(BuildContext context) {
+    bool deleteFilesOnDisk = true;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Remove Download?'),
-        content: Text('Remove "${item.fileName}" from downloads?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Remove Download?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Remove "${item.fileName}" from downloads?'),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text(
+                  'Delete downloaded part/temp files from disk',
+                  style: TextStyle(fontSize: 13),
+                ),
+                value: deleteFilesOnDisk,
+                onChanged: (val) {
+                  setDialogState(() {
+                    deleteFilesOnDisk = val ?? true;
+                  });
+                },
+              ),
+            ],
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.statusFailed),
-            onPressed: () {
-              viewModel.removeDownload(item.id);
-              Navigator.of(ctx).pop();
-            },
-            child: const Text('Remove'),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.statusFailed),
+              onPressed: () {
+                viewModel.removeDownload(item.id, deleteFiles: deleteFilesOnDisk);
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('Remove'),
+            ),
+          ],
+        ),
       ),
     );
   }

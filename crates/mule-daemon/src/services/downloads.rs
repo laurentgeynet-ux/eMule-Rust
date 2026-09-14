@@ -191,11 +191,29 @@ impl DownloadService {
     }
 
     pub fn remove_download(&mut self, id: &Uuid, delete_files: bool) -> Result<(), JsonRpcError> {
-        if let Some(mut active) = self.active.remove(id) {
+        let mut temp_path_to_delete = None;
+        let was_active = if let Some(mut active) = self.active.remove(id) {
+            let _ = active.part_file.take(); // Explicitly drop/close file handle first (vital on Windows)
             if delete_files {
-                let _ = active.part_file.take(); // Close handle
-                let _ = std::fs::remove_file(&active.download.temp_path);
+                temp_path_to_delete = Some(active.download.temp_path.clone());
             }
+            true
+        } else {
+            false
+        };
+
+        let db_deleted = self
+            .db
+            .delete_download(id)
+            .map_err(|e| JsonRpcError::business(format!("DB error deleting download: {e}")))?;
+
+        if let Some(temp_path) = temp_path_to_delete {
+            if temp_path.exists() {
+                let _ = std::fs::remove_file(temp_path);
+            }
+        }
+
+        if was_active || db_deleted {
             Ok(())
         } else {
             Err(JsonRpcError::business(format!("Download {id} not found")))
