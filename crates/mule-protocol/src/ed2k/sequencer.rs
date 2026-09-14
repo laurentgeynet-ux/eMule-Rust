@@ -122,6 +122,10 @@ pub enum Ed2kSequencerError {
     /// Compressed frame received when uncompressed block transfer was expected.
     #[error("Compressed block transfer is not negotiated or supported in passive profile")]
     CompressedNotSupported,
+
+    /// Storage, filesystem, or serialization error.
+    #[error("Storage error: {0}")]
+    Storage(String),
 }
 
 /// Deterministic download sequencer and block request planner for an active eD2K peer.
@@ -289,6 +293,52 @@ impl Ed2kDownloadSequencer {
         Ok(blocks)
     }
 
+    /// Plans the sequence of block ranges for a part, filtering out any blocks
+    /// that are already fully covered by the given completed ranges.
+    pub fn plan_missing_blocks(
+        &self,
+        part_index: u16,
+        completed_ranges: &[(u64, u64)],
+    ) -> Result<Vec<Ed2kBlockRange>, Ed2kSequencerError> {
+        let all_blocks = self.plan_part_blocks(part_index)?;
+        let missing = all_blocks
+            .into_iter()
+            .filter(|block| {
+                let b_start = block.start as u64;
+                let b_end = block.end as u64;
+                !Self::is_range_in_list(b_start, b_end, completed_ranges)
+            })
+            .collect();
+        Ok(missing)
+    }
+
+    /// Helper to test if half-open byte range `[start, end)` is completely covered by a list of ranges.
+    pub fn is_range_in_list(start: u64, end: u64, ranges: &[(u64, u64)]) -> bool {
+        if start >= end {
+            return true;
+        }
+        let mut curr = start;
+        let mut matching_ranges: Vec<(u64, u64)> = ranges
+            .iter()
+            .copied()
+            .filter(|&(s, e)| e > start && s < end)
+            .collect();
+        matching_ranges.sort_unstable_by_key(|r| r.0);
+
+        for (s, e) in matching_ranges {
+            if s > curr {
+                return false;
+            }
+            if e > curr {
+                curr = e;
+            }
+            if curr >= end {
+                return true;
+            }
+        }
+        curr >= end
+    }
+
     /// Validates an arbitrary block range `[start, end)` against all protocol and file invariants.
     pub fn validate_block_range(
         &self,
@@ -448,30 +498,7 @@ impl Ed2kBlockSink {
 
     /// Returns true if the half-open byte range `[start, end)` is completely covered by received slices.
     pub fn is_range_covered(&self, start: u64, end: u64) -> bool {
-        if start >= end {
-            return true;
-        }
-        let mut curr = start;
-        let mut matching_ranges: Vec<(u64, u64)> = self
-            .received_ranges
-            .iter()
-            .copied()
-            .filter(|&(s, e)| e > start && s < end)
-            .collect();
-        matching_ranges.sort_unstable_by_key(|r| r.0);
-
-        for (s, e) in matching_ranges {
-            if s > curr {
-                return false;
-            }
-            if e > curr {
-                curr = e;
-            }
-            if curr >= end {
-                return true;
-            }
-        }
-        curr >= end
+        Ed2kDownloadSequencer::is_range_in_list(start, end, &self.received_ranges)
     }
 
     /// Returns true if a block range `[start, end)` has already been received or is fully covered.

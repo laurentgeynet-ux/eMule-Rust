@@ -429,3 +429,86 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; fini
 | **Confinement Réseau** | Scan `Get-NetTCPConnection` certifiant 0 socket en dehors de `127.0.0.1`. |
 | **Fermeture Propre** | Envoi de TCP FIN (`client.close().await`) et arrêt propre du processus eMule. |
 
+---
+
+## 9. Tier 3.5 : Complétion de la Part 0 avec Reprise Contrôlée & Interruption Abrupte (Part 0 Transfer, Controlled Resume & Interruption)
+
+Le jalon **Tier 3.5** valide pour la première fois le transfert complet d'une part eD2K intégrale (Part 0, soit $9\,728\,000\text{ octets} = 53\text{ blocs}$) depuis l'exécutable officiel **eMule 0.50a** (`D:\eMule0.50a\emule.exe`), avec interruption simulée, persistance physique dans un fichier `.part`, journal d'état atomique `.resume.json`, calcul de lacunes sans redondance, reprise multi-session et vérification d'intégrité MD4 diffusée depuis le disque.
+
+### Périmètre et Invariants Tier 3.5
+
+- **Part 0 Strictement Isolée** : 53 blocs ($9\,728\,000\text{ octets}$ = 52 blocs pleins de $184\,320\text{ octets}$ + 1 bloc résiduel de $143\,360\text{ octets}$).
+- **Part 1 Résiduelle Exclue** : L'unique octet résiduel de la Part 1 (`[9_728_000, 9_728_001)`) n'a jamais été demandé et n'a jamais été écrit (réservé pour Tier 3.6).
+- **Fenêtre Glissante (Pipelining)** : Au plus 3 requêtes de blocs actives en vol simultanément (`max_in_flight = 3`), respectant la borne de congestion eD2K officielle.
+- **Stockage Physique `.part` & Journal `.resume.json`** :
+  - `Ed2kPartFileSink` pré-alloue / dimensionne le fichier physique à la taille exacte ($9\,728\,001\text{ octets}$).
+  - Les tranches reçues sont écrites sur disque à leur position absolue avec `seek(SeekFrom::Start(start))`.
+  - `Ed2kPartResumeState` consigne les intervalles reçus canoniquement fusionnés (`completed_ranges`) et les octets cumulés.
+  - Sauvegarde atomique par écriture dans un fichier temporaire (`.tmp`), `sync_all()`, puis renommage atomique vers `.resume.json` pour garantir l'immunité aux crashs.
+- **Scénario d'Interruption Contrôlée (Phase 1)** :
+  - Téléchargement exact des 20 premiers blocs ($3\,686\,400\text{ octets}$).
+  - Coupure brutale de la connexion TCP (`client1.close().await`, fermeture de socket).
+  - Validation sur disque : le fichier `.part` et le journal `.resume.json` contiennent fidèlement les $3\,686\,400\text{ octets}$ et l'intervalle unique fusionné `[(0, 3_686_400)]`.
+- **Scénario de Reprise Hermétique (Phase 2)** :
+  - Réouverture via `Ed2kPartFileSink::open_or_resume`, vérification de cohérence du hash eD2K et de la taille.
+  - Calcul déterministe des lacunes via `sequencer.plan_missing_blocks(0, resumed_sink.completed_ranges())` :
+    - Exactement 33 blocs manquants identifiés (blocs 20 à 52, offsets `[3_686_400..9_728_000)`).
+    - Zéro requête émise pour les blocs déjà possédés 0..19.
+  - Nouvelle connexion vers eMule 0.50a, réservation d'upload slot (`OP_STARTUPLOADREQ` -> `OP_ACCEPTUPLOADREQ`).
+  - Téléchargement des 33 blocs restants via la fenêtre glissante.
+  - Complétion 100% de la Part 0 ($9\,728\,000\text{ octets}$).
+- **Validation Cryptographique MD4 Diffusée (Streamed Disk MD4)** :
+  - La méthode `sink.compute_part_md4(0, &sequencer)` lit la Part 0 sur disque par tampons de 64 KiB directement dans le hasher MD4 sans saturer la RAM.
+  - Résultat obtenu : `240568858a65f85133d858f538d17467`, strictement identique à l'oracle calculé sur les octets de référence de la fixture.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 6 tests
+test test_tier3_live_download_sequencing_without_payload ... ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... ok
+test test_tier3_live_single_uncompressed_block_transfer_from_emule050a ... ok
+test test_tier3_live_part0_transfer_with_resume_and_interruption ... 
+Tier 3.5: Expected Part 0 MD4 oracle: 240568858a65f85133d858f538d17467
+Tier 3.5: Session 1 requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.5: Session 1 upload slot granted!
+Tier 3.5: Phase 1: Downloading first 20 blocks (3,686,400 bytes) with sliding window (max 3 in-flight)...
+Tier 3.5: Phase 1 verified: exactly 20 blocks (3,686,400 bytes) written and verified on disk.
+Tier 3.5: Simulating abrupt network interruption (closing Session 1 TCP connection)...
+Tier 3.5: Atomic .resume.json journal verified on disk after interruption.
+Tier 3.5: Phase 2: Opening existing .part file and .resume.json journal...
+Tier 3.5: Gap calculation verified: exactly 33 missing blocks planned [3,686,400..9,728,000).
+Tier 3.5: Session 2 requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.5: Session 2 upload slot granted!
+Tier 3.5: Phase 2: Downloading remaining 33 blocks with sliding window (max 3 in-flight)...
+Tier 3.5: Part 0 download 100% completed across 2 sessions!
+Tier 3.5: Streaming Part 0 from disk in 64 KiB buffers to verify MD4 checksum...
+Tier 3.5: Part 0 MD4 verified: 240568858a65f85133d858f538d17467 == 240568858a65f85133d858f538d17467
+Tier 3.5: Part 0 transfer with resume and interruption successfully verified against eMule 0.50a!
+ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 62.65s
+```
+
+### Synthèse des Garanties et Invariants Prouvés
+
+| Domaine | Preuve / Invariant Validé |
+| :--- | :--- |
+| **Persistance Disque** | Fichier `.part` écrit par `Ed2kPartFileSink` avec positionnement `seek`, sans corruption ni troncature. |
+| **Journal Atomique** | Fichier `.resume.json` mis à jour de façon transactionnelle (`.tmp` + `sync_all` + rename). |
+| **Fusion d'Intervalles** | Les tranches adjacentes et consécutives sont automatiquement fusionnées en plages canoniques `(start, end)`. |
+| **Résistance aux Crashs** | Après interruption TCP abrupte au bloc 20, réouverture exacte et reprise intègre. |
+| **Calcul des Lacunes** | `plan_missing_blocks` calcule les 33 blocs restants (blocs 20..52) et exclut 100% des blocs déjà possédés (0..19). |
+| **Pipelining / Fenêtre** | `download_blocks_pipelined` maintient une fenêtre active bornée ($\le 3$ requêtes simultanées). |
+| **Part 0 Complétée** | Exactement $9\,728\,000\text{ octets}$ reçus et assemblés sur disque. |
+| **Exclusion Part 1** | Aucun octet de la Part 1 (`[9_728_000..9_728_001)`) n'a été demandé ou écrit. |
+| **Oracle MD4 Diffusé** | Le hash MD4 calculé en streaming depuis le disque est strictement identique à l'oracle fixture (`240568858a65f85133d858f538d17467`). |
+| **Isolation & Pureté** | 0 panic, 0 `unwrap()`, 0 `expect()` dans `src/ed2k/`, 0 socket hors loopback `127.0.0.1`. |
+
+

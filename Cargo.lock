@@ -838,6 +838,7 @@ version = "0.1.2"
 dependencies = [
  "bytes",
  "hex",
+ "md4",
  "mule-core",
  "mule-format",
  "proptest",

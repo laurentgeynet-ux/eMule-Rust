@@ -16,8 +16,9 @@ use tokio::time::timeout;
 use super::decoder::Ed2kDecoder;
 use super::encoder::Ed2kEncoder;
 use super::opcodes::{
-    OP_ACCEPTUPLOADREQ, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_REQUESTPARTS,
-    OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE, OP_STARTUPLOADREQ,
+    OP_ACCEPTUPLOADREQ, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_QUEUERANKING,
+    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
+    OP_STARTUPLOADREQ,
 };
 use super::packet::{
     Ed2kFileStatus, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kSendingPart, PartAvailabilityMask,
@@ -1656,8 +1657,8 @@ impl Ed2kLoopbackClient {
                 let msg_opt = self.session.on_packet_received(&raw_packet)?;
                 if let Some(Ed2kMessage::SendingPart(part)) = msg_opt {
                     return Ok(part);
-                } else if raw_packet.protocol == PR_EMULE {
-                    // Extended eMule packet (ping, etc.) received alongside transfer.
+                } else if raw_packet.protocol == PR_EMULE || raw_packet.opcode == OP_QUEUERANKING {
+                    // Extended eMule packet (ping, queue ranking, etc.) received alongside transfer.
                     continue;
                 } else {
                     return Err(Ed2kSessionError::UnexpectedMessageInState {
@@ -1698,6 +1699,90 @@ impl Ed2kLoopbackClient {
 
             self.read_buf.extend_from_slice(&tmp[..n]);
         }
+    }
+
+    /// Downloads a sequence of blocks using a bounded sliding window of in-flight requests.
+    ///
+    /// - Caps concurrent in-flight requests at `min(max_in_flight, 3)`.
+    /// - Checks each block against `sink.has_range`: skips already completed blocks.
+    /// - Emits block requests when window capacity is available and blocks remain.
+    /// - Streams received chunks into `sink.write_block`.
+    /// - If `stop_after_blocks` is `Some(limit)`, stops cleanly after completing `limit` blocks.
+    /// - Returns the count of blocks newly completed during this session.
+    pub async fn download_blocks_pipelined<W: super::storage::Ed2kBlockWriter>(
+        &mut self,
+        sequencer: &super::sequencer::Ed2kDownloadSequencer,
+        blocks_to_download: &[super::packet::Ed2kBlockRange],
+        sink: &mut W,
+        max_in_flight: usize,
+        stop_after_blocks: Option<usize>,
+        chunk_timeout: Duration,
+    ) -> Result<usize, Ed2kSessionError> {
+        let window_size = max_in_flight.clamp(1, super::sequencer::MAX_REQUEST_RANGES_PER_PACKET);
+        let target_total = match stop_after_blocks {
+            Some(limit) => limit.min(blocks_to_download.len()),
+            None => blocks_to_download.len(),
+        };
+
+        let mut next_dispatch_idx = 0;
+        let mut dispatched_count = 0;
+        let mut completed_blocks_count = 0;
+        let mut active_indices = std::collections::HashSet::new();
+
+        while completed_blocks_count < target_total {
+            // Refill the sliding window up to window_size
+            while self.session.snapshot().pending_block_count < window_size
+                && dispatched_count < target_total
+                && next_dispatch_idx < blocks_to_download.len()
+            {
+                let block = &blocks_to_download[next_dispatch_idx];
+                let b_start = block.start as u64;
+                let b_end = block.end as u64;
+
+                if sink.has_range(b_start, b_end) {
+                    next_dispatch_idx += 1;
+                    continue;
+                }
+
+                self.send_block_request(
+                    sequencer.file_hash(),
+                    b_start,
+                    b_end,
+                    sequencer.file_size(),
+                )
+                .await?;
+
+                active_indices.insert(next_dispatch_idx);
+                dispatched_count += 1;
+                next_dispatch_idx += 1;
+            }
+
+            if self.session.snapshot().pending_block_count == 0 {
+                break;
+            }
+
+            // Receive next chunk
+            let part = self.receive_sending_part(chunk_timeout).await?;
+            let _written_range = sink
+                .write_block(sequencer, &part)
+                .map_err(|e| Ed2kSessionError::Io(e.to_string()))?;
+
+            // Check if any active block has just completed
+            let mut newly_completed = Vec::new();
+            for &idx in &active_indices {
+                let block = &blocks_to_download[idx];
+                if sink.has_range(block.start as u64, block.end as u64) {
+                    newly_completed.push(idx);
+                }
+            }
+
+            for idx in newly_completed {
+                active_indices.remove(&idx);
+                completed_blocks_count += 1;
+            }
+        }
+
+        Ok(completed_blocks_count)
     }
 
     /// High-level helper: requests a block range and awaits the response packet.

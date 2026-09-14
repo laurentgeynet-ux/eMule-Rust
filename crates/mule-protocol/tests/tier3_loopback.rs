@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use md4::{Digest, Md4};
 use mule_protocol::ed2k::{
-    Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kLoopbackClient, Ed2kSendingPart,
-    Ed2kSequencerError, OP_REQUESTPARTS_EMULE, PR_ED2K,
+    Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kLoopbackClient, Ed2kPartFileSink,
+    Ed2kPartResumeState, Ed2kSendingPart, Ed2kSequencerError, OP_REQUESTPARTS_EMULE, PR_ED2K,
 };
 use tier3_external_reference::{
     Tier3BinaryValidator, Tier3DivergenceReport, Tier3Environment, Tier3Harness, Tier3HarnessError,
@@ -1101,4 +1101,394 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
     assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
 
     println!("Tier 3.4: Single bounded block transfer successfully verified against eMule 0.50a!");
+}
+
+/// Tier 3.5: Full Part 0 transfer (9,728,000 bytes = 53 blocks) with controlled resume,
+/// pipelined sliding window (max 3 in-flight requests), and abrupt interruption.
+///
+/// Scenario:
+/// 1. Harness setup, loopback confinement, deterministic fixture creation (9,728,001 bytes).
+/// 2. Pinned eMule 0.50a reference process spawned in isolated sandbox.
+/// 3. Session 1:
+///    - Handshake -> OP_FILESTATUSREQ -> OP_STARTUPLOADREQ -> OP_ACCEPTUPLOADREQ.
+///    - Download exactly 20 blocks (3,686,400 bytes) via sliding window (max 3 in-flight).
+///    - Chunks written to Ed2kPartFileSink, backed by atomic .resume.json journal.
+///    - Verify exact intermediate byte-for-byte match against fixture prefix.
+///    - Simulate abrupt interruption: TCP FIN / client close.
+/// 4. Interruption verification:
+///    - Verify on-disk .part file and .resume.json state accurately record 20 blocks.
+/// 5. Session 2:
+///    - Reconnect to same eMule process. Handshake -> OP_FILESTATUSREQ -> OP_STARTUPLOADREQ -> OP_ACCEPTUPLOADREQ.
+///    - Reload existing .part file and .resume.json via Ed2kPartFileSink::open_or_resume.
+///    - Call sequencer.plan_missing_blocks(0, resumed_sink.completed_ranges()):
+///      verifies EXACTLY 33 blocks remain (blocks 20..52), and zero requests are emitted for blocks 0..19!
+///    - Download remaining 33 blocks via sliding window (max 3 in-flight).
+///    - Complete Part 0 (100% of 9,728,000 bytes).
+/// 6. In-Disk MD4 Checksum Verification:
+///    - Stream Part 0 from disk into Md4 hasher via resumed_sink.compute_part_md4(0, &sequencer).
+///    - Compare with local fixture MD4 oracle. Must match 100%.
+/// 7. Verify Part 1 (residual 1 byte) was NEVER requested in Tier 3.5.
+/// 8. Confinement scan: 0 non-loopback connections.
+/// 9. Graceful TCP teardown and RAII cleanup.
+#[tokio::test]
+#[ignore = "Tier 3 external reference orchestration requires pinned reference binary via EMULE_REFERENCE_BIN"]
+async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
+    let bin_path_var = match std::env::var("EMULE_REFERENCE_BIN") {
+        Ok(val) if !val.trim().is_empty() => PathBuf::from(val.trim()),
+        _ => {
+            println!("SKIPPED: Tier 3.5 test requires EMULE_REFERENCE_BIN environment variable.");
+            return;
+        }
+    };
+
+    let expected_hash = std::env::var("EMULE_REFERENCE_SHA256").ok();
+    let test_port = allocate_ephemeral_loopback_port();
+    let test_udp_port = allocate_ephemeral_loopback_port();
+
+    let mut harness = Tier3Harness::new(
+        bin_path_var,
+        expected_hash.as_deref(),
+        test_port,
+        test_udp_port,
+    )
+    .expect("failed to initialize Tier 3.5 harness");
+
+    harness.assert_loopback_confinement();
+
+    // 1. Create deterministic fixture in incoming directory (9,728,001 bytes)
+    let fixture_len = 9_728_001u64;
+    let fixture_path = harness
+        .environment()
+        .create_deterministic_fixture("tier3_status_fixture_9728001.bin", fixture_len as usize)
+        .expect("failed to create deterministic fixture");
+    assert!(fixture_path.exists());
+    assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len);
+
+    let sealed_hash: [u8; 16] = [
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
+        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+    ];
+
+    // Read ground truth Part 0 (9,728,000 bytes) from fixture file
+    let fixture_bytes = std::fs::read(&fixture_path).expect("read fixture file");
+    let part0_expected_bytes = &fixture_bytes[0..9_728_000];
+
+    // Compute ground-truth MD4 oracle for Part 0
+    let mut part0_oracle = Md4::new();
+    part0_oracle.update(part0_expected_bytes);
+    let expected_part0_md4: [u8; 16] = part0_oracle.finalize().into();
+    println!(
+        "Tier 3.5: Expected Part 0 MD4 oracle: {}",
+        hex::encode(expected_part0_md4)
+    );
+
+    // 2. Spawn reference eMule 0.50a process
+    harness
+        .spawn_reference_process(&[])
+        .expect("failed to spawn reference process");
+
+    let pid = harness.child_pid().unwrap_or(0);
+    assert!(pid > 0);
+    assert!(harness.is_child_running());
+
+    let user_hash = [
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
+        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+    ];
+    let client1_tcp_port = allocate_ephemeral_loopback_port();
+
+    // 3. Connect Session 1 and complete handshake
+    let mut connect_res = None;
+    for attempt in 1..=10 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if !harness.is_child_running() {
+            panic!("Reference process exited unexpectedly on attempt {attempt}");
+        }
+        match Ed2kLoopbackClient::connect_and_handshake(
+            harness.loopback_addr(),
+            user_hash,
+            0,
+            client1_tcp_port,
+            Vec::new(),
+            0,
+            0,
+            Duration::from_secs(3),
+        )
+        .await
+        {
+            Ok(res) => {
+                connect_res = Some(res);
+                break;
+            }
+            Err(e) => {
+                if attempt == 10 {
+                    panic!("Failed to connect Session 1 after 10 attempts: {e:?}");
+                }
+            }
+        }
+    }
+
+    let (mut client1, _peer_info) = connect_res.expect("connected Session 1");
+    assert!(client1.session().is_ready());
+
+    // Give eMule a moment to settle hashing
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // 4. Request file status for sealed fixture hash
+    let mut file_status = None;
+    for attempt in 1..=5 {
+        match client1.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+            Ok(status) => {
+                file_status = Some(status);
+                break;
+            }
+            Err(mule_protocol::ed2k::Ed2kSessionError::FileNotFound(_)) => {
+                println!("Tier 3.5: File not yet indexed by eMule, retry {attempt}/5 in 1s...");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Err(e) => {
+                panic!("Tier 3.5: Unexpected error requesting file status: {e:?}");
+            }
+        }
+    }
+
+    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    assert_eq!(status.file_hash, sealed_hash);
+    assert_eq!(status.part_count, 0, "complete source reports part_count = 0");
+    assert!(status.is_complete());
+
+    let sequencer = Ed2kDownloadSequencer::new(sealed_hash, fixture_len, status)
+        .expect("sequencer initialization succeeds");
+    let part0_blocks = sequencer.plan_part_blocks(0).expect("plan part 0");
+    assert_eq!(part0_blocks.len(), 53, "Part 0 must comprise exactly 53 blocks");
+
+    // 5. Initialize on-disk destination .part file and companion .resume.json
+    let target_part_path = harness
+        .environment()
+        .work_path()
+        .join("tier3_part0_transfer.part");
+    let mut sink = Ed2kPartFileSink::create_new(target_part_path.clone(), sealed_hash, fixture_len)
+        .expect("create initial part sink");
+
+    // Request upload slot in Session 1
+    println!("Tier 3.5: Session 1 requesting upload slot via OP_STARTUPLOADREQ (0x54)...");
+    client1
+        .request_upload_slot(sealed_hash, Duration::from_secs(5))
+        .await
+        .expect("eMule 0.50a must grant upload slot in Session 1");
+    println!("Tier 3.5: Session 1 upload slot granted!");
+
+    // 6. Controlled Interruption (Phase 1): Download exactly 20 blocks with sliding window (max 3 in-flight)
+    println!("Tier 3.5: Phase 1: Downloading first 20 blocks (3,686,400 bytes) with sliding window (max 3 in-flight)...");
+    let completed_phase1 = client1
+        .download_blocks_pipelined(
+            &sequencer,
+            &part0_blocks,
+            &mut sink,
+            3,
+            Some(20),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("Phase 1 pipelined download succeeds");
+
+    assert_eq!(completed_phase1, 20, "Phase 1 must stop after completing exactly 20 blocks");
+    let blocks_20_len = 20 * mule_protocol::ed2k::ED2K_BLOCK_SIZE as u64; // 3,686,400 bytes
+    assert_eq!(sink.total_bytes_received(), blocks_20_len);
+    assert_eq!(sink.completed_ranges(), &[(0, blocks_20_len)]);
+    assert!(sink.has_range(0, blocks_20_len));
+
+    // Verify intermediate byte-by-byte accuracy against fixture prefix
+    sink.flush_and_sync().expect("flush and sync sink");
+    let intermediate_disk_bytes = std::fs::read(&target_part_path).expect("read intermediate part file");
+    assert_eq!(
+        &intermediate_disk_bytes[0..blocks_20_len as usize],
+        &fixture_bytes[0..blocks_20_len as usize],
+        "intermediate 20 blocks on disk must match fixture byte-by-byte"
+    );
+    println!("Tier 3.5: Phase 1 verified: exactly 20 blocks (3,686,400 bytes) written and verified on disk.");
+
+    // 7. Abrupt Interruption: close Session 1 client and drop sink
+    println!("Tier 3.5: Simulating abrupt network interruption (closing Session 1 TCP connection)...");
+    client1.close().await;
+    drop(sink);
+
+    // Verify companion .resume.json state file directly on disk
+    let resume_path = PathBuf::from(format!("{}.resume.json", target_part_path.display()));
+    assert!(resume_path.exists(), "resume journal must exist on disk");
+    let journal = Ed2kPartResumeState::load_from_file(&resume_path).expect("load resume journal");
+    assert_eq!(journal.file_hash, hex::encode(sealed_hash));
+    assert_eq!(journal.file_size, fixture_len);
+    assert_eq!(journal.total_bytes_received, blocks_20_len);
+    assert_eq!(journal.completed_ranges, vec![(0, blocks_20_len)]);
+    println!("Tier 3.5: Atomic .resume.json journal verified on disk after interruption.");
+
+    // Pause briefly before reconnecting
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // 8. Session 2: Resume download from existing .part and .resume.json state
+    println!("Tier 3.5: Phase 2: Opening existing .part file and .resume.json journal...");
+    let mut resumed_sink = Ed2kPartFileSink::open_or_resume(target_part_path.clone(), sealed_hash, fixture_len)
+        .expect("resume sink from disk");
+    assert_eq!(resumed_sink.total_bytes_received(), blocks_20_len);
+    assert_eq!(resumed_sink.completed_ranges(), &[(0, blocks_20_len)]);
+
+    // 9. Gap calculation via plan_missing_blocks: verify EXACTLY 33 blocks (blocks 20..52) remain
+    let missing_blocks = sequencer
+        .plan_missing_blocks(0, resumed_sink.completed_ranges())
+        .expect("plan missing blocks for Part 0");
+    assert_eq!(
+        missing_blocks.len(),
+        33,
+        "Part 0 missing blocks must be exactly 33 (blocks 20 to 52)"
+    );
+    assert_eq!(missing_blocks[0].start, blocks_20_len as u32);
+    assert_eq!(missing_blocks[32].end, 9_728_000);
+
+    // Verify ZERO requests planned for already-downloaded blocks 0..19
+    for b in &missing_blocks {
+        assert!(
+            b.start >= blocks_20_len as u32,
+            "No missing block may overlap already completed blocks 0..19"
+        );
+        assert!(
+            b.end <= 9_728_000,
+            "No block in Part 0 may exceed part boundary 9,728,000"
+        );
+    }
+    println!("Tier 3.5: Gap calculation verified: exactly 33 missing blocks planned [3,686,400..9,728,000).");
+
+    // Connect Session 2
+    let client2_tcp_port = allocate_ephemeral_loopback_port();
+    let mut connect_res2 = None;
+    for attempt in 1..=10 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if !harness.is_child_running() {
+            panic!("Reference process exited unexpectedly before Session 2 on attempt {attempt}");
+        }
+        match Ed2kLoopbackClient::connect_and_handshake(
+            harness.loopback_addr(),
+            user_hash,
+            0,
+            client2_tcp_port,
+            Vec::new(),
+            0,
+            0,
+            Duration::from_secs(3),
+        )
+        .await
+        {
+            Ok(res) => {
+                connect_res2 = Some(res);
+                break;
+            }
+            Err(e) => {
+                if attempt == 10 {
+                    panic!("Failed to connect Session 2 after 10 attempts: {e:?}");
+                }
+            }
+        }
+    }
+
+    let (mut client2, _peer_info2) = connect_res2.expect("connected Session 2");
+    assert!(client2.session().is_ready());
+
+    // Request upload slot in Session 2
+    println!("Tier 3.5: Session 2 requesting upload slot via OP_STARTUPLOADREQ (0x54)...");
+    client2
+        .request_upload_slot(sealed_hash, Duration::from_secs(5))
+        .await
+        .expect("eMule 0.50a must grant upload slot in Session 2");
+    println!("Tier 3.5: Session 2 upload slot granted!");
+
+    // 10. Download remaining 33 blocks via sliding window (max 3 in-flight)
+    println!("Tier 3.5: Phase 2: Downloading remaining 33 blocks with sliding window (max 3 in-flight)...");
+    let completed_phase2 = client2
+        .download_blocks_pipelined(
+            &sequencer,
+            &missing_blocks,
+            &mut resumed_sink,
+            3,
+            None,
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("Phase 2 pipelined download succeeds");
+
+    assert_eq!(completed_phase2, 33, "Phase 2 must complete all remaining 33 blocks");
+    assert_eq!(
+        resumed_sink.total_bytes_received(),
+        9_728_000,
+        "Part 0 must have exactly 9,728,000 bytes completed"
+    );
+    assert_eq!(
+        resumed_sink.completed_ranges(),
+        &[(0, 9_728_000)],
+        "Part 0 completed ranges must be fully merged into [(0, 9,728,000)]"
+    );
+    assert!(
+        resumed_sink.is_part_complete(0, &sequencer).expect("part complete check"),
+        "Part 0 must be reported complete"
+    );
+    println!("Tier 3.5: Part 0 download 100% completed across 2 sessions!");
+
+    // 11. In-Disk MD4 Checksum Verification
+    println!("Tier 3.5: Streaming Part 0 from disk in 64 KiB buffers to verify MD4 checksum...");
+    let disk_part0_md4 = resumed_sink
+        .compute_part_md4(0, &sequencer)
+        .expect("compute in-disk MD4 of Part 0");
+    assert_eq!(
+        disk_part0_md4, expected_part0_md4,
+        "Streamed on-disk Part 0 MD4 must match fixture oracle byte-for-byte"
+    );
+    println!(
+        "Tier 3.5: Part 0 MD4 verified: {} == {}",
+        hex::encode(disk_part0_md4),
+        hex::encode(expected_part0_md4)
+    );
+
+    // Full byte-by-byte comparison of Part 0 from disk against fixture
+    let final_disk_bytes = std::fs::read(&target_part_path).expect("read completed part file");
+    assert_eq!(
+        &final_disk_bytes[0..9_728_000],
+        part0_expected_bytes,
+        "Complete Part 0 on disk must match fixture byte-by-byte"
+    );
+
+    // 12. Verify Part 1 was NEVER requested (Part 1 offset 9,728,000..9,728,001 is still unwritten)
+    assert!(
+        !resumed_sink.has_range(9_728_000, 9_728_001),
+        "Part 1 must NOT be requested or completed in Tier 3.5"
+    );
+    assert_eq!(
+        resumed_sink.total_bytes_received(),
+        9_728_000,
+        "Total received bytes must be strictly 9,728,000"
+    );
+
+    // 13. Strict passive discipline: verify 0 additional requests and clean session state
+    assert_eq!(client2.session().snapshot().pending_block_count, 0);
+    assert_eq!(client2.session().snapshot().pending_status_count, 0);
+    assert!(client2.session().is_ready());
+
+    // 14. Confinement scan: 0 non-loopback connections
+    let check_conn = std::process::Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(format!("Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | Where-Object {{ $_.RemoteAddress -ne '0.0.0.0' -and $_.RemoteAddress -ne '127.0.0.1' -and $_.RemoteAddress -ne '::' -and $_.RemoteAddress -ne '::1' }} | Measure-Object | Select-Object -ExpandProperty Count"))
+        .output();
+    if let Ok(out) = check_conn {
+        let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let non_loopback_count: usize = count_str.parse().unwrap_or(0);
+        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+    }
+
+    // 15. Graceful TCP FIN teardown
+    client2.close().await;
+
+    // 16. Hermetic process teardown
+    harness.shutdown();
+    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+
+    println!("Tier 3.5: Part 0 transfer with resume and interruption successfully verified against eMule 0.50a!");
 }
