@@ -49,37 +49,70 @@ Unification et codification des codes d'erreur selon la spécification JSON-RPC 
 
 ---
 
-## 3. Transparence de l'Inventaire du Bundle (22 Fichiers)
+## 3. Livrables Distincts & Transparence de l'Inventaire (22 Fichiers par Bundle)
 
-Le fichier d'intégrité `SHA256SUMS.txt` et le manifeste `version.json` référencent exactement **22 artefacts** assemblés pour le bundle Windows x64 :
-- **Précision technique** : Dans les builds Flutter Desktop modernes, `AssetManifest.bin` remplace l'ancien format texte redondant `AssetManifest.json`, tandis que `native_assets.json` est généré à la racine pour la résolution des assets natifs Flutter, portant le total exact et immuable à 22 fichiers.
-- **Composition vérifiée des 22 artefacts** :
-  1. `bin/mule-cli.exe`
-  2. `bin/mule-daemon.exe`
-  3. `data/app.so`
-  4. `data/flutter_assets/AssetManifest.bin`
-  5. `data/flutter_assets/FontManifest.json`
-  6. `data/flutter_assets/fonts/MaterialIcons-Regular.otf`
-  7. `data/flutter_assets/NativeAssetsManifest.json`
-  8. `data/flutter_assets/NOTICES.Z`
-  9. `data/flutter_assets/packages/cupertino_icons/assets/CupertinoIcons.ttf`
-  10. `data/flutter_assets/shaders/ink_sparkle.frag`
-  11. `data/flutter_assets/shaders/stretch_effect.frag`
-  12. `data/icudtl.dat`
-  13. `EmuleSion.exe`
-  14. `flutter_windows.dll`
-  15. `native_assets.json`
-  16. `portable.flag`
-  17. `sbom/flutter.cdx.json`
-  18. `sbom/license-audit.json`
-  19. `sbom/license-audit.md`
-  20. `sbom/rust.cdx.json`
-  21. `sbom/sbom.cdx.json`
-  22. `sbom/windows-bundle.cdx.json`
+Afin d'éliminer toute ambiguïté de provenance et d'éviter l'écrasement mutuel des artefacts, le processus de build produit deux distributions scellées distinctes dans des répertoires et archives dédiés.
 
-- **Archive QA Scellée** : `EmuleSion-v0.1.1-lab-windows-x64.zip` (14 702 121 octets)
-  - Empreinte SHA-256 : `e8cb2c7ef567b5e684e0181ad08123eaed42e14213b633ec6ba1e8604c705602`
-  - Tag Git : `v0.1.1-lab` (commit `b44157d55d54bd9c2c0068f78fd728406a3eb814`)
+### 3.1 Composition Invariante (22 Artefacts Post-Signing)
+Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dans son propre fichier `SHA256SUMS.txt` et manifeste `version.json` :
+1. `bin/mule-cli.exe`
+2. `bin/mule-daemon.exe`
+3. `data/app.so`
+4. `data/flutter_assets/AssetManifest.bin` (remplace le format JSON redondant)
+5. `data/flutter_assets/FontManifest.json`
+6. `data/flutter_assets/fonts/MaterialIcons-Regular.otf`
+7. `data/flutter_assets/NativeAssetsManifest.json`
+8. `data/flutter_assets/NOTICES.Z`
+9. `data/flutter_assets/packages/cupertino_icons/assets/CupertinoIcons.ttf`
+10. `data/flutter_assets/shaders/ink_sparkle.frag`
+11. `data/flutter_assets/shaders/stretch_effect.frag`
+12. `data/icudtl.dat`
+13. `EmuleSion.exe`
+14. `flutter_windows.dll`
+15. `native_assets.json` (résolution des assets natifs Flutter)
+16. `portable.flag`
+17. `sbom/flutter.cdx.json`
+18. `sbom/license-audit.json`
+19. `sbom/license-audit.md`
+20. `sbom/rust.cdx.json`
+21. `sbom/sbom.cdx.json`
+22. `sbom/windows-bundle.cdx.json`
+
+### 3.2 Spécifications des Deux Archives de Release
+
+#### A. Build Standard Locale
+- **Dossier d'assemblage** : `dist/EmuleSion-Standard-Windows/`
+- **Archive scellée** : `EmuleSion-v0.1.1-lab-standard-windows-x64.zip` (14 488 636 octets)
+- **Empreinte SHA-256** : `8a45190a858746113be83d3817242c710385ebca2ccd97be5db7fd6bb2444a13`
+- **Manifeste `version.json`** :
+  ```json
+  {
+    "distributionFlavor": "standard",
+    "labToolsEnabled": false
+  }
+  ```
+- **Capacités RPC annoncées** : `["downloads", "download-events"]`
+- **Routes `lab.*`** : Absentes (rejet avec `-32601 MethodNotFound`).
+- **Texte de diffusion recommandé** :
+  > **Emule-Sion v0.1.1-lab — Standard**  
+  > Build interne locale sans outils de laboratoire compilés. Elle inclut le daemon local, l’interface Flutter Desktop, la persistance et les fonctions de gestion de téléchargements. Les routes de test, le pair loopback et les fonctions de simulation ne sont pas présents.
+
+#### B. Build QA Loopback
+- **Dossier d'assemblage** : `dist/EmuleSion-Qa-Loopback-Windows/`
+- **Archive scellée** : `EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip` (14 702 418 octets)
+- **Empreinte SHA-256** : `e8f1bfb56db7a047291d623552887542fc11f0e93b96ea1ef91defe4d72f3e35`
+- **Manifeste `version.json`** :
+  ```json
+  {
+    "distributionFlavor": "qa-loopback",
+    "labToolsEnabled": true
+  }
+  ```
+- **Capacités RPC annoncées** : `["downloads", "download-events", "lab-tools"]`
+- **Routes `lab.*`** : Actives (`lab.status`, `lab.createFixture`, etc.).
+- **Texte de diffusion recommandé** :
+  > **Emule-Sion v0.1.1-lab — QA Loopback**  
+  > Build interne de validation incluant les outils de laboratoire `lab-tools`. Les échanges de test sont strictement limités à `127.0.0.1` ; aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. Utiliser uniquement pour les scénarios QA guidés.
 
 ---
 
@@ -114,13 +147,14 @@ flutter test
 cd ../..
 
 # 3. Génération du bundle standard scellé (arbre propre requis)
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1 -Flavor standard
 
 # 4. Génération du bundle QA expérimental (avec outils de laboratoire)
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1 -LabMode
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1 -Flavor qa-loopback
 
-# 5. Tests automatisés post-packaging et matrice de robustesse
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_packaged_bundle.ps1
+# 5. Tests automatisés post-packaging (par flavor) et matrice de robustesse
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_packaged_bundle.ps1 -Flavor standard
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_packaged_bundle.ps1 -Flavor qa-loopback
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_rc_matrix.ps1
 ```
 
