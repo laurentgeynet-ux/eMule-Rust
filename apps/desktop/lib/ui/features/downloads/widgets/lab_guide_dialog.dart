@@ -339,6 +339,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            _buildDirectoryOverview(),
                             _buildStep1FixtureCreation(),
                             const SizedBox(height: 16),
                             _buildStep2LinkAndDownload(),
@@ -366,6 +367,63 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDirectoryOverview() {
+    final workdir = widget.viewModel.daemonInfo?.workdirPath ??
+        widget.viewModel.supervisor?.resolveWorkDir().directory.path ??
+        'data';
+    final downloadsDir = widget.viewModel.defaultDownloadDirectory.path;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.darkCard,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.folder_outlined, color: AppTheme.primary, size: 16),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Storage: data/ (Internal State) vs downloads/ (Completed Files)',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.folder_open, size: 13),
+                label: const Text('Open Folder', style: TextStyle(fontSize: 11)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  side: const BorderSide(color: AppTheme.darkBorder),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => widget.viewModel.openDownloadsFolder(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '• Internal data (DB, temp .part, fixtures): $workdir',
+            style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.white60),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            '• Completed downloads: $downloadsDir',
+            style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppTheme.primary),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }
@@ -795,6 +853,41 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
               ],
             ],
           ),
+          if (isCompleted) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.darkCard,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppTheme.statusCompleted.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified, color: AppTheme.statusCompleted, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Final file: ${widget.viewModel.defaultDownloadDirectory.path}\\${selectedDownload.fileName}',
+                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.folder_open, size: 14),
+                    label: const Text('Open Folder', style: TextStyle(fontSize: 11)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      side: const BorderSide(color: AppTheme.darkBorder),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () => widget.viewModel.openDownloadsFolder(),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -806,7 +899,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
     return _buildStepCard(
       stepNumber: 5,
       title: 'Clean Test Data (Fixtures & Incomplete Parts)',
-      description: 'Purges generated files in <workdir>/fixtures and cleans partial test downloads.',
+      description: 'Purges generated files in <workdir>/fixtures and partial files in <workdir>/temp. Completed downloads in downloads/ are preserved and never touched.',
       content: Row(
         children: [
           OutlinedButton.icon(

@@ -109,6 +109,7 @@ fn handle_hello(
         "capabilities": capabilities,
         "workdirMode": format!("{:?}", state.config.workdir_mode),
         "workdirPath": state.config.data_dir.to_string_lossy(),
+        "defaultDownloadDir": state.config.default_download_dir.to_string_lossy(),
     }))
 }
 
@@ -129,6 +130,7 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "capabilities": capabilities,
         "workdirMode": format!("{:?}", state.config.workdir_mode),
         "workdirPath": state.config.data_dir.to_string_lossy(),
+        "defaultDownloadDir": state.config.default_download_dir.to_string_lossy(),
     }))
 }
 
@@ -178,8 +180,23 @@ async fn handle_add_ed2k_link(
     let link = params["link"]
         .as_str()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'link' parameter"))?;
-    let target_dir_str = params["targetDirectory"].as_str().unwrap_or(".");
-    let target_dir = std::path::Path::new(target_dir_str);
+    let target_dir_opt = params["targetDirectory"]
+        .as_str()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty() && *s != ".");
+
+    let target_dir = match target_dir_opt {
+        Some(p) => {
+            let path = std::path::PathBuf::from(p);
+            if path.is_absolute() {
+                path
+            } else {
+                state.config.default_download_dir.join(path)
+            }
+        }
+        None => state.config.default_download_dir.clone(),
+    };
+    let _ = std::fs::create_dir_all(&target_dir);
 
     let policy = match params["allocationPolicy"].as_str() {
         Some("preallocate") => AllocationPolicy::Preallocate,
@@ -191,7 +208,7 @@ async fn handle_add_ed2k_link(
         .downloads
         .lock()
         .await
-        .add_ed2k_link(link, target_dir, policy)?;
+        .add_ed2k_link(link, &target_dir, policy)?;
 
     state.broadcast_download_update(snapshot.clone());
 

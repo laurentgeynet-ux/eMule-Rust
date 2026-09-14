@@ -78,6 +78,7 @@ class RpcDto {
       capabilities: caps,
       workdirMode: json['workdirMode'] as String?,
       workdirPath: json['workdirPath'] as String?,
+      defaultDownloadDir: json['defaultDownloadDir'] as String?,
     );
   }
 }

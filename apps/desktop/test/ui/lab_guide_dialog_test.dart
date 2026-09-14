@@ -72,6 +72,7 @@ void main() {
       expect(find.textContaining('ed2k://|file|lab_sample_1mb.bin|1048576|'), findsOneWidget);
       final addBtn = find.widgetWithText(FilledButton, 'Add to Downloads');
       expect(addBtn, findsOneWidget);
+      await tester.ensureVisible(addBtn);
       await tester.tap(addBtn);
       await tester.pumpAndSettle();
 

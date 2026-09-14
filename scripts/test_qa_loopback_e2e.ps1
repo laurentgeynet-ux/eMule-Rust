@@ -62,15 +62,15 @@ Write-Host "==================================================" -ForegroundColor
 $TestId = [guid]::NewGuid().ToString("N").Substring(0, 8)
 $IsolatedTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "EmuleSion-QaE2E-$TestId"
 $BundleCopyDir = Join-Path $IsolatedTempRoot "bundle\EmuleSion-Windows"
-$WorkDir = Join-Path $IsolatedTempRoot "workdir\EmuleSion"
-$DownloadsDir = Join-Path $WorkDir "downloads"
+$WorkDir = Join-Path $BundleCopyDir "data"
+$DownloadsDir = Join-Path $BundleCopyDir "downloads"
+$CustomDownloadsDir = Join-Path $IsolatedTempRoot "custom_downloads"
 
 Write-Host "`n[1/7] Creating isolated test sandbox at:" -ForegroundColor Yellow
 Write-Host "  $IsolatedTempRoot" -ForegroundColor Gray
 
 New-Item -ItemType Directory -Path $BundleCopyDir -Force | Out-Null
-New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
-New-Item -ItemType Directory -Path $DownloadsDir -Force | Out-Null
+New-Item -ItemType Directory -Path $CustomDownloadsDir -Force | Out-Null
 
 $daemonProcess = $null
 
@@ -212,7 +212,11 @@ try {
     if ($helloResp.result.capabilities -notcontains "lab-tools") {
         throw "Capability error: QA Loopback bundle missing 'lab-tools'!"
     }
-    Write-Host " -> system.hello handshake success (Version: $($helloResp.result.daemonVersion), Mode: Portable)." -ForegroundColor Green
+    if ([string]::IsNullOrWhiteSpace($helloResp.result.defaultDownloadDir)) {
+        throw "Missing defaultDownloadDir in system.hello response!"
+    }
+    $resolvedDefaultDownloadDir = $helloResp.result.defaultDownloadDir
+    Write-Host " -> system.hello handshake success (Version: $($helloResp.result.daemonVersion), Mode: Portable, DefaultDownloads: $resolvedDefaultDownloadDir)." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
     # 3. Nominal Transfer Vector: sample_1mb
@@ -241,18 +245,17 @@ try {
     $peerAddr = $peerResp.result.peerAddr
     Write-Host " -> Loopback peer active on $peerAddr (Serving $($peerResp.result.sharedCount) fixture(s))." -ForegroundColor Gray
 
-    # C. Add eD2K download task
+    # C. Add eD2K download task WITHOUT specifying targetDirectory (tests defaulting to defaultDownloadDir)
     $addResp = Invoke-WsRpc $ws @{
         jsonrpc = "2.0"
         id = 4
         method = "downloads.addEd2kLink"
         params = @{
             link = $sampleLink
-            targetDirectory = $DownloadsDir
         }
     }
     $dl1Id = $addResp.result.downloadId
-    Write-Host " -> Added download task: $dl1Id (Status: $($addResp.result.status))" -ForegroundColor Gray
+    Write-Host " -> Added download task: $dl1Id (Defaulted to $resolvedDefaultDownloadDir)" -ForegroundColor Gray
 
     # D. Connect download to peer source
     $startResp = Invoke-WsRpc $ws @{
@@ -292,21 +295,21 @@ try {
     Write-Host " -> sample_1mb download completed and verified in $($sw.ElapsedMilliseconds) ms!" -ForegroundColor Green
 
     # Verify finalized file on disk
-    $finalizedSample = Join-Path $DownloadsDir $sampleFile
+    $finalizedSample = Join-Path $resolvedDefaultDownloadDir $sampleFile
     if (!(Test-Path $finalizedSample)) {
         throw "Finalized file missing at $finalizedSample!"
     }
     if ((Get-Item $finalizedSample).Length -ne 1048576) {
         throw "Finalized file size mismatch! Expected 1048576, got $((Get-Item $finalizedSample).Length)"
     }
-    Write-Host " -> Confirmed finalized file in downloads/: $sampleFile (1,048,576 bytes)." -ForegroundColor Green
+    Write-Host " -> Confirmed finalized file in default downloads/: $sampleFile (1,048,576 bytes)." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
     # 4. Boundary Transfer Vector: pattern_9728001 (Part + 1 byte)
     # -------------------------------------------------------------------------
     Write-Host "`n[4/7] Testing Vector 2: Boundary Transfer (pattern_9728001 - 9.28 MB + 1 byte)..." -ForegroundColor Yellow
 
-    # A. Create boundary fixture
+    # A. Create boundary fixture (1 part = 9,728,000 bytes + 1 residual byte = 9,728,001 bytes)
     $fix2Resp = Invoke-WsRpc $ws @{
         jsonrpc = "2.0"
         id = 10
@@ -329,14 +332,14 @@ try {
     }
     $peer2Addr = $peer2Resp.result.peerAddr
 
-    # C. Add eD2K task
+    # C. Add eD2K task with custom targetDirectory
     $add2Resp = Invoke-WsRpc $ws @{
         jsonrpc = "2.0"
         id = 12
         method = "downloads.addEd2kLink"
         params = @{
             link = $boundLink
-            targetDirectory = $DownloadsDir
+            targetDirectory = $CustomDownloadsDir
         }
     }
     $dl2Id = $add2Resp.result.downloadId
@@ -375,14 +378,14 @@ try {
     }
     Write-Host " -> Boundary transfer pattern_9728001 completed and verified in $($sw2.ElapsedMilliseconds) ms!" -ForegroundColor Green
 
-    $finalizedBound = Join-Path $DownloadsDir $boundFile
+    $finalizedBound = Join-Path $CustomDownloadsDir $boundFile
     if (!(Test-Path $finalizedBound)) {
         throw "Finalized boundary file missing at $finalizedBound!"
     }
     if ((Get-Item $finalizedBound).Length -ne 9728001) {
         throw "Finalized boundary file size mismatch! Expected 9728001, got $((Get-Item $finalizedBound).Length)"
     }
-    Write-Host " -> Confirmed boundary file in downloads/: $boundFile (9,728,001 bytes)." -ForegroundColor Green
+    Write-Host " -> Confirmed boundary file in custom downloads/: $boundFile (9,728,001 bytes)." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
     # 5. Resilience Vector: Crash at ~50% and Resumption (part_9728000)
@@ -413,7 +416,6 @@ try {
         method = "downloads.addEd2kLink"
         params = @{
             link = $partLink
-            targetDirectory = $DownloadsDir
         }
     }
     $dl3Id = $add3Resp.result.downloadId
@@ -535,11 +537,11 @@ try {
     }
     Write-Host " -> Resumed download reached 100% completion and was verified!" -ForegroundColor Green
 
-    $finalizedPart = Join-Path $DownloadsDir $partFile
+    $finalizedPart = Join-Path $resolvedDefaultDownloadDir $partFile
     if (!(Test-Path $finalizedPart)) {
         throw "Finalized part file missing at $finalizedPart!"
     }
-    Write-Host " -> Confirmed finalized file in downloads/: $partFile (9,728,000 bytes)." -ForegroundColor Green
+    Write-Host " -> Confirmed finalized file in default downloads/: $partFile (9,728,000 bytes)." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
     # 6. Secure Test Data Cleanup Verification
@@ -557,12 +559,16 @@ try {
     }
     Write-Host " -> Cleanup report: $($cleanResp.result.deletedFilesCount) file(s) deleted, $($cleanResp.result.freedBytes) bytes freed." -ForegroundColor Gray
 
-    # Crucial security verification: Confirm completed downloads in downloads/ were NOT deleted!
-    $filesInDownloads = Get-ChildItem -Path $DownloadsDir -File
-    if ($filesInDownloads.Count -lt 3) {
-        throw "SECURITY / DATA LOSS FAILURE: lab.cleanupTestData deleted finalized download files in downloads/! Found only $($filesInDownloads.Count) files."
+    # Crucial security verification: Confirm completed downloads in both default and custom downloads/ were NOT deleted!
+    $filesInDefaultDownloads = Get-ChildItem -Path $resolvedDefaultDownloadDir -File
+    if ($filesInDefaultDownloads.Count -lt 2) {
+        throw "SECURITY / DATA LOSS FAILURE: lab.cleanupTestData deleted finalized download files in default downloads/! Found only $($filesInDefaultDownloads.Count) files."
     }
-    Write-Host " -> Verified: All 3 finalized downloads in downloads/ remain intact and untouched." -ForegroundColor Green
+    $filesInCustomDownloads = Get-ChildItem -Path $CustomDownloadsDir -File
+    if ($filesInCustomDownloads.Count -lt 1) {
+        throw "SECURITY / DATA LOSS FAILURE: lab.cleanupTestData deleted finalized download files in custom downloads/! Found only $($filesInCustomDownloads.Count) files."
+    }
+    Write-Host " -> Verified: All finalized downloads in default downloads/ ($($filesInDefaultDownloads.Count)) and custom downloads/ ($($filesInCustomDownloads.Count)) remain intact and untouched." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
     # 7. Graceful Shutdown & Teardown Verification

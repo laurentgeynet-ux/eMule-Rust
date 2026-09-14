@@ -307,13 +307,16 @@ try {
     if (!$helloJson.result -or !$helloJson.result.daemonVersion) {
         throw "system.hello failed or returned invalid response: $helloResp"
     }
+    if (!$helloJson.result.defaultDownloadDir) {
+        throw "system.hello missing defaultDownloadDir: $helloResp"
+    }
 
     # Test system.status
     $statusResp = Send-JsonRpc $ws '{"jsonrpc":"2.0","id":2,"method":"system.status","params":{}}'
     Write-Host " -> system.status response: $statusResp" -ForegroundColor Gray
     $statusJson = $statusResp | ConvertFrom-Json
-    if (!$statusJson.result) {
-        throw "system.status failed: $statusResp"
+    if (!$statusJson.result -or !$statusJson.result.defaultDownloadDir) {
+        throw "system.status failed or missing defaultDownloadDir: $statusResp"
     }
 
     # Verify capabilities and lab.* behavior strictly per flavor

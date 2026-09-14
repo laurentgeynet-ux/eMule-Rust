@@ -158,5 +158,57 @@ void main() {
       // Should NOT pick up parent because sub_tools != bin
       expect(resolved.mode, WorkDirMode.installedDefault);
     });
+
+    test('Portable mode resolves defaultDownloadDirectory to <bundleRoot>/downloads', () {
+      final bundleDir = Directory('${tempDir.path}/bundle_downloads')..createSync();
+      File('${bundleDir.path}/portable.flag').createSync();
+      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+
+      final resolved = WorkDirectoryResolver.resolve(
+        executableFile: fakeExe,
+        environment: {},
+      );
+
+      expect(resolved.mode, WorkDirMode.portable);
+      expect(resolved.workdir.path, '${bundleDir.path}/data');
+      expect(resolved.defaultDownloadDirectory.path, '${bundleDir.path}/downloads');
+      expect(resolved.bundleRoot?.path, bundleDir.path);
+    });
+
+    test('Explicit customDownloadsDir overrides defaultDownloadDirectory', () {
+      final bundleDir = Directory('${tempDir.path}/bundle_custom_dl')..createSync();
+      File('${bundleDir.path}/portable.flag').createSync();
+      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+      final customDl = Directory('${tempDir.path}/my_special_downloads');
+
+      final resolved = WorkDirectoryResolver.resolve(
+        customDownloadsDir: customDl,
+        executableFile: fakeExe,
+        environment: {},
+      );
+
+      expect(resolved.defaultDownloadDirectory.path, customDl.path);
+    });
+
+    test('InstalledDefault Windows resolves defaultDownloadDirectory to %USERPROFILE%\\Downloads\\EmuleSion', () {
+      final appDir = Directory('${tempDir.path}/installed_windows_dl')..createSync();
+      final fakeExe = File('${appDir.path}/EmuleSion.exe');
+
+      final env = {
+        'LOCALAPPDATA': 'C:\\Users\\QA\\AppData\\Local',
+        'USERPROFILE': 'C:\\Users\\QA',
+      };
+
+      final resolved = WorkDirectoryResolver.resolve(
+        executableFile: fakeExe,
+        environment: env,
+      );
+
+      expect(resolved.mode, WorkDirMode.installedDefault);
+      if (Platform.isWindows) {
+        expect(resolved.workdir.path, 'C:\\Users\\QA\\AppData\\Local\\EmuleSion');
+        expect(resolved.defaultDownloadDirectory.path, 'C:\\Users\\QA\\Downloads\\EmuleSion');
+      }
+    });
   });
 }

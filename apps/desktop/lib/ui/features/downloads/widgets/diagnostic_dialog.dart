@@ -78,6 +78,9 @@ class DiagnosticDialog extends StatelessWidget {
     final workdirPath = info?.workdirPath ??
         resolvedLocal?.directory.path ??
         'Not available';
+    final downloadsPath = info?.defaultDownloadDir ??
+        resolvedLocal?.defaultDownloadDirectory.path ??
+        viewModel.defaultDownloadDirectory.path;
     final isPortable = workdirMode.toLowerCase() == 'portable';
     final isInstalled = workdirMode.toLowerCase() == 'installeddefault';
 
@@ -240,7 +243,7 @@ class DiagnosticDialog extends StatelessWidget {
                             ),
                             const Divider(height: 16, color: AppTheme.darkBorder),
                             _buildInfoRow(
-                              'Path',
+                              'Internal Data',
                               Row(
                                 children: [
                                   Expanded(
@@ -266,7 +269,44 @@ class DiagnosticDialog extends StatelessWidget {
                                       Clipboard.setData(ClipboardData(text: workdirPath));
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(
-                                          content: Text('Workdir path copied to clipboard'),
+                                          content: Text('Internal data path copied to clipboard'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 16, color: AppTheme.darkBorder),
+                            _buildInfoRow(
+                              'Downloads',
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Tooltip(
+                                      message: downloadsPath,
+                                      child: SelectableText(
+                                        _formatPathForDisplay(downloadsPath),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontFamily: 'monospace',
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                                    tooltip: 'Copy downloads directory path',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    onPressed: () {
+                                      Clipboard.setData(ClipboardData(text: downloadsPath));
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Downloads path copied to clipboard'),
                                           duration: Duration(seconds: 2),
                                         ),
                                       );

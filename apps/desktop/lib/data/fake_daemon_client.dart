@@ -112,6 +112,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       capabilities: ['downloads', 'download-events', 'lab-tools'],
       workdirMode: 'Portable',
       workdirPath: 'C:\\Fake\\Portable\\data',
+      defaultDownloadDir: 'C:\\Fake\\Portable\\downloads',
     );
     return _daemonInfo!;
   }

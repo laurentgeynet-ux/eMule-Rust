@@ -25,6 +25,6 @@ pub use services::{DownloadService, SourceAvailabilitySummary};
 pub use session::DaemonSession;
 pub use state::AppState;
 pub use workdir::{
-    ResolvedWorkDir, WorkDirMode, WorkDirectoryResolver, ENV_LEGACY_WORKDIR, ENV_WORKDIR,
-    PORTABLE_FLAG_FILENAME,
+    ResolvedDirectories, ResolvedWorkDir, WorkDirMode, WorkDirectoryResolver, ENV_DOWNLOADS_DIR,
+    ENV_LEGACY_WORKDIR, ENV_WORKDIR, PORTABLE_FLAG_FILENAME,
 };

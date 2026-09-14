@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
@@ -14,7 +15,7 @@ class AddLinkDialog extends StatefulWidget {
 
 class _AddLinkDialogState extends State<AddLinkDialog> {
   final _linkController = TextEditingController();
-  final _targetDirController = TextEditingController(text: '.');
+  late final TextEditingController _targetDirController;
   String _allocationPolicy = 'sparse';
 
   String? _parsedFileName;
@@ -25,6 +26,9 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
   @override
   void initState() {
     super.initState();
+    _targetDirController = TextEditingController(
+      text: widget.viewModel.defaultDownloadDirectory.path,
+    );
     _linkController.addListener(_validateLink);
   }
 
@@ -214,13 +218,29 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
                         ),
                         const SizedBox(height: 6),
-                        TextField(
-                          controller: _targetDirController,
-                          style: const TextStyle(fontSize: 13),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            hintText: '.',
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _targetDirController,
+                                style: const TextStyle(fontSize: 13),
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  hintText: 'Default downloads folder',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.folder_open, size: 16),
+                              label: const Text('Browse...', style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                side: const BorderSide(color: AppTheme.darkBorder),
+                              ),
+                              onPressed: _browseFolder,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -249,12 +269,23 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                               isExpanded: true,
                               dropdownColor: AppTheme.darkCard,
                               items: const [
-                                DropdownMenuItem(value: 'sparse', child: Text('Sparse (Instant)', style: TextStyle(fontSize: 13))),
-                                DropdownMenuItem(value: 'preallocate', child: Text('Preallocate', style: TextStyle(fontSize: 13))),
-                                DropdownMenuItem(value: 'none', child: Text('None', style: TextStyle(fontSize: 13))),
+                                DropdownMenuItem(
+                                  value: 'sparse',
+                                  child: Text('Sparse (Instant, grows dynamically)', style: TextStyle(fontSize: 12)),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'preallocate',
+                                  child: Text('Preallocate (Full size, avoids fragmentation)', style: TextStyle(fontSize: 12)),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'none',
+                                  child: Text('None (Minimal initial disk use)', style: TextStyle(fontSize: 12)),
+                                ),
                               ],
                               onChanged: (val) {
-                                if (val != null) setState(() => _allocationPolicy = val);
+                                if (val != null) {
+                                  setState(() => _allocationPolicy = val);
+                                }
                               },
                             ),
                           ),
@@ -291,13 +322,35 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     );
   }
 
+  Future<void> _browseFolder() async {
+    if (Platform.isWindows) {
+      try {
+        final result = await Process.run('powershell', [
+          '-NoProfile',
+          '-Command',
+          r'''Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Download Directory'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }'''
+        ]);
+        final chosen = result.stdout.toString().trim();
+        if (chosen.isNotEmpty && Directory(chosen).existsSync()) {
+          setState(() {
+            _targetDirController.text = chosen;
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
   void _submit() async {
     final link = _linkController.text.trim();
     final targetDir = _targetDirController.text.trim();
 
+    final destination = targetDir.isNotEmpty
+        ? targetDir
+        : widget.viewModel.defaultDownloadDirectory.path;
+
     final success = await widget.viewModel.addEd2kLink(
       link,
-      targetDirectory: targetDir.isNotEmpty ? targetDir : '.',
+      targetDirectory: destination,
       allocationPolicy: _allocationPolicy,
     );
 

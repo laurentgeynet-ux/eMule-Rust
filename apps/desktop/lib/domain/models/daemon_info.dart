@@ -31,6 +31,7 @@ class DaemonInfo {
   final List<String> capabilities;
   final String? workdirMode;
   final String? workdirPath;
+  final String? defaultDownloadDir;
 
   const DaemonInfo({
     required this.version,
@@ -40,6 +41,7 @@ class DaemonInfo {
     required this.capabilities,
     this.workdirMode,
     this.workdirPath,
+    this.defaultDownloadDir,
   });
 
   @override

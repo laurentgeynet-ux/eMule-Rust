@@ -15,6 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = std::env::args().collect();
     let mut data_dir_arg: Option<PathBuf> = None;
+    let mut downloads_dir_arg: Option<PathBuf> = None;
     let mut mode_override: Option<mule_daemon::WorkDirMode> = None;
     let mut bind_addr_arg: Option<std::net::SocketAddr> = None;
     let mut auth_token_arg: Option<String> = None;
@@ -26,6 +27,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match args[i].as_str() {
             "--workdir" if i + 1 < args.len() => {
                 data_dir_arg = Some(PathBuf::from(&args[i + 1]));
+                i += 2;
+            }
+            "--downloads-dir" | "--download-dir" if i + 1 < args.len() => {
+                downloads_dir_arg = Some(PathBuf::from(&args[i + 1]));
                 i += 2;
             }
             "--mode" | "--workdir-mode" if i + 1 < args.len() => {
@@ -64,21 +69,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut resolved_workdir = mule_daemon::WorkDirectoryResolver::resolve(data_dir_arg);
+    let mut resolved_workdir = mule_daemon::WorkDirectoryResolver::resolve(data_dir_arg, downloads_dir_arg);
     if let Some(mode) = mode_override {
         resolved_workdir.mode = mode;
     } else if resolved_workdir.mode == mule_daemon::WorkDirMode::ExplicitCli {
         // If an explicit workdir path was passed, check if it lives in a portable bundle root
         // (i.e. <bundle_root>/portable.flag exists)
-        if let Some(parent) = resolved_workdir.path.parent() {
+        if let Some(parent) = resolved_workdir.workdir.parent() {
             if parent.join(mule_daemon::PORTABLE_FLAG_FILENAME).exists() {
                 resolved_workdir.mode = mule_daemon::WorkDirMode::Portable;
             }
         }
     }
-    let data_dir = resolved_workdir.path;
+    let data_dir = resolved_workdir.workdir;
+    let default_download_dir = resolved_workdir.default_download_dir;
     println!("==> Workdir mode: {:?} ({})", resolved_workdir.mode, data_dir.display());
+    println!("==> Default download dir: {}", default_download_dir.display());
     std::fs::create_dir_all(&data_dir)?;
+    std::fs::create_dir_all(&default_download_dir)?;
 
     // 1. Acquire exclusive directory lock
     let _lock = DirectoryLock::acquire(&data_dir).map_err(|e| {
@@ -137,7 +145,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = DaemonConfig::new(data_dir.clone(), auth_token)
         .with_bind_addr(actual_addr)
-        .with_workdir_mode(resolved_workdir.mode);
+        .with_workdir_mode(resolved_workdir.mode)
+        .with_default_download_dir(default_download_dir.clone());
     let downloads = DownloadService::new(&db_path, temp_dir)?;
     let state = AppState::new(config, downloads);
 

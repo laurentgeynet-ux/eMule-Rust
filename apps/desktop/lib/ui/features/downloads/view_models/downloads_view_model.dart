@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../../../domain/models/daemon_event.dart';
@@ -118,6 +119,33 @@ class DownloadsViewModel extends ChangeNotifier {
     final isPortable = (info.workdirMode?.toLowerCase() == 'portable') ||
         (supervisor?.resolveWorkDir().mode == WorkDirMode.portable);
     return isPortable && info.capabilities.contains('lab-tools');
+  }
+
+  Directory get defaultDownloadDirectory {
+    final daemonDir = daemonInfo?.defaultDownloadDir;
+    if (daemonDir != null && daemonDir.isNotEmpty) {
+      return Directory(daemonDir);
+    }
+    if (supervisor != null) {
+      return supervisor!.resolveWorkDir().defaultDownloadDirectory;
+    }
+    return WorkDirectoryResolver.resolve().defaultDownloadDirectory;
+  }
+
+  Future<void> openDownloadsFolder() async {
+    final dir = defaultDownloadDirectory;
+    if (!dir.existsSync()) {
+      try {
+        dir.createSync(recursive: true);
+      } catch (_) {}
+    }
+    if (Platform.isWindows) {
+      await Process.start('explorer.exe', [dir.path]);
+    } else if (Platform.isMacOS) {
+      await Process.start('open', [dir.path]);
+    } else if (Platform.isLinux) {
+      await Process.start('xdg-open', [dir.path]);
+    }
   }
 
   DownloadItem? get selectedDownload =>
