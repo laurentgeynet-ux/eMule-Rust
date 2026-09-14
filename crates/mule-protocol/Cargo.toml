@@ -19,6 +19,9 @@ hex.workspace = true
 tracing.workspace = true
 tokio = { workspace = true, optional = true, features = ["net", "io-util", "time", "sync", "rt"] }
 unicode-normalization.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+md4.workspace = true
 
 
 [dev-dependencies]
@@ -26,6 +29,7 @@ mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
+md4.workspace = true
 proptest.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -68,6 +72,10 @@ required-features = ["ed2k-reference-loopback"]
 
 [[test]]
 name = "ed2k_block_transfer_tests"
+required-features = ["ed2k-loopback"]
+
+[[test]]
+name = "ed2k_part_resume_tests"
 required-features = ["ed2k-loopback"]
 
 

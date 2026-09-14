@@ -5,13 +5,13 @@ use bytes::Bytes;
 use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::{Ed2kLimits, ED2K_MAX_PARTS};
 use super::opcodes::{
-    OP_EMULE_INFO, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLO_ANSWER, OP_REQUESTPARTS,
-    OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
+    OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLO_ANSWER,
+    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
 };
 use super::packet::{
-    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileStatus, Ed2kFileStatusReq,
-    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
-    PartAvailabilityMask,
+    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
+    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts,
+    Ed2kSendingPart, PartAvailabilityMask,
 };
 use super::profile::Ed2kCompatibilityProfile;
 use super::protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
@@ -226,6 +226,10 @@ impl Ed2kDecoder {
                 let status = self.decode_file_status(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::FileStatus(status))
             }
+            (PR_ED2K, OP_FILEREQANSNOFILE) => {
+                let no_file = self.decode_file_req_ans_no_file(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::FileReqAnsNoFile(no_file))
+            }
             (PR_ED2K, OP_REQUESTPARTS) | (PR_ED2K, OP_REQUESTPARTS_EMULE) => {
                 match self.profile {
                     Ed2kCompatibilityProfile::UnknownStrict => {
@@ -395,6 +399,15 @@ impl Ed2kDecoder {
                     0,
                 )?;
                 Ok(Ed2kMessage::FileStatus(status))
+            }
+            (PR_ED2K, OP_FILEREQANSNOFILE) => {
+                let no_file = self.decode_file_req_ans_no_file(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::FileReqAnsNoFile(no_file))
             }
             (PR_ED2K, OP_REQUESTPARTS) | (PR_ED2K, OP_REQUESTPARTS_EMULE) => {
                 match self.profile {
@@ -842,6 +855,33 @@ impl Ed2kDecoder {
             part_count,
             availability_mask,
         })
+    }
+
+    /// Decodes an `OP_FILEREQANSNOFILE` (`0x48`) payload (16 bytes file hash).
+    pub fn decode_file_req_ans_no_file(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kFileReqAnsNoFile, Ed2kParseError> {
+        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
+        let file_hash = reader.read_hash("filereqansnofile_file_hash")?;
+        if reader.remaining() > 0 {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + reader.pos(),
+                "filereqansnofile_trailing_bytes",
+                Ed2kErrorKind::MalformedField {
+                    message: format!(
+                        "unexpected {} trailing bytes in filereqansnofile",
+                        reader.remaining()
+                    ),
+                },
+            ));
+        }
+        Ok(Ed2kFileReqAnsNoFile { file_hash })
     }
 
     /// Decodes an `OP_REQUESTPARTS` payload using the decoder's configured profile.

@@ -16,7 +16,9 @@ pub mod packet;
 pub mod peer_info;
 pub mod profile;
 pub mod protocol;
+pub mod sequencer;
 pub mod session;
+pub mod storage;
 pub mod tags;
 
 #[cfg(feature = "ed2k-loopback")]
@@ -30,23 +32,29 @@ pub use encoder::Ed2kEncoder;
 pub use error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 pub use limits::Ed2kLimits;
 pub use opcodes::{
-    OP_EMULEINFO, OP_EMULE_INFO, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER,
-    OP_HELLO_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID,
-    OP_SETREQFILEID_EMULE,
+    OP_ACCEPTUPLOADREQ, OP_COMPRESSEDPART, OP_EMULEINFO, OP_EMULE_INFO, OP_FILEREQANSNOFILE,
+    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_QUEUERANKING,
+    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
+    OP_STARTUPLOADREQ,
 };
 pub use packet::{
-    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileStatus, Ed2kFileStatusReq,
-    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
-    PartAvailabilityMask,
+    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
+    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts,
+    Ed2kSendingPart, PartAvailabilityMask,
 };
 pub use peer_info::Ed2kPeerInfo;
 pub use profile::Ed2kCompatibilityProfile;
 pub use protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
+pub use sequencer::{
+    Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kSequencerError, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
+    MAX_REQUEST_RANGES_PER_PACKET,
+};
 pub use session::{
     BlockRequestKey, BlockRequestTracker, Ed2kSession, Ed2kSessionError, Ed2kSessionState,
     FileStatusRequest, FileStatusTracker, PendingBlockRequest, SessionSnapshot,
     MAX_IN_FLIGHT_BLOCK_REQUESTS,
 };
+pub use storage::{Ed2kBlockWriter, Ed2kPartDownloadStatus, Ed2kPartFileSink, Ed2kPartResumeState};
 pub use tags::{
     Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_EMULE_VERSION,
     TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE, TAG_SPECIAL_MISCOPTIONS1,

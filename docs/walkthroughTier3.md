@@ -182,3 +182,437 @@ ok
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 21.59s
 ```
 
+---
+
+## 6. Tier 3.2 : Requête de Disponibilité et Statut de Fichier (OP_SETREQFILEID_EMULE & OP_FILESTATUS)
+
+Le jalon **Tier 3.2** franchit une étape essentielle : après le handshake eD2K, le harnais interroge l'exécutable officiel **eMule 0.50a** sur la disponibilité des parties d'un fichier partagé, puis sur un fichier inconnu, tout en restant strictement confiné au loopback `127.0.0.1` sous discipline passive absolue.
+
+### Fixture Déterministe & Empreinte Scellée
+
+Une fixture de test a été générée directement dans le répertoire partagé hermétique `%TEMP%\.tmp...\incoming\` (sans aucun contact avec les répertoires hôtes ou utilisateurs) :
+- **Fichier** : `tier3_status_fixture_9728001.bin`
+- **Taille exacte** : $9\,728\,001\text{ octets}$ ($1\text{ partie eD2K complète de } 9\,280\,000\text{ octets} + 448\,001\text{ octets de reliquat} = 2\text{ parties}$).
+- **Motif déterministe** : octets consécutifs cycliques `(0..=255)`.
+- **Empreinte eD2K canonique scellée** : `695b81b1727666818988524bd7fc823c`.
+
+### Découverte Protocolaire Clé : Sémantique de `part_count == 0` dans eMule Officiel
+
+L'exécution initiale a révélé un comportement protocolaire fondamental documenté dans le code source officiel d'eMule/aMule (`ClientTCPSocket.cpp` et `DownloadClient.cpp`) :
+
+1. **Émission d'`OP_FILESTATUS` (`0x50`) par eMule** :
+   ```cpp
+   case OP_SETREQFILEID: {
+       data_out.WriteUInt8(OP_FILESTATUS);
+       if (reqfile->IsPartFile()) {
+           static_cast<CPartFile*>(reqfile)->WritePartStatus(&data_out);
+       } else {
+           data_out.WriteUInt16(0);  // <-- CKnownFile (fichier terminé/partagé) écrit uint16(0) !
+       }
+       break;
+   }
+   ```
+2. **Réception d'`OP_FILESTATUS` (`0x50`) par le client eMule** :
+   ```cpp
+   uint16 nED2KPartCount = data->ReadUInt16();
+   if (!nED2KPartCount) {
+       m_nPartCount = m_reqfile->GetPartCount();
+       m_downPartStatus.setsize(m_nPartCount, 1); // Marque TOUTES les parts comme disponibles !
+       m_bCompleteSource = true;                 // Pair identifié comme source complète
+   }
+   ```
+
+**Règle protocolaire formelle** :
+- Pour un fichier complet partagé (`CKnownFile`), eMule **n'envoie aucun masque binaire** sur le fil réseau. La trame mesure exactement **18 octets** (16 octets de hash MD4 + 2 octets nuls `0x00 0x00` pour `part_count = 0`).
+- Dans la sémantique eD2K, `part_count == 0` ne signifie pas "aucun bloc disponible" mais au contraire : **"source complète possédant 100% des blocs"**.
+- Seuls les fichiers en cours de téléchargement (`CPartFile`) transmettent un `part_count > 0` suivi de $\lceil\text{part\_count} / 8\rceil$ octets de masque binaire.
+
+3. **Traitement de fichier inexistant (`OP_FILEREQANSNOFILE` `0x48`)** :
+   Lorsque le hash demandé n'existe ni dans `sharedfiles` ni dans `downloadqueue`, eMule répond immédiatement avec l'opcode `0x48` (`OP_FILEREQANSNOFILE`) et le hash de 16 octets.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 3 tests
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... 
+Tier 3.2: Created fixture at "%TEMP%\\.tmp<sandbox_fixture>\\incoming\\tier3_status_fixture_9728001.bin"
+Tier 3.2: Sealed eD2K Hash: 695b81b1727666818988524bd7fc823c
+Attempt 1: child running = true
+Attempt 1 failed: Timeout(500ms)
+Attempt 2: child running = true
+Connected on attempt 2!
+Tier 3.2: Handshake successful with peer: Some("RefPeer050a")
+Tier 3.2: Sending OP_SETREQFILEID_EMULE (0x4F) for fixture...
+Tier 3.2: Received OP_FILESTATUS:
+  File Hash : 695b81b1727666818988524bd7fc823c
+  Part Count: 0
+  Bitfield  : []
+Tier 3.2: Successfully received OP_FILEREQANSNOFILE (0x48) for unknown hash!
+Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... 
+=== Starting Tier 3.1 Iteration 1/2 ===
+Iteration 1: Assigned TCP port 55060, UDP port 55061
+Iteration 1: Work path: "%TEMP%\\.tmp<sandbox_iter1>"
+Iteration 1: Decoded OP_EMULEINFO with 7 tags, compression=true, source_exchange=true
+Iteration 1: Holding passive connection for 1s watchdog...
+=== Iteration 1/2 Completed Successfully ===
+=== Starting Tier 3.1 Iteration 2/2 ===
+Iteration 2: Assigned TCP port 55067, UDP port 55068
+Iteration 2: Work path: "%TEMP%\\.tmp<sandbox_iter2>"
+Iteration 2: Decoded OP_EMULEINFO with 7 tags, compression=true, source_exchange=true
+Iteration 2: Holding passive connection for 1s watchdog...
+=== Iteration 2/2 Completed Successfully ===
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 30.50s
+```
+
+### Invariants et Périmètre Validés
+
+| Domaine | Invariant Vérifié |
+| :--- | :--- |
+| **Requête Fixture** | Émission canonique de `OP_SETREQFILEID_EMULE` (`0x4F`) sur 21 octets (`0xE3 0x11 0x00 0x00 0x00 0x4F <HASH 16>`). |
+| **Réponse Fichier Connu** | Réception et décodage d'`OP_FILESTATUS` (`0x50`) sur 18 octets avec `part_count = 0` et masque vide. |
+| **Sémantique Disponibilité** | `status.is_complete() == true`, `status.has_part(0) == true`, `status.has_part(1) == true`. |
+| **Réponse Fichier Inconnu** | Émission pour `[0xAA; 16]`, réception immédiate d'`OP_FILEREQANSNOFILE` (`0x48`), conversion en `FileNotFound` et nettoyage du traqueur en vol. |
+| **Discipline Passive Stricte** | 0 requête de bloc (`OP_REQUESTPARTS`), 0 octet de payload téléchargé, 0 trafic UDP/Kad, 0 zlib (`0xD4`). |
+| **Confinement Réseau** | Vérification automatique `Get-NetTCPConnection` confirmant 0 socket hors loopback. |
+| **Isolation Hermétique** | Tous les fichiers de test sont créés dans des sous-dossiers éphémères `%TEMP%\.tmp...` nettoyés par RAII. |
+
+---
+
+## 7. Tier 3.3 : Séquencement de Téléchargement sans Payload (OP_REQUESTPARTS_EMULE Planning)
+
+Le jalon **Tier 3.3** formalise, valide et scelle la logique complète de planification et de séquencement qui précède tout transfert de données :
+- Sélection déterministe des parties disponibles en fonction du statut.
+- Découpage en blocs standard eD2K ($\le 184\,320\text{ octets}$) et alignement strict sur la frontière de part ($9\,728\,000\text{ octets}$).
+- Couverture complète de la première part et du reliquat d'un octet pour la fixture de $9\,728\,001\text{ octets}$.
+- Validation stricte des bornes, débordements et interdiction de blocs à cheval sur deux parts.
+- Preuve d'admissibilité de toutes les parts pour une source complète (`part_count == 0`).
+- Preuve de rejet absolu de toute requête si `OP_FILEREQANSNOFILE` (`0x48`) a été reçu.
+- **Discipline passive absolue** : encodage de la trame `OP_REQUESTPARTS_EMULE` (`0x47`) en mémoire locale uniquement, sans transmission vers eMule 0.50a.
+
+### Architecture du Séquenceur (`Ed2kDownloadSequencer`)
+
+Le nouveau composant `Ed2kDownloadSequencer` (`crates/mule-protocol/src/ed2k/sequencer.rs`) applique les invariants canoniques suivants :
+1. **Source complète** : Lorsque `status.is_complete()` est vrai (`part_count == 0`), toutes les parts $0..\text{total\_parts}$ sont déclarées disponibles.
+2. **Découpage de la part 0 ($9\,728\,000\text{ octets}$)** :
+   - Décomposée en exactement 53 blocs : 52 blocs pleins de $184\,320\text{ octets}$ + 1 bloc résiduel de $143\,360\text{ octets}$ (`[9_584_640, 9_728_000)`).
+   - Le bloc final s'aligne à l'octet près sur la frontière $9\,728\,000$, sans jamais déborder sur la part suivante.
+3. **Découpage de la part 1 ($1\text{ octet}$ de reliquat)** :
+   - Décomposée en 1 bloc de $1\text{ octet}$ (`[9_728_000, 9_728_001)`).
+   - Couvre exactement le dernier octet de la fixture.
+4. **Matrice de rejet strict** :
+   - Rejet de `start >= end`.
+   - Rejet de dépassement de la taille du fichier.
+   - Rejet de blocs dépassant $184\,320\text{ octets}$.
+   - Rejet immédiat de tout bloc traversant une frontière de part (ex: `[9_727_000, 9_729_000)` renvoie `CrossPartBoundary`).
+   - Rejet des requêtes comportant plus de 3 plages (`TooManyRanges`).
+5. **Rejet de fichier inconnu** :
+   - Si le statut est `FileNotFound` (`OP_FILEREQANSNOFILE`), `Ed2kDownloadSequencer::from_file_status_result` échoue immédiatement et interdit toute planification de bloc.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 4 tests
+test test_tier3_live_download_sequencing_without_payload ... 
+Tier 3.3: Download sequencing and block request planning without payload successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 35.98s
+```
+
+### Invariants et Périmètre Validés
+
+| Domaine | Invariant Vérifié |
+| :--- | :--- |
+| **Sélection Déterministe** | `sequencer.available_parts() == vec![0, 1]` pour le fichier de 9 728 001 octets issu du statut complet eMule. |
+| **Alignement Frontière** | Bloc 52 de Part 0 termine à $9\,728\,000$ pile. Bloc 0 de Part 1 couvre $9\,728\,000..9\,728\,001$. |
+| **Framing Wire Local** | Paquets `OP_REQUESTPARTS_EMULE` (`0x47`) construits sur 40 octets de payload (hash 16 + 3 start offsets + 3 end offsets), conformes eMule 0.50a. |
+| **Discipline Passive Absolue** | 0 paquet de bloc émis sur la socket TCP ; `pending_block_count` de la session reste à 0. |
+| **Rejet Fichier Inconnu** | Réception d'`OP_FILEREQANSNOFILE` (`0x48`) $\rightarrow$ refus strict de toute planification de bloc. |
+| **Confinement Réseau** | Vérification `Get-NetTCPConnection` confirmant 0 socket hors loopback. |
+
+---
+
+## 8. Tier 3.4 : Transfert Réel d'un Premier Bloc Non Compressé Biparti (Single Bounded Block Transfer)
+
+Le jalon **Tier 3.4** accomplit le premier échange réel de charge utile (payload de données) entre l'exécutable officiel **eMule 0.50a** et notre client **Emule-Sion**, dans des conditions strictement bornées et hermétiques :
+- Fichier synthétique scellé : `tier3_status_fixture_9728001.bin` ($9\,728\,001\text{ octets}$, hash eD2K scellé : `695b81b1727666818988524bd7fc823c`).
+- Requête délimitée à un unique bloc standard : Part 0 Bloc 0, soit la plage `[0, 184_320)` ($184\,320\text{ octets}$).
+- Protocole : `PR_ED2K` (`0xE3`), paquets `OP_SENDINGPART` (`0x46`).
+
+### Découvertes Protocolaires Officielles eMule 0.50a
+
+1. **Prérequis de la file d'attente d'upload (`UploadQueue`)** :
+   Dans l'implémentation C++ d'eMule (`UploadQueue.cpp` et `ClientTCPSocket.cpp`), un client demandeur ne peut pas émettre directement `OP_REQUESTPARTS` sans avoir préalablement obtenu un slot d'upload (`US_UPLOADING`).
+   - Le client transmet d'abord `OP_STARTUPLOADREQ` (`0x54`) avec le hash du fichier (17 octets).
+   - eMule alloue le slot disponible et répond par `OP_ACCEPTUPLOADREQ` (`0x55`).
+   - Une fois accepté, le client transmet sa requête de bloc `OP_REQUESTPARTS_EMULE` (`0x47`).
+
+2. **Fragmentation des trames en tranches de 10 240 octets** :
+   eMule 0.50a n'émet pas les $184\,320\text{ octets}$ en un seul paquet géant, mais découpe la transmission en tranches réseau de $10\,240\text{ octets}$ (`EMULE_DATA_BUFFER` = 10 KB) :
+   $$\frac{184\,320}{10\,240} = 18\text{ tranches consécutives de }10\,240\text{ octets}$$
+   Chaque tranche est encapsulée dans un paquet `OP_SENDINGPART` (`0x46`) avec ses offsets propres : `[0..10240)`, `[10240..20480)`, ..., `[174080..184320)`.
+
+3. **Assemblage et Détection de Doublons (`Ed2kBlockSink`)** :
+   Le nouveau récepteur mémoire `Ed2kBlockSink` alloue un tampon pré-dimensionné à la taille exacte du fichier ($9\,728\,001\text{ octets}$), valide chaque tranche via le séquenceur, refuse tout chevauchement ou doublon (`DuplicateBlock`), et certifie la couverture complète via `is_range_covered(0, 184_320)`.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 5 tests
+test test_tier3_live_download_sequencing_without_payload ... Tier 3.3: Download sequencing and block request planning without payload successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... ok
+test test_tier3_live_single_uncompressed_block_transfer_from_emule050a ... 
+Tier 3.4: Requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.4: OP_ACCEPTUPLOADREQ (0x55) confirmed! Upload slot granted.
+Tier 3.4: Transmitting single OP_REQUESTPARTS_EMULE (0x47) for [0, 184_320)...
+Tier 3.4: Awaiting OP_SENDINGPART (0x46) chunks for [0, 184_320)...
+Tier 3.4: Received OP_SENDINGPART chunk #1: [0..10240), 10240 bytes (total: 10240/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #2: [10240..20480), 10240 bytes (total: 20480/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #3: [20480..30720), 10240 bytes (total: 30720/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #4: [30720..40960), 10240 bytes (total: 40960/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #5: [40960..51200), 10240 bytes (total: 51200/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #6: [51200..61440), 10240 bytes (total: 61440/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #7: [61440..71680), 10240 bytes (total: 71680/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #8: [71680..81920), 10240 bytes (total: 81920/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #9: [81920..92160), 10240 bytes (total: 92160/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #10: [92160..102400), 10240 bytes (total: 102400/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #11: [102400..112640), 10240 bytes (total: 112640/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #12: [112640..122880), 10240 bytes (total: 122880/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #13: [122880..133120), 10240 bytes (total: 133120/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #14: [133120..143360), 10240 bytes (total: 143360/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #15: [143360..153600), 10240 bytes (total: 153600/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #16: [153600..163840), 10240 bytes (total: 163840/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #17: [163840..174080), 10240 bytes (total: 174080/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #18: [174080..184320), 10240 bytes (total: 184320/184,320)
+Tier 3.4: Block MD4 Oracle: 1d4196d9f9fa78d00b59ead840171f15
+Tier 3.4: Single bounded block transfer successfully verified against eMule 0.50a!
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 44.19s
+```
+
+### Invariants et Périmètre Validés
+
+| Domaine | Invariant Vérifié |
+| :--- | :--- |
+| **Entrée en File d'Upload** | Émission d'`OP_STARTUPLOADREQ` (`0x54`), réception et validation d'`OP_ACCEPTUPLOADREQ` (`0x55`) par eMule 0.50a. |
+| **Requête Unique** | Une seule requête `OP_REQUESTPARTS_EMULE` (`0x47`) pour le bloc `[0, 184_320)`. Invariants `pending_block_count == 1`. |
+| **Réception & Découpage** | 18 tranches consécutives de 10 240 octets reçues sous `OP_SENDINGPART` (`0x46`), totalisant $184\,320\text{ octets}$. |
+| **Conformité Byte-à-Byte** | Le bloc assemblé correspond à 100% au préfixe du fichier synthétique de test (`tier3_status_fixture_9728001.bin`). |
+| **Oracle MD4 Local** | L'oracle MD4 sur le bloc reçu produit `1d4196d9f9fa78d00b59ead840171f15`, identique à l'oracle sur le préfixe de référence. |
+| **Rejet de Doublon** | Toute tentative de réécriture dans `Ed2kBlockSink` est strictement rejetée avec `DuplicateBlock`. |
+| **Discipline Passive Absolue** | Aucun bloc supplémentaire demandé, `pending_block_count == 0` à la fin du transfert. |
+| **Confinement Réseau** | Scan `Get-NetTCPConnection` certifiant 0 socket en dehors de `127.0.0.1`. |
+| **Fermeture Propre** | Envoi de TCP FIN (`client.close().await`) et arrêt propre du processus eMule. |
+
+---
+
+## 9. Tier 3.5 : Complétion de la Part 0 avec Reprise Contrôlée & Interruption Abrupte (Part 0 Transfer, Controlled Resume & Interruption)
+
+Le jalon **Tier 3.5** valide pour la première fois le transfert complet d'une part eD2K intégrale (Part 0, soit $9\,728\,000\text{ octets} = 53\text{ blocs}$) depuis l'exécutable officiel **eMule 0.50a** (`D:\eMule0.50a\emule.exe`), avec interruption simulée, persistance physique dans un fichier `.part`, journal d'état atomique `.resume.json`, calcul de lacunes sans redondance, reprise multi-session et vérification d'intégrité MD4 diffusée depuis le disque.
+
+### Périmètre et Invariants Tier 3.5
+
+- **Part 0 Strictement Isolée** : 53 blocs ($9\,728\,000\text{ octets}$ = 52 blocs pleins de $184\,320\text{ octets}$ + 1 bloc résiduel de $143\,360\text{ octets}$).
+- **Part 1 Résiduelle Exclue** : L'unique octet résiduel de la Part 1 (`[9_728_000, 9_728_001)`) n'a jamais été demandé et n'a jamais été écrit (réservé pour Tier 3.6).
+- **Fenêtre Glissante (Pipelining)** : Au plus 3 requêtes de blocs actives en vol simultanément (`max_in_flight = 3`), respectant la borne de congestion eD2K officielle.
+- **Stockage Physique `.part` & Journal `.resume.json`** :
+  - `Ed2kPartFileSink` pré-alloue / dimensionne le fichier physique à la taille exacte ($9\,728\,001\text{ octets}$).
+  - Les tranches reçues sont écrites sur disque à leur position absolue avec `seek(SeekFrom::Start(start))`.
+  - `Ed2kPartResumeState` consigne les intervalles reçus canoniquement fusionnés (`completed_ranges`) et les octets cumulés.
+  - Sauvegarde atomique par écriture dans un fichier temporaire (`.tmp`), `sync_all()`, puis renommage atomique vers `.resume.json` pour garantir l'immunité aux crashs.
+- **Scénario d'Interruption Contrôlée (Phase 1)** :
+  - Téléchargement exact des 20 premiers blocs ($3\,686\,400\text{ octets}$).
+  - Coupure brutale de la connexion TCP (`client1.close().await`, fermeture de socket).
+  - Validation sur disque : le fichier `.part` et le journal `.resume.json` contiennent fidèlement les $3\,686\,400\text{ octets}$ et l'intervalle unique fusionné `[(0, 3_686_400)]`.
+- **Scénario de Reprise Hermétique (Phase 2)** :
+  - Réouverture via `Ed2kPartFileSink::open_or_resume`, vérification de cohérence du hash eD2K et de la taille.
+  - Calcul déterministe des lacunes via `sequencer.plan_missing_blocks(0, resumed_sink.completed_ranges())` :
+    - Exactement 33 blocs manquants identifiés (blocs 20 à 52, offsets `[3_686_400..9_728_000)`).
+    - Zéro requête émise pour les blocs déjà possédés 0..19.
+  - Nouvelle connexion vers eMule 0.50a, réservation d'upload slot (`OP_STARTUPLOADREQ` -> `OP_ACCEPTUPLOADREQ`).
+  - Téléchargement des 33 blocs restants via la fenêtre glissante.
+  - Complétion 100% de la Part 0 ($9\,728\,000\text{ octets}$).
+- **Validation Cryptographique MD4 Diffusée (Streamed Disk MD4)** :
+  - La méthode `sink.compute_part_md4(0, &sequencer)` lit la Part 0 sur disque par tampons de 64 KiB directement dans le hasher MD4 sans saturer la RAM.
+  - Résultat obtenu : `240568858a65f85133d858f538d17467`, strictement identique à l'oracle calculé sur les octets de référence de la fixture.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 6 tests
+test test_tier3_live_download_sequencing_without_payload ... ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... ok
+test test_tier3_live_single_uncompressed_block_transfer_from_emule050a ... ok
+test test_tier3_live_part0_transfer_with_resume_and_interruption ... 
+Tier 3.5: Expected Part 0 MD4 oracle: 240568858a65f85133d858f538d17467
+Tier 3.5: Session 1 requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.5: Session 1 upload slot granted!
+Tier 3.5: Phase 1: Downloading first 20 blocks (3,686,400 bytes) with sliding window (max 3 in-flight)...
+Tier 3.5: Phase 1 verified: exactly 20 blocks (3,686,400 bytes) written and verified on disk.
+Tier 3.5: Simulating abrupt network interruption (closing Session 1 TCP connection)...
+Tier 3.5: Atomic .resume.json journal verified on disk after interruption.
+Tier 3.5: Phase 2: Opening existing .part file and .resume.json journal...
+Tier 3.5: Gap calculation verified: exactly 33 missing blocks planned [3,686,400..9,728,000).
+Tier 3.5: Session 2 requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.5: Session 2 upload slot granted!
+Tier 3.5: Phase 2: Downloading remaining 33 blocks with sliding window (max 3 in-flight)...
+Tier 3.5: Part 0 download 100% completed across 2 sessions!
+Tier 3.5: Streaming Part 0 from disk in 64 KiB buffers to verify MD4 checksum...
+Tier 3.5: Part 0 MD4 verified: 240568858a65f85133d858f538d17467 == 240568858a65f85133d858f538d17467
+Tier 3.5: Part 0 transfer with resume and interruption successfully verified against eMule 0.50a!
+ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 62.65s
+```
+
+### Synthèse des Garanties et Invariants Prouvés
+
+| Domaine | Preuve / Invariant Validé |
+| :--- | :--- |
+| **Persistance Disque** | Fichier `.part` écrit par `Ed2kPartFileSink` avec positionnement `seek`, sans corruption ni troncature. |
+| **Journal Atomique** | Fichier `.resume.json` mis à jour de façon transactionnelle (`.tmp` + `sync_all` + rename). |
+| **Fusion d'Intervalles** | Les tranches adjacentes et consécutives sont automatiquement fusionnées en plages canoniques `(start, end)`. |
+| **Résistance aux Crashs** | Après interruption TCP abrupte au bloc 20, réouverture exacte et reprise intègre. |
+| **Calcul des Lacunes** | `plan_missing_blocks` calcule les 33 blocs restants (blocs 20..52) et exclut 100% des blocs déjà possédés (0..19). |
+| **Pipelining / Fenêtre** | `download_blocks_pipelined` maintient une fenêtre active bornée ($\le 3$ requêtes simultanées). |
+| **Part 0 Complétée** | Exactement $9\,728\,000\text{ octets}$ reçus et assemblés sur disque. |
+| **Exclusion Part 1** | Aucun octet de la Part 1 (`[9_728_000..9_728_001)`) n'a été demandé ou écrit. |
+| **Oracle MD4 Diffusé** | Le hash MD4 calculé en streaming depuis le disque est strictement identique à l'oracle fixture (`240568858a65f85133d858f538d17467`). |
+| **Isolation & Pureté** | 0 panic, 0 `unwrap()`, 0 `expect()` dans `src/ed2k/`, 0 socket hors loopback `127.0.0.1`. |
+
+---
+
+## 10. Tier 3.6 : Finalisation de Frontière de Fichier, Calcul Racine eD2K Multi-Parts, Promotion Transactionnelle Crash-Résistante & Nettoyage (File Boundary Finalization, Multi-Part Root Hashing, Two-Phase Promotion & Cleanup)
+
+Le jalon **Tier 3.6** conclut avec succès le cycle complet d'acquisition, de contrôle d'intégrité et de livraison physique d'un fichier multi-parts eD2K contre l'exécutable officiel **eMule 0.50a** (`D:\eMule0.50a\emule.exe`), strictement confiné sur `127.0.0.1` en loopback.
+
+### Périmètre et Invariants Validés
+
+1. **Franchissement et Respect de la Frontière de Part (Boundary Invariance)** :
+   - Fichier cible : `tier3_status_fixture_9728001.bin` ($9\,728\,001\text{ octets}$, soit 2 parts eD2K).
+   - Part 0 : $9\,728\,000\text{ octets}$ ($9\,500\text{ KiB}$, 53 blocs).
+   - Part 1 : $[9\,728\,000, 9\,728\,001)$ ($1\text{ octet}$ résiduel unique `0x00`).
+   - La requête `OP_REQUESTPARTS_EMULE` (`0x47`) est émise exclusivement pour `[9_728_000, 9_728_001)` : aucune requête ne traverse jamais la frontière des $9\,728\,000\text{ octets}$.
+   - Réception d'`OP_SENDINGPART` (`0x46`) contenant exactement 1 octet de données.
+   - Atteinte de la couverture intégrale du fichier : $9\,728\,001\text{ octets}$, intervalle fusionné `[(0, 9_728_001)]`.
+
+2. **Calcul Cryptographique du Hash Racine eD2K Multi-Parts (Full Streamed Multi-Part Root Hashing)** :
+   - Selon la spécification canonique eD2K / eMule :
+     - Si `total_parts == 1`, le hash de fichier est l'empreinte MD4 de la Part 0.
+     - Si `total_parts > 1`, chaque part physique (y compris la part résiduelle finale) est hachée individuellement par MD4 ($16\text{ octets}$). Les empreintes de parts concaténées ($N \times 16\text{ octets}$) sont alors hachées par un MD4 global pour produire le hash racine eD2K :
+       $$\text{Root MD4} = \text{MD4}\Big(\text{MD4}(\text{Part } 0) \;\parallel\; \text{MD4}(\text{Part } 1) \;\parallel\; \dots \;\parallel\; \text{MD4}(\text{Part } N-1)\Big)$$
+   - Calcul diffusé en streaming direct depuis le disque par blocs de 64 KiB sans mise en mémoire tampon complète :
+     - Part 0 Streamed MD4 : `240568858a65f85133d858f538d17467`
+     - Part 1 Streamed MD4 : `47c61a0fa8738ba77308a8a600f88e4b`
+     - Hash Racine Calculé : `MD4(Part 0 || Part 1) = ` **`695b81b1727666818988524bd7fc823c`**
+     - Correspondance 100% byte-à-byte avec le hash eD2K scellé de la fixture officielle.
+
+3. **Machine à États de Promotion en Deux Phases & Résilience aux Crashs (`Ed2kPartDownloadStatus`)** :
+   - États déclarés :
+     - `Downloading` : Acquisition active des tranches dans le fichier `.part`.
+     - `VerifiedPendingPromotion` : Téléchargement 100% achevé, hash racine eD2K vérifié sur disque avec succès, journal mis à jour et synchronisé (`sync_all`), fichier en attente de promotion locale.
+     - `Promoted` : Fichier transféré dans son répertoire cible final (`downloads/`), journal `.resume.json` et fichier `.part` purgés avec succès.
+   - **Phase 1 (Vérification & Consignation Atomique)** : `mark_verified_pending_promotion` bascule l'état dans le journal transactionnel `.resume.json`.
+   - **Test de Crash Simulé** : Le processus client est brusquement interrompu (connexion TCP fermée, récepteur déchargé de la mémoire).
+   - **Reprise Locale Hors-Réseau** : Au redémarrage, `Ed2kPartFileSink::open_or_resume` détecte l'état `VerifiedPendingPromotion` sur disque et permet de finaliser la promotion sans nécessiter la moindre reconnexion réseau ni redemander le moindre octet à eMule.
+   - **Phase 2 (Promotion Atomique, Anti-Collision & Nettoyage)** :
+     - `promote_to_destination` libère proprement le handle Windows (`file.take()`) pour prévenir tout verrouillage de fichier (`ERROR_SHARING_VIOLATION`).
+     - Vérification anti-collision : refuse d'écraser un fichier existant avec une erreur explicite.
+     - Déplacement atomique (via renommage intermédiaire `.part_promoted.tmp`) vers le répertoire `downloads/tier3_promoted_final.bin`.
+     - Suppression du fichier d'origine `.part` et suppression du journal compagnon `.resume.json`.
+
+### Traces Réelles d'Exécution contre eMule 0.50a Officiel
+
+```powershell
+$env:EMULE_REFERENCE_BIN = 'D:\eMule0.50a\emule.exe'; $env:EMULE_REFERENCE_SHA256 = '06cdf814387f627a4bd05a0c68211f715bfa952423e8e8a462e1f47c11a4d20e'; cargo test -p mule-protocol --test tier3_loopback --features ed2k-reference-loopback -- test_tier3_live_file_boundary_finalization_and_promotion --ignored --nocapture
+```
+
+```text
+running 1 test
+Tier 3.6: Launching reference eMule 0.50a with shared 9,728,001 bytes fixture...
+Tier 3.6: Requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.6: Upload slot granted!
+Tier 3.6: Phase 1: Downloading Part 0 (53 blocks, 9,728,000 bytes)...
+Tier 3.6: Phase 1 verified: Part 0 (9,728,000 bytes) downloaded and present on disk.
+Tier 3.6: Phase 2: Planning and requesting Part 1 residual block [9,728,000, 9,728,001)...
+Tier 3.6: Phase 2 verified: Part 1 residual block received; 100% file coverage achieved!
+Tier 3.6: Phase 3: Verifying in-disk multi-part eD2K root hash computation...
+Tier 3.6: Phase 3 verified: In-disk root eD2K hash 695b81b1727666818988524bd7fc823c matches sealed oracle byte-for-byte!
+Tier 3.6: Phase 4: Step A - Marking VerifiedPendingPromotion in atomic journal...
+Tier 3.6: Phase 4: Step B - Simulating abrupt crash / network disconnection...
+Tier 3.6: Phase 4: Step C - Recovering locally from disk without contacting eMule...
+Tier 3.6: Phase 4: Step D - Atomically promoting .part to 'C:\Users\Lou\AppData\Local\Temp\.tmpGe9L2G\downloads'...
+Tier 3.6: Phase 4 verified: Two-phase promotion and cleanup completed successfully!
+Tier 3.6: File boundary finalization, full root eD2K hash, and two-phase promotion successfully verified against eMule 0.50a!
+test test_tier3_live_file_boundary_finalization_and_promotion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 17.13s
+```
+
+### Exécution Globale de la Suite Complète Tier 3 (7 Tests Référence Live)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 7 tests
+test test_tier3_environment_initialization_and_neutralized_configs ... ok
+test test_tier3_live_download_sequencing_without_payload ... ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_boundary_finalization_and_promotion ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... ok
+test test_tier3_live_part0_transfer_with_resume_and_interruption ... ok
+test test_tier3_live_single_uncompressed_block_transfer_from_emule050a ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 80.69s
+```
+
+### Tableau Récapitulatif des Invariants Validés
+
+| Domaine | Preuve / Invariant Validé |
+| :--- | :--- |
+| **Frontière de Part** | Requête strictly bornée pour Part 1 `[9_728_000, 9_728_001)` (1 octet), sans franchissement de frontière de part. |
+| **Complétion 100%** | Assemblage exact des $9\,728\,001\text{ octets}$ de la fixture sur disque dans l'intervalle canonique `[(0, 9_728_001)]`. |
+| **Hash Racine Multi-Parts** | Calcul en streaming de $\text{MD4}(\text{Part 0}) \parallel \text{MD4}(\text{Part 1})$ donnant exactement `695b81b1727666818988524bd7fc823c`. |
+| **Promotion Transactionnelle** | Transition sécurisée `Downloading` $\to$ `VerifiedPendingPromotion` $\to$ `Promoted`. |
+| **Résilience aux Crashs** | Reprise après interruption brutale directement en `VerifiedPendingPromotion` sans appel réseau. |
+| **Protection Anti-Collision** | Refus strict d'écraser un fichier de destination déjà présent. |
+| **Gestion Windows Handles** | Libération du handle de fichier avant le renommage pour éviter tout verrouillage d'E/S. |
+| **Nettoyage RAII** | Suppression automatique du fichier `.part` et du journal `.resume.json` une fois la promotion confirmée sur disque. |
+| **Confinement Réseau** | Scan `Get-NetTCPConnection` certifiant 0 socket non-loopback pendant toute l'exécution. |
+| **Qualité du Code** | 0 `unwrap()`, 0 `expect()`, 0 panique dans `src/ed2k/`, vérifié par `ed2k_isolation_guard`. |
+
+
+

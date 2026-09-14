@@ -62,6 +62,10 @@ pub enum Ed2kSessionError {
     #[error("Unsolicited file status received for hash {0}")]
     UnsolicitedFileStatus(String),
 
+    /// Remote peer reported it does not have the requested file (OP_FILEREQANSNOFILE).
+    #[error("Remote peer does not have requested file: {0}")]
+    FileNotFound(String),
+
     /// A duplicate file status request was initiated for an already in-flight file hash.
     #[error("Duplicate file status request for hash {0}")]
     DuplicateFileStatusRequest(String),
@@ -78,6 +82,10 @@ pub enum Ed2kSessionError {
     #[error("Duplicate or overlapping block request: {0}")]
     DuplicateBlockRequest(String),
 
+    /// A duplicate block chunk was received.
+    #[error("Duplicate block received: {0}")]
+    DuplicateBlock(String),
+
     /// In-flight block requests exceeded the maximum allowed capacity.
     #[error("Too many pending block requests (capacity: {0})")]
     TooManyPendingBlockRequests(usize),
@@ -89,10 +97,6 @@ pub enum Ed2kSessionError {
     /// Invalid block request parameters.
     #[error("Invalid block request: {0}")]
     InvalidBlockRequest(String),
-
-    /// Remote peer reported 0 parts in active session for non-empty file.
-    #[error("Zero parts reported in active session for file {0}")]
-    ZeroPartCountInActiveSession(String),
 
     /// Malformed packet structure.
     #[error("Malformed packet: {0}")]
@@ -324,6 +328,8 @@ pub struct PendingBlockRequest {
     pub requested_at: Instant,
     /// Retry attempt counter.
     pub attempt: u16,
+    /// Byte ranges received so far for this request.
+    pub received_ranges: Vec<(u64, u64)>,
 }
 
 /// Bounded tracking structure for pending `OP_REQUESTPARTS` exchanges.
@@ -410,28 +416,92 @@ impl BlockRequestTracker {
                 key,
                 requested_at: now,
                 attempt: 1,
+                received_ranges: Vec::new(),
             },
         );
 
         Ok(())
     }
 
-    /// Validates an incoming response and removes the pending entry.
+    /// Validates an incoming chunk response and removes the pending entry when fully received.
     pub fn validate_and_remove(
         &mut self,
         file_hash: &[u8; 16],
         start: u64,
         end: u64,
     ) -> Result<PendingBlockRequest, Ed2kSessionError> {
-        let key = BlockRequestKey::new(*file_hash, start, end);
-        self.pending.remove(&key).ok_or_else(|| {
+        if start >= end {
+            return Err(Ed2kSessionError::UnsolicitedBlock(format!(
+                "{}:{}-{}",
+                hex::encode(file_hash),
+                start,
+                end
+            )));
+        }
+
+        let matching_key = self
+            .pending
+            .keys()
+            .find(|k| {
+                &k.file_hash == file_hash && start >= k.start && end <= k.end
+            })
+            .cloned();
+
+        let key = matching_key.ok_or_else(|| {
             Ed2kSessionError::UnsolicitedBlock(format!(
                 "{}:{}-{}",
                 hex::encode(file_hash),
                 start,
                 end
             ))
-        })
+        })?;
+
+        let is_complete = {
+            let req = match self.pending.get_mut(&key) {
+                Some(r) => r,
+                None => {
+                    return Err(Ed2kSessionError::UnsolicitedBlock(format!(
+                        "{}:{}-{}",
+                        hex::encode(file_hash),
+                        start,
+                        end
+                    )));
+                }
+            };
+
+            if req.received_ranges.iter().any(|&(s, e)| s == start && e == end) {
+                return Err(Ed2kSessionError::DuplicateBlock(format!(
+                    "{}:{}-{}",
+                    hex::encode(file_hash),
+                    start,
+                    end
+                )));
+            }
+
+            req.received_ranges.push((start, end));
+            let total_received: u64 = req.received_ranges.iter().map(|&(s, e)| e - s).sum();
+            total_received >= key.len()
+        };
+
+        if is_complete {
+            self.pending.remove(&key).ok_or_else(|| {
+                Ed2kSessionError::UnsolicitedBlock(format!(
+                    "{}:{}-{}",
+                    hex::encode(file_hash),
+                    start,
+                    end
+                ))
+            })
+        } else {
+            self.pending.get(&key).cloned().ok_or_else(|| {
+                Ed2kSessionError::UnsolicitedBlock(format!(
+                    "{}:{}-{}",
+                    hex::encode(file_hash),
+                    start,
+                    end
+                ))
+            })
+        }
     }
 
     /// Removes and returns all requests that exceeded the timeout threshold.
@@ -780,6 +850,18 @@ impl Ed2kSession {
                 self.on_file_status_received(&status)?;
                 Ok(Some(Ed2kMessage::FileStatus(status)))
             }
+            Ed2kMessage::FileReqAnsNoFile(ans) => {
+                if !self.is_ready() {
+                    let err = Ed2kSessionError::ResponseBeforeReady(self.state.name());
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                if let Err(err) = self.status_tracker.validate_and_remove(&ans.file_hash) {
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                Ok(Some(Ed2kMessage::FileReqAnsNoFile(ans)))
+            }
             Ed2kMessage::FileStatusReq(req) => {
                 if !self.is_ready() {
                     let err = Ed2kSessionError::RequestBeforeReady(self.state.name());
@@ -855,12 +937,9 @@ impl Ed2kSession {
             return Err(err);
         }
 
-        // Active session rule: reject 0 parts for real file
-        if status.part_count == 0 {
-            let err = Ed2kSessionError::ZeroPartCountInActiveSession(hex::encode(status.file_hash));
-            self.fail(err.clone());
-            return Err(err);
-        }
+        // Note: In official eD2K wire protocol (eMule/aMule), part_count == 0 indicates
+        // that the remote peer possesses 100% of the completed file (CKnownFile),
+        // meaning all parts are available and no bitfield is transmitted.
 
         // Must match an in-flight request and remove it
         if let Err(err) = self.status_tracker.validate_and_remove(&status.file_hash) {

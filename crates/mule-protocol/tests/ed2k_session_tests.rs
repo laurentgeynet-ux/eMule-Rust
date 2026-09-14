@@ -4,8 +4,10 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
+use bytes::Bytes;
+use mule_protocol::framing::RawPacket;
 use mule_protocol::ed2k::{
-    Ed2kLoopbackClient, Ed2kPeerInfo, Ed2kSession, Ed2kSessionError, Ed2kSessionState,
+    Ed2kLoopbackClient, Ed2kMessage, Ed2kPeerInfo, Ed2kSession, Ed2kSessionError, Ed2kSessionState,
     Ed2kTag, Ed2kTestPeer, TagName, TagValue, TestPeerMode, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
 
@@ -581,7 +583,7 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
 fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_answer() {
     let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 4662);
     // Initiator starts in AwaitingHelloAnswer
-    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer));
+    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer { .. }));
 
     // 1. Peer delivers PR_EMULE (0xC5) / OP_EMULE_INFO (0x01) first
     let emule_info_pkt = RawPacket {
@@ -597,7 +599,7 @@ fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_an
         assert_eq!(info.protocol_version, 1);
         assert_eq!(info.tags.len(), 0);
     }
-    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer), "state remains AwaitingHelloAnswer");
+    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer { .. }), "state remains AwaitingHelloAnswer");
 
     // 2. Peer subsequently delivers PR_ED2K (0xE3) / OP_HELLOANSWER (0x4C)
     let mut answer_payload = Vec::new();

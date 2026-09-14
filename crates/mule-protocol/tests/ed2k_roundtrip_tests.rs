@@ -5,10 +5,10 @@ use std::path::PathBuf;
 
 use mule_protocol::ed2k::{
     Ed2kBlockRange, Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEmuleInfo, Ed2kEncoder,
-    Ed2kErrorKind, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kLimits,
-    Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart, Ed2kTag, PartAvailabilityMask, RawTag, TagName,
-    TagValue, TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_NAME,
-    TAG_SPECIAL_VERSION,
+    Ed2kErrorKind, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
+    Ed2kHelloAnswer, Ed2kLimits, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart, Ed2kTag,
+    PartAvailabilityMask, RawTag, TagName, TagValue, TAG_SPECIAL_EMULE_VERSION,
+    TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
 
 
@@ -1577,4 +1577,155 @@ fn test_tier3_op_emule_info_oversized_tag_count_fails() {
     ));
 }
 
+#[test]
+fn test_tier3_op_file_status_req_wire_framing_emule050a() {
+    let hash = [
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
+        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+    ];
+    let req = Ed2kFileStatusReq { file_hash: hash };
+    let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
+    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
 
+    let pkt = encoder.encode_file_status_req(&req).expect("encode 0x4F");
+    assert_eq!(pkt.protocol, mule_protocol::types::PR_ED2K);
+    assert_eq!(pkt.opcode, mule_protocol::ed2k::OP_SETREQFILEID_EMULE); // 0x4F
+    assert_eq!(pkt.payload.len(), 16);
+    assert_eq!(&pkt.payload[..], &hash);
+
+    // Frame size: 1 byte opcode + 16 bytes payload = 17 bytes (total wire frame: 5 header + 17 = 22 bytes)
+    assert_eq!(pkt.frame_len(), 17);
+
+    let decoded = decoder.decode_raw_packet(&pkt).expect("decode 0x4F");
+    assert_eq!(decoded, Ed2kMessage::FileStatusReq(req));
+}
+
+#[test]
+fn test_tier3_op_file_status_bitfield_two_parts_emule050a() {
+    let hash = [
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
+        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+    ];
+    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
+
+    // Valid 2-parts status: part 0 and part 1 available -> 0b0000_0011 = 0x03
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&hash);
+    payload.extend_from_slice(&2u16.to_le_bytes());
+    payload.push(0x03);
+
+    let raw = mule_protocol::RawPacket::with_vec(
+        mule_protocol::types::PR_ED2K,
+        mule_protocol::ed2k::OP_FILESTATUS,
+        payload,
+    );
+    let msg = decoder.decode_raw_packet(&raw).expect("decode valid 2-parts file status");
+    match msg {
+        Ed2kMessage::FileStatus(status) => {
+            assert_eq!(status.file_hash, hash);
+            assert_eq!(status.part_count, 2);
+            assert!(status.has_part(0));
+            assert!(status.has_part(1));
+            assert!(!status.has_part(2)); // out of range
+            assert_eq!(status.raw_bytes(), &[0x03]);
+        }
+        _ => panic!("expected FileStatus"),
+    }
+
+    // Invalid bitfield: bit 2 is set (0x07) for a 2-parts file -> must be rejected
+    let mut invalid_payload = Vec::new();
+    invalid_payload.extend_from_slice(&hash);
+    invalid_payload.extend_from_slice(&2u16.to_le_bytes());
+    invalid_payload.push(0x07); // 0b0000_0111: bit 2 is non-zero trailing bit
+
+    let invalid_raw = mule_protocol::RawPacket::with_vec(
+        mule_protocol::types::PR_ED2K,
+        mule_protocol::ed2k::OP_FILESTATUS,
+        invalid_payload,
+    );
+    let err = decoder.decode_raw_packet(&invalid_raw).unwrap_err();
+    assert!(matches!(
+        err.kind,
+        mule_protocol::ed2k::Ed2kErrorKind::InvalidBitfieldTrailingBits { .. }
+    ));
+}
+
+#[test]
+fn test_tier3_op_file_req_ans_no_file_wire_framing() {
+    let hash = [0x55; 16];
+    let no_file = Ed2kFileReqAnsNoFile { file_hash: hash };
+    let encoder = Ed2kEncoder::new();
+    let decoder = Ed2kDecoder::new();
+
+    let pkt = encoder.encode_file_req_ans_no_file(&no_file).expect("encode 0x48");
+    assert_eq!(pkt.protocol, mule_protocol::types::PR_ED2K);
+    assert_eq!(pkt.opcode, mule_protocol::ed2k::OP_FILEREQANSNOFILE); // 0x48
+    assert_eq!(pkt.payload.len(), 16);
+    assert_eq!(&pkt.payload[..], &hash);
+
+    let decoded = decoder.decode_raw_packet(&pkt).expect("decode 0x48");
+    assert_eq!(decoded, Ed2kMessage::FileReqAnsNoFile(no_file));
+
+    // Trailing bytes rejection
+    let mut corrupt_payload = Vec::new();
+    corrupt_payload.extend_from_slice(&hash);
+    corrupt_payload.push(0xFF); // 17th byte
+    let corrupt_raw = mule_protocol::RawPacket::with_vec(
+        mule_protocol::types::PR_ED2K,
+        mule_protocol::ed2k::OP_FILEREQANSNOFILE,
+        corrupt_payload,
+    );
+    let err = decoder.decode_raw_packet(&corrupt_raw).unwrap_err();
+    assert!(matches!(
+        err.kind,
+        mule_protocol::ed2k::Ed2kErrorKind::MalformedField { .. }
+    ));
+}
+
+#[test]
+fn test_tier3_op_file_status_complete_file_zero_parts_emule050a() {
+    let hash = [0x77; 16];
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let encoder = Ed2kEncoder::new();
+    let decoder = Ed2kDecoder::new();
+
+    let pkt = encoder.encode_file_status(&status).expect("encode complete file 0x50");
+    assert_eq!(pkt.protocol, mule_protocol::types::PR_ED2K);
+    assert_eq!(pkt.opcode, mule_protocol::ed2k::OP_FILESTATUS); // 0x50
+    assert_eq!(pkt.payload.len(), 18, "wire length must be exactly 18 bytes (16 hash + 2 part_count)");
+    assert_eq!(&pkt.payload[0..16], &hash);
+    assert_eq!(&pkt.payload[16..18], &[0x00, 0x00], "part_count 0 encoded as 2 zero bytes LE");
+
+    let decoded = decoder.decode_raw_packet(&pkt).expect("decode complete file 0x50");
+    match decoded {
+        Ed2kMessage::FileStatus(dec_status) => {
+            assert_eq!(dec_status.file_hash, hash);
+            assert_eq!(dec_status.part_count, 0);
+            assert!(dec_status.is_complete(), "part_count 0 must report complete file");
+            assert!(dec_status.raw_bytes().is_empty(), "0 parts must have 0 bitfield bytes");
+            assert!(dec_status.has_part(0), "part 0 must be reported available on complete file");
+            assert!(dec_status.has_part(42), "any part must be reported available on complete file");
+        }
+        other => panic!("expected FileStatus, got: {other:?}"),
+    }
+
+    // Trailing bytes rejection on 18-byte complete file status
+    let mut corrupt_payload = Vec::new();
+    corrupt_payload.extend_from_slice(&hash);
+    corrupt_payload.extend_from_slice(&0u16.to_le_bytes());
+    corrupt_payload.push(0x01); // 19th byte
+    let corrupt_raw = mule_protocol::RawPacket::with_vec(
+        mule_protocol::types::PR_ED2K,
+        mule_protocol::ed2k::OP_FILESTATUS,
+        corrupt_payload,
+    );
+    let err = decoder.decode_raw_packet(&corrupt_raw).unwrap_err();
+    assert!(matches!(
+        err.kind,
+        mule_protocol::ed2k::Ed2kErrorKind::MalformedField { .. }
+    ));
+}
