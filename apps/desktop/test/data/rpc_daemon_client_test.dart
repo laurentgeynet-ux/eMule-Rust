@@ -43,7 +43,7 @@ void main() {
                 'jsonrpc': '2.0',
                 'id': id,
                 'result': {
-                  'daemonVersion': '0.1.1',
+                  'daemonVersion': '0.1.2',
                   'protocolVersion': 1,
                   'instanceId': 'mock-inst',
                   'sessionId': 'mock-sess',
@@ -121,7 +121,7 @@ void main() {
       );
 
       expect(client.currentConnectionState, DaemonConnectionState.connected);
-      expect(info.version, '0.1.1');
+      expect(info.version, '0.1.2');
       expect(info.instanceId, 'mock-inst');
       expect(client.lastSequence, 0);
 

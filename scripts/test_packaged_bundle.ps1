@@ -50,7 +50,15 @@ if ([string]::IsNullOrWhiteSpace($BundleDir)) {
 
 $SourceBundle = Join-Path $Root $BundleDir
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
-    $ZipPath = Join-Path $Root "dist\EmuleSion-v0.1.1-lab-${ExpectedFlavor}-windows-x64.zip"
+    $bundleVer = "0.1.2-lab"
+    $vJson = Join-Path $SourceBundle "version.json"
+    if (Test-Path $vJson) {
+        try {
+            $parsed = Get-Content $vJson -Raw | ConvertFrom-Json
+            if ($parsed.version) { $bundleVer = $parsed.version }
+        } catch {}
+    }
+    $ZipPath = Join-Path $Root "dist\EmuleSion-v${bundleVer}-${ExpectedFlavor}-windows-x64.zip"
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan

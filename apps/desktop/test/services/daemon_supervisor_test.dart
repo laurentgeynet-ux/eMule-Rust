@@ -202,7 +202,7 @@ void main() {
               'result': {
                 'instanceId': '00000000-0000-0000-0000-000000000002',
                 'protocolVersion': 1,
-                'daemonVersion': '0.1.1',
+                'daemonVersion': '0.1.2',
                 'startedAtUnixMs': 1726000000000,
                 'activeDownloads': 0,
                 'completedDownloads': 0,

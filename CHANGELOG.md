@@ -3,6 +3,35 @@
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.1.2-lab] - 2026-09-14
+
+Release de consolidation intégrant la séparation étanche `data/` vs `downloads/`, la persistance de la suppression SQLite, la sélection personnalisée du dossier de téléchargement, l'enrichissement des diagnostics, et le pipeline QA E2E automatisé Phase 7.3.
+
+> **Formulation d'attestation d'interopérabilité :**  
+> *« Emule-Sion est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
+
+### Ajouté
+- **Séparation Étanche de l'État Interne (`data/`) et des Fichiers Finalisés (`downloads/`)** :
+  - `data/` contient exclusivement l'état interne : SQLite WAL (`mule.db`), session locale (`session.json`), jeton secret (`auth.token`), fichiers partiels éparses (`.part`).
+  - `downloads/` héberge les fichiers finalisés et validés, avec création automatique si nécessaire.
+  - En mode portable, le dossier par défaut de téléchargement est résolu vers `<bundleRoot>/downloads` distinct de `data/`.
+- **Sélection Personnalisée du Dossier de Destination (Browse...)** :
+  - Intégration du sélecteur de dossier natif dans la modale d'ajout de lien eD2K (`AddDownloadDialog`).
+  - Prise en compte du chemin cible personnalisé dans la méthode RPC `downloads.addEd2kLink`.
+- **Persistance de la Suppression de Téléchargement dans SQLite** :
+  - La méthode RPC `downloads.remove` exécute un `DELETE FROM downloads WHERE id = ?` persisté dans SQLite.
+  - Suppression physique automatique des fichiers d'état partiels associés (`.part` et `.part.met`).
+  - Garantie de non-réapparition de la tâche après arrêt et redémarrage du démon (`test_downloads_remove_persistence_across_daemon_restart`).
+- **Garantie d'Inviolabilité des Téléchargements lors du Nettoyage Lab** :
+  - La méthode `lab.cleanupTestData` ne supprime que `<workdir>/fixtures/` et les fichiers incomplets temporaires ; les fichiers finalisés dans `downloads/` ne sont jamais altérés.
+- **Ergonomie UI & Diagnostics Approfondis** :
+  - Affichage sous forme de badges (`Chip`) des capacités actives annoncées par le démon (`downloads`, `download-events`, `lab-tools`).
+  - Abréviation ergonomique des identifiants UUIDv4 (`#abc1...`) dans le tableau des téléchargements.
+  - DiagnosticDialog enrichi avec masquage systématique des chemins sensibles et préservation du zéro-secret.
+- **Phase 7.3 : Pipeline E2E QA Automatisé (`scripts/test_qa_loopback_e2e.ps1`)** :
+  - Validation hermétique en environnement temporaire stérile hors-dépôt.
+  - Couverture E2E complète : fixture nominale (1 Mo), fixture à la frontière de part (9 728 001 octets), arrêt brutal/reprise de téléchargement avec conservation des blocs déjà validés, et contrôle cryptographique final.
+
 ---
 
 ## [0.1.1-lab] - 2026-09-14

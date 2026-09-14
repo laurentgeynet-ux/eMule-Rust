@@ -58,7 +58,7 @@ async fn test_lab_rpc_full_lifecycle() {
     let msg = read.next().await.unwrap().unwrap();
     let resp: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
     assert_eq!(resp["result"]["workdirMode"], "Portable");
-    assert_eq!(resp["result"]["daemonVersion"], "0.1.1");
+    assert_eq!(resp["result"]["daemonVersion"], env!("CARGO_PKG_VERSION"));
 
     // 2. lab.status initially has no fixtures and no active peer
     let req_status = json!({

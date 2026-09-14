@@ -243,7 +243,7 @@ if ($Sign) {
 Write-Host "`n[8/8] Computing post-signing cryptographic hashes and manifest..." -ForegroundColor Yellow
 
 $NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$AppVersion = "0.1.1-lab"
+$AppVersion = "0.1.2-lab"
 
 $ArtifactsList = [System.Collections.Generic.List[PSCustomObject]]::new()
 $SumsLines = [System.Collections.Generic.List[string]]::new()

@@ -4,7 +4,7 @@
 .DESCRIPTION
     Phase 7.3 - Industrialisation Locale et Validation E2E QA:
     Executes in a sterile, temporary directory outside the Git repository:
-    1. Extracts EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip into a temporary sandbox.
+    1. Extracts EmuleSion-v0.1.2-lab-qa-loopback-windows-x64.zip into a temporary sandbox.
     2. Validates portable.flag and boots the packaged mule-daemon binary in portable mode.
     3. Verifies loopback network confinement (127.0.0.1) and JSON-RPC handshake (lab-tools announced).
     4. Nominal Transfer (sample_1mb):
@@ -45,7 +45,15 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
-    $ZipPath = Join-Path $Root "dist\EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip"
+    $bundleVer = "0.1.2-lab"
+    $vJson = Join-Path $BundleDir "version.json"
+    if (Test-Path $vJson) {
+        try {
+            $parsed = Get-Content $vJson -Raw | ConvertFrom-Json
+            if ($parsed.version) { $bundleVer = $parsed.version }
+        } catch {}
+    }
+    $ZipPath = Join-Path $Root "dist\EmuleSion-v${bundleVer}-qa-loopback-windows-x64.zip"
 }
 
 if ([string]::IsNullOrWhiteSpace($BundleDir)) {
