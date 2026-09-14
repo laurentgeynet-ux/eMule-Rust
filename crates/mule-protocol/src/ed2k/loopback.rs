@@ -1501,6 +1501,8 @@ impl Ed2kLoopbackClient {
                 let msg_opt = self.session.on_packet_received(&raw_packet)?;
                 if let Some(Ed2kMessage::FileStatus(status)) = msg_opt {
                     return Ok(status);
+                } else if let Some(Ed2kMessage::FileReqAnsNoFile(ans)) = msg_opt {
+                    return Err(Ed2kSessionError::FileNotFound(hex::encode(ans.file_hash)));
                 } else {
                     return Err(Ed2kSessionError::UnexpectedMessageInState {
                         state: self.session.state.name(),

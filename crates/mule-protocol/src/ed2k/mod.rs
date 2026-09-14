@@ -30,14 +30,14 @@ pub use encoder::Ed2kEncoder;
 pub use error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 pub use limits::Ed2kLimits;
 pub use opcodes::{
-    OP_EMULEINFO, OP_EMULE_INFO, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER,
-    OP_HELLO_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID,
-    OP_SETREQFILEID_EMULE,
+    OP_EMULEINFO, OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO,
+    OP_HELLOANSWER, OP_HELLO_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART,
+    OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
 };
 pub use packet::{
-    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileStatus, Ed2kFileStatusReq,
-    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
-    PartAvailabilityMask,
+    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
+    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts,
+    Ed2kSendingPart, PartAvailabilityMask,
 };
 pub use peer_info::Ed2kPeerInfo;
 pub use profile::Ed2kCompatibilityProfile;

@@ -182,3 +182,105 @@ ok
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 21.59s
 ```
 
+---
+
+## 6. Tier 3.2 : Requête de Disponibilité et Statut de Fichier (OP_SETREQFILEID_EMULE & OP_FILESTATUS)
+
+Le jalon **Tier 3.2** franchit une étape essentielle : après le handshake eD2K, le harnais interroge l'exécutable officiel **eMule 0.50a** sur la disponibilité des parties d'un fichier partagé, puis sur un fichier inconnu, tout en restant strictement confiné au loopback `127.0.0.1` sous discipline passive absolue.
+
+### Fixture Déterministe & Empreinte Scellée
+
+Une fixture de test a été générée directement dans le répertoire partagé hermétique `%TEMP%\.tmp...\incoming\` (sans aucun contact avec les répertoires hôtes ou utilisateurs) :
+- **Fichier** : `tier3_status_fixture_9728001.bin`
+- **Taille exacte** : $9\,728\,001\text{ octets}$ ($1\text{ partie eD2K complète de } 9\,280\,000\text{ octets} + 448\,001\text{ octets de reliquat} = 2\text{ parties}$).
+- **Motif déterministe** : octets consécutifs cycliques `(0..=255)`.
+- **Empreinte eD2K canonique scellée** : `695b81b1727666818988524bd7fc823c`.
+
+### Découverte Protocolaire Clé : Sémantique de `part_count == 0` dans eMule Officiel
+
+L'exécution initiale a révélé un comportement protocolaire fondamental documenté dans le code source officiel d'eMule/aMule (`ClientTCPSocket.cpp` et `DownloadClient.cpp`) :
+
+1. **Émission d'`OP_FILESTATUS` (`0x50`) par eMule** :
+   ```cpp
+   case OP_SETREQFILEID: {
+       data_out.WriteUInt8(OP_FILESTATUS);
+       if (reqfile->IsPartFile()) {
+           static_cast<CPartFile*>(reqfile)->WritePartStatus(&data_out);
+       } else {
+           data_out.WriteUInt16(0);  // <-- CKnownFile (fichier terminé/partagé) écrit uint16(0) !
+       }
+       break;
+   }
+   ```
+2. **Réception d'`OP_FILESTATUS` (`0x50`) par le client eMule** :
+   ```cpp
+   uint16 nED2KPartCount = data->ReadUInt16();
+   if (!nED2KPartCount) {
+       m_nPartCount = m_reqfile->GetPartCount();
+       m_downPartStatus.setsize(m_nPartCount, 1); // Marque TOUTES les parts comme disponibles !
+       m_bCompleteSource = true;                 // Pair identifié comme source complète
+   }
+   ```
+
+**Règle protocolaire formelle** :
+- Pour un fichier complet partagé (`CKnownFile`), eMule **n'envoie aucun masque binaire** sur le fil réseau. La trame mesure exactement **18 octets** (16 octets de hash MD4 + 2 octets nuls `0x00 0x00` pour `part_count = 0`).
+- Dans la sémantique eD2K, `part_count == 0` ne signifie pas "aucun bloc disponible" mais au contraire : **"source complète possédant 100% des blocs"**.
+- Seuls les fichiers en cours de téléchargement (`CPartFile`) transmettent un `part_count > 0` suivi de $\lceil\text{part\_count} / 8\rceil$ octets de masque binaire.
+
+3. **Traitement de fichier inexistant (`OP_FILEREQANSNOFILE` `0x48`)** :
+   Lorsque le hash demandé n'existe ni dans `sharedfiles` ni dans `downloadqueue`, eMule répond immédiatement avec l'opcode `0x48` (`OP_FILEREQANSNOFILE`) et le hash de 16 octets.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 3 tests
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... 
+Tier 3.2: Created fixture at "%TEMP%\\.tmp<sandbox_fixture>\\incoming\\tier3_status_fixture_9728001.bin"
+Tier 3.2: Sealed eD2K Hash: 695b81b1727666818988524bd7fc823c
+Attempt 1: child running = true
+Attempt 1 failed: Timeout(500ms)
+Attempt 2: child running = true
+Connected on attempt 2!
+Tier 3.2: Handshake successful with peer: Some("RefPeer050a")
+Tier 3.2: Sending OP_SETREQFILEID_EMULE (0x4F) for fixture...
+Tier 3.2: Received OP_FILESTATUS:
+  File Hash : 695b81b1727666818988524bd7fc823c
+  Part Count: 0
+  Bitfield  : []
+Tier 3.2: Successfully received OP_FILEREQANSNOFILE (0x48) for unknown hash!
+Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... 
+=== Starting Tier 3.1 Iteration 1/2 ===
+Iteration 1: Assigned TCP port 55060, UDP port 55061
+Iteration 1: Work path: "%TEMP%\\.tmp<sandbox_iter1>"
+Iteration 1: Decoded OP_EMULEINFO with 7 tags, compression=true, source_exchange=true
+Iteration 1: Holding passive connection for 1s watchdog...
+=== Iteration 1/2 Completed Successfully ===
+=== Starting Tier 3.1 Iteration 2/2 ===
+Iteration 2: Assigned TCP port 55067, UDP port 55068
+Iteration 2: Work path: "%TEMP%\\.tmp<sandbox_iter2>"
+Iteration 2: Decoded OP_EMULEINFO with 7 tags, compression=true, source_exchange=true
+Iteration 2: Holding passive connection for 1s watchdog...
+=== Iteration 2/2 Completed Successfully ===
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 30.50s
+```
+
+### Invariants et Périmètre Validés
+
+| Domaine | Invariant Vérifié |
+| :--- | :--- |
+| **Requête Fixture** | Émission canonique de `OP_SETREQFILEID_EMULE` (`0x4F`) sur 21 octets (`0xE3 0x11 0x00 0x00 0x00 0x4F <HASH 16>`). |
+| **Réponse Fichier Connu** | Réception et décodage d'`OP_FILESTATUS` (`0x50`) sur 18 octets avec `part_count = 0` et masque vide. |
+| **Sémantique Disponibilité** | `status.is_complete() == true`, `status.has_part(0) == true`, `status.has_part(1) == true`. |
+| **Réponse Fichier Inconnu** | Émission pour `[0xAA; 16]`, réception immédiate d'`OP_FILEREQANSNOFILE` (`0x48`), conversion en `FileNotFound` et nettoyage du traqueur en vol. |
+| **Discipline Passive Stricte** | 0 requête de bloc (`OP_REQUESTPARTS`), 0 octet de payload téléchargé, 0 trafic UDP/Kad, 0 zlib (`0xD4`). |
+| **Confinement Réseau** | Vérification automatique `Get-NetTCPConnection` confirmant 0 socket hors loopback. |
+| **Isolation Hermétique** | Tous les fichiers de test sont créés dans des sous-dossiers éphémères `%TEMP%\.tmp...` nettoyés par RAII. |

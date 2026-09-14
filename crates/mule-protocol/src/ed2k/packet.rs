@@ -221,13 +221,33 @@ pub struct Ed2kFileStatus {
 }
 
 impl Ed2kFileStatus {
-    /// Returns true if the remote peer has the specified part available.
+    /// In the eD2K wire protocol, official eMule/aMule reference clients write `part_count = 0`
+    /// when responding to `OP_SETREQFILEID` for a completed shared file (`CKnownFile`).
+    /// In this canonical case, no bitfield is transmitted, and `part_count = 0` signifies
+    /// that the peer is a complete source possessing 100% of the file parts.
     #[inline]
-    pub fn has_part(&self, part_index: u16) -> bool {
-        self.availability_mask.has_part(part_index)
+    pub fn is_complete(&self) -> bool {
+        if self.part_count == 0 {
+            true
+        } else {
+            self.availability_mask.available_parts().count() == self.part_count as usize
+        }
     }
 
-    /// Compatibility accessor for raw byte slice.
+    /// Returns true if the remote peer has the specified part available.
+    ///
+    /// If `self.part_count == 0`, the remote peer is a complete source (`CKnownFile`),
+    /// and all parts of the file are available.
+    #[inline]
+    pub fn has_part(&self, part_index: u16) -> bool {
+        if self.part_count == 0 {
+            true
+        } else {
+            self.availability_mask.has_part(part_index)
+        }
+    }
+
+    /// Compatibility accessor for raw byte slice of the availability bitfield.
     #[inline]
     pub fn raw_bytes(&self) -> &[u8] {
         self.availability_mask.raw_bytes()
@@ -390,6 +410,13 @@ impl Ed2kSendingPart {
     }
 }
 
+/// Passive observation structure for `OP_FILEREQANSNOFILE` (`0x48`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kFileReqAnsNoFile {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+}
+
 /// High-level passive eD2K observation message enum.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ed2kMessage {
@@ -403,6 +430,8 @@ pub enum Ed2kMessage {
     FileStatusReq(Ed2kFileStatusReq),
     /// File part availability status response.
     FileStatus(Ed2kFileStatus),
+    /// Response indicating requested file is not shared or known.
+    FileReqAnsNoFile(Ed2kFileReqAnsNoFile),
     /// Request for block data.
     RequestParts(Ed2kRequestParts),
     /// Delivery of block data.

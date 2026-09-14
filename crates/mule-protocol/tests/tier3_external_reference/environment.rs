@@ -83,6 +83,31 @@ impl Tier3Environment {
         self.udp_port
     }
 
+    /// Creates a deterministic fixture file in the incoming directory with repeating 0..=255 bytes.
+    pub fn create_deterministic_fixture(
+        &self,
+        filename: &str,
+        length: usize,
+    ) -> io::Result<PathBuf> {
+        use std::io::Write;
+        let file_path = self.incoming_dir.join(filename);
+        let mut file = fs::File::create(&file_path)?;
+
+        let chunk_size = 64 * 1024;
+        let mut buf = vec![0u8; chunk_size];
+        let mut written = 0;
+        while written < length {
+            let to_write = std::cmp::min(chunk_size, length - written);
+            for (i, item) in buf.iter_mut().enumerate().take(to_write) {
+                *item = ((written + i) % 256) as u8;
+            }
+            file.write_all(&buf[..to_write])?;
+            written += to_write;
+        }
+        file.flush()?;
+        Ok(file_path)
+    }
+
     /// Writes a neutralized eMule `preferences.ini` file.
     fn write_emule_preferences_ini(&self) -> io::Result<()> {
         let ini_content = format!(

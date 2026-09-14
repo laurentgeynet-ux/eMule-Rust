@@ -4,10 +4,12 @@ use bytes::Bytes;
 
 use super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::limits::Ed2kLimits;
-use super::opcodes::{OP_EMULE_INFO, OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_SENDINGPART};
+use super::opcodes::{
+    OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_SENDINGPART,
+};
 use super::packet::{
-    expected_mask_bytes, Ed2kEmuleInfo, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
-    Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
+    expected_mask_bytes, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq,
+    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
 };
 use super::profile::Ed2kCompatibilityProfile;
 use super::protocol::{PR_ED2K, PR_EMULE};
@@ -428,6 +430,31 @@ impl Ed2kEncoder {
         Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
     }
 
+    /// Encodes an `Ed2kFileReqAnsNoFile` (`0x48`) message into a `RawPacket`.
+    pub fn encode_file_req_ans_no_file(
+        &self,
+        ans: &Ed2kFileReqAnsNoFile,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        let opcode = OP_FILEREQANSNOFILE;
+        let mut payload = Vec::with_capacity(16);
+        payload.extend_from_slice(&ans.file_hash);
+
+        let frame_len = 1 + payload.len();
+        let max_frame = self.limits.max_frame_for_opcode(opcode);
+        if frame_len > max_frame {
+            return Err(Ed2kEncodeError::new(
+                opcode,
+                "frame_len",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: frame_len,
+                    limit: max_frame,
+                },
+            ));
+        }
+
+        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+    }
+
     /// Encodes an `Ed2kRequestParts` message using the encoder's active profile opcode.
     pub fn encode_request_parts(
         &self,
@@ -618,6 +645,7 @@ impl Ed2kEncoder {
             Ed2kMessage::EmuleInfo(info) => self.encode_emule_info(info),
             Ed2kMessage::FileStatusReq(req) => self.encode_file_status_req(req),
             Ed2kMessage::FileStatus(status) => self.encode_file_status(status),
+            Ed2kMessage::FileReqAnsNoFile(ans) => self.encode_file_req_ans_no_file(ans),
             Ed2kMessage::RequestParts(req) => self.encode_request_parts(req),
             Ed2kMessage::SendingPart(part) => self.encode_sending_part(part),
             Ed2kMessage::Raw(raw) => {

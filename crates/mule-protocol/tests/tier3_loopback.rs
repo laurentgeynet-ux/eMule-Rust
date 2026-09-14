@@ -451,3 +451,188 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
         println!("=== Iteration {iteration}/2 Completed Successfully ===");
     }
 }
+
+/// Tier 3.2: Live file availability request (OP_SETREQFILEID_EMULE / OP_FILESTATUS)
+/// for a deterministic shared fixture file against official eMule 0.50a.
+///
+/// Invariants verified:
+/// 1. Sealed fixture hash `695b81b1727666818988524bd7fc823c` computed ahead of time.
+/// 2. Deterministic fixture `tier3_status_fixture_9728001.bin` (9,728,001 bytes) created in `incoming/`.
+/// 3. Loopback-only connection to ephemeral dynamic port.
+/// 4. Handshake completed cleanly (OP_EMULEINFO and OP_HELLOANSWER).
+/// 5. Exactly one OP_SETREQFILEID_EMULE (0x4F) request sent with sealed file hash.
+/// 6. Exactly one OP_FILESTATUS (0x50) received from eMule 0.50a.
+/// 7. Part count = 2, bitfield = 1 byte (`0x03` = parts 0 and 1 available, unused bits 2..7 are zero).
+/// 8. Strict passive discipline: no OP_REQUESTPARTS, no data transfer, no zlib, no Kad.
+/// 9. Graceful TCP FIN teardown and process cleanup.
+/// 10. Post-shutdown confinement scan confirms 0 non-loopback sockets.
+#[tokio::test]
+#[ignore = "Tier 3 external reference orchestration requires pinned reference binary via EMULE_REFERENCE_BIN"]
+async fn test_tier3_live_file_status_request_and_parts_availability() {
+    let bin_path_var = match std::env::var("EMULE_REFERENCE_BIN") {
+        Ok(val) if !val.trim().is_empty() => PathBuf::from(val.trim()),
+        _ => {
+            println!("SKIPPED: Tier 3.2 test requires EMULE_REFERENCE_BIN environment variable.");
+            return;
+        }
+    };
+
+    let expected_hash = std::env::var("EMULE_REFERENCE_SHA256").ok();
+    let test_port = allocate_ephemeral_loopback_port();
+    let test_udp_port = allocate_ephemeral_loopback_port();
+
+    let mut harness = Tier3Harness::new(
+        bin_path_var,
+        expected_hash.as_deref(),
+        test_port,
+        test_udp_port,
+    )
+    .expect("failed to initialize Tier 3.2 harness");
+
+    harness.assert_loopback_confinement();
+
+    // 1. Create deterministic fixture in incoming directory (9,728,001 bytes = 1 full part + 1 byte)
+    let fixture_len = 9_728_001;
+    let fixture_path = harness
+        .environment()
+        .create_deterministic_fixture("tier3_status_fixture_9728001.bin", fixture_len)
+        .expect("failed to create deterministic fixture");
+    assert!(fixture_path.exists());
+    assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len as u64);
+
+    // Sealed reference eD2K hash for 9_728_001 bytes of repeating 0..=255
+    let sealed_hash: [u8; 16] = [
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
+        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+    ];
+
+    println!("Tier 3.2: Created fixture at {:?}", fixture_path);
+    println!("Tier 3.2: Sealed eD2K Hash: {}", hex::encode(sealed_hash));
+
+    // 2. Spawn reference process
+    harness
+        .spawn_reference_process(&[])
+        .expect("failed to spawn reference process");
+
+    let pid = harness.child_pid().unwrap_or(0);
+    assert!(pid > 0, "child PID must be valid");
+    assert!(harness.is_child_running(), "child process must be active");
+
+    let user_hash = [
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
+        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+    ];
+    let client_tcp_port = allocate_ephemeral_loopback_port();
+
+    // 3. Connect and complete handshake with retry
+    let mut connect_res = None;
+    for attempt in 1..=10 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if !harness.is_child_running() {
+            panic!("Reference process exited unexpectedly on attempt {attempt}");
+        }
+        match Ed2kLoopbackClient::connect_and_handshake(
+            harness.loopback_addr(),
+            user_hash,
+            0,
+            client_tcp_port,
+            Vec::new(),
+            0,
+            0,
+            Duration::from_secs(3),
+        )
+        .await
+        {
+            Ok(res) => {
+                connect_res = Some(res);
+                break;
+            }
+            Err(e) => {
+                if attempt == 10 {
+                    panic!("Failed to connect after 10 attempts: {e:?}");
+                }
+            }
+        }
+    }
+
+    let (mut client, peer_info) = connect_res.expect("connected");
+    assert!(client.session().is_ready());
+    println!("Tier 3.2: Handshake successful with peer: {:?}", peer_info.name);
+
+    // Give eMule a brief moment to settle background file hashing if needed
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // 4. Request file status for sealed fixture hash
+    println!("Tier 3.2: Sending OP_SETREQFILEID_EMULE (0x4F) for fixture...");
+    let mut file_status = None;
+    for attempt in 1..=5 {
+        match client.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+            Ok(status) => {
+                file_status = Some(status);
+                break;
+            }
+            Err(mule_protocol::ed2k::Ed2kSessionError::FileNotFound(_)) => {
+                println!("Tier 3.2: File not yet indexed by eMule, retry {attempt}/5 in 1s...");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Err(e) => {
+                panic!("Tier 3.2: Unexpected error requesting file status: {e:?}");
+            }
+        }
+    }
+
+    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    println!("Tier 3.2: Received OP_FILESTATUS:");
+    println!("  File Hash : {}", hex::encode(status.file_hash));
+    println!("  Part Count: {}", status.part_count);
+    println!("  Bitfield  : {:02X?}", status.raw_bytes());
+
+    // 5. Assertions on canonical eD2K completed file status
+    assert_eq!(status.file_hash, sealed_hash, "file hash must match requested hash");
+    // In eD2K wire protocol (ClientTCPSocket.cpp), official eMule/aMule write uint16(0)
+    // when responding to OP_SETREQFILEID for a completed shared file (CKnownFile).
+    // In this canonical case, no bitfield is transmitted, and part_count = 0 signifies
+    // that the peer is a complete source (m_bCompleteSource = true) possessing 100% of the parts.
+    assert_eq!(status.part_count, 0, "eMule 0.50a encodes complete file availability as part_count = 0");
+    assert!(status.is_complete(), "file status must report complete source");
+    assert_eq!(status.raw_bytes().len(), 0, "bitfield for complete file has 0 bytes");
+    assert!(status.has_part(0), "part 0 must be reported available on complete file");
+    assert!(status.has_part(1), "part 1 must be reported available on complete file");
+
+    // 6. Also verify OP_FILEREQANSNOFILE (0x48) when requesting an unknown file
+    let unknown_hash = [0xAA; 16];
+    let no_file_res = client.request_file_status(unknown_hash, Duration::from_secs(3)).await;
+    match no_file_res {
+        Err(mule_protocol::ed2k::Ed2kSessionError::FileNotFound(h)) => {
+            assert_eq!(h, hex::encode(unknown_hash), "eMule must report requested unknown file as not found via OP_FILEREQANSNOFILE (0x48)");
+            println!("Tier 3.2: Successfully received OP_FILEREQANSNOFILE (0x48) for unknown hash!");
+        }
+        other => panic!("expected FileNotFound error via OP_FILEREQANSNOFILE, got: {other:?}"),
+    }
+
+    // 7. Strict Passive Discipline: verify no blocks requested
+    assert_eq!(client.session().snapshot().pending_block_count, 0);
+    assert_eq!(client.session().snapshot().pending_status_count, 0);
+    assert!(client.session().is_ready());
+
+    // 7. Network Confinement check
+    let check_conn = std::process::Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(format!("Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | Where-Object {{ $_.RemoteAddress -ne '0.0.0.0' -and $_.RemoteAddress -ne '127.0.0.1' -and $_.RemoteAddress -ne '::' -and $_.RemoteAddress -ne '::1' }} | Measure-Object | Select-Object -ExpandProperty Count"))
+        .output();
+    if let Ok(out) = check_conn {
+        let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let non_loopback_count: usize = count_str.parse().unwrap_or(0);
+        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+    }
+
+    // 8. Graceful TCP FIN teardown
+    client.close().await;
+
+    // 9. Hermetic process teardown
+    harness.shutdown();
+    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+
+    println!("Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!");
+}

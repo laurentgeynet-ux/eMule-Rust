@@ -62,6 +62,10 @@ pub enum Ed2kSessionError {
     #[error("Unsolicited file status received for hash {0}")]
     UnsolicitedFileStatus(String),
 
+    /// Remote peer reported it does not have the requested file (OP_FILEREQANSNOFILE).
+    #[error("Remote peer does not have requested file: {0}")]
+    FileNotFound(String),
+
     /// A duplicate file status request was initiated for an already in-flight file hash.
     #[error("Duplicate file status request for hash {0}")]
     DuplicateFileStatusRequest(String),
@@ -89,10 +93,6 @@ pub enum Ed2kSessionError {
     /// Invalid block request parameters.
     #[error("Invalid block request: {0}")]
     InvalidBlockRequest(String),
-
-    /// Remote peer reported 0 parts in active session for non-empty file.
-    #[error("Zero parts reported in active session for file {0}")]
-    ZeroPartCountInActiveSession(String),
 
     /// Malformed packet structure.
     #[error("Malformed packet: {0}")]
@@ -780,6 +780,18 @@ impl Ed2kSession {
                 self.on_file_status_received(&status)?;
                 Ok(Some(Ed2kMessage::FileStatus(status)))
             }
+            Ed2kMessage::FileReqAnsNoFile(ans) => {
+                if !self.is_ready() {
+                    let err = Ed2kSessionError::ResponseBeforeReady(self.state.name());
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                if let Err(err) = self.status_tracker.validate_and_remove(&ans.file_hash) {
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                Ok(Some(Ed2kMessage::FileReqAnsNoFile(ans)))
+            }
             Ed2kMessage::FileStatusReq(req) => {
                 if !self.is_ready() {
                     let err = Ed2kSessionError::RequestBeforeReady(self.state.name());
@@ -855,12 +867,9 @@ impl Ed2kSession {
             return Err(err);
         }
 
-        // Active session rule: reject 0 parts for real file
-        if status.part_count == 0 {
-            let err = Ed2kSessionError::ZeroPartCountInActiveSession(hex::encode(status.file_hash));
-            self.fail(err.clone());
-            return Err(err);
-        }
+        // Note: In official eD2K wire protocol (eMule/aMule), part_count == 0 indicates
+        // that the remote peer possesses 100% of the completed file (CKnownFile),
+        // meaning all parts are available and no bitfield is transmitted.
 
         // Must match an in-flight request and remove it
         if let Err(err) = self.status_tracker.validate_and_remove(&status.file_hash) {
