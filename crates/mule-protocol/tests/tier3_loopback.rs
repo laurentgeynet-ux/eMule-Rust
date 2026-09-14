@@ -13,7 +13,10 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use mule_protocol::ed2k::Ed2kLoopbackClient;
+use mule_protocol::ed2k::{
+    Ed2kDownloadSequencer, Ed2kEncoder, Ed2kLoopbackClient, Ed2kSequencerError,
+    OP_REQUESTPARTS_EMULE, PR_ED2K,
+};
 use tier3_external_reference::{
     Tier3BinaryValidator, Tier3DivergenceReport, Tier3Environment, Tier3Harness, Tier3HarnessError,
     WireTraceRecord,
@@ -635,4 +638,220 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
     assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
 
     println!("Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!");
+}
+
+/// Tier 3.3 Live Reference Integration Test:
+/// Download sequencing and block request planning without payload transmission.
+///
+/// Steps:
+/// 1. Spawn eMule 0.50a reference process with 9,728,001 bytes fixture in sandbox incoming/.
+/// 2. Complete loopback handshake.
+/// 3. Request OP_FILESTATUS for sealed hash 695b81b1727666818988524bd7fc823c.
+/// 4. Receive OP_FILESTATUS with part_count = 0 (complete file source).
+/// 5. Instantiate Ed2kDownloadSequencer:
+///    - Total parts = 2.
+///    - Both Part 0 and Part 1 are eligible for selection.
+/// 6. Plan Part 0:
+///    - 53 blocks planned.
+///    - Block 0: [0, 184_320).
+///    - Block 52: [9_584_640, 9_728_000) (length 143,360 bytes, exactly aligned to 9,728,000 part boundary).
+/// 7. Plan Part 1:
+///    - 1 block planned: [9_728_000, 9_728_001) (residual 1 byte).
+/// 8. Construct local wire frames:
+///    - Encode OP_REQUESTPARTS_EMULE (0x47) for Part 0 Block 0 and Part 1 Block 0.
+///    - Validate 40 bytes wire payload.
+/// 9. Strict Passive Discipline:
+///    - NO block request packet is transmitted to eMule 0.50a.
+///    - Pending block count on session remains strictly 0.
+/// 10. Negative response proof:
+///    - Request unknown file hash -> receives OP_FILEREQANSNOFILE (0x48).
+///    - Verify sequencer refuses planning for unknown file.
+/// 11. Confinement scan: 0 non-loopback connections.
+/// 12. Graceful TCP FIN teardown and process cleanup.
+#[tokio::test]
+#[ignore = "Tier 3 external reference orchestration requires pinned reference binary via EMULE_REFERENCE_BIN"]
+async fn test_tier3_live_download_sequencing_without_payload() {
+    let bin_path_var = match std::env::var("EMULE_REFERENCE_BIN") {
+        Ok(val) if !val.trim().is_empty() => PathBuf::from(val.trim()),
+        _ => {
+            println!("SKIPPED: Tier 3.3 test requires EMULE_REFERENCE_BIN environment variable.");
+            return;
+        }
+    };
+
+    let expected_hash = std::env::var("EMULE_REFERENCE_SHA256").ok();
+    let test_port = allocate_ephemeral_loopback_port();
+    let test_udp_port = allocate_ephemeral_loopback_port();
+
+    let mut harness = Tier3Harness::new(
+        bin_path_var,
+        expected_hash.as_deref(),
+        test_port,
+        test_udp_port,
+    )
+    .expect("failed to initialize Tier 3.3 harness");
+
+    harness.assert_loopback_confinement();
+
+    // 1. Create deterministic fixture in incoming directory (9,728,001 bytes = 1 full part + 1 byte)
+    let fixture_len = 9_728_001u64;
+    let fixture_path = harness
+        .environment()
+        .create_deterministic_fixture("tier3_status_fixture_9728001.bin", fixture_len as usize)
+        .expect("failed to create deterministic fixture");
+    assert!(fixture_path.exists());
+    assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len);
+
+    let sealed_hash: [u8; 16] = [
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
+        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+    ];
+
+    // 2. Spawn reference process
+    harness
+        .spawn_reference_process(&[])
+        .expect("failed to spawn reference process");
+
+    let pid = harness.child_pid().unwrap_or(0);
+    assert!(pid > 0);
+    assert!(harness.is_child_running());
+
+    let user_hash = [
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
+        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+    ];
+    let client_tcp_port = allocate_ephemeral_loopback_port();
+
+    // 3. Connect and complete handshake
+    let mut connect_res = None;
+    for attempt in 1..=10 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if !harness.is_child_running() {
+            panic!("Reference process exited unexpectedly on attempt {attempt}");
+        }
+        match Ed2kLoopbackClient::connect_and_handshake(
+            harness.loopback_addr(),
+            user_hash,
+            0,
+            client_tcp_port,
+            Vec::new(),
+            0,
+            0,
+            Duration::from_secs(3),
+        )
+        .await
+        {
+            Ok(res) => {
+                connect_res = Some(res);
+                break;
+            }
+            Err(e) => {
+                if attempt == 10 {
+                    panic!("Failed to connect after 10 attempts: {e:?}");
+                }
+            }
+        }
+    }
+
+    let (mut client, _peer_info) = connect_res.expect("connected");
+    assert!(client.session().is_ready());
+
+    // Give eMule a brief moment to settle background file hashing
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // 4. Request file status for sealed fixture hash
+    let mut file_status = None;
+    for attempt in 1..=5 {
+        match client.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+            Ok(status) => {
+                file_status = Some(status);
+                break;
+            }
+            Err(mule_protocol::ed2k::Ed2kSessionError::FileNotFound(_)) => {
+                println!("Tier 3.3: File not yet indexed by eMule, retry {attempt}/5 in 1s...");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Err(e) => {
+                panic!("Tier 3.3: Unexpected error requesting file status: {e:?}");
+            }
+        }
+    }
+
+    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    assert_eq!(status.file_hash, sealed_hash);
+    assert_eq!(status.part_count, 0, "complete source reports part_count = 0");
+    assert!(status.is_complete());
+
+    // 5. Tier 3.3 Download Sequencing & Block Request Planning
+    let sequencer = Ed2kDownloadSequencer::new(sealed_hash, fixture_len, status)
+        .expect("sequencer initialization succeeds");
+
+    assert_eq!(sequencer.total_parts(), 2, "9,728,001 bytes file has exactly 2 parts");
+    assert!(sequencer.is_part_available(0), "part 0 must be available");
+    assert!(sequencer.is_part_available(1), "part 1 must be available");
+    assert_eq!(sequencer.available_parts(), vec![0, 1]);
+    assert_eq!(sequencer.select_first_available_part(), Some(0));
+
+    // Plan Part 0 blocks (9,728,000 bytes -> 53 blocks)
+    let part0_blocks = sequencer.plan_part_blocks(0).expect("plan part 0");
+    assert_eq!(part0_blocks.len(), 53);
+    assert_eq!(part0_blocks[0].start, 0);
+    assert_eq!(part0_blocks[0].end, 184_320);
+    assert_eq!(part0_blocks[52].start, 9_584_640);
+    assert_eq!(part0_blocks[52].end, 9_728_000, "final block of part 0 aligns exactly to part boundary");
+    assert_eq!(part0_blocks[52].len(), 143_360);
+
+    // Plan Part 1 blocks (1 byte remainder -> 1 block)
+    let part1_blocks = sequencer.plan_part_blocks(1).expect("plan part 1");
+    assert_eq!(part1_blocks.len(), 1);
+    assert_eq!(part1_blocks[0].start, 9_728_000);
+    assert_eq!(part1_blocks[0].end, 9_728_001, "residual block covers the last byte of the fixture");
+    assert_eq!(part1_blocks[0].len(), 1);
+
+    // 6. Build and encode wire request packets locally (Emule050a profile -> opcode 0x47)
+    let encoder = Ed2kEncoder::new();
+    let wire_pkt_part0_block0 = sequencer
+        .build_request_packet(&[part0_blocks[0]], &encoder)
+        .expect("encode part 0 block 0");
+    assert_eq!(wire_pkt_part0_block0.protocol, PR_ED2K);
+    assert_eq!(wire_pkt_part0_block0.opcode, OP_REQUESTPARTS_EMULE); // 0x47
+    assert_eq!(wire_pkt_part0_block0.payload.len(), 40, "wire payload must be 40 bytes");
+
+    let wire_pkt_part1_block0 = sequencer
+        .build_request_packet(&[part1_blocks[0]], &encoder)
+        .expect("encode part 1 residual block");
+    assert_eq!(wire_pkt_part1_block0.opcode, OP_REQUESTPARTS_EMULE);
+    assert_eq!(wire_pkt_part1_block0.payload.len(), 40);
+
+    // 7. STRICT PASSIVE DISCIPLINE: verify NO block requests were sent over the wire
+    assert_eq!(client.session().snapshot().pending_block_count, 0);
+    assert_eq!(client.session().snapshot().pending_status_count, 0);
+    assert!(client.session().is_ready());
+
+    // 8. Negative response proof: OP_FILEREQANSNOFILE prevents planning
+    let unknown_hash = [0xAA; 16];
+    let no_file_res = client.request_file_status(unknown_hash, Duration::from_secs(3)).await;
+    let seq_from_neg = Ed2kDownloadSequencer::from_file_status_result(unknown_hash, fixture_len, no_file_res);
+    assert!(matches!(seq_from_neg, Err(Ed2kSequencerError::FileNotFound(_))));
+
+    // 9. Confinement scan
+    let check_conn = std::process::Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(format!("Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | Where-Object {{ $_.RemoteAddress -ne '0.0.0.0' -and $_.RemoteAddress -ne '127.0.0.1' -and $_.RemoteAddress -ne '::' -and $_.RemoteAddress -ne '::1' }} | Measure-Object | Select-Object -ExpandProperty Count"))
+        .output();
+    if let Ok(out) = check_conn {
+        let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let non_loopback_count: usize = count_str.parse().unwrap_or(0);
+        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+    }
+
+    // 10. Graceful TCP FIN teardown
+    client.close().await;
+
+    // 11. Hermetic process teardown
+    harness.shutdown();
+    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+
+    println!("Tier 3.3: Download sequencing and block request planning without payload successfully verified against eMule 0.50a!");
 }

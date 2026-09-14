@@ -16,6 +16,7 @@ pub mod packet;
 pub mod peer_info;
 pub mod profile;
 pub mod protocol;
+pub mod sequencer;
 pub mod session;
 pub mod tags;
 
@@ -42,6 +43,10 @@ pub use packet::{
 pub use peer_info::Ed2kPeerInfo;
 pub use profile::Ed2kCompatibilityProfile;
 pub use protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
+pub use sequencer::{
+    Ed2kDownloadSequencer, Ed2kSequencerError, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
+    MAX_REQUEST_RANGES_PER_PACKET,
+};
 pub use session::{
     BlockRequestKey, BlockRequestTracker, Ed2kSession, Ed2kSessionError, Ed2kSessionState,
     FileStatusRequest, FileStatusTracker, PendingBlockRequest, SessionSnapshot,

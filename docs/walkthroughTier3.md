@@ -284,3 +284,65 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; fini
 | **Discipline Passive Stricte** | 0 requête de bloc (`OP_REQUESTPARTS`), 0 octet de payload téléchargé, 0 trafic UDP/Kad, 0 zlib (`0xD4`). |
 | **Confinement Réseau** | Vérification automatique `Get-NetTCPConnection` confirmant 0 socket hors loopback. |
 | **Isolation Hermétique** | Tous les fichiers de test sont créés dans des sous-dossiers éphémères `%TEMP%\.tmp...` nettoyés par RAII. |
+
+---
+
+## 7. Tier 3.3 : Séquencement de Téléchargement sans Payload (OP_REQUESTPARTS_EMULE Planning)
+
+Le jalon **Tier 3.3** formalise, valide et scelle la logique complète de planification et de séquencement qui précède tout transfert de données :
+- Sélection déterministe des parties disponibles en fonction du statut.
+- Découpage en blocs standard eD2K ($\le 184\,320\text{ octets}$) et alignement strict sur la frontière de part ($9\,728\,000\text{ octets}$).
+- Couverture complète de la première part et du reliquat d'un octet pour la fixture de $9\,728\,001\text{ octets}$.
+- Validation stricte des bornes, débordements et interdiction de blocs à cheval sur deux parts.
+- Preuve d'admissibilité de toutes les parts pour une source complète (`part_count == 0`).
+- Preuve de rejet absolu de toute requête si `OP_FILEREQANSNOFILE` (`0x48`) a été reçu.
+- **Discipline passive absolue** : encodage de la trame `OP_REQUESTPARTS_EMULE` (`0x47`) en mémoire locale uniquement, sans transmission vers eMule 0.50a.
+
+### Architecture du Séquenceur (`Ed2kDownloadSequencer`)
+
+Le nouveau composant `Ed2kDownloadSequencer` (`crates/mule-protocol/src/ed2k/sequencer.rs`) applique les invariants canoniques suivants :
+1. **Source complète** : Lorsque `status.is_complete()` est vrai (`part_count == 0`), toutes les parts $0..\text{total\_parts}$ sont déclarées disponibles.
+2. **Découpage de la part 0 ($9\,728\,000\text{ octets}$)** :
+   - Décomposée en exactement 53 blocs : 52 blocs pleins de $184\,320\text{ octets}$ + 1 bloc résiduel de $143\,360\text{ octets}$ (`[9_584_640, 9_728_000)`).
+   - Le bloc final s'aligne à l'octet près sur la frontière $9\,728\,000$, sans jamais déborder sur la part suivante.
+3. **Découpage de la part 1 ($1\text{ octet}$ de reliquat)** :
+   - Décomposée en 1 bloc de $1\text{ octet}$ (`[9_728_000, 9_728_001)`).
+   - Couvre exactement le dernier octet de la fixture.
+4. **Matrice de rejet strict** :
+   - Rejet de `start >= end`.
+   - Rejet de dépassement de la taille du fichier.
+   - Rejet de blocs dépassant $184\,320\text{ octets}$.
+   - Rejet immédiat de tout bloc traversant une frontière de part (ex: `[9_727_000, 9_729_000)` renvoie `CrossPartBoundary`).
+   - Rejet des requêtes comportant plus de 3 plages (`TooManyRanges`).
+5. **Rejet de fichier inconnu** :
+   - Si le statut est `FileNotFound` (`OP_FILEREQANSNOFILE`), `Ed2kDownloadSequencer::from_file_status_result` échoue immédiatement et interdit toute planification de bloc.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 4 tests
+test test_tier3_live_download_sequencing_without_payload ... 
+Tier 3.3: Download sequencing and block request planning without payload successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 35.98s
+```
+
+### Invariants et Périmètre Validés
+
+| Domaine | Invariant Vérifié |
+| :--- | :--- |
+| **Sélection Déterministe** | `sequencer.available_parts() == vec![0, 1]` pour le fichier de 9 728 001 octets issu du statut complet eMule. |
+| **Alignement Frontière** | Bloc 52 de Part 0 termine à $9\,728\,000$ pile. Bloc 0 de Part 1 couvre $9\,728\,000..9\,728\,001$. |
+| **Framing Wire Local** | Paquets `OP_REQUESTPARTS_EMULE` (`0x47`) construits sur 40 octets de payload (hash 16 + 3 start offsets + 3 end offsets), conformes eMule 0.50a. |
+| **Discipline Passive Absolue** | 0 paquet de bloc émis sur la socket TCP ; `pending_block_count` de la session reste à 0. |
+| **Rejet Fichier Inconnu** | Réception d'`OP_FILEREQANSNOFILE` (`0x48`) $\rightarrow$ refus strict de toute planification de bloc. |
+| **Confinement Réseau** | Vérification `Get-NetTCPConnection` confirmant 0 socket hors loopback. |
+
