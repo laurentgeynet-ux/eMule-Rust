@@ -17,7 +17,8 @@
 #>
 
 param(
-    [string]$OutputDir = "dist\EmuleSion-Windows",
+    [string]$OutputDir = "",
+    [string]$Flavor = "",
     [switch]$Sign = $false,
     [string]$CertificateThumbprint = "",
     [string]$TimestampServer = "http://timestamp.digicert.com",
@@ -31,8 +32,25 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+if ($LabMode -or $Flavor -eq "qa-loopback") {
+    $DistributionFlavor = "qa-loopback"
+    $LabToolsEnabled = $true
+    $LabMode = $true
+    if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+        $OutputDir = "dist\EmuleSion-Qa-Loopback-Windows"
+    }
+} else {
+    $DistributionFlavor = "standard"
+    $LabToolsEnabled = $false
+    $LabMode = $false
+    if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+        $OutputDir = "dist\EmuleSion-Standard-Windows"
+    }
+}
+
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  Emule-Sion Windows Release Candidate Pipeline   " -ForegroundColor Cyan
+Write-Host "  Flavor: $DistributionFlavor (LabTools: $LabToolsEnabled)" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # -----------------------------------------------------------------------------
@@ -258,6 +276,8 @@ $VersionInfo = [ordered]@{
     schemaVersion = 1
     product = "Emule-Sion"
     version = $AppVersion
+    distributionFlavor = $DistributionFlavor
+    labToolsEnabled = $LabToolsEnabled
     gitCommit = $GitCommit
     gitDirty = $GitDirty
     builtAtUtc = $NowIso
@@ -318,7 +338,7 @@ Write-Host " -> Cross-check Passed: 100% consistent across disk, version.json, S
 # 9. Packaging ZIP Archive & Archive SHA-256
 # -----------------------------------------------------------------------------
 if (!$SkipZip) {
-    $ZipName = "EmuleSion-v${AppVersion}-windows-x64.zip"
+    $ZipName = "EmuleSion-v${AppVersion}-${DistributionFlavor}-windows-x64.zip"
     $ZipPath = Join-Path (Split-Path $DestPath -Parent) $ZipName
     
     Write-Host "`nCreating distribution archive: $ZipName..." -ForegroundColor Yellow

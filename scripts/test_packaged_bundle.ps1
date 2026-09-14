@@ -21,7 +21,9 @@
 #>
 
 param(
-    [string]$BundleDir = "dist\EmuleSion-Windows"
+    [string]$BundleDir = "",
+    [string]$ZipPath = "",
+    [string]$Flavor = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,20 +31,38 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+if ([string]::IsNullOrWhiteSpace($Flavor)) {
+    if ($ZipPath -match 'qa-loopback' -or $BundleDir -match 'Qa-Loopback') {
+        $Flavor = "qa-loopback"
+    } else {
+        $Flavor = "standard"
+    }
+}
+$ExpectedFlavor = $Flavor
+
+if ([string]::IsNullOrWhiteSpace($BundleDir)) {
+    if ($Flavor -eq "qa-loopback") {
+        $BundleDir = "dist\EmuleSion-Qa-Loopback-Windows"
+    } else {
+        $BundleDir = "dist\EmuleSion-Standard-Windows"
+    }
+}
+
 $SourceBundle = Join-Path $Root $BundleDir
-if (!(Test-Path $SourceBundle)) {
-    throw "Distribution bundle not found at '$SourceBundle'. Run scripts\build_windows_release.ps1 first."
+if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+    $ZipPath = Join-Path $Root "dist\EmuleSion-v0.1.1-lab-${ExpectedFlavor}-windows-x64.zip"
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  Emule-Sion Post-Packaging E2E Smoke Test        " -ForegroundColor Cyan
+Write-Host "  Flavor: $ExpectedFlavor                         " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # -----------------------------------------------------------------------------
 # 1. Setup Isolated Temporary Environment Outside Repository
 # -----------------------------------------------------------------------------
 $TestId = [guid]::NewGuid().ToString("N").Substring(0, 8)
-$IsolatedTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "EmuleSion-SmokeTest-$TestId"
+$IsolatedTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "EmuleSion-SmokeTest-$ExpectedFlavor-$TestId"
 $BundleCopyDir = Join-Path $IsolatedTempRoot "bundle\EmuleSion-Windows"
 $WorkDir = Join-Path $IsolatedTempRoot "workdir\EmuleSion"
 
@@ -54,7 +74,6 @@ New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
 
 try {
     # Extract from ZIP archive if present, otherwise copy bundle
-    $ZipPath = Join-Path $Root "dist\EmuleSion-v0.1.1-lab-windows-x64.zip"
     $ZipShaPath = "$ZipPath.sha256"
 
     if (Test-Path $ZipPath) {
@@ -119,7 +138,17 @@ try {
     if (!$VersionJson.toolchains.rustc) { throw "toolchains.rustc missing from version.json" }
     if (!$VersionJson.artifacts -or $VersionJson.artifacts.Count -eq 0) { throw "Artifacts list is empty in version.json" }
 
-    Write-Host " -> version.json schema valid (version: $($VersionJson.version), commit: $($VersionJson.gitCommit.Substring(0,8))...)" -ForegroundColor Green
+    if ($VersionJson.distributionFlavor -ne $ExpectedFlavor) {
+        throw "version.json distributionFlavor mismatch! Expected '$ExpectedFlavor', got '$($VersionJson.distributionFlavor)'"
+    }
+    if ($ExpectedFlavor -eq "qa-loopback" -and !$VersionJson.labToolsEnabled) {
+        throw "Expected labToolsEnabled = true in version.json for qa-loopback flavor!"
+    }
+    if ($ExpectedFlavor -eq "standard" -and $VersionJson.labToolsEnabled) {
+        throw "Expected labToolsEnabled = false in version.json for standard flavor!"
+    }
+
+    Write-Host " -> version.json schema valid (version: $($VersionJson.version), flavor: $($VersionJson.distributionFlavor), commit: $($VersionJson.gitCommit.Substring(0,8))...)" -ForegroundColor Green
 
     # 4-way consistency cross-check: version.json <-> disk <-> SHA256SUMS.txt <-> windows-bundle.cdx.json
     $SbomBundleFile = Join-Path $BundleCopyDir "sbom\windows-bundle.cdx.json"
@@ -285,6 +314,35 @@ try {
     $statusJson = $statusResp | ConvertFrom-Json
     if (!$statusJson.result) {
         throw "system.status failed: $statusResp"
+    }
+
+    # Verify capabilities and lab.* behavior strictly per flavor
+    $caps = $helloJson.result.capabilities
+    if ($ExpectedFlavor -eq "standard") {
+        if ($caps -contains "lab-tools") {
+            throw "SECURITY VIOLATION: standard build announced 'lab-tools' capability!"
+        }
+        if ($caps -contains "local-simulation") {
+            throw "SECURITY VIOLATION: standard build announced 'local-simulation' capability!"
+        }
+        # Verify calling lab.status returns MethodNotFound (-32601)
+        $labStatusResp = Send-JsonRpc $ws '{"jsonrpc":"2.0","id":10,"method":"lab.status","params":{}}'
+        $labStatusJson = $labStatusResp | ConvertFrom-Json
+        if (!$labStatusJson.error -or $labStatusJson.error.code -ne -32601) {
+            throw "SECURITY VIOLATION: lab.status did NOT return MethodNotFound (-32601) on standard build! Got: $labStatusResp"
+        }
+        Write-Host " -> Confirmed: lab.* methods absent from standard daemon (-32601 MethodNotFound)." -ForegroundColor Green
+    } elseif ($ExpectedFlavor -eq "qa-loopback") {
+        if ($caps -notcontains "lab-tools") {
+            throw "CAPABILITY ERROR: qa-loopback build missing 'lab-tools' capability!"
+        }
+        # Verify calling lab.status returns success
+        $labStatusResp = Send-JsonRpc $ws '{"jsonrpc":"2.0","id":10,"method":"lab.status","params":{}}'
+        $labStatusJson = $labStatusResp | ConvertFrom-Json
+        if (!$labStatusJson.result) {
+            throw "lab.status call failed on qa-loopback build: $labStatusResp"
+        }
+        Write-Host " -> Confirmed: lab.status functional in qa-loopback daemon." -ForegroundColor Green
     }
 
     # Test graceful system.stop

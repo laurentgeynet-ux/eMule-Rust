@@ -14,14 +14,24 @@
 #>
 
 param(
-    [string]$BundleDir = "dist\EmuleSion-Windows"
+    [string]$BundleDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
-$SourceBundle = Join-Path $Root $BundleDir
 
+if ([string]::IsNullOrWhiteSpace($BundleDir)) {
+    if (Test-Path (Join-Path $Root "dist\EmuleSion-Standard-Windows")) {
+        $BundleDir = "dist\EmuleSion-Standard-Windows"
+    } elseif (Test-Path (Join-Path $Root "dist\EmuleSion-Qa-Loopback-Windows")) {
+        $BundleDir = "dist\EmuleSion-Qa-Loopback-Windows"
+    } else {
+        $BundleDir = "dist\EmuleSion-Windows"
+    }
+}
+
+$SourceBundle = Join-Path $Root $BundleDir
 if (!(Test-Path $SourceBundle)) {
     throw "Distribution bundle not found at '$SourceBundle'. Run scripts\build_windows_release.ps1 first."
 }
