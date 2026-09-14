@@ -1,7 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:desktop/data/fake_daemon_client.dart';
+import 'package:desktop/data/rpc_daemon_client.dart';
 import 'package:desktop/main.dart';
+import 'package:desktop/services/daemon_supervisor.dart';
 import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
 import 'package:desktop/ui/features/downloads/widgets/download_row.dart';
 import 'package:desktop/ui/features/downloads/widgets/downloads_sidebar.dart';
@@ -290,5 +294,43 @@ void main() {
       // Expect exactly 4 dimmed sidebar filters (Active, Paused, Completed, Failed)
       expect(dimmedFilters.length, 4);
     });
+
+    testWidgets('app exit request triggers supervisor stop cleanly',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      var stopInvoked = false;
+      final testSupervisor = _MockExitSupervisor(
+        client: RpcDaemonClient(),
+        onStop: () => stopInvoked = true,
+      );
+
+      await tester.pumpWidget(EmuleSionApp(
+        viewModel: viewModel,
+        supervisor: testSupervisor,
+      ));
+      await tester.pumpAndSettle();
+
+      final exitResponse = await WidgetsBinding.instance.handleRequestAppExit();
+      expect(exitResponse, AppExitResponse.exit);
+      expect(stopInvoked, isTrue);
+    });
   });
 }
+
+class _MockExitSupervisor extends DaemonSupervisor {
+  final VoidCallback onStop;
+
+  _MockExitSupervisor({
+    required super.client,
+    required this.onStop,
+  });
+
+  @override
+  Future<void> stop() async {
+    onStop();
+  }
+}
+

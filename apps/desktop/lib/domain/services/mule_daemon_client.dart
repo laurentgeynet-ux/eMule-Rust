@@ -43,6 +43,9 @@ abstract class MuleDaemonClient {
   /// Inject data range for simulation and integrity verification tests.
   Future<DownloadItem> injectRange(String id, int offset, String hexData);
 
+  /// Request daemon graceful shutdown (system.stop).
+  Future<void> stopDaemon();
+
   /// Clean up any resources/sockets.
   void dispose();
 }

@@ -47,6 +47,7 @@ void main() {
 
       await sub.cancel();
       await supervisor.stop();
+      expect(File('${tempDir.path}/session.json').existsSync(), isFalse);
       supervisor.dispose();
     });
 

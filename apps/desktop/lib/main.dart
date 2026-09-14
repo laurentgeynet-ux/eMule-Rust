@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import 'data/fake_daemon_client.dart';
@@ -39,13 +41,46 @@ void main() async {
     viewModel.initialize(url: Uri.parse('ws://127.0.0.1:4660/rpc'));
   }
 
-  runApp(EmuleSionApp(viewModel: viewModel));
+  runApp(EmuleSionApp(viewModel: viewModel, supervisor: supervisor));
 }
 
-class EmuleSionApp extends StatelessWidget {
+class EmuleSionApp extends StatefulWidget {
   final DownloadsViewModel viewModel;
+  final DaemonSupervisor? supervisor;
 
-  const EmuleSionApp({super.key, required this.viewModel});
+  const EmuleSionApp({
+    super.key,
+    required this.viewModel,
+    this.supervisor,
+  });
+
+  @override
+  State<EmuleSionApp> createState() => _EmuleSionAppState();
+}
+
+class _EmuleSionAppState extends State<EmuleSionApp> {
+  AppLifecycleListener? _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycleListener = AppLifecycleListener(
+      onExitRequested: _handleExitRequested,
+    );
+  }
+
+  Future<AppExitResponse> _handleExitRequested() async {
+    if (widget.supervisor != null) {
+      await widget.supervisor!.stop();
+    }
+    return AppExitResponse.exit;
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +88,7 @@ class EmuleSionApp extends StatelessWidget {
       title: 'Emule-Sion',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
-      home: DownloadsScreen(viewModel: viewModel),
+      home: DownloadsScreen(viewModel: widget.viewModel),
     );
   }
 }

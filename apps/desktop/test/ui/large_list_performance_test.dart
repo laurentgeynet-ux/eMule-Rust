@@ -53,6 +53,9 @@ class LargeListMockClient implements MuleDaemonClient {
   }
 
   @override
+  Future<void> stopDaemon() async {}
+
+  @override
   Future<void> disconnect() async {}
 
   @override

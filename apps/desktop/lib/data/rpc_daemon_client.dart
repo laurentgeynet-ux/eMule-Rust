@@ -253,6 +253,11 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<void> stopDaemon() async {
+    await _call('system.stop', {});
+  }
+
+  @override
   Future<void> disconnect() async {
     await _subscription?.cancel();
     _subscription = null;

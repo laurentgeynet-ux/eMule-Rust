@@ -125,3 +125,64 @@ fn test_csprng_token_entropy_and_uniqueness() {
     }
     assert_eq!(tokens.len(), 1_000);
 }
+
+#[tokio::test]
+async fn test_daemon_parent_watchdog_auto_shutdown() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_path_buf();
+
+    // 1. Spawn a short-lived dummy process that exits after 600ms
+    let mut dummy_parent = if cfg!(windows) {
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Start-Sleep -Milliseconds 600"])
+            .spawn()
+            .expect("Failed to spawn dummy parent process")
+    } else {
+        std::process::Command::new("sleep")
+            .arg("0.6")
+            .spawn()
+            .expect("Failed to spawn dummy parent process")
+    };
+
+    let parent_pid = dummy_parent.id();
+
+    // 2. Find mule-daemon executable
+    let daemon_bin = env!("CARGO_BIN_EXE_mule-daemon");
+
+    // 3. Launch mule-daemon with --parent-pid
+    let mut daemon_proc = std::process::Command::new(daemon_bin)
+        .args([
+            "--workdir",
+            path.to_str().unwrap(),
+            "--bind",
+            "127.0.0.1:0",
+            "--parent-pid",
+            &parent_pid.to_string(),
+        ])
+        .spawn()
+        .expect("Failed to spawn mule-daemon");
+
+    // Wait for dummy parent to finish
+    let _ = dummy_parent.wait();
+
+    // 4. Daemon should auto-terminate within 4 seconds of parent exit
+    let start = std::time::Instant::now();
+    let mut exited = false;
+    while start.elapsed() < std::time::Duration::from_secs(5) {
+        if let Ok(Some(status)) = daemon_proc.try_wait() {
+            assert!(status.success(), "Daemon should exit cleanly");
+            exited = true;
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    if !exited {
+        let _ = daemon_proc.kill();
+        panic!("mule-daemon failed to auto-terminate after parent process exited!");
+    }
+
+    // 5. Verify session file was cleaned up on exit
+    assert!(!path.join("session.json").exists(), "session.json should be removed on exit");
+}
+

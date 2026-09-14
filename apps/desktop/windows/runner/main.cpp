@@ -7,6 +7,17 @@
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  // Guarantee that all child processes (including mule-daemon.exe) are automatically
+  // terminated by the Windows NT kernel if this application process closes or terminates.
+  HANDLE job = ::CreateJobObject(nullptr, nullptr);
+  if (job != nullptr) {
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {0};
+    jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    ::SetInformationJobObject(job, JobObjectExtendedLimitInformation, &jeli,
+                              sizeof(jeli));
+    ::AssignProcessToJobObject(job, ::GetCurrentProcess());
+  }
+
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
@@ -36,6 +47,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   while (::GetMessage(&msg, nullptr, 0, 0)) {
     ::TranslateMessage(&msg);
     ::DispatchMessage(&msg);
+  }
+
+  if (job != nullptr) {
+    ::CloseHandle(job);
   }
 
   ::CoUninitialize();

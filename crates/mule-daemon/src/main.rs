@@ -18,6 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut bind_addr_arg: Option<std::net::SocketAddr> = None;
     let mut auth_token_arg: Option<String> = None;
     let mut token_file_arg: Option<PathBuf> = None;
+    let mut parent_pid_arg: Option<u32> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -38,6 +39,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--token-file" if i + 1 < args.len() => {
                 token_file_arg = Some(PathBuf::from(&args[i + 1]));
+                i += 2;
+            }
+            "--parent-pid" if i + 1 < args.len() => {
+                if let Ok(pid) = args[i + 1].parse::<u32>() {
+                    parent_pid_arg = Some(pid);
+                }
                 i += 2;
             }
             _ => {
@@ -122,6 +129,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown_notify = state.shutdown_notify.clone();
     let app = create_router(state);
 
+    if let Some(parent_pid) = parent_pid_arg {
+        if parent_pid > 0 {
+            spawn_parent_watchdog(parent_pid, shutdown_notify.clone());
+        }
+    }
+
     // 5. Run with graceful shutdown
     let data_dir_cleanup = data_dir.clone();
     axum::serve(listener, app)
@@ -131,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("\n==> Shutting down mule-daemon via Ctrl+C...");
                 }
                 _ = shutdown_notify.notified() => {
-                    println!("\n==> Shutting down mule-daemon via RPC request...");
+                    println!("\n==> Shutting down mule-daemon via shutdown signal/watchdog...");
                 }
             }
             DaemonSession::remove(&data_dir_cleanup);
@@ -141,4 +154,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     DaemonSession::remove(&data_dir);
     println!("==> mule-daemon exited cleanly.");
     Ok(())
+}
+
+#[cfg(windows)]
+fn spawn_parent_watchdog(parent_pid: u32, shutdown_notify: std::sync::Arc<tokio::sync::Notify>) {
+    tokio::task::spawn_blocking(move || {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn OpenProcess(
+                dwDesiredAccess: u32,
+                bInheritHandle: i32,
+                dwProcessId: u32,
+            ) -> *mut std::ffi::c_void;
+            fn WaitForSingleObject(hHandle: *mut std::ffi::c_void, dwMilliseconds: u32) -> u32;
+            fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+        }
+
+        const SYNCHRONIZE: u32 = 0x00100000;
+        let handle = unsafe { OpenProcess(SYNCHRONIZE, 0, parent_pid) };
+        if handle.is_null() {
+            eprintln!("==> Parent process PID {parent_pid} not running or inaccessible; initiating exit.");
+            shutdown_notify.notify_waiters();
+            return;
+        }
+        println!("==> Watching parent process PID {parent_pid} for auto-teardown...");
+        unsafe {
+            WaitForSingleObject(handle, 0xFFFFFFFF);
+            CloseHandle(handle);
+        }
+        println!("==> Parent process PID {parent_pid} terminated. Initiating graceful daemon shutdown...");
+        shutdown_notify.notify_waiters();
+    });
+}
+
+#[cfg(not(windows))]
+fn spawn_parent_watchdog(parent_pid: u32, shutdown_notify: std::sync::Arc<tokio::sync::Notify>) {
+    tokio::spawn(async move {
+        println!("==> Watching parent process PID {parent_pid} for auto-teardown...");
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            let exists = std::path::Path::new(&format!("/proc/{parent_pid}")).exists();
+            if !exists {
+                println!("==> Parent process PID {parent_pid} terminated. Initiating graceful daemon shutdown...");
+                shutdown_notify.notify_waiters();
+                break;
+            }
+        }
+    });
 }

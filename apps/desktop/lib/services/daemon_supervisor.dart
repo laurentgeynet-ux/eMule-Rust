@@ -359,6 +359,8 @@ class DaemonSupervisor {
       final process = await Process.start(exePath, [
         '--workdir',
         dataDir.path,
+        '--parent-pid',
+        pid.toString(),
       ]);
       _managedProcess = process;
 
@@ -430,15 +432,28 @@ class DaemonSupervisor {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
 
-    await client.disconnect();
-
-    if (_managedProcess != null) {
-      _managedProcess!.kill();
+    // 1. Send graceful shutdown RPC if connected
+    if (client.currentConnectionState == DaemonConnectionState.connected) {
       try {
-        await _managedProcess!.exitCode.timeout(const Duration(seconds: 2));
+        await client.stopDaemon().timeout(const Duration(milliseconds: 800));
       } catch (_) {}
+    }
+
+    // 2. Wait for managed process to exit or kill it
+    if (_managedProcess != null) {
+      try {
+        await _managedProcess!.exitCode.timeout(const Duration(milliseconds: 1000));
+      } catch (_) {
+        _managedProcess!.kill();
+        try {
+          await _managedProcess!.exitCode.timeout(const Duration(milliseconds: 500));
+        } catch (_) {}
+      }
       _managedProcess = null;
     }
+
+    // 3. Disconnect client channel
+    await client.disconnect();
 
     _setState(SupervisorState.idle);
   }

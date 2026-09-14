@@ -111,6 +111,11 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<void> stopDaemon() async {
+    await disconnect();
+  }
+
+  @override
   Future<void> disconnect() async {
     _simulationTimer?.cancel();
     _simulationTimer = null;
