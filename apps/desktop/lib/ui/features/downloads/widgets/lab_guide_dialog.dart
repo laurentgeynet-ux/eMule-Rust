@@ -467,6 +467,13 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                 },
               ),
               ChoiceChip(
+                label: const Text('9.28 MB + 1 Byte (pattern_9728001)'),
+                selected: _selectedFixtureType == 'pattern_9728001',
+                onSelected: (val) {
+                  if (val) setState(() => _selectedFixtureType = 'pattern_9728001');
+                },
+              ),
+              ChoiceChip(
                 label: const Text('4 KB Text (text)'),
                 selected: _selectedFixtureType == 'text',
                 onSelected: (val) {

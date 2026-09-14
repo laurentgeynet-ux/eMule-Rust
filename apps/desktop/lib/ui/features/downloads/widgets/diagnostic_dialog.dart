@@ -24,6 +24,49 @@ class DiagnosticDialog extends StatelessWidget {
     }
   }
 
+  static String _formatPathForDisplay(String path) {
+    if (path == 'Not available' || path.isEmpty) return path;
+
+    // Obfuscate Windows user profile: C:\Users\<username>\... -> C:\Users\…\...
+    final winUserRegex = RegExp(r'^([a-zA-Z]:\\Users)\\[^\\]+\\(.*)$', caseSensitive: false);
+    final winMatch = winUserRegex.firstMatch(path);
+    if (winMatch != null) {
+      final prefix = winMatch.group(1)!;
+      final rest = winMatch.group(2)!;
+      final parts = rest.split('\\');
+      if (parts.length > 2) {
+        return '$prefix\\…\\${parts.first}\\…\\${parts.last}';
+      } else if (parts.isNotEmpty) {
+        return '$prefix\\…\\$rest';
+      }
+      return '$prefix\\…';
+    }
+
+    // Obfuscate Unix user profile: /home/<username>/... -> /home/…/...
+    final unixUserRegex = RegExp(r'^(/home)/[^/]+/(.*)$');
+    final unixMatch = unixUserRegex.firstMatch(path);
+    if (unixMatch != null) {
+      final prefix = unixMatch.group(1)!;
+      final rest = unixMatch.group(2)!;
+      final parts = rest.split('/');
+      if (parts.length > 2) {
+        return '$prefix/…/${parts.first}/…/${parts.last}';
+      }
+      return '$prefix/…/$rest';
+    }
+
+    // Truncate generic long paths
+    if (path.length > 45) {
+      final sep = path.contains('/') ? '/' : '\\';
+      final parts = path.split(sep);
+      if (parts.length > 3) {
+        return '${parts.first}$sep…$sep${parts[parts.length - 2]}$sep${parts.last}';
+      }
+    }
+
+    return path;
+  }
+
   @override
   Widget build(BuildContext context) {
     final info = viewModel.daemonInfo;
@@ -198,13 +241,38 @@ class DiagnosticDialog extends StatelessWidget {
                             const Divider(height: 16, color: AppTheme.darkBorder),
                             _buildInfoRow(
                               'Path',
-                              SelectableText(
-                                workdirPath,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'monospace',
-                                  color: Colors.white,
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Tooltip(
+                                      message: workdirPath,
+                                      child: SelectableText(
+                                        _formatPathForDisplay(workdirPath),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontFamily: 'monospace',
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                                    tooltip: 'Copy full path',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    onPressed: () {
+                                      Clipboard.setData(ClipboardData(text: workdirPath));
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Workdir path copied to clipboard'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
                               ),
                             ),
                           ],

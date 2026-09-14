@@ -547,6 +547,14 @@ async fn handle_lab_create_fixture(
             }
             ("fixture_part_9728000.bin".to_string(), v)
         }
+        "pattern_9728001" | "part_9728001" => {
+            let size = 9_728_001usize;
+            let mut v = Vec::with_capacity(size);
+            for i in 0..size {
+                v.push((i % 256) as u8);
+            }
+            ("fixture_part_9728001.bin".to_string(), v)
+        }
         "text" => ("hello-loopback.txt".to_string(), b"Emule-Sion local test\n".to_vec()),
         _ => {
             let size = 1_048_576usize;

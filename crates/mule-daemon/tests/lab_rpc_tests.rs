@@ -223,3 +223,53 @@ async fn test_lab_cleanup_refused_in_installed_default_mode() {
         .unwrap()
         .contains("InstalledDefault"));
 }
+
+#[tokio::test]
+async fn test_lab_create_fixture_pattern_9728001() {
+    let (addr, token, dir) = spawn_test_daemon(WorkDirMode::Portable).await;
+    let ws_url = format!("ws://{addr}/rpc");
+
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
+        .expect("WebSocket connection failed");
+    let (mut write, mut read) = ws_stream.split();
+
+    // Handshake
+    let req_hello = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "system.hello",
+        "params": { "protocolVersion": 1, "token": token }
+    });
+    write
+        .send(Message::Text(req_hello.to_string().into()))
+        .await
+        .unwrap();
+    let _ = read.next().await;
+
+    // Create pattern_9728001 (1 part + 1 byte)
+    let req_create = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "lab.createFixture",
+        "params": {
+            "fixtureType": "pattern_9728001"
+        }
+    });
+    write
+        .send(Message::Text(req_create.to_string().into()))
+        .await
+        .unwrap();
+
+    let msg = read.next().await.unwrap().unwrap();
+    let resp: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+    assert_eq!(resp["result"]["fileName"], "fixture_part_9728001.bin");
+    assert_eq!(resp["result"]["sizeBytes"], 9_728_001);
+    let link = resp["result"]["ed2kLink"].as_str().unwrap();
+    assert!(link.starts_with("ed2k://|file|fixture_part_9728001.bin|9728001|"));
+
+    let file_path = dir.path().join("fixtures").join("fixture_part_9728001.bin");
+    assert!(file_path.exists());
+    assert_eq!(std::fs::metadata(&file_path).unwrap().len(), 9_728_001);
+}
+

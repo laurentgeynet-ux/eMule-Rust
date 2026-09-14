@@ -133,5 +133,35 @@ void main() {
       expect(copiedText!.toLowerCase().contains('token:'), isFalse);
       expect(copiedText!.toLowerCase().contains('bearer'), isFalse);
     });
+
+    testWidgets('tapping inline Copy button on Path row copies raw path to clipboard', (WidgetTester tester) async {
+      String? copiedText;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'Clipboard.setData') {
+            copiedText = (methodCall.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DiagnosticDialog(viewModel: viewModel),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final copyPathFinder = find.byTooltip('Copy full path');
+      expect(copyPathFinder, findsOneWidget);
+
+      await tester.tap(copyPathFinder);
+      await tester.pump();
+
+      expect(copiedText, equals(r'C:\Fake\Portable\data'));
+    });
   });
 }
