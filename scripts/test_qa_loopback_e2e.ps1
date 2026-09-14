@@ -2,7 +2,7 @@
 .SYNOPSIS
     Automated Phase 7.3 E2E QA loopback test for the packaged Emule-Sion distribution.
 .DESCRIPTION
-    Phase 7.3 — Industrialisation Locale & Validation E2E QA:
+    Phase 7.3 - Industrialisation Locale et Validation E2E QA:
     Executes in a sterile, temporary directory outside the Git repository:
     1. Extracts EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip into a temporary sandbox.
     2. Validates portable.flag and boots the packaged mule-daemon binary in portable mode.
@@ -14,12 +14,12 @@
        - Connects transfer via ed2k.startDownload.
        - Monitors state transitions: Queued -> WaitingForSources -> Downloading -> Verifying -> Completed.
        - Verifies finalized file in <data>/downloads (size and eD2K root hash match).
-    5. Boundary Transfer (pattern_9728001 — 1 full part + 1 residual byte):
+    5. Boundary Transfer (pattern_9728001: 1 full part + 1 residual byte):
        - Generates boundary fixture via lab.createFixture.
        - Performs transfer to completion and verifies integrity.
-    6. Resilience & Resumption (part_9728000 — 50% crash and resume):
+    6. Resilience and Resumption (part_9728000: 50% crash and resume):
        - Starts download of 9.28 MB part.
-       - Monitors transfer until >= 4.5 MB (~50%).
+       - Monitors transfer until >= 4.0 MB (~50%).
        - Force-kills daemon process abruptly (simulating crash).
        - Verifies .part file and SQLite state retained on disk.
        - Re-boots packaged daemon on the same data folder.
@@ -134,22 +134,40 @@ try {
         return $proc
     }
 
+    function Receive-FullWsText([System.Net.WebSockets.ClientWebSocket]$ws, [System.Threading.CancellationTokenSource]$cts) {
+        $ms = [System.IO.MemoryStream]::new()
+        $buf = [byte[]]::new(8192)
+        $recSeg = [System.ArraySegment[byte]]::new($buf)
+        do {
+            $task = $ws.ReceiveAsync($recSeg, $cts.Token)
+            $task.Wait()
+            $ms.Write($buf, 0, $task.Result.Count)
+        } while (!$task.Result.EndOfMessage)
+
+        return [System.Text.Encoding]::UTF8.GetString($ms.ToArray())
+    }
+
     # Helper function for JSON-RPC over WebSocket
     function Invoke-WsRpc([System.Net.WebSockets.ClientWebSocket]$ws, [hashtable]$request, [int]$timeoutMs = 5000) {
+        $reqId = $request.id
         $json = $request | ConvertTo-Json -Compress
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
         $seg = [System.ArraySegment[byte]]::new($bytes)
         $cts = [System.Threading.CancellationTokenSource]::new($timeoutMs)
         $ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $cts.Token).Wait()
 
-        $buf = [byte[]]::new(65536)
-        $recSeg = [System.ArraySegment[byte]]::new($buf)
-        $recCts = [System.Threading.CancellationTokenSource]::new($timeoutMs)
-        $task = $ws.ReceiveAsync($recSeg, $recCts.Token)
-        $task.Wait()
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($sw.ElapsedMilliseconds -lt $timeoutMs) {
+            $remain = [math]::Max(500, ($timeoutMs - $sw.ElapsedMilliseconds))
+            $recCts = [System.Threading.CancellationTokenSource]::new([int]$remain)
+            $respText = Receive-FullWsText $ws $recCts
 
-        $respText = [System.Text.Encoding]::UTF8.GetString($buf, 0, $task.Result.Count)
-        return $respText | ConvertFrom-Json
+            $parsed = $respText | ConvertFrom-Json
+            if ($null -ne $parsed.id -and $parsed.id -eq $reqId) {
+                return $parsed
+            }
+        }
+        throw "Timeout waiting for JSON-RPC response to request id $reqId after $timeoutMs ms"
     }
 
     # Helper to connect WebSocket
@@ -209,6 +227,7 @@ try {
         params = @{ fixtureType = "sample_1mb" }
     }
     $sampleLink = $fixResp.result.ed2kLink
+    $sampleHash = $fixResp.result.ed2kHash
     $sampleFile = $fixResp.result.fileName
     Write-Host " -> Created fixture: $sampleFile ($($fixResp.result.sizeBytes) bytes)" -ForegroundColor Gray
 
@@ -285,7 +304,7 @@ try {
     # -------------------------------------------------------------------------
     # 4. Boundary Transfer Vector: pattern_9728001 (Part + 1 byte)
     # -------------------------------------------------------------------------
-    Write-Host "`n[4/7] Testing Vector 2: Boundary Transfer (pattern_9728001 — 9.28 MB + 1 byte)..." -ForegroundColor Yellow
+    Write-Host "`n[4/7] Testing Vector 2: Boundary Transfer (pattern_9728001 - 9.28 MB + 1 byte)..." -ForegroundColor Yellow
 
     # A. Create boundary fixture
     $fix2Resp = Invoke-WsRpc $ws @{
@@ -366,9 +385,9 @@ try {
     Write-Host " -> Confirmed boundary file in downloads/: $boundFile (9,728,001 bytes)." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
-    # 5. Resilience Vector: Crash at ~50% & Resumption (part_9728000)
+    # 5. Resilience Vector: Crash at ~50% and Resumption (part_9728000)
     # -------------------------------------------------------------------------
-    Write-Host "`n[5/7] Testing Vector 3: Crash at ~50% & Resumption (part_9728000)..." -ForegroundColor Yellow
+    Write-Host "`n[5/7] Testing Vector 3: Crash at ~50% and Resumption (part_9728000)..." -ForegroundColor Yellow
 
     # A. Create full part fixture
     $fix3Resp = Invoke-WsRpc $ws @{
@@ -431,12 +450,13 @@ try {
     if ($receivedBeforeCrash -lt 4000000) {
         throw "Failed to reach ~50% transfer before timeout! Got $receivedBeforeCrash bytes."
     }
-    Write-Host " -> Transfer reached $receivedBeforeCrash / 9728000 bytes (~$([math]::Round($receivedBeforeCrash / 9728000 * 100))%). Simulating crash..." -ForegroundColor Gray
+    $pct = [math]::Round(($receivedBeforeCrash / 9728000) * 100)
+    Write-Host " -> Transfer reached $receivedBeforeCrash / 9728000 bytes (~$pct%). Simulating crash..." -ForegroundColor Gray
 
     # Close WS connection and kill daemon abruptly
     $ws.Dispose()
     Stop-Process -Id $daemonProcess.Id -Force
-    $daemonProcess.WaitForExit(3000)
+    $daemonProcess.WaitForExit(3000) | Out-Null
     Write-Host " -> Packaged daemon forcibly killed (Crash simulated)." -ForegroundColor Red
 
     # Verify part file exists on disk
@@ -556,7 +576,7 @@ try {
     }
     $ws.Dispose()
 
-    $daemonProcess.WaitForExit(5000)
+    $daemonProcess.WaitForExit(5000) | Out-Null
     Write-Host " -> Daemon process exited cleanly with code: $($daemonProcess.ExitCode)" -ForegroundColor Green
 
     # Confirm zero repo pollution
