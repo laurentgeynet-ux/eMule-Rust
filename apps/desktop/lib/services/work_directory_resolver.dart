@@ -59,25 +59,20 @@ class WorkDirectoryResolver {
       );
     }
 
-    // 3. Portable mode: check if portable.flag exists
+    // 3. Portable mode: strictly bounded bundle root detection
+    // If executable directory is named "bin", bundleRoot = parent(executableDir)
+    // Otherwise, bundleRoot = executableDir
+    // portableFlag = bundleRoot / portable.flag
     final exe = executableFile ?? File(Platform.resolvedExecutable);
     final exeDir = exe.parent;
+    final dirName = exeDir.uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull?.toLowerCase();
+    final isBin = dirName == 'bin';
+    final bundleRoot = isBin ? exeDir.parent : exeDir;
 
-    // Check adjacent to exe
-    final adjacentFlag = File('${exeDir.path}/$portableFlagFilename');
-    if (adjacentFlag.existsSync()) {
+    final portableFlag = File('${bundleRoot.path}/$portableFlagFilename');
+    if (portableFlag.existsSync()) {
       return ResolvedWorkDir(
-        directory: Directory('${exeDir.path}/data'),
-        mode: WorkDirMode.portable,
-      );
-    }
-
-    // Check in parent directory (if binary is in bin/)
-    final parentDir = exeDir.parent;
-    final parentFlag = File('${parentDir.path}/$portableFlagFilename');
-    if (parentFlag.existsSync()) {
-      return ResolvedWorkDir(
-        directory: Directory('${parentDir.path}/data'),
+        directory: Directory('${bundleRoot.path}/data'),
         mode: WorkDirMode.portable,
       );
     }

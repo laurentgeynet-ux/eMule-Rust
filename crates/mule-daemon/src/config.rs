@@ -1,11 +1,14 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use crate::workdir::WorkDirMode;
+
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {
     pub bind_addr: SocketAddr,
     pub data_dir: PathBuf,
     pub auth_token: String,
+    pub workdir_mode: WorkDirMode,
 }
 
 impl DaemonConfig {
@@ -14,11 +17,17 @@ impl DaemonConfig {
             bind_addr: "127.0.0.1:4660".parse().unwrap(),
             data_dir,
             auth_token: auth_token.into(),
+            workdir_mode: WorkDirMode::InstalledDefault,
         }
     }
 
     pub fn with_bind_addr(mut self, addr: SocketAddr) -> Self {
         self.bind_addr = addr;
+        self
+    }
+
+    pub fn with_workdir_mode(mut self, mode: WorkDirMode) -> Self {
+        self.workdir_mode = mode;
         self
     }
 

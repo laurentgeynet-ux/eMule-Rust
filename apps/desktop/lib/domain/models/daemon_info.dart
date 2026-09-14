@@ -29,6 +29,8 @@ class DaemonInfo {
   final String instanceId;
   final String sessionId;
   final List<String> capabilities;
+  final String? workdirMode;
+  final String? workdirPath;
 
   const DaemonInfo({
     required this.version,
@@ -36,6 +38,8 @@ class DaemonInfo {
     required this.instanceId,
     required this.sessionId,
     required this.capabilities,
+    this.workdirMode,
+    this.workdirPath,
   });
 
   @override

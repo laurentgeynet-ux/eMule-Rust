@@ -6,9 +6,11 @@ import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
 import '../widgets/add_link_dialog.dart';
 import '../widgets/debug_simulation_bar.dart';
+import '../widgets/diagnostic_dialog.dart';
 import '../widgets/download_row.dart';
 import '../widgets/downloads_sidebar.dart';
 import '../widgets/incompatible_version_dialog.dart';
+import '../widgets/lab_guide_dialog.dart';
 
 class DownloadsScreen extends StatelessWidget {
   final DownloadsViewModel viewModel;
@@ -146,9 +148,9 @@ class DownloadsScreen extends StatelessWidget {
 
           const SizedBox(width: 10),
 
-          // Loopback Lab Mode Badge
+          // Loopback Lab Mode Badge (Clickable for Diagnostics)
           Tooltip(
-            message: AppStrings.tooltipLoopbackLabMode,
+            message: '${AppStrings.tooltipLoopbackLabMode}\n\nClick to inspect system & workdir diagnostics.',
             preferBelow: true,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -161,32 +163,57 @@ class DownloadsScreen extends StatelessWidget {
               color: Colors.white70,
               height: 1.4,
             ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.blueGrey.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3), width: 0.5),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.science_outlined, size: 14, color: Colors.white70),
-                  SizedBox(width: 5),
-                  Text(
-                    AppStrings.loopbackLabMode,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white70,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => DiagnosticDialog(viewModel: viewModel),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.blueGrey.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3), width: 0.5),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.science_outlined, size: 14, color: Colors.white70),
+                    SizedBox(width: 5),
+                    Text(
+                      AppStrings.loopbackLabMode,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white70,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
 
-          const SizedBox(width: 8),
+          // Guided Local Test Flow Button (Gated to Portable or Lab mode)
+          if (viewModel.isLabModeAvailable)
+            IconButton(
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.biotech, color: Colors.tealAccent, size: 18),
+              tooltip: 'Guided Local Test Flow',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => LabGuideDialog(viewModel: viewModel),
+                );
+              },
+            ),
+
+          const SizedBox(width: 6),
 
           // Global Speed Badge: Download & Upload (↓ 0 B/s   ↑ 0 B/s)
           Container(
@@ -327,16 +354,38 @@ class DownloadsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            FilledButton.icon(
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text(AppStrings.btnAddEd2kLink),
-              style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AddLinkDialog(viewModel: viewModel),
-                );
-              },
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.icon(
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text(AppStrings.btnAddEd2kLink),
+                  style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AddLinkDialog(viewModel: viewModel),
+                    );
+                  },
+                ),
+                if (viewModel.isLabModeAvailable)
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.biotech, size: 16),
+                    label: const Text('Guided Local Test'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.tealAccent,
+                      side: BorderSide(color: Colors.teal.withValues(alpha: 0.5)),
+                    ),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => LabGuideDialog(viewModel: viewModel),
+                      );
+                    },
+                  ),
+              ],
             ),
           ],
         ),

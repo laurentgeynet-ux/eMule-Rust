@@ -66,4 +66,8 @@ required-features = ["ed2k-reference-loopback"]
 name = "tier3_loopback"
 required-features = ["ed2k-reference-loopback"]
 
+[[test]]
+name = "ed2k_block_transfer_tests"
+required-features = ["ed2k-loopback"]
+
 

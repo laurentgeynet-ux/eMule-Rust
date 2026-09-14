@@ -4,10 +4,13 @@ import 'dart:math';
 import '../../domain/models/daemon_event.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/lab_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 
 class FakeMuleDaemonClient implements MuleDaemonClient {
   final Map<String, DownloadItem> _downloads = {};
+  final List<LabFixtureInfo> _fixtures = [];
+  String? _activePeer;
   final StreamController<DaemonConnectionState> _connectionController =
       StreamController<DaemonConnectionState>.broadcast();
   final StreamController<DownloadUpdatedEvent> _eventsController =
@@ -106,7 +109,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       protocolVersion: 1,
       instanceId: 'fake-instance-id',
       sessionId: 'fake-session-id',
-      capabilities: ['downloads', 'download-events', 'local-simulation'],
+      capabilities: ['downloads', 'download-events', 'local-simulation', 'lab-tools'],
+      workdirMode: 'Portable',
+      workdirPath: 'C:\\Fake\\Portable\\data',
     );
   }
 
@@ -266,6 +271,90 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         }
       }
     });
+  }
+
+  @override
+  Future<LabStatus> getLabStatus() async {
+    return LabStatus(
+      workdirMode: 'Portable',
+      workdirPath: r'C:\Fake\Portable\data',
+      isPortable: true,
+      activeLoopbackPeer: _activePeer,
+      fixtures: List.unmodifiable(_fixtures),
+    );
+  }
+
+  @override
+  Future<LabFixtureInfo> createLabFixture(String fixtureType) async {
+    final fileName = fixtureType == 'part_9728000'
+        ? 'lab_part_9728000.bin'
+        : (fixtureType == 'sample_1mb' ? 'lab_sample_1mb.bin' : 'lab_test.txt');
+    final sizeBytes = fixtureType == 'part_9728000'
+        ? 9728000
+        : (fixtureType == 'sample_1mb' ? 1048576 : 4096);
+    final ed2kHash = fixtureType == 'part_9728000'
+        ? '0123456789abcdef0123456789abcdef'
+        : (fixtureType == 'sample_1mb'
+            ? '123456789abcdef0123456789abcdef0'
+            : 'abcdef0123456789abcdef0123456789');
+    final ed2kLink = 'ed2k://|file|$fileName|$sizeBytes|$ed2kHash|/';
+
+    final fixture = LabFixtureInfo(
+      fileName: fileName,
+      filePath: 'C:\\Fake\\Portable\\data\\fixtures\\$fileName',
+      sizeBytes: sizeBytes,
+      ed2kHash: ed2kHash,
+      ed2kLink: ed2kLink,
+      status: 'ready',
+    );
+
+    _fixtures.removeWhere((f) => f.fileName == fileName);
+    _fixtures.add(fixture);
+    return fixture;
+  }
+
+  @override
+  Future<LabPeerInfo> startLabPeer() async {
+    _activePeer = '127.0.0.1:4662';
+    return LabPeerInfo(
+      peerAddr: _activePeer!,
+      sharedCount: _fixtures.isEmpty ? 1 : _fixtures.length,
+      status: 'running',
+    );
+  }
+
+  @override
+  Future<void> stopLabPeer() async {
+    _activePeer = null;
+  }
+
+  @override
+  Future<LabCleanupReport> cleanupLabTestData() async {
+    final count = _fixtures.length;
+    _fixtures.clear();
+    _activePeer = null;
+    return LabCleanupReport(
+      success: true,
+      cleanedFolders: ['fixtures', 'temp', 'part'],
+      deletedFilesCount: count,
+      freedBytes: count * 1048576,
+      message: 'Cleaned $count fixtures',
+    );
+  }
+
+  @override
+  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {
+    final existing = _downloads[downloadId];
+    if (existing != null) {
+      final updated = existing.copyWith(
+        sourceCount: existing.sourceCount + 1,
+        status: DownloadStatus.downloading,
+        downloadRateBps: max(existing.downloadRateBps, 350000),
+        updatedAt: DateTime.now(),
+      );
+      _downloads[downloadId] = updated;
+      _emitUpdate(updated);
+    }
   }
 
   @override

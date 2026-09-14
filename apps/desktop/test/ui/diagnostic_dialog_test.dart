@@ -1,0 +1,137 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:desktop/data/fake_daemon_client.dart';
+import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:desktop/ui/features/downloads/widgets/diagnostic_dialog.dart';
+import 'package:desktop/ui/features/downloads/widgets/lab_guide_dialog.dart';
+
+void main() {
+  group('DiagnosticDialog Widget Tests', () {
+    late FakeMuleDaemonClient fakeClient;
+    late DownloadsViewModel viewModel;
+
+    setUp(() async {
+      fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
+      viewModel = DownloadsViewModel(client: fakeClient);
+      await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+    });
+
+    testWidgets('renders all diagnostic parameters and loopback confinement notice',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DiagnosticDialog(viewModel: viewModel),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Dialog title
+      expect(find.text('System & Lab Diagnostics'), findsOneWidget);
+
+      // Confinement card
+      expect(find.text('Strict Loopback Confinement (127.0.0.1)'), findsOneWidget);
+      expect(find.textContaining('Zero WAN traffic'), findsOneWidget);
+
+      // Workdir mode & path
+      expect(find.text('Portable'), findsOneWidget);
+      expect(find.text(r'C:\Fake\Portable\data'), findsOneWidget);
+
+      // Process & RPC endpoint
+      expect(find.text('ws://127.0.0.1:4660/rpc'), findsOneWidget);
+      expect(find.textContaining('v0.1.0-fake'), findsOneWidget);
+
+      // Actions
+      expect(find.text('Copy Shareable (Sanitized)'), findsOneWidget);
+      expect(find.text('Copy Full (Local Dev)'), findsOneWidget);
+      expect(find.text('Open Lab Guide'), findsOneWidget);
+      expect(find.text('Close'), findsOneWidget);
+    });
+
+    testWidgets('tapping Open Lab Guide opens LabGuideDialog', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => DiagnosticDialog(viewModel: viewModel),
+                  );
+                },
+                child: const Text('Open Diag'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open diagnostic dialog
+      await tester.tap(find.text('Open Diag'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DiagnosticDialog), findsOneWidget);
+
+      // Tap Open Lab Guide
+      await tester.tap(find.text('Open Lab Guide'));
+      await tester.pumpAndSettle();
+
+      // DiagnosticDialog dismissed and LabGuideDialog opened
+      expect(find.byType(DiagnosticDialog), findsNothing);
+      expect(find.byType(LabGuideDialog), findsOneWidget);
+    });
+
+    testWidgets('tapping Copy Full (Local Dev) copies complete diagnostics without auth token leakage', (WidgetTester tester) async {
+      String? copiedText;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'Clipboard.setData') {
+            copiedText = (methodCall.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DiagnosticDialog(viewModel: viewModel),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Copy Full (Local Dev)'));
+      await tester.pump();
+
+      expect(copiedText, isNotNull);
+      expect(copiedText, contains('=== Emule-Sion Diagnostics (Full Local) ==='));
+      expect(copiedText, contains('Workdir Mode: Portable'));
+      expect(copiedText, contains(r'Workdir Path: C:\Fake\Portable\data'));
+      expect(copiedText, contains('RPC Endpoint: ws://127.0.0.1:4660/rpc'));
+      expect(copiedText, contains('Security: Auth token strictly redacted (never exported)'));
+
+      // Strict security assertion: ZERO auth tokens, ZERO token secrets
+      expect(copiedText!.toLowerCase().contains('auth.token'), isFalse);
+      expect(copiedText!.toLowerCase().contains('token:'), isFalse);
+      expect(copiedText!.toLowerCase().contains('bearer'), isFalse);
+    });
+  });
+}

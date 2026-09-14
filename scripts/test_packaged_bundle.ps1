@@ -54,7 +54,7 @@ New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
 
 try {
     # Extract from ZIP archive if present, otherwise copy bundle
-    $ZipPath = Join-Path $Root "dist\EmuleSion-v0.1.0-lab-windows-x64.zip"
+    $ZipPath = Join-Path $Root "dist\EmuleSion-v0.1.1-lab-windows-x64.zip"
     $ZipShaPath = "$ZipPath.sha256"
 
     if (Test-Path $ZipPath) {

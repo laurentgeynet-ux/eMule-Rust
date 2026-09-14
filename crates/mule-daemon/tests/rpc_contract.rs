@@ -148,41 +148,44 @@ async fn test_full_rpc_contract_and_event_streaming() {
     assert_eq!(list[0]["id"], download_id);
     assert_eq!(list[0]["fileName"], "test_archive.zip");
 
-    // 6. Inject Range (simulate data arrival)
-    let req_inject = json!({
-        "jsonrpc": "2.0",
-        "id": 6,
-        "method": "debug.injectRange",
-        "params": {
-            "id": download_id,
-            "offset": 0,
-            "dataHex": "1122334455"
-        }
-    });
-    write
-        .send(Message::Text(req_inject.to_string().into()))
-        .await
-        .unwrap();
+    #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
+    {
+        // 6. Inject Range (simulate data arrival)
+        let req_inject = json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "debug.injectRange",
+            "params": {
+                "id": download_id,
+                "offset": 0,
+                "dataHex": "1122334455"
+            }
+        });
+        write
+            .send(Message::Text(req_inject.to_string().into()))
+            .await
+            .unwrap();
 
-    let mut inject_resp: Option<Value> = None;
-    let mut inject_event: Option<Value> = None;
+        let mut inject_resp: Option<Value> = None;
+        let mut inject_event: Option<Value> = None;
 
-    for _ in 0..2 {
-        let msg = read.next().await.unwrap().unwrap();
-        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
-        if val.get("id").is_some() {
-            inject_resp = Some(val);
-        } else if val.get("method").and_then(|m| m.as_str()) == Some("event.downloadUpdated") {
-            inject_event = Some(val);
+        for _ in 0..2 {
+            let msg = read.next().await.unwrap().unwrap();
+            let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+            if val.get("id").is_some() {
+                inject_resp = Some(val);
+            } else if val.get("method").and_then(|m| m.as_str()) == Some("event.downloadUpdated") {
+                inject_event = Some(val);
+            }
         }
+
+        let inject_resp = inject_resp.expect("Expected inject response");
+        assert_eq!(inject_resp["result"]["receivedBytes"], 5);
+
+        let inject_event = inject_event.expect("Expected inject event");
+        assert_eq!(inject_event["params"]["download"]["receivedBytes"], 5);
+        assert!(inject_event["params"]["sequence"].as_u64().unwrap() > 0);
     }
-
-    let inject_resp = inject_resp.expect("Expected inject response");
-    assert_eq!(inject_resp["result"]["receivedBytes"], 5);
-
-    let inject_event = inject_event.expect("Expected inject event");
-    assert_eq!(inject_event["params"]["download"]["receivedBytes"], 5);
-    assert!(inject_event["params"]["sequence"].as_u64().unwrap() > 0);
 
     // 7. Pause and Resume
     let req_pause = json!({

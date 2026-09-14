@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:desktop/domain/models/download_item.dart';
+import 'package:desktop/domain/models/lab_models.dart';
 import 'package:desktop/domain/services/mule_daemon_client.dart';
 import 'package:desktop/domain/models/daemon_info.dart';
 import 'package:desktop/domain/models/daemon_event.dart';
@@ -82,6 +83,46 @@ class LargeListMockClient implements MuleDaemonClient {
   @override
   Future<DownloadItem> injectRange(String id, int offset, String hexData) async =>
       _items.firstWhere((d) => d.id == id);
+
+  @override
+  Future<LabStatus> getLabStatus() async => const LabStatus(
+        workdirMode: 'Portable',
+        workdirPath: 'test_path',
+        isPortable: true,
+        fixtures: [],
+      );
+
+  @override
+  Future<LabFixtureInfo> createLabFixture(String fixtureType) async =>
+      const LabFixtureInfo(
+        fileName: 'test.bin',
+        filePath: 'test.bin',
+        sizeBytes: 1024,
+        ed2kHash: '0123456789abcdef0123456789abcdef',
+        ed2kLink: 'ed2k://|file|test.bin|1024|0123456789abcdef0123456789abcdef|/',
+      );
+
+  @override
+  Future<LabPeerInfo> startLabPeer() async => const LabPeerInfo(
+        peerAddr: '127.0.0.1:4662',
+        sharedCount: 1,
+        status: 'running',
+      );
+
+  @override
+  Future<void> stopLabPeer() async {}
+
+  @override
+  Future<LabCleanupReport> cleanupLabTestData() async => const LabCleanupReport(
+        success: true,
+        cleanedFolders: ['fixtures'],
+        deletedFilesCount: 0,
+        freedBytes: 0,
+        message: 'Mock cleanup',
+      );
+
+  @override
+  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {}
 
   @override
   void dispose() {}

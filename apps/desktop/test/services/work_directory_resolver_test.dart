@@ -138,5 +138,25 @@ void main() {
         expect(resolved.directory.path, 'C:\\Users\\QA\\AppData\\Local\\EmuleSion');
       }
     });
+
+    test('Strict bounding: non-bin subfolder does not traverse parent for portable.flag', () {
+      final rootDir = Directory('${tempDir.path}/app_root')..createSync();
+      final otherDir = Directory('${rootDir.path}/sub_tools')..createSync();
+      File('${rootDir.path}/portable.flag').createSync();
+
+      final fakeExe = File('${otherDir.path}/tool.exe');
+
+      final env = {
+        'LOCALAPPDATA': 'C:\\Users\\QA\\AppData\\Local',
+      };
+
+      final resolved = WorkDirectoryResolver.resolve(
+        executableFile: fakeExe,
+        environment: env,
+      );
+
+      // Should NOT pick up parent because sub_tools != bin
+      expect(resolved.mode, WorkDirMode.installedDefault);
+    });
   });
 }

@@ -74,6 +74,7 @@ class DaemonSupervisor {
   SupervisorState _state = SupervisorState.idle;
   String? _lastError;
   String? _currentInstanceId;
+  int? _activePid;
   Process? _managedProcess;
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
@@ -93,6 +94,7 @@ class DaemonSupervisor {
   SupervisorState get state => _state;
   String? get lastError => _lastError;
   String? get currentInstanceId => _currentInstanceId;
+  int? get activePid => _activePid ?? _managedProcess?.pid;
   Stream<SupervisorState> get stateStream => _stateController.stream;
   Stream<void> get instanceChangedStream => _instanceChangedController.stream;
 
@@ -274,6 +276,7 @@ class DaemonSupervisor {
       final isFirstConnect = _currentInstanceId == null;
       final instanceChanged = !isFirstConnect && _currentInstanceId != info.instanceId;
       _currentInstanceId = info.instanceId;
+      _activePid = session.pid;
 
       _setState(SupervisorState.connected);
       _reconnectAttempts = 0;
@@ -348,6 +351,7 @@ class DaemonSupervisor {
         pid.toString(),
       ]);
       _managedProcess = process;
+      _activePid = process.pid;
 
       process.stderr.transform(utf8.decoder).listen((data) {
         _stderrBuffer.write(data);
@@ -436,6 +440,7 @@ class DaemonSupervisor {
       }
       _managedProcess = null;
     }
+    _activePid = null;
 
     // 3. Disconnect client channel
     await client.disconnect();

@@ -113,7 +113,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let actual_addr = listener.local_addr()?;
     let endpoint = format!("ws://{actual_addr}/rpc");
 
-    let config = DaemonConfig::new(data_dir.clone(), auth_token).with_bind_addr(actual_addr);
+    let config = DaemonConfig::new(data_dir.clone(), auth_token)
+        .with_bind_addr(actual_addr)
+        .with_workdir_mode(resolved_workdir.mode);
     let downloads = DownloadService::new(&db_path, temp_dir)?;
     let state = AppState::new(config, downloads);
 

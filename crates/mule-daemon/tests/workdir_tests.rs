@@ -158,3 +158,29 @@ fn test_workdir_priority_tier4_installed_default_when_no_flags_or_overrides() {
         );
     }
 }
+
+#[test]
+fn test_workdir_non_bin_subfolder_does_not_traverse_parent_for_portable_flag() {
+    let temp = tempdir().unwrap();
+    let root_dir = temp.path().join("SomeApp");
+    let other_sub_dir = root_dir.join("other_folder");
+    std::fs::create_dir_all(&other_sub_dir).unwrap();
+
+    // portable.flag in root_dir, but exe is in other_folder (which is not "bin")
+    File::create(root_dir.join(PORTABLE_FLAG_FILENAME)).unwrap();
+
+    let exe = other_sub_dir.join("tool.exe");
+
+    let mut env = HashMap::new();
+    env.insert("LOCALAPPDATA".to_string(), "C:\\Users\\QA\\AppData\\Local".to_string());
+
+    let resolved = WorkDirectoryResolver::resolve_with_context(
+        None,
+        Some(&exe),
+        |k| env.get(k).cloned(),
+    );
+
+    // Because other_folder != "bin", it must NOT pick up parent's portable.flag
+    assert_eq!(resolved.mode, WorkDirMode::InstalledDefault);
+}
+

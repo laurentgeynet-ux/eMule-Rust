@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../../../../domain/models/daemon_event.dart';
 import '../../../../domain/models/daemon_info.dart';
 import '../../../../domain/models/download_item.dart';
+import '../../../../domain/models/lab_models.dart';
 import '../../../../domain/services/mule_daemon_client.dart';
 
 import '../../../../services/daemon_supervisor.dart';
@@ -103,6 +104,15 @@ class DownloadsViewModel extends ChangeNotifier {
   String? get selectedDownloadId => _selectedDownloadId;
   bool get isDebugBarVisible => isDevToolsAvailable && _isDebugBarVisible;
   String? get statusNotification => _statusNotification;
+
+  /// Lab and test fixture features are strictly dual-gated:
+  /// Requires Portable workdir mode AND the daemon having the 'lab-tools' capability.
+  bool get isLabModeAvailable {
+    if (isDevToolsAvailable) return true;
+    final info = _daemonInfo;
+    if (info == null) return false;
+    return info.workdirMode == 'Portable' && info.capabilities.contains('lab-tools');
+  }
 
   DownloadItem? get selectedDownload =>
       _selectedDownloadId != null ? _downloads[_selectedDownloadId] : null;
@@ -289,6 +299,43 @@ class DownloadsViewModel extends ChangeNotifier {
       _errorMessage = 'Injection failed: $e';
       notifyListeners();
     }
+  }
+
+  Future<LabStatus> getLabStatus() async {
+    return await client.getLabStatus();
+  }
+
+  Future<LabFixtureInfo> createLabFixture(String fixtureType) async {
+    final fixture = await client.createLabFixture(fixtureType);
+    _statusNotification = 'Created fixture ${fixture.fileName}';
+    notifyListeners();
+    return fixture;
+  }
+
+  Future<LabPeerInfo> startLabPeer() async {
+    final peer = await client.startLabPeer();
+    _statusNotification = 'Started loopback peer at ${peer.peerAddr}';
+    notifyListeners();
+    return peer;
+  }
+
+  Future<void> stopLabPeer() async {
+    await client.stopLabPeer();
+    _statusNotification = 'Stopped loopback test peer';
+    notifyListeners();
+  }
+
+  Future<LabCleanupReport> cleanupLabTestData() async {
+    final report = await client.cleanupLabTestData();
+    _statusNotification = report.message;
+    await refresh();
+    return report;
+  }
+
+  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {
+    await client.connectDownloadToSource(downloadId, peerAddr);
+    _statusNotification = 'Connected download to $peerAddr';
+    await refresh();
   }
 
   @override

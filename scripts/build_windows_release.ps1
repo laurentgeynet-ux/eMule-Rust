@@ -22,7 +22,8 @@ param(
     [string]$CertificateThumbprint = "",
     [string]$TimestampServer = "http://timestamp.digicert.com",
     [switch]$AllowDirty = $false,
-    [switch]$SkipZip = $false
+    [switch]$SkipZip = $false,
+    [switch]$LabMode = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -84,8 +85,16 @@ Write-Host " -> Dart    : $DartVersion" -ForegroundColor Gray
 # 3. Build Rust mule-daemon (release)
 # -----------------------------------------------------------------------------
 Write-Host "`n[3/8] Compiling Rust mule-daemon and mule-cli (release)..." -ForegroundColor Yellow
-& $Cargo build --release --bin mule-daemon --bin mule-cli
-if ($LASTEXITCODE -ne 0) { throw "Rust release build failed with code $LASTEXITCODE" }
+if ($LabMode) {
+    Write-Host " [LAB-MODE] Compiling mule-daemon with feature 'lab-tools' enabled for QA lab testing..." -ForegroundColor Cyan
+    & $Cargo build --release -p mule-daemon --features lab-tools
+    if ($LASTEXITCODE -ne 0) { throw "Rust daemon (lab-tools) release build failed with code $LASTEXITCODE" }
+    & $Cargo build --release --bin mule-cli
+    if ($LASTEXITCODE -ne 0) { throw "Rust CLI release build failed with code $LASTEXITCODE" }
+} else {
+    & $Cargo build --release --bin mule-daemon --bin mule-cli
+    if ($LASTEXITCODE -ne 0) { throw "Rust release build failed with code $LASTEXITCODE" }
+}
 
 $DaemonExe = Join-Path $Root "target\release\mule-daemon.exe"
 $CliExe = Join-Path $Root "target\release\mule-cli.exe"
@@ -216,7 +225,7 @@ if ($Sign) {
 Write-Host "`n[8/8] Computing post-signing cryptographic hashes and manifest..." -ForegroundColor Yellow
 
 $NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$AppVersion = "0.1.0-lab"
+$AppVersion = "0.1.1-lab"
 
 $ArtifactsList = [System.Collections.Generic.List[PSCustomObject]]::new()
 $SumsLines = [System.Collections.Generic.List[string]]::new()

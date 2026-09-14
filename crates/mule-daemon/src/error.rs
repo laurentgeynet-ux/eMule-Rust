@@ -6,9 +6,15 @@ pub const CODE_INVALID_REQUEST: i32 = -32600;
 pub const CODE_METHOD_NOT_FOUND: i32 = -32601;
 pub const CODE_INVALID_PARAMS: i32 = -32602;
 pub const CODE_INTERNAL_ERROR: i32 = -32603;
+
+// Application & Security specific error codes (-32000 .. -32099)
 pub const CODE_AUTH_FAILED: i32 = -32000;
 pub const CODE_PROTOCOL_MISMATCH: i32 = -32001;
-pub const CODE_BUSINESS_ERROR: i32 = -32002;
+pub const CODE_FORBIDDEN_IN_INSTALLED_MODE: i32 = -32002;
+pub const CODE_UNSAFE_CLEANUP_TARGET: i32 = -32003;
+pub const CODE_FIXTURE_DOWNLOAD_MISMATCH: i32 = -32004;
+pub const CODE_LOOPBACK_PEER_UNAVAILABLE: i32 = -32005;
+pub const CODE_BUSINESS_ERROR: i32 = -32010;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct JsonRpcError {
@@ -57,8 +63,28 @@ impl JsonRpcError {
         )
     }
 
+    pub fn forbidden_in_installed_mode(msg: impl Into<String>) -> Self {
+        Self::new(CODE_FORBIDDEN_IN_INSTALLED_MODE, msg)
+    }
+
+    pub fn unsafe_cleanup_target(msg: impl Into<String>) -> Self {
+        Self::new(CODE_UNSAFE_CLEANUP_TARGET, msg)
+    }
+
+    pub fn fixture_download_mismatch(msg: impl Into<String>) -> Self {
+        Self::new(CODE_FIXTURE_DOWNLOAD_MISMATCH, msg)
+    }
+
+    pub fn loopback_peer_unavailable(msg: impl Into<String>) -> Self {
+        Self::new(CODE_LOOPBACK_PEER_UNAVAILABLE, msg)
+    }
+
     pub fn business(msg: impl Into<String>) -> Self {
         Self::new(CODE_BUSINESS_ERROR, msg)
+    }
+
+    pub fn internal(msg: impl Into<String>) -> Self {
+        Self::new(CODE_INTERNAL_ERROR, msg)
     }
 }
 

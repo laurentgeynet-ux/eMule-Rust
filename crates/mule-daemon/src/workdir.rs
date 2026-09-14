@@ -74,27 +74,30 @@ impl WorkDirectoryResolver {
             }
         }
 
-        // 3. Portable mode: check if portable.flag exists
+        // 3. Portable mode: strictly bounded bundle root detection
+        // If executable directory is named "bin", bundleRoot = parent(executableDir)
+        // Otherwise, bundleRoot = executableDir
+        // portableFlag = bundleRoot / portable.flag
         if let Some(exe) = exe_path {
             if let Some(exe_dir) = exe.parent() {
-                // Check adjacent to exe
-                let adjacent_flag = exe_dir.join(PORTABLE_FLAG_FILENAME);
-                if adjacent_flag.exists() {
+                let is_bin = exe_dir
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.eq_ignore_ascii_case("bin"))
+                    .unwrap_or(false);
+
+                let bundle_root = if is_bin {
+                    exe_dir.parent().unwrap_or(exe_dir)
+                } else {
+                    exe_dir
+                };
+
+                let flag_path = bundle_root.join(PORTABLE_FLAG_FILENAME);
+                if flag_path.exists() {
                     return ResolvedWorkDir {
-                        path: exe_dir.join("data"),
+                        path: bundle_root.join("data"),
                         mode: WorkDirMode::Portable,
                     };
-                }
-
-                // Check in parent directory (if binary is in bin/)
-                if let Some(parent_dir) = exe_dir.parent() {
-                    let parent_flag = parent_dir.join(PORTABLE_FLAG_FILENAME);
-                    if parent_flag.exists() {
-                        return ResolvedWorkDir {
-                            path: parent_dir.join("data"),
-                            mode: WorkDirMode::Portable,
-                        };
-                    }
                 }
             }
         }

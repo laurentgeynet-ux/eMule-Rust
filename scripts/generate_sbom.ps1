@@ -28,7 +28,7 @@ if (!(Test-Path $OutputDir)) {
 }
 
 $NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$AppVersion = "0.1.0-lab"
+$AppVersion = "0.1.1-lab"
 
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  Emule-Sion CycloneDX 1.5 SBOM Generator         " -ForegroundColor Cyan

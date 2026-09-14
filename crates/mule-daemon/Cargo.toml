@@ -11,6 +11,7 @@ default = []
 debug-rpc = []
 lab-loopback = ["mule-protocol/lab-loopback"]
 ed2k-loopback = ["mule-protocol/ed2k-loopback"]
+lab-tools = ["lab-loopback", "ed2k-loopback", "debug-rpc"]
 ed2k-reference-loopback = ["ed2k-loopback", "mule-protocol/ed2k-reference-loopback"]
 
 
@@ -51,4 +52,9 @@ required-features = ["ed2k-loopback"]
 [[test]]
 name = "ed2k_transfer_tests"
 required-features = ["ed2k-loopback"]
+
+[[test]]
+name = "lab_rpc_tests"
+required-features = ["lab-tools"]
+
 

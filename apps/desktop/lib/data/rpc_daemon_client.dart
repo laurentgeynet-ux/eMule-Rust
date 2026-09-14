@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../domain/models/daemon_event.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/lab_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 import 'dto/rpc_dto.dart';
 
@@ -278,11 +279,78 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<LabStatus> getLabStatus() async {
+    final resp = await _call('lab.status', {});
+    return LabStatus.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<LabFixtureInfo> createLabFixture(String fixtureType) async {
+    final resp = await _call('lab.createFixture', {
+      'fixtureType': fixtureType,
+    });
+    return LabFixtureInfo.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<LabPeerInfo> startLabPeer() async {
+    final resp = await _call('lab.startLoopbackPeer', {});
+    return LabPeerInfo.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> stopLabPeer() async {
+    await _call('lab.stopLoopbackPeer', {});
+  }
+
+  @override
+  Future<LabCleanupReport> cleanupLabTestData() async {
+    final resp = await _call('lab.cleanupTestData', {});
+    return LabCleanupReport.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {
+    try {
+      await _call('ed2k.probeSource', {
+        'downloadId': downloadId,
+        'peerAddr': peerAddr,
+      });
+      await _call('ed2k.startDownload', {
+        'downloadId': downloadId,
+        'peerAddr': peerAddr,
+      });
+    } catch (_) {
+      await _call('lab.addPeerSource', {
+        'downloadId': downloadId,
+        'peerAddr': peerAddr,
+      });
+    }
+  }
+
+  @override
   void dispose() {
     disconnect();
     _connectionController.close();
     _eventsController.close();
   }
+}
+
+abstract class RpcErrorCode {
+  static const int parseError = -32700;
+  static const int invalidRequest = -32600;
+  static const int methodNotFound = -32601;
+  static const int invalidParams = -32602;
+  static const int internalError = -32603;
+
+  // Application and security error codes (-32000 .. -32099)
+  static const int authenticationFailed = -32000;
+  static const int protocolMismatch = -32001;
+  static const int forbiddenInInstalledMode = -32002;
+  static const int unsafeCleanupTarget = -32003;
+  static const int fixtureDownloadMismatch = -32004;
+  static const int loopbackPeerUnavailable = -32005;
+  static const int businessError = -32010;
 }
 
 class RpcException implements Exception {
@@ -294,3 +362,4 @@ class RpcException implements Exception {
   @override
   String toString() => 'RpcException(code: $code, message: $message)';
 }
+

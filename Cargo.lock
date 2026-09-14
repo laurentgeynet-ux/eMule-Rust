@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "mule-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "data-encoding",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "mule-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "md4",
  "mule-format",
@@ -796,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "mule-daemon"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "bytes",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "mule-format"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "data-encoding",
  "hex",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "mule-protocol"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "hex",

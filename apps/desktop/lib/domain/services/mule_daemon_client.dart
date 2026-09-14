@@ -1,6 +1,7 @@
 import '../models/daemon_event.dart';
 import '../models/daemon_info.dart';
 import '../models/download_item.dart';
+import '../models/lab_models.dart';
 
 abstract class MuleDaemonClient {
   /// Connect to the daemon and perform authentication handshake.
@@ -45,6 +46,24 @@ abstract class MuleDaemonClient {
 
   /// Request daemon graceful shutdown (system.stop).
   Future<void> stopDaemon();
+
+  /// Fetch lab status (workdir mode, path, fixtures, active test peer).
+  Future<LabStatus> getLabStatus();
+
+  /// Create a deterministic test fixture in `<workdir>/fixtures`.
+  Future<LabFixtureInfo> createLabFixture(String fixtureType);
+
+  /// Start the loopback test peer (127.0.0.1) sharing all fixtures.
+  Future<LabPeerInfo> startLabPeer();
+
+  /// Stop the running loopback test peer.
+  Future<void> stopLabPeer();
+
+  /// Clean up test data and fixtures (allowed only in Portable / dev modes).
+  Future<LabCleanupReport> cleanupLabTestData();
+
+  /// Connect a download to an active loopback source.
+  Future<void> connectDownloadToSource(String downloadId, String peerAddr);
 
   /// Clean up any resources/sockets.
   void dispose();

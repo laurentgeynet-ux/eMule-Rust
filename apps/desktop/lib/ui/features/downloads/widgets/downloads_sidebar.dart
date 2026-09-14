@@ -4,6 +4,7 @@ import '../../../../services/daemon_supervisor.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
+import 'diagnostic_dialog.dart';
 
 class DownloadsSidebar extends StatelessWidget {
   final DownloadsViewModel viewModel;
@@ -122,63 +123,78 @@ class DownloadsSidebar extends StatelessWidget {
 
           const Spacer(),
 
-          // Daemon Connection Status Card
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
+          // Daemon Connection Status Card (Clickable to view Diagnostics)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Material(
               color: AppTheme.darkCard,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppTheme.darkBorder, width: 0.5),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: viewModel.supervisor != null
-                            ? _getSupervisorColor(viewModel.supervisorState)
-                            : _getConnectionColor(viewModel.connectionState),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (viewModel.supervisor != null
-                                    ? _getSupervisorColor(viewModel.supervisorState)
-                                    : _getConnectionColor(viewModel.connectionState))
-                                .withValues(alpha: 0.5),
-                            blurRadius: 6,
-                            spreadRadius: 1,
-                          )
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => DiagnosticDialog(viewModel: viewModel),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: viewModel.supervisor != null
+                                  ? _getSupervisorColor(viewModel.supervisorState)
+                                  : _getConnectionColor(viewModel.connectionState),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (viewModel.supervisor != null
+                                          ? _getSupervisorColor(viewModel.supervisorState)
+                                          : _getConnectionColor(viewModel.connectionState))
+                                      .withValues(alpha: 0.5),
+                                  blurRadius: 6,
+                                  spreadRadius: 1,
+                                )
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              viewModel.supervisor != null
+                                  ? viewModel.supervisorState.label
+                                  : viewModel.connectionState.label,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Icon(Icons.info_outline, size: 14, color: Colors.white38),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        viewModel.supervisor != null
-                            ? viewModel.supervisorState.label
-                            : viewModel.connectionState.label,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                      if (viewModel.daemonInfo != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Daemon v${viewModel.daemonInfo!.version} (proto v${viewModel.daemonInfo!.protocolVersion})',
+                          style: const TextStyle(fontSize: 11, color: Colors.white54),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                if (viewModel.daemonInfo != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    'Daemon v${viewModel.daemonInfo!.version} (proto v${viewModel.daemonInfo!.protocolVersion})',
-                    style: const TextStyle(fontSize: 11, color: Colors.white54),
+                      ],
+                    ],
                   ),
-                ],
-              ],
+                ),
+              ),
             ),
           ),
         ],

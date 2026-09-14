@@ -18,6 +18,8 @@ pub struct AppState {
     pub session_id: Uuid,
     pub abort_handles: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
     pub shutdown_notify: Arc<tokio::sync::Notify>,
+    #[cfg(feature = "lab-tools")]
+    pub active_lab_peer: Arc<Mutex<Option<(std::net::SocketAddr, tokio::task::AbortHandle)>>>,
 }
 
 impl AppState {
@@ -32,6 +34,8 @@ impl AppState {
             session_id: Uuid::new_v4(),
             abort_handles: Arc::new(Mutex::new(Vec::new())),
             shutdown_notify: Arc::new(tokio::sync::Notify::new()),
+            #[cfg(feature = "lab-tools")]
+            active_lab_peer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -46,6 +50,13 @@ impl AppState {
         let mut handles = self.abort_handles.lock().await;
         for handle in handles.drain(..) {
             handle.abort();
+        }
+        #[cfg(feature = "lab-tools")]
+        {
+            let mut peer = self.active_lab_peer.lock().await;
+            if let Some((_, h)) = peer.take() {
+                h.abort();
+            }
         }
     }
 

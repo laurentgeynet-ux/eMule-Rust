@@ -76,6 +76,8 @@ class RpcDto {
       instanceId: json['instanceId'] as String? ?? '',
       sessionId: json['sessionId'] as String? ?? '',
       capabilities: caps,
+      workdirMode: json['workdirMode'] as String?,
+      workdirPath: json['workdirPath'] as String?,
     );
   }
 }
