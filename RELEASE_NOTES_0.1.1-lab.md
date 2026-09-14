@@ -83,7 +83,7 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 #### A. Build Standard Locale
 - **Dossier d'assemblage** : `dist/EmuleSion-Standard-Windows/`
 - **Archive scellée** : `EmuleSion-v0.1.1-lab-standard-windows-x64.zip` (14 488 636 octets)
-- **Empreinte SHA-256** : `8a45190a858746113be83d3817242c710385ebca2ccd97be5db7fd6bb2444a13`
+- **Empreinte SHA-256** : `381239d6d94c3d74e00fe0d737644574d4083e1a1dbcfa1bc80b1df9e0f79f81`
 - **Manifeste `version.json`** :
   ```json
   {
@@ -100,7 +100,7 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 #### B. Build QA Loopback
 - **Dossier d'assemblage** : `dist/EmuleSion-Qa-Loopback-Windows/`
 - **Archive scellée** : `EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip` (14 702 418 octets)
-- **Empreinte SHA-256** : `e8f1bfb56db7a047291d623552887542fc11f0e93b96ea1ef91defe4d72f3e35`
+- **Empreinte SHA-256** : `2360a460bb4fdd179bb9c43a5e4f0ca0a552492fead22153fc3e12e81e90ed59`
 - **Manifeste `version.json`** :
   ```json
   {
