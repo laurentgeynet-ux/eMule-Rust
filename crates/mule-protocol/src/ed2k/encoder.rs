@@ -4,13 +4,13 @@ use bytes::Bytes;
 
 use super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::limits::Ed2kLimits;
-use super::opcodes::{OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_SENDINGPART};
+use super::opcodes::{OP_EMULE_INFO, OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_SENDINGPART};
 use super::packet::{
-    expected_mask_bytes, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer,
-    Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
+    expected_mask_bytes, Ed2kEmuleInfo, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
+    Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
 };
 use super::profile::Ed2kCompatibilityProfile;
-use super::protocol::PR_ED2K;
+use super::protocol::{PR_ED2K, PR_EMULE};
 use super::tags::{
     Ed2kTag, RawTag, TagName, TagValue, TAGTYPE_BLOB, TAGTYPE_BOOL, TAGTYPE_FLOAT32, TAGTYPE_HASH,
     TAGTYPE_STRING, TAGTYPE_UINT16, TAGTYPE_UINT32, TAGTYPE_UINT64, TAGTYPE_UINT8,
@@ -568,11 +568,54 @@ impl Ed2kEncoder {
         Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
     }
 
+    /// Encodes an `OP_EMULE_INFO` (`0xC5 0x01`) payload.
+    pub fn encode_emule_info(&self, info: &Ed2kEmuleInfo) -> Result<RawPacket, Ed2kEncodeError> {
+        let total_tags = info.tags.len() + info.unknown_tags.len();
+        if total_tags > self.limits.max_tags {
+            return Err(Ed2kEncodeError::new(
+                OP_EMULE_INFO,
+                "emule_info_tag_count",
+                Ed2kErrorKind::TooManyTags {
+                    count: total_tags,
+                    limit: self.limits.max_tags,
+                },
+            ));
+        }
+
+        let mut payload = Vec::with_capacity(64);
+        payload.push(info.client_version);
+        payload.push(info.protocol_version);
+        payload.extend_from_slice(&(total_tags as u32).to_le_bytes());
+
+        for tag in &info.tags {
+            self.encode_tag(OP_EMULE_INFO, tag, &mut payload)?;
+        }
+        for raw in &info.unknown_tags {
+            self.encode_raw_tag(OP_EMULE_INFO, raw, &mut payload)?;
+        }
+
+        let frame_len = 1 + payload.len();
+        let max_frame = self.limits.max_frame_for_opcode(OP_EMULE_INFO);
+        if frame_len > max_frame {
+            return Err(Ed2kEncodeError::new(
+                OP_EMULE_INFO,
+                "emule_info_frame_len",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: frame_len,
+                    limit: max_frame,
+                },
+            ));
+        }
+
+        Ok(RawPacket::new(PR_EMULE, OP_EMULE_INFO, Bytes::from(payload)))
+    }
+
     /// Encodes any `Ed2kMessage` into its `RawPacket` representation.
     pub fn encode_message(&self, msg: &Ed2kMessage) -> Result<RawPacket, Ed2kEncodeError> {
         match msg {
             Ed2kMessage::Hello(hello) => self.encode_hello(hello),
             Ed2kMessage::HelloAnswer(answer) => self.encode_hello_answer(answer),
+            Ed2kMessage::EmuleInfo(info) => self.encode_emule_info(info),
             Ed2kMessage::FileStatusReq(req) => self.encode_file_status_req(req),
             Ed2kMessage::FileStatus(status) => self.encode_file_status(status),
             Ed2kMessage::RequestParts(req) => self.encode_request_parts(req),

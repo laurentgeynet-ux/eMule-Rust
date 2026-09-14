@@ -4,10 +4,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use mule_protocol::ed2k::{
-    Ed2kBlockRange, Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEncoder, Ed2kErrorKind,
-    Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kLimits, Ed2kMessage,
-    Ed2kRequestParts, Ed2kSendingPart, Ed2kTag, PartAvailabilityMask, RawTag, TagName, TagValue,
-    TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+    Ed2kBlockRange, Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEmuleInfo, Ed2kEncoder,
+    Ed2kErrorKind, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kLimits,
+    Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart, Ed2kTag, PartAvailabilityMask, RawTag, TagName,
+    TagValue, TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_NAME,
+    TAG_SPECIAL_VERSION,
 };
 
 
@@ -1254,7 +1255,7 @@ fn test_illegal_protocol_opcode_combinations() {
 
     // 3. 0xC5 (PR_EMULE / Kad / extension) with standard eD2K opcodes
     // Must be preserved as Raw packet without parsing as standard session messages
-    for opcode in [0x01, 0x47, 0x4F, 0x50] {
+    for opcode in [0x46, 0x47, 0x4F, 0x50] {
         let pkt = mule_protocol::RawPacket::with_vec(0xC5, opcode, vec![0xAA; 20]);
         let msg = decoder.decode_raw_packet(&pkt).expect("0xC5 preserved as Raw");
         assert_eq!(msg, Ed2kMessage::Raw(pkt));
@@ -1495,4 +1496,85 @@ fn test_tier3_op_hello_answer_wire_framing_emule050a_compliance() {
         _ => panic!("expected HelloAnswer message"),
     }
 }
+
+#[test]
+fn test_tier3_op_emule_info_roundtrip_nominal() {
+    let encoder = Ed2kEncoder::new();
+    let decoder = Ed2kDecoder::new();
+
+    let tag_compression = Ed2kTag {
+        name: TagName::Id(0x20),
+        value: TagValue::UInt32(1),
+    };
+    let tag_source_exchange = Ed2kTag {
+        name: TagName::Id(0x04),
+        value: TagValue::UInt32(1),
+    };
+    let raw_tag = RawTag {
+        tag_type: 0x03,
+        name: TagName::Text("ExtCustom".to_string()),
+        raw_bytes: vec![1, 2, 3, 4],
+    };
+
+    let original = Ed2kEmuleInfo {
+        client_version: 60,
+        protocol_version: 1,
+        tags: vec![tag_compression, tag_source_exchange],
+        unknown_tags: vec![raw_tag],
+    };
+
+    let encoded_pkt = encoder.encode_emule_info(&original).expect("encode emule info");
+    assert_eq!(encoded_pkt.protocol, mule_protocol::types::PR_EMULE);
+    assert_eq!(encoded_pkt.opcode, mule_protocol::ed2k::OP_EMULE_INFO);
+
+    let decoded_msg = decoder.decode_raw_packet(&encoded_pkt).expect("decode emule info");
+    match decoded_msg {
+        Ed2kMessage::EmuleInfo(info) => {
+            assert_eq!(info.client_version, 60);
+            assert_eq!(info.protocol_version, 1);
+            assert_eq!(info.tags.len(), 3);
+            assert!(info.has_compression_capability());
+            assert!(info.has_source_exchange_capability());
+            assert_eq!(
+                info.find_tag("ExtCustom"),
+                Some(&Ed2kTag {
+                    name: TagName::Text("ExtCustom".to_string()),
+                    value: TagValue::UInt32(u32::from_le_bytes([1, 2, 3, 4])),
+                })
+            );
+        }
+        _ => panic!("expected Ed2kMessage::EmuleInfo"),
+    }
+}
+
+#[test]
+fn test_tier3_op_emule_info_truncated_payload_fails() {
+    let decoder = Ed2kDecoder::new();
+
+    // Truncated payload: only 1 byte instead of at least 6 bytes (client_ver + proto_ver + tag_count)
+    let raw = mule_protocol::RawPacket::with_vec(mule_protocol::types::PR_EMULE, 0x01, vec![0x3C]);
+    let err = decoder.decode_raw_packet(&raw).unwrap_err();
+    assert!(matches!(
+        err.kind,
+        mule_protocol::ed2k::Ed2kErrorKind::UnexpectedEof { .. }
+    ));
+}
+
+#[test]
+fn test_tier3_op_emule_info_oversized_tag_count_fails() {
+    let decoder = Ed2kDecoder::new();
+
+    let mut payload = Vec::new();
+    payload.push(60); // client_version
+    payload.push(1); // protocol_version
+    payload.extend_from_slice(&10_000u32.to_le_bytes()); // tag count exceeds limit (default 1024)
+
+    let raw = mule_protocol::RawPacket::with_vec(mule_protocol::types::PR_EMULE, 0x01, payload);
+    let err = decoder.decode_raw_packet(&raw).unwrap_err();
+    assert!(matches!(
+        err.kind,
+        mule_protocol::ed2k::Ed2kErrorKind::TooManyTags { .. }
+    ));
+}
+
 

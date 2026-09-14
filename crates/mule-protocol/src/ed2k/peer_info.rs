@@ -1,6 +1,6 @@
 //! Peer metadata and capability representation negotiated during the eD2K handshake.
 
-use super::packet::{Ed2kHello, Ed2kHelloAnswer};
+use super::packet::{Ed2kEmuleInfo, Ed2kHello, Ed2kHelloAnswer};
 use super::tags::{
     Ed2kTag, RawTag, TagName, TagValue, TAG_SPECIAL_EMULE_MISCOPTIONS1,
     TAG_SPECIAL_EMULE_MISCOPTIONS2, TAG_SPECIAL_EMULE_UDPPORTS, TAG_SPECIAL_EMULE_VERSION,
@@ -36,6 +36,8 @@ pub struct Ed2kPeerInfo {
     pub tags: Vec<Ed2kTag>,
     /// Preserved unparsed or raw tags.
     pub unknown_tags: Vec<RawTag>,
+    /// Extended eMule protocol announcement (`OP_EMULEINFO`), if received.
+    pub emule_info: Option<Ed2kEmuleInfo>,
 }
 
 impl Ed2kPeerInfo {
@@ -139,6 +141,7 @@ impl Ed2kPeerInfo {
             server_port,
             tags,
             unknown_tags,
+            emule_info: None,
         }
     }
 
@@ -150,5 +153,19 @@ impl Ed2kPeerInfo {
     /// Returns true if this peer identified itself as an eMule client.
     pub fn is_emule(&self) -> bool {
         self.emule_version.is_some()
+    }
+
+    /// Returns true if compression capability was announced in OP_EMULEINFO.
+    pub fn has_compression_capability(&self) -> bool {
+        self.emule_info
+            .as_ref()
+            .map_or(false, |info| info.has_compression_capability())
+    }
+
+    /// Returns true if source exchange capability was announced in OP_EMULEINFO.
+    pub fn has_source_exchange_capability(&self) -> bool {
+        self.emule_info
+            .as_ref()
+            .map_or(false, |info| info.has_source_exchange_capability())
     }
 }

@@ -60,6 +60,7 @@ impl Ed2kLimits {
     /// Returns the maximum permitted frame size for a specific opcode.
     pub fn max_frame_for_opcode(&self, opcode: u8) -> usize {
         match opcode {
+            // Opcode 0x01 covers OP_HELLO (PR_ED2K 0xE3) and OP_EMULE_INFO (PR_EMULE 0xC5)
             super::opcodes::OP_HELLO | super::opcodes::OP_HELLO_ANSWER => {
                 self.max_hello_frame_bytes
             }

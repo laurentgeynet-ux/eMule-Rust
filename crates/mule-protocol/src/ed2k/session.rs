@@ -9,8 +9,8 @@ use super::encoder::Ed2kEncoder;
 use super::error::{Ed2kEncodeError, Ed2kParseError};
 use super::opcodes::{OP_HELLO, OP_HELLO_ANSWER};
 use super::packet::{
-    Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts,
-    Ed2kSendingPart,
+    Ed2kEmuleInfo, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage,
+    Ed2kRequestParts, Ed2kSendingPart,
 };
 use super::peer_info::Ed2kPeerInfo;
 use super::profile::Ed2kCompatibilityProfile;
@@ -492,6 +492,8 @@ pub struct Ed2kSession {
     pub block_tracker: BlockRequestTracker,
     /// Counter of unhandled, non-state-mutating raw or extension frames observed.
     pub unhandled_packets_count: usize,
+    /// Cached eMule info received before or alongside handshake answer.
+    pub pending_emule_info: Option<Ed2kEmuleInfo>,
 }
 
 impl Ed2kSession {
@@ -538,6 +540,7 @@ impl Ed2kSession {
             status_tracker: FileStatusTracker::default(),
             block_tracker: BlockRequestTracker::default(),
             unhandled_packets_count: 0,
+            pending_emule_info: None,
         }
     }
 
@@ -573,6 +576,7 @@ impl Ed2kSession {
             status_tracker: FileStatusTracker::default(),
             block_tracker: BlockRequestTracker::default(),
             unhandled_packets_count: 0,
+            pending_emule_info: None,
         }
     }
 
@@ -623,7 +627,10 @@ impl Ed2kSession {
                     return Err(err);
                 }
 
-                let peer = Ed2kPeerInfo::from_hello(hello);
+                let mut peer = Ed2kPeerInfo::from_hello(hello);
+                if peer.emule_info.is_none() {
+                    peer.emule_info = self.pending_emule_info.take();
+                }
                 Ok(peer)
             }
             Ed2kSessionState::Ready { .. } | Ed2kSessionState::AwaitingHelloAnswer { .. } => {
@@ -661,7 +668,11 @@ impl Ed2kSession {
                     server_ip,
                     server_port,
                 };
-                self.state = Ed2kSessionState::Ready { peer: remote_peer };
+                let mut peer = remote_peer;
+                if peer.emule_info.is_none() {
+                    peer.emule_info = self.pending_emule_info.take();
+                }
+                self.state = Ed2kSessionState::Ready { peer };
                 Ok(answer)
             }
             _ => {
@@ -693,7 +704,10 @@ impl Ed2kSession {
                     return Err(err);
                 }
 
-                let peer = Ed2kPeerInfo::from_hello_answer(answer);
+                let mut peer = Ed2kPeerInfo::from_hello_answer(answer);
+                if peer.emule_info.is_none() {
+                    peer.emule_info = self.pending_emule_info.take();
+                }
                 self.state = Ed2kSessionState::Ready { peer: peer.clone() };
                 Ok(peer)
             }
@@ -744,6 +758,18 @@ impl Ed2kSession {
             Ed2kMessage::HelloAnswer(answer) => {
                 let _peer = self.on_hello_answer_received(&answer)?;
                 Ok(Some(Ed2kMessage::HelloAnswer(answer)))
+            }
+            Ed2kMessage::EmuleInfo(info) => {
+                match &mut self.state {
+                    Ed2kSessionState::Ready { peer } => {
+                        peer.emule_info = Some(info.clone());
+                    }
+                    _ => {
+                        self.pending_emule_info = Some(info.clone());
+                    }
+                }
+                self.unhandled_packets_count += 1;
+                Ok(Some(Ed2kMessage::EmuleInfo(info)))
             }
             Ed2kMessage::FileStatus(status) => {
                 if !self.is_ready() {

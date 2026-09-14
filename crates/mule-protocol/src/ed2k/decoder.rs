@@ -5,15 +5,16 @@ use bytes::Bytes;
 use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::{Ed2kLimits, ED2K_MAX_PARTS};
 use super::opcodes::{
-    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLO_ANSWER, OP_REQUESTPARTS,
+    OP_EMULE_INFO, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLO_ANSWER, OP_REQUESTPARTS,
     OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
 };
 use super::packet::{
-    expected_mask_bytes, Ed2kBlockRange, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
-    Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart, PartAvailabilityMask,
+    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileStatus, Ed2kFileStatusReq,
+    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
+    PartAvailabilityMask,
 };
 use super::profile::Ed2kCompatibilityProfile;
-use super::protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE_COMPRESSED};
+use super::protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
 use super::tags::TagReader;
 use crate::framing::RawPacket;
 use crate::limits::HEADER_SIZE;
@@ -278,6 +279,10 @@ impl Ed2kDecoder {
                 let part = self.decode_sending_part(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::SendingPart(part))
             }
+            (PR_EMULE, OP_EMULE_INFO) => {
+                let info = self.decode_emule_info(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::EmuleInfo(info))
+            }
             _ => {
                 // Return as unparsed RawPacket for passive observation of other opcodes
                 let raw_packet = RawPacket::new(protocol, opcode, Bytes::copy_from_slice(payload));
@@ -445,6 +450,15 @@ impl Ed2kDecoder {
                 )?;
                 Ok(Ed2kMessage::SendingPart(part))
             }
+            (PR_EMULE, OP_EMULE_INFO) => {
+                let info = self.decode_emule_info(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::EmuleInfo(info))
+            }
             _ => Ok(Ed2kMessage::Raw(packet.clone())),
         }
     }
@@ -573,6 +587,54 @@ impl Ed2kDecoder {
             unknown_tags,
             server_ip,
             server_port,
+        })
+    }
+
+    /// Decodes an `OP_EMULE_INFO` (`0xC5 0x01`) payload.
+    pub fn decode_emule_info(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kEmuleInfo, Ed2kParseError> {
+        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
+
+        let client_version = reader.read_u8("emule_info_client_version")?;
+        let protocol_version = reader.read_u8("emule_info_protocol_version")?;
+        let tag_count = reader.read_u32_le("emule_info_tag_count")? as usize;
+
+        if tag_count > self.limits.max_tags {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + reader.pos() - 4,
+                "emule_info_tag_count",
+                Ed2kErrorKind::TooManyTags {
+                    count: tag_count,
+                    limit: self.limits.max_tags,
+                },
+            ));
+        }
+
+        let mut tags = Vec::with_capacity(tag_count.min(64));
+        let mut unknown_tags = Vec::new();
+
+        for _ in 0..tag_count {
+            let (typed_opt, raw_opt) = reader.read_tag(&self.limits)?;
+            if let Some(tag) = typed_opt {
+                tags.push(tag);
+            }
+            if let Some(raw) = raw_opt {
+                unknown_tags.push(raw);
+            }
+        }
+
+        Ok(Ed2kEmuleInfo {
+            client_version,
+            protocol_version,
+            tags,
+            unknown_tags,
         })
     }
 

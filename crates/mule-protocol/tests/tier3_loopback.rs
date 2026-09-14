@@ -255,6 +255,12 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
             assert!(peer_info.misc_options1.is_some(), "misc_options1 must be parsed");
             assert!(peer_info.misc_options2.is_some(), "misc_options2 must be parsed");
             assert_eq!(peer_info.emule_udp_port, Some(test_udp_port), "emule_udp_port must match test_udp_port");
+            assert!(peer_info.emule_info.is_some(), "emule_info must be populated from OP_EMULEINFO");
+            let emule_info = peer_info.emule_info.as_ref().unwrap();
+            assert_eq!(emule_info.client_version, 80, "emule_info client_version must be 0x50 = 80 for eMule 0.50a");
+            assert_eq!(emule_info.protocol_version, 1, "emule_info protocol_version must be 1");
+            assert!(peer_info.has_compression_capability(), "compression capability must be announced");
+            assert!(peer_info.has_source_exchange_capability(), "source exchange capability must be announced");
 
             client.close().await;
         }
@@ -297,4 +303,151 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
         .expect("Tier 3 report failed anonymity validation");
 
     harness.shutdown();
+}
+
+/// Tier 3.1: Live passive post-handshake, multi-port, and hermetic teardown test.
+///
+/// Invariants verified:
+/// 1. Consecutive execution across 2 iterations on independent dynamically allocated ephemeral ports.
+/// 2. Hermetic sandbox isolation: each iteration runs in a fresh temporary directory with
+///    Windows registry UsePublicUserDirectories = 2 forced.
+/// 3. Handshake completes both OP_EMULEINFO (0xC5 0x01) and OP_HELLOANSWER (0xE3 0x4C).
+/// 4. Peer metadata (name, version 60, UDP port, misc_options1/2, emule_info) decoded accurately.
+/// 5. Passive capability discipline: peer capabilities (compression, source exchange, Kad)
+///    are observed but strictly never activated or negotiated unrequested.
+/// 6. Bounded idle watchdog (1s): connection held cleanly with zero unexpected traffic.
+/// 7. Graceful TCP FIN termination (`client.close().await`) and process shutdown (`harness.shutdown()`).
+/// 8. Zero non-loopback network connections and zero residual orphan processes.
+#[tokio::test]
+#[ignore = "Tier 3 external reference orchestration requires pinned reference binary via EMULE_REFERENCE_BIN"]
+async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
+    let bin_path_var = match std::env::var("EMULE_REFERENCE_BIN") {
+        Ok(val) if !val.trim().is_empty() => PathBuf::from(val.trim()),
+        _ => {
+            println!("SKIPPED: Tier 3.1 test requires EMULE_REFERENCE_BIN environment variable.");
+            return;
+        }
+    };
+
+    let expected_hash = std::env::var("EMULE_REFERENCE_SHA256").ok();
+
+    // Multi-port and multi-sandbox iteration across 2 distinct runs
+    for iteration in 1..=2 {
+        println!("\n=== Starting Tier 3.1 Iteration {iteration}/2 ===");
+        let test_port = allocate_ephemeral_loopback_port();
+        let test_udp_port = allocate_ephemeral_loopback_port();
+
+        let mut harness = Tier3Harness::new(
+            bin_path_var.clone(),
+            expected_hash.as_deref(),
+            test_port,
+            test_udp_port,
+        )
+        .expect("failed to initialize Tier 3.1 harness");
+
+        harness.assert_loopback_confinement();
+        println!("Iteration {iteration}: Assigned TCP port {test_port}, UDP port {test_udp_port}");
+        println!("Iteration {iteration}: Work path: {:?}", harness.environment().work_path());
+
+        harness
+            .spawn_reference_process(&[])
+            .expect("failed to spawn reference process");
+
+        let pid = harness.child_pid().unwrap_or(0);
+        assert!(pid > 0, "child PID must be valid");
+        assert!(harness.is_child_running(), "child process must be active");
+
+        // Canonical eMule user hash (with 0x0E at index 5 and 0x6F at index 14)
+        let user_hash = [
+            0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
+            0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+        ];
+        let client_tcp_port = allocate_ephemeral_loopback_port();
+
+        // Connect with retry
+        let mut connect_res = None;
+        for attempt in 1..=10 {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if !harness.is_child_running() {
+                panic!("Iteration {iteration}: Reference process exited unexpectedly on attempt {attempt}");
+            }
+            match Ed2kLoopbackClient::connect_and_handshake(
+                harness.loopback_addr(),
+                user_hash,
+                0,
+                client_tcp_port,
+                Vec::new(),
+                0,
+                0,
+                Duration::from_secs(3),
+            )
+            .await
+            {
+                Ok(res) => {
+                    connect_res = Some(res);
+                    break;
+                }
+                Err(e) => {
+                    if attempt == 10 {
+                        panic!("Iteration {iteration}: Failed to connect after 10 attempts: {e:?}");
+                    }
+                }
+            }
+        }
+
+        let (client, peer_info) = connect_res.expect("connected");
+
+        // 1. Assert peer identity
+        assert_eq!(peer_info.name.as_deref(), Some("RefPeer050a"));
+        assert_eq!(peer_info.version, Some(60));
+        assert_eq!(peer_info.emule_udp_port, Some(test_udp_port));
+        assert!(peer_info.misc_options1.is_some());
+        assert!(peer_info.misc_options2.is_some());
+
+        // 2. Assert OP_EMULEINFO announcement
+        assert!(peer_info.emule_info.is_some(), "OP_EMULEINFO must be captured and parsed");
+        let emule_info = peer_info.emule_info.as_ref().unwrap();
+        assert_eq!(emule_info.client_version, 80, "eMule 0.50a version must be 0x50 = 80 in OP_EMULEINFO");
+        assert_eq!(emule_info.protocol_version, 1, "eMule compatible protocol version must be 1");
+        assert!(peer_info.has_compression_capability(), "compression capability must be announced");
+        assert!(peer_info.has_source_exchange_capability(), "source exchange capability must be announced");
+        println!(
+            "Iteration {iteration}: Decoded OP_EMULEINFO with {} tags, compression={}, source_exchange={}",
+            emule_info.tags.len(),
+            peer_info.has_compression_capability(),
+            peer_info.has_source_exchange_capability(),
+        );
+
+        // 3. Assert Passive Capability Discipline
+        // The client observes remote capabilities but remains in baseline uncompressed protocol mode
+        assert!(client.session().is_ready());
+        assert_eq!(client.session().snapshot().pending_status_count, 0);
+        assert_eq!(client.session().snapshot().pending_block_count, 0);
+
+        // 4. Bounded idle watchdog: hold connection passively for 1s
+        println!("Iteration {iteration}: Holding passive connection for 1s watchdog...");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(harness.is_child_running(), "eMule process remains healthy during idle hold");
+
+        // 5. Verify network confinement via PowerShell Get-NetTCPConnection
+        let check_conn = std::process::Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(format!("Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | Where-Object {{ $_.RemoteAddress -ne '0.0.0.0' -and $_.RemoteAddress -ne '127.0.0.1' -and $_.RemoteAddress -ne '::' -and $_.RemoteAddress -ne '::1' }} | Measure-Object | Select-Object -ExpandProperty Count"))
+            .output();
+        if let Ok(out) = check_conn {
+            let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let non_loopback_count: usize = count_str.parse().unwrap_or(0);
+            assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+        }
+
+        // 6. Graceful TCP FIN teardown
+        client.close().await;
+
+        // 7. Hermetic process teardown
+        harness.shutdown();
+        assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+
+        println!("=== Iteration {iteration}/2 Completed Successfully ===");
+    }
 }

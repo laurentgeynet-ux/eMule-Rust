@@ -55,6 +55,47 @@ impl Ed2kHelloAnswer {
     }
 }
 
+/// Observation structure for eMule protocol extensions announcement `OP_EMULEINFO` (`0xC5 0x01`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ed2kEmuleInfo {
+    /// Remote eMule client version code (e.g. 0x3C = 60).
+    pub client_version: u8,
+    /// eMule protocol version byte (typically 0x01).
+    pub protocol_version: u8,
+    /// Decoded recognized metadata tags.
+    pub tags: Vec<Ed2kTag>,
+    /// Unrecognized or raw tags preserved without data loss.
+    pub unknown_tags: Vec<RawTag>,
+}
+
+impl Ed2kEmuleInfo {
+    /// Finds a recognized tag by name display string.
+    pub fn find_tag(&self, name: &str) -> Option<&Ed2kTag> {
+        self.tags.iter().find(|t| t.name.display_name() == name)
+    }
+
+    /// Returns true if compression capability tag was announced by remote peer.
+    pub fn has_compression_capability(&self) -> bool {
+        self.tags.iter().any(|t| match &t.name {
+            super::tags::TagName::Id(0x20) | super::tags::TagName::Id(0x01) => true,
+            super::tags::TagName::Text(s) => s.eq_ignore_ascii_case("compression"),
+            _ => false,
+        })
+    }
+
+    /// Returns true if source exchange capability tag was announced by remote peer.
+    pub fn has_source_exchange_capability(&self) -> bool {
+        self.tags.iter().any(|t| match &t.name {
+            super::tags::TagName::Id(super::tags::TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE)
+            | super::tags::TagName::Id(0x04) => true,
+            super::tags::TagName::Text(s) => {
+                s.eq_ignore_ascii_case("sourceexchange") || s.eq_ignore_ascii_case("source_exchange")
+            }
+            _ => false,
+        })
+    }
+}
+
 /// Helper function to compute expected byte count for a given part count.
 #[inline]
 pub fn expected_mask_bytes(part_count: u16) -> usize {
@@ -356,6 +397,8 @@ pub enum Ed2kMessage {
     Hello(Ed2kHello),
     /// Handshake response.
     HelloAnswer(Ed2kHelloAnswer),
+    /// Extended eMule handshake capabilities exchange.
+    EmuleInfo(Ed2kEmuleInfo),
     /// File parts availability request.
     FileStatusReq(Ed2kFileStatusReq),
     /// File part availability status response.

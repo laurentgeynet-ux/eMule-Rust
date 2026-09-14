@@ -72,9 +72,13 @@ pub const OP_REQFILENAME_ANSWER: u8 = 0x59;
 
 /// Extended eMule handshake capabilities exchange (`0x01`).
 pub const OP_EMULE_INFO: u8 = 0x01;
+/// Canonical alias for `OP_EMULE_INFO`.
+pub const OP_EMULEINFO: u8 = OP_EMULE_INFO;
 
 /// Extended eMule handshake capabilities answer (`0x02`).
 pub const OP_EMULE_INFO_ANSWER: u8 = 0x02;
+/// Canonical alias for `OP_EMULE_INFO_ANSWER`.
+pub const OP_EMULEINFOANSWER: u8 = OP_EMULE_INFO_ANSWER;
 
 /// Request AICH root hash (`0x12`).
 pub const OP_AICH_REQUEST: u8 = 0x12;

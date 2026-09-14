@@ -46,6 +46,20 @@ pub const TAG_SPECIAL_EMULE_UDPOPTIONS: u8 = 0xFB;
 pub const TAG_SPECIAL_UDPOPTIONS: u8 = 0xFB;
 /// Canonical eMule miscellaneous options 2 tag ID (`0xFE` = 254).
 pub const TAG_SPECIAL_EMULE_MISCOPTIONS2: u8 = 0xFE;
+/// Canonical eMule extension compression tag ID (`0x20` = 32).
+pub const TAG_SPECIAL_EMULE_EXT_COMPRESSION: u8 = 0x20;
+/// Canonical eMule extension UDP version tag ID (`0x21` = 33).
+pub const TAG_SPECIAL_EMULE_EXT_UDPVER: u8 = 0x21;
+/// Canonical eMule extension UDP port tag ID (`0x22` = 34).
+pub const TAG_SPECIAL_EMULE_EXT_UDPPORT: u8 = 0x22;
+/// Canonical eMule extension source exchange tag ID (`0x23` = 35).
+pub const TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE: u8 = 0x23;
+/// Canonical eMule extension comments tag ID (`0x24` = 36).
+pub const TAG_SPECIAL_EMULE_EXT_COMMENTS: u8 = 0x24;
+/// Canonical eMule extension extended requests tag ID (`0x25` = 37).
+pub const TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST: u8 = 0x25;
+/// Canonical eMule extension compatible client tag ID (`0x27` = 39).
+pub const TAG_SPECIAL_EMULE_EXT_COMPATIBLECLIENT: u8 = 0x27;
 
 /// Tag name identifier: either a 1-byte special ID or a textual string.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -70,6 +84,13 @@ impl TagName {
                 TAG_SPECIAL_MISCOPTIONS1 | TAG_SPECIAL_EMULE_MISCOPTIONS1 => "misc_options_1".to_string(),
                 TAG_SPECIAL_MISCOPTIONS2 | TAG_SPECIAL_EMULE_MISCOPTIONS2 => "misc_options_2".to_string(),
                 TAG_SPECIAL_UDPOPTIONS => "udp_options".to_string(),
+                TAG_SPECIAL_EMULE_EXT_COMPRESSION => "compression".to_string(),
+                TAG_SPECIAL_EMULE_EXT_UDPVER => "emule_udp_ver".to_string(),
+                TAG_SPECIAL_EMULE_EXT_UDPPORT => "emule_udp_port".to_string(),
+                TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE => "source_exchange".to_string(),
+                TAG_SPECIAL_EMULE_EXT_COMMENTS => "comments".to_string(),
+                TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST => "extended_request".to_string(),
+                TAG_SPECIAL_EMULE_EXT_COMPATIBLECLIENT => "compatible_client".to_string(),
                 other => format!("special_0x{other:02X}"),
             },
             Self::Text(s) => s.clone(),

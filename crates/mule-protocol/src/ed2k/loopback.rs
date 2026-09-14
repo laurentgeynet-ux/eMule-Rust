@@ -1364,7 +1364,12 @@ impl Ed2kLoopbackClient {
             {
                 let msg_opt = self.session.on_packet_received(&raw_packet)?;
                 if let Some(Ed2kMessage::HelloAnswer(answer)) = msg_opt {
-                    let peer = Ed2kPeerInfo::from_hello_answer(&answer);
+                    let mut peer = Ed2kPeerInfo::from_hello_answer(&answer);
+                    if let Some(session_peer) = self.session.peer_info() {
+                        if peer.emule_info.is_none() {
+                            peer.emule_info = session_peer.emule_info.clone();
+                        }
+                    }
                     return Ok(peer);
                 } else if raw_packet.protocol == PR_EMULE {
                     // Extended eMule packet (e.g. OP_EMULEINFO under PR_EMULE 0xC5) received alongside handshake.
@@ -1449,6 +1454,11 @@ impl Ed2kLoopbackClient {
     /// Returns a mutable reference to the underlying session state machine.
     pub fn session_mut(&mut self) -> &mut Ed2kSession {
         &mut self.session
+    }
+
+    /// Returns a reference to the negotiated remote peer info if available.
+    pub fn peer_info(&self) -> Option<&Ed2kPeerInfo> {
+        self.session.peer_info()
     }
 
     /// Sends a raw frame directly over the TCP stream.

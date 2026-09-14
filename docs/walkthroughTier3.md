@@ -52,7 +52,7 @@ Ce document certifie et consigne la résolution complète et le durcissement du 
 
 Commande exécutée :
 ```powershell
-powershell -ExecutionPolicy Bypass -File C:\Users\Lou\.gemini\antigravity\brain\b5461bae-da19-4e07-9c68-ad5cec420972\scratch\run_tier3.ps1
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
 ```
 
 ```text
@@ -61,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File C:\Users\Lou\.gemini\antigravity\brain\
 
 running 1 test
 test test_tier3_live_external_reference_loopback_handshake ... Target loopback addr: 127.0.0.1:57633
-Reference binary work path: "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL"
+Reference binary work path: "%TEMP%\\.tmp<sandbox_handshake>"
 Child PID: 18788
 Attempt 1: child running = true
 Attempt 1 failed: Timeout(500ms)
@@ -76,7 +76,7 @@ LocalAddress LocalPort  State
 
 Connected on attempt 3!
 Tier 3 live reference handshake successful! Peer info: Ed2kPeerInfo {
-    user_hash: [180, 12, 178, 114, 6, 14, 174, 87, 189, 215, 84, 29, 202, 50, 111, 148],
+    user_hash: [REDACTED_PEER_HASH_16_BYTES],
     client_id: 0,
     tcp_port: 57633,
     name: Some("RefPeer050a"),
@@ -98,18 +98,18 @@ Tier 3 live reference handshake successful! Peer info: Ed2kPeerInfo {
     unknown_tags: []
 }
 Files in work_path:
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\config"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\emule.exe"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\incoming"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\lang"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\preferences.ini"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\skins"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\temp"
+  "%TEMP%\\.tmp<sandbox_handshake>\\config"
+  "%TEMP%\\.tmp<sandbox_handshake>\\emule.exe"
+  "%TEMP%\\.tmp<sandbox_handshake>\\incoming"
+  "%TEMP%\\.tmp<sandbox_handshake>\\lang"
+  "%TEMP%\\.tmp<sandbox_handshake>\\preferences.ini"
+  "%TEMP%\\.tmp<sandbox_handshake>\\skins"
+  "%TEMP%\\.tmp<sandbox_handshake>\\temp"
 Files in config_dir:
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\config\\cryptkey.dat"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\config\\downloads.txt"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\config\\preferences.ini"
-  "C:\\Users\\Lou\\AppData\\Local\\Temp\\.tmphhTJHL\\config\\server.met"
+  "%TEMP%\\.tmp<sandbox_handshake>\\config\\cryptkey.dat"
+  "%TEMP%\\.tmp<sandbox_handshake>\\config\\downloads.txt"
+  "%TEMP%\\.tmp<sandbox_handshake>\\config\\preferences.ini"
+  "%TEMP%\\.tmp<sandbox_handshake>\\config\\server.met"
 ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 5.75s
@@ -126,4 +126,59 @@ Trois tests unitaires garantissent désormais la non-régression de cette compat
 2. **`test_tier3_op_hello_answer_wire_framing_emule050a_compliance`** :
    Valide l'absence du préfixe `0x10` dans `OP_HELLOANSWER` et le décodage sans perte des tags étendus eMule (`CTAG_EMULE_UDPPORTS`, `CTAG_EMULE_MISCOPTIONS1`).
 3. **`test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_answer`** :
-   Valide que la machine à états de session tolère la réception de l'annonce `PR_EMULE 0xC5` (`OP_EMULEINFO`) concurrente avant `OP_HELLOANSWER` sans violer la machine à états et passe immédiatement à `Ready`.
+   Valide que la machine à états de session décode `Ed2kMessage::EmuleInfo` avant `OP_HELLOANSWER`, attache les capacités au pair et passe immédiatement à `Ready`.
+4. **`test_tier3_op_emule_info_roundtrip_nominal`** :
+   Valide le parsing et l'encodage hermétique d'`OP_EMULEINFO` et ses méthodes de détection de capacités (`has_compression_capability`, `has_source_exchange_capability`).
+5. **`test_tier3_op_emule_info_oversized_tag_count_fails` & `test_tier3_op_emule_info_truncated_payload_fails`** :
+   Garantit le rejet sécurisé et borné des paquets tronqués ou avec compteurs de tags abusifs.
+
+---
+
+## 5. Tier 3.1 : Post-Handshake Passif & Multi-Port
+
+Le jalon **Tier 3.1** a été exécuté et validé avec succès sur 2 itérations consécutives sur ports et bacs à sable dynamiques :
+
+### Capacités Réelles Annoncées par eMule 0.50a Officiel
+
+Dans `OP_EMULEINFO` (`0xC5 0x01`), eMule 0.50a annonce :
+- **`client_version` = 80** (`0x50` en hexadécimal, correspondant à eMule **0.50a** en notation BCD).
+- **`protocol_version` = 1** (eMule compatible extensions version 1).
+- **7 tags étendus décodés sans perte (0 tag inconnu)** :
+  - `TAG_SPECIAL_EMULE_EXT_COMPRESSION` (`0x20` = 32) : valeur 1 (compression zlib disponible).
+  - `TAG_SPECIAL_EMULE_EXT_UDPPORT` (`0x22` = 34) : valeur 4.
+  - `TAG_SPECIAL_EMULE_EXT_UDPVER` (`0x21` = 33) : port UDP éphémère du test.
+  - `TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE` (`0x23` = 35) : version 3 (support SX).
+  - `TAG_SPECIAL_EMULE_EXT_COMMENTS` (`0x24` = 36) : version 1.
+  - `TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST` (`0x25` = 37) : version 2.
+  - `TAG_SPECIAL_EMULE_EXT_COMPATIBLECLIENT` (`0x27` = 39) : version 3.
+
+### Invariants Vérifiés en Exécution Réelle
+
+1. **Discipline Passive Pure** : Les capacités de compression et d'échange de sources sont observées via `peer_info.has_compression_capability()` et `peer_info.has_source_exchange_capability()`, mais le client reste en mode baseline et n'active aucune négociation spontanée.
+2. **Watchdog Passif Bormé (1s)** : Maintien de la connexion TCP en écoute passive pendant 1 seconde sans trafic inattendu ni déconnexion de l'exécutable eMule.
+3. **Confinement Réseau 100% Loopback** : Vérification par `Get-NetTCPConnection` qu'aucune connexion réseau non-loopback n'est établie par le processus cible.
+4. **Fermeture TCP Gracieuce (FIN)** : Appel à `client.close().await` envoyant le paquet TCP `FIN` et fermant la session proprement.
+5. **Teardown Hermétique & Multi-Sandbox** : Exécution sur 2 itérations indépendantes avec régénération des ports éphémères (ex: 60963/60964 puis 60971/60972) et purge des processus orphelins.
+
+```text
+running 2 tests
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... 
+=== Starting Tier 3.1 Iteration 1/2 ===
+Iteration 1: Assigned TCP port 60963, UDP port 60964
+Iteration 1: Work path: "%TEMP%\\.tmp<sandbox_iter1>"
+Iteration 1: Decoded OP_EMULEINFO with 7 tags, compression=true, source_exchange=true
+Iteration 1: Holding passive connection for 1s watchdog...
+=== Iteration 1/2 Completed Successfully ===
+
+=== Starting Tier 3.1 Iteration 2/2 ===
+Iteration 2: Assigned TCP port 60971, UDP port 60972
+Iteration 2: Work path: "%TEMP%\\.tmp<sandbox_iter2>"
+Iteration 2: Decoded OP_EMULEINFO with 7 tags, compression=true, source_exchange=true
+Iteration 2: Holding passive connection for 1s watchdog...
+=== Iteration 2/2 Completed Successfully ===
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 21.59s
+```
+

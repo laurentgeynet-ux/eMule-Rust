@@ -591,7 +591,12 @@ fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_an
     };
 
     let res1 = session.on_packet_received(&emule_info_pkt).expect("PR_EMULE accepted during handshake");
-    assert!(matches!(res1, Some(Ed2kMessage::Raw(_))), "PR_EMULE decoded as Raw");
+    assert!(matches!(res1, Some(Ed2kMessage::EmuleInfo(_))), "PR_EMULE decoded as EmuleInfo");
+    if let Some(Ed2kMessage::EmuleInfo(ref info)) = res1 {
+        assert_eq!(info.client_version, 60);
+        assert_eq!(info.protocol_version, 1);
+        assert_eq!(info.tags.len(), 0);
+    }
     assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer), "state remains AwaitingHelloAnswer");
 
     // 2. Peer subsequently delivers PR_ED2K (0xE3) / OP_HELLOANSWER (0x4C)
@@ -609,6 +614,9 @@ fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_an
     let res2 = session.on_packet_received(&hello_answer_pkt).expect("OP_HELLOANSWER accepted");
     assert!(matches!(res2, Some(Ed2kMessage::HelloAnswer(_))), "decoded as HelloAnswer");
     assert!(session.is_ready(), "session successfully transitioned to Ready state!");
-    assert_eq!(session.peer_info().expect("peer_info").user_hash, [0x22; 16]);
+    let peer = session.peer_info().expect("peer_info");
+    assert_eq!(peer.user_hash, [0x22; 16]);
+    assert!(peer.emule_info.is_some(), "emule_info must be attached to peer");
+    assert_eq!(peer.emule_info.as_ref().unwrap().client_version, 60);
 }
 
