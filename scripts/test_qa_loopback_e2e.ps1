@@ -44,6 +44,10 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+if ([string]::IsNullOrWhiteSpace($BundleDir)) {
+    $BundleDir = Join-Path $Root "dist\EmuleSion-Qa-Loopback-Windows"
+}
+
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
     $bundleVer = "0.1.2-lab"
     $vJson = Join-Path $BundleDir "version.json"
@@ -54,10 +58,6 @@ if ([string]::IsNullOrWhiteSpace($ZipPath)) {
         } catch {}
     }
     $ZipPath = Join-Path $Root "dist\EmuleSion-v${bundleVer}-qa-loopback-windows-x64.zip"
-}
-
-if ([string]::IsNullOrWhiteSpace($BundleDir)) {
-    $BundleDir = Join-Path $Root "dist\EmuleSion-Qa-Loopback-Windows"
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
