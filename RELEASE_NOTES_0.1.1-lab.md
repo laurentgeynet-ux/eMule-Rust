@@ -49,32 +49,37 @@ Unification et codification des codes d'erreur selon la spécification JSON-RPC 
 
 ---
 
-## 3. Transparence de l'Inventaire du Bundle (21 Fichiers)
+## 3. Transparence de l'Inventaire du Bundle (22 Fichiers)
 
-Dans la version précédente 0.1.0-lab, le fichier d'intégrité `SHA256SUMS.txt` référençait 22 artefacts. Dans la version 0.1.1-lab, le bundle Windows contient exactement **21 artefacts** :
-- **Raison technique** : La chaîne de compilation Flutter Desktop moderne génère désormais son inventaire d'assets exclusivement sous forme binaire (`data/flutter_assets/AssetManifest.bin`). L'ancien fichier texte redondant `data/flutter_assets/AssetManifest.json` n'est plus généré lors des builds propres (`flutter clean`).
-- **Composition vérifiée des 21 artefacts** :
+Le fichier d'intégrité `SHA256SUMS.txt` et le manifeste `version.json` référencent exactement **22 artefacts** assemblés pour le bundle Windows x64 :
+- **Précision technique** : Dans les builds Flutter Desktop modernes, `AssetManifest.bin` remplace l'ancien format texte redondant `AssetManifest.json`, tandis que `native_assets.json` est généré à la racine pour la résolution des assets natifs Flutter, portant le total exact et immuable à 22 fichiers.
+- **Composition vérifiée des 22 artefacts** :
   1. `bin/mule-cli.exe`
   2. `bin/mule-daemon.exe`
   3. `data/app.so`
-  4. `data/icudtl.dat`
-  5. `EmuleSion.exe`
-  6. `flutter_windows.dll`
-  7. `portable.flag`
-  8. `data/flutter_assets/AssetManifest.bin`
-  9. `data/flutter_assets/FontManifest.json`
-  10. `data/flutter_assets/fonts/MaterialIcons-Regular.otf`
-  11. `data/flutter_assets/NativeAssetsManifest.json`
-  12. `data/flutter_assets/NOTICES.Z`
-  13. `data/flutter_assets/packages/cupertino_icons/assets/CupertinoIcons.ttf`
-  14. `data/flutter_assets/shaders/ink_sparkle.frag`
-  15. `data/flutter_assets/shaders/stretch_effect.frag`
-  16. `sbom/flutter.cdx.json`
-  17. `sbom/license-audit.json`
-  18. `sbom/license-audit.md`
-  19. `sbom/rust.cdx.json`
-  20. `sbom/sbom.cdx.json`
-  21. `sbom/windows-bundle.cdx.json`
+  4. `data/flutter_assets/AssetManifest.bin`
+  5. `data/flutter_assets/FontManifest.json`
+  6. `data/flutter_assets/fonts/MaterialIcons-Regular.otf`
+  7. `data/flutter_assets/NativeAssetsManifest.json`
+  8. `data/flutter_assets/NOTICES.Z`
+  9. `data/flutter_assets/packages/cupertino_icons/assets/CupertinoIcons.ttf`
+  10. `data/flutter_assets/shaders/ink_sparkle.frag`
+  11. `data/flutter_assets/shaders/stretch_effect.frag`
+  12. `data/icudtl.dat`
+  13. `EmuleSion.exe`
+  14. `flutter_windows.dll`
+  15. `native_assets.json`
+  16. `portable.flag`
+  17. `sbom/flutter.cdx.json`
+  18. `sbom/license-audit.json`
+  19. `sbom/license-audit.md`
+  20. `sbom/rust.cdx.json`
+  21. `sbom/sbom.cdx.json`
+  22. `sbom/windows-bundle.cdx.json`
+
+- **Archive QA Scellée** : `EmuleSion-v0.1.1-lab-windows-x64.zip` (14 702 121 octets)
+  - Empreinte SHA-256 : `e8cb2c7ef567b5e684e0181ad08123eaed42e14213b633ec6ba1e8604c705602`
+  - Tag Git : `v0.1.1-lab` (commit `b44157d55d54bd9c2c0068f78fd728406a3eb814`)
 
 ---
 
@@ -135,7 +140,7 @@ Total Rust              : 204 tests (nominal) / 215 tests (lab-tools), 0 échec
 
 Flutter Desktop         :  49 tests réussis (+18 nouveaux tests couverture lab & diagnostic), 0 échec
 
-Matrice Post-Packaging  : 6/6 tests réussis (espaces/unicode, port conflict, verrou exclusif, crash recovery, relocalisation, read-only).
+Matrice Post-Packaging  : 7/7 tests réussis (espaces/unicode, port conflict, verrou exclusif, crash recovery, relocalisation, read-only, portable auto-résolution).
 Diagnostic Redaction    : 100% garanti (aucun auth.token ni clé privée dans le presse-papier).
 Politique d'Exécution   : 100% RemoteSigned, 0% Bypass.
 ```
