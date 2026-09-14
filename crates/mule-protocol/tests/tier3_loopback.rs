@@ -13,9 +13,10 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use md4::{Digest, Md4};
 use mule_protocol::ed2k::{
-    Ed2kDownloadSequencer, Ed2kEncoder, Ed2kLoopbackClient, Ed2kSequencerError,
-    OP_REQUESTPARTS_EMULE, PR_ED2K,
+    Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kLoopbackClient, Ed2kSendingPart,
+    Ed2kSequencerError, OP_REQUESTPARTS_EMULE, PR_ED2K,
 };
 use tier3_external_reference::{
     Tier3BinaryValidator, Tier3DivergenceReport, Tier3Environment, Tier3Harness, Tier3HarnessError,
@@ -854,4 +855,250 @@ async fn test_tier3_live_download_sequencing_without_payload() {
     assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
 
     println!("Tier 3.3: Download sequencing and block request planning without payload successfully verified against eMule 0.50a!");
+}
+
+/// Tier 3.4 Live Reference Integration Test:
+/// Single bounded uncompressed block transfer from official eMule 0.50a on loopback.
+///
+/// Invariants verified:
+/// 1. Sealed fixture `tier3_status_fixture_9728001.bin` (9,728,001 bytes, hash `695b81b1727666818988524bd7fc823c`)
+///    generated in the ephemeral incoming directory.
+/// 2. Confinement to 127.0.0.1 on dynamic ephemeral loopback ports.
+/// 3. Handshake completed cleanly (OP_EMULEINFO and OP_HELLOANSWER).
+/// 4. File status queried via OP_SETREQFILEID_EMULE (0x4F) -> receives OP_FILESTATUS (0x50) with part_count = 0.
+/// 5. Single block request emitted: OP_REQUESTPARTS_EMULE (0x47) for [0, 184_320) with inactive slots zeroed.
+/// 6. Response received: OP_SENDINGPART (0x46) under PR_ED2K (0xE3).
+/// 7. Data validation:
+///    - File hash matches sealed fixture hash.
+///    - Start offset = 0, End offset = 184_320, Data length = 184_320 bytes.
+///    - Byte-by-byte comparison against fixture prefix passes 100%.
+///    - Local MD4 oracle check on received block passes 100%.
+/// 8. Storage assembly: Ed2kBlockSink receives the block and tracks [0, 184_320).
+/// 9. Strict passive discipline: no further packets sent, pending block count = 0.
+/// 10. Graceful TCP FIN teardown (client.close()).
+/// 11. Confinement scan: 0 non-loopback TCP connections.
+/// 12. RAII process and sandbox cleanup.
+#[tokio::test]
+#[ignore = "Tier 3 external reference orchestration requires pinned reference binary via EMULE_REFERENCE_BIN"]
+async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
+    let bin_path_var = match std::env::var("EMULE_REFERENCE_BIN") {
+        Ok(val) if !val.trim().is_empty() => PathBuf::from(val.trim()),
+        _ => {
+            println!("SKIPPED: Tier 3.4 test requires EMULE_REFERENCE_BIN environment variable.");
+            return;
+        }
+    };
+
+    let expected_hash = std::env::var("EMULE_REFERENCE_SHA256").ok();
+    let test_port = allocate_ephemeral_loopback_port();
+    let test_udp_port = allocate_ephemeral_loopback_port();
+
+    let mut harness = Tier3Harness::new(
+        bin_path_var,
+        expected_hash.as_deref(),
+        test_port,
+        test_udp_port,
+    )
+    .expect("failed to initialize Tier 3.4 harness");
+
+    harness.assert_loopback_confinement();
+
+    // 1. Create deterministic fixture in incoming directory (9,728,001 bytes)
+    let fixture_len = 9_728_001u64;
+    let fixture_path = harness
+        .environment()
+        .create_deterministic_fixture("tier3_status_fixture_9728001.bin", fixture_len as usize)
+        .expect("failed to create deterministic fixture");
+    assert!(fixture_path.exists());
+    assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len);
+
+    let sealed_hash: [u8; 16] = [
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
+        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+    ];
+
+    // Read the reference 184,320-byte prefix from the generated fixture
+    let fixture_bytes = std::fs::read(&fixture_path).expect("read fixture file");
+    let expected_prefix = &fixture_bytes[0..184_320];
+
+    // 2. Spawn reference process
+    harness
+        .spawn_reference_process(&[])
+        .expect("failed to spawn reference process");
+
+    let pid = harness.child_pid().unwrap_or(0);
+    assert!(pid > 0);
+    assert!(harness.is_child_running());
+
+    let user_hash = [
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
+        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+    ];
+    let client_tcp_port = allocate_ephemeral_loopback_port();
+
+    // 3. Connect and complete handshake
+    let mut connect_res = None;
+    for attempt in 1..=10 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if !harness.is_child_running() {
+            panic!("Reference process exited unexpectedly on attempt {attempt}");
+        }
+        match Ed2kLoopbackClient::connect_and_handshake(
+            harness.loopback_addr(),
+            user_hash,
+            0,
+            client_tcp_port,
+            Vec::new(),
+            0,
+            0,
+            Duration::from_secs(3),
+        )
+        .await
+        {
+            Ok(res) => {
+                connect_res = Some(res);
+                break;
+            }
+            Err(e) => {
+                if attempt == 10 {
+                    panic!("Failed to connect after 10 attempts: {e:?}");
+                }
+            }
+        }
+    }
+
+    let (mut client, _peer_info) = connect_res.expect("connected");
+    assert!(client.session().is_ready());
+
+    // Give eMule a moment to settle hashing
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // 4. Request file status for sealed fixture hash
+    let mut file_status = None;
+    for attempt in 1..=5 {
+        match client.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+            Ok(status) => {
+                file_status = Some(status);
+                break;
+            }
+            Err(mule_protocol::ed2k::Ed2kSessionError::FileNotFound(_)) => {
+                println!("Tier 3.4: File not yet indexed by eMule, retry {attempt}/5 in 1s...");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Err(e) => {
+                panic!("Tier 3.4: Unexpected error requesting file status: {e:?}");
+            }
+        }
+    }
+
+    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    assert_eq!(status.file_hash, sealed_hash);
+    assert_eq!(status.part_count, 0, "complete source reports part_count = 0");
+    assert!(status.is_complete());
+
+    // 5. Tier 3.4: Request exactly ONE uncompressed block [0, 184_320)
+    let sequencer = Ed2kDownloadSequencer::new(sealed_hash, fixture_len, status)
+        .expect("sequencer initialization succeeds");
+    let part0_blocks = sequencer.plan_part_blocks(0).expect("plan part 0");
+    let target_block = part0_blocks[0];
+    assert_eq!(target_block.start, 0);
+    assert_eq!(target_block.end, 184_320);
+
+    // Enter upload queue via OP_STARTUPLOADREQ (0x54) and wait for OP_ACCEPTUPLOADREQ (0x55)
+    println!("Tier 3.4: Requesting upload slot via OP_STARTUPLOADREQ (0x54)...");
+    client
+        .request_upload_slot(sealed_hash, Duration::from_secs(5))
+        .await
+        .expect("eMule 0.50a must grant upload slot via OP_ACCEPTUPLOADREQ (0x55)");
+    println!("Tier 3.4: OP_ACCEPTUPLOADREQ (0x55) confirmed! Upload slot granted.");
+
+    // Transmit single block request for [0, 184_320)
+    println!("Tier 3.4: Transmitting single OP_REQUESTPARTS_EMULE (0x47) for [0, 184_320)...");
+    client
+        .send_block_request(sealed_hash, 0, 184_320, fixture_len)
+        .await
+        .expect("failed to transmit block request");
+    assert_eq!(client.session().snapshot().pending_block_count, 1);
+
+    // 6. Receive OP_SENDINGPART (0x46) chunks into Ed2kBlockSink
+    let mut sink = Ed2kBlockSink::new(fixture_len);
+    println!("Tier 3.4: Awaiting OP_SENDINGPART (0x46) chunks for [0, 184_320)...");
+    let mut chunk_count = 0;
+    while sink.received_bytes_count() < 184_320 {
+        let part = client
+            .receive_sending_part(Duration::from_secs(5))
+            .await
+            .expect("must receive OP_SENDINGPART from eMule 0.50a");
+        chunk_count += 1;
+        println!(
+            "Tier 3.4: Received OP_SENDINGPART chunk #{chunk_count}: [{}..{}), {} bytes (total: {}/184,320)",
+            part.start_offset, part.end_offset, part.data.len(),
+            sink.received_bytes_count() + part.data.len()
+        );
+
+        assert_eq!(part.file_hash, sealed_hash, "chunk file hash must match fixture");
+        let written_range = sink.write_block(&sequencer, &part).expect("write chunk to sink");
+        assert_eq!(written_range.start, part.start_offset);
+        assert_eq!(written_range.end, part.end_offset);
+    }
+
+    // 7. Ground-truth assertions on received block
+    assert_eq!(sink.received_bytes_count(), 184_320, "exactly 184,320 bytes assembled");
+    assert!(sink.has_range(0, 184_320), "block sink reports full range [0, 184_320) covered");
+    let assembled_block = &sink.buffer()[0..184_320];
+
+    // 8. Byte-by-byte comparison against fixture prefix
+    assert_eq!(
+        assembled_block,
+        expected_prefix,
+        "transferred payload must match fixture prefix byte-by-byte"
+    );
+
+    // 9. Local MD4 oracle check
+    let mut hasher = Md4::new();
+    hasher.update(assembled_block);
+    let block_md4: [u8; 16] = hasher.finalize().into();
+
+    let mut expected_hasher = Md4::new();
+    expected_hasher.update(expected_prefix);
+    let expected_md4: [u8; 16] = expected_hasher.finalize().into();
+
+    assert_eq!(block_md4, expected_md4, "local block MD4 oracle must match");
+    println!("Tier 3.4: Block MD4 Oracle: {}", hex::encode(block_md4));
+
+    // 10. Duplicate write rejection in sink
+    let dup_part = Ed2kSendingPart {
+        file_hash: sealed_hash,
+        start_offset: 0,
+        end_offset: 10240,
+        data: bytes::Bytes::copy_from_slice(&assembled_block[0..10240]),
+    };
+    let dup_err = sink.write_block(&sequencer, &dup_part).unwrap_err();
+    assert!(matches!(dup_err, Ed2kSequencerError::DuplicateBlock { .. }));
+
+    // 11. STRICT PASSIVE DISCIPLINE: verify 0 additional requests and clean session state
+    assert_eq!(client.session().snapshot().pending_block_count, 0);
+    assert_eq!(client.session().snapshot().pending_status_count, 0);
+    assert!(client.session().is_ready());
+
+    // 12. Confinement scan: 0 non-loopback connections
+    let check_conn = std::process::Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(format!("Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | Where-Object {{ $_.RemoteAddress -ne '0.0.0.0' -and $_.RemoteAddress -ne '127.0.0.1' -and $_.RemoteAddress -ne '::' -and $_.RemoteAddress -ne '::1' }} | Measure-Object | Select-Object -ExpandProperty Count"))
+        .output();
+    if let Ok(out) = check_conn {
+        let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let non_loopback_count: usize = count_str.parse().unwrap_or(0);
+        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+    }
+
+    // 13. Graceful TCP FIN teardown
+    client.close().await;
+
+    // 14. Hermetic process teardown
+    harness.shutdown();
+    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+
+    println!("Tier 3.4: Single bounded block transfer successfully verified against eMule 0.50a!");
 }

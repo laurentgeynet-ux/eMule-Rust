@@ -31,9 +31,10 @@ pub use encoder::Ed2kEncoder;
 pub use error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 pub use limits::Ed2kLimits;
 pub use opcodes::{
-    OP_EMULEINFO, OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO,
-    OP_HELLOANSWER, OP_HELLO_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART,
-    OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
+    OP_ACCEPTUPLOADREQ, OP_COMPRESSEDPART, OP_EMULEINFO, OP_EMULE_INFO, OP_FILEREQANSNOFILE,
+    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_QUEUERANKING,
+    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
+    OP_STARTUPLOADREQ,
 };
 pub use packet::{
     expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
@@ -44,7 +45,7 @@ pub use peer_info::Ed2kPeerInfo;
 pub use profile::Ed2kCompatibilityProfile;
 pub use protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
 pub use sequencer::{
-    Ed2kDownloadSequencer, Ed2kSequencerError, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
+    Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kSequencerError, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
     MAX_REQUEST_RANGES_PER_PACKET,
 };
 pub use session::{

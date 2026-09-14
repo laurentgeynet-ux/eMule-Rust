@@ -82,6 +82,10 @@ pub enum Ed2kSessionError {
     #[error("Duplicate or overlapping block request: {0}")]
     DuplicateBlockRequest(String),
 
+    /// A duplicate block chunk was received.
+    #[error("Duplicate block received: {0}")]
+    DuplicateBlock(String),
+
     /// In-flight block requests exceeded the maximum allowed capacity.
     #[error("Too many pending block requests (capacity: {0})")]
     TooManyPendingBlockRequests(usize),
@@ -324,6 +328,8 @@ pub struct PendingBlockRequest {
     pub requested_at: Instant,
     /// Retry attempt counter.
     pub attempt: u16,
+    /// Byte ranges received so far for this request.
+    pub received_ranges: Vec<(u64, u64)>,
 }
 
 /// Bounded tracking structure for pending `OP_REQUESTPARTS` exchanges.
@@ -410,28 +416,92 @@ impl BlockRequestTracker {
                 key,
                 requested_at: now,
                 attempt: 1,
+                received_ranges: Vec::new(),
             },
         );
 
         Ok(())
     }
 
-    /// Validates an incoming response and removes the pending entry.
+    /// Validates an incoming chunk response and removes the pending entry when fully received.
     pub fn validate_and_remove(
         &mut self,
         file_hash: &[u8; 16],
         start: u64,
         end: u64,
     ) -> Result<PendingBlockRequest, Ed2kSessionError> {
-        let key = BlockRequestKey::new(*file_hash, start, end);
-        self.pending.remove(&key).ok_or_else(|| {
+        if start >= end {
+            return Err(Ed2kSessionError::UnsolicitedBlock(format!(
+                "{}:{}-{}",
+                hex::encode(file_hash),
+                start,
+                end
+            )));
+        }
+
+        let matching_key = self
+            .pending
+            .keys()
+            .find(|k| {
+                &k.file_hash == file_hash && start >= k.start && end <= k.end
+            })
+            .cloned();
+
+        let key = matching_key.ok_or_else(|| {
             Ed2kSessionError::UnsolicitedBlock(format!(
                 "{}:{}-{}",
                 hex::encode(file_hash),
                 start,
                 end
             ))
-        })
+        })?;
+
+        let is_complete = {
+            let req = match self.pending.get_mut(&key) {
+                Some(r) => r,
+                None => {
+                    return Err(Ed2kSessionError::UnsolicitedBlock(format!(
+                        "{}:{}-{}",
+                        hex::encode(file_hash),
+                        start,
+                        end
+                    )));
+                }
+            };
+
+            if req.received_ranges.iter().any(|&(s, e)| s == start && e == end) {
+                return Err(Ed2kSessionError::DuplicateBlock(format!(
+                    "{}:{}-{}",
+                    hex::encode(file_hash),
+                    start,
+                    end
+                )));
+            }
+
+            req.received_ranges.push((start, end));
+            let total_received: u64 = req.received_ranges.iter().map(|&(s, e)| e - s).sum();
+            total_received >= key.len()
+        };
+
+        if is_complete {
+            self.pending.remove(&key).ok_or_else(|| {
+                Ed2kSessionError::UnsolicitedBlock(format!(
+                    "{}:{}-{}",
+                    hex::encode(file_hash),
+                    start,
+                    end
+                ))
+            })
+        } else {
+            self.pending.get(&key).cloned().ok_or_else(|| {
+                Ed2kSessionError::UnsolicitedBlock(format!(
+                    "{}:{}-{}",
+                    hex::encode(file_hash),
+                    start,
+                    end
+                ))
+            })
+        }
     }
 
     /// Removes and returns all requests that exceeded the timeout threshold.

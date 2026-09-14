@@ -346,3 +346,86 @@ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; fini
 | **Rejet Fichier Inconnu** | Réception d'`OP_FILEREQANSNOFILE` (`0x48`) $\rightarrow$ refus strict de toute planification de bloc. |
 | **Confinement Réseau** | Vérification `Get-NetTCPConnection` confirmant 0 socket hors loopback. |
 
+---
+
+## 8. Tier 3.4 : Transfert Réel d'un Premier Bloc Non Compressé Biparti (Single Bounded Block Transfer)
+
+Le jalon **Tier 3.4** accomplit le premier échange réel de charge utile (payload de données) entre l'exécutable officiel **eMule 0.50a** et notre client **Emule-Sion**, dans des conditions strictement bornées et hermétiques :
+- Fichier synthétique scellé : `tier3_status_fixture_9728001.bin` ($9\,728\,001\text{ octets}$, hash eD2K scellé : `695b81b1727666818988524bd7fc823c`).
+- Requête délimitée à un unique bloc standard : Part 0 Bloc 0, soit la plage `[0, 184_320)` ($184\,320\text{ octets}$).
+- Protocole : `PR_ED2K` (`0xE3`), paquets `OP_SENDINGPART` (`0x46`).
+
+### Découvertes Protocolaires Officielles eMule 0.50a
+
+1. **Prérequis de la file d'attente d'upload (`UploadQueue`)** :
+   Dans l'implémentation C++ d'eMule (`UploadQueue.cpp` et `ClientTCPSocket.cpp`), un client demandeur ne peut pas émettre directement `OP_REQUESTPARTS` sans avoir préalablement obtenu un slot d'upload (`US_UPLOADING`).
+   - Le client transmet d'abord `OP_STARTUPLOADREQ` (`0x54`) avec le hash du fichier (17 octets).
+   - eMule alloue le slot disponible et répond par `OP_ACCEPTUPLOADREQ` (`0x55`).
+   - Une fois accepté, le client transmet sa requête de bloc `OP_REQUESTPARTS_EMULE` (`0x47`).
+
+2. **Fragmentation des trames en tranches de 10 240 octets** :
+   eMule 0.50a n'émet pas les $184\,320\text{ octets}$ en un seul paquet géant, mais découpe la transmission en tranches réseau de $10\,240\text{ octets}$ (`EMULE_DATA_BUFFER` = 10 KB) :
+   $$\frac{184\,320}{10\,240} = 18\text{ tranches consécutives de }10\,240\text{ octets}$$
+   Chaque tranche est encapsulée dans un paquet `OP_SENDINGPART` (`0x46`) avec ses offsets propres : `[0..10240)`, `[10240..20480)`, ..., `[174080..184320)`.
+
+3. **Assemblage et Détection de Doublons (`Ed2kBlockSink`)** :
+   Le nouveau récepteur mémoire `Ed2kBlockSink` alloue un tampon pré-dimensionné à la taille exacte du fichier ($9\,728\,001\text{ octets}$), valide chaque tranche via le séquenceur, refuse tout chevauchement ou doublon (`DuplicateBlock`), et certifie la couverture complète via `is_range_covered(0, 184_320)`.
+
+### Traces Réelles Validées contre eMule 0.50a Officiel
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 5 tests
+test test_tier3_live_download_sequencing_without_payload ... Tier 3.3: Download sequencing and block request planning without payload successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!
+ok
+test test_tier3_live_passive_post_handshake_multi_port_and_teardown ... ok
+test test_tier3_live_single_uncompressed_block_transfer_from_emule050a ... 
+Tier 3.4: Requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.4: OP_ACCEPTUPLOADREQ (0x55) confirmed! Upload slot granted.
+Tier 3.4: Transmitting single OP_REQUESTPARTS_EMULE (0x47) for [0, 184_320)...
+Tier 3.4: Awaiting OP_SENDINGPART (0x46) chunks for [0, 184_320)...
+Tier 3.4: Received OP_SENDINGPART chunk #1: [0..10240), 10240 bytes (total: 10240/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #2: [10240..20480), 10240 bytes (total: 20480/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #3: [20480..30720), 10240 bytes (total: 30720/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #4: [30720..40960), 10240 bytes (total: 40960/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #5: [40960..51200), 10240 bytes (total: 51200/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #6: [51200..61440), 10240 bytes (total: 61440/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #7: [61440..71680), 10240 bytes (total: 71680/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #8: [71680..81920), 10240 bytes (total: 81920/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #9: [81920..92160), 10240 bytes (total: 92160/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #10: [92160..102400), 10240 bytes (total: 102400/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #11: [102400..112640), 10240 bytes (total: 112640/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #12: [112640..122880), 10240 bytes (total: 122880/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #13: [122880..133120), 10240 bytes (total: 133120/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #14: [133120..143360), 10240 bytes (total: 143360/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #15: [143360..153600), 10240 bytes (total: 153600/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #16: [153600..163840), 10240 bytes (total: 163840/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #17: [163840..174080), 10240 bytes (total: 174080/184,320)
+Tier 3.4: Received OP_SENDINGPART chunk #18: [174080..184320), 10240 bytes (total: 184320/184,320)
+Tier 3.4: Block MD4 Oracle: 1d4196d9f9fa78d00b59ead840171f15
+Tier 3.4: Single bounded block transfer successfully verified against eMule 0.50a!
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 44.19s
+```
+
+### Invariants et Périmètre Validés
+
+| Domaine | Invariant Vérifié |
+| :--- | :--- |
+| **Entrée en File d'Upload** | Émission d'`OP_STARTUPLOADREQ` (`0x54`), réception et validation d'`OP_ACCEPTUPLOADREQ` (`0x55`) par eMule 0.50a. |
+| **Requête Unique** | Une seule requête `OP_REQUESTPARTS_EMULE` (`0x47`) pour le bloc `[0, 184_320)`. Invariants `pending_block_count == 1`. |
+| **Réception & Découpage** | 18 tranches consécutives de 10 240 octets reçues sous `OP_SENDINGPART` (`0x46`), totalisant $184\,320\text{ octets}$. |
+| **Conformité Byte-à-Byte** | Le bloc assemblé correspond à 100% au préfixe du fichier synthétique de test (`tier3_status_fixture_9728001.bin`). |
+| **Oracle MD4 Local** | L'oracle MD4 sur le bloc reçu produit `1d4196d9f9fa78d00b59ead840171f15`, identique à l'oracle sur le préfixe de référence. |
+| **Rejet de Doublon** | Toute tentative de réécriture dans `Ed2kBlockSink` est strictement rejetée avec `DuplicateBlock`. |
+| **Discipline Passive Absolue** | Aucun bloc supplémentaire demandé, `pending_block_count == 0` à la fin du transfert. |
+| **Confinement Réseau** | Scan `Get-NetTCPConnection` certifiant 0 socket en dehors de `127.0.0.1`. |
+| **Fermeture Propre** | Envoi de TCP FIN (`client.close().await`) et arrêt propre du processus eMule. |
+

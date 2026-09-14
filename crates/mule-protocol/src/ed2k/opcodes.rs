@@ -66,6 +66,9 @@ pub const OP_REQFILENAME: u8 = 0x58;
 /// Filename response (`0x59`).
 pub const OP_REQFILENAME_ANSWER: u8 = 0x59;
 
+/// Queue ranking response in upload queue (`0x60`).
+pub const OP_QUEUERANKING: u8 = 0x60;
+
 // ---------------------------------------------------------------------------
 // Extended eMule Opcodes (Protocol 0xC5)
 // ---------------------------------------------------------------------------

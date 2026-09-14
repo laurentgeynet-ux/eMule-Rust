@@ -16,8 +16,8 @@ use tokio::time::timeout;
 use super::decoder::Ed2kDecoder;
 use super::encoder::Ed2kEncoder;
 use super::opcodes::{
-    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
-    OP_SENDINGPART, OP_SETREQFILEID_EMULE,
+    OP_ACCEPTUPLOADREQ, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_REQUESTPARTS,
+    OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE, OP_STARTUPLOADREQ,
 };
 use super::packet::{
     Ed2kFileStatus, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kSendingPart, PartAvailabilityMask,
@@ -1567,6 +1567,80 @@ impl Ed2kLoopbackClient {
         Ok(())
     }
 
+    /// Sends an `OP_STARTUPLOADREQ` (`0x54`) to enter the upload queue for a file.
+    pub async fn send_start_upload_request(
+        &mut self,
+        file_hash: [u8; 16],
+    ) -> Result<(), Ed2kSessionError> {
+        let packet = RawPacket::with_vec(PR_ED2K, OP_STARTUPLOADREQ, file_hash.to_vec());
+        let wire_bytes = self
+            .codec
+            .encode_to_bytes(&packet)
+            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
+        self.stream
+            .write_all(&wire_bytes)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send start upload request: {e}")))?;
+        Ok(())
+    }
+
+    /// Reads the next incoming packet from the stream.
+    pub async fn read_next_packet(
+        &mut self,
+        timeout_duration: Duration,
+    ) -> Result<RawPacket, Ed2kSessionError> {
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        loop {
+            if let Some(packet) = self
+                .codec
+                .decode(&mut self.read_buf)
+                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
+            {
+                return Ok(packet);
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(Ed2kSessionError::Timeout(timeout_duration));
+            }
+
+            let mut tmp = [0u8; 8192];
+            let read_future = self.stream.read(&mut tmp);
+            let n = match timeout(remaining, read_future).await {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => return Err(Ed2kSessionError::Io(format!("Socket read error: {e}"))),
+                Err(_) => return Err(Ed2kSessionError::Timeout(timeout_duration)),
+            };
+
+            if n == 0 {
+                return Err(Ed2kSessionError::Io("Connection closed by peer".to_string()));
+            }
+
+            self.read_buf.extend_from_slice(&tmp[..n]);
+        }
+    }
+
+    /// Requests entry into the remote peer's upload queue and awaits upload slot acceptance (`OP_ACCEPTUPLOADREQ` 0x55).
+    pub async fn request_upload_slot(
+        &mut self,
+        file_hash: [u8; 16],
+        timeout_duration: Duration,
+    ) -> Result<(), Ed2kSessionError> {
+        self.send_start_upload_request(file_hash).await?;
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(Ed2kSessionError::Timeout(timeout_duration));
+            }
+            let pkt = self.read_next_packet(remaining).await?;
+            if pkt.opcode == OP_ACCEPTUPLOADREQ {
+                return Ok(());
+            }
+            // Other packets like OP_QUEUERANKING or extended info can be received while waiting in queue.
+        }
+    }
+
     /// Waits for an incoming `OP_SENDINGPART` response within timeout.
     pub async fn receive_sending_part(
         &mut self,
@@ -1582,6 +1656,9 @@ impl Ed2kLoopbackClient {
                 let msg_opt = self.session.on_packet_received(&raw_packet)?;
                 if let Some(Ed2kMessage::SendingPart(part)) = msg_opt {
                     return Ok(part);
+                } else if raw_packet.protocol == PR_EMULE {
+                    // Extended eMule packet (ping, etc.) received alongside transfer.
+                    continue;
                 } else {
                     return Err(Ed2kSessionError::UnexpectedMessageInState {
                         state: self.session.state.name(),

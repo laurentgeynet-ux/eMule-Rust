@@ -10,12 +10,16 @@
 //! - Overflow and cross-part boundary violation rejections.
 //! - Local wire frame construction for OP_REQUESTPARTS_EMULE (0x47) without transmission.
 
+use bytes::Bytes;
 use mule_protocol::ed2k::{
-    Ed2kBlockRange, Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatus,
-    Ed2kMessage, Ed2kSequencerError, Ed2kSessionError, PartAvailabilityMask,
-    ED2K_BLOCK_SIZE, ED2K_PART_SIZE, MAX_REQUEST_RANGES_PER_PACKET,
-    OP_REQUESTPARTS_EMULE, PR_ED2K,
+    Ed2kBlockRange, Ed2kBlockSink, Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kDownloadSequencer,
+    Ed2kEncoder, Ed2kErrorKind, Ed2kFileStatus, Ed2kMessage, Ed2kSendingPart, Ed2kSequencerError,
+    Ed2kSession, Ed2kSessionError, PartAvailabilityMask, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
+    MAX_REQUEST_RANGES_PER_PACKET, OP_COMPRESSEDPART, OP_REQUESTPARTS_EMULE, OP_SENDINGPART,
+    PR_ED2K, PR_EMULE_COMPRESSED,
 };
+use mule_protocol::framing::RawPacket;
+use mule_protocol::PacketCodec;
 
 fn sample_hash() -> [u8; 16] {
     [
@@ -339,4 +343,330 @@ fn test_sequencer_wire_framing_emule050a() {
     // 5. Empty ranges rejection
     let err_empty_ranges = seq.build_request_packet(&[], &encoder).unwrap_err();
     assert!(matches!(err_empty_ranges, Ed2kSequencerError::EmptyRanges));
+}
+
+// ---------------------------------------------------------------------------
+// Tier 3.4 Hermetic Tests: Single Bounded Block Wire Framing & Validation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_tier3_requestparts_emule_single_range_wire_framing() {
+    let hash = sample_hash();
+    let file_size = 9_728_001u64;
+
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).expect("valid sequencer");
+
+    let range0 = Ed2kBlockRange::new(0, 184_320);
+    let encoder = Ed2kEncoder::new(); // Emule050a profile by default
+
+    let pkt = seq
+        .build_request_packet(&[range0], &encoder)
+        .expect("encode single range request packet");
+
+    // 1. Wire assertions
+    assert_eq!(pkt.protocol, PR_ED2K);
+    assert_eq!(pkt.opcode, OP_REQUESTPARTS_EMULE); // 0x47
+    assert_eq!(pkt.payload.len(), 40, "OP_REQUESTPARTS_EMULE payload is exactly 40 bytes");
+
+    let frame = PacketCodec::new().encode_to_bytes(&pkt).expect("encode frame");
+    assert_eq!(frame.len(), 46, "1 (proto) + 4 (len) + 1 (opcode) + 40 (payload) = 46 bytes");
+    assert_eq!(frame[0], PR_ED2K);
+    assert_eq!(&frame[1..5], &41u32.to_le_bytes(), "4-byte LE length must be 41");
+    assert_eq!(frame[5], OP_REQUESTPARTS_EMULE);
+
+    // 2. Payload assertions
+    assert_eq!(&pkt.payload[0..16], &hash, "16-byte file hash must match fixture");
+    // Start offsets: range0 = 0, range1 = 0 (inactive), range2 = 0 (inactive)
+    assert_eq!(&pkt.payload[16..20], &0u32.to_le_bytes(), "start 0 must be 0");
+    assert_eq!(&pkt.payload[20..24], &0u32.to_le_bytes(), "start 1 (inactive) must be 0");
+    assert_eq!(&pkt.payload[24..28], &0u32.to_le_bytes(), "start 2 (inactive) must be 0");
+    // End offsets: range0 = 184_320, range1 = 0 (inactive), range2 = 0 (inactive)
+    assert_eq!(&pkt.payload[28..32], &184_320u32.to_le_bytes(), "end 0 must be 184,320");
+    assert_eq!(&pkt.payload[32..36], &0u32.to_le_bytes(), "end 1 (inactive) must be 0");
+    assert_eq!(&pkt.payload[36..40], &0u32.to_le_bytes(), "end 2 (inactive) must be 0");
+
+    // 3. Mirror decode under Emule050a profile
+    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
+    let decoded = decoder.decode_raw_packet(&pkt).expect("mirror decode succeeds");
+    match decoded {
+        Ed2kMessage::RequestParts(req) => {
+            assert_eq!(req.file_hash, hash);
+            assert_eq!(req.ranges.len(), 1, "inactive ranges are pruned during decoding");
+            assert_eq!(req.ranges[0], range0);
+        }
+        other => panic!("expected RequestParts, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_tier3_sendingpart_wire_framing_first_block() {
+    let hash = sample_hash();
+    let file_size = 9_728_001u64;
+
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).expect("valid sequencer");
+
+    let block_len = ED2K_BLOCK_SIZE; // 184,320 bytes
+    let block_data = Bytes::from(vec![0xAA; block_len]);
+
+    let part = Ed2kSendingPart {
+        file_hash: hash,
+        start_offset: 0,
+        end_offset: 184_320,
+        data: block_data.clone(),
+    };
+
+    let encoder = Ed2kEncoder::new();
+    let pkt = encoder.encode_sending_part(&part).expect("encode sending part");
+
+    // 1. Frame assertions
+    assert_eq!(pkt.protocol, PR_ED2K);
+    assert_eq!(pkt.opcode, OP_SENDINGPART); // 0x46
+    assert_eq!(pkt.payload.len(), 24 + block_len, "header 24 bytes + 184,320 data bytes = 184,344 bytes");
+
+    let frame = PacketCodec::new().encode_to_bytes(&pkt).expect("encode frame");
+    let expected_frame_len = 1 + 4 + 1 + 24 + block_len; // 184,350 bytes
+    assert_eq!(frame.len(), expected_frame_len);
+    assert_eq!(frame[0], PR_ED2K);
+    let payload_and_opcode_len = (1 + 24 + block_len) as u32;
+    assert_eq!(&frame[1..5], &payload_and_opcode_len.to_le_bytes());
+    assert_eq!(frame[5], OP_SENDINGPART);
+
+    // 2. Decode via Ed2kDecoder
+    let decoder = Ed2kDecoder::new();
+    let decoded = decoder
+        .decode_sending_part(PR_ED2K, OP_SENDINGPART, &pkt.payload, 0)
+        .expect("decode sending part");
+    assert_eq!(decoded.file_hash, hash);
+    assert_eq!(decoded.start_offset, 0);
+    assert_eq!(decoded.end_offset, 184_320);
+    assert_eq!(decoded.data.len(), block_len);
+    assert_eq!(decoded.data, block_data);
+
+    // 3. Sequencer validation
+    let range = seq.validate_sending_part(&decoded).expect("valid sending part");
+    assert_eq!(range.start, 0);
+    assert_eq!(range.end, 184_320);
+
+    // 4. Rejection: Truncated header (< 24 bytes)
+    let err_trunc_hdr = decoder
+        .decode_sending_part(PR_ED2K, OP_SENDINGPART, &pkt.payload[..20], 0)
+        .unwrap_err();
+    assert!(matches!(err_trunc_hdr.kind, Ed2kErrorKind::UnexpectedEof { .. }));
+
+    // 5. Rejection: Truncated payload (< 184,320 bytes)
+    let err_trunc_payload = decoder
+        .decode_sending_part(PR_ED2K, OP_SENDINGPART, &pkt.payload[..pkt.payload.len() - 10], 0)
+        .unwrap_err();
+    assert!(matches!(err_trunc_payload.kind, Ed2kErrorKind::BlockPayloadMismatch { expected: 184_320, actual: 184_310 }));
+
+    // 6. Rejection: Superfluous bytes (> 184,320 bytes)
+    let mut superfluous_payload = pkt.payload.to_vec();
+    superfluous_payload.extend_from_slice(&[0xFF; 10]);
+    let err_superfluous = decoder
+        .decode_sending_part(PR_ED2K, OP_SENDINGPART, &superfluous_payload, 0)
+        .unwrap_err();
+    assert!(matches!(err_superfluous.kind, Ed2kErrorKind::BlockPayloadMismatch { expected: 184_320, actual: 184_330 }));
+
+    // 7. Rejection: Inverted offsets (start >= end)
+    let mut inverted_payload = pkt.payload.to_vec();
+    inverted_payload[16..20].copy_from_slice(&184_320u32.to_le_bytes());
+    inverted_payload[20..24].copy_from_slice(&0u32.to_le_bytes());
+    let err_inverted = decoder
+        .decode_sending_part(PR_ED2K, OP_SENDINGPART, &inverted_payload, 0)
+        .unwrap_err();
+    assert!(matches!(err_inverted.kind, Ed2kErrorKind::InvalidBlockOffsets { .. }));
+
+    // 8. Rejection: Hash mismatch against sequencer
+    let wrong_hash = [0xBB; 16];
+    let part_wrong_hash = Ed2kSendingPart {
+        file_hash: wrong_hash,
+        start_offset: 0,
+        end_offset: 184_320,
+        data: block_data,
+    };
+    let err_hash = seq.validate_sending_part(&part_wrong_hash).unwrap_err();
+    assert!(matches!(err_hash, Ed2kSequencerError::HashMismatch { .. }));
+}
+
+#[test]
+fn test_tier3_rejects_sendingpart_crossing_part_boundary() {
+    let hash = sample_hash();
+    let file_size = 15_000_000u64;
+
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).expect("valid sequencer");
+
+    // Invalid range crossing 9,728,000 part boundary: [9_727_900, 9_728_100) (200 bytes)
+    let cross_start = 9_727_900u32;
+    let cross_end = 9_728_100u32;
+    let cross_data = Bytes::from(vec![0x77; (cross_end - cross_start) as usize]);
+
+    let part = Ed2kSendingPart {
+        file_hash: hash,
+        start_offset: cross_start,
+        end_offset: cross_end,
+        data: cross_data,
+    };
+
+    // Validation must fail with CrossPartBoundary
+    let err = seq.validate_sending_part(&part).unwrap_err();
+    assert_eq!(
+        err,
+        Ed2kSequencerError::CrossPartBoundary {
+            start: 9_727_900,
+            end: 9_728_100,
+            part_boundary: 9_728_000,
+        }
+    );
+
+    // Sink write must also be rejected without modifying buffer
+    let mut sink = Ed2kBlockSink::new(file_size);
+    let sink_err = sink.write_block(&seq, &part).unwrap_err();
+    assert_eq!(
+        sink_err,
+        Ed2kSequencerError::CrossPartBoundary {
+            start: 9_727_900,
+            end: 9_728_100,
+            part_boundary: 9_728_000,
+        }
+    );
+    assert_eq!(sink.received_ranges().len(), 0);
+    assert_eq!(sink.received_bytes_count(), 0);
+    assert!(sink.buffer().iter().all(|&b| b == 0), "storage must remain completely untouched");
+}
+
+#[test]
+fn test_tier3_rejects_compressedpart_in_passive_profile() {
+    let compressed_pkt = RawPacket::with_vec(
+        PR_EMULE_COMPRESSED, // 0xD4
+        OP_COMPRESSEDPART,   // 0x40
+        vec![0x1F, 0x8B, 0x08, 0x00],
+    );
+
+    // 1. Decoder rejects 0xD4 frame immediately
+    let decoder = Ed2kDecoder::new();
+    let decode_err = decoder.decode_raw_packet(&compressed_pkt).unwrap_err();
+    assert_eq!(decode_err.kind, Ed2kErrorKind::CompressedProtocolUnsupported);
+
+    // 2. Active session rejects 0xD4 packet without attempting decompression
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 4662);
+    let session_err = session.on_packet_received(&compressed_pkt).unwrap_err();
+    assert_eq!(session_err, Ed2kSessionError::CompressedProtocolUnsupported);
+}
+
+#[test]
+fn test_tier3_single_block_transfer_writes_exact_fixture_prefix() {
+    let hash = sample_hash();
+    let file_size = 9_728_001u64;
+
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).expect("valid sequencer");
+
+    // 1. Generate exact deterministic fixture prefix of 184,320 bytes (pattern 0..=255)
+    let prefix_len = ED2K_BLOCK_SIZE; // 184,320
+    let prefix_bytes: Vec<u8> = (0..=255u8).cycle().take(prefix_len).collect();
+    assert_eq!(prefix_bytes.len(), prefix_len);
+
+    let part = Ed2kSendingPart {
+        file_hash: hash,
+        start_offset: 0,
+        end_offset: 184_320,
+        data: Bytes::copy_from_slice(&prefix_bytes),
+    };
+
+    // 2. Write block to sink
+    let mut sink = Ed2kBlockSink::new(file_size);
+    assert_eq!(sink.file_size(), file_size);
+    assert_eq!(sink.received_bytes_count(), 0);
+    assert!(!sink.has_range(0, 184_320));
+
+    let range = sink.write_block(&seq, &part).expect("first write succeeds");
+    assert_eq!(range.start, 0);
+    assert_eq!(range.end, 184_320);
+
+    // 3. Verify exact written state
+    assert!(sink.has_range(0, 184_320));
+    assert_eq!(sink.received_ranges(), &[(0, 184_320)]);
+    assert_eq!(sink.received_bytes_count(), prefix_len);
+    assert_eq!(&sink.buffer()[0..prefix_len], prefix_bytes.as_slice(), "written bytes must match fixture prefix exactly");
+    assert!(sink.buffer()[prefix_len..].iter().all(|&b| b == 0), "unwritten file remainder must remain zero");
+
+    // 4. Duplicate reception rejection: second write of identical range must fail
+    let err_dup = sink.write_block(&seq, &part).unwrap_err();
+    assert_eq!(
+        err_dup,
+        Ed2kSequencerError::DuplicateBlock {
+            start: 0,
+            end: 184_320,
+        }
+    );
+    assert_eq!(sink.received_ranges().len(), 1, "duplicate write must not duplicate range entry");
+    assert_eq!(sink.received_bytes_count(), prefix_len);
+}
+
+#[test]
+fn test_tier3_block_sink_chunked_assembly_18_chunks() {
+    let hash = sample_hash();
+    let file_size = 9_728_001u64;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).expect("valid sequencer");
+    let mut sink = Ed2kBlockSink::new(file_size);
+
+    let prefix_bytes: Vec<u8> = (0..=255u8).cycle().take(184_320).collect();
+
+    // Write 18 chunks of 10,240 bytes (standard eMule chunking)
+    for i in 0..18 {
+        let start = i * 10240;
+        let end = start + 10240;
+        let chunk_part = Ed2kSendingPart {
+            file_hash: hash,
+            start_offset: start as u32,
+            end_offset: end as u32,
+            data: Bytes::copy_from_slice(&prefix_bytes[start as usize..end as usize]),
+        };
+        sink.write_block(&seq, &chunk_part).expect("write chunk");
+    }
+
+    assert_eq!(sink.received_bytes_count(), 184_320);
+    assert!(sink.has_range(0, 184_320));
+    assert!(sink.is_range_covered(0, 184_320));
+    assert_eq!(&sink.buffer()[0..184_320], prefix_bytes.as_slice());
+
+    // Duplicate chunk rejection
+    let dup_chunk = Ed2kSendingPart {
+        file_hash: hash,
+        start_offset: 0,
+        end_offset: 10240,
+        data: Bytes::copy_from_slice(&prefix_bytes[0..10240]),
+    };
+    let err_dup = sink.write_block(&seq, &dup_chunk).unwrap_err();
+    assert_eq!(
+        err_dup,
+        Ed2kSequencerError::DuplicateBlock {
+            start: 0,
+            end: 10240,
+        }
+    );
 }

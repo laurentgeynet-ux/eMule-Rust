@@ -26,6 +26,7 @@ mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }
+md4.workspace = true
 proptest.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
