@@ -34,6 +34,9 @@ class LargeListMockClient implements MuleDaemonClient {
   }
 
   @override
+  DaemonInfo? get daemonInfo => null;
+
+  @override
   DaemonConnectionState get currentConnectionState => DaemonConnectionState.connected;
 
   @override

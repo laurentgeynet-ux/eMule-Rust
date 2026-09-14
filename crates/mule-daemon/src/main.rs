@@ -15,6 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = std::env::args().collect();
     let mut data_dir_arg: Option<PathBuf> = None;
+    let mut mode_override: Option<mule_daemon::WorkDirMode> = None;
     let mut bind_addr_arg: Option<std::net::SocketAddr> = None;
     let mut auth_token_arg: Option<String> = None;
     let mut token_file_arg: Option<PathBuf> = None;
@@ -25,6 +26,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match args[i].as_str() {
             "--workdir" if i + 1 < args.len() => {
                 data_dir_arg = Some(PathBuf::from(&args[i + 1]));
+                i += 2;
+            }
+            "--mode" | "--workdir-mode" if i + 1 < args.len() => {
+                mode_override = match args[i + 1].to_lowercase().as_str() {
+                    "portable" => Some(mule_daemon::WorkDirMode::Portable),
+                    "installeddefault" | "installed" => Some(mule_daemon::WorkDirMode::InstalledDefault),
+                    "environment" | "env" => Some(mule_daemon::WorkDirMode::Environment),
+                    "explicitcli" | "cli" => Some(mule_daemon::WorkDirMode::ExplicitCli),
+                    _ => None,
+                };
                 i += 2;
             }
             "--bind" if i + 1 < args.len() => {
@@ -53,7 +64,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let resolved_workdir = mule_daemon::WorkDirectoryResolver::resolve(data_dir_arg);
+    let mut resolved_workdir = mule_daemon::WorkDirectoryResolver::resolve(data_dir_arg);
+    if let Some(mode) = mode_override {
+        resolved_workdir.mode = mode;
+    } else if resolved_workdir.mode == mule_daemon::WorkDirMode::ExplicitCli {
+        // If an explicit workdir path was passed, check if it lives in a portable bundle root
+        // (i.e. <bundle_root>/portable.flag exists)
+        if let Some(parent) = resolved_workdir.path.parent() {
+            if parent.join(mule_daemon::PORTABLE_FLAG_FILENAME).exists() {
+                resolved_workdir.mode = mule_daemon::WorkDirMode::Portable;
+            }
+        }
+    }
     let data_dir = resolved_workdir.path;
     println!("==> Workdir mode: {:?} ({})", resolved_workdir.mode, data_dir.display());
     std::fs::create_dir_all(&data_dir)?;

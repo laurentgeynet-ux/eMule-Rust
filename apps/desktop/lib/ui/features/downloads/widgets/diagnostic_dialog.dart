@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme.dart';
+import '../../../../services/work_directory_resolver.dart';
 import '../view_models/downloads_view_model.dart';
 import 'lab_guide_dialog.dart';
 
@@ -10,19 +11,57 @@ class DiagnosticDialog extends StatelessWidget {
 
   const DiagnosticDialog({super.key, required this.viewModel});
 
+  static String _formatWorkDirMode(WorkDirMode mode) {
+    switch (mode) {
+      case WorkDirMode.portable:
+        return 'Portable';
+      case WorkDirMode.installedDefault:
+        return 'InstalledDefault';
+      case WorkDirMode.environment:
+        return 'Environment';
+      case WorkDirMode.explicitCli:
+        return 'ExplicitCli';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final info = viewModel.daemonInfo;
     final supervisor = viewModel.supervisor;
+    final resolvedLocal = supervisor?.resolveWorkDir();
 
-    final workdirMode = info?.workdirMode ?? 'Unknown';
-    final workdirPath = info?.workdirPath ?? 'Not available';
-    final isPortable = workdirMode == 'Portable';
-    final isInstalled = workdirMode == 'InstalledDefault';
+    final workdirMode = info?.workdirMode ??
+        (resolvedLocal != null ? _formatWorkDirMode(resolvedLocal.mode) : 'Unknown');
+    final workdirPath = info?.workdirPath ??
+        resolvedLocal?.directory.path ??
+        'Not available';
+    final isPortable = workdirMode.toLowerCase() == 'portable';
+    final isInstalled = workdirMode.toLowerCase() == 'installeddefault';
 
-    final pidText = supervisor?.activePid != null
-        ? '${supervisor!.activePid}'
-        : (viewModel.connectionState.label);
+    final pidText = supervisor?.activeSession?.pid != null
+        ? '${supervisor!.activeSession!.pid}'
+        : (supervisor?.activePid != null
+            ? '${supervisor!.activePid}'
+            : (viewModel.connectionState.label));
+
+    final rpcEndpoint = supervisor?.activeSession?.endpoint ?? 'ws://127.0.0.1:4660/rpc';
+    final instanceId = (info?.instanceId.isNotEmpty == true)
+        ? info!.instanceId
+        : (supervisor?.activeSession?.instanceId ?? 'N/A');
+    final sessionId = (info?.sessionId.isNotEmpty == true)
+        ? info!.sessionId
+        : 'N/A';
+    final daemonVersion = info != null
+        ? 'v${info.version} (proto v${info.protocolVersion})'
+        : (supervisor?.activeSession?.protocolVersion != null
+            ? 'proto v${supervisor!.activeSession!.protocolVersion}'
+            : 'N/A');
+    final protocolVersionStr = info != null
+        ? '${info.protocolVersion}'
+        : (supervisor?.activeSession != null
+            ? '${supervisor!.activeSession!.protocolVersion}'
+            : '1');
+    final capabilities = info?.capabilities ?? const <String>[];
 
     return Dialog(
       backgroundColor: AppTheme.darkSurface,
@@ -196,16 +235,16 @@ class DiagnosticDialog extends StatelessWidget {
                             const Divider(height: 16, color: AppTheme.darkBorder),
                             _buildInfoRow(
                               'RPC Endpoint',
-                              const SelectableText(
-                                'ws://127.0.0.1:4660/rpc',
-                                style: TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                              SelectableText(
+                                rpcEndpoint,
+                                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
                               ),
                             ),
                             const Divider(height: 16, color: AppTheme.darkBorder),
                             _buildInfoRow(
                               'Daemon Version',
                               Text(
-                                info != null ? 'v${info.version} (proto v${info.protocolVersion})' : 'N/A',
+                                daemonVersion,
                                 style: const TextStyle(fontSize: 12),
                               ),
                             ),
@@ -213,7 +252,7 @@ class DiagnosticDialog extends StatelessWidget {
                             _buildInfoRow(
                               'Instance ID',
                               SelectableText(
-                                info?.instanceId ?? 'N/A',
+                                instanceId,
                                 style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white70),
                               ),
                             ),
@@ -221,8 +260,43 @@ class DiagnosticDialog extends StatelessWidget {
                             _buildInfoRow(
                               'Session ID',
                               SelectableText(
-                                info?.sessionId ?? 'N/A',
+                                sessionId,
                                 style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white70),
+                              ),
+                            ),
+                            const Divider(height: 16, color: AppTheme.darkBorder),
+                            _buildInfoRow(
+                              'Capabilities',
+                              Wrap(
+                                spacing: 4,
+                                runSpacing: 4,
+                                children: capabilities.isEmpty
+                                    ? [
+                                        const Text('None', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                                      ]
+                                    : capabilities.map((c) {
+                                        final isLab = c == 'lab-tools';
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isLab ? Colors.teal.withValues(alpha: 0.2) : Colors.white10,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: isLab ? Colors.teal : Colors.white24,
+                                              width: 0.5,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            c,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontFamily: 'monospace',
+                                              color: isLab ? Colors.tealAccent : Colors.white70,
+                                              fontWeight: isLab ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
                               ),
                             ),
                           ],
@@ -248,11 +322,14 @@ class DiagnosticDialog extends StatelessWidget {
                       label: const Text('Copy Shareable (Sanitized)'),
                       onPressed: () {
                         final sanitized = _formatShareableDiagnostics(
-                          info,
-                          workdirMode,
-                          isPortable,
-                          isInstalled,
-                          viewModel.countAll,
+                          daemonVersion: daemonVersion,
+                          protocolVersion: protocolVersionStr,
+                          instanceId: instanceId,
+                          sessionId: sessionId,
+                          workdirMode: workdirMode,
+                          isPortable: isPortable,
+                          isInstalled: isInstalled,
+                          countAll: viewModel.countAll,
                         );
                         Clipboard.setData(ClipboardData(text: sanitized));
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -268,11 +345,16 @@ class DiagnosticDialog extends StatelessWidget {
                       label: const Text('Copy Full (Local Dev)'),
                       onPressed: () {
                         final full = _formatFullDiagnostics(
-                          info,
-                          workdirMode,
-                          workdirPath,
-                          pidText,
-                          viewModel.countAll,
+                          daemonVersion: daemonVersion,
+                          protocolVersion: protocolVersionStr,
+                          instanceId: instanceId,
+                          sessionId: sessionId,
+                          capabilities: capabilities,
+                          workdirMode: workdirMode,
+                          workdirPath: workdirPath,
+                          pidText: pidText,
+                          rpcEndpoint: rpcEndpoint,
+                          countAll: viewModel.countAll,
                         );
                         Clipboard.setData(ClipboardData(text: full));
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -345,13 +427,16 @@ class DiagnosticDialog extends StatelessWidget {
     );
   }
 
-  String _formatShareableDiagnostics(
-    dynamic info,
-    String workdirMode,
-    bool isPortable,
-    bool isInstalled,
-    int countAll,
-  ) {
+  String _formatShareableDiagnostics({
+    required String daemonVersion,
+    required String protocolVersion,
+    required String instanceId,
+    required String sessionId,
+    required String workdirMode,
+    required bool isPortable,
+    required bool isInstalled,
+    required int countAll,
+  }) {
     String maskId(String? id) {
       if (id == null || id.isEmpty || id == 'N/A') return 'N/A';
       if (id.length <= 8) return id;
@@ -369,33 +454,38 @@ class DiagnosticDialog extends StatelessWidget {
     sb.writeln('Confinement: 127.0.0.1 (Loopback only)');
     sb.writeln('Process PID: [local-process]');
     sb.writeln('RPC Endpoint: ws://loopback:4660/rpc');
-    sb.writeln('Daemon Version: ${info?.version ?? 'N/A'}');
-    sb.writeln('Protocol Version: ${info?.protocolVersion ?? 'N/A'}');
-    sb.writeln('Instance ID: ${maskId(info?.instanceId)}');
-    sb.writeln('Session ID: ${maskId(info?.sessionId)}');
+    sb.writeln('Daemon Version: $daemonVersion');
+    sb.writeln('Protocol Version: $protocolVersion');
+    sb.writeln('Instance ID: ${maskId(instanceId)}');
+    sb.writeln('Session ID: ${maskId(sessionId)}');
     sb.writeln('Active Downloads: $countAll');
     return sb.toString();
   }
 
-  String _formatFullDiagnostics(
-    dynamic info,
-    String workdirMode,
-    String workdirPath,
-    String pidText,
-    int countAll,
-  ) {
+  String _formatFullDiagnostics({
+    required String daemonVersion,
+    required String protocolVersion,
+    required String instanceId,
+    required String sessionId,
+    required List<String> capabilities,
+    required String workdirMode,
+    required String workdirPath,
+    required String pidText,
+    required String rpcEndpoint,
+    required int countAll,
+  }) {
     final sb = StringBuffer();
     sb.writeln('=== Emule-Sion Diagnostics (Full Local) ===');
     sb.writeln('Workdir Mode: $workdirMode');
     sb.writeln('Workdir Path: $workdirPath');
     sb.writeln('Confinement: 127.0.0.1 (Loopback only)');
     sb.writeln('Process PID: $pidText');
-    sb.writeln('RPC Endpoint: ws://127.0.0.1:4660/rpc');
-    sb.writeln('Daemon Version: ${info?.version ?? 'N/A'}');
-    sb.writeln('Protocol Version: ${info?.protocolVersion ?? 'N/A'}');
-    sb.writeln('Capabilities: ${(info?.capabilities as List?)?.join(', ') ?? 'N/A'}');
-    sb.writeln('Instance ID: ${info?.instanceId ?? 'N/A'}');
-    sb.writeln('Session ID: ${info?.sessionId ?? 'N/A'}');
+    sb.writeln('RPC Endpoint: $rpcEndpoint');
+    sb.writeln('Daemon Version: $daemonVersion');
+    sb.writeln('Protocol Version: $protocolVersion');
+    sb.writeln('Capabilities: ${capabilities.isNotEmpty ? capabilities.join(', ') : 'N/A'}');
+    sb.writeln('Instance ID: $instanceId');
+    sb.writeln('Session ID: $sessionId');
     sb.writeln('Active Downloads: $countAll');
     sb.writeln('Security: Auth token strictly redacted (never exported)');
     return sb.toString();

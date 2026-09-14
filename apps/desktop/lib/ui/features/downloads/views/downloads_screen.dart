@@ -148,15 +148,20 @@ class DownloadsScreen extends StatelessWidget {
 
           const SizedBox(width: 10),
 
-          // Loopback Lab Mode Badge (Clickable for Diagnostics)
+          // Mode Badge (Clickable for Diagnostics)
           Tooltip(
-            message: '${AppStrings.tooltipLoopbackLabMode}\n\nClick to inspect system & workdir diagnostics.',
+            message: viewModel.isLabModeAvailable
+                ? '${AppStrings.tooltipLoopbackLabMode}\n\nClick to inspect system & workdir diagnostics.'
+                : 'System Diagnostics & Confinement (127.0.0.1)\n\nClick to inspect system & workdir diagnostics.',
             preferBelow: true,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: const Color(0xF01E2A3A),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.4), width: 0.5),
+              border: Border.all(
+                color: (viewModel.isLabModeAvailable ? Colors.teal : Colors.blueGrey).withValues(alpha: 0.4),
+                width: 0.5,
+              ),
             ),
             textStyle: const TextStyle(
               fontSize: 12,
@@ -174,21 +179,28 @@ class DownloadsScreen extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 decoration: BoxDecoration(
-                  color: Colors.blueGrey.withValues(alpha: 0.15),
+                  color: (viewModel.isLabModeAvailable ? Colors.teal : Colors.blueGrey).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.3), width: 0.5),
+                  border: Border.all(
+                    color: (viewModel.isLabModeAvailable ? Colors.teal : Colors.blueGrey).withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.science_outlined, size: 14, color: Colors.white70),
-                    SizedBox(width: 5),
+                    Icon(
+                      viewModel.isLabModeAvailable ? Icons.science_outlined : Icons.analytics_outlined,
+                      size: 14,
+                      color: viewModel.isLabModeAvailable ? Colors.tealAccent : Colors.white70,
+                    ),
+                    const SizedBox(width: 5),
                     Text(
-                      AppStrings.loopbackLabMode,
+                      viewModel.isLabModeAvailable ? AppStrings.loopbackLabMode : 'Diagnostics',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white70,
+                        color: viewModel.isLabModeAvailable ? Colors.tealAccent : Colors.white70,
                       ),
                     ),
                   ],

@@ -16,6 +16,9 @@ abstract class MuleDaemonClient {
   /// Current connection state snapshot.
   DaemonConnectionState get currentConnectionState;
 
+  /// Cached daemon info snapshot from handshake, if connected.
+  DaemonInfo? get daemonInfo;
+
   /// Stream of download updates emitted by the daemon.
   Stream<DownloadUpdatedEvent> get downloadEvents;
 

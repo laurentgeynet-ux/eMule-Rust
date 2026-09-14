@@ -8,6 +8,7 @@ import '../../../../domain/models/lab_models.dart';
 import '../../../../domain/services/mule_daemon_client.dart';
 
 import '../../../../services/daemon_supervisor.dart';
+import '../../../../services/work_directory_resolver.dart';
 
 enum DownloadFilter {
   all,
@@ -73,10 +74,12 @@ class DownloadsViewModel extends ChangeNotifier {
 
     if (supervisor != null) {
       _supervisorState = supervisor!.state;
+      _daemonInfo = client.daemonInfo;
       _supervisorSub = supervisor!.stateStream.listen((sState) {
         _supervisorState = sState;
         if (sState == SupervisorState.connected) {
           _protocolMismatchError = null;
+          _daemonInfo = client.daemonInfo;
           refresh();
         } else if (sState == SupervisorState.protocolMismatch) {
           _protocolMismatchError = supervisor!.lastError;
@@ -87,6 +90,7 @@ class DownloadsViewModel extends ChangeNotifier {
       _instanceSub = supervisor!.instanceChangedStream.listen((_) {
         // Reset downloads and sequence on daemon restart
         _downloads.clear();
+        _daemonInfo = client.daemonInfo;
         refresh();
       });
     }
@@ -96,7 +100,7 @@ class DownloadsViewModel extends ChangeNotifier {
   DaemonConnectionState get connectionState => _connectionState;
   SupervisorState get supervisorState => _supervisorState;
   String? get protocolMismatchError => _protocolMismatchError;
-  DaemonInfo? get daemonInfo => _daemonInfo;
+  DaemonInfo? get daemonInfo => _daemonInfo ?? client.daemonInfo;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
   DownloadFilter get currentFilter => _currentFilter;
@@ -109,9 +113,11 @@ class DownloadsViewModel extends ChangeNotifier {
   /// Requires Portable workdir mode AND the daemon having the 'lab-tools' capability.
   bool get isLabModeAvailable {
     if (isDevToolsAvailable) return true;
-    final info = _daemonInfo;
+    final info = daemonInfo;
     if (info == null) return false;
-    return info.workdirMode == 'Portable' && info.capabilities.contains('lab-tools');
+    final isPortable = (info.workdirMode?.toLowerCase() == 'portable') ||
+        (supervisor?.resolveWorkDir().mode == WorkDirMode.portable);
+    return isPortable && info.capabilities.contains('lab-tools');
   }
 
   DownloadItem? get selectedDownload =>
@@ -181,6 +187,9 @@ class DownloadsViewModel extends ChangeNotifier {
 
   Future<void> refresh() async {
     try {
+      if (client.daemonInfo != null) {
+        _daemonInfo = client.daemonInfo;
+      }
       final list = await client.listDownloads();
       _downloads.clear();
       for (final item in list) {

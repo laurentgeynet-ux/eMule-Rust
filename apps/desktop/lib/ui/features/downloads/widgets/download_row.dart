@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../domain/models/download_item.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
@@ -78,13 +79,43 @@ class DownloadRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            'ID: ${item.id}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white38,
-                              fontFamily: 'monospace',
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Tooltip(
+                                message: 'Full ID: ${item.id}',
+                                preferBelow: false,
+                                child: Text(
+                                  'ID: ${_abbreviateId(item.id)}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white38,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: item.id));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Download ID copied to clipboard'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.all(2.0),
+                                  child: Icon(
+                                    Icons.copy_rounded,
+                                    size: 11,
+                                    color: Colors.white38,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -270,5 +301,10 @@ class DownloadRow extends StatelessWidget {
       return Icons.view_in_ar_rounded;
     }
     return Icons.insert_drive_file_rounded;
+  }
+
+  static String _abbreviateId(String id) {
+    if (id.length <= 8) return id;
+    return '${id.substring(0, 8)}…';
   }
 }

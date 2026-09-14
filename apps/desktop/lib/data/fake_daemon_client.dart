@@ -104,16 +104,22 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       _startSimulation();
     }
 
-    return const DaemonInfo(
+    _daemonInfo = const DaemonInfo(
       version: '0.1.0-fake',
       protocolVersion: 1,
       instanceId: 'fake-instance-id',
       sessionId: 'fake-session-id',
-      capabilities: ['downloads', 'download-events', 'local-simulation', 'lab-tools'],
+      capabilities: ['downloads', 'download-events', 'lab-tools'],
       workdirMode: 'Portable',
       workdirPath: 'C:\\Fake\\Portable\\data',
     );
+    return _daemonInfo!;
   }
+
+  DaemonInfo? _daemonInfo;
+
+  @override
+  DaemonInfo? get daemonInfo => _daemonInfo;
 
   @override
   Future<void> stopDaemon() async {

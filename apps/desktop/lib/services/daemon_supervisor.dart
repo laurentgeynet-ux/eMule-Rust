@@ -85,6 +85,7 @@ class DaemonSupervisor {
   final StreamController<void> _instanceChangedController =
       StreamController<void>.broadcast();
 
+  DaemonSessionFile? _activeSession;
   DaemonSupervisor({
     required this.client,
     this.customDataDir,
@@ -95,14 +96,20 @@ class DaemonSupervisor {
   String? get lastError => _lastError;
   String? get currentInstanceId => _currentInstanceId;
   int? get activePid => _activePid ?? _managedProcess?.pid;
+  DaemonSessionFile? get activeSession => _activeSession;
+  DaemonInfo? get daemonInfo => client.daemonInfo;
   Stream<SupervisorState> get stateStream => _stateController.stream;
   Stream<void> get instanceChangedStream => _instanceChangedController.stream;
 
-  Directory resolveDataDir() {
+  ResolvedWorkDir resolveWorkDir() {
     return WorkDirectoryResolver.resolve(
       customDir: customDataDir,
       executableFile: customExecutablePath != null ? File(customExecutablePath!) : null,
-    ).directory;
+    );
+  }
+
+  Directory resolveDataDir() {
+    return resolveWorkDir().directory;
   }
 
   void _setState(SupervisorState newState, [String? error]) {
@@ -275,6 +282,7 @@ class DaemonSupervisor {
 
       final isFirstConnect = _currentInstanceId == null;
       final instanceChanged = !isFirstConnect && _currentInstanceId != info.instanceId;
+      _activeSession = session;
       _currentInstanceId = info.instanceId;
       _activePid = session.pid;
 
@@ -344,9 +352,19 @@ class DaemonSupervisor {
       _stderrBuffer.clear();
       _lastExitCode = null;
 
+      final resolved = resolveWorkDir();
+      final modeArg = switch (resolved.mode) {
+        WorkDirMode.portable => 'Portable',
+        WorkDirMode.installedDefault => 'InstalledDefault',
+        WorkDirMode.environment => 'Environment',
+        WorkDirMode.explicitCli => 'ExplicitCli',
+      };
+
       final process = await Process.start(exePath, [
         '--workdir',
         dataDir.path,
+        '--mode',
+        modeArg,
         '--parent-pid',
         pid.toString(),
       ]);
@@ -441,6 +459,7 @@ class DaemonSupervisor {
       _managedProcess = null;
     }
     _activePid = null;
+    _activeSession = null;
 
     // 3. Disconnect client channel
     await client.disconnect();

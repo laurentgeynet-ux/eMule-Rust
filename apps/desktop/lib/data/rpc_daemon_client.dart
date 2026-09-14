@@ -41,6 +41,7 @@ class RpcDaemonClient implements MuleDaemonClient {
   @override
   Stream<DownloadUpdatedEvent> get downloadEvents => _eventsController.stream;
 
+  @override
   DaemonInfo? get daemonInfo => _daemonInfo;
   int get lastSequence => _lastSequence;
 
