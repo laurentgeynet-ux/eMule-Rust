@@ -153,11 +153,52 @@ impl Ed2kFileLink {
         })
     }
 
+    /// Creates a new eD2K file link with validated size and filename.
+    pub fn create(
+        file_name: impl Into<String>,
+        size: u64,
+        ed2k_hash: Ed2kHash,
+    ) -> Result<Self, FormatError> {
+        let raw_name = file_name.into();
+        if raw_name.trim().is_empty() {
+            return Err(FormatError::InvalidLink("File name cannot be empty".to_string()));
+        }
+        if size == 0 {
+            return Err(FormatError::EmptyInput);
+        }
+
+        Ok(Self {
+            file_name: raw_name,
+            size,
+            ed2k_hash,
+            aich_root: None,
+            part_hashes: Vec::new(),
+            web_sources: Vec::new(),
+            peer_sources: Vec::new(),
+            unknown_fields: Vec::new(),
+        })
+    }
+
+    /// Sanitizes delimiter characters ('|' and '/') for URI serialization.
+    pub fn sanitize_filename(name: &str) -> String {
+        let mut out = String::with_capacity(name.len() + 8);
+        for c in name.chars() {
+            match c {
+                '|' => out.push_str("%7C"),
+                '/' => out.push_str("%2F"),
+                '\r' | '\n' => {}
+                other => out.push(other),
+            }
+        }
+        out
+    }
+
     /// Formats the struct back into a valid canonical `ed2k://` link.
     pub fn to_link_string(&self) -> String {
+        let safe_name = Self::sanitize_filename(&self.file_name);
         let mut s = format!(
             "ed2k://|file|{}|{}|{}|",
-            self.file_name,
+            safe_name,
             self.size,
             self.ed2k_hash.to_hex()
         );

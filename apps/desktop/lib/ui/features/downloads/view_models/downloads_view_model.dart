@@ -219,7 +219,19 @@ class DownloadsViewModel extends ChangeNotifier {
         allocationPolicy: allocationPolicy,
       );
 
-      _statusNotification = 'Added download $dlId';
+      // Extract human-friendly filename from eD2K link for clean user notification
+      String displayName = dlId;
+      final tokens = link.split('|');
+      if (tokens.length >= 4 && tokens[1].toLowerCase() == 'file') {
+        final rawName = tokens[2];
+        try {
+          displayName = Uri.decodeComponent(rawName);
+        } catch (_) {
+          displayName = rawName;
+        }
+      }
+
+      _statusNotification = 'Added "$displayName" to downloads';
       await refresh();
       return true;
     } catch (e) {

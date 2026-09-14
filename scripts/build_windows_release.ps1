@@ -83,13 +83,16 @@ Write-Host " -> Dart    : $DartVersion" -ForegroundColor Gray
 # -----------------------------------------------------------------------------
 # 3. Build Rust mule-daemon (release)
 # -----------------------------------------------------------------------------
-Write-Host "`n[3/8] Compiling Rust mule-daemon (release)..." -ForegroundColor Yellow
-& $Cargo build --release --bin mule-daemon
+Write-Host "`n[3/8] Compiling Rust mule-daemon and mule-cli (release)..." -ForegroundColor Yellow
+& $Cargo build --release --bin mule-daemon --bin mule-cli
 if ($LASTEXITCODE -ne 0) { throw "Rust release build failed with code $LASTEXITCODE" }
 
 $DaemonExe = Join-Path $Root "target\release\mule-daemon.exe"
+$CliExe = Join-Path $Root "target\release\mule-cli.exe"
 if (!(Test-Path $DaemonExe)) { throw "Compiled daemon binary not found at $DaemonExe" }
+if (!(Test-Path $CliExe)) { throw "Compiled CLI binary not found at $CliExe" }
 Write-Host " -> Built: $DaemonExe" -ForegroundColor Green
+Write-Host " -> Built: $CliExe" -ForegroundColor Green
 
 # -----------------------------------------------------------------------------
 # 4. Build Flutter Desktop Windows (release)
@@ -131,10 +134,15 @@ if (!(Test-Path $BrandedExe)) {
     throw "Expected EmuleSion.exe not found in $DestPath"
 }
 
-# Create bin/ directory and bundle mule-daemon.exe
+# Create bin/ directory and bundle mule-daemon.exe and mule-cli.exe
 $BinDir = Join-Path $DestPath "bin"
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 Copy-Item -Path $DaemonExe -Destination $BinDir -Force
+Copy-Item -Path $CliExe -Destination $BinDir -Force
+
+# Create portable.flag in bundle root for portable mode
+$PortableFlag = Join-Path $DestPath "portable.flag"
+New-Item -ItemType File -Path $PortableFlag -Force | Out-Null
 
 Write-Host " -> Bundle assembled successfully in: $DestPath" -ForegroundColor Green
 

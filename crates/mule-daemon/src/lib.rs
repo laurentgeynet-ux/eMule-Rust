@@ -9,6 +9,7 @@ pub mod rpc;
 pub mod services;
 pub mod session;
 pub mod state;
+pub mod workdir;
 
 pub use config::DaemonConfig;
 pub use error::{DaemonError, JsonRpcError};
@@ -23,3 +24,7 @@ pub use rpc::{
 pub use services::{DownloadService, SourceAvailabilitySummary};
 pub use session::DaemonSession;
 pub use state::AppState;
+pub use workdir::{
+    ResolvedWorkDir, WorkDirMode, WorkDirectoryResolver, ENV_LEGACY_WORKDIR, ENV_WORKDIR,
+    PORTABLE_FLAG_FILENAME,
+};

@@ -277,5 +277,43 @@ void main() {
       await supervisor.stop();
       supervisor.dispose();
     });
+
+    test('supervisor and daemon aligned via portable.flag without customDataDir', () async {
+      // 1. Setup bundle directory structure with portable.flag
+      final bundleDir = Directory('${tempDir.path}/portable_bundle')..createSync();
+      final binDir = Directory('${bundleDir.path}/bin')..createSync();
+      File('${bundleDir.path}/portable.flag').createSync();
+
+      final targetExe = File('${binDir.path}/${Platform.isWindows ? "mule-daemon.exe" : "mule-daemon"}');
+      File(exePath).copySync(targetExe.path);
+
+      // 2. Supervisor with NO customDataDir, only customExecutablePath
+      final client = RpcDaemonClient();
+      final supervisor = DaemonSupervisor(
+        client: client,
+        customDataDir: null,
+        customExecutablePath: targetExe.path,
+      );
+
+      // 3. Verify workdir resolves to <bundle>/data
+      final expectedDataDir = '${bundleDir.path}/data';
+      expect(supervisor.resolveDataDir().path, expectedDataDir);
+
+      // 4. Start supervisor
+      await supervisor.start();
+      expect(supervisor.state, SupervisorState.connected);
+      expect(supervisor.currentInstanceId, isNotNull);
+
+      // 5. Verify daemon created files in <bundle>/data
+      expect(File('$expectedDataDir/session.json').existsSync(), isTrue);
+      expect(File('$expectedDataDir/auth.token').existsSync(), isTrue);
+      expect(File('$expectedDataDir/mule.lock').existsSync(), isTrue);
+      expect(File('$expectedDataDir/mule.db').existsSync(), isTrue);
+
+      // 6. Graceful shutdown
+      await supervisor.stop();
+      expect(File('$expectedDataDir/session.json').existsSync(), isFalse);
+      supervisor.dispose();
+    });
   });
 }

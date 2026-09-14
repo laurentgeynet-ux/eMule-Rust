@@ -338,8 +338,52 @@ try {
     }
     Write-Host " -> PASS: Daemon exited safely with non-zero exit code on invalid directory." -ForegroundColor Green
 
+    # -------------------------------------------------------------------------
+    # TEST 7: Portable Mode Auto-Resolution via portable.flag
+    # -------------------------------------------------------------------------
+    Write-Host "`n[7/7] Test: Portable Mode Auto-Resolution via portable.flag..." -ForegroundColor Yellow
+    $PortModeDir = Join-Path $TestRoot "PortableModeTest"
+    Copy-Item -Path $SourceBundle -Destination $PortModeDir -Recurse -Force
+
+    # Ensure portable.flag exists at bundle root
+    $FlagPath = Join-Path $PortModeDir "portable.flag"
+    if (!(Test-Path $FlagPath)) {
+        New-Item -ItemType File -Path $FlagPath -Force | Out-Null
+    }
+
+    $PortDaemonBin = Join-Path $PortModeDir "bin\mule-daemon.exe"
+    # Launch daemon WITHOUT --workdir argument and with clean env vars
+    $pinfoPort = [System.Diagnostics.ProcessStartInfo]::new($PortDaemonBin)
+    $pinfoPort.UseShellExecute = $false
+    $pinfoPort.CreateNoWindow = $true
+    $pinfoPort.EnvironmentVariables.Remove("EMULE_SION_WORKDIR")
+    $pinfoPort.EnvironmentVariables.Remove("MULE_DATA_DIR")
+
+    $procPort = [System.Diagnostics.Process]::Start($pinfoPort)
+    try {
+        $expectedDataDir = Join-Path $PortModeDir "data"
+        $sessFile = Join-Path $expectedDataDir "session.json"
+        $timeout = 10
+        while ($timeout -gt 0 -and !(Test-Path $sessFile)) {
+            Start-Sleep -Milliseconds 300
+            $timeout -= 0.3
+        }
+        if (!(Test-Path $sessFile)) { throw "session.json not created in portable data dir: $sessFile" }
+
+        $sess = Get-Content $sessFile -Raw | ConvertFrom-Json
+        $tok = (Get-Content (Join-Path $expectedDataDir "auth.token") -Raw).Trim()
+        $res = Connect-And-Handshake $sess.endpoint $tok
+        Send-JsonRpc $res.Socket '{"jsonrpc":"2.0","id":2,"method":"system.stop","params":{}}' | Out-Null
+        $res.Socket.Dispose()
+        $procPort.WaitForExit(4000) | Out-Null
+
+        Write-Host " -> PASS: Daemon autonomously resolved to <bundle>/data via portable.flag without --workdir." -ForegroundColor Green
+    } finally {
+        if ($procPort -and !$procPort.HasExited) { try { $procPort.Kill() } catch {} }
+    }
+
     Write-Host "`n==================================================" -ForegroundColor Green
-    Write-Host "  ALL 6 ENVIRONMENT & SUPERVISION MATRIX TESTS OK! " -ForegroundColor Green
+    Write-Host "  ALL 7 ENVIRONMENT & SUPERVISION MATRIX TESTS OK! " -ForegroundColor Green
     Write-Host "==================================================" -ForegroundColor Green
 
 } finally {

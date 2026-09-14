@@ -776,6 +776,7 @@ dependencies = [
  "data-encoding",
  "hex",
  "mule-format",
+ "tempfile",
  "thiserror",
 ]
 

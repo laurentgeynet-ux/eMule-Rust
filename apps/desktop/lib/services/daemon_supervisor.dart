@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../data/rpc_daemon_client.dart';
 import '../domain/models/daemon_info.dart';
+import 'work_directory_resolver.dart';
 
 enum SupervisorState {
   idle,
@@ -96,26 +97,10 @@ class DaemonSupervisor {
   Stream<void> get instanceChangedStream => _instanceChangedController.stream;
 
   Directory resolveDataDir() {
-    if (customDataDir != null) return customDataDir!;
-
-    final envData = Platform.environment['MULE_DATA_DIR'];
-    if (envData != null && envData.trim().isNotEmpty) {
-      return Directory(envData.trim());
-    }
-
-    if (Platform.isWindows) {
-      final appData = Platform.environment['APPDATA'];
-      if (appData != null && appData.isNotEmpty) {
-        return Directory('$appData\\EmuleSion');
-      }
-    } else {
-      final home = Platform.environment['HOME'];
-      if (home != null && home.isNotEmpty) {
-        return Directory('$home/.emule_sion');
-      }
-    }
-
-    return Directory('.mule_data');
+    return WorkDirectoryResolver.resolve(
+      customDir: customDataDir,
+      executableFile: customExecutablePath != null ? File(customExecutablePath!) : null,
+    ).directory;
   }
 
   void _setState(SupervisorState newState, [String? error]) {

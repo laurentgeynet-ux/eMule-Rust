@@ -53,7 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let data_dir = data_dir_arg.unwrap_or_else(DaemonConfig::default_data_dir);
+    let resolved_workdir = mule_daemon::WorkDirectoryResolver::resolve(data_dir_arg);
+    let data_dir = resolved_workdir.path;
+    println!("==> Workdir mode: {:?} ({})", resolved_workdir.mode, data_dir.display());
     std::fs::create_dir_all(&data_dir)?;
 
     // 1. Acquire exclusive directory lock

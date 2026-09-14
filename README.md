@@ -69,6 +69,29 @@ Emule-Sion/
 
 ---
 
+## Modes de Répertoire de Données & Ergonomie Développeur
+
+Emule-Sion implémente un résolveur unifié (`WorkDirectoryResolver`) strictement identique en Rust et en Dart pour déterminer l'emplacement des données (`mule.lock`, `session.json`, base SQLite WAL, fichiers `.part`) selon une cascade de 4 priorités déterministes :
+
+1. **Option en ligne de commande `--workdir <chemin>`** (Priorité 1) : Définition explicite passée au lancement, idéale pour l'isolation de tests ou de scripts CI.
+2. **Variable d'environnement `EMULE_SION_WORKDIR`** (Priorité 2) : Pratique pour configurer un répertoire de test global sans argument CLI (supporte `MULE_DATA_DIR` en repli déprécié).
+3. **Mode Portable (`portable.flag`)** (Priorité 3) : Présence d'un fichier marqueur `portable.flag` adjacent au binaire ou à la racine du bundle (`bin/..`). Toutes les données sont alors automatiquement cantonnées dans `<racine_bundle>/data`. Ce mode est activé par défaut dans les archives ZIP distribuées.
+4. **Mode Installé Standard** (Priorité 4, repli par défaut) : Répertoire standard du système d'exploitation (`%LOCALAPPDATA%\EmuleSion` sous Windows, `~/.emule_sion` sous Unix), compatible avec les exigences UAC de Program Files.
+
+### Génération de Liens eD2K (`mule-cli make-link`)
+
+Pour injecter et tester facilement des transferts loopback sans dépendance réseau, l'outil `mule-cli` calcule le hash eD2K canonique d'un fichier local :
+
+```powershell
+# Générer un lien eD2K minimal prêt à coller dans l'UI
+cargo run -p mule-cli -- make-link chemin/vers/fichier.bin
+
+# Ou afficher une décomposition détaillée (taille, hash hexadécimal, statut)
+cargo run -p mule-cli -- make-link chemin/vers/fichier.bin --detailed
+```
+
+---
+
 ## Instructions de Reproduction & Validation (100% Hors-Ligne)
 
 ### Prérequis

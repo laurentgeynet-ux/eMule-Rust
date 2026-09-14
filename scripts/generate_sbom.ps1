@@ -372,7 +372,7 @@ if (Test-Path $BundlePath) {
         $licenseId = "UNKNOWN"
         $licenseEvidence = "unknown"
 
-        if ($relPath -eq "EmuleSion.exe" -or $relPath -eq "bin/mule-daemon.exe") {
+        if ($relPath -eq "EmuleSion.exe" -or $relPath -eq "bin/mule-daemon.exe" -or $relPath -eq "bin/mule-cli.exe" -or $relPath -eq "portable.flag") {
             $licenseId = "GPL-2.0-or-later"
             $licenseEvidence = "declared"
         } elseif ($relPath -eq "flutter_windows.dll" -or $relPath -eq "data/app.so") {
