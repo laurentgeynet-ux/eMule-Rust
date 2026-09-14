@@ -511,4 +511,108 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; fini
 | **Oracle MD4 Diffusé** | Le hash MD4 calculé en streaming depuis le disque est strictement identique à l'oracle fixture (`240568858a65f85133d858f538d17467`). |
 | **Isolation & Pureté** | 0 panic, 0 `unwrap()`, 0 `expect()` dans `src/ed2k/`, 0 socket hors loopback `127.0.0.1`. |
 
+---
+
+## 10. Tier 3.6 : Finalisation de Frontière de Fichier, Calcul Racine eD2K Multi-Parts, Promotion Transactionnelle Crash-Résistante & Nettoyage (File Boundary Finalization, Multi-Part Root Hashing, Two-Phase Promotion & Cleanup)
+
+Le jalon **Tier 3.6** conclut avec succès le cycle complet d'acquisition, de contrôle d'intégrité et de livraison physique d'un fichier multi-parts eD2K contre l'exécutable officiel **eMule 0.50a** (`D:\eMule0.50a\emule.exe`), strictement confiné sur `127.0.0.1` en loopback.
+
+### Périmètre et Invariants Validés
+
+1. **Franchissement et Respect de la Frontière de Part (Boundary Invariance)** :
+   - Fichier cible : `tier3_status_fixture_9728001.bin` ($9\,728\,001\text{ octets}$, soit 2 parts eD2K).
+   - Part 0 : $9\,728\,000\text{ octets}$ ($9\,500\text{ KiB}$, 53 blocs).
+   - Part 1 : $[9\,728\,000, 9\,728\,001)$ ($1\text{ octet}$ résiduel unique `0x00`).
+   - La requête `OP_REQUESTPARTS_EMULE` (`0x47`) est émise exclusivement pour `[9_728_000, 9_728_001)` : aucune requête ne traverse jamais la frontière des $9\,728\,000\text{ octets}$.
+   - Réception d'`OP_SENDINGPART` (`0x46`) contenant exactement 1 octet de données.
+   - Atteinte de la couverture intégrale du fichier : $9\,728\,001\text{ octets}$, intervalle fusionné `[(0, 9_728_001)]`.
+
+2. **Calcul Cryptographique du Hash Racine eD2K Multi-Parts (Full Streamed Multi-Part Root Hashing)** :
+   - Selon la spécification canonique eD2K / eMule :
+     - Si `total_parts == 1`, le hash de fichier est l'empreinte MD4 de la Part 0.
+     - Si `total_parts > 1`, chaque part physique (y compris la part résiduelle finale) est hachée individuellement par MD4 ($16\text{ octets}$). Les empreintes de parts concaténées ($N \times 16\text{ octets}$) sont alors hachées par un MD4 global pour produire le hash racine eD2K :
+       $$\text{Root MD4} = \text{MD4}\Big(\text{MD4}(\text{Part } 0) \;\parallel\; \text{MD4}(\text{Part } 1) \;\parallel\; \dots \;\parallel\; \text{MD4}(\text{Part } N-1)\Big)$$
+   - Calcul diffusé en streaming direct depuis le disque par blocs de 64 KiB sans mise en mémoire tampon complète :
+     - Part 0 Streamed MD4 : `240568858a65f85133d858f538d17467`
+     - Part 1 Streamed MD4 : `47c61a0fa8738ba77308a8a600f88e4b`
+     - Hash Racine Calculé : `MD4(Part 0 || Part 1) = ` **`695b81b1727666818988524bd7fc823c`**
+     - Correspondance 100% byte-à-byte avec le hash eD2K scellé de la fixture officielle.
+
+3. **Machine à États de Promotion en Deux Phases & Résilience aux Crashs (`Ed2kPartDownloadStatus`)** :
+   - États déclarés :
+     - `Downloading` : Acquisition active des tranches dans le fichier `.part`.
+     - `VerifiedPendingPromotion` : Téléchargement 100% achevé, hash racine eD2K vérifié sur disque avec succès, journal mis à jour et synchronisé (`sync_all`), fichier en attente de promotion locale.
+     - `Promoted` : Fichier transféré dans son répertoire cible final (`downloads/`), journal `.resume.json` et fichier `.part` purgés avec succès.
+   - **Phase 1 (Vérification & Consignation Atomique)** : `mark_verified_pending_promotion` bascule l'état dans le journal transactionnel `.resume.json`.
+   - **Test de Crash Simulé** : Le processus client est brusquement interrompu (connexion TCP fermée, récepteur déchargé de la mémoire).
+   - **Reprise Locale Hors-Réseau** : Au redémarrage, `Ed2kPartFileSink::open_or_resume` détecte l'état `VerifiedPendingPromotion` sur disque et permet de finaliser la promotion sans nécessiter la moindre reconnexion réseau ni redemander le moindre octet à eMule.
+   - **Phase 2 (Promotion Atomique, Anti-Collision & Nettoyage)** :
+     - `promote_to_destination` libère proprement le handle Windows (`file.take()`) pour prévenir tout verrouillage de fichier (`ERROR_SHARING_VIOLATION`).
+     - Vérification anti-collision : refuse d'écraser un fichier existant avec une erreur explicite.
+     - Déplacement atomique (via renommage intermédiaire `.part_promoted.tmp`) vers le répertoire `downloads/tier3_promoted_final.bin`.
+     - Suppression du fichier d'origine `.part` et suppression du journal compagnon `.resume.json`.
+
+### Traces Réelles d'Exécution contre eMule 0.50a Officiel
+
+```powershell
+$env:EMULE_REFERENCE_BIN = 'D:\eMule0.50a\emule.exe'; $env:EMULE_REFERENCE_SHA256 = '06cdf814387f627a4bd05a0c68211f715bfa952423e8e8a462e1f47c11a4d20e'; cargo test -p mule-protocol --test tier3_loopback --features ed2k-reference-loopback -- test_tier3_live_file_boundary_finalization_and_promotion --ignored --nocapture
+```
+
+```text
+running 1 test
+Tier 3.6: Launching reference eMule 0.50a with shared 9,728,001 bytes fixture...
+Tier 3.6: Requesting upload slot via OP_STARTUPLOADREQ (0x54)...
+Tier 3.6: Upload slot granted!
+Tier 3.6: Phase 1: Downloading Part 0 (53 blocks, 9,728,000 bytes)...
+Tier 3.6: Phase 1 verified: Part 0 (9,728,000 bytes) downloaded and present on disk.
+Tier 3.6: Phase 2: Planning and requesting Part 1 residual block [9,728,000, 9,728,001)...
+Tier 3.6: Phase 2 verified: Part 1 residual block received; 100% file coverage achieved!
+Tier 3.6: Phase 3: Verifying in-disk multi-part eD2K root hash computation...
+Tier 3.6: Phase 3 verified: In-disk root eD2K hash 695b81b1727666818988524bd7fc823c matches sealed oracle byte-for-byte!
+Tier 3.6: Phase 4: Step A - Marking VerifiedPendingPromotion in atomic journal...
+Tier 3.6: Phase 4: Step B - Simulating abrupt crash / network disconnection...
+Tier 3.6: Phase 4: Step C - Recovering locally from disk without contacting eMule...
+Tier 3.6: Phase 4: Step D - Atomically promoting .part to 'C:\Users\Lou\AppData\Local\Temp\.tmpGe9L2G\downloads'...
+Tier 3.6: Phase 4 verified: Two-phase promotion and cleanup completed successfully!
+Tier 3.6: File boundary finalization, full root eD2K hash, and two-phase promotion successfully verified against eMule 0.50a!
+test test_tier3_live_file_boundary_finalization_and_promotion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 17.13s
+```
+
+### Exécution Globale de la Suite Complète Tier 3 (7 Tests Référence Live)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scratch\run_tier3.ps1
+```
+
+```text
+running 7 tests
+test test_tier3_environment_initialization_and_neutralized_configs ... ok
+test test_tier3_live_download_sequencing_without_payload ... ok
+test test_tier3_live_external_reference_loopback_handshake ... ok
+test test_tier3_live_file_boundary_finalization_and_promotion ... ok
+test test_tier3_live_file_status_request_and_parts_availability ... ok
+test test_tier3_live_part0_transfer_with_resume_and_interruption ... ok
+test test_tier3_live_single_uncompressed_block_transfer_from_emule050a ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 80.69s
+```
+
+### Tableau Récapitulatif des Invariants Validés
+
+| Domaine | Preuve / Invariant Validé |
+| :--- | :--- |
+| **Frontière de Part** | Requête strictly bornée pour Part 1 `[9_728_000, 9_728_001)` (1 octet), sans franchissement de frontière de part. |
+| **Complétion 100%** | Assemblage exact des $9\,728\,001\text{ octets}$ de la fixture sur disque dans l'intervalle canonique `[(0, 9_728_001)]`. |
+| **Hash Racine Multi-Parts** | Calcul en streaming de $\text{MD4}(\text{Part 0}) \parallel \text{MD4}(\text{Part 1})$ donnant exactement `695b81b1727666818988524bd7fc823c`. |
+| **Promotion Transactionnelle** | Transition sécurisée `Downloading` $\to$ `VerifiedPendingPromotion` $\to$ `Promoted`. |
+| **Résilience aux Crashs** | Reprise après interruption brutale directement en `VerifiedPendingPromotion` sans appel réseau. |
+| **Protection Anti-Collision** | Refus strict d'écraser un fichier de destination déjà présent. |
+| **Gestion Windows Handles** | Libération du handle de fichier avant le renommage pour éviter tout verrouillage d'E/S. |
+| **Nettoyage RAII** | Suppression automatique du fichier `.part` et du journal `.resume.json` une fois la promotion confirmée sur disque. |
+| **Confinement Réseau** | Scan `Get-NetTCPConnection` certifiant 0 socket non-loopback pendant toute l'exécution. |
+| **Qualité du Code** | 0 `unwrap()`, 0 `expect()`, 0 panique dans `src/ed2k/`, vérifié par `ed2k_isolation_guard`. |
+
+
 

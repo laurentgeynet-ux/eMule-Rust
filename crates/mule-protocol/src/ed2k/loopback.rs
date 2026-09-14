@@ -319,6 +319,13 @@ impl Ed2kTestPeer {
                                     }
                                 }
                             }
+                        } else if packet.opcode == OP_STARTUPLOADREQ {
+                            let resp = RawPacket::with_vec(PR_ED2K, OP_ACCEPTUPLOADREQ, Vec::new());
+                            if let Ok(resp_bytes) = codec.encode_to_bytes(&resp) {
+                                if stream.write_all(&resp_bytes).await.is_err() {
+                                    break;
+                                }
+                            }
                         }
                     }
                 });

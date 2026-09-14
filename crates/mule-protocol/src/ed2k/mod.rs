@@ -54,7 +54,7 @@ pub use session::{
     FileStatusRequest, FileStatusTracker, PendingBlockRequest, SessionSnapshot,
     MAX_IN_FLIGHT_BLOCK_REQUESTS,
 };
-pub use storage::{Ed2kBlockWriter, Ed2kPartFileSink, Ed2kPartResumeState};
+pub use storage::{Ed2kBlockWriter, Ed2kPartDownloadStatus, Ed2kPartFileSink, Ed2kPartResumeState};
 pub use tags::{
     Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_EMULE_VERSION,
     TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE, TAG_SPECIAL_MISCOPTIONS1,

@@ -6,8 +6,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use md4::{Digest, Md4};
 use mule_protocol::ed2k::{
-    Ed2kDownloadSequencer, Ed2kFileStatus, Ed2kLoopbackClient, Ed2kPartFileSink,
-    Ed2kSendingPart, Ed2kSequencerError, Ed2kTestPeer, PartAvailabilityMask,
+    Ed2kDownloadSequencer, Ed2kFileStatus, Ed2kLoopbackClient, Ed2kPartDownloadStatus,
+    Ed2kPartFileSink, Ed2kSendingPart, Ed2kSequencerError, Ed2kTestPeer, PartAvailabilityMask,
     TestPeerMode, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
 };
 use tempfile::tempdir;
@@ -465,5 +465,286 @@ async fn test_download_blocks_pipelined_with_resume_and_interruption() {
 
     stop_signal.store(true, std::sync::atomic::Ordering::SeqCst);
     peer_handle.abort();
+}
+
+fn generate_test_fixture_bytes() -> Vec<u8> {
+    let mut data = Vec::with_capacity(TEST_FILE_SIZE as usize);
+    for i in 0..TEST_FILE_SIZE as usize {
+        data.push((i % 256) as u8);
+    }
+    data
+}
+
+#[test]
+fn test_part1_residual_byte_write_and_full_file_completion() {
+    let dir = tempdir().expect("tempdir");
+    let part_path = dir.path().join("full_completion.part");
+    let sequencer = make_sequencer();
+    let hash = test_file_hash();
+    let fixture = generate_test_fixture_bytes();
+
+    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
+        .expect("create sink");
+
+    // Write all of Part 0 (9,728,000 bytes) in standard 180 KiB blocks
+    let part0_blocks = sequencer.plan_part_blocks(0).expect("plan part 0");
+    for block in part0_blocks {
+        let chunk = Ed2kSendingPart {
+            file_hash: hash,
+            start_offset: block.start,
+            end_offset: block.end,
+            data: Bytes::copy_from_slice(&fixture[block.start as usize..block.end as usize]),
+        };
+        sink.write_block(&sequencer, &chunk).expect("write block");
+    }
+
+    assert_eq!(sink.total_bytes_received(), 9_728_000);
+    assert_eq!(sink.is_part_complete(0, &sequencer).expect("part 0 complete"), true);
+    assert_eq!(sink.is_part_complete(1, &sequencer).expect("part 1 complete"), false);
+    assert_eq!(sink.is_file_complete(&sequencer), false);
+
+    // Plan and write Part 1: exactly 1 residual block [9,728,000, 9,728,001)
+    let part1_blocks = sequencer.plan_part_blocks(1).expect("plan part 1");
+    assert_eq!(part1_blocks.len(), 1, "Part 1 has exactly 1 residual block");
+    assert_eq!(part1_blocks[0].start, 9_728_000);
+    assert_eq!(part1_blocks[0].end, 9_728_001);
+
+    let residual_chunk = Ed2kSendingPart {
+        file_hash: hash,
+        start_offset: 9_728_000,
+        end_offset: 9_728_001,
+        data: Bytes::from_static(&[0x00]),
+    };
+    sink.write_block(&sequencer, &residual_chunk).expect("write residual block");
+
+    assert_eq!(sink.total_bytes_received(), TEST_FILE_SIZE);
+    assert_eq!(sink.completed_ranges(), &[(0, TEST_FILE_SIZE)]);
+    assert_eq!(sink.is_part_complete(0, &sequencer).expect("part 0"), true);
+    assert_eq!(sink.is_part_complete(1, &sequencer).expect("part 1"), true);
+    assert_eq!(sink.is_file_complete(&sequencer), true);
+}
+
+#[test]
+fn test_multipart_root_ed2k_hash_computation() {
+    let dir = tempdir().expect("tempdir");
+    let part_path = dir.path().join("hash_verification.part");
+    let sequencer = make_sequencer();
+    let hash = test_file_hash();
+    let fixture = generate_test_fixture_bytes();
+
+    let mut sink = Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE)
+        .expect("create sink");
+
+    // Write Part 0 blocks
+    for block in sequencer.plan_part_blocks(0).expect("plan part 0") {
+        let chunk = Ed2kSendingPart {
+            file_hash: hash,
+            start_offset: block.start,
+            end_offset: block.end,
+            data: Bytes::copy_from_slice(&fixture[block.start as usize..block.end as usize]),
+        };
+        sink.write_block(&sequencer, &chunk).expect("write part 0");
+    }
+
+    // Write Part 1 residual block
+    let part1_chunk = Ed2kSendingPart {
+        file_hash: hash,
+        start_offset: 9_728_000,
+        end_offset: 9_728_001,
+        data: Bytes::from_static(&[0x00]),
+    };
+    sink.write_block(&sequencer, &part1_chunk).expect("write part 1");
+
+    // Verify individual part MD4 digests
+    let part0_md4 = sink.compute_part_md4(0, &sequencer).expect("part 0 MD4");
+    assert_eq!(
+        hex::encode(part0_md4),
+        "240568858a65f85133d858f538d17467",
+        "Part 0 MD4 must match oracle"
+    );
+
+    let part1_md4 = sink.compute_part_md4(1, &sequencer).expect("part 1 MD4");
+    assert_eq!(
+        hex::encode(part1_md4),
+        "47c61a0fa8738ba77308a8a600f88e4b",
+        "Part 1 MD4 must match MD4([0x00])"
+    );
+
+    // Verify root multi-part eD2K hash
+    let root_hash = sink.compute_file_ed2k_hash(&sequencer).expect("root eD2K hash");
+    assert_eq!(
+        root_hash, hash,
+        "Root multi-part hash must match sealed file hash"
+    );
+    assert_eq!(hex::encode(root_hash), "695b81b1727666818988524bd7fc823c");
+}
+
+#[test]
+fn test_two_phase_promotion_crash_recovery_and_cleanup() {
+    let dir = tempdir().expect("tempdir");
+    let part_path = dir.path().join("two_phase.part");
+    let sequencer = make_sequencer();
+    let hash = test_file_hash();
+    let fixture = generate_test_fixture_bytes();
+
+    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
+        .expect("create sink");
+
+    // Fill entire file
+    for p in 0..sequencer.total_parts() {
+        for block in sequencer.plan_part_blocks(p).expect("plan part") {
+            let chunk = Ed2kSendingPart {
+                file_hash: hash,
+                start_offset: block.start,
+                end_offset: block.end,
+                data: Bytes::copy_from_slice(&fixture[block.start as usize..block.end as usize]),
+            };
+            sink.write_block(&sequencer, &chunk).expect("write chunk");
+        }
+    }
+
+    assert_eq!(sink.status(), Ed2kPartDownloadStatus::Downloading);
+
+    // Phase 1: Mark verified pending promotion
+    let verified_hash = sink
+        .mark_verified_pending_promotion(&sequencer)
+        .expect("mark verified pending promotion");
+    assert_eq!(verified_hash, hash);
+    assert_eq!(sink.status(), Ed2kPartDownloadStatus::VerifiedPendingPromotion);
+
+    // Verify durable state on disk
+    let resume_path = sink.resume_file_path().to_path_buf();
+    assert!(resume_path.exists());
+    let journal = mule_protocol::ed2k::Ed2kPartResumeState::load_from_file(&resume_path)
+        .expect("load journal");
+    assert_eq!(journal.status, Ed2kPartDownloadStatus::VerifiedPendingPromotion);
+
+    // Simulate abrupt crash: drop sink
+    drop(sink);
+
+    // Recovery on reboot: open_or_resume reloads in VerifiedPendingPromotion state
+    let mut resumed_sink = Ed2kPartFileSink::open_or_resume(part_path.clone(), hash, TEST_FILE_SIZE)
+        .expect("reopen sink after crash");
+    assert_eq!(
+        resumed_sink.status(),
+        Ed2kPartDownloadStatus::VerifiedPendingPromotion,
+        "resumed sink must retain VerifiedPendingPromotion state without contacting peer"
+    );
+
+    // Phase 2: Execute promotion to downloads directory
+    let downloads_dir = dir.path().join("downloads");
+    let promoted_path = resumed_sink
+        .promote_to_destination(&downloads_dir, "tier3_promoted_fixture.bin")
+        .expect("promote to destination");
+
+    assert!(promoted_path.exists(), "promoted file must exist on disk");
+    assert_eq!(
+        fs::metadata(&promoted_path).expect("metadata").len(),
+        TEST_FILE_SIZE,
+        "promoted file size must match target"
+    );
+
+    // Verify payload on disk byte-for-byte
+    let disk_bytes = fs::read(&promoted_path).expect("read promoted file");
+    assert_eq!(&disk_bytes, &fixture, "promoted content must match fixture byte-for-byte");
+
+    // Verify cleanup
+    assert!(!part_path.exists(), ".part file must be removed after promotion");
+    assert!(!resume_path.exists(), ".resume.json journal must be deleted after promotion");
+    assert_eq!(resumed_sink.status(), Ed2kPartDownloadStatus::Promoted);
+}
+
+#[test]
+fn test_promotion_collision_protection() {
+    let dir = tempdir().expect("tempdir");
+    let part_path = dir.path().join("collision.part");
+    let sequencer = make_sequencer();
+    let hash = test_file_hash();
+    let fixture = generate_test_fixture_bytes();
+
+    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
+        .expect("create sink");
+
+    for p in 0..sequencer.total_parts() {
+        for block in sequencer.plan_part_blocks(p).expect("plan part") {
+            let chunk = Ed2kSendingPart {
+                file_hash: hash,
+                start_offset: block.start,
+                end_offset: block.end,
+                data: Bytes::copy_from_slice(&fixture[block.start as usize..block.end as usize]),
+            };
+            sink.write_block(&sequencer, &chunk).expect("write chunk");
+        }
+    }
+
+    sink.mark_verified_pending_promotion(&sequencer).expect("verify");
+
+    let dest_dir = dir.path().join("downloads");
+    fs::create_dir_all(&dest_dir).expect("create dest dir");
+    let existing_dest = dest_dir.join("existing_target.bin");
+    fs::write(&existing_dest, b"pre-existing unyielding file").expect("write existing");
+
+    // Promotion must fail safely when target already exists
+    let err = sink
+        .promote_to_destination(&dest_dir, "existing_target.bin")
+        .expect_err("must refuse to overwrite existing file");
+
+    match err {
+        Ed2kSequencerError::Storage(msg) => {
+            assert!(
+                msg.contains("already exists"),
+                "error message must mention collision: {msg}"
+            );
+        }
+        other => panic!("expected Storage error, got {other:?}"),
+    }
+
+    // Assert source .part and pre-existing file remain intact
+    assert!(part_path.exists(), ".part file must remain untouched");
+    assert_eq!(
+        fs::read(&existing_dest).expect("read"),
+        b"pre-existing unyielding file"
+    );
+}
+
+#[test]
+fn test_promotion_refusal_when_incomplete() {
+    let dir = tempdir().expect("tempdir");
+    let part_path = dir.path().join("incomplete.part");
+    let sequencer = make_sequencer();
+    let hash = test_file_hash();
+
+    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
+        .expect("create sink");
+
+    // Sink has 0 bytes downloaded
+    let dest_dir = dir.path().join("downloads");
+    let promo_err = sink
+        .promote_to_destination(&dest_dir, "premature.bin")
+        .expect_err("must refuse promotion when Downloading");
+
+    match promo_err {
+        Ed2kSequencerError::Storage(msg) => {
+            assert!(
+                msg.contains("VerifiedPendingPromotion"),
+                "must require VerifiedPendingPromotion: {msg}"
+            );
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+
+    let verify_err = sink
+        .mark_verified_pending_promotion(&sequencer)
+        .expect_err("must refuse verification when incomplete");
+
+    match verify_err {
+        Ed2kSequencerError::Storage(msg) => {
+            assert!(
+                msg.contains("incomplete"),
+                "must report file is incomplete: {msg}"
+            );
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
 }
 
