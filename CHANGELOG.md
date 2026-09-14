@@ -3,6 +3,49 @@
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.1.3-lab] - 2026-09-15
+
+Release de consolidation majeure intégrant l'implémentation complète du protocole eD2K réel (Tier 3.1 à Tier 3.6), l'inspection détaillée et la Part Map (Phase 8.1), l'historique et statistiques locales avec exports caviardés (Phase 8.2), les catégories locales et la hiérarchie de destination à 4 niveaux (Phase 8.3), l'import défensif de fichiers `.part.met` eMule avec rapport d'audit (Phase 8.4), ainsi que le packaging multi-saveurs Windows et la migration de schéma SQLite (Phase 8.5).
+
+> **Formulation d'attestation d'interopérabilité & confinement :**  
+> *« Emule-Sion est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
+
+### Ajouté
+- **Protocole eD2K Loopback & Qualification eMule 0.50a (Tier 3.1 – 3.6)** :
+  - Handshake complet eD2K et négociation d'extensions eMule (`ET_MOD_VERSION`, `ET_VERSION`, `ET_EXT_FEATURES`).
+  - Déclaration de disponibilité de fichier (`FILE_STATUS_REQ` et `FILE_STATUS` avec bitfield par bloc et source complète).
+  - Séquençage et planification bornée en blocs de 9,28 Mo décomposés en sous-plages de requêtes `REQUESTPARTS`.
+  - Écriture en flux continu via `SENDINGPART` dans un fichier temporaire `.part`.
+  - Contrôle d'intégrité cryptographique MD4 par bloc et calcul de l'empreinte racine eD2K globale.
+  - Gestion du résidu de frontière (ex. 9 728 001 octets) et promotion atomique vers `downloads/`.
+  - Reprise résiliente après arrêt brutal à ~50% avec persistance SQLite et reprise intégrale.
+- **Inspection Détaillée & Part Map Interactive (Phase 8.1)** :
+  - `DownloadDetailDialog` : identifiants complets, lien canonique `ed2k://`, métriques de transfert en direct.
+  - Visualisation Part Map en blocs colorés avec tooltips interactifs et offsets exacts.
+  - Export de diagnostics caviardés sans aucun jeton `auth.token`.
+  - Modification de destination cible avec sonde d'écriture (`write-probe`).
+- **Historique Local & Statistiques d'Activité (Phase 8.2)** :
+  - Table SQLite `download_history` immuable avec index temporels et de types d'événements.
+  - Tableau de bord `HistoryView` avec agrégats sur 4 fenêtres (Total, 7 jours, 24h, Session courante).
+  - Politique de rétention configurable (7, 30, 90 jours ou conservation indéfinie) avec élagage automatique.
+  - Exports caviardés JSON / CSV sans fuite de chemins privés.
+- **Catégories Locales & Résolution de Destination à 4 Niveaux (Phase 8.3)** :
+  - Table SQLite `download_categories` et association `category_id` dans `downloads`.
+  - Invariant absolu de non-destruction : la suppression d'une catégorie réassocie les téléchargements à `category_id = NULL` sans effacer aucun fichier.
+  - Résolution de destination hiérarchique : tâche > catégorie > global SQLite > bundle.
+- **Import Défensif de Fichiers `.part.met` (Phase 8.4)** :
+  - Décodage des formats binaires eMule standard (`0xE0`), grands fichiers (`0xE1`) et nouveaux formats (`0xE2`).
+  - Inversion algorithmique des gaps pour calculer les plages valides réellement acquises.
+  - Hachage cryptographique MD4 par bloc avec invalidation et ré-évaluation en trou des blocs corrompus.
+  - Confinement strict sous `data/temp/<id>.part` et initialisation impérative en statut `Paused` (`sourceCount: 0`).
+  - Rapport d'audit lisible avec bouton de copie dans le presse-papier et bouton de clôture.
+- **Packaging Windows Multi-Saveurs & Migration SQLite (Phase 8.5)** :
+  - Saveur `standard` épurée des outils de laboratoire et saveur `qa-loopback` instrumentée.
+  - Migration de schéma SQLite idempotente et non destructive depuis Phase 7 certifiée par test unitaire.
+  - Portabilité et mise à niveau sans perte des dossiers `data/` et `downloads/`.
+
+---
+
 ## [0.1.2-lab] - 2026-09-14
 
 Release de consolidation intégrant la séparation étanche `data/` vs `downloads/`, la persistance de la suppression SQLite, la sélection personnalisée du dossier de téléchargement, l'enrichissement des diagnostics, et le pipeline QA E2E automatisé Phase 7.3.

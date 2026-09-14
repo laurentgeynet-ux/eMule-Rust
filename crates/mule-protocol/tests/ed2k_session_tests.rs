@@ -582,7 +582,8 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
 #[test]
 fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_answer() {
     let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 4662);
-    // Initiator starts in AwaitingHelloAnswer
+    let _hello = session.create_hello(vec![], 0, 0).expect("create_hello succeeds");
+    // Initiator is now in AwaitingHelloAnswer
     assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer { .. }));
 
     // 1. Peer delivers PR_EMULE (0xC5) / OP_EMULE_INFO (0x01) first

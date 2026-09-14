@@ -108,7 +108,9 @@ fn test_ed2k_loopback_transport_strictly_confined_and_feature_gated() {
 
     // Verify mod.rs gates loopback behind feature ed2k-loopback while keeping session and peer_info pure
     let mod_file = ed2k_src_dir().join("mod.rs");
-    let mod_content = fs::read_to_string(&mod_file).expect("failed to read mod.rs");
+    let mod_content = fs::read_to_string(&mod_file)
+        .expect("failed to read mod.rs")
+        .replace("\r\n", "\n");
 
     assert!(
         mod_content.contains("#[cfg(feature = \"ed2k-loopback\")]\npub mod loopback;"),
@@ -141,7 +143,9 @@ fn test_ed2k_reference_transport_strictly_confined_and_feature_gated() {
     );
 
     let mod_file = ed2k_src_dir().join("mod.rs");
-    let mod_content = fs::read_to_string(&mod_file).expect("failed to read mod.rs");
+    let mod_content = fs::read_to_string(&mod_file)
+        .expect("failed to read mod.rs")
+        .replace("\r\n", "\n");
 
     assert!(
         mod_content.contains("#[cfg(feature = \"ed2k-reference-loopback\")]\npub mod reference;"),

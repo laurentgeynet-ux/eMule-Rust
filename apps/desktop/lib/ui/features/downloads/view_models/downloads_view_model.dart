@@ -2,14 +2,23 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 
+import '../../../../domain/models/category_item.dart';
 import '../../../../domain/models/daemon_event.dart';
 import '../../../../domain/models/daemon_info.dart';
 import '../../../../domain/models/download_item.dart';
+import '../../../../domain/models/history_entry.dart';
+import '../../../../domain/models/history_stats.dart';
 import '../../../../domain/models/lab_models.dart';
+import '../../../../domain/models/part_met_models.dart';
 import '../../../../domain/services/mule_daemon_client.dart';
 
 import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
+
+enum AppNavSection {
+  downloads,
+  history,
+}
 
 enum DownloadFilter {
   all,
@@ -46,12 +55,23 @@ class DownloadsViewModel extends ChangeNotifier {
   String? _protocolMismatchError;
   bool _isLoading = false;
 
+  AppNavSection _currentSection = AppNavSection.downloads;
   final Map<String, DownloadItem> _downloads = {};
   DownloadFilter _currentFilter = DownloadFilter.all;
   String _searchQuery = '';
   String? _selectedDownloadId;
   bool _isDebugBarVisible = false;
   String? _statusNotification;
+
+  List<CategoryItem> _categories = [];
+  String? _selectedCategoryId;
+
+  List<HistoryEntry> _historyEntries = [];
+  HistoryStats _historyStats = const HistoryStats();
+  bool _isHistoryLoading = false;
+  String? _historyEventTypeFilter;
+  String? _historyStatusFilter;
+  int _historyRetentionDays = 30;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
@@ -105,10 +125,40 @@ class DownloadsViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isLoading => _isLoading;
   DownloadFilter get currentFilter => _currentFilter;
+  AppNavSection get currentSection => _currentSection;
   String get searchQuery => _searchQuery;
   String? get selectedDownloadId => _selectedDownloadId;
   bool get isDebugBarVisible => isDevToolsAvailable && _isDebugBarVisible;
   String? get statusNotification => _statusNotification;
+
+  void clearStatusNotification() {
+    _statusNotification = null;
+    notifyListeners();
+  }
+
+  List<CategoryItem> get categories => _categories;
+  String? get selectedCategoryId => _selectedCategoryId;
+  CategoryItem? get selectedCategory => _selectedCategoryId != null
+      ? _categories.where((c) => c.id == _selectedCategoryId).firstOrNull
+      : null;
+
+  Map<String, int> get categoryCounts {
+    final map = <String, int>{};
+    for (final cat in _categories) {
+      map[cat.id] = _downloads.values.where((d) => d.categoryId == cat.id).length;
+    }
+    return map;
+  }
+
+  int get uncategorizedCount =>
+      _downloads.values.where((d) => d.categoryId == null).length;
+
+  List<HistoryEntry> get historyEntries => _historyEntries;
+  HistoryStats get historyStats => _historyStats;
+  bool get isHistoryLoading => _isHistoryLoading;
+  String? get historyEventTypeFilter => _historyEventTypeFilter;
+  String? get historyStatusFilter => _historyStatusFilter;
+  int get historyRetentionDays => _historyRetentionDays;
 
   /// Lab and test fixture features are strictly dual-gated:
   /// Requires Portable workdir mode AND the daemon having the 'lab-tools' capability.
@@ -121,7 +171,14 @@ class DownloadsViewModel extends ChangeNotifier {
     return isPortable && info.capabilities.contains('lab-tools');
   }
 
+  Map<String, dynamic> _settings = {};
+  Map<String, dynamic> get settings => _settings;
+
   Directory get defaultDownloadDirectory {
+    final customDir = _settings['defaultDownloadDir'] as String?;
+    if (customDir != null && customDir.isNotEmpty) {
+      return Directory(customDir);
+    }
     final daemonDir = daemonInfo?.defaultDownloadDir;
     if (daemonDir != null && daemonDir.isNotEmpty) {
       return Directory(daemonDir);
@@ -190,6 +247,15 @@ class DownloadsViewModel extends ChangeNotifier {
         return false;
       }
 
+      // Category filter check
+      if (_selectedCategoryId != null) {
+        if (_selectedCategoryId == 'uncategorized') {
+          if (item.categoryId != null) return false;
+        } else {
+          if (item.categoryId != _selectedCategoryId) return false;
+        }
+      }
+
       return true;
     }).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -218,6 +284,9 @@ class DownloadsViewModel extends ChangeNotifier {
       if (client.daemonInfo != null) {
         _daemonInfo = client.daemonInfo;
       }
+      await fetchSettings();
+      await fetchHistory();
+      await fetchCategories();
       final list = await client.listDownloads();
       _downloads.clear();
       for (final item in list) {
@@ -230,7 +299,16 @@ class DownloadsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSection(AppNavSection section) {
+    _currentSection = section;
+    if (section == AppNavSection.history) {
+      fetchHistory();
+    }
+    notifyListeners();
+  }
+
   void setFilter(DownloadFilter filter) {
+    _currentSection = AppNavSection.downloads;
     _currentFilter = filter;
     notifyListeners();
   }
@@ -242,6 +320,9 @@ class DownloadsViewModel extends ChangeNotifier {
 
   void selectDownload(String? id) {
     _selectedDownloadId = id;
+    if (id != null) {
+      fetchDownloadDetail(id);
+    }
     notifyListeners();
   }
 
@@ -255,6 +336,7 @@ class DownloadsViewModel extends ChangeNotifier {
     String link, {
     String? targetDirectory,
     String? allocationPolicy,
+    String? categoryId,
   }) async {
     try {
       _isLoading = true;
@@ -264,6 +346,7 @@ class DownloadsViewModel extends ChangeNotifier {
         link,
         targetDirectory: targetDirectory,
         allocationPolicy: allocationPolicy,
+        categoryId: categoryId,
       );
 
       // Extract human-friendly filename from eD2K link for clean user notification
@@ -284,6 +367,42 @@ class DownloadsViewModel extends ChangeNotifier {
     } catch (e) {
       _errorMessage = 'Failed to add link: $e';
       return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) {
+    return client.inspectPartMet(metPath, partPath: partPath);
+  }
+
+  Future<ImportPartMetResult?> importPartMet(
+    String metPath, {
+    String? partPath,
+    String? targetDirectory,
+    String? categoryId,
+  }) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      final res = await client.importPartMet(
+        metPath,
+        partPath: partPath,
+        targetDirectory: targetDirectory,
+        categoryId: categoryId,
+      );
+
+      _downloads[res.download.id] = res.download;
+      _selectedDownloadId = res.download.id;
+      _statusNotification =
+          'Imported "${res.download.fileName}" (${res.verifiedParts}/${res.totalParts} verified, status: Paused)';
+      await refresh();
+      return res;
+    } catch (e) {
+      _errorMessage = 'Failed to import .part.met: $e';
+      return null;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -373,6 +492,362 @@ class DownloadsViewModel extends ChangeNotifier {
     await client.connectDownloadToSource(downloadId, peerAddr);
     _statusNotification = 'Connected download to $peerAddr';
     await refresh();
+  }
+
+  Future<void> fetchSettings() async {
+    try {
+      _settings = await client.getSettings();
+      _historyRetentionDays = (_settings['historyRetentionDays'] as num?)?.toInt() ?? 30;
+      notifyListeners();
+    } catch (_) {
+      // Non-critical in older or restricted daemons
+    }
+  }
+
+  void setHistoryEventTypeFilter(String? eventType) {
+    _historyEventTypeFilter = eventType;
+    fetchHistory();
+  }
+
+  void setHistoryStatusFilter(String? status) {
+    _historyStatusFilter = status;
+    fetchHistory();
+  }
+
+  Future<void> fetchHistory() async {
+    _isHistoryLoading = true;
+    notifyListeners();
+    try {
+      final entries = await client.listHistory(
+        eventType: _historyEventTypeFilter,
+        status: _historyStatusFilter,
+      );
+      final stats = await client.getHistoryStats();
+      _historyEntries = entries;
+      _historyStats = stats;
+    } catch (e) {
+      _errorMessage = 'Failed to fetch history: $e';
+    } finally {
+      _isHistoryLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> clearHistory() async {
+    try {
+      _isHistoryLoading = true;
+      notifyListeners();
+      final count = await client.clearHistory();
+      _historyEntries.clear();
+      _historyStats = await client.getHistoryStats();
+      _statusNotification = 'Cleared $count history record(s)';
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to clear history: $e';
+      return false;
+    } finally {
+      _isHistoryLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String> exportHistory(String format) async {
+    try {
+      return await client.exportHistory(
+        format,
+        eventType: _historyEventTypeFilter,
+        status: _historyStatusFilter,
+      );
+    } catch (e) {
+      _errorMessage = 'Failed to export history: $e';
+      notifyListeners();
+      return '';
+    }
+  }
+
+  Future<bool> setHistoryRetentionDays(int days) async {
+    try {
+      await client.setHistoryRetentionDays(days);
+      _historyRetentionDays = days;
+      _statusNotification = days == 0
+          ? 'History retention set to unlimited'
+          : 'History retention set to $days days';
+      await fetchHistory();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to update retention policy: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> setDefaultDownloadDirectory(String path) async {
+    try {
+      await client.setDefaultDownloadDirectory(path);
+      await fetchSettings();
+      _statusNotification = 'Updated default download directory';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to set default download directory: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> resetDefaultDownloadDirectory() async {
+    try {
+      await client.resetDefaultDownloadDirectory();
+      await fetchSettings();
+      _statusNotification = 'Reset download directory to portable default';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to reset default download directory: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<DownloadItem?> fetchDownloadDetail(String id) async {
+    try {
+      final detail = await client.getDownload(id);
+      if (detail != null) {
+        _downloads[detail.id] = detail;
+        notifyListeners();
+      }
+      return detail;
+    } catch (e) {
+      _errorMessage = 'Failed to fetch details: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> changeDownloadDestination(String id, String newDirectory) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      final updated = await client.setDownloadDestination(id, newDirectory);
+      _downloads[updated.id] = updated;
+      _statusNotification = 'Updated destination for "${updated.fileName}"';
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to set destination: $e';
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> retryDownloadConnection(String id) async {
+    try {
+      final updated = await client.retryDownloadConnection(id);
+      _downloads[updated.id] = updated;
+      _statusNotification = 'Retrying loopback connection for "${updated.fileName}"';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to retry connection: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> openCompletedFile(DownloadItem item) async {
+    if (!item.status.isCompleted) return;
+    final targetPath = item.targetPath;
+    if (targetPath == null || targetPath.isEmpty) return;
+    try {
+      final file = File(targetPath);
+      final dir = file.parent;
+      if (Platform.isWindows) {
+        if (file.existsSync()) {
+          await Process.start('explorer.exe', ['/select,', file.path]);
+        } else if (dir.existsSync()) {
+          await Process.start('explorer.exe', [dir.path]);
+        }
+      } else if (Platform.isMacOS) {
+        if (file.existsSync()) {
+          await Process.start('open', ['-R', file.path]);
+        } else if (dir.existsSync()) {
+          await Process.start('open', [dir.path]);
+        }
+      } else if (Platform.isLinux) {
+        if (dir.existsSync()) {
+          await Process.start('xdg-open', [dir.path]);
+        }
+      }
+    } catch (e) {
+      _errorMessage = 'Could not open completed file location: $e';
+      notifyListeners();
+    }
+  }
+
+  String getRedactedDownloadDiagnostic(DownloadItem item) {
+    String sanitizedTarget;
+    try {
+      final sep = Platform.isWindows ? r'\' : '/';
+      sanitizedTarget = '[DOWNLOAD_DIR]$sep${item.fileName}';
+    } catch (_) {
+      sanitizedTarget = '[DOWNLOAD_DIR]/${item.fileName}';
+    }
+
+    final sanitizedTemp = 'data/temp/${item.id}.part';
+    final totalParts = item.parts.length;
+    final verifiedParts = item.parts.where((p) => p.isVerified).length;
+    final completedParts = item.parts.where((p) => p.state == 'completed').length;
+    final downloadingParts = item.parts.where((p) => p.state == 'downloading').length;
+    final missingParts = item.parts.where((p) => p.state == 'missing').length;
+
+    final buffer = StringBuffer();
+    buffer.writeln('=== Emule-Sion Download Diagnostic (Sanitized) ===');
+    buffer.writeln('Generated: ${DateTime.now().toUtc().toIso8601String()}');
+    buffer.writeln('Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)');
+    buffer.writeln('Download ID: ${item.id}');
+    buffer.writeln('File Name: ${item.fileName}');
+    buffer.writeln('Status: ${item.status.label}');
+    buffer.writeln('Size: ${item.totalBytes} bytes');
+    buffer.writeln('Received: ${item.receivedBytes} bytes');
+    buffer.writeln('Verified: ${item.verifiedBytes} bytes');
+    buffer.writeln('Progress: ${(item.progress * 100).toStringAsFixed(1)}%');
+    buffer.writeln('Current Speed: ${item.downloadRateBps} B/s');
+    buffer.writeln('Average Speed: ${item.averageRateBps} B/s');
+    if (item.etaSeconds != null) {
+      buffer.writeln('ETA: ${item.etaSeconds}s');
+    }
+    buffer.writeln('Connection Attempts: ${item.connectionAttempts}');
+    if (item.lastError != null) {
+      buffer.writeln('Last Error: ${item.lastError}');
+    }
+    if (item.ed2kHash != null) {
+      buffer.writeln('eD2K Hash: ${item.ed2kHash}');
+    }
+    if (item.ed2kLink != null) {
+      buffer.writeln('Canonical Link: ${item.ed2kLink}');
+    }
+    buffer.writeln('Temp Path: $sanitizedTemp');
+    buffer.writeln('Destination Target: $sanitizedTarget');
+    buffer.writeln('Part Map Summary: $totalParts parts total ($verifiedParts verified, $completedParts unverified, $downloadingParts downloading, $missingParts missing)');
+    buffer.writeln('Created At: ${item.createdAt.toIso8601String()}');
+    buffer.writeln('Updated At: ${item.updatedAt.toIso8601String()}');
+    return buffer.toString();
+  }
+
+  // --- Category Actions ---
+
+  void selectCategory(String? categoryId) {
+    _selectedCategoryId = categoryId;
+    notifyListeners();
+  }
+
+  Future<void> fetchCategories() async {
+    try {
+      _categories = await client.listCategories();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Failed to fetch categories: $e');
+    }
+  }
+
+  Future<bool> createCategory({
+    required String name,
+    required String color,
+    String? defaultDestination,
+    String? defaultPriority,
+  }) async {
+    try {
+      final cat = await client.createCategory(
+        name: name,
+        color: color,
+        defaultDestination: defaultDestination,
+        defaultPriority: defaultPriority,
+      );
+      await fetchCategories();
+      _statusNotification = 'Created category "${cat.name}"';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to create category: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> updateCategory(
+    String id, {
+    String? name,
+    String? color,
+    String? defaultDestination,
+    String? defaultPriority,
+    int? sortOrder,
+  }) async {
+    try {
+      final cat = await client.updateCategory(
+        id,
+        name: name,
+        color: color,
+        defaultDestination: defaultDestination,
+        defaultPriority: defaultPriority,
+        sortOrder: sortOrder,
+      );
+      await fetchCategories();
+      _statusNotification = 'Updated category "${cat.name}"';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to update category: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteCategory(String id) async {
+    try {
+      final cat = _categories.where((c) => c.id == id).firstOrNull;
+      await client.deleteCategory(id);
+      if (_selectedCategoryId == id) {
+        _selectedCategoryId = null;
+      }
+      await refresh();
+      _statusNotification = 'Deleted category "${cat?.name ?? id}"';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to delete category: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> reorderCategories(List<String> categoryIds) async {
+    try {
+      await client.reorderCategories(categoryIds);
+      await fetchCategories();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to reorder categories: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> setDownloadCategory(String downloadId, String? categoryId) async {
+    try {
+      final updated = await client.setDownloadCategory(downloadId, categoryId);
+      _downloads[downloadId] = updated;
+      final catName = categoryId != null
+          ? (_categories.where((c) => c.id == categoryId).firstOrNull?.name ?? 'Category')
+          : 'None';
+      _statusNotification = 'Assigned to category "$catName"';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to set category: $e';
+      notifyListeners();
+      return false;
+    }
   }
 
   @override

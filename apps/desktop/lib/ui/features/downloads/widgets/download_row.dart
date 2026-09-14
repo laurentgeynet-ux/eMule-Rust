@@ -4,6 +4,7 @@ import '../../../../domain/models/download_item.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
+import 'download_detail_dialog.dart';
 
 class DownloadRow extends StatelessWidget {
   final DownloadItem item;
@@ -22,6 +23,9 @@ class DownloadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = AppTheme.getStatusColor(item.status);
+    final category = item.categoryId != null
+        ? viewModel.categories.where((c) => c.id == item.categoryId).firstOrNull
+        : null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -79,42 +83,83 @@ class DownloadRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 4,
                             children: [
-                              Tooltip(
-                                message: 'Full ID: ${item.id}',
-                                preferBelow: false,
-                                child: Text(
-                                  'ID: ${_abbreviateId(item.id)}',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.white38,
-                                    fontFamily: 'monospace',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              InkWell(
-                                borderRadius: BorderRadius.circular(4),
-                                onTap: () {
-                                  Clipboard.setData(ClipboardData(text: item.id));
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Download ID copied to clipboard'),
-                                      duration: Duration(seconds: 1),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Tooltip(
+                                    message: 'Full ID: ${item.id}',
+                                    preferBelow: false,
+                                    child: Text(
+                                      'ID: ${_abbreviateId(item.id)}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white38,
+                                        fontFamily: 'monospace',
+                                      ),
                                     ),
-                                  );
-                                },
-                                child: const Padding(
-                                  padding: EdgeInsets.all(2.0),
-                                  child: Icon(
-                                    Icons.copy_rounded,
-                                    size: 11,
-                                    color: Colors.white38,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(4),
+                                    onTap: () {
+                                      Clipboard.setData(ClipboardData(text: item.id));
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Download ID copied to clipboard'),
+                                          duration: Duration(seconds: 1),
+                                        ),
+                                      );
+                                    },
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(2.0),
+                                      child: Icon(
+                                        Icons.copy_rounded,
+                                        size: 11,
+                                        color: Colors.white38,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (category != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: category.parsedColor.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: category.parsedColor.withValues(alpha: 0.4),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          color: category.parsedColor,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        category.name,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: category.parsedColor,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
                             ],
                           ),
                         ],
@@ -224,6 +269,43 @@ class DownloadRow extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        PopupMenuButton<String?>(
+                          icon: Icon(
+                            category != null ? Icons.label_rounded : Icons.label_outline_rounded,
+                            color: category != null ? category.parsedColor : Colors.white54,
+                            size: 18,
+                          ),
+                          tooltip: category != null ? 'Category: ${category.name}' : 'Assign Category',
+                          onSelected: (catId) {
+                            viewModel.setDownloadCategory(item.id, catId);
+                          },
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem<String?>(
+                              value: null,
+                              child: Text('Sans catégorie (None)'),
+                            ),
+                            ...viewModel.categories.map((c) => PopupMenuItem<String?>(
+                              value: c.id,
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(color: c.parsedColor, shape: BoxShape.circle),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(c.name),
+                                ],
+                              ),
+                            )),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.info_outline_rounded,
+                              color: Colors.white70, size: 20),
+                          tooltip: 'Inspect Details & Part Map',
+                          onPressed: () => _openDetailDialog(context),
+                        ),
                         if (item.status.isPaused)
                           IconButton(
                             icon: const Icon(Icons.play_arrow_rounded,
@@ -252,6 +334,16 @@ class DownloadRow extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _openDetailDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => DownloadDetailDialog(
+        downloadId: item.id,
+        viewModel: viewModel,
       ),
     );
   }

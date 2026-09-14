@@ -1,0 +1,150 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:desktop/data/fake_daemon_client.dart';
+import 'package:desktop/domain/models/download_item.dart';
+import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:desktop/ui/features/downloads/widgets/import_part_met_dialog.dart';
+
+void main() {
+  group('ImportPartMetDialog Widget Tests', () {
+    late FakeMuleDaemonClient fakeClient;
+    late DownloadsViewModel viewModel;
+
+    setUp(() async {
+      fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
+      viewModel = DownloadsViewModel(client: fakeClient);
+      await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+    });
+
+    testWidgets('renders input fields, security notice, and inspect button',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportPartMetDialog(viewModel: viewModel),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Title and security banner
+      expect(find.text('Import .part.met (Experimental)'), findsOneWidget);
+      expect(
+        find.textContaining('The download will be staged into data/temp/ and initialized in Paused state.'),
+        findsOneWidget,
+      );
+
+      // Input labels
+      expect(find.text('Path to .part.met file'), findsOneWidget);
+      expect(find.text('Associated .part file path (optional, auto-detected)'), findsOneWidget);
+      expect(find.text('Target Download Directory'), findsOneWidget);
+      expect(find.text('Category (Optional)'), findsOneWidget);
+
+      // Action buttons
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.byKey(const Key('inspect_button')), findsOneWidget);
+      expect(find.byKey(const Key('import_submit_button')), findsOneWidget);
+    });
+
+    testWidgets('inspects .part.met and displays pre-import metadata preview',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportPartMetDialog(viewModel: viewModel),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Find met path textfield
+      final textFields = find.byType(TextField);
+      final metField = textFields.at(0);
+
+      // Enter mock .part.met path
+      await tester.enterText(metField, 'C:\\eMule\\001.part.met');
+      await tester.pumpAndSettle();
+
+      // Inspect button should be enabled
+      final inspectButton = find.byKey(const Key('inspect_button'));
+      await tester.tap(inspectButton);
+      await tester.pumpAndSettle();
+
+      // Inspection card should appear with parsed information
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      expect(find.text('001.bin'), findsOneWidget); // Parsed file name
+      expect(find.text('31d6cfe0d16ae931b73c59d7e0c089c0'), findsOneWidget); // Hash
+      expect(find.text('9.3 MB'), findsWidgets); // Size
+      expect(find.text('1 part(s)'), findsOneWidget); // Part count
+    });
+
+    testWidgets('executes import and adds download strictly in paused state',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportPartMetDialog(viewModel: viewModel),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Enter path and inspect
+      final textFields = find.byType(TextField);
+      await tester.enterText(textFields.at(0), 'C:\\eMule\\archive.part.met');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('inspect_button')));
+      await tester.pumpAndSettle();
+
+      // Submit import
+      final importButton = find.byKey(const Key('import_submit_button'));
+      expect(tester.widget<ElevatedButton>(importButton).onPressed, isNotNull);
+
+      await tester.tap(importButton);
+      await tester.pumpAndSettle();
+
+      // Verify that audit report view is shown after successful import
+      expect(find.byKey(const Key('import_audit_report_text')), findsOneWidget);
+      expect(find.textContaining('Format Version: 0xE0'), findsOneWidget);
+      expect(find.textContaining('STRICTLY PAUSED'), findsOneWidget);
+      expect(find.byKey(const Key('copy_report_button')), findsOneWidget);
+
+      // Tap Copy Report button
+      await tester.tap(find.byKey(const Key('copy_report_button')));
+      await tester.pumpAndSettle();
+
+      // Tap Done button to dismiss dialog
+      final doneButton = find.byKey(const Key('finish_import_button'));
+      expect(doneButton, findsOneWidget);
+      await tester.tap(doneButton);
+      await tester.pumpAndSettle();
+
+      // Verify that viewModel received the imported download
+      final imported = viewModel.filteredDownloads.firstWhere(
+        (d) => d.fileName == 'archive.bin',
+      );
+      expect(imported, isNotNull);
+      expect(imported.status, DownloadStatus.paused);
+      expect(imported.sourceCount, 0);
+      expect(imported.tempPath, contains('data/temp/'));
+      expect(viewModel.statusNotification, contains('Imported "archive.bin"'));
+    });
+  });
+}

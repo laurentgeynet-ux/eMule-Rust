@@ -4,10 +4,14 @@ import 'dart:math';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../domain/models/category_item.dart';
 import '../../domain/models/daemon_event.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/history_entry.dart';
+import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
+import '../../domain/models/part_met_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 import 'dto/rpc_dto.dart';
 
@@ -154,7 +158,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     }
   }
 
-  Future<dynamic> _call(String method, Map<String, dynamic> params) {
+  Future<dynamic> _call(String method, [Map<String, dynamic> params = const {}]) {
     final channel = _channel;
     if (channel == null) {
       return Future.error(StateError('Not connected to daemon'));
@@ -211,12 +215,17 @@ class RpcDaemonClient implements MuleDaemonClient {
     String link, {
     String? targetDirectory,
     String? allocationPolicy,
+    String? categoryId,
   }) async {
-    final resp = await _call('downloads.addEd2kLink', {
+    final params = <String, dynamic>{
       'link': link,
       'targetDirectory': targetDirectory ?? '.',
       'allocationPolicy': allocationPolicy ?? 'sparse',
-    });
+    };
+    if (categoryId != null && categoryId.isNotEmpty) {
+      params['categoryId'] = categoryId;
+    }
+    final resp = await _call('downloads.addEd2kLink', params);
 
     if (resp is Map<String, dynamic> && resp.containsKey('downloadId')) {
       return resp['downloadId'] as String;
@@ -327,6 +336,209 @@ class RpcDaemonClient implements MuleDaemonClient {
         'peerAddr': peerAddr,
       });
     }
+  }
+
+  @override
+  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory) async {
+    final resp = await _call('downloads.setDestination', {
+      'id': id,
+      'targetDirectory': targetDirectory,
+    });
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DownloadItem> retryDownloadConnection(String id) async {
+    final resp = await _call('downloads.retryConnection', {
+      'id': id,
+    });
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Map<String, dynamic>> getSettings() async {
+    final resp = await _call('settings.get', {});
+    return resp as Map<String, dynamic>;
+  }
+
+  @override
+  Future<void> setDefaultDownloadDirectory(String path) async {
+    await _call('settings.set', {
+      'defaultDownloadDir': path,
+    });
+  }
+
+  @override
+  Future<void> resetDefaultDownloadDirectory() async {
+    await _call('settings.resetDownloadDir', {});
+  }
+
+  @override
+  Future<List<HistoryEntry>> listHistory({
+    String? eventType,
+    String? status,
+    int? fromTimestampMs,
+    int? toTimestampMs,
+    int? limit,
+    int? offset,
+  }) async {
+    final params = <String, dynamic>{};
+    if (eventType != null) params['eventType'] = eventType;
+    if (status != null) params['status'] = status;
+    if (fromTimestampMs != null) params['fromTimestampMs'] = fromTimestampMs;
+    if (toTimestampMs != null) params['toTimestampMs'] = toTimestampMs;
+    if (limit != null) params['limit'] = limit;
+    if (offset != null) params['offset'] = offset;
+
+    final resp = await _call('history.list', params);
+    if (resp is List) {
+      return resp
+          .map((e) => RpcDto.historyEntryFromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
+  Future<HistoryStats> getHistoryStats() async {
+    final resp = await _call('history.stats', {});
+    return RpcDto.historyStatsFromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<int> clearHistory() async {
+    final resp = await _call('history.clear', {});
+    if (resp is Map<String, dynamic>) {
+      return (resp['clearedCount'] as num?)?.toInt() ?? 0;
+    }
+    return 0;
+  }
+
+  @override
+  Future<String> exportHistory(String format, {String? eventType, String? status}) async {
+    final params = <String, dynamic>{'format': format};
+    if (eventType != null) params['eventType'] = eventType;
+    if (status != null) params['status'] = status;
+
+    final resp = await _call('history.export', params);
+    if (resp is Map<String, dynamic>) {
+      return resp['content'] as String? ?? '';
+    }
+    return '';
+  }
+
+  @override
+  Future<void> setHistoryRetentionDays(int days) async {
+    await _call('settings.setRetentionDays', {
+      'retentionDays': days,
+    });
+  }
+
+  @override
+  Future<List<CategoryItem>> listCategories() async {
+    final resp = await _call('categories.list');
+    if (resp is List<dynamic>) {
+      return resp
+          .map((e) => RpcDto.categoryFromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  @override
+  Future<CategoryItem> createCategory({
+    required String name,
+    required String color,
+    String? defaultDestination,
+    String? defaultPriority,
+  }) async {
+    final params = <String, dynamic>{
+      'name': name,
+      'color': color,
+    };
+    if (defaultDestination != null && defaultDestination.isNotEmpty) {
+      params['defaultDestination'] = defaultDestination;
+    }
+    if (defaultPriority != null && defaultPriority.isNotEmpty) {
+      params['defaultPriority'] = defaultPriority;
+    }
+
+    final resp = await _call('categories.create', params);
+    return RpcDto.categoryFromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<CategoryItem> updateCategory(
+    String id, {
+    String? name,
+    String? color,
+    String? defaultDestination,
+    String? defaultPriority,
+    int? sortOrder,
+  }) async {
+    final params = <String, dynamic>{'id': id};
+    if (name != null) params['name'] = name;
+    if (color != null) params['color'] = color;
+    if (defaultDestination != null) params['defaultDestination'] = defaultDestination;
+    if (defaultPriority != null) params['defaultPriority'] = defaultPriority;
+    if (sortOrder != null) params['sortOrder'] = sortOrder;
+
+    final resp = await _call('categories.update', params);
+    return RpcDto.categoryFromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> deleteCategory(String id) async {
+    await _call('categories.delete', {'id': id});
+  }
+
+  @override
+  Future<void> reorderCategories(List<String> categoryIds) async {
+    await _call('categories.reorder', {'categoryIds': categoryIds});
+  }
+
+  @override
+  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId) async {
+    final resp = await _call('downloads.setCategory', {
+      'id': downloadId,
+      'categoryId': categoryId,
+    });
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) async {
+    final params = <String, dynamic>{
+      'metPath': metPath,
+    };
+    if (partPath != null && partPath.isNotEmpty) {
+      params['partPath'] = partPath;
+    }
+    final resp = await _call('downloads.inspectPartMet', params);
+    return PartMetInspectionResult.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ImportPartMetResult> importPartMet(
+    String metPath, {
+    String? partPath,
+    String? targetDirectory,
+    String? categoryId,
+  }) async {
+    final params = <String, dynamic>{
+      'metPath': metPath,
+    };
+    if (partPath != null && partPath.isNotEmpty) {
+      params['partPath'] = partPath;
+    }
+    if (targetDirectory != null && targetDirectory.isNotEmpty) {
+      params['targetDirectory'] = targetDirectory;
+    }
+    if (categoryId != null && categoryId.isNotEmpty) {
+      params['categoryId'] = categoryId;
+    }
+    final resp = await _call('downloads.importPartMet', params);
+    return ImportPartMetResult.fromJson(resp as Map<String, dynamic>);
   }
 
   @override

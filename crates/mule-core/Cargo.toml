@@ -12,6 +12,7 @@ thiserror.workspace = true
 rusqlite.workspace = true
 uuid.workspace = true
 md4.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

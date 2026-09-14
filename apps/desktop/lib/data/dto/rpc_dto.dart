@@ -1,5 +1,8 @@
+import '../../domain/models/category_item.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/history_entry.dart';
+import '../../domain/models/history_stats.dart';
 
 class RpcDto {
   static DownloadStatus parseStatus(String? status) {
@@ -38,23 +41,33 @@ class RpcDto {
     }
   }
 
-  static DownloadItem downloadFromSnapshotJson(Map<String, dynamic> json) {
-    final rawProgress = (json['progress'] as num?)?.toDouble() ?? 0.0;
-    final createdAtMs = (json['createdAtUnixMs'] as num?)?.toInt() ?? 0;
-    final updatedAtMs = (json['updatedAtUnixMs'] as num?)?.toInt() ?? 0;
-
-    return DownloadItem(
-      id: json['id'] as String? ?? '',
-      fileName: json['fileName'] as String? ?? 'Unnamed',
-      totalBytes: (json['totalBytes'] as num?)?.toInt() ?? 0,
+  static DownloadPartInfo partInfoFromJson(Map<String, dynamic> json) {
+    return DownloadPartInfo(
+      partIndex: (json['partIndex'] as num?)?.toInt() ?? 0,
+      startOffset: (json['startOffset'] as num?)?.toInt() ?? 0,
+      endOffset: (json['endOffset'] as num?)?.toInt() ?? 0,
+      size: (json['size'] as num?)?.toInt() ?? 0,
       receivedBytes: (json['receivedBytes'] as num?)?.toInt() ?? 0,
-      verifiedBytes: (json['verifiedBytes'] as num?)?.toInt() ?? 0,
-      progress: rawProgress.clamp(0.0, 1.0),
-      status: parseStatus(json['status'] as String?),
-      priority: parsePriority(json['priority'] as String?),
-      sourceCount: (json['sourceCount'] as num?)?.toInt() ?? 0,
-      downloadRateBps: (json['downloadRateBps'] as num?)?.toInt() ?? 0,
-      uploadedBytes: (json['uploadedBytes'] as num?)?.toInt() ?? 0,
+      isVerified: json['isVerified'] as bool? ?? false,
+      state: json['state'] as String? ?? 'missing',
+    );
+  }
+
+  static DownloadItem downloadFromSnapshotJson(Map<String, dynamic> json) {
+    return DownloadItem.fromJson(json);
+  }
+
+  static CategoryItem categoryFromJson(Map<String, dynamic> json) {
+    final createdAtMs = (json['createdAt'] as num?)?.toInt() ?? 0;
+    final updatedAtMs = (json['updatedAt'] as num?)?.toInt() ?? 0;
+
+    return CategoryItem(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? 'Unnamed',
+      color: json['color'] as String? ?? '#2196F3',
+      sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
+      defaultDestination: json['defaultDestination'] as String?,
+      defaultPriority: json['defaultPriority'] as String?,
       createdAt: createdAtMs > 0
           ? DateTime.fromMillisecondsSinceEpoch(createdAtMs)
           : DateTime.now(),
@@ -79,6 +92,44 @@ class RpcDto {
       workdirMode: json['workdirMode'] as String?,
       workdirPath: json['workdirPath'] as String?,
       defaultDownloadDir: json['defaultDownloadDir'] as String?,
+    );
+  }
+
+  static HistoryEntry historyEntryFromJson(Map<String, dynamic> json) {
+    final timestampMs = (json['timestampUnixMs'] as num?)?.toInt() ?? 0;
+    return HistoryEntry(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      downloadId: json['downloadId'] as String? ?? '',
+      fileName: json['fileName'] as String? ?? 'Unnamed',
+      totalBytes: (json['totalSize'] as num?)?.toInt() ?? 0,
+      transferredBytes: (json['transferredBytes'] as num?)?.toInt() ?? 0,
+      ed2kHash: json['ed2kHash'] as String? ?? '',
+      eventType: json['eventType'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      durationSecs: (json['durationSecs'] as num?)?.toInt() ?? 0,
+      connectionAttempts: (json['connectionAttempts'] as num?)?.toInt() ?? 0,
+      resumeCount: (json['resumeCount'] as num?)?.toInt() ?? 0,
+      verificationResult: json['verificationResult'] as String? ?? 'unverified',
+      errorMessage: json['errorMessage'] as String?,
+      timestamp: timestampMs > 0
+          ? DateTime.fromMillisecondsSinceEpoch(timestampMs)
+          : DateTime.now(),
+    );
+  }
+
+  static HistoryStats historyStatsFromJson(Map<String, dynamic> json) {
+    return HistoryStats(
+      totalCompletedCount: (json['totalCompletedCount'] as num?)?.toInt() ?? 0,
+      totalCompletedBytes: (json['totalCompletedBytes'] as num?)?.toInt() ?? 0,
+      totalFailedCount: (json['totalFailedCount'] as num?)?.toInt() ?? 0,
+      totalResumesCount: (json['totalResumesCount'] as num?)?.toInt() ?? 0,
+      totalIntegrityFailures: (json['totalIntegrityFailures'] as num?)?.toInt() ?? 0,
+      sessionCompletedBytes: (json['sessionCompletedBytes'] as num?)?.toInt() ?? 0,
+      sessionCompletedCount: (json['sessionCompletedCount'] as num?)?.toInt() ?? 0,
+      last24hCompletedBytes: (json['last24hCompletedBytes'] as num?)?.toInt() ?? 0,
+      last24hCompletedCount: (json['last24hCompletedCount'] as num?)?.toInt() ?? 0,
+      last7dCompletedBytes: (json['last7dCompletedBytes'] as num?)?.toInt() ?? 0,
+      last7dCompletedCount: (json['last7dCompletedCount'] as num?)?.toInt() ?? 0,
     );
   }
 }

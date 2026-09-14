@@ -38,6 +38,26 @@ pub async fn handle_request(
         "downloads.pause" => handle_pause(state, req.params).await,
         "downloads.resume" => handle_resume(state, req.params).await,
         "downloads.remove" => handle_remove(state, req.params).await,
+        "downloads.setDestination" => handle_set_destination(state, req.params).await,
+        "downloads.inspectPartMet" => handle_inspect_part_met(state, req.params).await,
+        "downloads.importPartMet" => handle_import_part_met(state, req.params).await,
+        "downloads.retryConnection" | "downloads.retry" => {
+            handle_retry_connection(state, req.params).await
+        }
+        "history.list" => handle_history_list(state, req.params).await,
+        "history.stats" => handle_history_stats(state).await,
+        "history.clear" => handle_history_clear(state).await,
+        "history.export" => handle_history_export(state, req.params).await,
+        "settings.get" => handle_settings_get(state).await,
+        "settings.set" => handle_settings_set(state, req.params).await,
+        "settings.setRetentionDays" => handle_settings_set_retention_days(state, req.params).await,
+        "settings.resetDownloadDir" => handle_settings_reset_download_dir(state).await,
+        "categories.list" => handle_categories_list(state).await,
+        "categories.create" => handle_categories_create(state, req.params).await,
+        "categories.update" => handle_categories_update(state, req.params).await,
+        "categories.delete" => handle_categories_delete(state, req.params).await,
+        "categories.reorder" => handle_categories_reorder(state, req.params).await,
+        "downloads.setCategory" => handle_downloads_set_category(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -97,6 +117,9 @@ fn handle_hello(
     let capabilities = vec![
         "downloads",
         "download-events",
+        "history",
+        "categories",
+        "import_part_met",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -118,9 +141,23 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let capabilities = vec![
         "downloads",
         "download-events",
+        "history",
+        "categories",
+        "import_part_met",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
+
+    let default_dl_dir = {
+        state
+            .downloads
+            .lock()
+            .await
+            .get_setting("default_download_directory")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| state.config.default_download_dir.to_string_lossy().to_string())
+    };
 
     Ok(json!({
         "version": DAEMON_VERSION,
@@ -130,7 +167,7 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "capabilities": capabilities,
         "workdirMode": format!("{:?}", state.config.workdir_mode),
         "workdirPath": state.config.data_dir.to_string_lossy(),
-        "defaultDownloadDir": state.config.default_download_dir.to_string_lossy(),
+        "defaultDownloadDir": default_dl_dir,
     }))
 }
 
@@ -166,7 +203,7 @@ async fn handle_downloads_get(
         .downloads
         .lock()
         .await
-        .get_download(&id)
+        .get_download_detail(&id)
         .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
 
     Ok(serde_json::to_value(dl).unwrap_or_default())
@@ -185,16 +222,62 @@ async fn handle_add_ed2k_link(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty() && *s != ".");
 
-    let target_dir = match target_dir_opt {
-        Some(p) => {
-            let path = std::path::PathBuf::from(p);
-            if path.is_absolute() {
-                path
-            } else {
-                state.config.default_download_dir.join(path)
-            }
+    let category_id_opt = params["categoryId"]
+        .as_str()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
+    let category_dest = if let Some(ref cid) = category_id_opt {
+        state
+            .downloads
+            .lock()
+            .await
+            .get_category(cid)
+            .ok()
+            .flatten()
+            .and_then(|c| c.default_destination)
+    } else {
+        None
+    };
+
+    let global_db_dir = {
+        state
+            .downloads
+            .lock()
+            .await
+            .get_setting("default_download_directory")
+            .ok()
+            .flatten()
+            .map(std::path::PathBuf::from)
+    };
+
+    let fallback_bundle_dir = state.config.default_download_dir.clone();
+    let effective_base_dir = global_db_dir.clone().unwrap_or_else(|| fallback_bundle_dir.clone());
+
+    // 4-Tier Resolution:
+    // Tier 1: Explicit targetDirectory
+    // Tier 2: Category default destination
+    // Tier 3: Global SQLite setting default_download_directory
+    // Tier 4: Bundle root default download dir
+    let target_dir = if let Some(p) = target_dir_opt {
+        let path = std::path::PathBuf::from(p);
+        if path.is_absolute() {
+            path
+        } else {
+            effective_base_dir.join(path)
         }
-        None => state.config.default_download_dir.clone(),
+    } else if let Some(cat_dest) = category_dest {
+        let path = std::path::PathBuf::from(&cat_dest);
+        if path.is_absolute() {
+            path
+        } else {
+            effective_base_dir.join(path)
+        }
+    } else if let Some(global_dir) = global_db_dir {
+        global_dir
+    } else {
+        fallback_bundle_dir
     };
     let _ = std::fs::create_dir_all(&target_dir);
 
@@ -208,7 +291,7 @@ async fn handle_add_ed2k_link(
         .downloads
         .lock()
         .await
-        .add_ed2k_link(link, &target_dir, policy)?;
+        .add_ed2k_link(link, &target_dir, policy, category_id_opt)?;
 
     state.broadcast_download_update(snapshot.clone());
 
@@ -259,6 +342,322 @@ async fn handle_remove(state: &AppState, params: Option<Value>) -> Result<Value,
         .remove_download(&id, delete_files)?;
 
     Ok(json!({ "success": true }))
+}
+
+async fn handle_set_destination(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    let target_dir_str = params["targetDirectory"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'targetDirectory' parameter"))?;
+
+    let target_dir = std::path::PathBuf::from(target_dir_str);
+    let detail = state
+        .downloads
+        .lock()
+        .await
+        .set_destination(&id, &target_dir)?;
+
+    state.broadcast_download_update(detail.snapshot.clone());
+
+    Ok(serde_json::to_value(detail).unwrap_or_default())
+}
+
+async fn handle_inspect_part_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let met_path_str = params["metPath"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'metPath' parameter"))?;
+    let part_path_str = params["partPath"].as_str().filter(|s| !s.trim().is_empty());
+
+    let met_path = std::path::Path::new(met_path_str);
+    let part_path = part_path_str.map(std::path::Path::new);
+
+    let inspection = state
+        .downloads
+        .lock()
+        .await
+        .inspect_part_met(met_path, part_path)?;
+
+    Ok(serde_json::to_value(inspection).unwrap_or_default())
+}
+
+async fn handle_import_part_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let met_path_str = params["metPath"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'metPath' parameter"))?;
+    let part_path_str = params["partPath"].as_str().filter(|s| !s.trim().is_empty());
+
+    let target_dir_opt = params["targetDirectory"]
+        .as_str()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty() && *s != ".");
+
+    let category_id_opt = params["categoryId"]
+        .as_str()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
+    let category_dest = if let Some(ref cid) = category_id_opt {
+        state
+            .downloads
+            .lock()
+            .await
+            .get_category(cid)
+            .ok()
+            .flatten()
+            .and_then(|c| c.default_destination)
+    } else {
+        None
+    };
+
+    let global_db_dir = {
+        state
+            .downloads
+            .lock()
+            .await
+            .get_setting("default_download_directory")
+            .ok()
+            .flatten()
+            .map(std::path::PathBuf::from)
+    };
+
+    let fallback_bundle_dir = state.config.default_download_dir.clone();
+    let effective_base_dir = global_db_dir.clone().unwrap_or_else(|| fallback_bundle_dir.clone());
+
+    let target_dir = if let Some(p) = target_dir_opt {
+        let path = std::path::PathBuf::from(p);
+        if path.is_absolute() {
+            path
+        } else {
+            effective_base_dir.join(path)
+        }
+    } else if let Some(cat_dest) = category_dest {
+        let path = std::path::PathBuf::from(&cat_dest);
+        if path.is_absolute() {
+            path
+        } else {
+            effective_base_dir.join(path)
+        }
+    } else if let Some(global_dir) = global_db_dir {
+        global_dir
+    } else {
+        fallback_bundle_dir
+    };
+    let _ = std::fs::create_dir_all(&target_dir);
+
+    let met_path = std::path::Path::new(met_path_str);
+    let part_path = part_path_str.map(std::path::Path::new);
+
+    let result = state
+        .downloads
+        .lock()
+        .await
+        .import_part_met(met_path, part_path, &target_dir, category_id_opt)?;
+
+    state.broadcast_download_update(result.download.clone());
+
+    Ok(serde_json::to_value(result).unwrap_or_default())
+}
+
+
+async fn handle_retry_connection(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+
+    let detail = state
+        .downloads
+        .lock()
+        .await
+        .retry_connection(&id)?;
+
+    state.broadcast_download_update(detail.snapshot.clone());
+
+    Ok(serde_json::to_value(detail).unwrap_or_default())
+}
+
+async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError> {
+    let (custom_dir, retention_days) = {
+        let dls = state.downloads.lock().await;
+        let dir = dls.get_setting("default_download_directory")?;
+        let ret = dls
+            .get_setting("history_retention_days")?
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(30);
+        (dir, ret)
+    };
+
+    let current_dir = custom_dir
+        .as_ref()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| state.config.default_download_dir.clone());
+
+    let portable_default =
+        crate::workdir::WorkDirectoryResolver::resolve(None, None).default_download_dir;
+
+    Ok(json!({
+        "defaultDownloadDir": current_dir.to_string_lossy(),
+        "portableDownloadDir": portable_default.to_string_lossy(),
+        "isCustom": custom_dir.is_some(),
+        "historyRetentionDays": retention_days
+    }))
+}
+
+async fn handle_settings_set(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let mut updated_dir = None;
+    let mut updated_retention = None;
+
+    if let Some(dir_str) = params["defaultDownloadDir"].as_str() {
+        let dir = std::path::PathBuf::from(dir_str);
+        // Validate directory is creatable & writable
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| JsonRpcError::business(format!("Cannot create directory: {e}")))?;
+
+        let probe = dir.join(format!(".mule_write_probe_{}", Uuid::new_v4()));
+        match std::fs::write(&probe, b"probe") {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&probe);
+            }
+            Err(e) => {
+                return Err(JsonRpcError::business(format!("Directory is not writable: {e}")));
+            }
+        }
+
+        state
+            .downloads
+            .lock()
+            .await
+            .set_setting("default_download_directory", dir_str)?;
+        updated_dir = Some(dir_str.to_string());
+    }
+
+    if let Some(ret_days_val) = params.get("historyRetentionDays") {
+        let ret_days = ret_days_val.as_u64().ok_or_else(|| {
+            JsonRpcError::invalid_params("Invalid 'historyRetentionDays' parameter")
+        })? as u32;
+        let mut dls = state.downloads.lock().await;
+        dls.set_setting("history_retention_days", &ret_days.to_string())?;
+        dls.apply_retention_policy(ret_days)?;
+        updated_retention = Some(ret_days);
+    }
+
+    Ok(json!({
+        "success": true,
+        "defaultDownloadDir": updated_dir,
+        "historyRetentionDays": updated_retention
+    }))
+}
+
+async fn handle_settings_set_retention_days(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let retention_days = params["retentionDays"]
+        .as_u64()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'retentionDays' parameter"))? as u32;
+
+    let mut dls = state.downloads.lock().await;
+    dls.set_setting("history_retention_days", &retention_days.to_string())?;
+    let pruned_count = dls.apply_retention_policy(retention_days)?;
+
+    Ok(json!({
+        "success": true,
+        "retentionDays": retention_days,
+        "prunedCount": pruned_count
+    }))
+}
+
+async fn handle_history_list(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let filter = if let Some(p) = params {
+        serde_json::from_value::<mule_core::HistoryFilter>(p)
+            .unwrap_or_default()
+    } else {
+        mule_core::HistoryFilter::default()
+    };
+
+    let entries = state.downloads.lock().await.query_history(&filter)?;
+    Ok(serde_json::to_value(entries).unwrap_or_default())
+}
+
+async fn handle_history_stats(state: &AppState) -> Result<Value, JsonRpcError> {
+    let stats = state.downloads.lock().await.get_history_stats()?;
+    Ok(serde_json::to_value(stats).unwrap_or_default())
+}
+
+async fn handle_history_clear(state: &AppState) -> Result<Value, JsonRpcError> {
+    let cleared_count = state.downloads.lock().await.clear_history()?;
+    Ok(json!({
+        "success": true,
+        "clearedCount": cleared_count
+    }))
+}
+
+async fn handle_history_export(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let format = params["format"]
+        .as_str()
+        .unwrap_or("json");
+
+    let filter = serde_json::from_value::<mule_core::HistoryFilter>(params.clone())
+        .unwrap_or_default();
+
+    let dls = state.downloads.lock().await;
+    let content = dls.export_history(format, &filter)?;
+    let entries = dls.query_history(&filter)?;
+
+    Ok(json!({
+        "format": format.to_ascii_lowercase(),
+        "content": content,
+        "count": entries.len()
+    }))
+}
+
+async fn handle_settings_reset_download_dir(state: &AppState) -> Result<Value, JsonRpcError> {
+    state
+        .downloads
+        .lock()
+        .await
+        .remove_setting("default_download_directory")?;
+
+    let portable_default =
+        crate::workdir::WorkDirectoryResolver::resolve(None, None).default_download_dir;
+
+    Ok(json!({
+        "success": true,
+        "defaultDownloadDir": portable_default.to_string_lossy(),
+        "isCustom": false
+    }))
 }
 
 #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
@@ -780,6 +1179,143 @@ async fn handle_lab_cleanup_test_data(state: &AppState) -> Result<Value, JsonRpc
             "Test data cleanup complete: {deleted_files_count} file(s) removed, {freed_bytes} bytes freed."
         )
     }))
+}
+
+// --- Category Handlers ---
+
+async fn handle_categories_list(state: &AppState) -> Result<Value, JsonRpcError> {
+    let list = state.downloads.lock().await.list_categories()?;
+    serde_json::to_value(list)
+        .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
+}
+
+async fn handle_categories_create(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let name = params["name"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'name' parameter"))?;
+    let color = params["color"].as_str().unwrap_or("#2196F3");
+    let default_dest = params["defaultDestination"].as_str().map(String::from);
+    let default_prio = params["defaultPriority"].as_str().map(String::from);
+
+    let created = state
+        .downloads
+        .lock()
+        .await
+        .create_category(name, color, default_dest, default_prio)?;
+
+    serde_json::to_value(created)
+        .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
+}
+
+async fn handle_categories_update(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+
+    let name = params["name"].as_str().map(String::from);
+    let color = params["color"].as_str().map(String::from);
+    let default_dest = if params.get("defaultDestination").is_some() {
+        Some(params["defaultDestination"].as_str().map(String::from))
+    } else {
+        None
+    };
+    let default_prio = if params.get("defaultPriority").is_some() {
+        Some(params["defaultPriority"].as_str().map(String::from))
+    } else {
+        None
+    };
+    let sort_order = params["sortOrder"].as_i64().map(|n| n as i32);
+
+    let updated = state.downloads.lock().await.update_category(
+        id,
+        name,
+        color,
+        default_dest,
+        default_prio,
+        sort_order,
+    )?;
+
+    serde_json::to_value(updated)
+        .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
+}
+
+async fn handle_categories_delete(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+
+    let reassigned = state.downloads.lock().await.delete_category(id)?;
+
+    // Broadcast updates for all active downloads
+    let snapshots = state.downloads.lock().await.list_downloads();
+    for snap in snapshots {
+        state.broadcast_download_update(snap);
+    }
+
+    Ok(json!({
+        "deleted": true,
+        "reassignedDownloads": reassigned,
+    }))
+}
+
+async fn handle_categories_reorder(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let ids_val = params["categoryIds"]
+        .as_array()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'categoryIds' array parameter"))?;
+
+    let category_ids: Vec<String> = ids_val
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+
+    state
+        .downloads
+        .lock()
+        .await
+        .reorder_categories(&category_ids)?;
+
+    Ok(json!({ "success": true }))
+}
+
+async fn handle_downloads_set_category(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str)
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid UUID: {e}")))?;
+
+    let category_id = params["categoryId"].as_str().map(String::from);
+
+    let detail = state
+        .downloads
+        .lock()
+        .await
+        .set_download_category(&id, category_id)?;
+
+    state.broadcast_download_update(detail.snapshot.clone());
+
+    serde_json::to_value(detail)
+        .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
 }
 
 

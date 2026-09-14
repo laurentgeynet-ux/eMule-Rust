@@ -1,15 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
+import '../../domain/models/category_item.dart';
 import '../../domain/models/daemon_event.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/history_entry.dart';
+import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
+import '../../domain/models/part_met_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 
 class FakeMuleDaemonClient implements MuleDaemonClient {
   final Map<String, DownloadItem> _downloads = {};
+  final Map<String, CategoryItem> _categories = {};
   final List<LabFixtureInfo> _fixtures = [];
+  final List<HistoryEntry> _history = [];
+  int _fakeRetentionDays = 30;
   String? _activePeer;
   final StreamController<DaemonConnectionState> _connectionController =
       StreamController<DaemonConnectionState>.broadcast();
@@ -25,8 +33,68 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _seedDefaultDownloads();
   }
 
+  static List<DownloadPartInfo> _generateParts(int totalBytes, int receivedBytes, bool isCompleted) {
+    const partSize = 9728000;
+    final count = totalBytes > 0 ? (totalBytes / partSize).ceil() : 1;
+    final list = <DownloadPartInfo>[];
+
+    for (int i = 0; i < count; i++) {
+      final start = i * partSize;
+      final end = min((i + 1) * partSize, totalBytes);
+      final size = end - start;
+
+      int partReceived = 0;
+      if (isCompleted) {
+        partReceived = size;
+      } else if (receivedBytes >= end) {
+        partReceived = size;
+      } else if (receivedBytes > start) {
+        partReceived = receivedBytes - start;
+      }
+
+      final isVerified = isCompleted || (partReceived == size && i % 2 == 0);
+      final state = isVerified
+          ? 'verified'
+          : (partReceived == size ? 'completed' : (partReceived > 0 ? 'downloading' : 'missing'));
+
+      list.add(DownloadPartInfo(
+        partIndex: i,
+        startOffset: start,
+        endOffset: end,
+        size: size,
+        receivedBytes: partReceived,
+        isVerified: isVerified,
+        state: state,
+      ));
+    }
+    return list;
+  }
+
   void _seedDefaultDownloads() {
     final now = DateTime.now();
+
+    final catIso = CategoryItem(
+      id: 'cat-iso',
+      name: 'Linux ISOs',
+      color: '#E91E63',
+      sortOrder: 0,
+      defaultDestination: 'downloads/ISOs',
+      defaultPriority: 'high',
+      createdAt: now.subtract(const Duration(days: 2)),
+      updatedAt: now.subtract(const Duration(days: 2)),
+    );
+    final catMedia = CategoryItem(
+      id: 'cat-media',
+      name: 'Media & 3D',
+      color: '#00BCD4',
+      sortOrder: 1,
+      defaultDestination: 'downloads/Media',
+      defaultPriority: 'normal',
+      createdAt: now.subtract(const Duration(days: 2)),
+      updatedAt: now.subtract(const Duration(days: 2)),
+    );
+    _categories[catIso.id] = catIso;
+    _categories[catMedia.id] = catMedia;
 
     final d1 = DownloadItem(
       id: '00000000-0000-0000-0000-000000000001',
@@ -42,6 +110,16 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       uploadedBytes: 15400000,
       createdAt: now.subtract(const Duration(minutes: 45)),
       updatedAt: now,
+      ed2kHash: '31d6cfe0d16ae931b73c59d7e0c089c0',
+      ed2kLink: 'ed2k://|file|Debian_12_netinst.iso|654311424|31d6cfe0d16ae931b73c59d7e0c089c0|/',
+      tempPath: 'data/temp/00000000-0000-0000-0000-000000000001.part',
+      targetPath: 'downloads/Debian_12_netinst.iso',
+      averageRateBps: 2600000,
+      etaSeconds: 40,
+      connectionAttempts: 1,
+      lastStatusChange: now.subtract(const Duration(minutes: 45)),
+      parts: _generateParts(654311424, 550000000, false),
+      categoryId: catIso.id,
     );
 
     final d2 = DownloadItem(
@@ -58,6 +136,15 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       uploadedBytes: 2048000,
       createdAt: now.subtract(const Duration(hours: 2)),
       updatedAt: now.subtract(const Duration(minutes: 20)),
+      ed2kHash: '42d6cfe0d16ae931b73c59d7e0c089c1',
+      ed2kLink: 'ed2k://|file|Blender_Benchmark_Scene.blend|94371840|42d6cfe0d16ae931b73c59d7e0c089c1|/',
+      tempPath: 'data/temp/00000000-0000-0000-0000-000000000002.part',
+      targetPath: 'downloads/Blender_Benchmark_Scene.blend',
+      averageRateBps: 0,
+      connectionAttempts: 2,
+      lastStatusChange: now.subtract(const Duration(minutes: 20)),
+      parts: _generateParts(94371840, 40000000, false),
+      categoryId: catMedia.id,
     );
 
     final d3 = DownloadItem(
@@ -74,11 +161,52 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       uploadedBytes: 89400000,
       createdAt: now.subtract(const Duration(days: 1)),
       updatedAt: now.subtract(const Duration(hours: 5)),
+      ed2kHash: '53d6cfe0d16ae931b73c59d7e0c089c2',
+      ed2kLink: 'ed2k://|file|Linux_Kernel_6.10.tar.xz|148897280|53d6cfe0d16ae931b73c59d7e0c089c2|/',
+      tempPath: 'data/temp/00000000-0000-0000-0000-000000000003.part',
+      targetPath: 'downloads/Linux_Kernel_6.10.tar.xz',
+      averageRateBps: 3400000,
+      connectionAttempts: 1,
+      lastStatusChange: now.subtract(const Duration(hours: 5)),
+      parts: _generateParts(148897280, 148897280, true),
     );
 
     _downloads[d1.id] = d1;
     _downloads[d2.id] = d2;
     _downloads[d3.id] = d3;
+
+    _history.add(HistoryEntry(
+      id: 1,
+      downloadId: d3.id,
+      fileName: d3.fileName,
+      totalBytes: d3.totalBytes,
+      transferredBytes: d3.totalBytes,
+      ed2kHash: d3.ed2kHash ?? '',
+      eventType: 'completed',
+      status: 'completed',
+      durationSecs: 48,
+      connectionAttempts: 1,
+      resumeCount: 0,
+      verificationResult: 'verified_ok',
+      errorMessage: null,
+      timestamp: now.subtract(const Duration(hours: 5)),
+    ));
+    _history.add(HistoryEntry(
+      id: 2,
+      downloadId: d2.id,
+      fileName: d2.fileName,
+      totalBytes: d2.totalBytes,
+      transferredBytes: d2.receivedBytes,
+      ed2kHash: d2.ed2kHash ?? '',
+      eventType: 'resumed',
+      status: 'downloading',
+      durationSecs: 12,
+      connectionAttempts: 2,
+      resumeCount: 1,
+      verificationResult: 'unverified',
+      errorMessage: null,
+      timestamp: now.subtract(const Duration(hours: 1)),
+    ));
   }
 
   @override
@@ -150,6 +278,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     String link, {
     String? targetDirectory,
     String? allocationPolicy,
+    String? categoryId,
   }) async {
     final parts = link.split('|');
     String fileName = 'download_${DateTime.now().millisecondsSinceEpoch}.bin';
@@ -177,6 +306,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       uploadedBytes: 0,
       createdAt: now,
       updatedAt: now,
+      targetPath: targetDirectory != null ? '$targetDirectory/$fileName' : null,
+      categoryId: categoryId,
     );
 
     _downloads[id] = item;
@@ -362,6 +493,328 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       _downloads[downloadId] = updated;
       _emitUpdate(updated);
     }
+  }
+
+  String? _fakeCustomDownloadDir;
+
+  @override
+  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory) async {
+    final existing = _downloads[id];
+    if (existing == null) throw Exception('Download $id not found');
+    final updated = existing.copyWith(
+      targetPath: '$targetDirectory/${existing.fileName}',
+      updatedAt: DateTime.now(),
+    );
+    _downloads[id] = updated;
+    _emitUpdate(updated);
+    return updated;
+  }
+
+  @override
+  Future<DownloadItem> retryDownloadConnection(String id) async {
+    final existing = _downloads[id];
+    if (existing == null) throw Exception('Download $id not found');
+    final updated = existing.copyWith(
+      connectionAttempts: existing.connectionAttempts + 1,
+      lastError: null,
+      status: DownloadStatus.downloading,
+      updatedAt: DateTime.now(),
+      lastStatusChange: DateTime.now(),
+    );
+    _downloads[id] = updated;
+    _emitUpdate(updated);
+    return updated;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getSettings() async {
+    return {
+      'defaultDownloadDir': _fakeCustomDownloadDir ?? 'downloads',
+      'portableDownloadDir': 'downloads',
+      'isCustom': _fakeCustomDownloadDir != null,
+      'historyRetentionDays': _fakeRetentionDays,
+    };
+  }
+
+  @override
+  Future<void> setDefaultDownloadDirectory(String path) async {
+    _fakeCustomDownloadDir = path;
+  }
+
+  @override
+  Future<void> resetDefaultDownloadDirectory() async {
+    _fakeCustomDownloadDir = null;
+  }
+
+  @override
+  Future<List<HistoryEntry>> listHistory({
+    String? eventType,
+    String? status,
+    int? fromTimestampMs,
+    int? toTimestampMs,
+    int? limit,
+    int? offset,
+  }) async {
+    var filtered = _history.where((e) {
+      if (eventType != null && eventType.isNotEmpty && e.eventType != eventType) {
+        return false;
+      }
+      if (status != null && status.isNotEmpty && e.status != status) {
+        return false;
+      }
+      if (fromTimestampMs != null && e.timestamp.millisecondsSinceEpoch < fromTimestampMs) {
+        return false;
+      }
+      if (toTimestampMs != null && e.timestamp.millisecondsSinceEpoch > toTimestampMs) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    filtered.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    if (offset != null && offset > 0) {
+      if (offset >= filtered.length) return const [];
+      filtered = filtered.sublist(offset);
+    }
+    if (limit != null && filtered.length > limit) {
+      filtered = filtered.sublist(0, limit);
+    }
+    return filtered;
+  }
+
+  @override
+  Future<HistoryStats> getHistoryStats() async {
+    final completed = _history.where((e) => e.eventType == 'completed');
+    final completedCount = completed.length;
+    final completedBytes = completed.fold<int>(0, (sum, e) => sum + e.totalBytes);
+    final failedCount = _history.where((e) => e.eventType == 'failed').length;
+    final resumesCount = _history.where((e) => e.eventType == 'resumed').length;
+    final integrityFailures = _history.where((e) => e.verificationResult == 'hash_mismatch').length;
+
+    return HistoryStats(
+      totalCompletedCount: completedCount,
+      totalCompletedBytes: completedBytes,
+      totalFailedCount: failedCount,
+      totalResumesCount: resumesCount,
+      totalIntegrityFailures: integrityFailures,
+      sessionCompletedBytes: completedBytes,
+      sessionCompletedCount: completedCount,
+      last24hCompletedBytes: completedBytes,
+      last24hCompletedCount: completedCount,
+      last7dCompletedBytes: completedBytes,
+      last7dCompletedCount: completedCount,
+    );
+  }
+
+  @override
+  Future<int> clearHistory() async {
+    final count = _history.length;
+    _history.clear();
+    return count;
+  }
+
+  @override
+  Future<String> exportHistory(String format, {String? eventType, String? status}) async {
+    final entries = await listHistory(eventType: eventType, status: status);
+    if (format.toLowerCase() == 'csv') {
+      final buffer = StringBuffer(
+          'id,download_id,file_name,total_size,transferred_bytes,ed2k_hash,event_type,status,duration_secs,connection_attempts,resume_count,verification_result,error_message,timestamp_unix_ms\n');
+      for (final e in entries) {
+        buffer.writeln(
+            '${e.id},${e.downloadId},"${e.fileName}",${e.totalBytes},${e.transferredBytes},${e.ed2kHash},${e.eventType},${e.status},${e.durationSecs},${e.connectionAttempts},${e.resumeCount},${e.verificationResult},"${e.errorMessage ?? ''}",${e.timestamp.millisecondsSinceEpoch}');
+      }
+      return buffer.toString();
+    } else {
+      return jsonEncode(entries
+          .map((e) => {
+                'id': e.id,
+                'downloadId': e.downloadId,
+                'fileName': e.fileName,
+                'totalSize': e.totalBytes,
+                'transferredBytes': e.transferredBytes,
+                'ed2kHash': e.ed2kHash,
+                'eventType': e.eventType,
+                'status': e.status,
+                'durationSecs': e.durationSecs,
+                'connectionAttempts': e.connectionAttempts,
+                'resumeCount': e.resumeCount,
+                'verificationResult': e.verificationResult,
+                'errorMessage': e.errorMessage,
+                'timestampUnixMs': e.timestamp.millisecondsSinceEpoch,
+              })
+          .toList());
+    }
+  }
+
+  @override
+  Future<void> setHistoryRetentionDays(int days) async {
+    _fakeRetentionDays = days;
+  }
+
+  @override
+  Future<List<CategoryItem>> listCategories() async {
+    final list = _categories.values.toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return list;
+  }
+
+  @override
+  Future<CategoryItem> createCategory({
+    required String name,
+    required String color,
+    String? defaultDestination,
+    String? defaultPriority,
+  }) async {
+    final id = 'fake-cat-${DateTime.now().millisecondsSinceEpoch}-${_categories.length}';
+    final now = DateTime.now();
+    final cat = CategoryItem(
+      id: id,
+      name: name,
+      color: color,
+      sortOrder: _categories.length,
+      defaultDestination: defaultDestination,
+      defaultPriority: defaultPriority,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _categories[id] = cat;
+    return cat;
+  }
+
+  @override
+  Future<CategoryItem> updateCategory(
+    String id, {
+    String? name,
+    String? color,
+    String? defaultDestination,
+    String? defaultPriority,
+    int? sortOrder,
+  }) async {
+    final existing = _categories[id];
+    if (existing == null) throw Exception('Category not found: $id');
+
+    final updated = existing.copyWith(
+      name: name,
+      color: color,
+      defaultDestination: defaultDestination,
+      defaultPriority: defaultPriority,
+      sortOrder: sortOrder,
+      updatedAt: DateTime.now(),
+    );
+    _categories[id] = updated;
+    return updated;
+  }
+
+  @override
+  Future<void> deleteCategory(String id) async {
+    _categories.remove(id);
+    // Invariant: reset assigned downloads categoryId to null without deleting them
+    for (final dlId in _downloads.keys.toList()) {
+      final dl = _downloads[dlId]!;
+      if (dl.categoryId == id) {
+        final updatedDl = dl.copyWith(clearCategoryId: true);
+        _downloads[dlId] = updatedDl;
+        _eventsController.add(DownloadUpdatedEvent(sequence: _sequence++, download: updatedDl));
+      }
+    }
+  }
+
+  @override
+  Future<void> reorderCategories(List<String> categoryIds) async {
+    for (int i = 0; i < categoryIds.length; i++) {
+      final id = categoryIds[i];
+      final cat = _categories[id];
+      if (cat != null) {
+        _categories[id] = cat.copyWith(sortOrder: i);
+      }
+    }
+  }
+
+  @override
+  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId) async {
+    final dl = _downloads[downloadId];
+    if (dl == null) throw Exception('Download not found: $downloadId');
+    if (categoryId != null && !_categories.containsKey(categoryId)) {
+      throw Exception('Category not found: $categoryId');
+    }
+    final updated = dl.copyWith(
+      categoryId: categoryId,
+      clearCategoryId: categoryId == null,
+    );
+    _downloads[downloadId] = updated;
+    _eventsController.add(DownloadUpdatedEvent(sequence: _sequence++, download: updated));
+    return updated;
+  }
+
+  @override
+  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) async {
+    final fileName = metPath.split(RegExp(r'[\\/]')).last.replaceAll('.part.met', '.bin');
+    return PartMetInspectionResult(
+      fileName: fileName.isEmpty ? 'sample_imported.bin' : fileName,
+      totalSize: 9728000,
+      ed2kHash: '31d6cfe0d16ae931b73c59d7e0c089c0',
+      partCount: 1,
+      partMetPath: metPath,
+      partPath: partPath ?? metPath.replaceAll('.met', ''),
+      partFileExists: true,
+      partFileSize: 9728000,
+      estimatedTransferredBytes: 9728000,
+    );
+  }
+
+  @override
+  Future<ImportPartMetResult> importPartMet(
+    String metPath, {
+    String? partPath,
+    String? targetDirectory,
+    String? categoryId,
+  }) async {
+    final inspection = await inspectPartMet(metPath, partPath: partPath);
+    final id = 'dl-import-${_downloads.length + 1}';
+    final targetDir = targetDirectory ?? _fakeCustomDownloadDir ?? 'downloads';
+    final dl = DownloadItem(
+      id: id,
+      fileName: inspection.fileName,
+      totalBytes: inspection.totalSize,
+      receivedBytes: inspection.estimatedTransferredBytes,
+      verifiedBytes: inspection.estimatedTransferredBytes,
+      progress: 1.0,
+      status: DownloadStatus.paused, // Strictly Paused!
+      priority: DownloadPriority.normal,
+      sourceCount: 0,
+      downloadRateBps: 0,
+      uploadedBytes: 0,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      categoryId: categoryId,
+      tempPath: 'data/temp/$id.part',
+      targetPath: '$targetDir/${inspection.fileName}',
+      ed2kHash: inspection.ed2kHash,
+    );
+    _downloads[id] = dl;
+    _eventsController.add(DownloadUpdatedEvent(sequence: _sequence++, download: dl));
+
+    final report =
+        "=== Emule-Sion .part.met Import Audit Report ===\n"
+        "Format Version: 0xE0 (Standard eMule)\n"
+        "File Name: ${inspection.fileName}\n"
+        "Declared Total Size: ${inspection.totalSize} bytes\n"
+        "Announced Parts: ${inspection.partCount}\n"
+        "Verified Valid Parts: ${inspection.partCount}\n"
+        "Rejected/Corrupted Parts: 0\n"
+        "Rejection Detail: None (All complete parts passed integrity check)\n"
+        "Network Status: STRICTLY PAUSED (sourceCount: 0, zero network activity)\n"
+        "Confinement: Isolated under data/temp/$id.part (Source file untouched)";
+
+    return ImportPartMetResult(
+      download: dl,
+      totalParts: inspection.partCount,
+      verifiedParts: inspection.partCount,
+      corruptedParts: 0,
+      transferredBytes: inspection.estimatedTransferredBytes,
+      totalSize: inspection.totalSize,
+      report: report,
+    );
   }
 
   @override

@@ -6,7 +6,9 @@ pub mod storage;
 pub mod verification;
 
 pub use error::CoreError;
-pub use model::{Download, DownloadStatus};
+pub use model::{
+    Download, DownloadCategory, DownloadStatus, HistoryEntry, HistoryFilter, HistoryStats,
+};
 pub use persistence::Database;
 pub use ranges::RangeSet;
 pub use storage::{finalize_file, AllocationPolicy, CollisionStrategy, PartFile};

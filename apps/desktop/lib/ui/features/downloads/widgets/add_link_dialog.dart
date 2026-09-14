@@ -17,6 +17,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
   final _linkController = TextEditingController();
   late final TextEditingController _targetDirController;
   String _allocationPolicy = 'sparse';
+  String? _selectedCategoryId;
 
   String? _parsedFileName;
   int? _parsedSize;
@@ -26,9 +27,22 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
   @override
   void initState() {
     super.initState();
-    _targetDirController = TextEditingController(
-      text: widget.viewModel.defaultDownloadDirectory.path,
-    );
+    final initialCatId = widget.viewModel.selectedCategoryId;
+    if (initialCatId != null && initialCatId != 'uncategorized') {
+      _selectedCategoryId = initialCatId;
+      final cat = widget.viewModel.categories.where((c) => c.id == initialCatId).firstOrNull;
+      if (cat != null && cat.defaultDestination != null && cat.defaultDestination!.isNotEmpty) {
+        _targetDirController = TextEditingController(text: cat.defaultDestination!);
+      } else {
+        _targetDirController = TextEditingController(
+          text: widget.viewModel.defaultDownloadDirectory.path,
+        );
+      }
+    } else {
+      _targetDirController = TextEditingController(
+        text: widget.viewModel.defaultDownloadDirectory.path,
+      );
+    }
     _linkController.addListener(_validateLink);
   }
 
@@ -204,6 +218,68 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
 
               const SizedBox(height: 16),
 
+              // Category Selection
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Category',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.darkSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.darkBorder),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: _selectedCategoryId,
+                        isExpanded: true,
+                        dropdownColor: AppTheme.darkCard,
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Sans catégorie (None)', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                          ),
+                          ...widget.viewModel.categories.map((c) => DropdownMenuItem<String?>(
+                            value: c.id,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(color: c.parsedColor, shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(c.name, style: const TextStyle(fontSize: 13, color: Colors.white)),
+                                if (c.defaultDestination != null && c.defaultDestination!.isNotEmpty)
+                                  Text(' (${c.defaultDestination})', style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                              ],
+                            ),
+                          )),
+                        ],
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedCategoryId = val;
+                            if (val != null) {
+                              final cat = widget.viewModel.categories.where((c) => c.id == val).firstOrNull;
+                              if (cat != null && cat.defaultDestination != null && cat.defaultDestination!.isNotEmpty) {
+                                _targetDirController.text = cat.defaultDestination!;
+                              }
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
               // Target directory & Allocation policy
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,6 +428,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
       link,
       targetDirectory: destination,
       allocationPolicy: _allocationPolicy,
+      categoryId: _selectedCategoryId,
     );
 
     if (success && mounted) {

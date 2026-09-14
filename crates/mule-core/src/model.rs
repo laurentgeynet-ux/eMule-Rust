@@ -62,6 +62,7 @@ pub struct Download {
     pub status: DownloadStatus,
     pub created_at: i64,
     pub updated_at: i64,
+    pub category_id: Option<String>,
 }
 
 impl Download {
@@ -89,6 +90,98 @@ impl Download {
             status: DownloadStatus::Queued,
             created_at: now,
             updated_at: now,
+            category_id: None,
         }
     }
 }
+
+/// Category metadata for organizing local downloads.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadCategory {
+    pub id: String,
+    pub name: String,
+    pub color: String, // Hex "#RRGGBB"
+    pub sort_order: i32,
+    pub default_destination: Option<String>,
+    pub default_priority: Option<String>, // "low", "normal", "high"
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl DownloadCategory {
+    pub fn new(
+        name: impl Into<String>,
+        color: impl Into<String>,
+        sort_order: i32,
+        default_destination: Option<String>,
+        default_priority: Option<String>,
+    ) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.into(),
+            color: color.into(),
+            sort_order,
+            default_destination,
+            default_priority,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+}
+
+/// Single historical event entry for a download transition.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntry {
+    pub id: i64,
+    pub download_id: String,
+    pub file_name: String,
+    pub total_size: u64,
+    pub transferred_bytes: u64,
+    pub ed2k_hash: String,
+    pub event_type: String, // "completed", "failed", "removed", "verified_pending_promotion", "resumed"
+    pub status: String,
+    pub duration_secs: u64,
+    pub connection_attempts: u32,
+    pub resume_count: u32,
+    pub verification_result: String, // "verified_ok", "hash_mismatch", "unverified", "skipped"
+    pub error_message: Option<String>,
+    pub timestamp_unix_ms: i64,
+}
+
+/// Query filter for history list.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryFilter {
+    pub event_type: Option<String>,
+    pub status: Option<String>,
+    pub from_timestamp_ms: Option<i64>,
+    pub to_timestamp_ms: Option<i64>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+/// Aggregated history and transfer statistics.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryStats {
+    pub total_completed_count: u64,
+    pub total_completed_bytes: u64,
+    pub total_failed_count: u64,
+    pub total_resumes_count: u64,
+    pub total_integrity_failures: u64,
+    // Time windows
+    pub session_completed_bytes: u64,
+    pub session_completed_count: u64,
+    pub last_24h_completed_bytes: u64,
+    pub last_24h_completed_count: u64,
+    pub last_7d_completed_bytes: u64,
+    pub last_7d_completed_count: u64,
+}
+

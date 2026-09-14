@@ -7,10 +7,13 @@ import '../view_models/downloads_view_model.dart';
 import '../widgets/add_link_dialog.dart';
 import '../widgets/debug_simulation_bar.dart';
 import '../widgets/diagnostic_dialog.dart';
+import '../widgets/download_detail_dialog.dart';
 import '../widgets/download_row.dart';
 import '../widgets/downloads_sidebar.dart';
+import '../widgets/import_part_met_dialog.dart';
 import '../widgets/incompatible_version_dialog.dart';
 import '../widgets/lab_guide_dialog.dart';
+import '../../history/views/history_view.dart';
 
 class DownloadsScreen extends StatelessWidget {
   final DownloadsViewModel viewModel;
@@ -40,55 +43,28 @@ class DownloadsScreen extends StatelessWidget {
                         onRetry: () => viewModel.supervisor?.start(),
                       ),
 
-                    // Top Navigation / Actions Bar
-                    _buildTopBar(context),
-
-                    // Error banner if any
-                    if (viewModel.errorMessage != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        color: AppTheme.statusFailed.withValues(alpha: 0.2),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline, color: AppTheme.statusFailed, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                viewModel.errorMessage!,
-                                style: const TextStyle(color: AppTheme.statusFailed, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    // Notification banner if any
+                    // Status Notification banner if any
                     if (viewModel.statusNotification != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        color: AppTheme.primary.withValues(alpha: 0.15),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.info_outline, color: AppTheme.primary, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                viewModel.statusNotification!,
-                                style: const TextStyle(color: Colors.white, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
+                      _buildStatusNotificationBanner(context, viewModel.statusNotification!),
+
+                    // Main Workspace Area
+                    if (viewModel.currentSection == AppNavSection.history) ...[
+                      Expanded(
+                        child: HistoryView(viewModel: viewModel),
+                      ),
+                    ] else ...[
+                      // Top Navigation / Actions Bar
+                      _buildTopBar(context),
+
+                      // Main Content: Downloads Table or Empty State
+                      Expanded(
+                        child: _buildDownloadsArea(context),
                       ),
 
-                    // Main Content: Downloads Table or Empty State
-                    Expanded(
-                      child: _buildDownloadsArea(context),
-                    ),
-
-                    // Selected item details panel (collapsible)
-                    if (viewModel.selectedDownload != null)
-                      _buildDetailsPanel(context, viewModel.selectedDownload!),
+                      // Selected item details panel (collapsible)
+                      if (viewModel.selectedDownload != null)
+                        _buildDetailsPanel(context, viewModel.selectedDownload!),
+                    ],
 
                     // Optional Debug Bar
                     if (viewModel.isDebugBarVisible)
@@ -308,6 +284,8 @@ class DownloadsScreen extends StatelessWidget {
             onPressed: viewModel.refresh,
           ),
 
+
+
           const SizedBox(width: 6),
 
           // Add Link Button
@@ -382,6 +360,21 @@ class DownloadsScreen extends StatelessWidget {
                     );
                   },
                 ),
+                OutlinedButton.icon(
+                  key: const Key('empty_import_part_met_btn'),
+                  icon: const Icon(Icons.file_download_outlined, size: 16),
+                  label: const Text('Import .part.met'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: AppTheme.darkBorder),
+                  ),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => ImportPartMetDialog(viewModel: viewModel),
+                    );
+                  },
+                ),
                 if (viewModel.isLabModeAvailable)
                   OutlinedButton.icon(
                     icon: const Icon(Icons.biotech, size: 16),
@@ -446,6 +439,25 @@ class DownloadsScreen extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                label: const Text('Inspect Full Details', style: TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primary,
+                  side: const BorderSide(color: AppTheme.primary, width: 0.8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => DownloadDetailDialog(
+                      downloadId: item.id,
+                      viewModel: viewModel,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.close, size: 16, color: Colors.white54),
                 onPressed: () => viewModel.selectDownload(null),
@@ -477,6 +489,35 @@ class DownloadsScreen extends StatelessWidget {
         const SizedBox(height: 2),
         Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
       ],
+    );
+  }
+
+  Widget _buildStatusNotificationBanner(BuildContext context, String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.teal.withValues(alpha: 0.15),
+        border: const Border(bottom: BorderSide(color: Colors.teal, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_outline, size: 16, color: Colors.tealAccent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 12, color: Colors.tealAccent),
+            ),
+          ),
+          InkWell(
+            onTap: viewModel.clearStatusNotification,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.close, size: 14, color: Colors.tealAccent),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

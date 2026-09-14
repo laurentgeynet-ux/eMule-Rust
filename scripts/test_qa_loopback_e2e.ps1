@@ -49,7 +49,7 @@ if ([string]::IsNullOrWhiteSpace($BundleDir)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
-    $bundleVer = "0.1.2-lab"
+    $bundleVer = "0.1.3-lab"
     $vJson = Join-Path $BundleDir "version.json"
     if (Test-Path $vJson) {
         try {

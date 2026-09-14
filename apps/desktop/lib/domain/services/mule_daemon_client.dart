@@ -1,7 +1,11 @@
+import '../models/category_item.dart';
 import '../models/daemon_event.dart';
 import '../models/daemon_info.dart';
 import '../models/download_item.dart';
+import '../models/history_entry.dart';
+import '../models/history_stats.dart';
 import '../models/lab_models.dart';
+import '../models/part_met_models.dart';
 
 abstract class MuleDaemonClient {
   /// Connect to the daemon and perform authentication handshake.
@@ -33,6 +37,7 @@ abstract class MuleDaemonClient {
     String link, {
     String? targetDirectory,
     String? allocationPolicy,
+    String? categoryId,
   });
 
   /// Pause an active download.
@@ -67,6 +72,84 @@ abstract class MuleDaemonClient {
 
   /// Connect a download to an active loopback source.
   Future<void> connectDownloadToSource(String downloadId, String peerAddr);
+
+  /// Change finalization destination directory of a download.
+  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory);
+
+  /// Retry connecting loopback sources for a download.
+  Future<DownloadItem> retryDownloadConnection(String id);
+
+  /// Get persistent daemon settings (default download directory, etc.)
+  Future<Map<String, dynamic>> getSettings();
+
+  /// Set persistent default download directory.
+  Future<void> setDefaultDownloadDirectory(String path);
+
+  /// Reset persistent default download directory to portable default.
+  Future<void> resetDefaultDownloadDirectory();
+
+  /// List historical download transitions with optional filters.
+  Future<List<HistoryEntry>> listHistory({
+    String? eventType,
+    String? status,
+    int? fromTimestampMs,
+    int? toTimestampMs,
+    int? limit,
+    int? offset,
+  });
+
+  /// Get aggregated historical download statistics.
+  Future<HistoryStats> getHistoryStats();
+
+  /// Clear all history entries and return number of rows removed.
+  Future<int> clearHistory();
+
+  /// Export history in 'csv' or 'json' format.
+  Future<String> exportHistory(String format, {String? eventType, String? status});
+
+  /// Update persistent history retention policy in days (0 = unlimited).
+  Future<void> setHistoryRetentionDays(int days);
+
+  /// List all categories ordered by sortOrder ascending.
+  Future<List<CategoryItem>> listCategories();
+
+  /// Create a new category.
+  Future<CategoryItem> createCategory({
+    required String name,
+    required String color,
+    String? defaultDestination,
+    String? defaultPriority,
+  });
+
+  /// Update an existing category.
+  Future<CategoryItem> updateCategory(
+    String id, {
+    String? name,
+    String? color,
+    String? defaultDestination,
+    String? defaultPriority,
+    int? sortOrder,
+  });
+
+  /// Delete a category and reassign all its downloads to null.
+  Future<void> deleteCategory(String id);
+
+  /// Reorder categories.
+  Future<void> reorderCategories(List<String> categoryIds);
+
+  /// Set or clear the category assigned to a download.
+  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId);
+
+  /// Inspect an eMule .part.met file before importing.
+  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath});
+
+  /// Import an eMule .part.met file into the local download manager (strictly paused).
+  Future<ImportPartMetResult> importPartMet(
+    String metPath, {
+    String? partPath,
+    String? targetDirectory,
+    String? categoryId,
+  });
 
   /// Clean up any resources/sockets.
   void dispose();

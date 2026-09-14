@@ -143,11 +143,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let actual_addr = listener.local_addr()?;
     let endpoint = format!("ws://{actual_addr}/rpc");
 
+    let downloads = DownloadService::new(&db_path, temp_dir)?;
+    let initial_download_dir = downloads
+        .get_setting("default_download_directory")
+        .ok()
+        .flatten()
+        .map(PathBuf::from)
+        .unwrap_or(default_download_dir);
+
     let config = DaemonConfig::new(data_dir.clone(), auth_token)
         .with_bind_addr(actual_addr)
         .with_workdir_mode(resolved_workdir.mode)
-        .with_default_download_dir(default_download_dir.clone());
-    let downloads = DownloadService::new(&db_path, temp_dir)?;
+        .with_default_download_dir(initial_download_dir);
     let state = AppState::new(config, downloads);
 
     // 4. Atomically write session file

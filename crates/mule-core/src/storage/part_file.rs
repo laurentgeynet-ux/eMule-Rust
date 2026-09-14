@@ -39,6 +39,15 @@ impl PartFile {
             .truncate(false)
             .open(&path_buf)?;
 
+        let metadata = file.metadata()?;
+        if metadata.len() > total_size {
+            return Err(CoreError::InvalidRange {
+                start: 0,
+                end: metadata.len(),
+                reason: "part file on disk exceeds total file size boundary",
+            });
+        }
+
         let part = Self {
             file,
             path: path_buf,

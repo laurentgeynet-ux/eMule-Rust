@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:desktop/domain/models/category_item.dart';
 import 'package:desktop/domain/models/download_item.dart';
+import 'package:desktop/domain/models/history_entry.dart';
+import 'package:desktop/domain/models/history_stats.dart';
 import 'package:desktop/domain/models/lab_models.dart';
+import 'package:desktop/domain/models/part_met_models.dart';
 import 'package:desktop/domain/services/mule_daemon_client.dart';
 import 'package:desktop/domain/models/daemon_info.dart';
 import 'package:desktop/domain/models/daemon_event.dart';
@@ -70,7 +74,7 @@ class LargeListMockClient implements MuleDaemonClient {
       _items.firstWhere((d) => d.id == id);
 
   @override
-  Future<String> addEd2kLink(String link, {String? targetDirectory, String? allocationPolicy}) async => 'new-id';
+  Future<String> addEd2kLink(String link, {String? targetDirectory, String? allocationPolicy, String? categoryId}) async => 'new-id';
 
   @override
   Future<DownloadItem> pauseDownload(String id) async =>
@@ -126,6 +130,134 @@ class LargeListMockClient implements MuleDaemonClient {
 
   @override
   Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {}
+
+  @override
+  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory) async =>
+      _items.firstWhere((d) => d.id == id);
+
+  @override
+  Future<DownloadItem> retryDownloadConnection(String id) async =>
+      _items.firstWhere((d) => d.id == id);
+
+  @override
+  Future<Map<String, dynamic>> getSettings() async => {
+        'defaultDownloadDir': 'downloads',
+        'portableDownloadDir': 'downloads',
+        'isCustom': false,
+      };
+
+  @override
+  Future<void> setDefaultDownloadDirectory(String path) async {}
+
+  @override
+  Future<void> resetDefaultDownloadDirectory() async {}
+
+  @override
+  Future<List<HistoryEntry>> listHistory({
+    String? eventType,
+    String? status,
+    int? fromTimestampMs,
+    int? toTimestampMs,
+    int? limit,
+    int? offset,
+  }) async => [];
+
+  @override
+  Future<HistoryStats> getHistoryStats() async => const HistoryStats(
+        sessionCompletedCount: 0,
+        sessionCompletedBytes: 0,
+        last24hCompletedCount: 0,
+        last24hCompletedBytes: 0,
+        last7dCompletedCount: 0,
+        last7dCompletedBytes: 0,
+        totalCompletedCount: 0,
+        totalCompletedBytes: 0,
+        totalFailedCount: 0,
+        totalResumesCount: 0,
+        totalIntegrityFailures: 0,
+      );
+
+  @override
+  Future<int> clearHistory() async => 0;
+
+  @override
+  Future<String> exportHistory(String format, {String? eventType, String? status}) async => '';
+
+  @override
+  Future<void> setHistoryRetentionDays(int days) async {}
+
+  @override
+  Future<List<CategoryItem>> listCategories() async => [];
+
+  @override
+  Future<CategoryItem> createCategory({
+    required String name,
+    required String color,
+    String? defaultDestination,
+    String? defaultPriority,
+  }) async =>
+      CategoryItem(
+        id: 'mock-cat',
+        name: name,
+        color: color,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+  @override
+  Future<CategoryItem> updateCategory(
+    String id, {
+    String? name,
+    String? color,
+    String? defaultDestination,
+    String? defaultPriority,
+    int? sortOrder,
+  }) async =>
+      CategoryItem(
+        id: id,
+        name: name ?? 'Updated',
+        color: color ?? '#2196F3',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+  @override
+  Future<void> deleteCategory(String id) async {}
+
+  @override
+  Future<void> reorderCategories(List<String> categoryIds) async {}
+
+  @override
+  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId) async =>
+      _items.firstWhere((d) => d.id == downloadId);
+
+  @override
+  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) async =>
+      PartMetInspectionResult(
+        fileName: 'mock.bin',
+        totalSize: 1000,
+        ed2kHash: '00000000000000000000000000000000',
+        partCount: 1,
+        partMetPath: metPath,
+        partFileExists: true,
+        estimatedTransferredBytes: 1000,
+      );
+
+  @override
+  Future<ImportPartMetResult> importPartMet(
+    String metPath, {
+    String? partPath,
+    String? targetDirectory,
+    String? categoryId,
+  }) async =>
+      ImportPartMetResult(
+        download: _items.first,
+        totalParts: 1,
+        verifiedParts: 1,
+        corruptedParts: 0,
+        transferredBytes: 1000,
+        totalSize: 1000,
+      );
 
   @override
   void dispose() {}

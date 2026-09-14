@@ -36,4 +36,14 @@ class Formatters {
     final days = hours ~/ 24;
     return '${days}d ${hours % 24}h';
   }
+
+  static String formatDuration(int seconds) {
+    if (seconds < 60) return '${seconds}s';
+    final minutes = seconds ~/ 60;
+    final remSeconds = seconds % 60;
+    if (minutes < 60) return '${minutes}m ${remSeconds}s';
+    final hours = minutes ~/ 60;
+    final remMinutes = minutes % 60;
+    return '${hours}h ${remMinutes}m';
+  }
 }

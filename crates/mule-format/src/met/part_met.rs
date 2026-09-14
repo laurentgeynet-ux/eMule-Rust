@@ -171,4 +171,90 @@ impl PartMetFile {
             tags,
         })
     }
+
+    /// Returns the total expected number of 9,728,000-byte parts for this file.
+    pub fn part_count(&self) -> usize {
+        match self.file_size {
+            Some(0) | None => 0,
+            Some(sz) => {
+                let part_sz = crate::ed2k::hash::ED2K_PART_SIZE as u64;
+                sz.div_ceil(part_sz) as usize
+            }
+        }
+    }
+
+    /// Computes the completed (acquired) byte ranges by inverting the missing gaps.
+    ///
+    /// Validates that all gaps satisfy `0 <= start <= end <= total_size`.
+    /// Returns sorted, disjoint half-open byte intervals `[start, end)`.
+    pub fn compute_completed_ranges(&self) -> Result<Vec<(u64, u64)>, MetError> {
+        let total_size = match self.file_size {
+            Some(sz) => sz,
+            None => return Ok(Vec::new()),
+        };
+
+        if total_size == 0 {
+            return Ok(Vec::new());
+        }
+
+        // If no gaps recorded:
+        // When eMule has not started or downloaded anything, it either writes a gap for the full file
+        // or has transferred == 0. If transferred == 0 and gaps is empty, nothing has been acquired.
+        // If transferred > 0 and gaps is empty, the entire file is complete.
+        if self.gaps.is_empty() {
+            if self.transferred == 0 {
+                return Ok(Vec::new());
+            } else {
+                return Ok(vec![(0, total_size)]);
+            }
+        }
+
+        // Validate gaps
+        let mut normalized_gaps = Vec::with_capacity(self.gaps.len());
+        for &(start, end) in &self.gaps {
+            if start > end || end > total_size {
+                return Err(MetError::InconsistentMetadata {
+                    field: "gaps",
+                    reason: format!(
+                        "gap interval [{}, {}] exceeds file total size {}",
+                        start, end, total_size
+                    ),
+                });
+            }
+            if start < end {
+                normalized_gaps.push((start, end));
+            }
+        }
+
+        // Sort and merge overlapping/contiguous gaps
+        normalized_gaps.sort_by_key(|g| g.0);
+        let mut merged_gaps: Vec<(u64, u64)> = Vec::new();
+        for (s, e) in normalized_gaps {
+            if let Some(last) = merged_gaps.last_mut() {
+                if s <= last.1 {
+                    last.1 = last.1.max(e);
+                    continue;
+                }
+            }
+            merged_gaps.push((s, e));
+        }
+
+        // Invert gaps on [0, total_size)
+        let mut completed = Vec::new();
+        let mut cursor = 0u64;
+
+        for (g_start, g_end) in merged_gaps {
+            if g_start > cursor {
+                completed.push((cursor, g_start));
+            }
+            cursor = cursor.max(g_end);
+        }
+
+        if cursor < total_size {
+            completed.push((cursor, total_size));
+        }
+
+        Ok(completed)
+    }
 }
+
