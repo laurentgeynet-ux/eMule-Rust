@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 /// High-level lifecycle state of the network subsystem.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum NetworkState {
     /// Network is completely disabled (Kill Switch engaged, or not initialized).
     /// No sockets are active and no new connection attempts are allowed.
     Disabled,
     /// Policy is active and ready in preview mode; no active connections currently open.
+    #[default]
     PreviewActive,
     /// One or more connections are actively open and operating within policy.
     Connected,
@@ -15,12 +16,6 @@ pub enum NetworkState {
     ShuttingDown,
     /// Network subsystem encountered a fatal error or unrecoverable budget failure.
     Error,
-}
-
-impl Default for NetworkState {
-    fn default() -> Self {
-        Self::PreviewActive
-    }
 }
 
 impl NetworkState {

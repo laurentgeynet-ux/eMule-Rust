@@ -499,9 +499,9 @@ fn test_part1_residual_byte_write_and_full_file_completion() {
     }
 
     assert_eq!(sink.total_bytes_received(), 9_728_000);
-    assert_eq!(sink.is_part_complete(0, &sequencer).expect("part 0 complete"), true);
-    assert_eq!(sink.is_part_complete(1, &sequencer).expect("part 1 complete"), false);
-    assert_eq!(sink.is_file_complete(&sequencer), false);
+    assert!(sink.is_part_complete(0, &sequencer).expect("part 0 complete"));
+    assert!(!sink.is_part_complete(1, &sequencer).expect("part 1 complete"));
+    assert!(!sink.is_file_complete(&sequencer));
 
     // Plan and write Part 1: exactly 1 residual block [9,728,000, 9,728,001)
     let part1_blocks = sequencer.plan_part_blocks(1).expect("plan part 1");
@@ -519,9 +519,9 @@ fn test_part1_residual_byte_write_and_full_file_completion() {
 
     assert_eq!(sink.total_bytes_received(), TEST_FILE_SIZE);
     assert_eq!(sink.completed_ranges(), &[(0, TEST_FILE_SIZE)]);
-    assert_eq!(sink.is_part_complete(0, &sequencer).expect("part 0"), true);
-    assert_eq!(sink.is_part_complete(1, &sequencer).expect("part 1"), true);
-    assert_eq!(sink.is_file_complete(&sequencer), true);
+    assert!(sink.is_part_complete(0, &sequencer).expect("part 0"));
+    assert!(sink.is_part_complete(1, &sequencer).expect("part 1"));
+    assert!(sink.is_file_complete(&sequencer));
 }
 
 #[test]

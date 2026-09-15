@@ -655,7 +655,7 @@ async fn run_peer_connection(
                                             if status.file_hash != dl_hash_bytes {
                                                 return Err(PeerError::new(
                                                     PeerFailureReason::HashMismatch,
-                                                    format!("OP_FILESTATUS returned unexpected file hash"),
+                                                    "OP_FILESTATUS returned unexpected file hash".to_string(),
                                                 ));
                                             }
                                             file_status_opt = Some(status);

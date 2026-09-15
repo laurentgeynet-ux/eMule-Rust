@@ -872,9 +872,8 @@ async fn test_kill_switch_during_secure_handshake_aborts_cleanly() {
     // Write should fail or connection close
     let mut raw_buf = [0u8; 1024];
     let res = client_socket.read(&mut raw_buf).await;
-    match res {
-        Ok(n) => assert_eq!(n, 0, "Socket must be closed on kill switch"),
-        Err(_) => {}
+    if let Ok(n) = res {
+        assert_eq!(n, 0, "Socket must be closed on kill switch");
     }
 }
 

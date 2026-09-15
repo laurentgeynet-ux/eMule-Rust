@@ -342,7 +342,7 @@ async fn test_server_search_and_query_sources() {
         let mut found_payload = Vec::new();
         found_payload.extend_from_slice(&[0xabu8; 16]); // file_hash
         found_payload.push(1u8); // 1 source
-        let ip_val: u32 = 127 | (0 << 8) | (0 << 16) | (1 << 24);
+        let ip_val: u32 = 127 | (1 << 24);
         found_payload.extend_from_slice(&ip_val.to_le_bytes());
         found_payload.extend_from_slice(&4662u16.to_le_bytes());
 

@@ -216,11 +216,11 @@ impl DownloadService {
             p.to_path_buf()
         } else {
             let met_name = met_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if met_name.ends_with(".part.met") {
-                let part_name = format!("{}.part", &met_name[..met_name.len() - ".part.met".len()]);
+            if let Some(prefix) = met_name.strip_suffix(".part.met") {
+                let part_name = format!("{prefix}.part");
                 met_path.with_file_name(part_name)
-            } else if met_name.ends_with(".met") {
-                let part_name = format!("{}.part", &met_name[..met_name.len() - ".met".len()]);
+            } else if let Some(prefix) = met_name.strip_suffix(".met") {
+                let part_name = format!("{prefix}.part");
                 met_path.with_file_name(part_name)
             } else {
                 met_path.with_extension("part")
@@ -515,11 +515,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         for i in 0..part_count {
             let start_offset = i as u64 * part_size_const;
             let end_offset = ((i as u64 + 1) * part_size_const).min(total_size);
-            let size = if end_offset > start_offset {
-                end_offset - start_offset
-            } else {
-                0
-            };
+            let size = end_offset.saturating_sub(start_offset);
 
             let received_in_part: u64 = all_ranges
                 .iter()

@@ -45,7 +45,6 @@ async fn test_kad_bootstrap_and_find_node_flow() {
 
     let mock_task = tokio::spawn(async move {
         let mut buf = vec![0u8; 1024];
-        let mut handled_req = false;
         loop {
             let (len, from_addr) = mock_socket.recv_from(&mut buf).await.expect("recv");
             let decoded = KadCodec::decode(&buf[..len]).expect("decode");
@@ -75,13 +74,11 @@ async fn test_kad_bootstrap_and_find_node_flow() {
                     ];
                     let res = KadCodec::encode_bootstrap_res(&r.sender_id, mock_socket.local_addr().unwrap().port(), 2, &contacts);
                     mock_socket.send_to(&res, from_addr).await.expect("send find res");
-                    handled_req = true;
                     break;
                 }
                 _ => {}
             }
         }
-        assert!(handled_req);
     });
 
     // 3. Trigger bootstrap

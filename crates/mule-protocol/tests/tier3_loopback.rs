@@ -1584,8 +1584,8 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
 
     // Compute expected root multi-part eD2K hash: MD4(Part0 || Part1)
     let mut root_hasher = md4::Md4::new();
-    root_hasher.update(&expected_part0_md4);
-    root_hasher.update(&expected_part1_md4);
+    root_hasher.update(expected_part0_md4);
+    root_hasher.update(expected_part1_md4);
     let sealed_hash: [u8; 16] = root_hasher.finalize().into();
     assert_eq!(
         hex::encode(sealed_hash),

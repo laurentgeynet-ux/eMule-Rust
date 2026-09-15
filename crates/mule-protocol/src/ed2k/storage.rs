@@ -471,7 +471,7 @@ impl Ed2kPartFileSink {
             let mut root_hasher = Md4::new();
             for part_index in 0..total_parts {
                 let part_md4 = self.compute_part_md4(part_index, sequencer)?;
-                root_hasher.update(&part_md4);
+                root_hasher.update(part_md4);
             }
             let root_digest: [u8; 16] = root_hasher.finalize().into();
             Ok(root_digest)

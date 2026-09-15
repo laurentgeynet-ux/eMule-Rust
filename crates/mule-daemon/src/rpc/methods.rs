@@ -1977,7 +1977,7 @@ async fn handle_sources_add_manual(
         cooldown_until_unix_ms: None,
     };
 
-    state.downloads.lock().await.upsert_peer_sources(hash_str, &[source.clone()])?;
+    state.downloads.lock().await.upsert_peer_sources(hash_str, std::slice::from_ref(&source))?;
     serde_json::to_value(source)
         .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
 }
@@ -2387,7 +2387,7 @@ async fn handle_kad_inspect_nodes_dat(
     let report = state
         .kad
         .inspect_nodes_dat(&bytes)
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     Ok(serde_json::to_value(report).unwrap_or_default())
 }
@@ -2415,7 +2415,7 @@ async fn handle_kad_import_nodes_dat(
         .kad
         .import_nodes_dat(&bytes)
         .await
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
 
@@ -2447,7 +2447,7 @@ async fn handle_kad_clear_contacts(state: &AppState) -> Result<Value, JsonRpcErr
         .kad
         .clear_contacts()
         .await
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     Ok(json!({
         "cleared": cleared,
@@ -2472,7 +2472,7 @@ async fn handle_kad_start_udp(
         .udp()
         .start(addr)
         .await
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
 
@@ -2488,7 +2488,7 @@ async fn handle_kad_stop_udp(state: &AppState) -> Result<Value, JsonRpcError> {
         .udp()
         .stop()
         .await
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
 
@@ -2515,7 +2515,7 @@ async fn handle_kad_ping(
         .kad
         .ping_contact(ip, port, target_kad_id)
         .await
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
 
@@ -2542,7 +2542,7 @@ async fn handle_kad_bootstrap(
         .kad
         .bootstrap_from_node(ip, port)
         .await
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
 
@@ -2569,7 +2569,7 @@ async fn handle_kad_find_node(
         .kad
         .find_node(&target_kad_id)
         .await
-        .map_err(|e| JsonRpcError::business(e))?;
+        .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
 

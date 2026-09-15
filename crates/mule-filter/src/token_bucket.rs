@@ -137,7 +137,7 @@ impl TokenBucket {
                 // Needed tokens
                 let needed = (count as f64) - state.tokens;
                 let wait_secs = needed / (rate as f64);
-                Duration::from_secs_f64(wait_secs.max(0.005).min(2.0))
+                Duration::from_secs_f64(wait_secs.clamp(0.005, 2.0))
             };
 
             // Sleep in small increments or for wait_duration

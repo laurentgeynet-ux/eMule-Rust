@@ -42,8 +42,8 @@ impl KadId {
     /// Computes XOR distance between two Kad IDs.
     pub fn xor_distance(&self, other: &KadId) -> KadId {
         let mut res = [0u8; 16];
-        for i in 0..16 {
-            res[i] = self.0[i] ^ other.0[i];
+        for (i, byte) in res.iter_mut().enumerate() {
+            *byte = self.0[i] ^ other.0[i];
         }
         KadId(res)
     }

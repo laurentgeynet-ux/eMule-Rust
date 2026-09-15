@@ -149,7 +149,7 @@ impl UploadManager {
         // Sort queue by effective score descending
         let now_copy = now;
         let mut entries: Vec<QueuedUpload> = q.drain(..).collect();
-        entries.sort_by(|a, b| b.effective_score(now_copy).cmp(&a.effective_score(now_copy)));
+        entries.sort_by_key(|a| std::cmp::Reverse(a.effective_score(now_copy)));
         for e in entries {
             q.push_back(e);
         }

@@ -114,9 +114,11 @@ fn test_kad_udp_profile_enforcement() {
 
 #[test]
 fn test_resource_budgets_exhaustion_and_drop() {
-    let mut budgets = ResourceBudgets::default();
-    budgets.max_active_peer_connections = 2;
-    budgets.max_active_server_connections = 1;
+    let budgets = ResourceBudgets {
+        max_active_peer_connections: 2,
+        max_active_server_connections: 1,
+        ..Default::default()
+    };
 
     let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, budgets);
     let target1: SocketAddr = "127.0.0.1:4662".parse().unwrap();
@@ -234,8 +236,10 @@ fn test_redacted_audit_log() {
 
 #[test]
 fn test_listener_policy_and_budget() {
-    let mut budgets = ResourceBudgets::default();
-    budgets.max_active_listeners = 1;
+    let budgets = ResourceBudgets {
+        max_active_listeners: 1,
+        ..Default::default()
+    };
 
     let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, budgets);
 
@@ -269,21 +273,27 @@ fn test_budget_mutation_and_validation() {
     );
 
     // Valid budget update
-    let mut new_budgets = ResourceBudgets::default();
-    new_budgets.max_active_peer_connections = 50;
+    let new_budgets = ResourceBudgets {
+        max_active_peer_connections: 50,
+        ..Default::default()
+    };
     assert!(manager.set_budgets(new_budgets.clone()).is_ok());
     assert_eq!(manager.budgets().max_active_peer_connections, 50);
 
     // Invalid budget update (zero max conns)
-    let mut invalid_budgets = ResourceBudgets::default();
-    invalid_budgets.max_active_peer_connections = 0;
+    let invalid_budgets = ResourceBudgets {
+        max_active_peer_connections: 0,
+        ..Default::default()
+    };
     let err = manager.set_budgets(invalid_budgets).unwrap_err();
     assert!(matches!(err, PolicyError::InvalidBudgets(_)));
 
     // Invalid budget update (max_total_buffer_bytes < max_frame_size_bytes)
-    let mut invalid_buf = ResourceBudgets::default();
-    invalid_buf.max_total_buffer_bytes = 100;
-    invalid_buf.max_frame_size_bytes = 1000;
+    let invalid_buf = ResourceBudgets {
+        max_total_buffer_bytes: 100,
+        max_frame_size_bytes: 1000,
+        ..Default::default()
+    };
     let err = manager.set_budgets(invalid_buf).unwrap_err();
     assert!(matches!(err, PolicyError::InvalidBudgets(_)));
 }

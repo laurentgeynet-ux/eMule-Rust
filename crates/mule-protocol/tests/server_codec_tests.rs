@@ -178,7 +178,7 @@ fn test_encode_get_sources_and_decode_found_sources() {
     payload.extend_from_slice(&4662u16.to_le_bytes());
 
     // Source 2: 10.0.0.5:4662
-    let ip2: u32 = 10 | (0 << 8) | (0 << 16) | (5 << 24);
+    let ip2: u32 = 10 | (5 << 24);
     payload.extend_from_slice(&ip2.to_le_bytes());
     payload.extend_from_slice(&4672u16.to_le_bytes());
 

@@ -159,13 +159,13 @@ impl Ed2kPeerInfo {
     pub fn has_compression_capability(&self) -> bool {
         self.emule_info
             .as_ref()
-            .map_or(false, |info| info.has_compression_capability())
+            .is_some_and(|info| info.has_compression_capability())
     }
 
     /// Returns true if source exchange capability was announced in OP_EMULEINFO.
     pub fn has_source_exchange_capability(&self) -> bool {
         self.emule_info
             .as_ref()
-            .map_or(false, |info| info.has_source_exchange_capability())
+            .is_some_and(|info| info.has_source_exchange_capability())
     }
 }
