@@ -70,6 +70,12 @@ pub async fn handle_request(
         "filter.clear" => handle_filter_clear(state).await,
         "limits.get" => handle_limits_get(state).await,
         "limits.set" => handle_limits_set(state, req.params).await,
+        "servers.inspectMet" => handle_servers_inspect_met(state, req.params).await,
+        "servers.importMet" => handle_servers_import_met(state, req.params).await,
+        "servers.list" => handle_servers_list(state).await,
+        "servers.setEnabled" => handle_servers_set_enabled(state, req.params).await,
+        "servers.delete" => handle_servers_delete(state, req.params).await,
+        "servers.clear" => handle_servers_clear(state).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -135,6 +141,7 @@ fn handle_hello(
         "network-policy",
         "ip-filter",
         "rate-limits",
+        "servers",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -1525,5 +1532,191 @@ async fn handle_limits_set(
     handle_limits_get(state).await
 }
 
+async fn handle_servers_inspect_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let file_path = params["filePath"]
+        .as_str()
+        .or_else(|| params["path"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'filePath' parameter"))?;
 
+    let path = std::path::Path::new(file_path);
+    if !path.exists() {
+        return Err(JsonRpcError::invalid_params(&format!(
+            "server.met file does not exist: {}",
+            file_path
+        )));
+    }
 
+    let parsed = mule_format::ServerMetFile::open(path)
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Failed to parse server.met: {e}")))?;
+
+    let ip_filter = state.network_policy.ip_filter();
+    let filter_active = ip_filter.is_enabled();
+
+    let total_count = parsed.servers.len();
+    let mut allowed_count = 0;
+    let mut blocked_count = 0;
+    let mut entries = Vec::new();
+
+    for s in &parsed.servers {
+        let is_blocked = filter_active && ip_filter.check_ip(std::net::IpAddr::V4(s.ip)).is_some();
+        if is_blocked {
+            blocked_count += 1;
+        } else {
+            allowed_count += 1;
+        }
+
+        entries.push(json!({
+            "address": format!("{}:{}", s.ip, s.port),
+            "ip": s.ip.to_string(),
+            "port": s.port,
+            "name": s.name,
+            "description": s.description,
+            "ping": s.ping,
+            "preference": s.preference,
+            "failedCount": s.failed_count,
+            "dynIp": s.dyn_ip,
+            "version": s.version,
+            "filterStatus": if is_blocked { "blocked_by_filter" } else { "allowed" },
+        }));
+    }
+
+    Ok(json!({
+        "filePath": file_path,
+        "totalCount": total_count,
+        "allowedCount": allowed_count,
+        "blockedCount": blocked_count,
+        "servers": entries,
+    }))
+}
+
+async fn handle_servers_import_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let file_path = params["filePath"]
+        .as_str()
+        .or_else(|| params["path"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'filePath' parameter"))?;
+
+    let path = std::path::Path::new(file_path);
+    if !path.exists() {
+        return Err(JsonRpcError::invalid_params(&format!(
+            "server.met file does not exist: {}",
+            file_path
+        )));
+    }
+
+    let parsed = mule_format::ServerMetFile::open(path)
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Failed to parse server.met: {e}")))?;
+
+    let ip_filter = state.network_policy.ip_filter();
+    let filter_active = ip_filter.is_enabled();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
+    let mut allowed_count = 0;
+    let mut blocked_count = 0;
+    let mut to_upsert = Vec::with_capacity(parsed.servers.len());
+
+    for s in parsed.servers {
+        let is_blocked = filter_active && ip_filter.check_ip(std::net::IpAddr::V4(s.ip)).is_some();
+        let filter_status = if is_blocked {
+            blocked_count += 1;
+            mule_core::model::ServerFilterStatus::BlockedByFilter
+        } else {
+            allowed_count += 1;
+            mule_core::model::ServerFilterStatus::Allowed
+        };
+
+        to_upsert.push(mule_core::model::Ed2kServer {
+            address: format!("{}:{}", s.ip, s.port),
+            ip: s.ip.to_string(),
+            port: s.port,
+            name: s.name,
+            description: s.description,
+            ping: s.ping,
+            preference: s.preference,
+            failed_count: s.failed_count,
+            dyn_ip: s.dyn_ip,
+            version: s.version,
+            filter_status,
+            last_seen_unix_ms: None,
+            created_at_unix_ms: now,
+            updated_at_unix_ms: now,
+        });
+    }
+
+    let total = to_upsert.len();
+    let mut dl = state.downloads.lock().await;
+    let imported = dl.upsert_servers(&to_upsert)?;
+
+    Ok(json!({
+        "success": true,
+        "imported": imported,
+        "totalCount": total,
+        "allowedCount": allowed_count,
+        "blockedCount": blocked_count,
+    }))
+}
+
+async fn handle_servers_list(state: &AppState) -> Result<Value, JsonRpcError> {
+    let dl = state.downloads.lock().await;
+    let servers = dl.list_servers()?;
+    Ok(json!({
+        "servers": servers,
+        "total": servers.len(),
+    }))
+}
+
+async fn handle_servers_set_enabled(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let address = params["address"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' string parameter"))?;
+    let enabled = params["enabled"]
+        .as_bool()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'enabled' boolean parameter"))?;
+
+    let mut dl = state.downloads.lock().await;
+    let updated = dl.set_server_enabled(address, enabled)?;
+    Ok(json!({
+        "address": address,
+        "enabled": enabled,
+        "updated": updated,
+    }))
+}
+
+async fn handle_servers_delete(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let address = params["address"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' string parameter"))?;
+
+    let mut dl = state.downloads.lock().await;
+    let deleted = dl.delete_server(address)?;
+    Ok(json!({
+        "address": address,
+        "deleted": deleted,
+    }))
+}
+
+async fn handle_servers_clear(state: &AppState) -> Result<Value, JsonRpcError> {
+    let mut dl = state.downloads.lock().await;
+    let count = dl.clear_servers()?;
+    Ok(json!({
+        "deletedCount": count,
+    }))
+}

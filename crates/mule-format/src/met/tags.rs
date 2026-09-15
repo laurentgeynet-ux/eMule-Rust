@@ -37,6 +37,21 @@ pub const FT_AICH_HASH: u8 = 0x27;
 pub const FT_FILESIZE_HI: u8 = 0x3A;
 pub const FT_CATEGORY: u8 = 0x53;
 
+// Known server tag IDs (SN_*)
+pub const SN_NAME: u8 = 0x01;
+pub const SN_DESCRIPTION: u8 = 0x0B;
+pub const SN_PING: u8 = 0x0C;
+pub const SN_FAIL: u8 = 0x0D;
+pub const SN_PREFERENCE: u8 = 0x0E;
+pub const SN_PORT: u8 = 0x0F;
+pub const SN_IP: u8 = 0x86;
+pub const SN_DYNIP: u8 = 0x85;
+pub const SN_VERSION: u8 = 0x88;
+pub const SN_LASTPING: u8 = 0x87;
+pub const SN_MAXUSERS: u8 = 0x90;
+pub const SN_SOFTFILES: u8 = 0x91;
+pub const SN_HARDFILES: u8 = 0x92;
+
 /// Tag value payload.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TagValue {

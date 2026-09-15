@@ -243,6 +243,15 @@ class DownloadsSidebar extends StatelessWidget {
                     count: viewModel.historyEntries.isNotEmpty ? viewModel.historyEntries.length : null,
                   ),
 
+                  // Serveurs eD2K Nav Item
+                  _buildNavItem(
+                    title: 'Serveurs eD2K',
+                    icon: Icons.dns_rounded,
+                    isSelected: viewModel.currentSection == AppNavSection.servers,
+                    onTap: () => viewModel.setSection(AppNavSection.servers),
+                    count: viewModel.servers.isNotEmpty ? viewModel.servers.length : null,
+                  ),
+
                   const SizedBox(height: 4),
 
                   // Settings Button

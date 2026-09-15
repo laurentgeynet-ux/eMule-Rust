@@ -12,6 +12,7 @@ import '../../../../domain/models/history_stats.dart';
 import '../../../../domain/models/lab_models.dart';
 import '../../../../domain/models/network_policy_models.dart';
 import '../../../../domain/models/part_met_models.dart';
+import '../../../../domain/models/server_models.dart';
 import '../../../../domain/services/mule_daemon_client.dart';
 
 import '../../../../services/daemon_supervisor.dart';
@@ -20,6 +21,7 @@ import '../../../../services/work_directory_resolver.dart';
 enum AppNavSection {
   downloads,
   history,
+  servers,
 }
 
 enum DownloadFilter {
@@ -74,6 +76,9 @@ class DownloadsViewModel extends ChangeNotifier {
   String? _historyEventTypeFilter;
   String? _historyStatusFilter;
   int _historyRetentionDays = 30;
+
+  List<Ed2kServerModel> _servers = [];
+  bool _isServersLoading = false;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
@@ -306,6 +311,8 @@ class DownloadsViewModel extends ChangeNotifier {
     _currentSection = section;
     if (section == AppNavSection.history) {
       fetchHistory();
+    } else if (section == AppNavSection.servers) {
+      fetchServers();
     }
     notifyListeners();
   }
@@ -989,6 +996,79 @@ class DownloadsViewModel extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to set rate limits: $e';
+      notifyListeners();
+    }
+  }
+
+  List<Ed2kServerModel> get servers => _servers;
+  bool get isServersLoading => _isServersLoading;
+
+  Future<void> fetchServers() async {
+    _isServersLoading = true;
+    notifyListeners();
+    try {
+      _servers = await client.listServers();
+      _errorMessage = null;
+    } catch (e) {
+      _errorMessage = 'Failed to list servers: $e';
+    } finally {
+      _isServersLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ServerInspectReport?> inspectServerMet(String filePath) async {
+    try {
+      final report = await client.inspectServerMet(filePath);
+      return report;
+    } catch (e) {
+      _errorMessage = 'Failed to inspect server.met: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> importServerMet(String filePath) async {
+    try {
+      final result = await client.importServerMet(filePath);
+      _statusNotification =
+          'Imported ${result.imported} servers (${result.allowedCount} allowed, ${result.blockedCount} blocked by filter)';
+      await fetchServers();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to import server.met: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> setServerEnabled(String address, bool enabled) async {
+    try {
+      await client.setServerEnabled(address, enabled);
+      await fetchServers();
+    } catch (e) {
+      _errorMessage = 'Failed to toggle server state: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteServer(String address) async {
+    try {
+      await client.deleteServer(address);
+      await fetchServers();
+    } catch (e) {
+      _errorMessage = 'Failed to delete server: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearServers() async {
+    try {
+      final count = await client.clearServers();
+      _statusNotification = 'Cleared $count servers';
+      await fetchServers();
+    } catch (e) {
+      _errorMessage = 'Failed to clear servers: $e';
       notifyListeners();
     }
   }

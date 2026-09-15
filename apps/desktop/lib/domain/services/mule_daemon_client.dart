@@ -8,6 +8,7 @@ import '../models/history_stats.dart';
 import '../models/lab_models.dart';
 import '../models/network_policy_models.dart';
 import '../models/part_met_models.dart';
+import '../models/server_models.dart';
 
 abstract class MuleDaemonClient {
   /// Connect to the daemon and perform authentication handshake.
@@ -188,6 +189,24 @@ abstract class MuleDaemonClient {
 
   /// Update rate limits.
   Future<RateLimitsModel> setRateLimits(RateLimitsModel limits);
+
+  /// Inspect an eD2K server.met file without storing.
+  Future<ServerInspectReport> inspectServerMet(String filePath);
+
+  /// Import an eD2K server.met file into local SQLite storage.
+  Future<ServerImportResult> importServerMet(String filePath);
+
+  /// List all persisted eD2K servers.
+  Future<List<Ed2kServerModel>> listServers();
+
+  /// Enable or disable a server.
+  Future<bool> setServerEnabled(String address, bool enabled);
+
+  /// Delete a server from local storage.
+  Future<bool> deleteServer(String address);
+
+  /// Clear all servers from local storage.
+  Future<int> clearServers();
 
   /// Clean up any resources/sockets.
   void dispose();

@@ -7,7 +7,8 @@ pub mod verification;
 
 pub use error::CoreError;
 pub use model::{
-    Download, DownloadCategory, DownloadStatus, HistoryEntry, HistoryFilter, HistoryStats,
+    Download, DownloadCategory, DownloadStatus, Ed2kServer, HistoryEntry, HistoryFilter,
+    HistoryStats, ServerFilterStatus,
 };
 pub use persistence::Database;
 pub use ranges::RangeSet;

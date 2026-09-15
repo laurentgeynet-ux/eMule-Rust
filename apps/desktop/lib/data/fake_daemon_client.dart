@@ -12,11 +12,13 @@ import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
 import '../../domain/models/network_policy_models.dart';
 import '../../domain/models/part_met_models.dart';
+import '../../domain/models/server_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 
 class FakeMuleDaemonClient implements MuleDaemonClient {
   final Map<String, DownloadItem> _downloads = {};
   final Map<String, CategoryItem> _categories = {};
+  final Map<String, Ed2kServerModel> _servers = {};
   final List<LabFixtureInfo> _fixtures = [];
   final List<HistoryEntry> _history = [];
   int _fakeRetentionDays = 30;
@@ -969,6 +971,94 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async {
     _fakeRateLimits = limits;
     return _fakeRateLimits;
+  }
+
+  @override
+  Future<ServerInspectReport> inspectServerMet(String filePath) async {
+    final s1 = Ed2kServerModel(
+      address: '176.103.48.36:4184',
+      ip: '176.103.48.36',
+      port: 4184,
+      name: 'eDonkeyServer No2',
+      description: 'Public ed2k server',
+      ping: 28,
+      preference: 10,
+      filterStatus: ServerFilterStatus.allowed,
+    );
+    final s2 = Ed2kServerModel(
+      address: '10.20.30.40:4661',
+      ip: '10.20.30.40',
+      port: 4661,
+      name: 'Filtered Rouge Server',
+      description: 'Blocked test entry',
+      ping: 999,
+      preference: 1,
+      filterStatus: ServerFilterStatus.blockedByFilter,
+    );
+    return ServerInspectReport(
+      filePath: filePath,
+      totalCount: 2,
+      allowedCount: 1,
+      blockedCount: 1,
+      servers: [s1, s2],
+    );
+  }
+
+  @override
+  Future<ServerImportResult> importServerMet(String filePath) async {
+    final report = await inspectServerMet(filePath);
+    for (final s in report.servers) {
+      _servers[s.address] = s;
+    }
+    return ServerImportResult(
+      success: true,
+      imported: report.servers.length,
+      totalCount: report.totalCount,
+      allowedCount: report.allowedCount,
+      blockedCount: report.blockedCount,
+    );
+  }
+
+  @override
+  Future<List<Ed2kServerModel>> listServers() async {
+    final list = _servers.values.toList();
+    list.sort((a, b) => b.preference.compareTo(a.preference));
+    return list;
+  }
+
+  @override
+  Future<bool> setServerEnabled(String address, bool enabled) async {
+    final existing = _servers[address];
+    if (existing == null) return false;
+    _servers[address] = Ed2kServerModel(
+      address: existing.address,
+      ip: existing.ip,
+      port: existing.port,
+      name: existing.name,
+      description: existing.description,
+      ping: existing.ping,
+      preference: existing.preference,
+      failedCount: existing.failedCount,
+      dynIp: existing.dynIp,
+      version: existing.version,
+      filterStatus: enabled ? ServerFilterStatus.allowed : ServerFilterStatus.disabled,
+      lastSeenUnixMs: existing.lastSeenUnixMs,
+      createdAtUnixMs: existing.createdAtUnixMs,
+      updatedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    return true;
+  }
+
+  @override
+  Future<bool> deleteServer(String address) async {
+    return _servers.remove(address) != null;
+  }
+
+  @override
+  Future<int> clearServers() async {
+    final count = _servers.length;
+    _servers.clear();
+    return count;
   }
 
   @override

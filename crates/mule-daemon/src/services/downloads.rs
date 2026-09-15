@@ -1289,6 +1289,36 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         self.get_download_detail(download_id)
             .ok_or_else(|| JsonRpcError::business(format!("Download {download_id} detail not found")))
     }
+
+    pub fn upsert_servers(&mut self, servers: &[mule_core::model::Ed2kServer]) -> Result<usize, JsonRpcError> {
+        self.db
+            .upsert_servers(servers)
+            .map_err(|e| JsonRpcError::business(format!("DB error upserting servers: {e}")))
+    }
+
+    pub fn list_servers(&self) -> Result<Vec<mule_core::model::Ed2kServer>, JsonRpcError> {
+        self.db
+            .list_servers()
+            .map_err(|e| JsonRpcError::business(format!("DB error listing servers: {e}")))
+    }
+
+    pub fn set_server_enabled(&mut self, address: &str, enabled: bool) -> Result<bool, JsonRpcError> {
+        self.db
+            .set_server_enabled(address, enabled)
+            .map_err(|e| JsonRpcError::business(format!("DB error updating server status: {e}")))
+    }
+
+    pub fn delete_server(&mut self, address: &str) -> Result<bool, JsonRpcError> {
+        self.db
+            .delete_server(address)
+            .map_err(|e| JsonRpcError::business(format!("DB error deleting server: {e}")))
+    }
+
+    pub fn clear_servers(&mut self) -> Result<usize, JsonRpcError> {
+        self.db
+            .clear_servers()
+            .map_err(|e| JsonRpcError::business(format!("DB error clearing servers: {e}")))
+    }
 }
 
 fn now_ms() -> i64 {

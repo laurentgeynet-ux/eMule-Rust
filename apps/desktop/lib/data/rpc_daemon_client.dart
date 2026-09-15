@@ -14,6 +14,7 @@ import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
 import '../../domain/models/network_policy_models.dart';
 import '../../domain/models/part_met_models.dart';
+import '../../domain/models/server_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 import 'dto/rpc_dto.dart';
 
@@ -618,6 +619,48 @@ class RpcDaemonClient implements MuleDaemonClient {
   Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async {
     final resp = await _call('limits.set', limits.toJson());
     return RateLimitsModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerInspectReport> inspectServerMet(String filePath) async {
+    final resp = await _call('servers.inspectMet', {'filePath': filePath});
+    return ServerInspectReport.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerImportResult> importServerMet(String filePath) async {
+    final resp = await _call('servers.importMet', {'filePath': filePath});
+    return ServerImportResult.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<Ed2kServerModel>> listServers() async {
+    final resp = await _call('servers.list');
+    final rawList = (resp as Map<String, dynamic>)['servers'] as List<dynamic>? ?? const [];
+    return rawList
+        .map((e) => Ed2kServerModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<bool> setServerEnabled(String address, bool enabled) async {
+    final resp = await _call('servers.setEnabled', {
+      'address': address,
+      'enabled': enabled,
+    });
+    return (resp as Map<String, dynamic>)['updated'] as bool? ?? false;
+  }
+
+  @override
+  Future<bool> deleteServer(String address) async {
+    final resp = await _call('servers.delete', {'address': address});
+    return (resp as Map<String, dynamic>)['deleted'] as bool? ?? false;
+  }
+
+  @override
+  Future<int> clearServers() async {
+    final resp = await _call('servers.clear');
+    return (resp as Map<String, dynamic>)['deletedCount'] as int? ?? 0;
   }
 
   @override

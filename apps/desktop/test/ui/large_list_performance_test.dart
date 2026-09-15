@@ -8,6 +8,7 @@ import 'package:desktop/domain/models/history_stats.dart';
 import 'package:desktop/domain/models/lab_models.dart';
 import 'package:desktop/domain/models/network_policy_models.dart';
 import 'package:desktop/domain/models/part_met_models.dart';
+import 'package:desktop/domain/models/server_models.dart';
 import 'package:desktop/domain/services/mule_daemon_client.dart';
 import 'package:desktop/domain/models/daemon_info.dart';
 import 'package:desktop/domain/models/daemon_event.dart';
@@ -334,6 +335,26 @@ class LargeListMockClient implements MuleDaemonClient {
 
   @override
   Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async => limits;
+
+  @override
+  Future<ServerInspectReport> inspectServerMet(String filePath) async =>
+      ServerInspectReport(filePath: filePath, totalCount: 0, allowedCount: 0, blockedCount: 0, servers: const []);
+
+  @override
+  Future<ServerImportResult> importServerMet(String filePath) async =>
+      const ServerImportResult(success: true, imported: 0, totalCount: 0, allowedCount: 0, blockedCount: 0);
+
+  @override
+  Future<List<Ed2kServerModel>> listServers() async => const [];
+
+  @override
+  Future<bool> setServerEnabled(String address, bool enabled) async => true;
+
+  @override
+  Future<bool> deleteServer(String address) async => true;
+
+  @override
+  Future<int> clearServers() async => 0;
 
   @override
   void dispose() {}

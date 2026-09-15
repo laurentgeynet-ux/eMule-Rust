@@ -159,7 +159,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Open settings dialog
-      await tester.tap(find.text('Settings'));
+      final settingsFinder = find.text('Settings');
+      await tester.ensureVisible(settingsFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(settingsFinder);
       await tester.pumpAndSettle();
 
       expect(find.byType(SettingsDialog), findsOneWidget);

@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::model::{
-    Download, DownloadCategory, DownloadStatus, HistoryEntry, HistoryFilter, HistoryStats,
+    Download, DownloadCategory, DownloadStatus, Ed2kServer, HistoryEntry, HistoryFilter,
+    HistoryStats, ServerFilterStatus,
 };
 use crate::ranges::RangeSet;
 
@@ -109,6 +110,25 @@ impl Database {
             );
 
             CREATE INDEX IF NOT EXISTS idx_categories_order ON download_categories(sort_order ASC);
+
+            CREATE TABLE IF NOT EXISTS ed2k_servers (
+                address TEXT PRIMARY KEY,
+                ip TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                ping INTEGER NOT NULL DEFAULT 0,
+                preference INTEGER NOT NULL DEFAULT 0,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                dyn_ip TEXT,
+                version TEXT,
+                filter_status TEXT NOT NULL DEFAULT 'allowed',
+                last_seen_unix_ms INTEGER,
+                created_at_unix_ms INTEGER NOT NULL,
+                updated_at_unix_ms INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_servers_filter_status ON ed2k_servers(filter_status);
             ",
         )?;
 
@@ -742,5 +762,130 @@ impl Database {
             params![category_id, now, download_id.to_string()],
         )?;
         Ok(rows > 0)
+    }
+
+    /// Upserts a batch of eD2K servers.
+    /// If an address already exists, updates metadata while preserving its manual enabled/disabled status if previously disabled.
+    pub fn upsert_servers(&mut self, servers: &[Ed2kServer]) -> Result<usize, CoreError> {
+        let tx = self.conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO ed2k_servers (
+                    address, ip, port, name, description, ping, preference, failed_count,
+                    dyn_ip, version, filter_status, last_seen_unix_ms, created_at_unix_ms, updated_at_unix_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                ON CONFLICT(address) DO UPDATE SET
+                    ip = excluded.ip,
+                    port = excluded.port,
+                    name = excluded.name,
+                    description = excluded.description,
+                    ping = excluded.ping,
+                    preference = excluded.preference,
+                    failed_count = excluded.failed_count,
+                    dyn_ip = excluded.dyn_ip,
+                    version = excluded.version,
+                    filter_status = CASE
+                        WHEN ed2k_servers.filter_status = 'disabled' THEN 'disabled'
+                        ELSE excluded.filter_status
+                    END,
+                    updated_at_unix_ms = excluded.updated_at_unix_ms"
+            )?;
+
+            for s in servers {
+                stmt.execute(params![
+                    s.address,
+                    s.ip,
+                    s.port,
+                    s.name,
+                    s.description,
+                    s.ping,
+                    s.preference,
+                    s.failed_count,
+                    s.dyn_ip,
+                    s.version,
+                    s.filter_status.as_str(),
+                    s.last_seen_unix_ms,
+                    s.created_at_unix_ms,
+                    s.updated_at_unix_ms,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// Lists all persisted eD2K servers ordered by preference DESC, name ASC.
+    pub fn list_servers(&self) -> Result<Vec<Ed2kServer>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT address, ip, port, name, description, ping, preference, failed_count,
+                    dyn_ip, version, filter_status, last_seen_unix_ms, created_at_unix_ms, updated_at_unix_ms
+             FROM ed2k_servers
+             ORDER BY preference DESC, name ASC"
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let filter_status_str: String = row.get(10)?;
+            let filter_status: ServerFilterStatus = filter_status_str.parse().unwrap_or(ServerFilterStatus::Allowed);
+
+            Ok(Ed2kServer {
+                address: row.get(0)?,
+                ip: row.get(1)?,
+                port: row.get(2)?,
+                name: row.get(3)?,
+                description: row.get(4)?,
+                ping: row.get(5)?,
+                preference: row.get(6)?,
+                failed_count: row.get(7)?,
+                dyn_ip: row.get(8)?,
+                version: row.get(9)?,
+                filter_status,
+                last_seen_unix_ms: row.get(11)?,
+                created_at_unix_ms: row.get(12)?,
+                updated_at_unix_ms: row.get(13)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Updates the enabled/disabled state of a server.
+    /// If enabled is true, sets status to 'allowed'; if false, sets to 'disabled'.
+    pub fn set_server_enabled(&mut self, address: &str, enabled: bool) -> Result<bool, CoreError> {
+        let new_status = if enabled {
+            ServerFilterStatus::Allowed.as_str()
+        } else {
+            ServerFilterStatus::Disabled.as_str()
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        let rows = self.conn.execute(
+            "UPDATE ed2k_servers SET filter_status = ?1, updated_at_unix_ms = ?2 WHERE address = ?3",
+            params![new_status, now, address],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Deletes a server from SQLite by address ("ip:port").
+    pub fn delete_server(&mut self, address: &str) -> Result<bool, CoreError> {
+        let rows = self.conn.execute(
+            "DELETE FROM ed2k_servers WHERE address = ?1",
+            params![address],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Removes all servers from SQLite.
+    pub fn clear_servers(&mut self) -> Result<usize, CoreError> {
+        let rows = self.conn.execute("DELETE FROM ed2k_servers", [])?;
+        Ok(rows)
     }
 }

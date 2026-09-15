@@ -185,3 +185,54 @@ pub struct HistoryStats {
     pub last_7d_completed_count: u64,
 }
 
+/// Filter status for an eD2K server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerFilterStatus {
+    Allowed,
+    BlockedByFilter,
+    Disabled,
+}
+
+impl ServerFilterStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Allowed => "allowed",
+            Self::BlockedByFilter => "blocked_by_filter",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
+impl std::str::FromStr for ServerFilterStatus {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "blocked_by_filter" => Self::BlockedByFilter,
+            "disabled" => Self::Disabled,
+            _ => Self::Allowed,
+        })
+    }
+}
+
+/// Persistent record of an eD2K server in local storage.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Ed2kServer {
+    pub address: String, // "ip:port" as primary key
+    pub ip: String,
+    pub port: u16,
+    pub name: String,
+    pub description: String,
+    pub ping: u32,
+    pub preference: u32,
+    pub failed_count: u32,
+    pub dyn_ip: Option<String>,
+    pub version: Option<String>,
+    pub filter_status: ServerFilterStatus,
+    pub last_seen_unix_ms: Option<i64>,
+    pub created_at_unix_ms: i64,
+    pub updated_at_unix_ms: i64,
+}
+
