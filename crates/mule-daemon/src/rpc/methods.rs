@@ -76,6 +76,9 @@ pub async fn handle_request(
         "servers.setEnabled" => handle_servers_set_enabled(state, req.params).await,
         "servers.delete" => handle_servers_delete(state, req.params).await,
         "servers.clear" => handle_servers_clear(state).await,
+        "servers.connect" => handle_servers_connect(state, req.params).await,
+        "servers.disconnect" => handle_servers_disconnect(state).await,
+        "servers.status" => handle_servers_status(state).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -142,6 +145,7 @@ fn handle_hello(
         "ip-filter",
         "rate-limits",
         "servers",
+        "server-connection",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -167,6 +171,10 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "categories",
         "import_part_met",
         "network-policy",
+        "ip-filter",
+        "rate-limits",
+        "servers",
+        "server-connection",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -1382,6 +1390,7 @@ async fn handle_network_set_profile(
 
 async fn handle_network_disconnect_all(state: &AppState) -> Result<Value, JsonRpcError> {
     state.network_policy.disconnect_all();
+    let _ = state.server_session.disconnect().await;
     state.abort_all_tasks().await;
     Ok(json!({
         "success": true,
@@ -1720,3 +1729,75 @@ async fn handle_servers_clear(state: &AppState) -> Result<Value, JsonRpcError> {
         "deletedCount": count,
     }))
 }
+
+async fn handle_servers_connect(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let address_str = params["address"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')"))?;
+
+    let addr: std::net::SocketAddr = address_str.parse().map_err(|e| {
+        JsonRpcError::invalid_params(&format!("Invalid socket address format '{address_str}': {e}"))
+    })?;
+
+    // Check if server is in local database and whether it is disabled
+    let server_record = {
+        let dl = state.downloads.lock().await;
+        let servers = dl.list_servers()?;
+        servers.into_iter().find(|s| s.address == address_str)
+    };
+
+    if let Some(ref record) = server_record {
+        if record.filter_status == mule_core::model::ServerFilterStatus::Disabled {
+            return Err(JsonRpcError::business(
+                "Cannot connect to server: server is disabled in local server list",
+            ));
+        }
+        if record.filter_status == mule_core::model::ServerFilterStatus::BlockedByFilter {
+            return Err(JsonRpcError::business(
+                "Cannot connect to server: server is blocked by IP filter",
+            ));
+        }
+    }
+
+    let server_name = server_record.map(|s| s.name);
+
+    // Request TCP connect permit from NetworkPolicyManager
+    let permit = state
+        .network_policy
+        .request_tcp_connect(addr, mule_network_policy::ConnectionPurpose::Ed2kServer)
+        .map_err(|e| JsonRpcError::business(format!("Connection rejected by network policy: {e}")))?;
+
+    // Start session
+    state
+        .server_session
+        .connect(
+            addr,
+            server_name,
+            permit,
+            5000,
+            10000,
+            4662,
+            "Emule-Sion".to_string(),
+            [0x3cu8; 16],
+        )
+        .await?;
+
+    let snapshot = state.server_session.snapshot().await;
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+async fn handle_servers_disconnect(state: &AppState) -> Result<Value, JsonRpcError> {
+    state.server_session.disconnect().await?;
+    let snapshot = state.server_session.snapshot().await;
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+async fn handle_servers_status(state: &AppState) -> Result<Value, JsonRpcError> {
+    let snapshot = state.server_session.snapshot().await;
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+

@@ -664,6 +664,24 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<ServerSessionModel> connectServer(String address) async {
+    final resp = await _call('servers.connect', {'address': address});
+    return ServerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerSessionModel> disconnectServer() async {
+    final resp = await _call('servers.disconnect');
+    return ServerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerSessionModel> getServerStatus() async {
+    final resp = await _call('servers.status');
+    return ServerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
   void dispose() {
     disconnect();
     _connectionController.close();

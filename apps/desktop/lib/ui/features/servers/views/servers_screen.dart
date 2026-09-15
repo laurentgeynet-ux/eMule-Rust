@@ -28,11 +28,15 @@ class _ServersViewState extends State<ServersView> {
           s.address.contains(q);
     }).toList();
 
+    final hasServerConnectionCap =
+        vm.daemonInfo?.capabilities.contains('server-connection') ?? false;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildToolbar(context, vm),
-        _buildSafetyBanner(context),
+        if (hasServerConnectionCap) _buildSessionBar(context, vm),
+        _buildSafetyBanner(context, hasServerConnectionCap),
         _buildFilterBar(context, vm),
         const Divider(color: AppTheme.darkBorder, height: 1),
         Expanded(
@@ -40,11 +44,14 @@ class _ServersViewState extends State<ServersView> {
               ? const Center(child: CircularProgressIndicator())
               : servers.isEmpty
                   ? _buildEmptyState(context, vm)
-                  : _buildServersTable(context, vm, servers),
+                  : _buildServersTable(context, vm, servers,
+                      hasServerConnectionCap: hasServerConnectionCap),
         ),
       ],
     );
   }
+
+  // ── Toolbar ────────────────────────────────────────────────────────────────
 
   Widget _buildToolbar(BuildContext context, DownloadsViewModel vm) {
     return Container(
@@ -89,7 +96,177 @@ class _ServersViewState extends State<ServersView> {
     );
   }
 
-  Widget _buildSafetyBanner(BuildContext context) {
+  // ── Session Bar ────────────────────────────────────────────────────────────
+
+  Widget _buildSessionBar(BuildContext context, DownloadsViewModel vm) {
+    final session = vm.serverSession;
+    final status = session.status;
+    final isConnected = status == ServerConnectionStatus.connected;
+    final isConnecting = status == ServerConnectionStatus.connecting ||
+        vm.isServerConnecting;
+    final isDisconnected = status == ServerConnectionStatus.disconnected;
+
+    Color barBg;
+    Color barBorder;
+    Color statusColor;
+    if (isConnected) {
+      barBg = Colors.green.withAlpha(20);
+      barBorder = Colors.greenAccent.withAlpha(80);
+      statusColor = Colors.greenAccent;
+    } else if (isConnecting) {
+      barBg = Colors.amber.withAlpha(20);
+      barBorder = Colors.amberAccent.withAlpha(80);
+      statusColor = Colors.amberAccent;
+    } else {
+      barBg = Colors.white.withAlpha(8);
+      barBorder = AppTheme.darkBorder;
+      statusColor = Colors.white38;
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: barBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: barBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: statusColor,
+                ),
+              ),
+              Text(
+                status.toDisplayString(),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor,
+                ),
+              ),
+              if (isConnected) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: session.isHighId
+                        ? Colors.greenAccent.withAlpha(40)
+                        : Colors.orangeAccent.withAlpha(40),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: session.isHighId
+                          ? Colors.greenAccent.withAlpha(100)
+                          : Colors.orangeAccent.withAlpha(100),
+                    ),
+                  ),
+                  child: Text(
+                    session.isHighId ? 'HighID' : 'LowID',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: session.isHighId
+                          ? Colors.greenAccent
+                          : Colors.orangeAccent,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 10),
+              if (session.serverName != null && session.serverName!.isNotEmpty)
+                Expanded(
+                  child: Text(
+                    session.serverName!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              else if (!isDisconnected)
+                Expanded(
+                  child: Text(
+                    session.serverAddress ?? '',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white54,
+                        fontFamily: 'monospace'),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              else
+                const Expanded(
+                  child: Text(
+                    'Aucun serveur connecte',
+                    style: TextStyle(fontSize: 12, color: Colors.white38),
+                  ),
+                ),
+              if (isConnected && session.currentUsers != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Text(
+                    '${_fmt(session.currentUsers!)} utilisateurs . ${_fmt(session.currentFiles ?? 0)} fichiers',
+                    style:
+                        const TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                ),
+              if (!isDisconnected)
+                TextButton.icon(
+                  icon: const Icon(Icons.power_settings_new,
+                      size: 16, color: Colors.redAccent),
+                  label: const Text('Deconnecter',
+                      style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: isConnecting ? null : () => vm.disconnectServer(),
+                ),
+            ],
+          ),
+          if (isConnected &&
+              session.welcomeMessage != null &&
+              session.welcomeMessage!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                session.welcomeMessage!,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 11.5, color: Colors.white54, height: 1.4),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(int v) {
+    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}k';
+    return '$v';
+  }
+
+  // ── Safety Banner ──────────────────────────────────────────────────────────
+
+  Widget _buildSafetyBanner(BuildContext context, bool hasConnectionCap) {
+    final text = hasConnectionCap
+        ? 'Connexions eD2K disponibles. Verifiez le profil reseau avant de vous connecter. Les adresses dans votre filtre IP sont automatiquement signalee.'
+        : 'Avertissement Reseau : Importer ou gerer une liste de serveurs netablit aucune connexion reseau sortante. Les adresses figurant dans votre filtre IP actif sont automatiquement signalee.';
+
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 14, 20, 4),
       padding: const EdgeInsets.all(12),
@@ -102,16 +279,19 @@ class _ServersViewState extends State<ServersView> {
         children: [
           const Icon(Icons.shield_outlined, color: Colors.blueAccent, size: 20),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Avertissement Réseau : Importer ou gérer une liste de serveurs n\'établit aucune connexion réseau sortante (Zéro socket WAN). Les adresses figurant dans votre filtre IP actif sont automatiquement signalées.',
-              style: TextStyle(fontSize: 12.5, color: Colors.white70, height: 1.3),
+              text,
+              style:
+                  const TextStyle(fontSize: 12.5, color: Colors.white70, height: 1.3),
             ),
           ),
         ],
       ),
     );
   }
+
+  // ── Filter Bar ─────────────────────────────────────────────────────────────
 
   Widget _buildFilterBar(BuildContext context, DownloadsViewModel vm) {
     return Padding(
@@ -123,7 +303,8 @@ class _ServersViewState extends State<ServersView> {
               decoration: InputDecoration(
                 hintText: 'Rechercher un serveur (nom, IP, port)...',
                 prefixIcon: const Icon(Icons.search, size: 18),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(color: AppTheme.darkBorder),
@@ -136,14 +317,18 @@ class _ServersViewState extends State<ServersView> {
           const SizedBox(width: 16),
           if (vm.servers.isNotEmpty)
             TextButton.icon(
-              icon: const Icon(Icons.delete_sweep_outlined, color: Colors.redAccent, size: 16),
-              label: const Text('Tout effacer', style: TextStyle(color: Colors.redAccent)),
+              icon: const Icon(Icons.delete_sweep_outlined,
+                  color: Colors.redAccent, size: 16),
+              label: const Text('Tout effacer',
+                  style: TextStyle(color: Colors.redAccent)),
               onPressed: () => _confirmClearServers(context, vm),
             ),
         ],
       ),
     );
   }
+
+  // ── Empty State ────────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(BuildContext context, DownloadsViewModel vm) {
     return Center(
@@ -153,18 +338,21 @@ class _ServersViewState extends State<ServersView> {
           Icon(Icons.dns_outlined, size: 64, color: Colors.white.withAlpha(40)),
           const SizedBox(height: 16),
           const Text(
-            'Aucun serveur eD2K enregistré',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white70),
+            'Aucun serveur eD2K enregistre',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white70),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Importez un fichier server.met local pour inspecter et gérer vos serveurs.',
+            'Importez un fichier server.met local pour inspecter et gerer vos serveurs.',
             style: TextStyle(fontSize: 13, color: Colors.white38),
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
             icon: const Icon(Icons.file_upload_outlined),
-            label: const Text('Sélectionner server.met'),
+            label: const Text('Selectionner server.met'),
             onPressed: () => _handleImportMet(context, vm),
           ),
         ],
@@ -172,7 +360,14 @@ class _ServersViewState extends State<ServersView> {
     );
   }
 
-  Widget _buildServersTable(BuildContext context, DownloadsViewModel vm, List<Ed2kServerModel> servers) {
+  // ── Servers Table ──────────────────────────────────────────────────────────
+
+  Widget _buildServersTable(
+    BuildContext context,
+    DownloadsViewModel vm,
+    List<Ed2kServerModel> servers, {
+    required bool hasServerConnectionCap,
+  }) {
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
       child: SingleChildScrollView(
@@ -184,24 +379,54 @@ class _ServersViewState extends State<ServersView> {
           horizontalMargin: 16,
           columnSpacing: 18,
           columns: const [
-            DataColumn(label: Text('État / Filtre', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Nom du Serveur', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('IP : Port', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Description', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Ping', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Préférence', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Version', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Etat / Filtre',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Nom du Serveur',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('IP : Port',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Description',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Ping',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Preference',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Version',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Actions',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
           ],
-          rows: servers.map((s) => _buildServerRow(context, vm, s)).toList(),
+          rows: servers
+              .map((s) => _buildServerRow(context, vm, s,
+                  hasServerConnectionCap: hasServerConnectionCap))
+              .toList(),
         ),
       ),
     );
   }
 
-  DataRow _buildServerRow(BuildContext context, DownloadsViewModel vm, Ed2kServerModel server) {
+  DataRow _buildServerRow(
+    BuildContext context,
+    DownloadsViewModel vm,
+    Ed2kServerModel server, {
+    required bool hasServerConnectionCap,
+  }) {
     final isBlocked = server.filterStatus == ServerFilterStatus.blockedByFilter;
     final isDisabled = server.filterStatus == ServerFilterStatus.disabled;
+    final isAllowed =
+        server.filterStatus == ServerFilterStatus.allowed && !isDisabled;
+
+    final session = vm.serverSession;
+    final isActiveSession = session.serverAddress == server.address &&
+        session.status != ServerConnectionStatus.disconnected;
 
     Widget statusBadge;
     if (isBlocked) {
@@ -212,7 +437,11 @@ class _ServersViewState extends State<ServersView> {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: Colors.redAccent.withAlpha(100)),
         ),
-        child: const Text('Bloqué par IP Filter', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+        child: const Text('Bloque par IP Filter',
+            style: TextStyle(
+                color: Colors.redAccent,
+                fontSize: 11,
+                fontWeight: FontWeight.bold)),
       );
     } else if (isDisabled) {
       statusBadge = Container(
@@ -222,7 +451,8 @@ class _ServersViewState extends State<ServersView> {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: Colors.grey.withAlpha(100)),
         ),
-        child: const Text('Désactivé', style: TextStyle(color: Colors.white60, fontSize: 11)),
+        child: const Text('Desactive',
+            style: TextStyle(color: Colors.white60, fontSize: 11)),
       );
     } else {
       statusBadge = Container(
@@ -232,15 +462,62 @@ class _ServersViewState extends State<ServersView> {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: Colors.greenAccent.withAlpha(100)),
         ),
-        child: const Text('Autorisé', style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+        child: const Text('Autorise',
+            style: TextStyle(
+                color: Colors.greenAccent,
+                fontSize: 11,
+                fontWeight: FontWeight.bold)),
       );
+    }
+
+    Widget? connectBtn;
+    if (hasServerConnectionCap && isAllowed) {
+      if (isActiveSession) {
+        connectBtn = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.greenAccent.withAlpha(25),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.greenAccent.withAlpha(80)),
+          ),
+          child: Text(
+            session.status.toDisplayString(),
+            style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
+          ),
+        );
+      } else {
+        final canConnect =
+            session.status == ServerConnectionStatus.disconnected &&
+                !vm.isServerConnecting;
+        connectBtn = SizedBox(
+          height: 30,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.power_rounded, size: 14),
+            label:
+                const Text('Se connecter', style: TextStyle(fontSize: 12)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary.withAlpha(200),
+              foregroundColor: Colors.white,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed:
+                canConnect ? () => vm.connectServer(server.address) : null,
+          ),
+        );
+      }
     }
 
     return DataRow(
       cells: [
         DataCell(statusBadge),
-        DataCell(Text(server.name.isNotEmpty ? server.name : 'Sans nom', style: const TextStyle(fontWeight: FontWeight.w500))),
-        DataCell(Text(server.address, style: const TextStyle(fontFamily: 'monospace'))),
+        DataCell(Text(
+            server.name.isNotEmpty ? server.name : 'Sans nom',
+            style: const TextStyle(fontWeight: FontWeight.w500))),
+        DataCell(Text(server.address,
+            style: const TextStyle(fontFamily: 'monospace'))),
         DataCell(Text(
           server.description.isNotEmpty ? server.description : '-',
           maxLines: 1,
@@ -253,17 +530,23 @@ class _ServersViewState extends State<ServersView> {
         DataCell(Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (connectBtn != null) ...[
+              connectBtn,
+              const SizedBox(width: 6),
+            ],
             IconButton(
               icon: Icon(
                 isDisabled ? Icons.play_arrow_rounded : Icons.pause_rounded,
                 size: 18,
                 color: isDisabled ? Colors.greenAccent : Colors.amberAccent,
               ),
-              tooltip: isDisabled ? 'Activer' : 'Désactiver',
-              onPressed: () => vm.setServerEnabled(server.address, isDisabled),
+              tooltip: isDisabled ? 'Activer' : 'Desactiver',
+              onPressed: () =>
+                  vm.setServerEnabled(server.address, isDisabled),
             ),
             IconButton(
-              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.white54),
+              icon: const Icon(Icons.delete_outline,
+                  size: 18, color: Colors.white54),
               tooltip: 'Supprimer',
               onPressed: () => vm.deleteServer(server.address),
             ),
@@ -273,7 +556,10 @@ class _ServersViewState extends State<ServersView> {
     );
   }
 
-  Future<void> _handleImportMet(BuildContext context, DownloadsViewModel vm) async {
+  // ── Import Dialog ──────────────────────────────────────────────────────────
+
+  Future<void> _handleImportMet(
+      BuildContext context, DownloadsViewModel vm) async {
     final pathController = TextEditingController();
 
     final path = await showDialog<String>(
@@ -331,7 +617,6 @@ class _ServersViewState extends State<ServersView> {
 
     if (path == null || path.isEmpty) return;
 
-    // 1. Inspect first without persisting
     if (!context.mounted) return;
     final report = await vm.inspectServerMet(path);
     if (report == null) return;
@@ -347,13 +632,14 @@ class _ServersViewState extends State<ServersView> {
     }
   }
 
-  Widget _buildInspectDialog(BuildContext context, ServerInspectReport report) {
+  Widget _buildInspectDialog(
+      BuildContext context, ServerInspectReport report) {
     return AlertDialog(
       title: const Row(
         children: [
           Icon(Icons.preview_rounded, color: AppTheme.primary),
           SizedBox(width: 8),
-          Text('Aperçu du fichier server.met'),
+          Text('Apercu du fichier server.met'),
         ],
       ),
       content: SizedBox(
@@ -362,20 +648,25 @@ class _ServersViewState extends State<ServersView> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Fichier : ${report.filePath}', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+            Text('Fichier : ${report.filePath}',
+                style:
+                    const TextStyle(fontSize: 12, color: Colors.white54)),
             const SizedBox(height: 14),
             Row(
               children: [
-                _buildSummaryStat('Total', '${report.totalCount}', Colors.white),
+                _buildSummaryStat(
+                    'Total', '${report.totalCount}', Colors.white),
                 const SizedBox(width: 12),
-                _buildSummaryStat('Autorisés', '${report.allowedCount}', Colors.greenAccent),
+                _buildSummaryStat(
+                    'Autorises', '${report.allowedCount}', Colors.greenAccent),
                 const SizedBox(width: 12),
-                _buildSummaryStat('Bloqués (Filtre IP)', '${report.blockedCount}', Colors.redAccent),
+                _buildSummaryStat('Bloques (Filtre IP)',
+                    '${report.blockedCount}', Colors.redAccent),
               ],
             ),
             const SizedBox(height: 16),
             const Text(
-              'Les serveurs marqués en rouge correspondent à des plages de votre filtre IP local (ipfilter.dat). Ils seront importés avec le statut bloqué.',
+              'Les serveurs marques en rouge correspondent a des plages de votre filtre IP local. Ils seront importes avec le statut bloque.',
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
             const SizedBox(height: 12),
@@ -387,17 +678,29 @@ class _ServersViewState extends State<ServersView> {
               ),
               child: ListView.separated(
                 itemCount: report.servers.length,
-                separatorBuilder: (_, _) => const Divider(height: 1, color: AppTheme.darkBorder),
+                separatorBuilder: (_, _) =>
+                    const Divider(height: 1, color: AppTheme.darkBorder),
                 itemBuilder: (ctx, idx) {
                   final s = report.servers[idx];
-                  final isBlocked = s.filterStatus == ServerFilterStatus.blockedByFilter;
+                  final isBlocked =
+                      s.filterStatus == ServerFilterStatus.blockedByFilter;
                   return ListTile(
                     dense: true,
-                    title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(s.address, style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                    title: Text(s.name,
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(s.address,
+                        style: const TextStyle(
+                            fontFamily: 'monospace', fontSize: 11)),
                     trailing: isBlocked
-                        ? const Text('Bloqué', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 11))
-                        : const Text('Autorisé', style: TextStyle(color: Colors.greenAccent, fontSize: 11)),
+                        ? const Text('Bloque',
+                            style: TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11))
+                        : const Text('Autorise',
+                            style: TextStyle(
+                                color: Colors.greenAccent, fontSize: 11)),
                   );
                 },
               ),
@@ -412,7 +715,7 @@ class _ServersViewState extends State<ServersView> {
         ),
         ElevatedButton.icon(
           icon: const Icon(Icons.download_done_rounded, size: 16),
-          label: const Text('Confirmer l\'importation'),
+          label: const Text('Confirmer importation'),
           onPressed: () => Navigator.of(context).pop(true),
         ),
       ],
@@ -433,25 +736,35 @@ class _ServersViewState extends State<ServersView> {
           children: [
             Text(label, style: TextStyle(fontSize: 10.5, color: color)),
             const SizedBox(height: 2),
-            Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color)),
           ],
         ),
       ),
     );
   }
 
-  Future<void> _confirmClearServers(BuildContext context, DownloadsViewModel vm) async {
+  // ── Clear Dialog ───────────────────────────────────────────────────────────
+
+  Future<void> _confirmClearServers(
+      BuildContext context, DownloadsViewModel vm) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Effacer tous les serveurs ?'),
         content: const Text(
-          'Cette opération supprime la liste des serveurs enregistrés dans votre base locale. Aucun fichier de téléchargement n\'est affecté.',
+          'Cette operation supprime la liste des serveurs enregistres dans votre base locale.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annuler')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style:
+                ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Effacer'),
           ),

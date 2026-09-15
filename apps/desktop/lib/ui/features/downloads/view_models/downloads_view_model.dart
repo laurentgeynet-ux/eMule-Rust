@@ -79,6 +79,8 @@ class DownloadsViewModel extends ChangeNotifier {
 
   List<Ed2kServerModel> _servers = [];
   bool _isServersLoading = false;
+  ServerSessionModel _serverSession = ServerSessionModel.disconnected;
+  bool _isServerConnecting = false;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
@@ -895,6 +897,7 @@ class DownloadsViewModel extends ChangeNotifier {
     try {
       await client.disconnectAll();
       await fetchNetworkPolicy();
+      _serverSession = ServerSessionModel.disconnected;
       _statusNotification = 'Kill Switch engaged: All network connections disconnected';
       notifyListeners();
     } catch (e) {
@@ -1002,6 +1005,8 @@ class DownloadsViewModel extends ChangeNotifier {
 
   List<Ed2kServerModel> get servers => _servers;
   bool get isServersLoading => _isServersLoading;
+  ServerSessionModel get serverSession => _serverSession;
+  bool get isServerConnecting => _isServerConnecting;
 
   Future<void> fetchServers() async {
     _isServersLoading = true;
@@ -1071,6 +1076,46 @@ class DownloadsViewModel extends ChangeNotifier {
       _errorMessage = 'Failed to clear servers: $e';
       notifyListeners();
     }
+  }
+
+  // ── eD2K Server Session ─────────────────────────────────────────────────────
+
+  Future<void> connectServer(String address) async {
+    if (_isServerConnecting) return;
+    _isServerConnecting = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      _serverSession = await client.connectServer(address);
+      _statusNotification =
+          'Connexion au serveur ${_serverSession.serverName ?? address}...';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Connexion impossible : $e';
+      _serverSession = ServerSessionModel.disconnected;
+      notifyListeners();
+    } finally {
+      _isServerConnecting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> disconnectServer() async {
+    try {
+      _serverSession = await client.disconnectServer();
+      _statusNotification = 'Déconnecté du serveur eD2K';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Erreur de déconnexion : $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshServerSession() async {
+    try {
+      _serverSession = await client.getServerStatus();
+      notifyListeners();
+    } catch (_) {}
   }
 
   @override

@@ -6,6 +6,20 @@
 
 /// Handshake initialization packet (`0x01`).
 pub const OP_HELLO: u8 = 0x01;
+/// Client login request to server (`0x01`).
+pub const OP_LOGINREQUEST: u8 = 0x01;
+
+/// Server status response with user and file counts (`0x14`).
+pub const OP_SERVERSTATUS: u8 = 0x14;
+
+/// Server identification and metadata (`0x41`).
+pub const OP_SERVERIDENT: u8 = 0x41;
+
+/// Server message containing server greetings or notice text (`0x38`).
+pub const OP_SERVERMESSAGE: u8 = 0x38;
+
+/// Server assigns client ID and TCP flags (`0x40`).
+pub const OP_IDCHANGE: u8 = 0x40;
 
 /// Handshake response packet (`0x4C`).
 pub const OP_HELLO_ANSWER: u8 = 0x4C;
@@ -106,8 +120,12 @@ pub const OP_COMPRESSEDPART: u8 = 0x40;
 pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
     match protocol {
         super::protocol::PR_ED2K => match opcode {
-            OP_HELLO => "OP_HELLO",
+            OP_HELLO => "OP_HELLO / OP_LOGINREQUEST",
             OP_HELLO_ANSWER => "OP_HELLO_ANSWER",
+            OP_SERVERMESSAGE => "OP_SERVERMESSAGE",
+            OP_IDCHANGE => "OP_IDCHANGE",
+            OP_SERVERSTATUS => "OP_SERVERSTATUS",
+            OP_SERVERIDENT => "OP_SERVERIDENT",
             OP_OFFERFILES => "OP_OFFERFILES",
             OP_SENDINGPART => "OP_SENDINGPART",
             OP_SETREQFILEID => "OP_SETREQFILEID",

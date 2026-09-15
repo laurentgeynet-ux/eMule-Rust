@@ -357,6 +357,18 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<int> clearServers() async => 0;
 
   @override
+  Future<ServerSessionModel> connectServer(String address) async =>
+      const ServerSessionModel(status: ServerConnectionStatus.connected);
+
+  @override
+  Future<ServerSessionModel> disconnectServer() async =>
+      ServerSessionModel.disconnected;
+
+  @override
+  Future<ServerSessionModel> getServerStatus() async =>
+      ServerSessionModel.disconnected;
+
+  @override
   void dispose() {}
 }
 

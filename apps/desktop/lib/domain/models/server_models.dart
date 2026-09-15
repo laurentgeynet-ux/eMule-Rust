@@ -134,3 +134,86 @@ class ServerImportResult {
     );
   }
 }
+
+enum ServerConnectionStatus {
+  disconnected,
+  connecting,
+  connected,
+  disconnecting;
+
+  static ServerConnectionStatus fromString(String? val) {
+    switch (val) {
+      case 'connecting':
+        return ServerConnectionStatus.connecting;
+      case 'connected':
+        return ServerConnectionStatus.connected;
+      case 'disconnecting':
+        return ServerConnectionStatus.disconnecting;
+      case 'disconnected':
+      default:
+        return ServerConnectionStatus.disconnected;
+    }
+  }
+
+  String toDisplayString() {
+    switch (this) {
+      case ServerConnectionStatus.connecting:
+        return 'Connexion en cours...';
+      case ServerConnectionStatus.connected:
+        return 'Connecté';
+      case ServerConnectionStatus.disconnecting:
+        return 'Déconnexion...';
+      case ServerConnectionStatus.disconnected:
+        return 'Déconnecté';
+    }
+  }
+}
+
+class ServerSessionModel {
+  final ServerConnectionStatus status;
+  final String? serverAddress;
+  final String? serverName;
+  final String? serverDesc;
+  final int? clientId;
+  final bool isHighId;
+  final String? welcomeMessage;
+  final int? currentUsers;
+  final int? currentFiles;
+  final int? connectedAtUnixMs;
+  final int? pingMs;
+
+  const ServerSessionModel({
+    required this.status,
+    this.serverAddress,
+    this.serverName,
+    this.serverDesc,
+    this.clientId,
+    this.isHighId = false,
+    this.welcomeMessage,
+    this.currentUsers,
+    this.currentFiles,
+    this.connectedAtUnixMs,
+    this.pingMs,
+  });
+
+  factory ServerSessionModel.fromJson(Map<String, dynamic> json) {
+    return ServerSessionModel(
+      status: ServerConnectionStatus.fromString(json['status'] as String?),
+      serverAddress: json['serverAddress'] as String?,
+      serverName: json['serverName'] as String?,
+      serverDesc: json['serverDesc'] as String?,
+      clientId: json['clientId'] as int?,
+      isHighId: json['isHighId'] as bool? ?? false,
+      welcomeMessage: json['welcomeMessage'] as String?,
+      currentUsers: json['currentUsers'] as int?,
+      currentFiles: json['currentFiles'] as int?,
+      connectedAtUnixMs: json['connectedAtUnixMs'] as int?,
+      pingMs: json['pingMs'] as int?,
+    );
+  }
+
+  static const disconnected = ServerSessionModel(
+    status: ServerConnectionStatus.disconnected,
+  );
+}
+

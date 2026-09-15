@@ -17,6 +17,7 @@ pub mod peer_info;
 pub mod profile;
 pub mod protocol;
 pub mod sequencer;
+pub mod server;
 pub mod session;
 pub mod storage;
 pub mod tags;
@@ -33,8 +34,9 @@ pub use error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 pub use limits::Ed2kLimits;
 pub use opcodes::{
     OP_ACCEPTUPLOADREQ, OP_COMPRESSEDPART, OP_EMULEINFO, OP_EMULE_INFO, OP_FILEREQANSNOFILE,
-    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_QUEUERANKING,
-    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
+    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_IDCHANGE,
+    OP_LOGINREQUEST, OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART,
+    OP_SERVERIDENT, OP_SERVERMESSAGE, OP_SERVERSTATUS, OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
     OP_STARTUPLOADREQ,
 };
 pub use packet::{
@@ -48,6 +50,10 @@ pub use protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSE
 pub use sequencer::{
     Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kSequencerError, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
     MAX_REQUEST_RANGES_PER_PACKET,
+};
+pub use server::{
+    decode_server_response, ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage,
+    ServerResponse, ServerStatus,
 };
 pub use session::{
     BlockRequestKey, BlockRequestTracker, Ed2kSession, Ed2kSessionError, Ed2kSessionState,

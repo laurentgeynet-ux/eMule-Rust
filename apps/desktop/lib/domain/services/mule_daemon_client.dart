@@ -208,6 +208,15 @@ abstract class MuleDaemonClient {
   /// Clear all servers from local storage.
   Future<int> clearServers();
 
+  /// Connect to an eD2K server by address ("ip:port").
+  Future<ServerSessionModel> connectServer(String address);
+
+  /// Disconnect from the currently connected eD2K server.
+  Future<ServerSessionModel> disconnectServer();
+
+  /// Get current eD2K server session status.
+  Future<ServerSessionModel> getServerStatus();
+
   /// Clean up any resources/sockets.
   void dispose();
 }

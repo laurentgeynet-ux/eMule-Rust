@@ -1061,6 +1061,38 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     return count;
   }
 
+  ServerSessionModel _serverSession = ServerSessionModel.disconnected;
+
+  @override
+  Future<ServerSessionModel> connectServer(String address) async {
+    final s = _servers[address];
+    _serverSession = ServerSessionModel(
+      status: ServerConnectionStatus.connected,
+      serverAddress: address,
+      serverName: s?.name ?? 'Serveur eD2K de test',
+      serverDesc: s?.description ?? 'Serveur simulé pour le laboratoire',
+      clientId: 25000000,
+      isHighId: true,
+      welcomeMessage: 'Bienvenue sur le serveur simulé Emule-Sion !',
+      currentUsers: 1500,
+      currentFiles: 60000,
+      connectedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+      pingMs: 25,
+    );
+    return _serverSession;
+  }
+
+  @override
+  Future<ServerSessionModel> disconnectServer() async {
+    _serverSession = ServerSessionModel.disconnected;
+    return _serverSession;
+  }
+
+  @override
+  Future<ServerSessionModel> getServerStatus() async {
+    return _serverSession;
+  }
+
   @override
   void dispose() {
     _simulationTimer?.cancel();

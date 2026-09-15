@@ -9,12 +9,14 @@ use crate::config::DaemonConfig;
 use crate::rpc::events::{DownloadSnapshot, DownloadUpdatedEvent};
 use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::DownloadService;
+use crate::services::server_session::ServerSessionManager;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: DaemonConfig,
     pub downloads: Arc<Mutex<DownloadService>>,
     pub network_policy: NetworkPolicyManager,
+    pub server_session: ServerSessionManager,
     pub sequence: Arc<AtomicU64>,
     pub event_tx: broadcast::Sender<String>,
     pub instance_id: Uuid,
@@ -32,11 +34,14 @@ impl AppState {
             NetworkProfile::LocalLab,
             ResourceBudgets::default(),
         );
+        let sequence = Arc::new(AtomicU64::new(1));
+        let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
         Self {
             config,
             downloads: Arc::new(Mutex::new(downloads)),
             network_policy,
-            sequence: Arc::new(AtomicU64::new(1)),
+            server_session,
+            sequence,
             event_tx,
             instance_id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),
