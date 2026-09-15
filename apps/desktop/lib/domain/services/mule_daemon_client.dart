@@ -2,6 +2,7 @@ import '../models/category_item.dart';
 import '../models/daemon_event.dart';
 import '../models/daemon_info.dart';
 import '../models/download_item.dart';
+import '../models/filter_models.dart';
 import '../models/history_entry.dart';
 import '../models/history_stats.dart';
 import '../models/lab_models.dart';
@@ -169,6 +170,24 @@ abstract class MuleDaemonClient {
 
   /// Update resource budgets.
   Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets);
+
+  /// Fetch IP filter status and statistics.
+  Future<FilterStatusModel> getFilterStatus();
+
+  /// Import local ipfilter.dat file.
+  Future<FilterStatusModel> importFilterFile(String filePath);
+
+  /// Enable or disable IP filtering.
+  Future<FilterStatusModel> setFilterEnabled(bool enabled);
+
+  /// Clear in-memory IP filter.
+  Future<FilterStatusModel> clearFilter();
+
+  /// Fetch current rate limits.
+  Future<RateLimitsModel> getRateLimits();
+
+  /// Update rate limits.
+  Future<RateLimitsModel> setRateLimits(RateLimitsModel limits);
 
   /// Clean up any resources/sockets.
   void dispose();

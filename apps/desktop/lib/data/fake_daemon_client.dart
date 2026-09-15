@@ -6,6 +6,7 @@ import '../../domain/models/category_item.dart';
 import '../../domain/models/daemon_event.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/filter_models.dart';
 import '../../domain/models/history_entry.dart';
 import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
@@ -33,6 +34,18 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     rateLimitPerMin: 60,
   );
   final List<NetworkAuditEntryItem> _fakeAuditLog = [];
+  FilterStatusModel _fakeFilterStatus = const FilterStatusModel(
+    enabled: true,
+    rangeCount: 0,
+    hitsCount: 0,
+  );
+  RateLimitsModel _fakeRateLimits = const RateLimitsModel(
+    downloadBytesPerSec: 0,
+    uploadBytesPerSec: 0,
+    connectionsPerMinute: 120,
+    serverRequestsPerSec: 10,
+    kadPacketsPerSec: 50,
+  );
   final StreamController<DaemonConnectionState> _connectionController =
       StreamController<DaemonConnectionState>.broadcast();
   final StreamController<DownloadUpdatedEvent> _eventsController =
@@ -899,6 +912,63 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets) async {
     _fakeBudgets = budgets;
     return getNetworkPolicy();
+  }
+
+  @override
+  Future<FilterStatusModel> getFilterStatus() async {
+    return _fakeFilterStatus;
+  }
+
+  @override
+  Future<FilterStatusModel> importFilterFile(String filePath) async {
+    final report = FilterReportModel(
+      totalLines: 1500,
+      commentOrEmptyLines: 100,
+      validEntriesParsed: 1400,
+      invalidLines: 0,
+      coalescedCount: 150,
+      finalRangeCount: 1250,
+      warnings: const [],
+    );
+    _fakeFilterStatus = FilterStatusModel(
+      enabled: true,
+      rangeCount: 1250,
+      hitsCount: 0,
+      lastImportReport: report,
+    );
+    return _fakeFilterStatus;
+  }
+
+  @override
+  Future<FilterStatusModel> setFilterEnabled(bool enabled) async {
+    _fakeFilterStatus = FilterStatusModel(
+      enabled: enabled,
+      rangeCount: _fakeFilterStatus.rangeCount,
+      hitsCount: _fakeFilterStatus.hitsCount,
+      lastImportReport: _fakeFilterStatus.lastImportReport,
+    );
+    return _fakeFilterStatus;
+  }
+
+  @override
+  Future<FilterStatusModel> clearFilter() async {
+    _fakeFilterStatus = const FilterStatusModel(
+      enabled: true,
+      rangeCount: 0,
+      hitsCount: 0,
+    );
+    return _fakeFilterStatus;
+  }
+
+  @override
+  Future<RateLimitsModel> getRateLimits() async {
+    return _fakeRateLimits;
+  }
+
+  @override
+  Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async {
+    _fakeRateLimits = limits;
+    return _fakeRateLimits;
   }
 
   @override

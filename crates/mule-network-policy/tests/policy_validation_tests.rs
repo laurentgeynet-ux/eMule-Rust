@@ -305,3 +305,61 @@ fn test_ipv6_redaction_and_profile_parsing() {
     assert_eq!(NetworkProfile::LocalLab.to_string(), "local-lab");
 }
 
+#[test]
+fn test_policy_ip_filter_blocking_and_pseudonyms() {
+    let manager = NetworkPolicyManager::new(
+        NetworkProfile::PublicEd2kPreview,
+        ResourceBudgets::default(),
+    );
+
+    // Feed IP filter with blocked IP
+    let filter_content = "198.051.100.000 - 198.051.100.255 , 100 , Malicious Range\n";
+    manager.ip_filter().load_from_str(filter_content).unwrap();
+
+    let blocked_target: SocketAddr = "198.51.100.10:4662".parse().unwrap();
+    let allowed_target: SocketAddr = "198.51.101.10:4662".parse().unwrap();
+
+    // Blocked target returns PolicyError::IpFiltered
+    let err = manager.request_tcp_connect(blocked_target, ConnectionPurpose::Ed2kPeer).unwrap_err();
+    match err {
+        PolicyError::IpFiltered(ip, level, desc) => {
+            assert_eq!(ip, "198.51.100.10");
+            assert_eq!(level, 100);
+            assert_eq!(desc, "Malicious Range");
+        }
+        other => panic!("Expected IpFiltered error, got {:?}", other),
+    }
+
+    // Allowed target succeeds
+    let permit = manager.request_tcp_connect(allowed_target, ConnectionPurpose::Ed2kPeer);
+    assert!(permit.is_ok());
+
+    // Check audit entries for filter block and pseudonymization
+    let entries = manager.audit_entries(10);
+    let filter_entry = entries.iter().find(|e| e.event_type == mule_network_policy::audit::AuditEventType::FilterBlocked).unwrap();
+    assert_eq!(filter_entry.decision, mule_network_policy::audit::AuditDecision::Denied);
+    assert_eq!(filter_entry.pseudonymized_target, Some("peer-01:4662".to_string()));
+    assert_eq!(filter_entry.redacted_target, Some("198.51.*.*:4662".to_string()));
+}
+
+#[test]
+fn test_policy_profile_atomic_transition_disconnects_sockets() {
+    let manager = NetworkPolicyManager::new(
+        NetworkProfile::PublicEd2kPreview,
+        ResourceBudgets::default(),
+    );
+
+    let target: SocketAddr = "198.51.101.10:4662".parse().unwrap();
+    let permit = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap();
+    assert!(!permit.is_cancelled());
+
+    // Switching back to local-lab must trigger cancellation of existing permits
+    manager.set_profile(NetworkProfile::LocalLab);
+    assert!(permit.is_cancelled());
+    assert_eq!(manager.profile(), NetworkProfile::LocalLab);
+
+    // New permits under local-lab for external addresses are rejected by anti-SSRF
+    let err = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap_err();
+    assert!(matches!(err, PolicyError::AddressViolation(_)));
+}
+

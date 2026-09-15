@@ -12,6 +12,7 @@ serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt"] }
 tracing.workspace = true
+mule-filter = { path = "../mule-filter" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

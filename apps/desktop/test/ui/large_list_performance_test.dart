@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:desktop/domain/models/category_item.dart';
 import 'package:desktop/domain/models/download_item.dart';
+import 'package:desktop/domain/models/filter_models.dart';
 import 'package:desktop/domain/models/history_entry.dart';
 import 'package:desktop/domain/models/history_stats.dart';
 import 'package:desktop/domain/models/lab_models.dart';
@@ -293,6 +294,46 @@ class LargeListMockClient implements MuleDaemonClient {
   @override
   Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets) async =>
       getNetworkPolicy();
+
+  @override
+  Future<FilterStatusModel> getFilterStatus() async => const FilterStatusModel(
+        enabled: true,
+        rangeCount: 0,
+        hitsCount: 0,
+      );
+
+  @override
+  Future<FilterStatusModel> importFilterFile(String filePath) async => const FilterStatusModel(
+        enabled: true,
+        rangeCount: 100,
+        hitsCount: 0,
+      );
+
+  @override
+  Future<FilterStatusModel> setFilterEnabled(bool enabled) async => const FilterStatusModel(
+        enabled: true,
+        rangeCount: 0,
+        hitsCount: 0,
+      );
+
+  @override
+  Future<FilterStatusModel> clearFilter() async => const FilterStatusModel(
+        enabled: true,
+        rangeCount: 0,
+        hitsCount: 0,
+      );
+
+  @override
+  Future<RateLimitsModel> getRateLimits() async => const RateLimitsModel(
+        downloadBytesPerSec: 0,
+        uploadBytesPerSec: 0,
+        connectionsPerMinute: 120,
+        serverRequestsPerSec: 10,
+        kadPacketsPerSec: 50,
+      );
+
+  @override
+  Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async => limits;
 
   @override
   void dispose() {}

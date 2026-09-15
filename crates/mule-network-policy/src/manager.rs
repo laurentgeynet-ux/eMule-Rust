@@ -11,6 +11,8 @@ use crate::profile::NetworkProfile;
 use crate::state::NetworkState;
 use crate::validator::{validate_connect_address, validate_listen_address, PolicyViolation};
 
+use mule_filter::{IpFilter, RateLimitsConfig, SessionPseudonymizer, TokenBucket};
+
 /// Errors encountered when requesting network permits or updating policy.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum PolicyError {
@@ -19,6 +21,12 @@ pub enum PolicyError {
 
     #[error("Address policy violation: {0}")]
     AddressViolation(#[from] PolicyViolation),
+
+    #[error("IP address {0} is blocked by IP filter (level {1}: {2})")]
+    IpFiltered(String, u32, String),
+
+    #[error("Connection rate limit exceeded")]
+    ConnectionRateLimited,
 
     #[error("Resource budget exhausted: {0}")]
     BudgetExhausted(&'static str),
@@ -40,21 +48,60 @@ struct PolicyManagerInner {
     budgets: ResourceBudgets,
     audit_log: NetworkAuditLog,
     next_permit_id: u64,
+    cancel_token: CancellationToken,
+}
+
+/// Rate limiters managed by policy.
+pub struct PolicyRateLimiters {
+    pub download_bucket: TokenBucket,
+    pub upload_bucket: TokenBucket,
+    pub conn_bucket: TokenBucket,
+    pub server_bucket: TokenBucket,
+    pub kad_bucket: TokenBucket,
+}
+
+impl PolicyRateLimiters {
+    pub fn new(cfg: &RateLimitsConfig) -> Self {
+        // connections_per_minute -> tokens per second: cfg.connections_per_minute / 60
+        let conn_per_sec = (cfg.connections_per_minute as u64 / 60).max(1);
+        let conn_burst = (cfg.connections_per_minute as u64 / 10).max(5);
+
+        Self {
+            download_bucket: TokenBucket::new(cfg.download_bytes_per_sec, cfg.download_bytes_per_sec.max(65536)),
+            upload_bucket: TokenBucket::new(cfg.upload_bytes_per_sec, cfg.upload_bytes_per_sec.max(65536)),
+            conn_bucket: TokenBucket::new(conn_per_sec, conn_burst),
+            server_bucket: TokenBucket::new(cfg.server_requests_per_sec as u64, (cfg.server_requests_per_sec * 2).max(10) as u64),
+            kad_bucket: TokenBucket::new(cfg.kad_packets_per_sec as u64, (cfg.kad_packets_per_sec * 2).max(50) as u64),
+        }
+    }
+
+    pub fn apply_config(&self, cfg: &RateLimitsConfig) {
+        self.download_bucket.set_rate(cfg.download_bytes_per_sec, cfg.download_bytes_per_sec.max(65536));
+        self.upload_bucket.set_rate(cfg.upload_bytes_per_sec, cfg.upload_bytes_per_sec.max(65536));
+        let conn_per_sec = (cfg.connections_per_minute as u64 / 60).max(1);
+        let conn_burst = (cfg.connections_per_minute as u64 / 10).max(5);
+        self.conn_bucket.set_rate(conn_per_sec, conn_burst);
+        self.server_bucket.set_rate(cfg.server_requests_per_sec as u64, (cfg.server_requests_per_sec * 2).max(10) as u64);
+        self.kad_bucket.set_rate(cfg.kad_packets_per_sec as u64, (cfg.kad_packets_per_sec * 2).max(50) as u64);
+    }
 }
 
 /// Central network policy coordinator for Emule-Sion.
 /// Mandatory single choke point for validating addresses, issuing RAII permits,
 /// enforcing resource budgets, and triggering atomic global disconnection.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NetworkPolicyManager {
     inner: Arc<RwLock<PolicyManagerInner>>,
     tracker: Arc<PermitTracker>,
-    cancel_token: CancellationToken,
+    filter: Arc<IpFilter>,
+    rate_limiters: Arc<PolicyRateLimiters>,
+    pseudonymizer: Arc<SessionPseudonymizer>,
 }
 
 impl NetworkPolicyManager {
     /// Creates a new manager with the specified initial profile and resource budgets.
     pub fn new(profile: NetworkProfile, budgets: ResourceBudgets) -> Self {
+        let rate_limits_cfg = RateLimitsConfig::default();
         Self {
             inner: Arc::new(RwLock::new(PolicyManagerInner {
                 profile,
@@ -62,10 +109,28 @@ impl NetworkPolicyManager {
                 budgets,
                 audit_log: NetworkAuditLog::new(500),
                 next_permit_id: 1,
+                cancel_token: CancellationToken::new(),
             })),
             tracker: Arc::new(PermitTracker::default()),
-            cancel_token: CancellationToken::new(),
+            filter: Arc::new(IpFilter::new()),
+            rate_limiters: Arc::new(PolicyRateLimiters::new(&rate_limits_cfg)),
+            pseudonymizer: Arc::new(SessionPseudonymizer::new()),
         }
+    }
+
+    /// Access the underlying IP filter.
+    pub fn ip_filter(&self) -> Arc<IpFilter> {
+        self.filter.clone()
+    }
+
+    /// Access the underlying rate limiters.
+    pub fn rate_limiters(&self) -> Arc<PolicyRateLimiters> {
+        self.rate_limiters.clone()
+    }
+
+    /// Access the underlying session pseudonymizer.
+    pub fn pseudonymizer(&self) -> Arc<SessionPseudonymizer> {
+        self.pseudonymizer.clone()
     }
 
     /// Returns the currently active network profile.
@@ -74,6 +139,8 @@ impl NetworkPolicyManager {
     }
 
     /// Updates the network profile, recording the transition in the audit log.
+    /// Invariant: if transitioning back to `local-lab` with active external sockets,
+    /// those sockets are cancelled atomically via the cancel token.
     pub fn set_profile(&self, new_profile: NetworkProfile) {
         let mut inner = self.inner.write().unwrap();
         let old = inner.profile;
@@ -82,11 +149,18 @@ impl NetworkPolicyManager {
             inner.audit_log.record(
                 AuditEventType::ProfileChanged,
                 None,
+                None,
                 new_profile,
                 AuditDecision::Allowed,
                 Some(format!("Switched profile from {old} to {new_profile}")),
             );
             tracing::info!(from = %old, to = %new_profile, "Network profile updated");
+
+            // Invariant: if switching to local-lab, cancel active permits permanently and instantiate new token
+            if new_profile == NetworkProfile::LocalLab {
+                inner.cancel_token.cancel();
+                inner.cancel_token = CancellationToken::new();
+            }
         }
     }
 
@@ -124,6 +198,7 @@ impl NetworkPolicyManager {
 
     /// Requests an outbound TCP socket permit for a target address and purpose.
     /// Fails if the network is disabled, the address violates profile constraints,
+    /// the IP is blocked by the IP filter, connection rate limits are exceeded,
     /// or active connection budgets are exhausted.
     pub fn request_tcp_connect(
         &self,
@@ -133,11 +208,18 @@ impl NetworkPolicyManager {
         let mut inner = self.inner.write().unwrap();
         let profile = inner.profile;
 
+        let pseudo = match purpose {
+            ConnectionPurpose::Ed2kServer => self.pseudonymizer.pseudonymize_server(addr),
+            ConnectionPurpose::Ed2kPeer | ConnectionPurpose::KadNode => self.pseudonymizer.pseudonymize_peer(addr),
+            ConnectionPurpose::Listener => format!("listener:{}", addr.port()),
+        };
+
         // 1. Check lifecycle state
         if inner.state == NetworkState::Disabled {
             inner.audit_log.record(
                 AuditEventType::ConnectAttempt,
                 Some(&addr),
+                Some(pseudo),
                 profile,
                 AuditDecision::Denied,
                 Some("Network disabled by Kill Switch".to_string()),
@@ -154,6 +236,7 @@ impl NetworkPolicyManager {
             inner.audit_log.record(
                 AuditEventType::ConnectAttempt,
                 Some(&addr),
+                Some(pseudo),
                 profile,
                 AuditDecision::Denied,
                 Some(reason),
@@ -161,12 +244,45 @@ impl NetworkPolicyManager {
             return Err(PolicyError::KadNotAllowedInProfile(profile));
         }
 
-        // 3. Validate destination address
+        // 3. Check IP Filter (High-performance in-memory lookup)
+        if let Some(range) = self.filter.check_ip(addr.ip()) {
+            let reason = format!(
+                "Blocked by IP filter (level {}: '{}' - [{} - {}])",
+                range.level, range.description, range.start_ip(), range.end_ip()
+            );
+            inner.audit_log.record(
+                AuditEventType::FilterBlocked,
+                Some(&addr),
+                Some(pseudo),
+                profile,
+                AuditDecision::Denied,
+                Some(reason.clone()),
+            );
+            tracing::warn!(target = %addr, level = range.level, desc = %range.description, "Connection blocked by IP filter");
+            return Err(PolicyError::IpFiltered(addr.ip().to_string(), range.level, range.description));
+        }
+
+        // 4. Check Connection Rate Limiter (Token Bucket)
+        if !self.rate_limiters.conn_bucket.try_acquire(1) {
+            let reason = "Connection creation rate limit exceeded".to_string();
+            inner.audit_log.record(
+                AuditEventType::BudgetExhausted,
+                Some(&addr),
+                Some(pseudo),
+                profile,
+                AuditDecision::Denied,
+                Some(reason),
+            );
+            return Err(PolicyError::ConnectionRateLimited);
+        }
+
+        // 5. Validate destination address
         if let Err(violation) = validate_connect_address(&addr, profile) {
             let reason = violation.to_string();
             inner.audit_log.record(
                 AuditEventType::ConnectAttempt,
                 Some(&addr),
+                Some(pseudo),
                 profile,
                 AuditDecision::Denied,
                 Some(reason),
@@ -174,7 +290,7 @@ impl NetworkPolicyManager {
             return Err(PolicyError::AddressViolation(violation));
         }
 
-        // 4. Validate resource budgets
+        // 6. Validate resource budgets
         match purpose {
             ConnectionPurpose::Ed2kPeer | ConnectionPurpose::KadNode => {
                 let active = self.tracker.active_peer_conns.load(Ordering::SeqCst);
@@ -186,6 +302,7 @@ impl NetworkPolicyManager {
                     inner.audit_log.record(
                         AuditEventType::BudgetExhausted,
                         Some(&addr),
+                        Some(pseudo),
                         profile,
                         AuditDecision::Denied,
                         Some(reason),
@@ -203,6 +320,7 @@ impl NetworkPolicyManager {
                     inner.audit_log.record(
                         AuditEventType::BudgetExhausted,
                         Some(&addr),
+                        Some(pseudo),
                         profile,
                         AuditDecision::Denied,
                         Some(reason),
@@ -218,23 +336,25 @@ impl NetworkPolicyManager {
             }
         }
 
-        // 5. Issue permit
+        // 7. Issue permit
         let permit_id = inner.next_permit_id;
         inner.next_permit_id = inner.next_permit_id.wrapping_add(1);
 
         inner.audit_log.record(
             AuditEventType::ConnectAttempt,
             Some(&addr),
+            Some(pseudo),
             profile,
             AuditDecision::Allowed,
             Some(format!("Authorized permit #{permit_id} for {purpose:?}")),
         );
 
+        let cancel_token = inner.cancel_token.clone();
         let permit = SocketPermit::new(
             permit_id,
             addr,
             purpose,
-            self.cancel_token.clone(),
+            cancel_token,
             self.tracker.clone(),
         );
 
@@ -250,6 +370,8 @@ impl NetworkPolicyManager {
         let mut inner = self.inner.write().unwrap();
         let profile = inner.profile;
 
+        let pseudo = format!("listener:{}", addr.port());
+
         if inner.state == NetworkState::Disabled {
             return Err(PolicyError::NetworkDisabled);
         }
@@ -262,6 +384,7 @@ impl NetworkPolicyManager {
             inner.audit_log.record(
                 AuditEventType::ListenAttempt,
                 Some(&addr),
+                Some(pseudo),
                 profile,
                 AuditDecision::Denied,
                 Some(reason),
@@ -280,15 +403,17 @@ impl NetworkPolicyManager {
         inner.audit_log.record(
             AuditEventType::ListenAttempt,
             Some(&addr),
+            Some(pseudo),
             profile,
             AuditDecision::Allowed,
             Some(format!("Authorized listener permit #{permit_id} for {purpose:?}")),
         );
 
+        let cancel_token = inner.cancel_token.clone();
         let permit = ListenPermit::new(
             permit_id,
             addr,
-            self.cancel_token.clone(),
+            cancel_token,
             self.tracker.clone(),
         );
 
@@ -299,23 +424,24 @@ impl NetworkPolicyManager {
     /// Atomically marks the network as Disabled, triggers cancellation of all outstanding
     /// socket tasks, and writes an audit event.
     pub fn disconnect_all(&self) {
-        let profile = {
+        let (profile, token_to_cancel) = {
             let mut inner = self.inner.write().unwrap();
             inner.state = NetworkState::ShuttingDown;
             let profile = inner.profile;
             inner.audit_log.record(
                 AuditEventType::KillSwitchTriggered,
                 None,
+                None,
                 profile,
                 AuditDecision::Allowed,
                 Some("Kill switch activated: tearing down all connections".to_string()),
             );
             tracing::warn!("Kill switch activated: cancelling all network operations");
-            profile
+            (profile, inner.cancel_token.clone())
         };
 
         // Trigger cancellation to all active permits
-        self.cancel_token.cancel();
+        token_to_cancel.cancel();
 
         // Finalize state to Disabled
         let mut inner = self.inner.write().unwrap();
@@ -327,11 +453,12 @@ impl NetworkPolicyManager {
     pub fn enable(&self) {
         let mut inner = self.inner.write().unwrap();
         if inner.state == NetworkState::Disabled || inner.state == NetworkState::ShuttingDown {
-            self.cancel_token.reset();
+            inner.cancel_token = CancellationToken::new();
             inner.state = NetworkState::PreviewActive;
             let profile = inner.profile;
             inner.audit_log.record(
                 AuditEventType::NetworkEnabled,
+                None,
                 None,
                 profile,
                 AuditDecision::Allowed,
@@ -349,7 +476,7 @@ impl NetworkPolicyManager {
 
     /// Returns the cancellation token associated with the network manager.
     pub fn cancellation_token(&self) -> CancellationToken {
-        self.cancel_token.clone()
+        self.inner.read().unwrap().cancel_token.clone()
     }
 
     /// Returns the number of currently active peer connections.

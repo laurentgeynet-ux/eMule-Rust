@@ -23,6 +23,7 @@ pub enum AuditEventType {
     KillSwitchTriggered,
     NetworkEnabled,
     BudgetExhausted,
+    FilterBlocked,
 }
 
 /// A single redacted, privacy-preserving network audit event.
@@ -32,6 +33,7 @@ pub struct NetworkAuditEntry {
     pub timestamp_epoch_ms: u64,
     pub event_type: AuditEventType,
     pub redacted_target: Option<String>,
+    pub pseudonymized_target: Option<String>,
     pub profile: NetworkProfile,
     pub decision: AuditDecision,
     pub reason: Option<String>,
@@ -81,6 +83,7 @@ impl NetworkAuditLog {
         &mut self,
         event_type: AuditEventType,
         target: Option<&SocketAddr>,
+        pseudonym: Option<String>,
         profile: NetworkProfile,
         decision: AuditDecision,
         reason: Option<String>,
@@ -100,6 +103,7 @@ impl NetworkAuditLog {
             timestamp_epoch_ms,
             event_type,
             redacted_target,
+            pseudonymized_target: pseudonym,
             profile,
             decision,
             reason,

@@ -178,6 +178,7 @@ class NetworkAuditEntryItem {
   final int timestampEpochMs;
   final String eventType;
   final String? redactedTarget;
+  final String? pseudonymizedTarget;
   final NetworkProfile profile;
   final String decision;
   final String? reason;
@@ -187,6 +188,7 @@ class NetworkAuditEntryItem {
     required this.timestampEpochMs,
     required this.eventType,
     this.redactedTarget,
+    this.pseudonymizedTarget,
     required this.profile,
     required this.decision,
     this.reason,
@@ -198,6 +200,7 @@ class NetworkAuditEntryItem {
       timestampEpochMs: json['timestamp_epoch_ms'] as int? ?? 0,
       eventType: json['event_type'] as String? ?? '',
       redactedTarget: json['redacted_target'] as String?,
+      pseudonymizedTarget: json['pseudonymized_target'] as String?,
       profile: NetworkProfile.fromString(json['profile'] as String? ?? 'local-lab'),
       decision: json['decision'] as String? ?? '',
       reason: json['reason'] as String?,

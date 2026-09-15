@@ -6,6 +6,7 @@ import '../../../../domain/models/category_item.dart';
 import '../../../../domain/models/daemon_event.dart';
 import '../../../../domain/models/daemon_info.dart';
 import '../../../../domain/models/download_item.dart';
+import '../../../../domain/models/filter_models.dart';
 import '../../../../domain/models/history_entry.dart';
 import '../../../../domain/models/history_stats.dart';
 import '../../../../domain/models/lab_models.dart';
@@ -921,6 +922,73 @@ class DownloadsViewModel extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to set resource budgets: $e';
+      notifyListeners();
+    }
+  }
+
+  // IP Filter & Rate Limiter
+  FilterStatusModel? _filterStatus;
+  RateLimitsModel? _rateLimits;
+
+  FilterStatusModel? get filterStatus => _filterStatus;
+  RateLimitsModel? get rateLimits => _rateLimits;
+
+  Future<void> fetchFilterStatus() async {
+    try {
+      _filterStatus = await client.getFilterStatus();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<bool> importFilterFile(String filePath) async {
+    try {
+      _filterStatus = await client.importFilterFile(filePath);
+      _statusNotification = 'Imported ${_filterStatus?.rangeCount ?? 0} IP filter ranges';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to import IP filter: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> setFilterEnabled(bool enabled) async {
+    try {
+      _filterStatus = await client.setFilterEnabled(enabled);
+      _statusNotification = enabled ? 'IP Filter enabled' : 'IP Filter disabled';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to toggle IP filter: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearFilter() async {
+    try {
+      _filterStatus = await client.clearFilter();
+      _statusNotification = 'IP Filter cleared';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to clear IP filter: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchRateLimits() async {
+    try {
+      _rateLimits = await client.getRateLimits();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setRateLimits(RateLimitsModel limits) async {
+    try {
+      _rateLimits = await client.setRateLimits(limits);
+      _statusNotification = 'Rate limits updated';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to set rate limits: $e';
       notifyListeners();
     }
   }

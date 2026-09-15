@@ -8,6 +8,7 @@ import '../../domain/models/category_item.dart';
 import '../../domain/models/daemon_event.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/filter_models.dart';
 import '../../domain/models/history_entry.dart';
 import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
@@ -581,6 +582,42 @@ class RpcDaemonClient implements MuleDaemonClient {
       'budgets': budgets.toJson(),
     });
     return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> getFilterStatus() async {
+    final resp = await _call('filter.getStatus');
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> importFilterFile(String filePath) async {
+    final resp = await _call('filter.importFile', {'filePath': filePath});
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> setFilterEnabled(bool enabled) async {
+    final resp = await _call('filter.setEnabled', {'enabled': enabled});
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> clearFilter() async {
+    final resp = await _call('filter.clear');
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<RateLimitsModel> getRateLimits() async {
+    final resp = await _call('limits.get');
+    return RateLimitsModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async {
+    final resp = await _call('limits.set', limits.toJson());
+    return RateLimitsModel.fromJson(resp as Map<String, dynamic>);
   }
 
   @override

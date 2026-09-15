@@ -805,6 +805,7 @@ dependencies = [
  "futures-util",
  "hex",
  "mule-core",
+ "mule-filter",
  "mule-format",
  "mule-network-policy",
  "mule-protocol",
@@ -818,6 +819,18 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "mule-filter"
+version = "0.1.3"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -838,6 +851,7 @@ dependencies = [
 name = "mule-network-policy"
 version = "0.1.3"
 dependencies = [
+ "mule-filter",
  "serde",
  "serde_json",
  "thiserror",

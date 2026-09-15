@@ -14,6 +14,7 @@ import '../widgets/import_part_met_dialog.dart';
 import '../widgets/incompatible_version_dialog.dart';
 import '../widgets/lab_guide_dialog.dart';
 import '../widgets/network_policy_dialog.dart';
+import '../widgets/ip_filter_dialog.dart';
 import '../../history/views/history_view.dart';
 
 class DownloadsScreen extends StatelessWidget {
@@ -330,6 +331,26 @@ class DownloadsScreen extends StatelessWidget {
               } else {
                 viewModel.disconnectAllNetwork();
               }
+            },
+          ),
+
+          // IP Filter & Rate Limits dialog button
+          IconButton(
+            key: const Key('ip_filter_button'),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(
+              Icons.filter_alt_outlined,
+              color: Colors.amber,
+              size: 18,
+            ),
+            tooltip: 'IP Filter & Rate Limits',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => IpFilterDialog(viewModel: viewModel),
+              );
             },
           ),
 

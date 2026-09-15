@@ -64,6 +64,12 @@ pub async fn handle_request(
         "network.enable" => handle_network_enable(state).await,
         "network.getAuditLog" => handle_network_get_audit_log(state, req.params).await,
         "network.setBudgets" => handle_network_set_budgets(state, req.params).await,
+        "filter.getStatus" | "filter.getStats" => handle_filter_get_status(state).await,
+        "filter.importFile" => handle_filter_import_file(state, req.params).await,
+        "filter.setEnabled" => handle_filter_set_enabled(state, req.params).await,
+        "filter.clear" => handle_filter_clear(state).await,
+        "limits.get" => handle_limits_get(state).await,
+        "limits.set" => handle_limits_set(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -127,6 +133,8 @@ fn handle_hello(
         "categories",
         "import_part_met",
         "network-policy",
+        "ip-filter",
+        "rate-limits",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -1417,6 +1425,104 @@ async fn handle_network_set_budgets(
         .map_err(|e| JsonRpcError::invalid_params(&format!("Failed to set budgets: {e}")))?;
 
     handle_network_get_policy(state).await
+}
+
+async fn handle_filter_get_status(state: &AppState) -> Result<Value, JsonRpcError> {
+    let stats = state.network_policy.ip_filter().stats();
+    Ok(serde_json::to_value(stats).unwrap_or_default())
+}
+
+async fn handle_filter_import_file(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let path_str = params["filePath"]
+        .as_str()
+        .or_else(|| params["path"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'filePath' or 'path'"))?;
+
+    let path = std::path::Path::new(path_str);
+    if !path.exists() {
+        return Err(JsonRpcError::invalid_params(&format!(
+            "Specified file does not exist: {}",
+            path_str
+        )));
+    }
+
+    let report = state
+        .network_policy
+        .ip_filter()
+        .load_from_file(path)
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Failed to parse ipfilter file: {e}")))?;
+
+    Ok(json!({
+        "success": true,
+        "report": report,
+        "stats": state.network_policy.ip_filter().stats()
+    }))
+}
+
+async fn handle_filter_set_enabled(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let enabled = params["enabled"]
+        .as_bool()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'enabled' boolean"))?;
+
+    state.network_policy.ip_filter().set_enabled(enabled);
+    handle_filter_get_status(state).await
+}
+
+async fn handle_filter_clear(state: &AppState) -> Result<Value, JsonRpcError> {
+    state.network_policy.ip_filter().clear();
+    handle_filter_get_status(state).await
+}
+
+async fn handle_limits_get(state: &AppState) -> Result<Value, JsonRpcError> {
+    let limiters = state.network_policy.rate_limiters();
+    let download = limiters.download_bucket.rate_per_sec();
+    let upload = limiters.upload_bucket.rate_per_sec();
+    let conn_per_sec = limiters.conn_bucket.rate_per_sec();
+    let server_req_per_sec = limiters.server_bucket.rate_per_sec();
+    let kad_pkt_per_sec = limiters.kad_bucket.rate_per_sec();
+
+    Ok(json!({
+        "downloadBytesPerSec": download,
+        "uploadBytesPerSec": upload,
+        "connectionsPerMinute": conn_per_sec * 60,
+        "serverRequestsPerSec": server_req_per_sec,
+        "kadPacketsPerSec": kad_pkt_per_sec
+    }))
+}
+
+async fn handle_limits_set(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let mut cfg = mule_filter::RateLimitsConfig::default();
+
+    if let Some(dl) = params["downloadBytesPerSec"].as_u64() {
+        cfg.download_bytes_per_sec = dl;
+    }
+    if let Some(ul) = params["uploadBytesPerSec"].as_u64() {
+        cfg.upload_bytes_per_sec = ul;
+    }
+    if let Some(cpm) = params["connectionsPerMinute"].as_u64() {
+        cfg.connections_per_minute = cpm as u32;
+    }
+    if let Some(s) = params["serverRequestsPerSec"].as_u64() {
+        cfg.server_requests_per_sec = s as u32;
+    }
+    if let Some(k) = params["kadPacketsPerSec"].as_u64() {
+        cfg.kad_packets_per_sec = k as u32;
+    }
+
+    state.network_policy.rate_limiters().apply_config(&cfg);
+    handle_limits_get(state).await
 }
 
 

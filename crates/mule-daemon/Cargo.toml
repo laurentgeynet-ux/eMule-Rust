@@ -20,6 +20,7 @@ mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
 mule-protocol = { path = "../mule-protocol" }
 mule-network-policy = { path = "../mule-network-policy" }
+mule-filter = { path = "../mule-filter" }
 tokio.workspace = true
 axum.workspace = true
 serde.workspace = true
