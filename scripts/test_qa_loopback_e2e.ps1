@@ -478,11 +478,27 @@ try {
 
     # Re-launch packaged daemon on the SAME workdir
     Write-Host " -> Re-booting packaged daemon on same workdir..." -ForegroundColor Gray
+    # Clean stale session.json before launching to ensure Start-PackagedDaemon waits for the fresh one
+    if (Test-Path $SessionFile) {
+        Remove-Item -Force $SessionFile
+    }
     $daemonProcess = Start-PackagedDaemon $DaemonBin $WorkDir
 
-    $SessionData2 = Get-Content $SessionFile -Raw | ConvertFrom-Json
-    $Token2 = (Get-Content $TokenFile -Raw).Trim()
-    $ws = Connect-DaemonWebSocket $SessionData2.endpoint $Token2
+    # Retry reading valid session.json and connecting
+    $ws = $null
+    for ($retry = 0; $retry -lt 10; $retry++) {
+        try {
+            $SessionData2 = Get-Content $SessionFile -Raw | ConvertFrom-Json
+            $Token2 = (Get-Content $TokenFile -Raw).Trim()
+            $ws = Connect-DaemonWebSocket $SessionData2.endpoint $Token2
+            break
+        } catch {
+            Start-Sleep -Milliseconds 300
+        }
+    }
+    if (!$ws) {
+        throw "Failed to reconnect to daemon WebSocket after restart!"
+    }
 
     $hello2 = Invoke-WsRpc $ws @{
         jsonrpc = "2.0"
