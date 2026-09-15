@@ -58,6 +58,12 @@ pub async fn handle_request(
         "categories.delete" => handle_categories_delete(state, req.params).await,
         "categories.reorder" => handle_categories_reorder(state, req.params).await,
         "downloads.setCategory" => handle_downloads_set_category(state, req.params).await,
+        "network.getPolicy" => handle_network_get_policy(state).await,
+        "network.setProfile" => handle_network_set_profile(state, req.params).await,
+        "network.disconnectAll" => handle_network_disconnect_all(state).await,
+        "network.enable" => handle_network_enable(state).await,
+        "network.getAuditLog" => handle_network_get_audit_log(state, req.params).await,
+        "network.setBudgets" => handle_network_set_budgets(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -120,6 +126,7 @@ fn handle_hello(
         "history",
         "categories",
         "import_part_met",
+        "network-policy",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -144,6 +151,7 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "history",
         "categories",
         "import_part_met",
+        "network-policy",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -168,6 +176,8 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "workdirMode": format!("{:?}", state.config.workdir_mode),
         "workdirPath": state.config.data_dir.to_string_lossy(),
         "defaultDownloadDir": default_dl_dir,
+        "networkState": state.network_policy.state().as_str(),
+        "networkProfile": state.network_policy.profile().to_string(),
     }))
 }
 
@@ -1317,5 +1327,97 @@ async fn handle_downloads_set_category(
     serde_json::to_value(detail)
         .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
 }
+
+async fn handle_network_get_policy(state: &AppState) -> Result<Value, JsonRpcError> {
+    let profile = state.network_policy.profile();
+    let net_state = state.network_policy.state();
+    let budgets = state.network_policy.budgets();
+    let peer_conns = state.network_policy.active_peer_connections_count();
+    let server_conns = state.network_policy.active_server_connections_count();
+    let listeners = state.network_policy.active_listeners_count();
+
+    Ok(json!({
+        "profile": profile.to_string(),
+        "state": net_state.as_str(),
+        "budgets": budgets,
+        "activeConnections": {
+            "peers": peer_conns,
+            "servers": server_conns,
+            "listeners": listeners
+        }
+    }))
+}
+
+async fn handle_network_set_profile(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let profile_str = params["profile"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'profile' string"))?;
+    let profile: mule_network_policy::NetworkProfile = profile_str
+        .parse()
+        .map_err(|e: String| JsonRpcError::invalid_params(&e))?;
+
+    state.network_policy.set_profile(profile);
+
+    handle_network_get_policy(state).await
+}
+
+async fn handle_network_disconnect_all(state: &AppState) -> Result<Value, JsonRpcError> {
+    state.network_policy.disconnect_all();
+    state.abort_all_tasks().await;
+    Ok(json!({
+        "success": true,
+        "state": state.network_policy.state().as_str()
+    }))
+}
+
+async fn handle_network_enable(state: &AppState) -> Result<Value, JsonRpcError> {
+    state.network_policy.enable();
+    Ok(json!({
+        "success": true,
+        "state": state.network_policy.state().as_str()
+    }))
+}
+
+async fn handle_network_get_audit_log(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let limit = params
+        .as_ref()
+        .and_then(|p| p["limit"].as_u64())
+        .unwrap_or(50) as usize;
+    let limit = limit.clamp(1, 500);
+
+    let entries = state.network_policy.audit_entries(limit);
+    Ok(json!({
+        "entries": entries
+    }))
+}
+
+async fn handle_network_set_budgets(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let budgets_val = if params.get("budgets").is_some() {
+        &params["budgets"]
+    } else {
+        &params
+    };
+    let budgets: mule_network_policy::ResourceBudgets = serde_json::from_value(budgets_val.clone())
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid budgets format: {e}")))?;
+
+    state
+        .network_policy
+        .set_budgets(budgets)
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Failed to set budgets: {e}")))?;
+
+    handle_network_get_policy(state).await
+}
+
 
 

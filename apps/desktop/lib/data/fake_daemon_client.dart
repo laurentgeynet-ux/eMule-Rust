@@ -9,6 +9,7 @@ import '../../domain/models/download_item.dart';
 import '../../domain/models/history_entry.dart';
 import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
+import '../../domain/models/network_policy_models.dart';
 import '../../domain/models/part_met_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 
@@ -19,6 +20,19 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   final List<HistoryEntry> _history = [];
   int _fakeRetentionDays = 30;
   String? _activePeer;
+  NetworkProfile _fakeProfile = NetworkProfile.localLab;
+  NetworkSubsystemState _fakeNetState = NetworkSubsystemState.previewActive;
+  ResourceBudgetsModel _fakeBudgets = const ResourceBudgetsModel(
+    maxActivePeerConnections: 20,
+    maxActiveServerConnections: 2,
+    maxActiveListeners: 2,
+    connectTimeoutMs: 10000,
+    handshakeTimeoutMs: 15000,
+    maxFrameSizeBytes: 10485760,
+    maxTotalBufferBytes: 33554432,
+    rateLimitPerMin: 60,
+  );
+  final List<NetworkAuditEntryItem> _fakeAuditLog = [];
   final StreamController<DaemonConnectionState> _connectionController =
       StreamController<DaemonConnectionState>.broadcast();
   final StreamController<DownloadUpdatedEvent> _eventsController =
@@ -815,6 +829,76 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       totalSize: inspection.totalSize,
       report: report,
     );
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> getNetworkPolicy() async {
+    return NetworkPolicySnapshot(
+      profile: _fakeProfile,
+      state: _fakeNetState,
+      budgets: _fakeBudgets,
+      activeConnections: const NetworkActiveConnections(),
+    );
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> setNetworkProfile(NetworkProfile profile) async {
+    _fakeProfile = profile;
+    _fakeAuditLog.insert(
+      0,
+      NetworkAuditEntryItem(
+        id: _fakeAuditLog.length + 1,
+        timestampEpochMs: DateTime.now().millisecondsSinceEpoch,
+        eventType: 'profile-changed',
+        profile: profile,
+        decision: 'allowed',
+        reason: 'Profile switched to ${profile.toKebabCase()}',
+      ),
+    );
+    return getNetworkPolicy();
+  }
+
+  @override
+  Future<void> disconnectAll() async {
+    _fakeNetState = NetworkSubsystemState.disabled;
+    _fakeAuditLog.insert(
+      0,
+      NetworkAuditEntryItem(
+        id: _fakeAuditLog.length + 1,
+        timestampEpochMs: DateTime.now().millisecondsSinceEpoch,
+        eventType: 'kill-switch-triggered',
+        profile: _fakeProfile,
+        decision: 'allowed',
+        reason: 'Kill switch activated',
+      ),
+    );
+  }
+
+  @override
+  Future<void> enableNetwork() async {
+    _fakeNetState = NetworkSubsystemState.previewActive;
+    _fakeAuditLog.insert(
+      0,
+      NetworkAuditEntryItem(
+        id: _fakeAuditLog.length + 1,
+        timestampEpochMs: DateTime.now().millisecondsSinceEpoch,
+        eventType: 'network-enabled',
+        profile: _fakeProfile,
+        decision: 'allowed',
+        reason: 'Network policy re-enabled',
+      ),
+    );
+  }
+
+  @override
+  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({int limit = 50}) async {
+    return _fakeAuditLog.take(limit).toList();
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets) async {
+    _fakeBudgets = budgets;
+    return getNetworkPolicy();
   }
 
   @override

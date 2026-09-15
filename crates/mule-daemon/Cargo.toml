@@ -19,6 +19,7 @@ ed2k-reference-loopback = ["ed2k-loopback", "mule-protocol/ed2k-reference-loopba
 mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
 mule-protocol = { path = "../mule-protocol" }
+mule-network-policy = { path = "../mule-network-policy" }
 tokio.workspace = true
 axum.workspace = true
 serde.workspace = true

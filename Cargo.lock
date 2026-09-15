@@ -806,6 +806,7 @@ dependencies = [
  "hex",
  "mule-core",
  "mule-format",
+ "mule-network-policy",
  "mule-protocol",
  "rand",
  "serde",
@@ -831,6 +832,17 @@ dependencies = [
  "sha1",
  "thiserror",
  "url",
+]
+
+[[package]]
+name = "mule-network-policy"
+version = "0.1.3"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

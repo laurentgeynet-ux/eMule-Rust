@@ -5,6 +5,7 @@ import 'package:desktop/domain/models/download_item.dart';
 import 'package:desktop/domain/models/history_entry.dart';
 import 'package:desktop/domain/models/history_stats.dart';
 import 'package:desktop/domain/models/lab_models.dart';
+import 'package:desktop/domain/models/network_policy_models.dart';
 import 'package:desktop/domain/models/part_met_models.dart';
 import 'package:desktop/domain/services/mule_daemon_client.dart';
 import 'package:desktop/domain/models/daemon_info.dart';
@@ -258,6 +259,40 @@ class LargeListMockClient implements MuleDaemonClient {
         transferredBytes: 1000,
         totalSize: 1000,
       );
+
+  @override
+  Future<NetworkPolicySnapshot> getNetworkPolicy() async => const NetworkPolicySnapshot(
+        profile: NetworkProfile.localLab,
+        state: NetworkSubsystemState.previewActive,
+        budgets: ResourceBudgetsModel(
+          maxActivePeerConnections: 20,
+          maxActiveServerConnections: 2,
+          maxActiveListeners: 2,
+          connectTimeoutMs: 10000,
+          handshakeTimeoutMs: 15000,
+          maxFrameSizeBytes: 10485760,
+          maxTotalBufferBytes: 33554432,
+          rateLimitPerMin: 60,
+        ),
+        activeConnections: NetworkActiveConnections(),
+      );
+
+  @override
+  Future<NetworkPolicySnapshot> setNetworkProfile(NetworkProfile profile) async =>
+      getNetworkPolicy();
+
+  @override
+  Future<void> disconnectAll() async {}
+
+  @override
+  Future<void> enableNetwork() async {}
+
+  @override
+  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({int limit = 50}) async => [];
+
+  @override
+  Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets) async =>
+      getNetworkPolicy();
 
   @override
   void dispose() {}

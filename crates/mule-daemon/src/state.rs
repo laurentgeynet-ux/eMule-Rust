@@ -3,6 +3,8 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
+use mule_network_policy::{NetworkPolicyManager, NetworkProfile, ResourceBudgets};
+
 use crate::config::DaemonConfig;
 use crate::rpc::events::{DownloadSnapshot, DownloadUpdatedEvent};
 use crate::rpc::types::JsonRpcNotification;
@@ -12,6 +14,7 @@ use crate::services::downloads::DownloadService;
 pub struct AppState {
     pub config: DaemonConfig,
     pub downloads: Arc<Mutex<DownloadService>>,
+    pub network_policy: NetworkPolicyManager,
     pub sequence: Arc<AtomicU64>,
     pub event_tx: broadcast::Sender<String>,
     pub instance_id: Uuid,
@@ -25,9 +28,14 @@ pub struct AppState {
 impl AppState {
     pub fn new(config: DaemonConfig, downloads: DownloadService) -> Self {
         let (event_tx, _) = broadcast::channel(1024);
+        let network_policy = NetworkPolicyManager::new(
+            NetworkProfile::LocalLab,
+            ResourceBudgets::default(),
+        );
         Self {
             config,
             downloads: Arc::new(Mutex::new(downloads)),
+            network_policy,
             sequence: Arc::new(AtomicU64::new(1)),
             event_tx,
             instance_id: Uuid::new_v4(),

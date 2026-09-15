@@ -6,6 +6,7 @@ members = [
     "crates/mule-daemon",
     "crates/mule-cli",
     "crates/mule-protocol",
+    "crates/mule-network-policy",
 ]
 
 [workspace.package]

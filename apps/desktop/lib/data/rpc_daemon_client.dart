@@ -11,6 +11,7 @@ import '../../domain/models/download_item.dart';
 import '../../domain/models/history_entry.dart';
 import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
+import '../../domain/models/network_policy_models.dart';
 import '../../domain/models/part_met_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 import 'dto/rpc_dto.dart';
@@ -539,6 +540,47 @@ class RpcDaemonClient implements MuleDaemonClient {
     }
     final resp = await _call('downloads.importPartMet', params);
     return ImportPartMetResult.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> getNetworkPolicy() async {
+    final resp = await _call('network.getPolicy');
+    return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> setNetworkProfile(NetworkProfile profile) async {
+    final resp = await _call('network.setProfile', {
+      'profile': profile.toKebabCase(),
+    });
+    return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> disconnectAll() async {
+    await _call('network.disconnectAll');
+  }
+
+  @override
+  Future<void> enableNetwork() async {
+    await _call('network.enable');
+  }
+
+  @override
+  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({int limit = 50}) async {
+    final resp = await _call('network.getAuditLog', {'limit': limit});
+    final list = (resp as Map<String, dynamic>)['entries'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => NetworkAuditEntryItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets) async {
+    final resp = await _call('network.setBudgets', {
+      'budgets': budgets.toJson(),
+    });
+    return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
   }
 
   @override

@@ -13,6 +13,7 @@ import '../widgets/downloads_sidebar.dart';
 import '../widgets/import_part_met_dialog.dart';
 import '../widgets/incompatible_version_dialog.dart';
 import '../widgets/lab_guide_dialog.dart';
+import '../widgets/network_policy_dialog.dart';
 import '../../history/views/history_view.dart';
 
 class DownloadsScreen extends StatelessWidget {
@@ -35,6 +36,7 @@ class DownloadsScreen extends StatelessWidget {
               // Right Workspace Area
               Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Incompatible protocol banner if any
                     if (viewModel.protocolMismatchError != null)
@@ -97,34 +99,38 @@ class DownloadsScreen extends StatelessWidget {
           ),
           const SizedBox(width: 16),
 
-          // Search Field (Flexible responsive width)
-          Expanded(
-            child: SizedBox(
-              height: 36,
-              child: TextField(
-                onChanged: viewModel.setSearchQuery,
-                style: const TextStyle(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: AppStrings.searchPlaceholder,
-                  hintStyle: const TextStyle(fontSize: 12, color: Colors.white38),
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search, size: 16, color: Colors.white38),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                  filled: true,
-                  fillColor: AppTheme.darkCard,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
+          // Search Field
+          SizedBox(
+            width: 180,
+            height: 36,
+            child: TextField(
+              onChanged: viewModel.setSearchQuery,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: AppStrings.searchPlaceholder,
+                hintStyle: const TextStyle(fontSize: 12, color: Colors.white38),
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 16, color: Colors.white38),
+                prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                filled: true,
+                fillColor: AppTheme.darkCard,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
                 ),
               ),
             ),
           ),
 
-          const SizedBox(width: 10),
-
-          // Mode Badge (Clickable for Diagnostics)
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Mode Badge (Clickable for Diagnostics)
           Tooltip(
             message: viewModel.isLabModeAvailable
                 ? '${AppStrings.tooltipLoopbackLabMode}\n\nClick to inspect system & workdir diagnostics.'
@@ -239,6 +245,94 @@ class DownloadsScreen extends StatelessWidget {
             ),
           ),
 
+          const SizedBox(width: 8),
+
+          // Central Network Policy & Kill Switch Indicator
+          Tooltip(
+            message: viewModel.isNetworkKillSwitchActive
+                ? 'Network Subsystem is DISABLED (Kill Switch engaged).\nClick to view policy and re-enable.'
+                : 'Network Policy: ${viewModel.currentNetworkProfile.label}\nStatus: ${viewModel.currentNetworkState.label}\nClick to inspect policy, quotas, and audit log.',
+            child: InkWell(
+              key: const Key('network_policy_badge'),
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => NetworkPolicyDialog(viewModel: viewModel),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: viewModel.isNetworkKillSwitchActive
+                      ? Colors.red.withValues(alpha: 0.2)
+                      : Colors.cyan.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: viewModel.isNetworkKillSwitchActive
+                        ? Colors.redAccent.withValues(alpha: 0.5)
+                        : Colors.cyan.withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      viewModel.isNetworkKillSwitchActive
+                          ? Icons.shield_rounded
+                          : Icons.security_rounded,
+                      size: 13,
+                      color: viewModel.isNetworkKillSwitchActive
+                          ? Colors.redAccent
+                          : Colors.cyanAccent,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      viewModel.isNetworkKillSwitchActive
+                          ? 'Disabled'
+                          : viewModel.currentNetworkProfile.toKebabCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: viewModel.isNetworkKillSwitchActive
+                            ? Colors.redAccent
+                            : Colors.cyanAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Quick Kill Switch / Re-enable Toggle Button
+          IconButton(
+            key: const Key('network_kill_switch_button'),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              viewModel.isNetworkKillSwitchActive
+                  ? Icons.play_circle_outline_rounded
+                  : Icons.power_settings_new_rounded,
+              color: viewModel.isNetworkKillSwitchActive
+                  ? Colors.greenAccent
+                  : Colors.redAccent.withValues(alpha: 0.85),
+              size: 18,
+            ),
+            tooltip: viewModel.isNetworkKillSwitchActive
+                ? 'Re-enable Network Subsystem'
+                : 'Kill Switch: Disconnect All Sockets Immediately',
+            onPressed: () {
+              if (viewModel.isNetworkKillSwitchActive) {
+                viewModel.enableNetwork();
+              } else {
+                viewModel.disconnectAllNetwork();
+              }
+            },
+          ),
+
           // Dev Tools Gating: Only visible if enabled via --dart-define=ENABLE_DEV_TOOLS=true or fake client
           if (viewModel.isDevToolsAvailable) ...[
             const SizedBox(width: 8),
@@ -303,10 +397,14 @@ class DownloadsScreen extends StatelessWidget {
               );
             },
           ),
-        ],
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  ],
+),
+);
+}
 
   Widget _buildDownloadsArea(BuildContext context) {
     final list = viewModel.filteredDownloads;

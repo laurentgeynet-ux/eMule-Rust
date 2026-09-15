@@ -5,6 +5,7 @@ import '../models/download_item.dart';
 import '../models/history_entry.dart';
 import '../models/history_stats.dart';
 import '../models/lab_models.dart';
+import '../models/network_policy_models.dart';
 import '../models/part_met_models.dart';
 
 abstract class MuleDaemonClient {
@@ -150,6 +151,24 @@ abstract class MuleDaemonClient {
     String? targetDirectory,
     String? categoryId,
   });
+
+  /// Get current network policy snapshot (profile, state, budgets, active conns).
+  Future<NetworkPolicySnapshot> getNetworkPolicy();
+
+  /// Set the active network profile.
+  Future<NetworkPolicySnapshot> setNetworkProfile(NetworkProfile profile);
+
+  /// Global Kill Switch: immediately disconnect all active sockets and set state to Disabled.
+  Future<void> disconnectAll();
+
+  /// Re-enable network policy from Disabled state.
+  Future<void> enableNetwork();
+
+  /// Fetch redacted network audit log entries.
+  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({int limit = 50});
+
+  /// Update resource budgets.
+  Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets);
 
   /// Clean up any resources/sockets.
   void dispose();

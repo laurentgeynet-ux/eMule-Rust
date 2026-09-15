@@ -9,6 +9,7 @@ import '../../../../domain/models/download_item.dart';
 import '../../../../domain/models/history_entry.dart';
 import '../../../../domain/models/history_stats.dart';
 import '../../../../domain/models/lab_models.dart';
+import '../../../../domain/models/network_policy_models.dart';
 import '../../../../domain/models/part_met_models.dart';
 import '../../../../domain/services/mule_daemon_client.dart';
 
@@ -287,6 +288,7 @@ class DownloadsViewModel extends ChangeNotifier {
       await fetchSettings();
       await fetchHistory();
       await fetchCategories();
+      await fetchNetworkPolicy();
       final list = await client.listDownloads();
       _downloads.clear();
       for (final item in list) {
@@ -847,6 +849,79 @@ class DownloadsViewModel extends ChangeNotifier {
       _errorMessage = 'Failed to set category: $e';
       notifyListeners();
       return false;
+    }
+  }
+
+  // Network Policy & Kill Switch
+  NetworkPolicySnapshot? _networkPolicy;
+  List<NetworkAuditEntryItem> _networkAuditLog = [];
+
+  NetworkPolicySnapshot? get networkPolicy => _networkPolicy;
+  List<NetworkAuditEntryItem> get networkAuditLog => _networkAuditLog;
+  NetworkProfile get currentNetworkProfile =>
+      _networkPolicy?.profile ?? NetworkProfile.localLab;
+  NetworkSubsystemState get currentNetworkState =>
+      _networkPolicy?.state ?? NetworkSubsystemState.previewActive;
+  bool get isNetworkKillSwitchActive =>
+      currentNetworkState == NetworkSubsystemState.disabled;
+
+  Future<void> fetchNetworkPolicy() async {
+    try {
+      _networkPolicy = await client.getNetworkPolicy();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setNetworkProfile(NetworkProfile profile) async {
+    try {
+      _networkPolicy = await client.setNetworkProfile(profile);
+      _statusNotification = 'Switched network profile to ${profile.label}';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to switch network profile: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> disconnectAllNetwork() async {
+    try {
+      await client.disconnectAll();
+      await fetchNetworkPolicy();
+      _statusNotification = 'Kill Switch engaged: All network connections disconnected';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Kill switch failed: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> enableNetwork() async {
+    try {
+      await client.enableNetwork();
+      await fetchNetworkPolicy();
+      _statusNotification = 'Network policy re-enabled';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to re-enable network: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchNetworkAuditLog({int limit = 50}) async {
+    try {
+      _networkAuditLog = await client.getNetworkAuditLog(limit: limit);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setResourceBudgets(ResourceBudgetsModel budgets) async {
+    try {
+      _networkPolicy = await client.setResourceBudgets(budgets);
+      _statusNotification = 'Resource budgets updated';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to set resource budgets: $e';
+      notifyListeners();
     }
   }
 
