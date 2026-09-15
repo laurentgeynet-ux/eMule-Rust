@@ -262,3 +262,674 @@ class FoundSourcePeerModel {
   }
 }
 
+enum PeerSourceStatus {
+  candidate,
+  allowed,
+  filtered,
+  rejected,
+  tried,
+  connected,
+  failed;
+
+  static PeerSourceStatus fromString(String? val) {
+    switch (val?.toLowerCase()) {
+      case 'allowed':
+        return PeerSourceStatus.allowed;
+      case 'filtered':
+        return PeerSourceStatus.filtered;
+      case 'rejected':
+        return PeerSourceStatus.rejected;
+      case 'tried':
+        return PeerSourceStatus.tried;
+      case 'connected':
+        return PeerSourceStatus.connected;
+      case 'failed':
+        return PeerSourceStatus.failed;
+      case 'candidate':
+      default:
+        return PeerSourceStatus.candidate;
+    }
+  }
+
+  String toApiString() {
+    switch (this) {
+      case PeerSourceStatus.candidate:
+        return 'candidate';
+      case PeerSourceStatus.allowed:
+        return 'allowed';
+      case PeerSourceStatus.filtered:
+        return 'filtered';
+      case PeerSourceStatus.rejected:
+        return 'rejected';
+      case PeerSourceStatus.tried:
+        return 'tried';
+      case PeerSourceStatus.connected:
+        return 'connected';
+      case PeerSourceStatus.failed:
+        return 'failed';
+    }
+  }
+}
+
+enum PeerSourceOrigin {
+  server,
+  search,
+  manual;
+
+  static PeerSourceOrigin fromString(String? val) {
+    switch (val?.toLowerCase()) {
+      case 'search':
+        return PeerSourceOrigin.search;
+      case 'manual':
+        return PeerSourceOrigin.manual;
+      case 'server':
+      default:
+        return PeerSourceOrigin.server;
+    }
+  }
+
+  String toApiString() {
+    switch (this) {
+      case PeerSourceOrigin.server:
+        return 'server';
+      case PeerSourceOrigin.search:
+        return 'search';
+      case PeerSourceOrigin.manual:
+        return 'manual';
+    }
+  }
+}
+
+class PeerSourceModel {
+  final String fileHash;
+  final String address;
+  final int ip;
+  final int port;
+  final PeerSourceOrigin origin;
+  final int discoveredAtUnixMs;
+  final int lastSeenUnixMs;
+  final PeerSourceStatus status;
+  final int failCount;
+  final String? lastError;
+  final int? cooldownUntilUnixMs;
+
+  const PeerSourceModel({
+    required this.fileHash,
+    required this.address,
+    required this.ip,
+    required this.port,
+    required this.origin,
+    required this.discoveredAtUnixMs,
+    required this.lastSeenUnixMs,
+    required this.status,
+    this.failCount = 0,
+    this.lastError,
+    this.cooldownUntilUnixMs,
+  });
+
+  factory PeerSourceModel.fromJson(Map<String, dynamic> json) {
+    return PeerSourceModel(
+      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
+      address: json['address'] as String? ?? '',
+      ip: (json['ip'] as num?)?.toInt() ?? 0,
+      port: (json['port'] as num?)?.toInt() ?? 0,
+      origin: PeerSourceOrigin.fromString(json['origin'] as String?),
+      discoveredAtUnixMs: (json['discoveredAtUnixMs'] as num?)?.toInt() ??
+          (json['discovered_at_unix_ms'] as num?)?.toInt() ??
+          0,
+      lastSeenUnixMs: (json['lastSeenUnixMs'] as num?)?.toInt() ??
+          (json['last_seen_unix_ms'] as num?)?.toInt() ??
+          0,
+      status: PeerSourceStatus.fromString(json['status'] as String?),
+      failCount: (json['failCount'] as num?)?.toInt() ??
+          (json['fail_count'] as num?)?.toInt() ??
+          0,
+      lastError: json['lastError'] as String? ?? json['last_error'] as String?,
+      cooldownUntilUnixMs: (json['cooldownUntilUnixMs'] as num?)?.toInt() ??
+          (json['cooldown_until_unix_ms'] as num?)?.toInt(),
+    );
+  }
+}
+
+enum PeerConnectionStatus {
+  disconnected,
+  connecting,
+  handshaking,
+  queued,
+  transferring,
+  disconnecting;
+
+  static PeerConnectionStatus fromString(String? val) {
+    switch (val?.toLowerCase()) {
+      case 'connecting':
+        return PeerConnectionStatus.connecting;
+      case 'handshaking':
+        return PeerConnectionStatus.handshaking;
+      case 'queued':
+        return PeerConnectionStatus.queued;
+      case 'transferring':
+        return PeerConnectionStatus.transferring;
+      case 'disconnecting':
+        return PeerConnectionStatus.disconnecting;
+      case 'disconnected':
+      default:
+        return PeerConnectionStatus.disconnected;
+    }
+  }
+
+  String toDisplayString() {
+    switch (this) {
+      case PeerConnectionStatus.disconnected:
+        return 'Déconnecté';
+      case PeerConnectionStatus.connecting:
+        return 'Connexion...';
+      case PeerConnectionStatus.handshaking:
+        return 'Handshake eD2K...';
+      case PeerConnectionStatus.queued:
+        return 'En file d\'attente';
+      case PeerConnectionStatus.transferring:
+        return 'Téléchargement';
+      case PeerConnectionStatus.disconnecting:
+        return 'Déconnexion...';
+    }
+  }
+}
+
+class PeerSessionModel {
+  final PeerConnectionStatus status;
+  final String? fileHash;
+  final String? peerAddress;
+  final int? currentPart;
+  final int transferRateBps;
+  final int transferredBytes;
+  final int? queueRank;
+  final String? lastError;
+  final String? failureReason;
+  final int? connectedAtUnixMs;
+
+  const PeerSessionModel({
+    required this.status,
+    this.fileHash,
+    this.peerAddress,
+    this.currentPart,
+    this.transferRateBps = 0,
+    this.transferredBytes = 0,
+    this.queueRank,
+    this.lastError,
+    this.failureReason,
+    this.connectedAtUnixMs,
+  });
+
+  factory PeerSessionModel.fromJson(Map<String, dynamic> json) {
+    return PeerSessionModel(
+      status: PeerConnectionStatus.fromString(json['status'] as String?),
+      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String?,
+      peerAddress: json['peerAddress'] as String? ?? json['peer_address'] as String?,
+      currentPart: (json['currentPart'] as num?)?.toInt() ??
+          (json['current_part'] as num?)?.toInt(),
+      transferRateBps: (json['transferRateBps'] as num?)?.toInt() ??
+          (json['transfer_rate_bps'] as num?)?.toInt() ??
+          0,
+      transferredBytes: (json['transferredBytes'] as num?)?.toInt() ??
+          (json['transferred_bytes'] as num?)?.toInt() ??
+          0,
+      queueRank: (json['queueRank'] as num?)?.toInt() ??
+          (json['queue_rank'] as num?)?.toInt(),
+      lastError: json['lastError'] as String? ?? json['last_error'] as String?,
+      failureReason: json['failureReason'] as String? ?? json['failure_reason'] as String?,
+      connectedAtUnixMs: (json['connectedAtUnixMs'] as num?)?.toInt() ??
+          (json['connected_at_unix_ms'] as num?)?.toInt(),
+    );
+  }
+
+  static const disconnected = PeerSessionModel(
+    status: PeerConnectionStatus.disconnected,
+  );
+}
+
+class InFlightBlockModel {
+  final String peerId;
+  final int partIndex;
+  final int start;
+  final int end;
+  final int issuedAtUnixMs;
+  final int deadlineUnixMs;
+
+  const InFlightBlockModel({
+    required this.peerId,
+    required this.partIndex,
+    required this.start,
+    required this.end,
+    required this.issuedAtUnixMs,
+    required this.deadlineUnixMs,
+  });
+
+  factory InFlightBlockModel.fromJson(Map<String, dynamic> json) {
+    return InFlightBlockModel(
+      peerId: json['peerId'] as String? ?? json['peer_id'] as String? ?? '',
+      partIndex: (json['partIndex'] as num?)?.toInt() ??
+          (json['part_index'] as num?)?.toInt() ??
+          0,
+      start: (json['start'] as num?)?.toInt() ?? 0,
+      end: (json['end'] as num?)?.toInt() ?? 0,
+      issuedAtUnixMs: (json['issuedAtUnixMs'] as num?)?.toInt() ??
+          (json['issued_at_unix_ms'] as num?)?.toInt() ??
+          0,
+      deadlineUnixMs: (json['deadlineUnixMs'] as num?)?.toInt() ??
+          (json['deadline_unix_ms'] as num?)?.toInt() ??
+          0,
+    );
+  }
+}
+
+class SwarmStatusModel {
+  final String? fileHash;
+  final int activePeerCount;
+  final List<PeerSessionModel> peers;
+  final List<InFlightBlockModel> inFlightBlocks;
+
+  const SwarmStatusModel({
+    this.fileHash,
+    this.activePeerCount = 0,
+    this.peers = const [],
+    this.inFlightBlocks = const [],
+  });
+
+  factory SwarmStatusModel.fromJson(Map<String, dynamic> json) {
+    final rawPeers = json['peers'] as List<dynamic>? ?? [];
+    final peersList = rawPeers
+        .map((p) => PeerSessionModel.fromJson(p as Map<String, dynamic>))
+        .toList();
+
+    final rawBlocks = json['inFlightBlocks'] as List<dynamic>? ??
+        json['in_flight_blocks'] as List<dynamic>? ??
+        [];
+    final blocksList = rawBlocks
+        .map((b) => InFlightBlockModel.fromJson(b as Map<String, dynamic>))
+        .toList();
+
+    return SwarmStatusModel(
+      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String?,
+      activePeerCount: (json['activePeerCount'] as num?)?.toInt() ??
+          (json['active_peer_count'] as num?)?.toInt() ??
+          peersList.length,
+      peers: peersList,
+      inFlightBlocks: blocksList,
+    );
+  }
+
+  static const empty = SwarmStatusModel();
+}
+
+class SharedFileModel {
+  final String fileHash;
+  final String fileName;
+  final int fileSize;
+  final String filePath;
+  final int sharedAtUnixMs;
+  final bool enabled;
+
+  const SharedFileModel({
+    required this.fileHash,
+    required this.fileName,
+    required this.fileSize,
+    required this.filePath,
+    required this.sharedAtUnixMs,
+    this.enabled = true,
+  });
+
+  factory SharedFileModel.fromJson(Map<String, dynamic> json) {
+    return SharedFileModel(
+      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
+      fileName: json['fileName'] as String? ?? json['file_name'] as String? ?? '',
+      fileSize: (json['fileSize'] as num?)?.toInt() ??
+          (json['file_size'] as num?)?.toInt() ??
+          0,
+      filePath: json['filePath'] as String? ?? json['file_path'] as String? ?? '',
+      sharedAtUnixMs: (json['sharedAtUnixMs'] as num?)?.toInt() ??
+          (json['shared_at_unix_ms'] as num?)?.toInt() ??
+          0,
+      enabled: json['enabled'] as bool? ?? true,
+    );
+  }
+}
+
+class UploadSessionModel {
+  final String clientAddress;
+  final String fileHash;
+  final String fileName;
+  final int transferredBytes;
+  final int uploadRateBps;
+  final String state;
+  final int? queueRank;
+  final int startedAtUnixMs;
+
+  const UploadSessionModel({
+    required this.clientAddress,
+    required this.fileHash,
+    required this.fileName,
+    required this.transferredBytes,
+    required this.uploadRateBps,
+    required this.state,
+    this.queueRank,
+    required this.startedAtUnixMs,
+  });
+
+  factory UploadSessionModel.fromJson(Map<String, dynamic> json) {
+    return UploadSessionModel(
+      clientAddress: json['clientAddress'] as String? ??
+          json['client_address'] as String? ??
+          '',
+      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
+      fileName: json['fileName'] as String? ?? json['file_name'] as String? ?? '',
+      transferredBytes: (json['transferredBytes'] as num?)?.toInt() ??
+          (json['transferred_bytes'] as num?)?.toInt() ??
+          0,
+      uploadRateBps: (json['uploadRateBps'] as num?)?.toInt() ??
+          (json['upload_rate_bps'] as num?)?.toInt() ??
+          0,
+      state: json['state'] as String? ?? 'idle',
+      queueRank: (json['queueRank'] as num?)?.toInt() ??
+          (json['queue_rank'] as num?)?.toInt(),
+      startedAtUnixMs: (json['startedAtUnixMs'] as num?)?.toInt() ??
+          (json['started_at_unix_ms'] as num?)?.toInt() ??
+          0,
+    );
+  }
+}
+
+class InboundListenerStatusModel {
+  final bool isListening;
+  final String? listenAddress;
+  final int activeUploads;
+  final int queuedUploads;
+  final int uploadRateBps;
+
+  const InboundListenerStatusModel({
+    required this.isListening,
+    this.listenAddress,
+    this.activeUploads = 0,
+    this.queuedUploads = 0,
+    this.uploadRateBps = 0,
+  });
+
+  factory InboundListenerStatusModel.fromJson(Map<String, dynamic> json) {
+    return InboundListenerStatusModel(
+      isListening: json['isListening'] as bool? ?? json['is_listening'] as bool? ?? false,
+      listenAddress: json['listenAddress'] as String? ?? json['listen_address'] as String?,
+      activeUploads: (json['activeUploads'] as num?)?.toInt() ??
+          (json['active_uploads'] as num?)?.toInt() ??
+          0,
+      queuedUploads: (json['queuedUploads'] as num?)?.toInt() ??
+          (json['queued_uploads'] as num?)?.toInt() ??
+          0,
+      uploadRateBps: (json['uploadRateBps'] as num?)?.toInt() ??
+          (json['upload_rate_bps'] as num?)?.toInt() ??
+          0,
+    );
+  }
+
+  static const idle = InboundListenerStatusModel(isListening: false);
+}
+
+class SecureIdentityStatusModel {
+  final bool enabled;
+  final bool hasKey;
+  final String? pubkeyHash;
+  final int? keyBits;
+
+  const SecureIdentityStatusModel({
+    required this.enabled,
+    required this.hasKey,
+    this.pubkeyHash,
+    this.keyBits,
+  });
+
+  factory SecureIdentityStatusModel.fromJson(Map<String, dynamic> json) {
+    return SecureIdentityStatusModel(
+      enabled: json['enabled'] as bool? ?? false,
+      hasKey: json['hasKey'] as bool? ?? json['has_key'] as bool? ?? false,
+      pubkeyHash: json['pubkeyHash'] as String? ?? json['pubkey_hash'] as String?,
+      keyBits: (json['keyBits'] as num?)?.toInt() ?? (json['key_bits'] as num?)?.toInt(),
+    );
+  }
+
+  static const unauthenticated = SecureIdentityStatusModel(enabled: false, hasKey: false);
+}
+
+class PeerCreditModel {
+  final String pubkeyHash;
+  final String pubkeyHex;
+  final int uploadedBytes;
+  final int downloadedBytes;
+  final double creditMultiplier;
+  final int firstSeenUnixMs;
+  final int lastSeenUnixMs;
+
+  const PeerCreditModel({
+    required this.pubkeyHash,
+    required this.pubkeyHex,
+    required this.uploadedBytes,
+    required this.downloadedBytes,
+    required this.creditMultiplier,
+    required this.firstSeenUnixMs,
+    required this.lastSeenUnixMs,
+  });
+
+  factory PeerCreditModel.fromJson(Map<String, dynamic> json) {
+    return PeerCreditModel(
+      pubkeyHash: json['pubkeyHash'] as String? ?? json['pubkey_hash'] as String? ?? '',
+      pubkeyHex: json['pubkeyHex'] as String? ?? json['pubkey_hex'] as String? ?? '',
+      uploadedBytes: (json['uploadedBytes'] as num?)?.toInt() ??
+          (json['uploaded_bytes'] as num?)?.toInt() ??
+          0,
+      downloadedBytes: (json['downloadedBytes'] as num?)?.toInt() ??
+          (json['downloaded_bytes'] as num?)?.toInt() ??
+          0,
+      creditMultiplier: (json['creditMultiplier'] as num?)?.toDouble() ??
+          (json['credit_multiplier'] as num?)?.toDouble() ??
+          1.0,
+      firstSeenUnixMs: (json['firstSeenUnixMs'] as num?)?.toInt() ??
+          (json['first_seen_unix_ms'] as num?)?.toInt() ??
+          0,
+      lastSeenUnixMs: (json['lastSeenUnixMs'] as num?)?.toInt() ??
+          (json['last_seen_unix_ms'] as num?)?.toInt() ??
+          0,
+    );
+  }
+}
+
+class PeerCreditStatsModel {
+  final int totalPeers;
+  final int totalUploadedBytes;
+  final int totalDownloadedBytes;
+  final int activeCreditedPeers;
+
+  const PeerCreditStatsModel({
+    required this.totalPeers,
+    required this.totalUploadedBytes,
+    required this.totalDownloadedBytes,
+    required this.activeCreditedPeers,
+  });
+
+  factory PeerCreditStatsModel.fromJson(Map<String, dynamic> json) {
+    return PeerCreditStatsModel(
+      totalPeers: (json['totalPeers'] as num?)?.toInt() ?? (json['total_peers'] as num?)?.toInt() ?? 0,
+      totalUploadedBytes: (json['totalUploadedBytes'] as num?)?.toInt() ?? (json['total_uploaded_bytes'] as num?)?.toInt() ?? 0,
+      totalDownloadedBytes: (json['totalDownloadedBytes'] as num?)?.toInt() ?? (json['total_downloaded_bytes'] as num?)?.toInt() ?? 0,
+      activeCreditedPeers: (json['activeCreditedPeers'] as num?)?.toInt() ?? (json['active_credited_peers'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static const zero = PeerCreditStatsModel(
+    totalPeers: 0,
+    totalUploadedBytes: 0,
+    totalDownloadedBytes: 0,
+    activeCreditedPeers: 0,
+  );
+}
+
+class KadStatusModel {
+  final String localId;
+  final int totalContacts;
+  final int totalReplacements;
+  final int dbContactsCount;
+  final int activeBuckets;
+  final String networkProfile;
+  final bool isUdpActive;
+  final String? udpBindAddress;
+  final int packetsSent;
+  final int packetsReceived;
+  final int activeTransactions;
+
+  const KadStatusModel({
+    required this.localId,
+    required this.totalContacts,
+    required this.totalReplacements,
+    required this.dbContactsCount,
+    required this.activeBuckets,
+    required this.networkProfile,
+    this.isUdpActive = false,
+    this.udpBindAddress,
+    this.packetsSent = 0,
+    this.packetsReceived = 0,
+    this.activeTransactions = 0,
+  });
+
+  factory KadStatusModel.fromJson(Map<String, dynamic> json) {
+    return KadStatusModel(
+      localId: json['localId'] as String? ?? json['local_id'] as String? ?? '',
+      totalContacts: (json['totalContacts'] as num?)?.toInt() ??
+          (json['total_contacts'] as num?)?.toInt() ??
+          0,
+      totalReplacements: (json['totalReplacements'] as num?)?.toInt() ??
+          (json['total_replacements'] as num?)?.toInt() ??
+          0,
+      dbContactsCount: (json['dbContactsCount'] as num?)?.toInt() ??
+          (json['db_contacts_count'] as num?)?.toInt() ??
+          0,
+      activeBuckets: (json['activeBuckets'] as num?)?.toInt() ??
+          (json['active_buckets'] as num?)?.toInt() ??
+          0,
+      networkProfile: json['networkProfile'] as String? ??
+          json['network_profile'] as String? ??
+          'local-lab',
+      isUdpActive: json['isUdpActive'] as bool? ??
+          json['is_udp_active'] as bool? ??
+          false,
+      udpBindAddress: json['udpBindAddress'] as String? ??
+          json['udp_bind_address'] as String?,
+      packetsSent: (json['packetsSent'] as num?)?.toInt() ??
+          (json['packets_sent'] as num?)?.toInt() ??
+          0,
+      packetsReceived: (json['packetsReceived'] as num?)?.toInt() ??
+          (json['packets_received'] as num?)?.toInt() ??
+          0,
+      activeTransactions: (json['activeTransactions'] as num?)?.toInt() ??
+          (json['active_transactions'] as num?)?.toInt() ??
+          0,
+    );
+  }
+
+  static const initial = KadStatusModel(
+    localId: '',
+    totalContacts: 0,
+    totalReplacements: 0,
+    dbContactsCount: 0,
+    activeBuckets: 0,
+    networkProfile: 'local-lab',
+    isUdpActive: false,
+    udpBindAddress: null,
+    packetsSent: 0,
+    packetsReceived: 0,
+    activeTransactions: 0,
+  );
+}
+
+class KadContactModel {
+  final String kadId;
+  final String ip;
+  final int udpPort;
+  final int? tcpPort;
+  final int version;
+  final bool verified;
+  final int failCount;
+  final int lastSeenUnixMs;
+
+  const KadContactModel({
+    required this.kadId,
+    required this.ip,
+    required this.udpPort,
+    this.tcpPort,
+    required this.version,
+    required this.verified,
+    required this.failCount,
+    required this.lastSeenUnixMs,
+  });
+
+  factory KadContactModel.fromJson(Map<String, dynamic> json) {
+    return KadContactModel(
+      kadId: json['kadId'] as String? ?? json['kad_id'] as String? ?? '',
+      ip: json['ip'] as String? ?? '',
+      udpPort: (json['udpPort'] as num?)?.toInt() ??
+          (json['udp_port'] as num?)?.toInt() ??
+          0,
+      tcpPort: (json['tcpPort'] as num?)?.toInt() ??
+          (json['tcp_port'] as num?)?.toInt(),
+      version: (json['version'] as num?)?.toInt() ?? 0,
+      verified: json['verified'] as bool? ?? false,
+      failCount: (json['failCount'] as num?)?.toInt() ??
+          (json['fail_count'] as num?)?.toInt() ??
+          0,
+      lastSeenUnixMs: (json['lastSeenUnixMs'] as num?)?.toInt() ??
+          (json['last_seen_unix_ms'] as num?)?.toInt() ??
+          0,
+    );
+  }
+}
+
+class NodesDatInspectReportModel {
+  final int version;
+  final int declaredCount;
+  final int validContactsCount;
+  final int rejectedByPolicyCount;
+  final int rejectedByFilterCount;
+  final List<KadContactModel> sampleContacts;
+
+  const NodesDatInspectReportModel({
+    required this.version,
+    required this.declaredCount,
+    required this.validContactsCount,
+    required this.rejectedByPolicyCount,
+    required this.rejectedByFilterCount,
+    required this.sampleContacts,
+  });
+
+  factory NodesDatInspectReportModel.fromJson(Map<String, dynamic> json) {
+    final rawSamples = json['sampleContacts'] as List<dynamic>? ??
+        json['sample_contacts'] as List<dynamic>? ??
+        [];
+    final samples = rawSamples
+        .map((s) => KadContactModel.fromJson(s as Map<String, dynamic>))
+        .toList();
+
+    return NodesDatInspectReportModel(
+      version: (json['version'] as num?)?.toInt() ?? 0,
+      declaredCount: (json['declaredCount'] as num?)?.toInt() ??
+          (json['declared_count'] as num?)?.toInt() ??
+          0,
+      validContactsCount: (json['validContactsCount'] as num?)?.toInt() ??
+          (json['valid_contacts_count'] as num?)?.toInt() ??
+          0,
+      rejectedByPolicyCount: (json['rejectedByPolicyCount'] as num?)?.toInt() ??
+          (json['rejected_by_policy_count'] as num?)?.toInt() ??
+          0,
+      rejectedByFilterCount: (json['rejectedByFilterCount'] as num?)?.toInt() ??
+          (json['rejected_by_filter_count'] as num?)?.toInt() ??
+          0,
+      sampleContacts: samples,
+    );
+  }
+}
+
+

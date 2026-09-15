@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../domain/models/download_item.dart';
+import '../../../../domain/models/server_models.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
@@ -21,10 +22,24 @@ class DownloadDetailDialog extends StatefulWidget {
 }
 
 class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
+  final TextEditingController _manualSourceController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     widget.viewModel.fetchDownloadDetail(widget.downloadId);
+    final item = widget.viewModel.filteredDownloads
+        .where((d) => d.id == widget.downloadId)
+        .firstOrNull;
+    if (item?.ed2kHash != null && item!.ed2kHash!.isNotEmpty) {
+      widget.viewModel.loadSourcesForHash(item.ed2kHash!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _manualSourceController.dispose();
+    super.dispose();
   }
 
   @override
@@ -79,6 +94,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
 
                         // Transfer Metrics & Progress Card
                         _buildProgressAndMetricsCard(context, item, statusColor),
+                        const SizedBox(height: 16),
+
+                        // eD2K Peer Sources & Controlled WAN Session Card
+                        _buildSourcesCard(context, item),
                         const SizedBox(height: 16),
 
                         // eD2K Part Map Card
@@ -707,6 +726,384 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSourcesCard(BuildContext context, DownloadItem item) {
+    final hash = item.ed2kHash ?? '';
+    final sources = widget.viewModel.getSourcesForHash(hash);
+    final session = widget.viewModel.peerSession;
+    final isConnectedToThis = session.fileHash == hash &&
+        session.status != PeerConnectionStatus.disconnected;
+
+    return _buildSectionCard(
+      title: 'SOURCES ED2K & SESSION PEER',
+      icon: Icons.hub_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Active Peer Session Banner
+          if (isConnectedToThis) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.wifi_tethering, color: AppTheme.primary, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Session active : ${session.peerAddress ?? ""}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.tealAccent.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                session.status.toDisplayString(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.tealAccent,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Reçu : ${Formatters.formatBytes(session.transferredBytes)} (${Formatters.formatSpeed(session.transferRateBps)})',
+                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(color: Colors.redAccent, width: 0.8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    ),
+                    icon: const Icon(Icons.link_off, size: 14),
+                    label: const Text('Déconnecter', style: TextStyle(fontSize: 11)),
+                    onPressed: () => widget.viewModel.disconnectPeerSource(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Toolbar: Add manual source & Refresh / Ask server
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 32,
+                  child: TextField(
+                    controller: _manualSourceController,
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Ajouter source IP:port (ex: 127.0.0.1:4662)',
+                      hintStyle: const TextStyle(fontSize: 11, color: Colors.white38),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      filled: true,
+                      fillColor: AppTheme.darkSurface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: AppTheme.darkBorder),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  icon: const Icon(Icons.add, size: 14, color: Colors.white),
+                  label: const Text('Ajouter', style: TextStyle(fontSize: 11, color: Colors.white)),
+                  onPressed: () async {
+                    final addr = _manualSourceController.text.trim();
+                    if (addr.isNotEmpty && hash.isNotEmpty) {
+                      final ok = await widget.viewModel.addManualSource(hash, addr);
+                      if (ok) {
+                        _manualSourceController.clear();
+                      }
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.darkBorder),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(Icons.search, size: 14, color: Colors.white70),
+                  label: const Text('Demander au serveur', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                  onPressed: hash.isNotEmpty
+                      ? () => widget.viewModel.queryServerSources(hash, fileSize: item.totalBytes)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 16, color: Colors.white54),
+                tooltip: 'Actualiser la liste',
+                onPressed: hash.isNotEmpty ? () => widget.viewModel.loadSourcesForHash(hash) : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Sources Table / List
+          if (sources.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              alignment: Alignment.center,
+              child: Text(
+                widget.viewModel.isSourcesLoading
+                    ? 'Chargement des sources...'
+                    : 'Aucune source enregistrée pour ce fichier.',
+                style: const TextStyle(fontSize: 12, color: Colors.white38),
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: sources.length,
+                separatorBuilder: (context, index) => const Divider(height: 1, color: AppTheme.darkBorder),
+                itemBuilder: (context, index) {
+                  final src = sources[index];
+                  final isThisConnected = session.peerAddress == src.address &&
+                      session.status != PeerConnectionStatus.disconnected;
+
+                  final nowMs = DateTime.now().millisecondsSinceEpoch;
+                  final isInCooldown = src.cooldownUntilUnixMs != null && src.cooldownUntilUnixMs! > nowMs;
+                  final cooldownSecondsRemaining = isInCooldown
+                      ? ((src.cooldownUntilUnixMs! - nowMs) / 1000).ceil()
+                      : 0;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          src.status == PeerSourceStatus.filtered
+                              ? Icons.block
+                              : src.status == PeerSourceStatus.rejected
+                                  ? Icons.gpp_bad
+                                  : src.status == PeerSourceStatus.failed
+                                      ? Icons.error_outline
+                                      : src.status == PeerSourceStatus.connected
+                                          ? Icons.wifi_tethering
+                                          : Icons.computer,
+                          size: 16,
+                          color: src.status == PeerSourceStatus.filtered
+                              ? Colors.redAccent
+                              : src.status == PeerSourceStatus.rejected
+                                  ? Colors.orangeAccent
+                                  : src.status == PeerSourceStatus.failed
+                                      ? Colors.redAccent
+                                      : src.status == PeerSourceStatus.connected
+                                          ? Colors.tealAccent
+                                          : Colors.white54,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    src.address,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildSourceStatusBadge(src.status),
+                                  if (isInCooldown) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 0.5),
+                                      ),
+                                      child: Text(
+                                        'Cooldown ${cooldownSecondsRemaining}s',
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.amberAccent,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '(${src.origin.toApiString()})',
+                                    style: const TextStyle(fontSize: 10, color: Colors.white38),
+                                  ),
+                                ],
+                              ),
+                              if (src.lastError != null && src.lastError!.isNotEmpty)
+                                Text(
+                                  src.lastError!,
+                                  style: const TextStyle(fontSize: 10, color: Colors.redAccent),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (src.status != PeerSourceStatus.filtered) ...[
+                          if (isThisConnected)
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.redAccent,
+                                side: const BorderSide(color: Colors.redAccent, width: 0.8),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => widget.viewModel.disconnectPeerSource(address: src.address),
+                              child: const Text('Déconnecter', style: TextStyle(fontSize: 10)),
+                            )
+                          else if (isInCooldown)
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amberAccent,
+                                side: const BorderSide(color: Colors.amberAccent, width: 0.8),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: widget.viewModel.isPeerConnecting
+                                  ? null
+                                  : () => widget.viewModel.connectPeerSource(hash, src.address, force: true),
+                              child: const Text('Forcer', style: TextStyle(fontSize: 10)),
+                            )
+                          else
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: widget.viewModel.isPeerConnecting
+                                  ? null
+                                  : () => widget.viewModel.connectPeerSource(hash, src.address),
+                              child: Text(
+                                src.status == PeerSourceStatus.failed ? 'Réessayer' : 'Connecter',
+                                style: const TextStyle(fontSize: 10, color: Colors.white),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceStatusBadge(PeerSourceStatus status) {
+    Color bg;
+    Color fg;
+    String text;
+
+    switch (status) {
+      case PeerSourceStatus.allowed:
+        bg = Colors.greenAccent.withValues(alpha: 0.15);
+        fg = Colors.greenAccent;
+        text = 'Autorisé';
+        break;
+      case PeerSourceStatus.filtered:
+        bg = Colors.redAccent.withValues(alpha: 0.15);
+        fg = Colors.redAccent;
+        text = 'Filtré IP';
+        break;
+      case PeerSourceStatus.rejected:
+        bg = Colors.orangeAccent.withValues(alpha: 0.15);
+        fg = Colors.orangeAccent;
+        text = 'Rejeté profil';
+        break;
+      case PeerSourceStatus.connected:
+        bg = Colors.tealAccent.withValues(alpha: 0.15);
+        fg = Colors.tealAccent;
+        text = 'Connecté';
+        break;
+      case PeerSourceStatus.tried:
+        bg = Colors.blueAccent.withValues(alpha: 0.15);
+        fg = Colors.blueAccent;
+        text = 'Essayé';
+        break;
+      case PeerSourceStatus.failed:
+        bg = Colors.red.withValues(alpha: 0.15);
+        fg = Colors.red;
+        text = 'Échec';
+        break;
+      case PeerSourceStatus.candidate:
+        bg = Colors.white12;
+        fg = Colors.white70;
+        text = 'Candidat';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: fg),
       ),
     );
   }

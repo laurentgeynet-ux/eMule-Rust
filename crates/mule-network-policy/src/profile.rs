@@ -51,7 +51,7 @@ impl NetworkProfile {
 
     /// Whether this profile permits UDP operations for Kademlia routing.
     pub fn allows_udp_kad(&self) -> bool {
-        matches!(self, Self::PublicEd2kKadPreview)
+        matches!(self, Self::LocalLab | Self::PublicEd2kKadPreview)
     }
 
     /// Whether this profile is an external preview profile.

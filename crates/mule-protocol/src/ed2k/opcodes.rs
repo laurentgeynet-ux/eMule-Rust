@@ -118,8 +118,17 @@ pub const OP_AICH_ANSWER: u8 = 0x13;
 /// Request AICH recovery hashset / proof tree (`0x14`).
 pub const OP_AICHFILEHASHREQ: u8 = 0x14;
 
-/// AICH recovery hashset / proof tree response (`0x15`).
+/// Request AICH recovery hashset / proof tree response (`0x15`).
 pub const OP_AICHFILEHASHRES: u8 = 0x15;
+
+/// Public Key exchange for Secure User Identification (`0x85`).
+pub const OP_PUBLICKEY: u8 = 0x85;
+
+/// Signature exchange for Secure User Identification (`0x87`).
+pub const OP_SIGNATURE: u8 = 0x87;
+
+/// Secure User Identification State (`0x86`).
+pub const OP_SECIDENTSTATE: u8 = 0x86;
 
 // ---------------------------------------------------------------------------
 // Compressed Protocol Opcodes (Protocol 0xD4)

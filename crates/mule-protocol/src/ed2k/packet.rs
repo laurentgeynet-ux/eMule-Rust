@@ -417,6 +417,29 @@ pub struct Ed2kFileReqAnsNoFile {
     pub file_hash: [u8; 16],
 }
 
+/// Public Key message for Secure User Identification (`0x85`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kPublicKey {
+    /// Raw bytes of the RSA Public Key (typically DER or raw modulus/exponent).
+    pub key_bytes: bytes::Bytes,
+}
+
+/// Cryptographic Signature message for Secure User Identification (`0x87`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kSignature {
+    /// Signature byte vector.
+    pub signature_bytes: bytes::Bytes,
+}
+
+/// Secure Identification State message (`0x86`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kSecIdentState {
+    /// State flag (0 = not supported, 1 = supported/requested, 2 = authenticated).
+    pub state: u8,
+    /// Random 4-byte challenge value.
+    pub challenge: u32,
+}
+
 /// High-level passive eD2K observation message enum.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ed2kMessage {
@@ -436,6 +459,12 @@ pub enum Ed2kMessage {
     RequestParts(Ed2kRequestParts),
     /// Delivery of block data.
     SendingPart(Ed2kSendingPart),
+    /// Secure User Identification Public Key.
+    PublicKey(Ed2kPublicKey),
+    /// Secure User Identification Signature.
+    Signature(Ed2kSignature),
+    /// Secure User Identification State/Challenge.
+    SecIdentState(Ed2kSecIdentState),
     /// Unparsed raw packet (used when opcode does not have a dedicated decoder yet).
     Raw(RawPacket),
 }

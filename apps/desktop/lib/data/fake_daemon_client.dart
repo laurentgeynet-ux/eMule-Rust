@@ -56,6 +56,13 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       StreamController<List<SearchResultFileModel>>.broadcast();
   final StreamController<Map<String, dynamic>> _foundSourcesController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<PeerSessionModel> _peerSessionController =
+      StreamController<PeerSessionModel>.broadcast();
+  final Map<String, List<PeerSourceModel>> _peerSources = {};
+  PeerSessionModel _peerSession = PeerSessionModel.disconnected;
+
+  @override
+  Stream<PeerSessionModel> get peerSessionEvents => _peerSessionController.stream;
 
   @override
   Stream<List<SearchResultFileModel>> get searchResultEvents =>
@@ -1161,11 +1168,387 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<List<PeerSourceModel>> listSources(String fileHash) async {
+    return _peerSources[fileHash] ?? [];
+  }
+
+  @override
+  Future<PeerSourceModel> addManualSource(String fileHash, String address) async {
+    final parts = address.split(':');
+    final port = parts.length > 1 ? int.tryParse(parts[1]) ?? 4662 : 4662;
+    final src = PeerSourceModel(
+      fileHash: fileHash,
+      address: address,
+      ip: 0x7F000001,
+      port: port,
+      origin: PeerSourceOrigin.manual,
+      discoveredAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+      lastSeenUnixMs: DateTime.now().millisecondsSinceEpoch,
+      status: PeerSourceStatus.allowed,
+    );
+    _peerSources.putIfAbsent(fileHash, () => []).add(src);
+    return src;
+  }
+
+  @override
+  Future<PeerSessionModel> connectPeerSource(
+    String fileHash,
+    String address, {
+    bool force = false,
+  }) async {
+    _peerSession = PeerSessionModel(
+      status: PeerConnectionStatus.transferring,
+      fileHash: fileHash,
+      peerAddress: address,
+      currentPart: 0,
+      transferRateBps: 245760,
+      transferredBytes: 184320,
+      connectedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    if (!_peerSessionController.isClosed) {
+      _peerSessionController.add(_peerSession);
+    }
+    return _peerSession;
+  }
+
+  @override
+  Future<PeerSessionModel> disconnectPeerSource({String? address}) async {
+    _peerSession = PeerSessionModel.disconnected;
+    if (!_peerSessionController.isClosed) {
+      _peerSessionController.add(_peerSession);
+    }
+    return _peerSession;
+  }
+
+  @override
+  Future<PeerSessionModel> getPeerSessionStatus() async {
+    return _peerSession;
+  }
+
+  @override
+  Future<SwarmStatusModel> getSwarmStatus({String? fileHash}) async {
+    final activePeers = _peerSession.status != PeerConnectionStatus.disconnected
+        ? [_peerSession]
+        : <PeerSessionModel>[];
+    return SwarmStatusModel(
+      fileHash: fileHash ?? _peerSession.fileHash,
+      activePeerCount: activePeers.length,
+      peers: activePeers,
+      inFlightBlocks: const [],
+    );
+  }
+
+  @override
+  Future<int> clearSources(String fileHash) async {
+    final count = _peerSources[fileHash]?.length ?? 0;
+    _peerSources.remove(fileHash);
+    return count;
+  }
+
+  final List<SharedFileModel> _fakeSharedFiles = [];
+  InboundListenerStatusModel _fakeListenerStatus = InboundListenerStatusModel.idle;
+  UploadSessionModel? _fakeActiveUpload;
+
+  @override
+  Future<List<SharedFileModel>> listSharedFiles() async {
+    return List.unmodifiable(_fakeSharedFiles);
+  }
+
+  @override
+  Future<SharedFileModel> addSharedFile({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String filePath,
+  }) async {
+    _fakeSharedFiles.removeWhere((f) => f.fileHash == fileHash);
+    final file = SharedFileModel(
+      fileHash: fileHash,
+      fileName: fileName,
+      fileSize: fileSize,
+      filePath: filePath,
+      sharedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+      enabled: true,
+    );
+    _fakeSharedFiles.add(file);
+    return file;
+  }
+
+  @override
+  Future<void> removeSharedFile(String fileHash) async {
+    _fakeSharedFiles.removeWhere((f) => f.fileHash == fileHash);
+  }
+
+  @override
+  Future<SharedFileModel> setSharedFileEnabled(String fileHash, bool enabled) async {
+    final idx = _fakeSharedFiles.indexWhere((f) => f.fileHash == fileHash);
+    if (idx != -1) {
+      final cur = _fakeSharedFiles[idx];
+      final updated = SharedFileModel(
+        fileHash: cur.fileHash,
+        fileName: cur.fileName,
+        fileSize: cur.fileSize,
+        filePath: cur.filePath,
+        sharedAtUnixMs: cur.sharedAtUnixMs,
+        enabled: enabled,
+      );
+      _fakeSharedFiles[idx] = updated;
+      return updated;
+    }
+    throw Exception('File not found in shares');
+  }
+
+  @override
+  Future<InboundListenerStatusModel> startListener({int port = 0}) async {
+    _fakeListenerStatus = InboundListenerStatusModel(
+      isListening: true,
+      listenAddress: '127.0.0.1:${port == 0 ? 4662 : port}',
+      activeUploads: _fakeActiveUpload != null ? 1 : 0,
+      queuedUploads: 0,
+      uploadRateBps: 51200,
+    );
+    return _fakeListenerStatus;
+  }
+
+  @override
+  Future<InboundListenerStatusModel> stopListener() async {
+    _fakeListenerStatus = InboundListenerStatusModel.idle;
+    _fakeActiveUpload = null;
+    return _fakeListenerStatus;
+  }
+
+  @override
+  Future<InboundListenerStatusModel> getListenerStatus() async {
+    return _fakeListenerStatus;
+  }
+
+  @override
+  Future<Map<String, dynamic>> listUploads() async {
+    return {
+      'active': _fakeActiveUpload != null ? [_fakeActiveUpload] : [],
+      'queued': [],
+    };
+  }
+
+  @override
+  Future<UploadSessionModel?> getUploadStatus() async {
+    return _fakeActiveUpload;
+  }
+
+  @override
+  Future<void> cancelUpload(String clientAddress) async {
+    if (_fakeActiveUpload?.clientAddress == clientAddress) {
+      _fakeActiveUpload = null;
+    }
+  }
+
+  @override
+  Future<SecureIdentityStatusModel> getIdentityStatus() async {
+    return const SecureIdentityStatusModel(
+      enabled: true,
+      hasKey: true,
+      pubkeyHash: '31d6cfe0d16ae931b73c59d7e0c089c0',
+      keyBits: 384,
+    );
+  }
+
+  @override
+  Future<SecureIdentityStatusModel> rotateIdentity() async {
+    return const SecureIdentityStatusModel(
+      enabled: true,
+      hasKey: true,
+      pubkeyHash: 'rotated456789abcdef0123456789abc',
+      keyBits: 384,
+    );
+  }
+
+  final List<PeerCreditModel> _fakeCredits = [
+    const PeerCreditModel(
+      pubkeyHash: '0123456789abcdef0123456789abcdef',
+      pubkeyHex: '0100abcdef12345678',
+      uploadedBytes: 10485760,
+      downloadedBytes: 52428800,
+      creditMultiplier: 10.0,
+      firstSeenUnixMs: 1700000000000,
+      lastSeenUnixMs: 1700000100000,
+    ),
+  ];
+
+  @override
+  Future<List<PeerCreditModel>> listPeerCredits({int limit = 50}) async {
+    return _fakeCredits.take(limit).toList();
+  }
+
+  @override
+  Future<PeerCreditStatsModel> getPeerCreditStats() async {
+    return PeerCreditStatsModel(
+      totalPeers: _fakeCredits.length,
+      totalUploadedBytes: _fakeCredits.fold(0, (sum, c) => sum + c.uploadedBytes),
+      totalDownloadedBytes: _fakeCredits.fold(0, (sum, c) => sum + c.downloadedBytes),
+      activeCreditedPeers: _fakeCredits.length,
+    );
+  }
+
+  final List<KadContactModel> _fakeKadContacts = [
+    const KadContactModel(
+      kadId: '0123456789abcdef0123456789abcdef',
+      ip: '127.0.0.1',
+      udpPort: 4672,
+      tcpPort: 4662,
+      version: 2,
+      verified: true,
+      failCount: 0,
+      lastSeenUnixMs: 1700000000000,
+    ),
+  ];
+
+  bool _fakeKadUdpActive = false;
+  String? _fakeKadUdpBindAddress;
+  int _fakeKadPacketsSent = 0;
+  int _fakeKadPacketsReceived = 0;
+
+  @override
+  Future<KadStatusModel> getKadStatus() async {
+    return KadStatusModel(
+      localId: 'deadbeefcafe0123456789abcdef0123',
+      totalContacts: _fakeKadContacts.length,
+      totalReplacements: 0,
+      dbContactsCount: _fakeKadContacts.length,
+      activeBuckets: 1,
+      networkProfile: _fakeProfile.toKebabCase(),
+      isUdpActive: _fakeKadUdpActive,
+      udpBindAddress: _fakeKadUdpBindAddress,
+      packetsSent: _fakeKadPacketsSent,
+      packetsReceived: _fakeKadPacketsReceived,
+      activeTransactions: 0,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> startKadUdp({String? bindAddress}) async {
+    _fakeKadUdpActive = true;
+    _fakeKadUdpBindAddress = bindAddress ?? '127.0.0.1:4672';
+    return {
+      'boundAddress': _fakeKadUdpBindAddress,
+      'status': await getKadStatus(),
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> stopKadUdp() async {
+    _fakeKadUdpActive = false;
+    _fakeKadUdpBindAddress = null;
+    return {
+      'stopped': true,
+      'status': await getKadStatus(),
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> pingKadContact({
+    required String ip,
+    required int port,
+    String? kadId,
+  }) async {
+    if (!_fakeKadUdpActive) {
+      throw Exception('Kad UDP socket is not running');
+    }
+    _fakeKadPacketsSent += 1;
+    _fakeKadPacketsReceived += 1;
+    final idx = _fakeKadContacts.indexWhere((c) => c.ip == ip && c.udpPort == port);
+    if (idx != -1) {
+      final old = _fakeKadContacts[idx];
+      _fakeKadContacts[idx] = KadContactModel(
+        kadId: old.kadId,
+        ip: old.ip,
+        udpPort: old.udpPort,
+        tcpPort: old.tcpPort,
+        version: old.version,
+        verified: true,
+        failCount: 0,
+        lastSeenUnixMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    }
+    return {
+      'success': true,
+      'latencyMs': 5,
+      'status': await getKadStatus(),
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> bootstrapKad({
+    required String ip,
+    required int port,
+  }) async {
+    if (!_fakeKadUdpActive) {
+      throw Exception('Kad UDP socket is not running');
+    }
+    _fakeKadPacketsSent += 1;
+    _fakeKadPacketsReceived += 1;
+    return {
+      'success': true,
+      'receivedContacts': _fakeKadContacts.length,
+      'status': await getKadStatus(),
+    };
+  }
+
+  @override
+  Future<List<KadContactModel>> findKadNode(String targetId) async {
+    if (!_fakeKadUdpActive) {
+      throw Exception('Kad UDP socket is not running');
+    }
+    _fakeKadPacketsSent += 1;
+    _fakeKadPacketsReceived += 1;
+    return _fakeKadContacts;
+  }
+
+  @override
+  Future<NodesDatInspectReportModel> inspectNodesDat(String filePath) async {
+    return NodesDatInspectReportModel(
+      version: 2,
+      declaredCount: _fakeKadContacts.length,
+      validContactsCount: _fakeKadContacts.length,
+      rejectedByPolicyCount: 0,
+      rejectedByFilterCount: 0,
+      sampleContacts: _fakeKadContacts,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> importNodesDat(String filePath) async {
+    return {
+      'importedCount': _fakeKadContacts.length,
+      'status': {
+        'localId': 'deadbeefcafe0123456789abcdef0123',
+        'totalContacts': _fakeKadContacts.length,
+        'totalReplacements': 0,
+        'dbContactsCount': _fakeKadContacts.length,
+        'activeBuckets': 1,
+        'networkProfile': _fakeProfile.toKebabCase(),
+      },
+    };
+  }
+
+  @override
+  Future<List<KadContactModel>> listKadContacts({int limit = 100}) async {
+    return _fakeKadContacts.take(limit).toList();
+  }
+
+  @override
+  Future<int> clearKadContacts() async {
+    final count = _fakeKadContacts.length;
+    _fakeKadContacts.clear();
+    return count;
+  }
+
+  @override
   void dispose() {
     _simulationTimer?.cancel();
     _connectionController.close();
     _eventsController.close();
     _searchResultController.close();
     _foundSourcesController.close();
+    _peerSessionController.close();
   }
 }

@@ -1319,6 +1319,142 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             .clear_servers()
             .map_err(|e| JsonRpcError::business(format!("DB error clearing servers: {e}")))
     }
+
+    // ── Peer Sources Registry ───────────────────────────────────────────────
+
+    pub fn upsert_peer_sources(
+        &mut self,
+        file_hash: &str,
+        sources: &[mule_core::model::PeerSource],
+    ) -> Result<usize, JsonRpcError> {
+        self.db
+            .upsert_peer_sources(file_hash, sources)
+            .map_err(|e| JsonRpcError::business(format!("DB error upserting peer sources: {e}")))
+    }
+
+    pub fn list_peer_sources(
+        &self,
+        file_hash: &str,
+    ) -> Result<Vec<mule_core::model::PeerSource>, JsonRpcError> {
+        self.db
+            .list_peer_sources(file_hash)
+            .map_err(|e| JsonRpcError::business(format!("DB error listing peer sources: {e}")))
+    }
+
+    pub fn update_peer_source_status(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        status: mule_core::model::PeerSourceStatus,
+        error: Option<&str>,
+        cooldown_until_unix_ms: Option<i64>,
+    ) -> Result<bool, JsonRpcError> {
+        self.db
+            .update_peer_source_status(file_hash, address, status, error, cooldown_until_unix_ms)
+            .map_err(|e| JsonRpcError::business(format!("DB error updating peer source status: {e}")))
+    }
+
+    pub fn reset_peer_source_cooldown(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+    ) -> Result<bool, JsonRpcError> {
+        self.db
+            .reset_peer_source_cooldown(file_hash, address)
+            .map_err(|e| JsonRpcError::business(format!("DB error resetting peer source cooldown: {e}")))
+    }
+
+    pub fn delete_peer_source(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+    ) -> Result<bool, JsonRpcError> {
+        self.db
+            .delete_peer_source(file_hash, address)
+            .map_err(|e| JsonRpcError::business(format!("DB error deleting peer source: {e}")))
+    }
+
+    pub fn clear_peer_sources(&mut self, file_hash: &str) -> Result<usize, JsonRpcError> {
+        self.db
+            .clear_peer_sources(file_hash)
+            .map_err(|e| JsonRpcError::business(format!("DB error clearing peer sources: {e}")))
+    }
+
+    pub fn find_by_ed2k_hash(&self, hex_hash: &str) -> Option<DownloadSnapshot> {
+        let clean_hex = hex_hash.trim().to_lowercase();
+        for active in self.active.values() {
+            if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
+                return Some(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32));
+            }
+        }
+        None
+    }
+
+    pub fn get_completed_ranges_by_hash(&self, hex_hash: &str) -> Vec<(u64, u64)> {
+        let clean_hex = hex_hash.trim().to_lowercase();
+        for active in self.active.values() {
+            if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
+                return active.ranges.ranges().iter().map(|r| (r.start, r.end)).collect();
+            }
+        }
+        Vec::new()
+    }
+
+    pub fn list_shared_files(&self) -> Result<Vec<mule_core::model::SharedFile>, JsonRpcError> {
+        self.db
+            .list_shared_files()
+            .map_err(|e| JsonRpcError::business(format!("DB error listing shared files: {e}")))
+    }
+
+    pub fn add_shared_file(&mut self, file: &mule_core::model::SharedFile) -> Result<(), JsonRpcError> {
+        self.db
+            .upsert_shared_file(file)
+            .map_err(|e| JsonRpcError::business(format!("DB error adding shared file: {e}")))
+    }
+
+    pub fn remove_shared_file(&mut self, file_hash: &str) -> Result<bool, JsonRpcError> {
+        self.db
+            .delete_shared_file(file_hash)
+            .map_err(|e| JsonRpcError::business(format!("DB error deleting shared file: {e}")))
+    }
+
+    pub fn get_shared_file(&self, file_hash: &str) -> Result<Option<mule_core::model::SharedFile>, JsonRpcError> {
+        self.db
+            .get_shared_file(file_hash)
+            .map_err(|e| JsonRpcError::business(format!("DB error getting shared file: {e}")))
+    }
+
+    pub fn get_peer_credit(&self, pubkey_hash: &str) -> Result<Option<mule_core::model::PeerCredit>, JsonRpcError> {
+        self.db
+            .get_peer_credit(pubkey_hash)
+            .map_err(|e| JsonRpcError::business(format!("DB error getting peer credit: {e}")))
+    }
+
+    pub fn record_credit_upload(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), JsonRpcError> {
+        self.db
+            .record_credit_upload(pubkey_hash, pubkey_hex, bytes)
+            .map_err(|e| JsonRpcError::business(format!("DB error recording credit upload: {e}")))
+    }
+
+    pub fn record_credit_download(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), JsonRpcError> {
+        self.db
+            .record_credit_download(pubkey_hash, pubkey_hex, bytes)
+            .map_err(|e| JsonRpcError::business(format!("DB error recording credit download: {e}")))
+    }
+
+    pub fn list_peer_credits(&self, limit: usize) -> Result<Vec<mule_core::model::PeerCredit>, JsonRpcError> {
+        self.db
+            .list_peer_credits(limit)
+            .map_err(|e| JsonRpcError::business(format!("DB error listing peer credits: {e}")))
+    }
+
+    pub fn db_ref(&self) -> &Database {
+        &self.db
+    }
+
+    pub fn db_mut(&mut self) -> &mut Database {
+        &mut self.db
+    }
 }
 
 fn now_ms() -> i64 {

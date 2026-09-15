@@ -390,6 +390,160 @@ class LargeListMockClient implements MuleDaemonClient {
   Stream<Map<String, dynamic>> get foundSourcesEvents => const Stream.empty();
 
   @override
+  Stream<PeerSessionModel> get peerSessionEvents => const Stream.empty();
+
+  @override
+  Future<List<PeerSourceModel>> listSources(String fileHash) async => [];
+
+  @override
+  Future<PeerSourceModel> addManualSource(String fileHash, String address) async =>
+      PeerSourceModel(
+        fileHash: fileHash,
+        address: address,
+        ip: 2130706433,
+        port: 4662,
+        status: PeerSourceStatus.allowed,
+        origin: PeerSourceOrigin.manual,
+        discoveredAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+        lastSeenUnixMs: DateTime.now().millisecondsSinceEpoch,
+        failCount: 0,
+      );
+
+  @override
+  Future<PeerSessionModel> connectPeerSource(
+    String fileHash,
+    String address, {
+    bool force = false,
+  }) async =>
+      PeerSessionModel.disconnected;
+
+  @override
+  Future<PeerSessionModel> disconnectPeerSource({String? address}) async =>
+      PeerSessionModel.disconnected;
+
+  @override
+  Future<PeerSessionModel> getPeerSessionStatus() async =>
+      PeerSessionModel.disconnected;
+
+  @override
+  Future<SwarmStatusModel> getSwarmStatus({String? fileHash}) async =>
+      SwarmStatusModel.empty;
+
+  @override
+  Future<int> clearSources(String fileHash) async => 0;
+
+  @override
+  Future<List<SharedFileModel>> listSharedFiles() async => [];
+
+  @override
+  Future<SharedFileModel> addSharedFile({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String filePath,
+  }) async =>
+      SharedFileModel(
+        fileHash: fileHash,
+        fileName: fileName,
+        fileSize: fileSize,
+        filePath: filePath,
+        sharedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+        enabled: true,
+      );
+
+  @override
+  Future<void> removeSharedFile(String fileHash) async {}
+
+  @override
+  Future<SharedFileModel> setSharedFileEnabled(String fileHash, bool enabled) async =>
+      SharedFileModel(
+        fileHash: fileHash,
+        fileName: 'file.bin',
+        fileSize: 1000,
+        filePath: 'C:\\file.bin',
+        sharedAtUnixMs: 0,
+        enabled: enabled,
+      );
+
+  @override
+  Future<InboundListenerStatusModel> startListener({int port = 0}) async =>
+      InboundListenerStatusModel.idle;
+
+  @override
+  Future<InboundListenerStatusModel> stopListener() async =>
+      InboundListenerStatusModel.idle;
+
+  @override
+  Future<InboundListenerStatusModel> getListenerStatus() async =>
+      InboundListenerStatusModel.idle;
+
+  @override
+  Future<Map<String, dynamic>> listUploads() async => {'active': [], 'queued': []};
+
+  @override
+  Future<UploadSessionModel?> getUploadStatus() async => null;
+
+  @override
+  Future<void> cancelUpload(String clientAddress) async {}
+
+  @override
+  Future<SecureIdentityStatusModel> getIdentityStatus() async =>
+      const SecureIdentityStatusModel(enabled: true, hasKey: true, pubkeyHash: 'mock_hash', keyBits: 384);
+
+  @override
+  Future<SecureIdentityStatusModel> rotateIdentity() async =>
+      const SecureIdentityStatusModel(enabled: true, hasKey: true, pubkeyHash: 'rotated_mock_hash', keyBits: 384);
+
+  @override
+  Future<List<PeerCreditModel>> listPeerCredits({int limit = 50}) async => const [];
+
+  @override
+  Future<PeerCreditStatsModel> getPeerCreditStats() async => PeerCreditStatsModel.zero;
+
+  @override
+  Future<KadStatusModel> getKadStatus() async => KadStatusModel.initial;
+
+  @override
+  Future<Map<String, dynamic>> startKadUdp({String? bindAddress}) async => {'boundAddress': '127.0.0.1:4672'};
+
+  @override
+  Future<Map<String, dynamic>> stopKadUdp() async => {'stopped': true};
+
+  @override
+  Future<Map<String, dynamic>> pingKadContact({
+    required String ip,
+    required int port,
+    String? kadId,
+  }) async => {'success': true, 'latencyMs': 5};
+
+  @override
+  Future<NodesDatInspectReportModel> inspectNodesDat(String filePath) async =>
+      const NodesDatInspectReportModel(
+        version: 2,
+        declaredCount: 0,
+        validContactsCount: 0,
+        rejectedByPolicyCount: 0,
+        rejectedByFilterCount: 0,
+        sampleContacts: [],
+      );
+
+  @override
+  Future<Map<String, dynamic>> importNodesDat(String filePath) async => {'importedCount': 0};
+
+  @override
+  Future<List<KadContactModel>> listKadContacts({int limit = 100}) async => const [];
+
+  @override
+  Future<Map<String, dynamic>> bootstrapKad({required String ip, required int port}) async =>
+      {'status': 'ok', 'contactsDiscovered': 0, 'bootstrapNode': '$ip:$port'};
+
+  @override
+  Future<List<KadContactModel>> findKadNode(String targetId) async => const [];
+
+  @override
+  Future<int> clearKadContacts() async => 0;
+
+  @override
   void dispose() {}
 }
 

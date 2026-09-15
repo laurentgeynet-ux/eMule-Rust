@@ -9,6 +9,7 @@ use crate::config::DaemonConfig;
 use crate::rpc::events::{DownloadSnapshot, DownloadUpdatedEvent};
 use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::DownloadService;
+use crate::services::peer_session::PeerSessionManager;
 use crate::services::server_session::ServerSessionManager;
 
 #[derive(Clone)]
@@ -17,6 +18,10 @@ pub struct AppState {
     pub downloads: Arc<Mutex<DownloadService>>,
     pub network_policy: NetworkPolicyManager,
     pub server_session: ServerSessionManager,
+    pub peer_session: PeerSessionManager,
+    pub inbound_listener: crate::services::inbound_listener::InboundListenerService,
+    pub identity: Arc<Mutex<crate::services::IdentityService>>,
+    pub kad: Arc<crate::services::KadService>,
     pub sequence: Arc<AtomicU64>,
     pub event_tx: broadcast::Sender<String>,
     pub instance_id: Uuid,
@@ -36,11 +41,29 @@ impl AppState {
         );
         let sequence = Arc::new(AtomicU64::new(1));
         let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
+        let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
+        let dl_arc = Arc::new(Mutex::new(downloads));
+        let inbound_listener = crate::services::inbound_listener::InboundListenerService::new(
+            Arc::new(network_policy.clone()),
+            Arc::clone(&dl_arc),
+        );
+        let identity = Arc::new(Mutex::new(crate::services::IdentityService::load_or_generate(&config.data_dir)));
+        let kad_id = mule_core::kad::KadId::random();
+        let kad = Arc::new(crate::services::KadService::new(
+            kad_id,
+            Arc::clone(&dl_arc),
+            network_policy.clone(),
+            network_policy.ip_filter(),
+        ));
         Self {
             config,
-            downloads: Arc::new(Mutex::new(downloads)),
+            downloads: dl_arc,
             network_policy,
             server_session,
+            peer_session,
+            inbound_listener,
+            identity,
+            kad,
             sequence,
             event_tx,
             instance_id: Uuid::new_v4(),

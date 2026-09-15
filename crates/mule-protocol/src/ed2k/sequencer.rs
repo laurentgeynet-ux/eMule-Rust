@@ -546,3 +546,96 @@ impl Ed2kBlockSink {
         Ok(range)
     }
 }
+
+/// Represents an active in-flight block range assigned to a specific peer.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InFlightBlock {
+    /// Identifier or address of the owning peer.
+    pub peer_id: String,
+    /// Target part index.
+    pub part_index: u16,
+    /// Half-open start byte offset.
+    pub start: u64,
+    /// Half-open end byte offset (exclusive).
+    pub end: u64,
+    /// Timestamp when block was requested (unix ms).
+    pub issued_at_unix_ms: i64,
+    /// Expiration deadline after which block may be reallocated (unix ms).
+    pub deadline_unix_ms: i64,
+}
+
+impl InFlightBlock {
+    /// Creates a new in-flight block tracking entry.
+    pub fn new(
+        peer_id: String,
+        part_index: u16,
+        start: u64,
+        end: u64,
+        issued_at_unix_ms: i64,
+        timeout_ms: i64,
+    ) -> Self {
+        Self {
+            peer_id,
+            part_index,
+            start,
+            end,
+            issued_at_unix_ms,
+            deadline_unix_ms: issued_at_unix_ms + timeout_ms,
+        }
+    }
+
+    /// Returns true if the block range has expired at `now_unix_ms`.
+    pub fn is_expired(&self, now_unix_ms: i64) -> bool {
+        now_unix_ms >= self.deadline_unix_ms
+    }
+
+    /// Checks if this in-flight block overlaps with range `[s, e)`.
+    pub fn overlaps(&self, s: u64, e: u64) -> bool {
+        self.start < e && s < self.end
+    }
+}
+
+impl Ed2kDownloadSequencer {
+    /// Plans the next unassigned and uncompleted block range for a specific peer.
+    ///
+    /// Ensures:
+    /// 1. The part is available on this remote peer (`is_part_available`).
+    /// 2. The block is NOT already covered in `completed_ranges`.
+    /// 3. The block does NOT overlap any active (non-expired) in-flight block in `in_flight_blocks`.
+    pub fn plan_next_block_for_peer(
+        &self,
+        _peer_id: &str,
+        completed_ranges: &[(u64, u64)],
+        in_flight_blocks: &[InFlightBlock],
+        now_unix_ms: i64,
+    ) -> Result<Option<(u16, Ed2kBlockRange)>, Ed2kSequencerError> {
+        for part_idx in 0..self.total_parts {
+            if !self.is_part_available(part_idx) {
+                continue;
+            }
+
+            let blocks = self.plan_part_blocks(part_idx)?;
+            for block in blocks {
+                let b_start = block.start as u64;
+                let b_end = block.end as u64;
+
+                // Check if completed
+                if Self::is_range_in_list(b_start, b_end, completed_ranges) {
+                    continue;
+                }
+
+                // Check if currently assigned to any active in-flight block
+                let is_in_flight = in_flight_blocks.iter().any(|ifb| {
+                    !ifb.is_expired(now_unix_ms) && ifb.overlaps(b_start, b_end)
+                });
+
+                if !is_in_flight {
+                    return Ok(Some((part_idx, block)));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+}

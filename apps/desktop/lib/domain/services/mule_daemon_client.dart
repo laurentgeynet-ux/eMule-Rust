@@ -231,11 +231,123 @@ abstract class MuleDaemonClient {
     int? fileSize,
   });
 
+  /// List registered peer sources for a file hash.
+  Future<List<PeerSourceModel>> listSources(String fileHash);
+
+  /// Add a manual peer source for a file hash.
+  Future<PeerSourceModel> addManualSource(String fileHash, String address);
+
+  /// Connect to a specific peer source.
+  Future<PeerSessionModel> connectPeerSource(
+    String fileHash,
+    String address, {
+    bool force = false,
+  });
+
+  /// Disconnect the active peer session, or a specific peer by address.
+  Future<PeerSessionModel> disconnectPeerSource({String? address});
+
+  /// Get the status of the active peer session.
+  Future<PeerSessionModel> getPeerSessionStatus();
+
+  /// Get the full swarm status snapshot.
+  Future<SwarmStatusModel> getSwarmStatus({String? fileHash});
+
+  /// Clear all registered sources for a file hash.
+  Future<int> clearSources(String fileHash);
+
+  /// List explicitly shared files.
+  Future<List<SharedFileModel>> listSharedFiles();
+
+  /// Register a file for sharing.
+  Future<SharedFileModel> addSharedFile({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String filePath,
+  });
+
+  /// Remove a file from sharing.
+  Future<void> removeSharedFile(String fileHash);
+
+  /// Enable or disable sharing for a file.
+  Future<SharedFileModel> setSharedFileEnabled(String fileHash, bool enabled);
+
+  /// Start inbound eD2K TCP listener.
+  Future<InboundListenerStatusModel> startListener({int port = 0});
+
+  /// Stop inbound eD2K TCP listener.
+  Future<InboundListenerStatusModel> stopListener();
+
+  /// Get status of inbound eD2K listener.
+  Future<InboundListenerStatusModel> getListenerStatus();
+
+  /// List active and queued uploads.
+  Future<Map<String, dynamic>> listUploads();
+
+  /// Get status of the active single-slot upload.
+  Future<UploadSessionModel?> getUploadStatus();
+
+  /// Cancel an upload or dequeue a waiting peer.
+  Future<void> cancelUpload(String clientAddress);
+
+  /// Get secure user identification status.
+  Future<SecureIdentityStatusModel> getIdentityStatus();
+
+  /// Voluntarily rotate identity keypair.
+  Future<SecureIdentityStatusModel> rotateIdentity();
+
+  /// List persistent peer credits.
+  Future<List<PeerCreditModel>> listPeerCredits({int limit = 50});
+
+  /// Get aggregated peer credit statistics.
+  Future<PeerCreditStatsModel> getPeerCreditStats();
+
+  /// Get current Kad DHT status and routing table metrics.
+  Future<KadStatusModel> getKadStatus();
+
+  /// Start Kad UDP socket on loopback (optional bind address).
+  Future<Map<String, dynamic>> startKadUdp({String? bindAddress});
+
+  /// Stop Kad UDP socket and abort in-flight transactions.
+  Future<Map<String, dynamic>> stopKadUdp();
+
+  /// Ping a Kad contact by IP and port with optional Kad ID.
+  Future<Map<String, dynamic>> pingKadContact({
+    required String ip,
+    required int port,
+    String? kadId,
+  });
+
+  /// Bootstrap Kad DHT from a target node IP and port.
+  Future<Map<String, dynamic>> bootstrapKad({
+    required String ip,
+    required int port,
+  });
+
+  /// Iteratively find nodes for a target Kad ID.
+  Future<List<KadContactModel>> findKadNode(String targetId);
+
+  /// Inspect a local nodes.dat file before importing.
+  Future<NodesDatInspectReportModel> inspectNodesDat(String filePath);
+
+  /// Import contacts from a nodes.dat file into SQLite and K-buckets.
+  Future<Map<String, dynamic>> importNodesDat(String filePath);
+
+  /// List known Kad contacts.
+  Future<List<KadContactModel>> listKadContacts({int limit = 100});
+
+  /// Clear all stored Kad contacts.
+  Future<int> clearKadContacts();
+
   /// Stream of search result events.
   Stream<List<SearchResultFileModel>> get searchResultEvents;
 
   /// Stream of found sources events.
   Stream<Map<String, dynamic>> get foundSourcesEvents;
+
+  /// Stream of peer session status updates.
+  Stream<PeerSessionModel> get peerSessionEvents;
 
   /// Clean up any resources/sockets.
   void dispose();

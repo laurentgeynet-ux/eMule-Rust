@@ -34,6 +34,8 @@ hex.workspace = true
 rand.workspace = true
 fs4 = "1.1.0"
 bytes.workspace = true
+md4.workspace = true
+data-encoding.workspace = true
 
 [dev-dependencies]
 tokio-tungstenite.workspace = true

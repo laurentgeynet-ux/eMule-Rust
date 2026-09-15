@@ -81,6 +81,36 @@ pub async fn handle_request(
         "servers.status" => handle_servers_status(state).await,
         "servers.search" => handle_servers_search(state, req.params).await,
         "servers.querySources" => handle_servers_query_sources(state, req.params).await,
+        "sources.list" => handle_sources_list(state, req.params).await,
+        "sources.addManual" => handle_sources_add_manual(state, req.params).await,
+        "sources.connect" => handle_sources_connect(state, req.params).await,
+        "sources.disconnect" => handle_sources_disconnect(state, req.params).await,
+        "sources.clear" => handle_sources_clear(state, req.params).await,
+        "sources.status" | "sources.swarmStatus" | "swarm.status" => handle_sources_status(state, req.params).await,
+        "shares.list" => handle_shares_list(state).await,
+        "shares.add" => handle_shares_add(state, req.params).await,
+        "shares.remove" => handle_shares_remove(state, req.params).await,
+        "shares.setEnabled" => handle_shares_set_enabled(state, req.params).await,
+        "listener.start" => handle_listener_start(state, req.params).await,
+        "listener.stop" => handle_listener_stop(state).await,
+        "listener.status" => handle_listener_status(state).await,
+        "uploads.list" => handle_uploads_list(state).await,
+        "uploads.status" => handle_uploads_status(state).await,
+        "uploads.cancel" => handle_uploads_cancel(state, req.params).await,
+        "identity.status" => handle_identity_status(state).await,
+        "identity.rotate" => handle_identity_rotate(state).await,
+        "credits.list" => handle_credits_list(state, req.params).await,
+        "credits.stats" => handle_credits_stats(state).await,
+        "kad.status" => handle_kad_status(state).await,
+        "kad.startUdp" => handle_kad_start_udp(state, req.params).await,
+        "kad.stopUdp" => handle_kad_stop_udp(state).await,
+        "kad.ping" | "kad.pingContact" => handle_kad_ping(state, req.params).await,
+        "kad.bootstrap" => handle_kad_bootstrap(state, req.params).await,
+        "kad.findNode" => handle_kad_find_node(state, req.params).await,
+        "kad.inspectNodesDat" => handle_kad_inspect_nodes_dat(state, req.params).await,
+        "kad.importNodesDat" => handle_kad_import_nodes_dat(state, req.params).await,
+        "kad.listContacts" => handle_kad_list_contacts(state, req.params).await,
+        "kad.clearContacts" => handle_kad_clear_contacts(state).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -150,6 +180,15 @@ fn handle_hello(
         "server-connection",
         "server-search",
         "server-sources",
+        "peer-sources",
+        "peer-connection",
+        "peer-robustness",
+        "swarm-dual-source",
+        "shared-files",
+        "upload-single-slot",
+        "secure-ident",
+        "peer-credits",
+        "kad-contacts",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -181,6 +220,15 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "server-connection",
         "server-search",
         "server-sources",
+        "peer-sources",
+        "peer-connection",
+        "peer-robustness",
+        "swarm-dual-source",
+        "shared-files",
+        "upload-single-slot",
+        "secure-ident",
+        "peer-credits",
+        "kad-contacts",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -1397,6 +1445,7 @@ async fn handle_network_set_profile(
 async fn handle_network_disconnect_all(state: &AppState) -> Result<Value, JsonRpcError> {
     state.network_policy.disconnect_all();
     let _ = state.server_session.disconnect().await;
+    let _ = state.peer_session.disconnect().await;
     state.abort_all_tasks().await;
     Ok(json!({
         "success": true,
@@ -1852,4 +1901,685 @@ async fn handle_servers_query_sources(
     state.server_session.get_sources(req).await?;
     Ok(json!({ "sent": true }))
 }
+
+// ── Peer Sources Handlers ───────────────────────────────────────────────────
+
+async fn handle_sources_list(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let hash_str = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+
+    let sources = state.downloads.lock().await.list_peer_sources(hash_str)?;
+    serde_json::to_value(sources)
+        .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
+}
+
+async fn handle_sources_add_manual(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let hash_str = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+    let address = params["address"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')"))?;
+
+    let addr: std::net::SocketAddr = address.parse().map_err(|e| {
+        JsonRpcError::invalid_params(&format!("Invalid socket address format '{address}': {e}"))
+    })?;
+
+    // Check against IP filter
+    let filter = state.network_policy.ip_filter();
+    let is_filtered = filter.check_ip(addr.ip()).is_some();
+
+    let profile = state.network_policy.profile();
+    let status = if is_filtered {
+        mule_core::model::PeerSourceStatus::Filtered
+    } else if profile == mule_network_policy::NetworkProfile::LocalLab && !addr.ip().is_loopback() {
+        mule_core::model::PeerSourceStatus::Rejected
+    } else {
+        mule_core::model::PeerSourceStatus::Allowed
+    };
+
+    let ip_u32 = match addr {
+        std::net::SocketAddr::V4(v4) => u32::from_be_bytes(v4.ip().octets()),
+        _ => 0,
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
+    let source = mule_core::model::PeerSource {
+        file_hash: hash_str.to_string(),
+        address: address.to_string(),
+        ip: ip_u32,
+        port: addr.port(),
+        origin: mule_core::model::PeerSourceOrigin::Manual,
+        discovered_at_unix_ms: now,
+        last_seen_unix_ms: now,
+        status,
+        fail_count: 0,
+        last_error: if is_filtered {
+            Some("Blocked by local IP filter".to_string())
+        } else {
+            None
+        },
+        cooldown_until_unix_ms: None,
+    };
+
+    state.downloads.lock().await.upsert_peer_sources(hash_str, &[source.clone()])?;
+    serde_json::to_value(source)
+        .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
+}
+
+async fn handle_sources_connect(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let hash_str = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+    let address = params["address"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')"))?;
+
+    let addr: std::net::SocketAddr = address.parse().map_err(|e| {
+        JsonRpcError::invalid_params(&format!("Invalid socket address format '{address}': {e}"))
+    })?;
+
+    // Check if network is disabled (Kill Switch)
+    if state.network_policy.state() == mule_network_policy::NetworkState::Disabled {
+        return Err(JsonRpcError::business("Network is disabled by Kill Switch"));
+    }
+
+    // Check IP Filter
+    let filter = state.network_policy.ip_filter();
+    if filter.check_ip(addr.ip()).is_some() {
+        let ip_u32 = match addr {
+            std::net::SocketAddr::V4(v4) => u32::from_be_bytes(v4.ip().octets()),
+            _ => 0,
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let filtered_src = mule_core::model::PeerSource {
+            file_hash: hash_str.to_string(),
+            address: address.to_string(),
+            ip: ip_u32,
+            port: addr.port(),
+            origin: mule_core::model::PeerSourceOrigin::Manual,
+            discovered_at_unix_ms: now,
+            last_seen_unix_ms: now,
+            status: mule_core::model::PeerSourceStatus::Filtered,
+            fail_count: 1,
+            last_error: Some("Blocked by local IP filter".to_string()),
+            cooldown_until_unix_ms: None,
+        };
+        let mut dl_svc = state.downloads.lock().await;
+        let _ = dl_svc.upsert_peer_sources(hash_str, &[filtered_src]);
+        return Err(JsonRpcError::business(format!(
+            "Connection refused: peer IP {} is blocked by IP filter",
+            addr.ip()
+        )));
+    }
+
+    // Check Cooldown unless force is true
+    let force = params["force"].as_bool().unwrap_or(false);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
+    {
+        let mut dl_svc = state.downloads.lock().await;
+        let sources = dl_svc.list_peer_sources(hash_str)?;
+        if let Some(src) = sources.into_iter().find(|s| s.address == address) {
+            if let Some(cooldown_until) = src.cooldown_until_unix_ms {
+                if cooldown_until > now && !force {
+                    let remaining_secs = (cooldown_until - now + 999) / 1000;
+                    return Err(JsonRpcError::business(format!(
+                        "Source is in cooldown after {} failed attempt(s). Retry in {}s or force reconnect.",
+                        src.fail_count, remaining_secs
+                    )));
+                }
+            }
+        }
+        if force {
+            let _ = dl_svc.reset_peer_source_cooldown(hash_str, address);
+        }
+
+        // Ensure source exists in persistence
+        let ip_u32 = match addr {
+            std::net::SocketAddr::V4(v4) => u32::from_be_bytes(v4.ip().octets()),
+            _ => 0,
+        };
+        let init_src = mule_core::model::PeerSource {
+            file_hash: hash_str.to_string(),
+            address: address.to_string(),
+            ip: ip_u32,
+            port: addr.port(),
+            origin: mule_core::model::PeerSourceOrigin::Manual,
+            discovered_at_unix_ms: now,
+            last_seen_unix_ms: now,
+            status: mule_core::model::PeerSourceStatus::Candidate,
+            fail_count: 0,
+            last_error: None,
+            cooldown_until_unix_ms: None,
+        };
+        let _ = dl_svc.upsert_peer_sources(hash_str, &[init_src]);
+    }
+
+    // Request TCP connect permit from NetworkPolicyManager
+    let permit = state
+        .network_policy
+        .request_tcp_connect(addr, mule_network_policy::ConnectionPurpose::Ed2kPeer)
+        .map_err(|e| JsonRpcError::business(format!("Connection rejected by network policy: {e}")))?;
+
+    // Start single controlled peer session
+    state
+        .peer_session
+        .connect(
+            hash_str,
+            addr,
+            permit,
+            4662,
+            "Emule-Sion".to_string(),
+            [0x3cu8; 16],
+            std::sync::Arc::clone(&state.downloads),
+        )
+        .await?;
+
+    let snapshot = state.peer_session.snapshot().await;
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+async fn handle_sources_disconnect(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let address = params.as_ref().and_then(|p| p["address"].as_str());
+    state.peer_session.disconnect_peer(address).await?;
+    let snapshot = state.peer_session.snapshot().await;
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+async fn handle_sources_clear(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let hash_str = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+
+    let count = state.downloads.lock().await.clear_peer_sources(hash_str)?;
+    Ok(json!({ "cleared": count }))
+}
+
+async fn handle_sources_status(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let file_hash = params.as_ref().and_then(|p| p["fileHash"].as_str().or_else(|| p["hash"].as_str()));
+    let swarm_snap = state.peer_session.swarm_snapshot(file_hash).await;
+    
+    // If specific file or swarm is requested, return full swarm object
+    if params.as_ref().map(|p| p.get("fileHash").is_some() || p.get("swarm").is_some()).unwrap_or(false) {
+        Ok(serde_json::to_value(swarm_snap).unwrap_or_default())
+    } else {
+        // Return first active peer snapshot or disconnected for legacy single peer callers, but augmented with swarm fields
+        let mut val = serde_json::to_value(state.peer_session.snapshot().await).unwrap_or_default();
+        if let Value::Object(ref mut map) = val {
+            map.insert("activePeerCount".to_string(), json!(swarm_snap.active_peer_count));
+            map.insert("peers".to_string(), json!(swarm_snap.peers));
+            map.insert("inFlightBlocks".to_string(), json!(swarm_snap.in_flight_blocks));
+        }
+        Ok(val)
+    }
+}
+
+async fn handle_shares_list(state: &AppState) -> Result<Value, JsonRpcError> {
+    let dl_svc = state.downloads.lock().await;
+    let list = dl_svc.list_shared_files()?;
+    Ok(json!({ "sharedFiles": list }))
+}
+
+async fn handle_shares_add(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+    let file_name = params["fileName"]
+        .as_str()
+        .or_else(|| params["name"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileName'"))?;
+    let file_size = params["fileSize"]
+        .as_u64()
+        .or_else(|| params["size"].as_u64())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileSize'"))?;
+    let file_path = params["filePath"]
+        .as_str()
+        .or_else(|| params["path"].as_str())
+        .unwrap_or("");
+
+    let shared = mule_core::model::SharedFile::new(file_hash, file_name, file_size, file_path);
+    state.downloads.lock().await.add_shared_file(&shared)?;
+    Ok(serde_json::to_value(shared).unwrap_or_default())
+}
+
+async fn handle_shares_remove(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+
+    let removed = state.downloads.lock().await.remove_shared_file(file_hash)?;
+    Ok(json!({ "removed": removed }))
+}
+
+async fn handle_shares_set_enabled(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+    let enabled = params["enabled"].as_bool().unwrap_or(true);
+
+    let mut dl_svc = state.downloads.lock().await;
+    let mut file_opt = dl_svc.get_shared_file(file_hash)?;
+    if let Some(ref mut sf) = file_opt {
+        sf.enabled = enabled;
+        dl_svc.add_shared_file(sf)?;
+        Ok(serde_json::to_value(sf).unwrap_or_default())
+    } else {
+        Err(JsonRpcError::business("Shared file not found"))
+    }
+}
+
+async fn handle_listener_start(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let port = params
+        .as_ref()
+        .and_then(|p| p["port"].as_u64())
+        .unwrap_or(4662) as u16;
+
+    let bind_addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let actual_addr = state
+        .inbound_listener
+        .start(bind_addr)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    Ok(json!({
+        "started": true,
+        "listenAddress": actual_addr.to_string(),
+    }))
+}
+
+async fn handle_listener_stop(state: &AppState) -> Result<Value, JsonRpcError> {
+    state.inbound_listener.stop().await;
+    Ok(json!({ "stopped": true }))
+}
+
+async fn handle_listener_status(state: &AppState) -> Result<Value, JsonRpcError> {
+    let snap = state.inbound_listener.snapshot().await;
+    Ok(serde_json::to_value(snap).unwrap_or_default())
+}
+
+async fn handle_uploads_list(state: &AppState) -> Result<Value, JsonRpcError> {
+    let active = state.inbound_listener.upload_manager().active_snapshot().await;
+    let queue = state.inbound_listener.upload_manager().list_queue().await;
+    let active_list = match active {
+        Some(a) => vec![a],
+        None => vec![],
+    };
+    Ok(json!({
+        "active": active_list,
+        "queued": queue,
+    }))
+}
+
+async fn handle_uploads_status(state: &AppState) -> Result<Value, JsonRpcError> {
+    let active = state.inbound_listener.upload_manager().active_snapshot().await;
+    Ok(serde_json::to_value(active).unwrap_or(Value::Null))
+}
+
+async fn handle_uploads_cancel(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let client_address = params["clientAddress"]
+        .as_str()
+        .or_else(|| params["address"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'clientAddress'"))?;
+
+    state
+        .inbound_listener
+        .upload_manager()
+        .release_slot(client_address)
+        .await;
+
+    Ok(json!({ "cancelled": true }))
+}
+
+async fn handle_identity_status(state: &AppState) -> Result<Value, JsonRpcError> {
+    let id_guard = state.identity.lock().await;
+    let status = id_guard.status();
+    Ok(serde_json::to_value(status).unwrap_or_default())
+}
+
+async fn handle_identity_rotate(state: &AppState) -> Result<Value, JsonRpcError> {
+    let mut id_guard = state.identity.lock().await;
+    let new_id = crate::services::IdentityService::rotate_key(&state.config.data_dir)
+        .map_err(|e| JsonRpcError::business(format!("Failed to rotate identity key: {e}")))?;
+    *id_guard = new_id;
+    let status = id_guard.status();
+    Ok(serde_json::to_value(status).unwrap_or_default())
+}
+
+async fn handle_credits_list(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let limit = params
+        .as_ref()
+        .and_then(|p| p["limit"].as_u64())
+        .unwrap_or(50) as usize;
+    let limit = limit.clamp(1, 500);
+
+    let credits = state.downloads.lock().await.list_peer_credits(limit)?;
+    let credit_list: Vec<Value> = credits
+        .into_iter()
+        .map(|c| {
+            json!({
+                "pubkeyHash": c.pubkey_hash,
+                "pubkeyHex": c.pubkey_hex,
+                "uploadedBytes": c.uploaded_bytes,
+                "downloadedBytes": c.downloaded_bytes,
+                "creditMultiplier": c.credit_multiplier(),
+                "firstSeenUnixMs": c.first_seen_unix_ms,
+                "lastSeenUnixMs": c.last_seen_unix_ms,
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "credits": credit_list,
+        "total": credit_list.len(),
+    }))
+}
+
+async fn handle_credits_stats(state: &AppState) -> Result<Value, JsonRpcError> {
+    let credits = state.downloads.lock().await.list_peer_credits(1000)?;
+    let total_peers = credits.len();
+    let mut total_uploaded_bytes = 0u64;
+    let mut total_downloaded_bytes = 0u64;
+    let mut active_credited_peers = 0;
+
+    for c in &credits {
+        total_uploaded_bytes = total_uploaded_bytes.saturating_add(c.uploaded_bytes);
+        total_downloaded_bytes = total_downloaded_bytes.saturating_add(c.downloaded_bytes);
+        if c.uploaded_bytes > 0 || c.downloaded_bytes > 0 {
+            active_credited_peers += 1;
+        }
+    }
+
+    Ok(json!({
+        "totalPeers": total_peers,
+        "totalUploadedBytes": total_uploaded_bytes,
+        "totalDownloadedBytes": total_downloaded_bytes,
+        "activeCreditedPeers": active_credited_peers,
+    }))
+}
+
+async fn handle_kad_status(state: &AppState) -> Result<Value, JsonRpcError> {
+    let status = state.kad.get_status().await;
+    Ok(serde_json::to_value(status).unwrap_or_default())
+}
+
+async fn handle_kad_inspect_nodes_dat(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let path_str_opt = params["path"].as_str();
+    let data_base64_opt = params["dataBase64"].as_str();
+
+    let bytes = if let Some(path_str) = path_str_opt {
+        std::fs::read(path_str)
+            .map_err(|e| JsonRpcError::business(format!("Failed to read file {path_str}: {e}")))?
+    } else if let Some(b64) = data_base64_opt {
+        data_encoding::BASE64
+            .decode(b64.as_bytes())
+            .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid base64: {e}")))?
+    } else {
+        return Err(JsonRpcError::invalid_params("Missing 'path' or 'dataBase64' parameter"));
+    };
+
+    let report = state
+        .kad
+        .inspect_nodes_dat(&bytes)
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    Ok(serde_json::to_value(report).unwrap_or_default())
+}
+
+async fn handle_kad_import_nodes_dat(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let path_str_opt = params["path"].as_str();
+    let data_base64_opt = params["dataBase64"].as_str();
+
+    let bytes = if let Some(path_str) = path_str_opt {
+        std::fs::read(path_str)
+            .map_err(|e| JsonRpcError::business(format!("Failed to read file {path_str}: {e}")))?
+    } else if let Some(b64) = data_base64_opt {
+        data_encoding::BASE64
+            .decode(b64.as_bytes())
+            .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid base64: {e}")))?
+    } else {
+        return Err(JsonRpcError::invalid_params("Missing 'path' or 'dataBase64' parameter"));
+    };
+
+    let imported_count = state
+        .kad
+        .import_nodes_dat(&bytes)
+        .await
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    let status = state.kad.get_status().await;
+
+    Ok(json!({
+        "importedCount": imported_count,
+        "status": status,
+    }))
+}
+
+async fn handle_kad_list_contacts(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let limit = params
+        .as_ref()
+        .and_then(|p| p["limit"].as_u64())
+        .unwrap_or(100) as usize;
+    let limit = limit.clamp(1, 1000);
+
+    let contacts = state.kad.list_contacts(limit).await;
+    Ok(json!({
+        "contacts": contacts,
+        "total": contacts.len(),
+    }))
+}
+
+async fn handle_kad_clear_contacts(state: &AppState) -> Result<Value, JsonRpcError> {
+    let cleared = state
+        .kad
+        .clear_contacts()
+        .await
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    Ok(json!({
+        "cleared": cleared,
+    }))
+}
+
+async fn handle_kad_start_udp(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let bind_addr_str = params
+        .as_ref()
+        .and_then(|p| p["bindAddress"].as_str())
+        .unwrap_or("127.0.0.1:4672");
+
+    let addr: std::net::SocketAddr = bind_addr_str
+        .parse()
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid bind address: {e}")))?;
+
+    let local_addr = state
+        .kad
+        .udp()
+        .start(addr)
+        .await
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    let status = state.kad.get_status().await;
+
+    Ok(json!({
+        "boundAddress": local_addr.to_string(),
+        "status": status,
+    }))
+}
+
+async fn handle_kad_stop_udp(state: &AppState) -> Result<Value, JsonRpcError> {
+    state
+        .kad
+        .udp()
+        .stop()
+        .await
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    let status = state.kad.get_status().await;
+
+    Ok(json!({
+        "stopped": true,
+        "status": status,
+    }))
+}
+
+async fn handle_kad_ping(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let ip = params["ip"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'ip' parameter"))?;
+    let port = params["port"]
+        .as_u64()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'port' parameter"))? as u16;
+    let target_kad_id = params["kadId"].as_str();
+
+    let latency_ms = state
+        .kad
+        .ping_contact(ip, port, target_kad_id)
+        .await
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    let status = state.kad.get_status().await;
+
+    Ok(json!({
+        "success": true,
+        "latencyMs": latency_ms,
+        "status": status,
+    }))
+}
+
+async fn handle_kad_bootstrap(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let ip = params["ip"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'ip' parameter"))?;
+    let port = params["port"]
+        .as_u64()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'port' parameter"))? as u16;
+
+    let received_count = state
+        .kad
+        .bootstrap_from_node(ip, port)
+        .await
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    let status = state.kad.get_status().await;
+
+    Ok(json!({
+        "success": true,
+        "receivedContacts": received_count,
+        "status": status,
+    }))
+}
+
+async fn handle_kad_find_node(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let target_id_hex = params["targetId"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'targetId' parameter"))?;
+
+    let target_kad_id = mule_core::kad::KadId::from_hex(target_id_hex)
+        .ok_or_else(|| JsonRpcError::invalid_params("Invalid 128-bit hex targetId"))?;
+
+    let contacts = state
+        .kad
+        .find_node(&target_kad_id)
+        .await
+        .map_err(|e| JsonRpcError::business(e))?;
+
+    let status = state.kad.get_status().await;
+
+    Ok(json!({
+        "contacts": contacts,
+        "count": contacts.len(),
+        "status": status,
+    }))
+}
+
+
+
 

@@ -5,11 +5,13 @@ use bytes::Bytes;
 use super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
-    OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_SENDINGPART,
+    OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_PUBLICKEY,
+    OP_SECIDENTSTATE, OP_SENDINGPART, OP_SIGNATURE,
 };
 use super::packet::{
     expected_mask_bytes, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq,
-    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart,
+    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
+    Ed2kSendingPart, Ed2kSignature,
 };
 use super::profile::Ed2kCompatibilityProfile;
 use super::protocol::{PR_ED2K, PR_EMULE};
@@ -637,6 +639,75 @@ impl Ed2kEncoder {
         Ok(RawPacket::new(PR_EMULE, OP_EMULE_INFO, Bytes::from(payload)))
     }
 
+    /// Encodes an `OP_PUBLICKEY` (`0x85`) message into a `RawPacket`.
+    pub fn encode_public_key(&self, key: &Ed2kPublicKey) -> Result<RawPacket, Ed2kEncodeError> {
+        let opcode = OP_PUBLICKEY;
+        let mut payload = Vec::with_capacity(1 + key.key_bytes.len());
+        payload.push(key.key_bytes.len() as u8);
+        payload.extend_from_slice(&key.key_bytes);
+
+        let frame_len = 1 + payload.len();
+        let max_frame = self.limits.max_frame_for_opcode(opcode);
+        if frame_len > max_frame {
+            return Err(Ed2kEncodeError::new(
+                opcode,
+                "public_key_frame_len",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: frame_len,
+                    limit: max_frame,
+                },
+            ));
+        }
+
+        Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
+    }
+
+    /// Encodes an `OP_SIGNATURE` (`0x87`) message into a `RawPacket`.
+    pub fn encode_signature(&self, sig: &Ed2kSignature) -> Result<RawPacket, Ed2kEncodeError> {
+        let opcode = OP_SIGNATURE;
+        let mut payload = Vec::with_capacity(1 + sig.signature_bytes.len());
+        payload.push(sig.signature_bytes.len() as u8);
+        payload.extend_from_slice(&sig.signature_bytes);
+
+        let frame_len = 1 + payload.len();
+        let max_frame = self.limits.max_frame_for_opcode(opcode);
+        if frame_len > max_frame {
+            return Err(Ed2kEncodeError::new(
+                opcode,
+                "signature_frame_len",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: frame_len,
+                    limit: max_frame,
+                },
+            ));
+        }
+
+        Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
+    }
+
+    /// Encodes an `OP_SECIDENTSTATE` (`0x86`) message into a `RawPacket`.
+    pub fn encode_secident_state(&self, state: &Ed2kSecIdentState) -> Result<RawPacket, Ed2kEncodeError> {
+        let opcode = OP_SECIDENTSTATE;
+        let mut payload = Vec::with_capacity(5);
+        payload.push(state.state);
+        payload.extend_from_slice(&state.challenge.to_le_bytes());
+
+        let frame_len = 1 + payload.len();
+        let max_frame = self.limits.max_frame_for_opcode(opcode);
+        if frame_len > max_frame {
+            return Err(Ed2kEncodeError::new(
+                opcode,
+                "secident_state_frame_len",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: frame_len,
+                    limit: max_frame,
+                },
+            ));
+        }
+
+        Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
+    }
+
     /// Encodes any `Ed2kMessage` into its `RawPacket` representation.
     pub fn encode_message(&self, msg: &Ed2kMessage) -> Result<RawPacket, Ed2kEncodeError> {
         match msg {
@@ -648,6 +719,9 @@ impl Ed2kEncoder {
             Ed2kMessage::FileReqAnsNoFile(ans) => self.encode_file_req_ans_no_file(ans),
             Ed2kMessage::RequestParts(req) => self.encode_request_parts(req),
             Ed2kMessage::SendingPart(part) => self.encode_sending_part(part),
+            Ed2kMessage::PublicKey(key) => self.encode_public_key(key),
+            Ed2kMessage::Signature(sig) => self.encode_signature(sig),
+            Ed2kMessage::SecIdentState(state) => self.encode_secident_state(state),
             Ed2kMessage::Raw(raw) => {
                 let frame_len = raw.frame_len();
                 let max_frame = self.limits.max_frame_for_opcode(raw.opcode);

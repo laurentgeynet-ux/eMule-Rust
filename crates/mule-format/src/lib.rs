@@ -2,7 +2,12 @@ pub mod aich;
 pub mod ed2k;
 pub mod error;
 pub mod fixtures;
+pub mod kad;
 pub mod met;
+
+pub use kad::{
+    KadContactEntry, NodesDatFile, MAX_NODES_COUNT, MAX_NODES_DAT_SIZE, MAX_TAGS_PER_NODE,
+};
 
 pub use aich::{
     calculate_aich_root, compute_expected_path, verify_aich_proof, AichHash, AichNode, AichProof,

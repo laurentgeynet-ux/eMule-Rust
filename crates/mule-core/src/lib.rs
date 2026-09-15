@@ -1,14 +1,19 @@
 pub mod error;
+pub mod kad;
 pub mod model;
 pub mod persistence;
 pub mod ranges;
 pub mod storage;
 pub mod verification;
 
+pub use kad::{
+    KBucket, KBucketTable, KadContact, KadId, K_BUCKET_SIZE, NUM_BUCKETS, REPLACEMENT_CACHE_SIZE,
+};
+
 pub use error::CoreError;
 pub use model::{
     Download, DownloadCategory, DownloadStatus, Ed2kServer, HistoryEntry, HistoryFilter,
-    HistoryStats, ServerFilterStatus,
+    HistoryStats, PeerSource, PeerSourceOrigin, PeerSourceStatus, ServerFilterStatus,
 };
 pub use persistence::Database;
 pub use ranges::RangeSet;

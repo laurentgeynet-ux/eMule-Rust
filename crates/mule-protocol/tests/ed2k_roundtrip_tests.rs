@@ -1729,3 +1729,51 @@ fn test_tier3_op_file_status_complete_file_zero_parts_emule050a() {
         mule_protocol::ed2k::Ed2kErrorKind::MalformedField { .. }
     ));
 }
+
+#[test]
+fn test_secure_ident_messages_roundtrip() {
+    let encoder = Ed2kEncoder::default();
+    let decoder = Ed2kDecoder::default();
+
+    // 1. OP_PUBLICKEY (0x85)
+    let pub_key = mule_protocol::ed2k::Ed2kPublicKey {
+        key_bytes: bytes::Bytes::from_static(&[0x30, 0x5c, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48]),
+    };
+    let pkt = encoder.encode_public_key(&pub_key).unwrap();
+    assert_eq!(pkt.protocol, mule_protocol::ed2k::PR_EMULE);
+    assert_eq!(pkt.opcode, mule_protocol::ed2k::OP_PUBLICKEY);
+    let decoded = decoder.decode_public_key(pkt.protocol, pkt.opcode, &pkt.payload, 0).unwrap();
+    assert_eq!(decoded.key_bytes, pub_key.key_bytes);
+
+    // 2. OP_SIGNATURE (0x87)
+    let signature = mule_protocol::ed2k::Ed2kSignature {
+        signature_bytes: bytes::Bytes::from_static(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]),
+    };
+    let sig_pkt = encoder.encode_signature(&signature).unwrap();
+    assert_eq!(sig_pkt.protocol, mule_protocol::ed2k::PR_EMULE);
+    assert_eq!(sig_pkt.opcode, mule_protocol::ed2k::OP_SIGNATURE);
+    let dec_sig = decoder.decode_signature(sig_pkt.protocol, sig_pkt.opcode, &sig_pkt.payload, 0).unwrap();
+    assert_eq!(dec_sig.signature_bytes, signature.signature_bytes);
+
+    // 3. OP_SECIDENTSTATE (0x86)
+    let sec_state = mule_protocol::ed2k::Ed2kSecIdentState {
+        state: 1,
+        challenge: 0x12345678,
+    };
+    let state_pkt = encoder.encode_secident_state(&sec_state).unwrap();
+    assert_eq!(state_pkt.protocol, mule_protocol::ed2k::PR_EMULE);
+    assert_eq!(state_pkt.opcode, mule_protocol::ed2k::OP_SECIDENTSTATE);
+    let dec_state = decoder.decode_secident_state(state_pkt.protocol, state_pkt.opcode, &state_pkt.payload, 0).unwrap();
+    assert_eq!(dec_state.state, 1);
+    assert_eq!(dec_state.challenge, 0x12345678);
+
+    // High level decode_raw_packet tests
+    let dec_msg_key = decoder.decode_raw_packet(&pkt).unwrap();
+    assert_eq!(dec_msg_key, mule_protocol::ed2k::Ed2kMessage::PublicKey(pub_key));
+
+    let dec_msg_sig = decoder.decode_raw_packet(&sig_pkt).unwrap();
+    assert_eq!(dec_msg_sig, mule_protocol::ed2k::Ed2kMessage::Signature(signature));
+
+    let dec_msg_state = decoder.decode_raw_packet(&state_pkt).unwrap();
+    assert_eq!(dec_msg_state, mule_protocol::ed2k::Ed2kMessage::SecIdentState(sec_state));
+}

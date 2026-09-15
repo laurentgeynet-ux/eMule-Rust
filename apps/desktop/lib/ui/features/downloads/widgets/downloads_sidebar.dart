@@ -261,6 +261,15 @@ class DownloadsSidebar extends StatelessWidget {
                     count: viewModel.searchResults.isNotEmpty ? viewModel.searchResults.length : null,
                   ),
 
+                  // Kad DHT Nav Item (Phase 12.0a)
+                  _buildNavItem(
+                    title: 'Kad DHT',
+                    icon: Icons.hub_rounded,
+                    isSelected: viewModel.currentSection == AppNavSection.kad,
+                    onTap: () => viewModel.setSection(AppNavSection.kad),
+                    count: viewModel.kadStatus.totalContacts > 0 ? viewModel.kadStatus.totalContacts : null,
+                  ),
+
                   const SizedBox(height: 4),
 
                   // Settings Button

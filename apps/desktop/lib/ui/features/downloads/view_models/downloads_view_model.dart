@@ -23,6 +23,7 @@ enum AppNavSection {
   history,
   servers,
   search,
+  kad,
 }
 
 enum DownloadFilter {
@@ -87,12 +88,22 @@ class DownloadsViewModel extends ChangeNotifier {
   bool _isSearching = false;
   String? _lastSearchTerm;
 
+  final Map<String, List<PeerSourceModel>> _peerSources = {};
+  bool _isSourcesLoading = false;
+  PeerSessionModel _peerSession = PeerSessionModel.disconnected;
+  bool _isPeerConnecting = false;
+
+  KadStatusModel _kadStatus = KadStatusModel.initial;
+  List<KadContactModel> _kadContacts = [];
+  bool _isKadLoading = false;
+
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
   StreamSubscription<List<SearchResultFileModel>>? _searchResultSub;
   StreamSubscription<Map<String, dynamic>>? _foundSourcesSub;
+  StreamSubscription<PeerSessionModel>? _peerSessionSub;
 
   DownloadsViewModel({
     required this.client,
@@ -125,6 +136,16 @@ class DownloadsViewModel extends ChangeNotifier {
       final rawSources = params['sources'] as List<dynamic>? ?? [];
       final hash = params['file_hash'] as String? ?? '';
       _statusNotification = '${rawSources.length} source(s) trouvée(s) pour $hash';
+      if (hash.isNotEmpty) {
+        loadSourcesForHash(hash);
+      }
+      notifyListeners();
+    });
+
+    _peerSessionSub = client.peerSessionEvents.listen((session) {
+      _peerSession = session;
+      _isPeerConnecting = session.status == PeerConnectionStatus.connecting ||
+          session.status == PeerConnectionStatus.handshaking;
       notifyListeners();
     });
 
@@ -341,6 +362,9 @@ class DownloadsViewModel extends ChangeNotifier {
       fetchHistory();
     } else if (section == AppNavSection.servers) {
       fetchServers();
+    } else if (section == AppNavSection.kad) {
+      fetchKadStatus();
+      fetchKadContacts();
     }
     notifyListeners();
   }
@@ -1210,6 +1234,263 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
+  // --- Peer Sources & Session ---
+
+  bool get isSourcesLoading => _isSourcesLoading;
+  PeerSessionModel get peerSession => _peerSession;
+  bool get isPeerConnecting => _isPeerConnecting;
+
+  List<PeerSourceModel> getSourcesForHash(String fileHash) {
+    return _peerSources[fileHash] ?? [];
+  }
+
+  Future<void> loadSourcesForHash(String fileHash) async {
+    _isSourcesLoading = true;
+    notifyListeners();
+    try {
+      final sources = await client.listSources(fileHash);
+      _peerSources[fileHash] = sources;
+    } catch (e) {
+      _errorMessage = 'Échec du chargement des sources : $e';
+    } finally {
+      _isSourcesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> addManualSource(String fileHash, String address) async {
+    try {
+      final src = await client.addManualSource(fileHash, address);
+      final list = _peerSources.putIfAbsent(fileHash, () => []);
+      list.removeWhere((s) => s.address == address);
+      list.insert(0, src);
+      _statusNotification = 'Source $address ajoutée';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'ajout de la source : $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> connectPeerSource(String fileHash, String address, {bool force = false}) async {
+    _isPeerConnecting = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      _peerSession = await client.connectPeerSource(fileHash, address, force: force);
+      _statusNotification = 'Connexion à $address initialisée';
+      await loadSourcesForHash(fileHash);
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de la connexion à la source : $e';
+      await loadSourcesForHash(fileHash);
+      return false;
+    } finally {
+      _isPeerConnecting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> disconnectPeerSource({String? address}) async {
+    try {
+      _peerSession = await client.disconnectPeerSource(address: address);
+      _statusNotification = address != null
+          ? 'Peer $address déconnecté'
+          : 'Session(s) peer déconnectée(s)';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Échec de la déconnexion peer : $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearSourcesForHash(String fileHash) async {
+    try {
+      await client.clearSources(fileHash);
+      _peerSources.remove(fileHash);
+      _statusNotification = 'Sources effacées';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Échec de l\'effacement des sources : $e';
+      notifyListeners();
+    }
+  }
+
+  // --- Kad DHT (Phase 12.0a) ---
+
+  KadStatusModel get kadStatus => _kadStatus;
+  List<KadContactModel> get kadContacts => _kadContacts;
+  bool get isKadLoading => _isKadLoading;
+
+  Future<void> fetchKadStatus() async {
+    try {
+      _kadStatus = await client.getKadStatus();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Failed to fetch Kad status: $e');
+    }
+  }
+
+  Future<void> fetchKadContacts({int limit = 100}) async {
+    _isKadLoading = true;
+    notifyListeners();
+    try {
+      _kadContacts = await client.listKadContacts(limit: limit);
+      _errorMessage = null;
+    } catch (e) {
+      _errorMessage = 'Échec de la récupération des contacts Kad : $e';
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<NodesDatInspectReportModel?> inspectNodesDat(String filePath) async {
+    try {
+      return await client.inspectNodesDat(filePath);
+    } catch (e) {
+      _errorMessage = 'Échec de l\'inspection de nodes.dat : $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> importNodesDat(String filePath) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final res = await client.importNodesDat(filePath);
+      final count = res['importedCount'] ?? 0;
+      _statusNotification = 'Importé $count contacts Kad dans la table K-buckets';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'importation de nodes.dat : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearKadContacts() async {
+    try {
+      final count = await client.clearKadContacts();
+      _statusNotification = 'Effacé $count contacts Kad';
+      await fetchKadStatus();
+      await fetchKadContacts();
+    } catch (e) {
+      _errorMessage = 'Échec de l\'effacement des contacts Kad : $e';
+      notifyListeners();
+    }
+  }
+
+  Future<bool> startKadUdp({String? bindAddress}) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await client.startKadUdp(bindAddress: bindAddress);
+      _statusNotification = 'Socket UDP Kad démarré sur ${bindAddress ?? "127.0.0.1:4672"}';
+      await fetchKadStatus();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec du démarrage UDP Kad : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> stopKadUdp() async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await client.stopKadUdp();
+      _statusNotification = 'Socket UDP Kad arrêté';
+      await fetchKadStatus();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'arrêt UDP Kad : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<int?> pingKadContact({
+    required String ip,
+    required int port,
+    String? kadId,
+  }) async {
+    try {
+      final res = await client.pingKadContact(ip: ip, port: port, kadId: kadId);
+      final latency = (res['latencyMs'] as num?)?.toInt() ?? 0;
+      _statusNotification = 'Pong reçu de $ip:$port en ${latency}ms';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return latency;
+    } catch (e) {
+      _errorMessage = 'Échec du ping Kad ($ip:$port) : $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> bootstrapKad({
+    required String ip,
+    required int port,
+  }) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final res = await client.bootstrapKad(ip: ip, port: port);
+      final count = (res['receivedContacts'] as num?)?.toInt() ?? 0;
+      _statusNotification = 'Amorçage Kad réussi ($count contacts reçus)';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'amorçage Kad : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<KadContactModel>> findKadNode(String targetId) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final contacts = await client.findKadNode(targetId);
+      _statusNotification = 'Recherche Kad : ${contacts.length} nœuds les plus proches trouvés';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return contacts;
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche Kad : $e';
+      notifyListeners();
+      return const [];
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _connSub?.cancel();
@@ -1218,6 +1499,7 @@ class DownloadsViewModel extends ChangeNotifier {
     _instanceSub?.cancel();
     _searchResultSub?.cancel();
     _foundSourcesSub?.cancel();
+    _peerSessionSub?.cancel();
     supervisor?.dispose();
     client.dispose();
     super.dispose();
