@@ -21,6 +21,18 @@ pub const OP_SERVERMESSAGE: u8 = 0x38;
 /// Server assigns client ID and TCP flags (`0x40`).
 pub const OP_IDCHANGE: u8 = 0x40;
 
+/// Search request sent by client to server (`0x16`).
+pub const OP_SEARCHREQUEST: u8 = 0x16;
+
+/// Search result sent by server to client (`0x33`).
+pub const OP_SEARCH_RESULT: u8 = 0x33;
+
+/// Get sources request sent by client to server for a file (`0x19`).
+pub const OP_GETSOURCES: u8 = 0x19;
+
+/// Found sources response sent by server to client (`0x42`).
+pub const OP_FOUNDSOURCES: u8 = 0x42;
+
 /// Handshake response packet (`0x4C`).
 pub const OP_HELLO_ANSWER: u8 = 0x4C;
 /// Alias for OP_HELLO_ANSWER (`0x4C`).
@@ -126,6 +138,10 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_IDCHANGE => "OP_IDCHANGE",
             OP_SERVERSTATUS => "OP_SERVERSTATUS",
             OP_SERVERIDENT => "OP_SERVERIDENT",
+            OP_SEARCHREQUEST => "OP_SEARCHREQUEST",
+            OP_SEARCH_RESULT => "OP_SEARCH_RESULT",
+            OP_GETSOURCES => "OP_GETSOURCES",
+            OP_FOUNDSOURCES => "OP_FOUNDSOURCES",
             OP_OFFERFILES => "OP_OFFERFILES",
             OP_SENDINGPART => "OP_SENDINGPART",
             OP_SETREQFILEID => "OP_SETREQFILEID",

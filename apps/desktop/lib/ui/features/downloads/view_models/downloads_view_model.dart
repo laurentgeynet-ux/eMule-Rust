@@ -22,6 +22,7 @@ enum AppNavSection {
   downloads,
   history,
   servers,
+  search,
 }
 
 enum DownloadFilter {
@@ -82,10 +83,16 @@ class DownloadsViewModel extends ChangeNotifier {
   ServerSessionModel _serverSession = ServerSessionModel.disconnected;
   bool _isServerConnecting = false;
 
+  final List<SearchResultFileModel> _searchResults = [];
+  bool _isSearching = false;
+  String? _lastSearchTerm;
+
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
+  StreamSubscription<List<SearchResultFileModel>>? _searchResultSub;
+  StreamSubscription<Map<String, dynamic>>? _foundSourcesSub;
 
   DownloadsViewModel({
     required this.client,
@@ -99,6 +106,25 @@ class DownloadsViewModel extends ChangeNotifier {
 
     _eventSub = client.downloadEvents.listen((event) {
       _downloads[event.download.id] = event.download;
+      notifyListeners();
+    });
+
+    _searchResultSub = client.searchResultEvents.listen((files) {
+      final existingHashes = _searchResults.map((f) => f.fileHash).toSet();
+      for (final f in files) {
+        if (!existingHashes.contains(f.fileHash)) {
+          _searchResults.add(f);
+          existingHashes.add(f.fileHash);
+        }
+      }
+      _isSearching = false;
+      notifyListeners();
+    });
+
+    _foundSourcesSub = client.foundSourcesEvents.listen((params) {
+      final rawSources = params['sources'] as List<dynamic>? ?? [];
+      final hash = params['file_hash'] as String? ?? '';
+      _statusNotification = '${rawSources.length} source(s) trouvée(s) pour $hash';
       notifyListeners();
     });
 
@@ -1118,12 +1144,80 @@ class DownloadsViewModel extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // ── eD2K Server Search & Sources ──────────────────────────────────────────
+
+  List<SearchResultFileModel> get searchResults => _searchResults;
+  bool get isSearching => _isSearching;
+  String? get lastSearchTerm => _lastSearchTerm;
+
+  Future<void> searchServer({
+    required String term,
+    int? minSize,
+    int? maxSize,
+    String? extension,
+  }) async {
+    final trimmed = term.trim();
+    if (trimmed.isEmpty) return;
+    _isSearching = true;
+    _searchResults.clear();
+    _lastSearchTerm = trimmed;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await client.searchServer(
+        term: trimmed,
+        minSize: minSize,
+        maxSize: maxSize,
+        extension: extension,
+      );
+      _statusNotification = 'Recherche "$trimmed" envoyée au serveur';
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche : $e';
+      _isSearching = false;
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  void clearSearchResults() {
+    _searchResults.clear();
+    _isSearching = false;
+    _lastSearchTerm = null;
+    notifyListeners();
+  }
+
+  Future<bool> downloadSearchResult(
+    SearchResultFileModel file, {
+    String? categoryId,
+    String? targetDirectory,
+  }) async {
+    return addEd2kLink(
+      file.ed2kLink,
+      categoryId: categoryId,
+      targetDirectory: targetDirectory,
+    );
+  }
+
+  Future<void> queryServerSources(String fileHash, {int? fileSize}) async {
+    try {
+      await client.queryServerSources(fileHash: fileHash, fileSize: fileSize);
+      _statusNotification = 'Demande de sources envoyée pour $fileHash';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Échec de la demande de sources : $e';
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _connSub?.cancel();
     _eventSub?.cancel();
     _supervisorSub?.cancel();
     _instanceSub?.cancel();
+    _searchResultSub?.cancel();
+    _foundSourcesSub?.cancel();
     supervisor?.dispose();
     client.dispose();
     super.dispose();

@@ -217,6 +217,26 @@ abstract class MuleDaemonClient {
   /// Get current eD2K server session status.
   Future<ServerSessionModel> getServerStatus();
 
+  /// Send a search query to the connected eD2K server.
+  Future<void> searchServer({
+    required String term,
+    int? minSize,
+    int? maxSize,
+    String? extension,
+  });
+
+  /// Request sources from the connected eD2K server for a file hash.
+  Future<void> queryServerSources({
+    required String fileHash,
+    int? fileSize,
+  });
+
+  /// Stream of search result events.
+  Stream<List<SearchResultFileModel>> get searchResultEvents;
+
+  /// Stream of found sources events.
+  Stream<Map<String, dynamic>> get foundSourcesEvents;
+
   /// Clean up any resources/sockets.
   void dispose();
 }

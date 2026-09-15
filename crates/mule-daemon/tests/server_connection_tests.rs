@@ -8,7 +8,10 @@ use mule_daemon::rpc::methods::handle_request;
 use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_network_policy::NetworkProfile;
-use mule_protocol::ed2k::{OP_IDCHANGE, OP_LOGINREQUEST, OP_SERVERMESSAGE, OP_SERVERSTATUS};
+use mule_protocol::ed2k::{
+    OP_FOUNDSOURCES, OP_GETSOURCES, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST,
+    OP_SEARCH_RESULT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
+};
 use mule_protocol::PR_ED2K;
 
 fn setup_test_state() -> (AppState, tempfile::TempDir) {
@@ -240,6 +243,180 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
     let check_req = make_req(5, "servers.status", None);
     let check_resp = handle_request(&state, check_req, &mut authenticated).await.unwrap();
     assert_eq!(check_resp.result.unwrap()["status"], "disconnected");
+
+    mock_task.abort();
+}
+
+#[tokio::test]
+async fn test_server_search_and_query_sources() {
+    let (state, _dir) = setup_test_state();
+    let mut authenticated = true;
+
+    // 1. Unconnected calls must be rejected
+    let search_req = make_req(1, "servers.search", Some(json!({ "term": "linux" })));
+    let search_resp = handle_request(&state, search_req, &mut authenticated).await.unwrap();
+    assert!(search_resp.error.is_some(), "Search while disconnected must fail");
+
+    let sources_req = make_req(2, "servers.querySources", Some(json!({
+        "fileHash": "0102030405060708090a0b0c0d0e0f10",
+        "fileSize": 5000
+    })));
+    let sources_resp = handle_request(&state, sources_req, &mut authenticated).await.unwrap();
+    assert!(sources_resp.error.is_some(), "Query sources while disconnected must fail");
+
+    // 2. Setup mock server on 127.0.0.1
+    state.network_policy.enable();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mock_addr = listener.local_addr().unwrap();
+
+    let mut event_rx = state.event_tx.subscribe();
+
+    let mock_task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+
+        // A. Read OP_LOGINREQUEST
+        let mut proto_hdr = [0u8; 6];
+        socket.read_exact(&mut proto_hdr).await.unwrap();
+        let payload_len = u32::from_le_bytes(proto_hdr[1..5].try_into().unwrap()) as usize - 1;
+        let mut login_payload = vec![0u8; payload_len];
+        socket.read_exact(&mut login_payload).await.unwrap();
+
+        // Send OP_IDCHANGE (HighID)
+        let mut id_pkt = Vec::new();
+        id_pkt.push(PR_ED2K);
+        id_pkt.extend_from_slice(&(9u32).to_le_bytes()); // 1 opcode + 8 payload
+        id_pkt.push(OP_IDCHANGE);
+        id_pkt.extend_from_slice(&25_000_000u32.to_le_bytes());
+        id_pkt.extend_from_slice(&1u32.to_le_bytes());
+        socket.write_all(&id_pkt).await.unwrap();
+
+        // B. Read OP_SEARCHREQUEST
+        let mut search_hdr = [0u8; 6];
+        socket.read_exact(&mut search_hdr).await.unwrap();
+        assert_eq!(search_hdr[0], PR_ED2K);
+        assert_eq!(search_hdr[5], OP_SEARCHREQUEST);
+        let search_payload_len = u32::from_le_bytes(search_hdr[1..5].try_into().unwrap()) as usize - 1;
+        let mut search_payload = vec![0u8; search_payload_len];
+        socket.read_exact(&mut search_payload).await.unwrap();
+
+        // Send OP_SEARCH_RESULT (1 file)
+        let mut res_payload = Vec::new();
+        res_payload.extend_from_slice(&1u32.to_le_bytes()); // 1 file
+        let file_hash = [0xabu8; 16];
+        res_payload.extend_from_slice(&file_hash);
+        res_payload.extend_from_slice(&100u32.to_le_bytes()); // client_id
+        res_payload.extend_from_slice(&4662u16.to_le_bytes()); // client_port
+        res_payload.extend_from_slice(&2u32.to_le_bytes()); // 2 tags
+
+        // Tag 1: filename
+        let fname = "test_file.iso";
+        res_payload.push(0x02); // TAGTYPE_STRING
+        res_payload.extend_from_slice(&1u16.to_le_bytes());
+        res_payload.push(mule_protocol::ed2k::TAG_SPECIAL_NAME);
+        res_payload.extend_from_slice(&(fname.len() as u16).to_le_bytes());
+        res_payload.extend_from_slice(fname.as_bytes());
+
+        // Tag 2: filesize
+        res_payload.push(0x03); // TAGTYPE_UINT32
+        res_payload.extend_from_slice(&1u16.to_le_bytes());
+        res_payload.push(mule_protocol::ed2k::TAG_SPECIAL_FILESIZE);
+        res_payload.extend_from_slice(&123456u32.to_le_bytes());
+
+        let mut res_pkt = Vec::new();
+        res_pkt.push(PR_ED2K);
+        res_pkt.extend_from_slice(&((res_payload.len() + 1) as u32).to_le_bytes());
+        res_pkt.push(OP_SEARCH_RESULT);
+        res_pkt.extend_from_slice(&res_payload);
+        socket.write_all(&res_pkt).await.unwrap();
+
+        // C. Read OP_GETSOURCES
+        let mut get_src_hdr = [0u8; 6];
+        socket.read_exact(&mut get_src_hdr).await.unwrap();
+        assert_eq!(get_src_hdr[0], PR_ED2K);
+        assert_eq!(get_src_hdr[5], OP_GETSOURCES);
+        let src_payload_len = u32::from_le_bytes(get_src_hdr[1..5].try_into().unwrap()) as usize - 1;
+        let mut get_src_payload = vec![0u8; src_payload_len];
+        socket.read_exact(&mut get_src_payload).await.unwrap();
+
+        // Send OP_FOUNDSOURCES (1 source)
+        let mut found_payload = Vec::new();
+        found_payload.extend_from_slice(&[0xabu8; 16]); // file_hash
+        found_payload.push(1u8); // 1 source
+        let ip_val: u32 = 127 | (0 << 8) | (0 << 16) | (1 << 24);
+        found_payload.extend_from_slice(&ip_val.to_le_bytes());
+        found_payload.extend_from_slice(&4662u16.to_le_bytes());
+
+        let mut found_pkt = Vec::new();
+        found_pkt.push(PR_ED2K);
+        found_pkt.extend_from_slice(&((found_payload.len() + 1) as u32).to_le_bytes());
+        found_pkt.push(OP_FOUNDSOURCES);
+        found_pkt.extend_from_slice(&found_payload);
+        socket.write_all(&found_pkt).await.unwrap();
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    });
+
+    // Connect
+    let connect_req = make_req(3, "servers.connect", Some(json!({ "address": mock_addr.to_string() })));
+    let connect_resp = handle_request(&state, connect_req, &mut authenticated).await.unwrap();
+    assert!(connect_resp.error.is_none());
+
+    // Wait for connected
+    let mut is_connected = false;
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let st_resp = handle_request(&state, make_req(4, "servers.status", None), &mut authenticated).await.unwrap();
+        if st_resp.result.unwrap()["status"] == "connected" {
+            is_connected = true;
+            break;
+        }
+    }
+    assert!(is_connected, "Session must reach connected state");
+
+    // Perform search
+    let search_req = make_req(5, "servers.search", Some(json!({ "term": "test" })));
+    let search_resp = handle_request(&state, search_req, &mut authenticated).await.unwrap();
+    assert!(search_resp.error.is_none(), "Search request sent successfully");
+    assert_eq!(search_resp.result.unwrap()["sent"], true);
+
+    // Perform get sources
+    let qsrc_req = make_req(6, "servers.querySources", Some(json!({
+        "fileHash": "abababababababababababababababab",
+        "fileSize": 123456
+    })));
+    let qsrc_resp = handle_request(&state, qsrc_req, &mut authenticated).await.unwrap();
+    assert!(qsrc_resp.error.is_none(), "Query sources request sent successfully");
+    assert_eq!(qsrc_resp.result.unwrap()["sent"], true);
+
+    // Verify events were emitted
+    let mut received_search_result = false;
+    let mut received_found_sources = false;
+    for _ in 0..20 {
+        if let Ok(evt_str) = tokio::time::timeout(Duration::from_millis(100), event_rx.recv()).await {
+            if let Ok(val) = serde_json::from_str::<Value>(&evt_str.unwrap_or_default()) {
+                if val["method"] == "server.searchResult" {
+                    received_search_result = true;
+                    let files = val["params"]["files"].as_array().unwrap();
+                    assert_eq!(files.len(), 1);
+                    assert_eq!(files[0]["fileName"], "test_file.iso");
+                    assert_eq!(files[0]["fileSize"], 123456);
+                }
+                if val["method"] == "server.foundSources" {
+                    received_found_sources = true;
+                    assert_eq!(val["params"]["fileHash"], "abababababababababababababababab");
+                    let sources = val["params"]["sources"].as_array().unwrap();
+                    assert_eq!(sources.len(), 1);
+                    assert_eq!(sources[0]["address"], "127.0.0.1:4662");
+                }
+            }
+        }
+        if received_search_result && received_found_sources {
+            break;
+        }
+    }
+
+    assert!(received_search_result, "Must receive server.searchResult notification");
+    assert!(received_found_sources, "Must receive server.foundSources notification");
 
     mock_task.abort();
 }

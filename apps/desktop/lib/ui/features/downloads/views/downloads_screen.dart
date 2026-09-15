@@ -17,6 +17,7 @@ import '../widgets/network_policy_dialog.dart';
 import '../widgets/ip_filter_dialog.dart';
 import '../../history/views/history_view.dart';
 import '../../servers/views/servers_screen.dart';
+import '../../search/views/search_screen.dart';
 
 class DownloadsScreen extends StatelessWidget {
   final DownloadsViewModel viewModel;
@@ -59,6 +60,10 @@ class DownloadsScreen extends StatelessWidget {
                     ] else if (viewModel.currentSection == AppNavSection.servers) ...[
                       Expanded(
                         child: ServersView(viewModel: viewModel),
+                      ),
+                    ] else if (viewModel.currentSection == AppNavSection.search) ...[
+                      Expanded(
+                        child: SearchView(viewModel: viewModel),
                       ),
                     ] else ...[
                       // Top Navigation / Actions Bar

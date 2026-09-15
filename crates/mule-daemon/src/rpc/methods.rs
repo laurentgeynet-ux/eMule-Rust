@@ -79,6 +79,8 @@ pub async fn handle_request(
         "servers.connect" => handle_servers_connect(state, req.params).await,
         "servers.disconnect" => handle_servers_disconnect(state).await,
         "servers.status" => handle_servers_status(state).await,
+        "servers.search" => handle_servers_search(state, req.params).await,
+        "servers.querySources" => handle_servers_query_sources(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -146,6 +148,8 @@ fn handle_hello(
         "rate-limits",
         "servers",
         "server-connection",
+        "server-search",
+        "server-sources",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -175,6 +179,8 @@ async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "rate-limits",
         "servers",
         "server-connection",
+        "server-search",
+        "server-sources",
         #[cfg(feature = "lab-tools")]
         "lab-tools",
     ];
@@ -1799,5 +1805,51 @@ async fn handle_servers_disconnect(state: &AppState) -> Result<Value, JsonRpcErr
 async fn handle_servers_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let snapshot = state.server_session.snapshot().await;
     Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+async fn handle_servers_search(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let term = params["term"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'term' parameter for search"))?;
+
+    let mut query = mule_protocol::ed2k::SearchQuery::new(term);
+    query.min_size = params["minSize"].as_u64();
+    query.max_size = params["maxSize"].as_u64();
+    query.extension = params["extension"].as_str().map(|s| s.to_string());
+
+    state.server_session.search(query).await?;
+    Ok(json!({ "sent": true }))
+}
+
+async fn handle_servers_query_sources(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let hash_str = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+
+    let file_size = params["fileSize"]
+        .as_u64()
+        .or_else(|| params["size"].as_u64())
+        .unwrap_or(0);
+
+    let raw_bytes = hex::decode(hash_str)
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid file hash hex: {e}")))?;
+    if raw_bytes.len() != 16 {
+        return Err(JsonRpcError::invalid_params("File hash must be exactly 16 bytes (32 hex characters)"));
+    }
+    let mut file_hash = [0u8; 16];
+    file_hash.copy_from_slice(&raw_bytes);
+
+    let req = mule_protocol::ed2k::GetSourcesRequest::new(file_hash, file_size);
+    state.server_session.get_sources(req).await?;
+    Ok(json!({ "sent": true }))
 }
 

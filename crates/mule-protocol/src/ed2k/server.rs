@@ -9,11 +9,13 @@ use super::encoder::Ed2kEncoder;
 use super::error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
-    OP_IDCHANGE, OP_LOGINREQUEST, OP_SERVERIDENT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
+    OP_FOUNDSOURCES, OP_GETSOURCES, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST,
+    OP_SEARCH_RESULT, OP_SERVERIDENT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
 };
 use super::protocol::PR_ED2K;
 use super::tags::{
-    Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+    Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE,
+    TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
 use crate::framing::RawPacket;
 
@@ -151,6 +153,10 @@ pub enum ServerResponse {
     Status(ServerStatus),
     /// Server identification and metadata.
     Ident(ServerIdent),
+    /// Search results returned by server.
+    SearchResult(SearchResult),
+    /// Sources returned by server for a requested file hash.
+    FoundSources(FoundSources),
     /// Other unparsed packet.
     Other {
         /// Opcode of unparsed packet.
@@ -158,6 +164,237 @@ pub enum ServerResponse {
         /// Raw payload bytes.
         payload: Bytes,
     },
+}
+
+/// Request to search files on an eD2K server (`OP_SEARCHREQUEST` = `0x16`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchQuery {
+    /// Text search query string.
+    pub term: String,
+    /// Optional minimum file size filter in bytes.
+    pub min_size: Option<u64>,
+    /// Optional maximum file size filter in bytes.
+    pub max_size: Option<u64>,
+    /// Optional file extension / format filter (e.g. "iso", "zip").
+    pub extension: Option<String>,
+}
+
+impl SearchQuery {
+    /// Creates a simple search query by keyword.
+    pub fn new(term: impl Into<String>) -> Self {
+        Self {
+            term: term.into(),
+            min_size: None,
+            max_size: None,
+            extension: None,
+        }
+    }
+
+    /// Encodes the search request into a `RawPacket`.
+    pub fn encode(&self, limits: &Ed2kLimits) -> Result<RawPacket, Ed2kEncodeError> {
+        let mut buf = Vec::new();
+
+        // Historical standard simple eD2K search request:
+        // string (2-byte len + bytes)
+        let term_bytes = self.term.as_bytes();
+        if term_bytes.len() > limits.max_string_bytes {
+            return Err(Ed2kEncodeError::new(
+                OP_SEARCHREQUEST,
+                "term",
+                Ed2kErrorKind::OversizedString {
+                    size: term_bytes.len(),
+                    limit: limits.max_string_bytes,
+                },
+            ));
+        }
+
+        buf.extend_from_slice(&(term_bytes.len() as u16).to_le_bytes());
+        buf.extend_from_slice(term_bytes);
+
+        // Optional parameters encoded as eD2K tags if present
+        let mut tags = Vec::new();
+        if let Some(min) = self.min_size {
+            if min <= u32::MAX as u64 {
+                tags.push(Ed2kTag {
+                    name: TagName::Text("min_size".to_string()),
+                    value: TagValue::UInt32(min as u32),
+                });
+            } else {
+                tags.push(Ed2kTag {
+                    name: TagName::Text("min_size".to_string()),
+                    value: TagValue::UInt64(min),
+                });
+            }
+        }
+        if let Some(max) = self.max_size {
+            if max <= u32::MAX as u64 {
+                tags.push(Ed2kTag {
+                    name: TagName::Text("max_size".to_string()),
+                    value: TagValue::UInt32(max as u32),
+                });
+            } else {
+                tags.push(Ed2kTag {
+                    name: TagName::Text("max_size".to_string()),
+                    value: TagValue::UInt64(max),
+                });
+            }
+        }
+        if let Some(ext) = &self.extension {
+            tags.push(Ed2kTag {
+                name: TagName::Id(TAG_SPECIAL_FILETYPE),
+                value: TagValue::String(ext.clone()),
+            });
+        }
+
+        if !tags.is_empty() {
+            let encoder = Ed2kEncoder::with_limits(limits.clone());
+            buf.extend_from_slice(&(tags.len() as u32).to_le_bytes());
+            for tag in &tags {
+                encoder.encode_tag(OP_SEARCHREQUEST, tag, &mut buf)?;
+            }
+        }
+
+        let payload_len = buf.len() + 1; // + 1 for opcode
+        if payload_len > limits.max_frame_bytes {
+            return Err(Ed2kEncodeError::new(
+                OP_SEARCHREQUEST,
+                "search_query",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: payload_len,
+                    limit: limits.max_frame_bytes,
+                },
+            ));
+        }
+
+        Ok(RawPacket::with_vec(PR_ED2K, OP_SEARCHREQUEST, buf))
+    }
+}
+
+/// A single file result returned by the server search.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchResultFile {
+    /// 16-byte file hash.
+    pub file_hash: [u8; 16],
+    /// Client ID of the publisher or 0.
+    pub client_id: u32,
+    /// Client port of the publisher or 0.
+    pub client_port: u16,
+    /// File tags (Name, Size, Sources count, etc.).
+    pub tags: Vec<Ed2kTag>,
+}
+
+impl SearchResultFile {
+    /// Helper to extract filename from tags.
+    pub fn name(&self) -> Option<String> {
+        self.tags.iter().find_map(|t| match (&t.name, &t.value) {
+            (TagName::Id(TAG_SPECIAL_NAME), TagValue::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+    }
+
+    /// Helper to extract file size in bytes from tags.
+    pub fn size(&self) -> Option<u64> {
+        self.tags.iter().find_map(|t| match (&t.name, &t.value) {
+            (TagName::Id(TAG_SPECIAL_FILESIZE), TagValue::UInt32(v)) => Some(*v as u64),
+            (TagName::Id(TAG_SPECIAL_FILESIZE), TagValue::UInt64(v)) => Some(*v),
+            _ => None,
+        })
+    }
+
+    /// Helper to extract source count from tags.
+    pub fn source_count(&self) -> Option<u32> {
+        self.tags.iter().find_map(|t| match (&t.name, &t.value) {
+            (TagName::Id(0x15), TagValue::UInt32(v)) => Some(*v),
+            (TagName::Id(0x15), TagValue::UInt16(v)) => Some(*v as u32),
+            (TagName::Text(txt), TagValue::UInt32(v)) if txt.to_lowercase().contains("source") => {
+                Some(*v)
+            }
+            _ => None,
+        })
+    }
+}
+
+/// Search result packet payload (`OP_SEARCH_RESULT` = `0x33`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchResult {
+    /// List of matched files.
+    pub files: Vec<SearchResultFile>,
+}
+
+/// Request to find sources for a specific file (`OP_GETSOURCES` = `0x19`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GetSourcesRequest {
+    /// 16-byte MD4 file hash.
+    pub file_hash: [u8; 16],
+    /// File size in bytes.
+    pub file_size: u64,
+}
+
+impl GetSourcesRequest {
+    /// Creates a new GetSourcesRequest.
+    pub fn new(file_hash: [u8; 16], file_size: u64) -> Self {
+        Self {
+            file_hash,
+            file_size,
+        }
+    }
+
+    /// Encodes the request into a `RawPacket`.
+    pub fn encode(&self, limits: &Ed2kLimits) -> Result<RawPacket, Ed2kEncodeError> {
+        let mut buf = Vec::with_capacity(24);
+        buf.extend_from_slice(&self.file_hash);
+
+        // eD2K standard encodes size as 32-bit uint if <= 4GB, or 64-bit if large
+        if self.file_size <= u32::MAX as u64 {
+            buf.extend_from_slice(&(self.file_size as u32).to_le_bytes());
+        } else {
+            buf.extend_from_slice(&0u32.to_le_bytes());
+            buf.extend_from_slice(&self.file_size.to_le_bytes());
+        }
+
+        let payload_len = buf.len() + 1;
+        if payload_len > limits.max_frame_bytes {
+            return Err(Ed2kEncodeError::new(
+                OP_GETSOURCES,
+                "get_sources",
+                Ed2kErrorKind::FrameTooLarge {
+                    size: payload_len,
+                    limit: limits.max_frame_bytes,
+                },
+            ));
+        }
+
+        Ok(RawPacket::with_vec(PR_ED2K, OP_GETSOURCES, buf))
+    }
+}
+
+/// A peer source entry returned by the server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoundSourcePeer {
+    /// IPv4 address in network byte order or host integer.
+    pub ip: u32,
+    /// Port number.
+    pub port: u16,
+}
+
+impl FoundSourcePeer {
+    /// Converts the source address to "A.B.C.D:port" string format.
+    pub fn to_address_string(&self) -> String {
+        let bytes = self.ip.to_le_bytes();
+        format!(
+            "{}.{}.{}.{}:{}",
+            bytes[0], bytes[1], bytes[2], bytes[3], self.port
+        )
+    }
+}
+
+/// Found sources response from server (`OP_FOUNDSOURCES` = `0x42`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FoundSources {
+    /// 16-byte MD4 file hash.
+    pub file_hash: [u8; 16],
+    /// Sources list.
+    pub sources: Vec<FoundSourcePeer>,
 }
 
 /// Decodes a server packet payload given its opcode and protocol.
@@ -244,6 +481,80 @@ pub fn decode_server_response(
                 port,
                 tags,
                 unknown_tags,
+            }))
+        }
+
+        OP_SEARCH_RESULT => {
+            let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
+            let count = reader.read_u32_le("search_result_count")? as usize;
+
+            if count > limits.max_tags * 4 {
+                return Err(Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    reader.pos() - 4,
+                    "search_result_count",
+                    Ed2kErrorKind::TooManyTags {
+                        count,
+                        limit: limits.max_tags * 4,
+                    },
+                ));
+            }
+
+            let mut files = Vec::with_capacity(count.min(256));
+            for _ in 0..count {
+                let file_hash = reader.read_hash("file_hash")?;
+                let client_id = reader.read_u32_le("client_id")?;
+                let client_port = reader.read_u16_le("client_port")?;
+                let tag_count = reader.read_u32_le("tag_count")? as usize;
+
+                if tag_count > limits.max_tags {
+                    return Err(Ed2kParseError::new(
+                        protocol,
+                        Some(opcode),
+                        reader.pos() - 4,
+                        "file_tag_count",
+                        Ed2kErrorKind::TooManyTags {
+                            count: tag_count,
+                            limit: limits.max_tags,
+                        },
+                    ));
+                }
+
+                let mut tags = Vec::with_capacity(tag_count.min(32));
+                for _ in 0..tag_count {
+                    let (typed_opt, _) = reader.read_tag(limits)?;
+                    if let Some(tag) = typed_opt {
+                        tags.push(tag);
+                    }
+                }
+
+                files.push(SearchResultFile {
+                    file_hash,
+                    client_id,
+                    client_port,
+                    tags,
+                });
+            }
+
+            Ok(ServerResponse::SearchResult(SearchResult { files }))
+        }
+
+        OP_FOUNDSOURCES => {
+            let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
+            let file_hash = reader.read_hash("file_hash")?;
+            let count = reader.read_u8("sources_count")? as usize;
+
+            let mut sources = Vec::with_capacity(count);
+            for _ in 0..count {
+                let ip = reader.read_u32_le("source_ip")?;
+                let port = reader.read_u16_le("source_port")?;
+                sources.push(FoundSourcePeer { ip, port });
+            }
+
+            Ok(ServerResponse::FoundSources(FoundSources {
+                file_hash,
+                sources,
             }))
         }
 

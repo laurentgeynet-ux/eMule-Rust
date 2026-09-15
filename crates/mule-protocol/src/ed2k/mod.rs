@@ -34,10 +34,10 @@ pub use error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 pub use limits::Ed2kLimits;
 pub use opcodes::{
     OP_ACCEPTUPLOADREQ, OP_COMPRESSEDPART, OP_EMULEINFO, OP_EMULE_INFO, OP_FILEREQANSNOFILE,
-    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_IDCHANGE,
-    OP_LOGINREQUEST, OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART,
-    OP_SERVERIDENT, OP_SERVERMESSAGE, OP_SERVERSTATUS, OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
-    OP_STARTUPLOADREQ,
+    OP_FILESTATUS, OP_FILESTATUSREQ, OP_FOUNDSOURCES, OP_GETSOURCES, OP_HELLO, OP_HELLOANSWER,
+    OP_HELLO_ANSWER, OP_IDCHANGE, OP_LOGINREQUEST, OP_QUEUERANKING, OP_REQUESTPARTS,
+    OP_REQUESTPARTS_EMULE, OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SENDINGPART, OP_SERVERIDENT,
+    OP_SERVERMESSAGE, OP_SERVERSTATUS, OP_SETREQFILEID, OP_SETREQFILEID_EMULE, OP_STARTUPLOADREQ,
 };
 pub use packet::{
     expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
@@ -52,7 +52,8 @@ pub use sequencer::{
     MAX_REQUEST_RANGES_PER_PACKET,
 };
 pub use server::{
-    decode_server_response, ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage,
+    decode_server_response, FoundSourcePeer, FoundSources, GetSourcesRequest, SearchQuery,
+    SearchResult, SearchResultFile, ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage,
     ServerResponse, ServerStatus,
 };
 pub use session::{

@@ -252,6 +252,15 @@ class DownloadsSidebar extends StatelessWidget {
                     count: viewModel.servers.isNotEmpty ? viewModel.servers.length : null,
                   ),
 
+                  // Recherche eD2K Nav Item
+                  _buildNavItem(
+                    title: 'Recherche eD2K',
+                    icon: Icons.search_rounded,
+                    isSelected: viewModel.currentSection == AppNavSection.search,
+                    onTap: () => viewModel.setSection(AppNavSection.search),
+                    count: viewModel.searchResults.isNotEmpty ? viewModel.searchResults.length : null,
+                  ),
+
                   const SizedBox(height: 4),
 
                   // Settings Button

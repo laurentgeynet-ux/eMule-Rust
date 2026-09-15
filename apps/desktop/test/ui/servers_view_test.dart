@@ -45,7 +45,7 @@ void main() {
 
       // Verify safety banner is present
       expect(
-        find.textContaining('connexion reseau'),
+        find.textContaining('filtre IP'),
         findsOneWidget,
       );
 

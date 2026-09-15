@@ -369,6 +369,27 @@ class LargeListMockClient implements MuleDaemonClient {
       ServerSessionModel.disconnected;
 
   @override
+  Future<void> searchServer({
+    required String term,
+    int? minSize,
+    int? maxSize,
+    String? extension,
+  }) async {}
+
+  @override
+  Future<void> queryServerSources({
+    required String fileHash,
+    int? fileSize,
+  }) async {}
+
+  @override
+  Stream<List<SearchResultFileModel>> get searchResultEvents =>
+      const Stream.empty();
+
+  @override
+  Stream<Map<String, dynamic>> get foundSourcesEvents => const Stream.empty();
+
+  @override
   void dispose() {}
 }
 

@@ -52,6 +52,18 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       StreamController<DaemonConnectionState>.broadcast();
   final StreamController<DownloadUpdatedEvent> _eventsController =
       StreamController<DownloadUpdatedEvent>.broadcast();
+  final StreamController<List<SearchResultFileModel>> _searchResultController =
+      StreamController<List<SearchResultFileModel>>.broadcast();
+  final StreamController<Map<String, dynamic>> _foundSourcesController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  @override
+  Stream<List<SearchResultFileModel>> get searchResultEvents =>
+      _searchResultController.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get foundSourcesEvents =>
+      _foundSourcesController.stream;
 
   DaemonConnectionState _state = DaemonConnectionState.disconnected;
   Timer? _simulationTimer;
@@ -266,7 +278,15 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       protocolVersion: 1,
       instanceId: 'fake-instance-id',
       sessionId: 'fake-session-id',
-      capabilities: ['downloads', 'download-events', 'lab-tools'],
+      capabilities: [
+        'downloads',
+        'download-events',
+        'lab-tools',
+        'servers',
+        'server-connection',
+        'server-search',
+        'server-sources',
+      ],
       workdirMode: 'Portable',
       workdirPath: 'C:\\Fake\\Portable\\data',
       defaultDownloadDir: 'C:\\Fake\\Portable\\downloads',
@@ -1094,9 +1114,58 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<void> searchServer({
+    required String term,
+    int? minSize,
+    int? maxSize,
+    String? extension,
+  }) async {
+    final results = [
+      SearchResultFileModel(
+        fileHash: '0123456789abcdef0123456789abcdef',
+        fileName: '$term-release.iso',
+        fileSize: 734003200,
+        sourceCount: 42,
+      ),
+      SearchResultFileModel(
+        fileHash: 'fedcba9876543210fedcba9876543210',
+        fileName: '$term-documentation.pdf',
+        fileSize: 15728640,
+        sourceCount: 15,
+      ),
+    ];
+    Future.microtask(() {
+      if (!_searchResultController.isClosed) {
+        _searchResultController.add(results);
+      }
+    });
+  }
+
+  @override
+  Future<void> queryServerSources({
+    required String fileHash,
+    int? fileSize,
+  }) async {
+    final sources = [
+      {'address': '192.168.1.50:4662', 'ip': 12345, 'port': 4662},
+      {'address': '10.0.0.12:4662', 'ip': 67890, 'port': 4662},
+    ];
+    Future.microtask(() {
+      if (!_foundSourcesController.isClosed) {
+        _foundSourcesController.add({
+          'fileHash': fileHash,
+          'sources': sources,
+        });
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _simulationTimer?.cancel();
     _connectionController.close();
     _eventsController.close();
+    _searchResultController.close();
+    _foundSourcesController.close();
   }
 }

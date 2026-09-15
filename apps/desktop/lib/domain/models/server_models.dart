@@ -217,3 +217,48 @@ class ServerSessionModel {
   );
 }
 
+class SearchResultFileModel {
+  final String fileHash;
+  final String fileName;
+  final int fileSize;
+  final int sourceCount;
+
+  const SearchResultFileModel({
+    required this.fileHash,
+    required this.fileName,
+    required this.fileSize,
+    this.sourceCount = 1,
+  });
+
+  factory SearchResultFileModel.fromJson(Map<String, dynamic> json) {
+    return SearchResultFileModel(
+      fileHash: json['fileHash'] as String? ?? '',
+      fileName: json['fileName'] as String? ?? 'Unknown',
+      fileSize: (json['fileSize'] as num?)?.toInt() ?? 0,
+      sourceCount: (json['sourceCount'] as num?)?.toInt() ?? 1,
+    );
+  }
+
+  String get ed2kLink => 'ed2k://|file|$fileName|$fileSize|$fileHash|/';
+}
+
+class FoundSourcePeerModel {
+  final String address;
+  final int ip;
+  final int port;
+
+  const FoundSourcePeerModel({
+    required this.address,
+    required this.ip,
+    required this.port,
+  });
+
+  factory FoundSourcePeerModel.fromJson(Map<String, dynamic> json) {
+    return FoundSourcePeerModel(
+      address: json['address'] as String? ?? '',
+      ip: (json['ip'] as num?)?.toInt() ?? 0,
+      port: (json['port'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+

@@ -32,6 +32,10 @@ class RpcDaemonClient implements MuleDaemonClient {
       StreamController<DaemonConnectionState>.broadcast();
   final StreamController<DownloadUpdatedEvent> _eventsController =
       StreamController<DownloadUpdatedEvent>.broadcast();
+  final StreamController<List<SearchResultFileModel>> _searchResultController =
+      StreamController<List<SearchResultFileModel>>.broadcast();
+  final StreamController<Map<String, dynamic>> _foundSourcesController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Factory constructor or provider callback for custom channel (useful for testing)
   final WebSocketChannel Function(Uri uri)? channelFactory;
@@ -47,6 +51,14 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<DownloadUpdatedEvent> get downloadEvents => _eventsController.stream;
+
+  @override
+  Stream<List<SearchResultFileModel>> get searchResultEvents =>
+      _searchResultController.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get foundSourcesEvents =>
+      _foundSourcesController.stream;
 
   @override
   DaemonInfo? get daemonInfo => _daemonInfo;
@@ -154,6 +166,23 @@ class RpcDaemonClient implements MuleDaemonClient {
               }
             }
           }
+        }
+      } else if (method == 'server.searchResult') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null) {
+          final rawFiles = params['files'] as List<dynamic>? ?? [];
+          final files = rawFiles
+              .whereType<Map<String, dynamic>>()
+              .map((j) => SearchResultFileModel.fromJson(j))
+              .toList();
+          if (!_searchResultController.isClosed) {
+            _searchResultController.add(files);
+          }
+        }
+      } else if (method == 'server.foundSources') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null && !_foundSourcesController.isClosed) {
+          _foundSourcesController.add(params);
         }
       }
     } catch (_) {
@@ -682,10 +711,36 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<void> searchServer({
+    required String term,
+    int? minSize,
+    int? maxSize,
+    String? extension,
+  }) async {
+    final params = <String, dynamic>{'term': term};
+    if (minSize != null) params['minSize'] = minSize;
+    if (maxSize != null) params['maxSize'] = maxSize;
+    if (extension != null) params['extension'] = extension;
+    await _call('servers.search', params);
+  }
+
+  @override
+  Future<void> queryServerSources({
+    required String fileHash,
+    int? fileSize,
+  }) async {
+    final params = <String, dynamic>{'fileHash': fileHash};
+    if (fileSize != null) params['fileSize'] = fileSize;
+    await _call('servers.querySources', params);
+  }
+
+  @override
   void dispose() {
     disconnect();
     _connectionController.close();
     _eventsController.close();
+    _searchResultController.close();
+    _foundSourcesController.close();
   }
 }
 

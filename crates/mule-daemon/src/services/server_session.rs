@@ -13,14 +13,15 @@ use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex};
 use tracing::{error, info, warn};
 
 use mule_network_policy::SocketPermit;
 use mule_protocol::ed2k::{
-    decode_server_response, Ed2kLimits, ServerLoginRequest, ServerResponse,
+    decode_server_response, Ed2kLimits, FoundSources, GetSourcesRequest, SearchQuery, SearchResult,
+    ServerLoginRequest, ServerResponse,
 };
-use mule_protocol::framing::PacketCodec;
+use mule_protocol::framing::{PacketCodec, RawPacket};
 
 use crate::error::JsonRpcError;
 use crate::rpc::types::JsonRpcNotification;
@@ -101,6 +102,7 @@ struct ActiveSession {
     snapshot: ServerSessionSnapshot,
     abort_handle: Option<tokio::task::AbortHandle>,
     _permit: Option<SocketPermit>,
+    outgoing_tx: Option<mpsc::Sender<RawPacket>>,
 }
 
 /// Thread-safe manager for the single eD2K server connection.
@@ -119,6 +121,7 @@ impl ServerSessionManager {
                 snapshot: ServerSessionSnapshot::default(),
                 abort_handle: None,
                 _permit: None,
+                outgoing_tx: None,
             })),
             event_tx,
             sequence,
@@ -140,6 +143,44 @@ impl ServerSessionManager {
         )
     }
 
+    /// Sends a search query to the connected server.
+    pub async fn search(&self, query: SearchQuery) -> Result<(), JsonRpcError> {
+        let guard = self.inner.lock().await;
+        if guard.snapshot.status != ServerConnectionStatus::Connected {
+            return Err(JsonRpcError::business("Cannot search: server is not connected"));
+        }
+        let tx = guard.outgoing_tx.as_ref().ok_or_else(|| {
+            JsonRpcError::business("Cannot search: outgoing channel closed")
+        })?;
+        let limits = Ed2kLimits::default();
+        let packet = query
+            .encode(&limits)
+            .map_err(|e| JsonRpcError::business(format!("Failed to encode search query: {e}")))?;
+        tx.send(packet).await.map_err(|_| {
+            JsonRpcError::business("Failed to send search request to server")
+        })?;
+        Ok(())
+    }
+
+    /// Sends a get sources request to the connected server for a specific file hash.
+    pub async fn get_sources(&self, request: GetSourcesRequest) -> Result<(), JsonRpcError> {
+        let guard = self.inner.lock().await;
+        if guard.snapshot.status != ServerConnectionStatus::Connected {
+            return Err(JsonRpcError::business("Cannot query sources: server is not connected"));
+        }
+        let tx = guard.outgoing_tx.as_ref().ok_or_else(|| {
+            JsonRpcError::business("Cannot query sources: outgoing channel closed")
+        })?;
+        let limits = Ed2kLimits::default();
+        let packet = request
+            .encode(&limits)
+            .map_err(|e| JsonRpcError::business(format!("Failed to encode get sources request: {e}")))?;
+        tx.send(packet).await.map_err(|_| {
+            JsonRpcError::business("Failed to send get sources request to server")
+        })?;
+        Ok(())
+    }
+
     /// Disconnects any active session and resets state.
     pub async fn disconnect(&self) -> Result<(), JsonRpcError> {
         let mut guard = self.inner.lock().await;
@@ -147,6 +188,7 @@ impl ServerSessionManager {
             handle.abort();
         }
         guard._permit = None;
+        guard.outgoing_tx = None;
         guard.snapshot = ServerSessionSnapshot::default();
         self.emit_notification(&guard.snapshot);
         Ok(())
@@ -191,6 +233,9 @@ impl ServerSessionManager {
         };
         self.emit_notification(&guard.snapshot);
 
+        let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<RawPacket>(32);
+        guard.outgoing_tx = Some(outgoing_tx);
+
         let inner_clone = Arc::clone(&self.inner);
         let event_tx_clone = self.event_tx.clone();
         let sequence_clone = Arc::clone(&self.sequence);
@@ -222,6 +267,7 @@ impl ServerSessionManager {
                     g.snapshot = ServerSessionSnapshot::default();
                     g._permit = None;
                     g.abort_handle = None;
+                    g.outgoing_tx = None;
                     emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
                     return;
                 }
@@ -240,6 +286,7 @@ impl ServerSessionManager {
                     g.snapshot = ServerSessionSnapshot::default();
                     g._permit = None;
                     g.abort_handle = None;
+                    g.outgoing_tx = None;
                     emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
                     return;
                 }
@@ -257,6 +304,7 @@ impl ServerSessionManager {
                 g.snapshot = ServerSessionSnapshot::default();
                 g._permit = None;
                 g.abort_handle = None;
+                g.outgoing_tx = None;
                 emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
                 return;
             }
@@ -272,6 +320,17 @@ impl ServerSessionManager {
                     _ = cancel_token.cancelled() => {
                         info!("Server session aborted by policy kill switch");
                         break;
+                    }
+                    Some(out_packet) = outgoing_rx.recv() => {
+                        let mut out_wire = Vec::with_capacity(6 + out_packet.payload.len());
+                        out_wire.push(out_packet.protocol);
+                        out_wire.extend_from_slice(&(out_packet.frame_len() as u32).to_le_bytes());
+                        out_wire.push(out_packet.opcode);
+                        out_wire.extend_from_slice(&out_packet.payload);
+                        if let Err(e) = stream.write_all(&out_wire).await {
+                            warn!("Failed to write outgoing packet to server {}: {}", target_addr, e);
+                            break;
+                        }
                     }
                     read_res = stream.read(&mut temp_buf) => {
                         match read_res {
@@ -330,6 +389,14 @@ impl ServerSessionManager {
                                                             }
                                                             updated = true;
                                                         }
+                                                        ServerResponse::SearchResult(sr) => {
+                                                            info!("Received {} search results from server", sr.files.len());
+                                                            emit_search_results(&event_tx_clone, &sequence_clone, &sr);
+                                                        }
+                                                        ServerResponse::FoundSources(fs) => {
+                                                            info!("Received {} sources for file {}", fs.sources.len(), hex::encode(fs.file_hash));
+                                                            emit_found_sources(&event_tx_clone, &sequence_clone, &fs);
+                                                        }
                                                         ServerResponse::Other { opcode, .. } => {
                                                             info!("Received other server opcode: 0x{:02x}", opcode);
                                                         }
@@ -349,6 +416,7 @@ impl ServerSessionManager {
                                             error!("Framing error from server {}: {}", target_addr, e);
                                             let mut g = inner_clone.lock().await;
                                             g.snapshot = ServerSessionSnapshot::default();
+                                            g.outgoing_tx = None;
                                             emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
                                             return;
                                         }
@@ -373,6 +441,7 @@ impl ServerSessionManager {
             g.snapshot = ServerSessionSnapshot::default();
             g._permit = None;
             g.abort_handle = None;
+            g.outgoing_tx = None;
             emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
         });
 
@@ -403,6 +472,68 @@ fn emit_event(
         serde_json::json!({
             "sequence": seq,
             "session": snapshot,
+        }),
+    );
+    if let Ok(json) = serde_json::to_string(&notif) {
+        let _ = event_tx.send(json);
+    }
+}
+
+fn emit_search_results(
+    event_tx: &broadcast::Sender<String>,
+    sequence: &Arc<AtomicU64>,
+    sr: &SearchResult,
+) {
+    let seq = sequence.fetch_add(1, Ordering::SeqCst);
+    let files: Vec<serde_json::Value> = sr
+        .files
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "fileHash": hex::encode(f.file_hash),
+                "fileName": f.name().unwrap_or_else(|| "Unknown".to_string()),
+                "fileSize": f.size().unwrap_or(0),
+                "sourceCount": f.source_count().unwrap_or(1),
+            })
+        })
+        .collect();
+
+    let notif = JsonRpcNotification::new(
+        "server.searchResult",
+        serde_json::json!({
+            "sequence": seq,
+            "files": files,
+        }),
+    );
+    if let Ok(json) = serde_json::to_string(&notif) {
+        let _ = event_tx.send(json);
+    }
+}
+
+fn emit_found_sources(
+    event_tx: &broadcast::Sender<String>,
+    sequence: &Arc<AtomicU64>,
+    fs: &FoundSources,
+) {
+    let seq = sequence.fetch_add(1, Ordering::SeqCst);
+    let sources: Vec<serde_json::Value> = fs
+        .sources
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "address": s.to_address_string(),
+                "ip": s.ip,
+                "port": s.port,
+            })
+        })
+        .collect();
+
+    let notif = JsonRpcNotification::new(
+        "server.foundSources",
+        serde_json::json!({
+            "sequence": seq,
+            "fileHash": hex::encode(fs.file_hash),
+            "sources": sources,
         }),
     );
     if let Ok(json) = serde_json::to_string(&notif) {
