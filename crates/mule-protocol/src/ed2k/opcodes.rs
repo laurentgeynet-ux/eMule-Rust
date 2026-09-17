@@ -129,6 +129,18 @@ pub const OP_AICHFILEHASHREQ: u8 = 0x14;
 /// Request AICH recovery hashset / proof tree response (`0x15`).
 pub const OP_AICHFILEHASHRES: u8 = 0x15;
 
+/// Request sources from peer (SX1 - legacy, `0x81`).
+pub const OP_REQUESTSOURCES: u8 = 0x81;
+
+/// Answer sources to peer (SX1 - legacy, `0x82`).
+pub const OP_ANSWERSOURCES: u8 = 0x82;
+
+/// Request sources from peer (SX2, `0x83`).
+pub const OP_REQUESTSOURCES2: u8 = 0x83;
+
+/// Answer sources to peer (SX2, `0x84`).
+pub const OP_ANSWERSOURCES2: u8 = 0x84;
+
 /// Public Key exchange for Secure User Identification (`0x85`).
 pub const OP_PUBLICKEY: u8 = 0x85;
 
@@ -186,10 +198,16 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_AICH_ANSWER => "OP_AICH_ANSWER",
             OP_AICHFILEHASHREQ => "OP_AICHFILEHASHREQ",
             OP_AICHFILEHASHRES => "OP_AICHFILEHASHRES",
+            OP_REQUESTSOURCES => "OP_REQUESTSOURCES",
+            OP_ANSWERSOURCES => "OP_ANSWERSOURCES",
+            OP_REQUESTSOURCES2 => "OP_REQUESTSOURCES2",
+            OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
             _ => "OP_UNKNOWN_EMULE",
         },
         super::protocol::PR_EMULE_COMPRESSED => match opcode {
             OP_COMPRESSEDPART => "OP_COMPRESSEDPART",
+            OP_ANSWERSOURCES => "OP_ANSWERSOURCES",
+            OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
             _ => "OP_UNKNOWN_COMPRESSED",
         },
         _ => "OP_UNKNOWN_PROTOCOL",

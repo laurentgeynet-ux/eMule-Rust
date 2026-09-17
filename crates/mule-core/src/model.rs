@@ -287,6 +287,7 @@ pub enum PeerSourceOrigin {
     Search,
     Manual,
     Kad,
+    SourceExchange,
 }
 
 impl PeerSourceOrigin {
@@ -296,6 +297,7 @@ impl PeerSourceOrigin {
             Self::Search => "search",
             Self::Manual => "manual",
             Self::Kad => "kad",
+            Self::SourceExchange => "source_exchange",
         }
     }
 }
@@ -308,6 +310,7 @@ impl std::str::FromStr for PeerSourceOrigin {
             "search" => Self::Search,
             "manual" => Self::Manual,
             "kad" => Self::Kad,
+            "source_exchange" | "sx" => Self::SourceExchange,
             _ => Self::Server,
         })
     }

@@ -39,6 +39,7 @@ data-encoding.workspace = true
 igd-next.workspace = true
 reqwest.workspace = true
 flate2.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 tokio-tungstenite.workspace = true

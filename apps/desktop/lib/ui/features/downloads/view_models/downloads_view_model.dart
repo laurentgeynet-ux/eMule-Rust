@@ -446,7 +446,7 @@ class DownloadsViewModel extends ChangeNotifier {
         }
       }
 
-      _statusNotification = 'Added "$displayName" to downloads';
+      _statusNotification = 'Fichier "$displayName" ajouté aux téléchargements';
       await refresh();
       return true;
     } catch (e) {

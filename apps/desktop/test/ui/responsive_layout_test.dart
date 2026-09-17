@@ -112,5 +112,38 @@ void main() {
       expect(find.text('Gestion Locale des Serveurs eD2K'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('ServersView renders cards on mobile and adaptive table on medium/large', (tester) async {
+      await viewModel.importServerMet('/mock/path/server.met');
+
+      // Test Large Screen (1280x800) -> Full table with Description & Version
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      viewModel.setSection(AppNavSection.servers);
+      await tester.pumpAndSettle();
+
+      expect(find.text('eDonkeyServer No2'), findsOneWidget);
+      expect(find.text('Description'), findsOneWidget);
+      expect(find.text('Version'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Test Medium Screen (850x700) -> Medium table without Description/Version to prevent overflow
+      tester.view.physicalSize = const Size(850, 700);
+      await tester.pumpAndSettle();
+
+      expect(find.text('eDonkeyServer No2'), findsOneWidget);
+      expect(find.text('Etat / Filtre'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Test Small Screen (550x800) -> Responsive cards list
+      tester.view.physicalSize = const Size(550, 800);
+      await tester.pumpAndSettle();
+
+      expect(find.text('eDonkeyServer No2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

@@ -97,7 +97,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify notification / download added
-      expect(viewModel.statusNotification, contains('Added'));
+      expect(viewModel.statusNotification, contains('ajouté aux téléchargements'));
     });
 
     testWidgets('clearing search results resets to empty state',
@@ -170,6 +170,42 @@ void main() {
       // Verify simulated results
       expect(find.text('ubuntu-simulation-file.iso'), findsOneWidget);
       expect(find.text('ubuntu-sample-archive.zip'), findsOneWidget);
+    });
+
+    testWidgets('allows sorting search results by sources, file name, and size',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // Connect and search
+      await viewModel.connectServer('195.154.52.200:4661');
+      await viewModel.searchServer(term: 'debian');
+      viewModel.setSection(AppNavSection.search);
+      await tester.pumpAndSettle();
+
+      expect(find.text('debian-release.iso'), findsOneWidget);
+      expect(find.text('debian-documentation.pdf'), findsOneWidget);
+
+      // Tap on 'Nom du fichier' column header to sort by name
+      final nameColumn = find.text('Nom du fichier');
+      await tester.tap(nameColumn);
+      await tester.pumpAndSettle();
+
+      // Tap on 'Taille' column header to sort by size
+      final sizeColumn = find.text('Taille');
+      await tester.tap(sizeColumn);
+      await tester.pumpAndSettle();
+
+      // Tap on 'Sources' column header to sort by sources
+      final sourcesColumn = find.text('Sources');
+      await tester.tap(sourcesColumn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('debian-release.iso'), findsOneWidget);
     });
   });
 }

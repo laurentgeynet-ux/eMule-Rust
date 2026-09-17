@@ -23,11 +23,13 @@ use flate2::{Decompress, FlushDecompress, Status};
 use mule_core::model::{PeerFailureReason, PeerSourceStatus};
 use mule_network_policy::SocketPermit;
 use mule_protocol::ed2k::{
-    Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatusReq, Ed2kHello,
-    Ed2kRequestParts, InFlightBlock, OP_ACCEPTUPLOADREQ, OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD,
+    Ed2kAnswerSources, Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatusReq,
+    Ed2kHello, Ed2kRequestParts, Ed2kRequestSources, InFlightBlock, SxSource, OP_ACCEPTUPLOADREQ,
+    OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD,
     OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_QUEUERANKING,
-    OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
-    OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
+    OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
+    OP_SENDINGPART, OP_SETREQFILEID_EMULE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
+    PR_EMULE_COMPRESSED,
 };
 use mule_protocol::framing::PacketCodec;
 
@@ -827,6 +829,8 @@ async fn run_peer_connection(
     let mut read_buf = BytesMut::with_capacity(65536);
     let mut raw_buf = [0u8; 8192];
     let mut received_hello_answer = false;
+    let mut peer_supports_sx = false;
+    let mut peer_supports_sx2 = false;
 
     let handshake_deadline = tokio::time::Instant::now() + timeouts.handshake_timeout;
     while !received_hello_answer {
@@ -872,6 +876,9 @@ async fn run_peer_connection(
                                 match decoder.decode_hello_answer(packet.protocol, packet.opcode, &packet.payload, 0) {
                                     Ok(ans) => {
                                         let peer_info = mule_protocol::ed2k::Ed2kPeerInfo::from_hello_answer(&ans);
+                                        peer_supports_sx = peer_info.supports_source_exchange();
+                                        peer_supports_sx2 = peer_info.supports_source_exchange2();
+
                                         let mut peer_opts = 0u8;
                                         if peer_info.supports_crypt_layer() { peer_opts |= 0x01; }
                                         if peer_info.requests_crypt_layer() { peer_opts |= 0x02; }
@@ -884,7 +891,7 @@ async fn run_peer_connection(
                                             ip: match target_addr {
                                                 SocketAddr::V4(v4) => u32::from_be_bytes(v4.ip().octets()),
                                                 _ => 0,
-                                            },
+                                             },
                                             port: target_addr.port(),
                                             origin: mule_core::model::PeerSourceOrigin::Manual,
                                             discovered_at_unix_ms: connected_ms,
@@ -966,6 +973,27 @@ async fn run_peer_connection(
 
     if let Err(e) = stream.write_all(&out_wire).await {
         return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send OP_SETREQFILEID_EMULE: {e}")));
+    }
+
+    // 4c. Send OP_REQUESTSOURCES / OP_REQUESTSOURCES2 if remote peer supports Source Exchange
+    if peer_supports_sx2 || peer_supports_sx {
+        let sx_req = if peer_supports_sx2 {
+            Ed2kRequestSources::new_v2(dl_hash_bytes)
+        } else {
+            Ed2kRequestSources::new_v1(dl_hash_bytes)
+        };
+        if let Ok(sx_pkt) = encoder.encode_request_sources(&sx_req) {
+            out_wire.clear();
+            out_wire.push(sx_pkt.protocol);
+            out_wire.extend_from_slice(&(sx_pkt.frame_len() as u32).to_le_bytes());
+            out_wire.push(sx_pkt.opcode);
+            out_wire.extend_from_slice(&sx_pkt.payload);
+            if let Err(e) = stream.write_all(&out_wire).await {
+                tracing::warn!("Failed to send SX request to {target_addr}: {e}");
+            } else {
+                tracing::info!("Sent OP_REQUESTSOURCES (version {}) to peer {target_addr}", sx_req.version);
+            }
+        }
     }
 
     let queued_snapshot = {
@@ -1058,6 +1086,14 @@ async fn run_peer_connection(
                                     break;
                                 } else if packet.opcode == OP_FILEREQANSNOFILE {
                                     return Err(PeerError::new(PeerFailureReason::FileNotFound, "Remote peer does not share this file (OP_FILEREQANSNOFILE)"));
+                                } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
+                                    && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
+                                {
+                                    handle_sx_answer(&packet, dl_hash_bytes, &file_hash_str, target_addr, &decoder, &downloads).await;
+                                } else if packet.protocol == PR_EMULE
+                                    && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
+                                {
+                                    handle_sx_request(&packet, dl_hash_bytes, &file_hash_str, target_addr, &decoder, &encoder, &downloads, &mut stream).await;
                                 }
                             }
                         }
@@ -1170,6 +1206,14 @@ async fn run_peer_connection(
                                 tracing::debug!("Peer {target_addr}: received keep-alive OP_FILESTATUS response");
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_FILEREQANSNOFILE {
                                 return Err(PeerError::new(PeerFailureReason::FileNotFound, "Remote peer no longer shares this file"));
+                            } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
+                                && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
+                            {
+                                handle_sx_answer(&packet, dl_hash_bytes, &file_hash_str, target_addr, &decoder, &downloads).await;
+                            } else if packet.protocol == PR_EMULE
+                                && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
+                            {
+                                handle_sx_request(&packet, dl_hash_bytes, &file_hash_str, target_addr, &decoder, &encoder, &downloads, &mut stream).await;
                             }
                         }
                     }
@@ -1517,6 +1561,14 @@ async fn run_peer_connection(
                             } else if (packet.protocol == PR_ED2K || packet.protocol == PR_EMULE) && packet.opcode == OP_END_OF_DOWNLOAD {
                                 info!("Peer {} sent OP_END_OF_DOWNLOAD", target_addr);
                                 break;
+                            } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
+                                && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
+                            {
+                                handle_sx_answer(&packet, dl_hash_bytes, &file_hash_str, target_addr, &decoder, &downloads).await;
+                            } else if packet.protocol == PR_EMULE
+                                && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
+                            {
+                                handle_sx_request(&packet, dl_hash_bytes, &file_hash_str, target_addr, &decoder, &encoder, &downloads, &mut stream).await;
                             } else {
                                 info!(
                                     "Peer {target_addr}: received unhandled packet proto=0x{:02X}, opcode=0x{:02X}, payload_len={}",
@@ -1670,4 +1722,144 @@ fn parse_hex_16(hex_str: &str) -> Option<[u8; 16]> {
     }
     Some(bytes)
 }
+
+async fn handle_sx_answer(
+    packet: &mule_protocol::framing::RawPacket,
+    dl_hash_bytes: [u8; 16],
+    file_hash_str: &str,
+    target_addr: SocketAddr,
+    decoder: &Ed2kDecoder,
+    downloads: &Arc<Mutex<DownloadService>>,
+) {
+    if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
+        && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
+    {
+        match decoder.decode_answer_sources(packet.protocol, packet.opcode, &packet.payload) {
+            Ok(ans) => {
+                if ans.file_hash == dl_hash_bytes {
+                    let mut discovered_sources = Vec::new();
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
+                    for src in ans.sources {
+                        if !src.is_low_id() && src.port > 0 {
+                            let ip_u32 = src.ip;
+                            let ip_addr = std::net::Ipv4Addr::from(src.ip_bytes);
+                            let addr_str = format!("{}:{}", ip_addr, src.port);
+
+                            let hex_user_hash = src.user_hash.map(hex::encode);
+
+                            discovered_sources.push(mule_core::model::PeerSource {
+                                file_hash: file_hash_str.to_string(),
+                                address: addr_str,
+                                ip: ip_u32,
+                                port: src.port,
+                                origin: mule_core::model::PeerSourceOrigin::SourceExchange,
+                                discovered_at_unix_ms: now_ms,
+                                last_seen_unix_ms: now_ms,
+                                status: PeerSourceStatus::Candidate,
+                                fail_count: 0,
+                                last_error: None,
+                                cooldown_until_unix_ms: None,
+                                user_hash: hex_user_hash,
+                                crypt_options: src.crypt_options,
+                            });
+                        }
+                    }
+                    if !discovered_sources.is_empty() {
+                        tracing::info!(
+                            "Discovered {} new sources via Source Exchange from peer {target_addr} for file {file_hash_str}",
+                            discovered_sources.len()
+                        );
+                        let mut dl_svc = downloads.lock().await;
+                        let _ = dl_svc.upsert_peer_sources(file_hash_str, &discovered_sources);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Peer {target_addr}: failed to decode SX answer: {e}");
+            }
+        }
+    }
+}
+
+async fn handle_sx_request(
+    packet: &mule_protocol::framing::RawPacket,
+    dl_hash_bytes: [u8; 16],
+    file_hash_str: &str,
+    target_addr: SocketAddr,
+    decoder: &Ed2kDecoder,
+    encoder: &Ed2kEncoder,
+    downloads: &Arc<Mutex<DownloadService>>,
+    stream: &mut crate::services::obfuscation_stream::ObfuscatedStream<TcpStream>,
+) {
+    if packet.protocol == PR_EMULE
+        && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
+    {
+        match decoder.decode_request_sources(packet.protocol, packet.opcode, &packet.payload) {
+            Ok(req) => {
+                if req.file_hash == dl_hash_bytes {
+                    let known_sources = {
+                        let dl_svc = downloads.lock().await;
+                        dl_svc.list_peer_sources(file_hash_str).unwrap_or_default()
+                    };
+                    let mut resp_sources = Vec::new();
+                    for src in known_sources {
+                        if resp_sources.len() >= 50 {
+                            break;
+                        }
+                        if src.port > 0 && src.ip >= 16_777_216 {
+                            let ip_bytes = src.ip.to_be_bytes();
+                            let user_hash_opt = if let Some(ref h) = src.user_hash {
+                                if let Ok(hb) = hex::decode(h) {
+                                    if hb.len() == 16 {
+                                        let mut h16 = [0u8; 16];
+                                        h16.copy_from_slice(&hb);
+                                        Some(h16)
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+                            resp_sources.push(SxSource::new(
+                                ip_bytes,
+                                src.port,
+                                user_hash_opt,
+                                src.crypt_options,
+                            ));
+                        }
+                    }
+
+                    let ans = Ed2kAnswerSources::new(dl_hash_bytes, resp_sources);
+                    if let Ok(ans_pkt) = encoder.encode_answer_sources(&ans, true) {
+                        let mut resp_wire = Vec::with_capacity(6 + ans_pkt.payload.len());
+                        resp_wire.push(ans_pkt.protocol);
+                        resp_wire.extend_from_slice(&(ans_pkt.frame_len() as u32).to_le_bytes());
+                        resp_wire.push(ans_pkt.opcode);
+                        resp_wire.extend_from_slice(&ans_pkt.payload);
+                        if let Err(e) = stream.write_all(&resp_wire).await {
+                            tracing::warn!("Failed to send SX answer to {target_addr}: {e}");
+                        } else {
+                            tracing::info!(
+                                "Sent SX answer with {} sources (proto=0x{:02X}, len={}) to peer {target_addr}",
+                                ans.sources.len(),
+                                ans_pkt.protocol,
+                                resp_wire.len()
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Peer {target_addr}: failed to decode SX request: {e}");
+            }
+        }
+    }
+}
+
 

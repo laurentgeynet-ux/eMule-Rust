@@ -188,7 +188,7 @@ void main() {
       expect(find.byType(Dialog), findsNothing);
       expect(find.text('OpenSourceGame.iso'), findsOneWidget);
       expect(find.byType(DownloadRow), findsNWidgets(4));
-      expect(find.text('Added "OpenSourceGame.iso" to downloads'), findsOneWidget);
+      expect(find.text('Fichier "OpenSourceGame.iso" ajouté aux téléchargements'), findsOneWidget);
     });
 
     testWidgets('displays Loopback Lab Mode badge with tooltip and hides dev tools by default',

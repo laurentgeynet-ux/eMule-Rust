@@ -752,4 +752,21 @@ impl Ed2kEncoder {
         buf.extend_from_slice(&packet.payload);
         Ok(Bytes::from(buf))
     }
+
+    /// Encodes a Source Exchange request (`OP_REQUESTSOURCES` or `OP_REQUESTSOURCES2`).
+    pub fn encode_request_sources(
+        &self,
+        req: &super::source_exchange::Ed2kRequestSources,
+    ) -> Result<crate::framing::RawPacket, Ed2kEncodeError> {
+        super::source_exchange::encode_request_sources(req)
+    }
+
+    /// Encodes a Source Exchange response (`OP_ANSWERSOURCES2`).
+    pub fn encode_answer_sources(
+        &self,
+        ans: &super::source_exchange::Ed2kAnswerSources,
+        force_compress: bool,
+    ) -> Result<crate::framing::RawPacket, Ed2kEncodeError> {
+        super::source_exchange::encode_answer_sources(ans, force_compress)
+    }
 }

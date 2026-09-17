@@ -169,6 +169,16 @@ impl Ed2kPeerInfo {
             .is_some_and(|info| info.has_source_exchange_capability())
     }
 
+    /// Returns true if this peer supports Source Exchange 2 (bit 10 of misc_options2).
+    pub fn supports_source_exchange2(&self) -> bool {
+        self.misc_options2.map(|m| (m & (1 << 10)) != 0).unwrap_or(false)
+    }
+
+    /// Returns true if this peer supports either SX1 (via OP_EMULEINFO) or SX2 (via misc_options2).
+    pub fn supports_source_exchange(&self) -> bool {
+        self.supports_source_exchange2() || self.has_source_exchange_capability()
+    }
+
     /// Returns true if this peer supports protocol obfuscation (bit 7 of misc_options2).
     pub fn supports_crypt_layer(&self) -> bool {
         self.misc_options2.map(|m| (m & (1 << 7)) != 0).unwrap_or(false)

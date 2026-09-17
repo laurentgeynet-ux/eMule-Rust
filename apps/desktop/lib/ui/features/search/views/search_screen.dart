@@ -35,6 +35,8 @@ class _SearchViewState extends State<SearchView> {
   final TextEditingController _extController = TextEditingController();
   SearchTarget _searchTarget = SearchTarget.server;
   bool _showFilters = false;
+  int _sortColumnIndex = 2;
+  bool _sortAscending = false;
 
   @override
   void dispose() {
@@ -666,50 +668,91 @@ class _SearchViewState extends State<SearchView> {
   // ── Results Table ──────────────────────────────────────────────────────────
 
   Widget _buildResultsTable(BuildContext context, DownloadsViewModel vm) {
-    final results = vm.searchResults;
+    final results = List<SearchResultFileModel>.from(vm.searchResults);
+    results.sort((a, b) {
+      int cmp = 0;
+      switch (_sortColumnIndex) {
+        case 0:
+          cmp = a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase());
+          break;
+        case 1:
+          cmp = a.fileSize.compareTo(b.fileSize);
+          break;
+        case 2:
+          cmp = a.sourceCount.compareTo(b.sourceCount);
+          break;
+        default:
+          cmp = a.sourceCount.compareTo(b.sourceCount);
+      }
+      return _sortAscending ? cmp : -cmp;
+    });
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.vertical,
-        child: DataTable(
-          headingRowColor: WidgetStateProperty.all(AppTheme.darkSurface),
-          dataRowColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.hovered)) {
-              return AppTheme.primary.withAlpha(15);
-            }
-            return Colors.transparent;
-          }),
-          columnSpacing: 14,
-          horizontalMargin: 16,
-          columns: const [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                sortColumnIndex: _sortColumnIndex,
+                sortAscending: _sortAscending,
+                headingRowColor: WidgetStateProperty.all(AppTheme.darkSurface),
+                dataRowColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.hovered)) {
+                    return AppTheme.primary.withAlpha(15);
+                  }
+                  return Colors.transparent;
+                }),
+                columnSpacing: 14,
+                horizontalMargin: 16,
+          columns: [
             DataColumn(
-              label: Text(
+              label: const Text(
                 'Nom du fichier',
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
               ),
+              onSort: (columnIndex, ascending) {
+                setState(() {
+                  _sortColumnIndex = columnIndex;
+                  _sortAscending = ascending;
+                });
+              },
             ),
             DataColumn(
-              label: Text(
+              label: const Text(
                 'Taille',
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
               ),
               numeric: true,
+              onSort: (columnIndex, ascending) {
+                setState(() {
+                  _sortColumnIndex = columnIndex;
+                  _sortAscending = ascending;
+                });
+              },
             ),
             DataColumn(
-              label: Text(
+              label: const Text(
                 'Sources',
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
               ),
               numeric: true,
+              onSort: (columnIndex, ascending) {
+                setState(() {
+                  _sortColumnIndex = columnIndex;
+                  _sortAscending = ascending;
+                });
+              },
             ),
-            DataColumn(
+            const DataColumn(
               label: Text(
                 'Hachage eD2K',
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
               ),
             ),
-            DataColumn(
+            const DataColumn(
               label: Text(
                 'Actions',
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
@@ -791,8 +834,28 @@ class _SearchViewState extends State<SearchView> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           visualDensity: VisualDensity.compact,
                         ),
-                        onPressed: () {
-                          vm.downloadSearchResult(file);
+                        onPressed: () async {
+                          final success = await vm.downloadSearchResult(file);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success
+                                      ? 'Téléchargement lancé : ${file.fileName}'
+                                      : 'Échec de l\'ajout au téléchargement',
+                                ),
+                                duration: const Duration(seconds: 4),
+                                action: success
+                                    ? SnackBarAction(
+                                        label: 'Afficher',
+                                        onPressed: () {
+                                          vm.setSection(AppNavSection.downloads);
+                                        },
+                                      )
+                                    : null,
+                              ),
+                            );
+                          }
                         },
                       ),
                       const SizedBox(width: 6),
@@ -824,6 +887,9 @@ class _SearchViewState extends State<SearchView> {
           }).toList(),
         ),
       ),
+    ),
+  );
+      },
     );
   }
 

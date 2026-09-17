@@ -100,5 +100,41 @@ void main() {
       // Should now only have 1 server left
       expect(viewModel.servers.length, 1);
     });
+
+    testWidgets('allows sorting servers by Name, IP:Port, and Ping',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      final serversNav = find.text('Serveurs eD2K');
+      await tester.ensureVisible(serversNav);
+      await tester.pumpAndSettle();
+      await tester.tap(serversNav);
+      await tester.pumpAndSettle();
+
+      await viewModel.importServerMet('/mock/path/server.met');
+      await tester.pumpAndSettle();
+
+      // Tap 'Nom du Serveur' column header
+      final nameCol = find.text('Nom du Serveur');
+      await tester.tap(nameCol);
+      await tester.pumpAndSettle();
+
+      // Tap 'IP : Port' column header
+      final addrCol = find.text('IP : Port');
+      await tester.tap(addrCol);
+      await tester.pumpAndSettle();
+
+      // Tap 'Ping' column header
+      final pingCol = find.text('Ping');
+      await tester.tap(pingCol, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('eDonkeyServer No2'), findsOneWidget);
+    });
   });
 }

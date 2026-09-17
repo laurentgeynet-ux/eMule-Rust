@@ -16,11 +16,13 @@ class ServersView extends StatefulWidget {
 
 class _ServersViewState extends State<ServersView> {
   String _searchQuery = '';
+  int _sortColumnIndex = 1; // Default sort by Server Name
+  bool _sortAscending = true;
 
   @override
   Widget build(BuildContext context) {
     final vm = widget.viewModel;
-    final servers = vm.servers.where((s) {
+    var servers = vm.servers.where((s) {
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       return s.name.toLowerCase().contains(q) ||
@@ -28,6 +30,28 @@ class _ServersViewState extends State<ServersView> {
           s.description.toLowerCase().contains(q) ||
           s.address.contains(q);
     }).toList();
+
+    // Apply sorting
+    servers.sort((a, b) {
+      int cmp = 0;
+      switch (_sortColumnIndex) {
+        case 1: // Nom
+          cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          break;
+        case 2: // IP / Port
+          cmp = a.address.compareTo(b.address);
+          break;
+        case 4: // Ping
+          cmp = a.ping.compareTo(b.ping);
+          break;
+        case 5: // Preference
+          cmp = a.preference.compareTo(b.preference);
+          break;
+        default:
+          cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      }
+      return _sortAscending ? cmp : -cmp;
+    });
 
     final hasServerConnectionCap =
         vm.daemonInfo?.capabilities.contains('server-connection') ?? false;
@@ -167,10 +191,12 @@ class _ServersViewState extends State<ServersView> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: barBorder),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 750;
+
+          final statusIndicator = Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 8,
@@ -190,7 +216,7 @@ class _ServersViewState extends State<ServersView> {
                 ),
               ),
               if (isConnected) ...[
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
@@ -216,55 +242,49 @@ class _ServersViewState extends State<ServersView> {
                   ),
                 ),
               ],
-              const SizedBox(width: 10),
-              if (session.serverName != null && session.serverName!.isNotEmpty)
-                Expanded(
-                  child: Text(
-                    session.serverName!,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+            ],
+          );
+
+          final serverTitle = session.serverName != null && session.serverName!.isNotEmpty
+              ? Text(
+                  session.serverName!,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 )
-              else if (!isDisconnected)
-                Expanded(
-                  child: Text(
-                    session.serverAddress ?? '',
-                    style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white54,
-                        fontFamily: 'monospace'),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+              : !isDisconnected
+                  ? Text(
+                      session.serverAddress ?? '',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white54,
+                          fontFamily: 'monospace'),
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : const Text(
+                      'Aucun serveur connecté',
+                      style: TextStyle(fontSize: 12, color: Colors.white38),
+                    );
+
+          final userMetrics = isConnected && session.currentUsers != null
+              ? Text(
+                  '${_fmt(session.currentUsers!)} utilisateurs • ${_fmt(session.currentFiles ?? 0)} fichiers',
+                  style: const TextStyle(fontSize: 11, color: Colors.white54),
                 )
-              else
-                const Expanded(
-                  child: Text(
-                    'Aucun serveur connecte',
-                    style: TextStyle(fontSize: 12, color: Colors.white38),
-                  ),
-                ),
-              if (isConnected && session.currentUsers != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: Text(
-                    '${_fmt(session.currentUsers!)} utilisateurs . ${_fmt(session.currentFiles ?? 0)} fichiers',
-                    style:
-                        const TextStyle(fontSize: 11, color: Colors.white54),
-                  ),
-                ),
-              if (!isDisconnected)
-                TextButton.icon(
+              : null;
+
+          final actionBtn = !isDisconnected
+              ? TextButton.icon(
                   icon: Icon(
                     isConnecting ? Icons.close_rounded : Icons.power_settings_new,
                     size: 16,
                     color: Colors.redAccent,
                   ),
                   label: Text(
-                    isConnecting ? 'Annuler' : 'Deconnecter',
+                    isConnecting ? 'Annuler' : 'Déconnecter',
                     style: const TextStyle(color: Colors.redAccent, fontSize: 12),
                   ),
                   style: TextButton.styleFrom(
@@ -274,23 +294,63 @@ class _ServersViewState extends State<ServersView> {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: () => vm.disconnectServer(),
+                )
+              : null;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isNarrow) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: statusIndicator),
+                    if (actionBtn != null) actionBtn,
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(child: serverTitle),
+                  ],
+                ),
+                if (userMetrics != null) ...[
+                  const SizedBox(height: 4),
+                  userMetrics,
+                ],
+              ] else ...[
+                Row(
+                  children: [
+                    statusIndicator,
+                    const SizedBox(width: 10),
+                    Expanded(child: serverTitle),
+                    if (userMetrics != null) ...[
+                      const SizedBox(width: 12),
+                      userMetrics,
+                    ],
+                    if (actionBtn != null) ...[
+                      const SizedBox(width: 12),
+                      actionBtn,
+                    ],
+                  ],
+                ),
+              ],
+              if (isConnected &&
+                  session.welcomeMessage != null &&
+                  session.welcomeMessage!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    session.welcomeMessage!,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 11.5, color: Colors.white54, height: 1.4),
+                  ),
                 ),
             ],
-          ),
-          if (isConnected &&
-              session.welcomeMessage != null &&
-              session.welcomeMessage!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                session.welcomeMessage!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 11.5, color: Colors.white54, height: 1.4),
-              ),
-            ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -383,19 +443,11 @@ class _ServersViewState extends State<ServersView> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.blue.withAlpha(80)),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.shield_outlined, color: Colors.blueAccent, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style:
-                  const TextStyle(fontSize: 12.5, color: Colors.white70, height: 1.3),
-            ),
-          ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 650;
+
+          final securityBtn = OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               side: BorderSide(color: Colors.blueAccent.withAlpha(120)),
               foregroundColor: Colors.blueAccent,
@@ -411,8 +463,49 @@ class _ServersViewState extends State<ServersView> {
                 builder: (ctx) => NetworkPolicyDialog(viewModel: vm),
               );
             },
-          ),
-        ],
+          );
+
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.shield_outlined, color: Colors.blueAccent, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        text,
+                        style: const TextStyle(fontSize: 12, color: Colors.white70, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: securityBtn,
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              const Icon(Icons.shield_outlined, color: Colors.blueAccent, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  text,
+                  style: const TextStyle(fontSize: 12.5, color: Colors.white70, height: 1.3),
+                ),
+              ),
+              const SizedBox(width: 10),
+              securityBtn,
+            ],
+          );
+        },
       ),
     );
   }
@@ -494,48 +587,347 @@ class _ServersViewState extends State<ServersView> {
     List<Ed2kServerModel> servers, {
     required bool hasServerConnectionCap,
   }) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowHeight: 40,
-          dataRowMinHeight: 44,
-          dataRowMaxHeight: 52,
-          horizontalMargin: 16,
-          columnSpacing: 18,
-          columns: const [
-            DataColumn(
-                label: Text('Etat / Filtre',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Nom du Serveur',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('IP : Port',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Description',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Ping',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Preference',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Version',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Actions',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-          ],
-          rows: servers
-              .map((s) => _buildServerRow(context, vm, s,
-                  hasServerConnectionCap: hasServerConnectionCap))
-              .toList(),
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 650;
+        final isMedium = constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
+
+        if (isMobile) {
+          return _buildServerCardsList(
+            context,
+            vm,
+            servers,
+            hasServerConnectionCap: hasServerConnectionCap,
+          );
+        }
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                sortColumnIndex: isMedium
+                    ? (_sortColumnIndex == 4 ? 3 : _sortColumnIndex == 2 ? 2 : 1)
+                    : _sortColumnIndex,
+                sortAscending: _sortAscending,
+                headingRowHeight: 40,
+                dataRowMinHeight: 44,
+                dataRowMaxHeight: 52,
+                horizontalMargin: 16,
+                columnSpacing: isMedium ? 14 : 18,
+                columns: isMedium
+                    ? [
+                        const DataColumn(
+                            label: Text('Etat / Filtre',
+                                style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(
+                          label: const Text('Nom du Serveur',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          onSort: (columnIndex, ascending) {
+                            setState(() {
+                              _sortColumnIndex = 1;
+                              _sortAscending = ascending;
+                            });
+                          },
+                        ),
+                        DataColumn(
+                          label: const Text('IP : Port',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          onSort: (columnIndex, ascending) {
+                            setState(() {
+                              _sortColumnIndex = 2;
+                              _sortAscending = ascending;
+                            });
+                          },
+                        ),
+                        DataColumn(
+                          label: const Text('Ping',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          numeric: true,
+                          onSort: (columnIndex, ascending) {
+                            setState(() {
+                              _sortColumnIndex = 4;
+                              _sortAscending = ascending;
+                            });
+                          },
+                        ),
+                        const DataColumn(
+                            label: Text('Actions',
+                                style: TextStyle(fontWeight: FontWeight.bold))),
+                      ]
+                    : [
+                        const DataColumn(
+                            label: Text('Etat / Filtre',
+                                style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(
+                          label: const Text('Nom du Serveur',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          onSort: (columnIndex, ascending) {
+                            setState(() {
+                              _sortColumnIndex = columnIndex;
+                              _sortAscending = ascending;
+                            });
+                          },
+                        ),
+                        DataColumn(
+                          label: const Text('IP : Port',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          onSort: (columnIndex, ascending) {
+                            setState(() {
+                              _sortColumnIndex = columnIndex;
+                              _sortAscending = ascending;
+                            });
+                          },
+                        ),
+                        const DataColumn(
+                            label: Text('Description',
+                                style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(
+                          label: const Text('Ping',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          numeric: true,
+                          onSort: (columnIndex, ascending) {
+                            setState(() {
+                              _sortColumnIndex = columnIndex;
+                              _sortAscending = ascending;
+                            });
+                          },
+                        ),
+                        DataColumn(
+                          label: const Text('Preference',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          numeric: true,
+                          onSort: (columnIndex, ascending) {
+                            setState(() {
+                              _sortColumnIndex = columnIndex;
+                              _sortAscending = ascending;
+                            });
+                          },
+                        ),
+                        const DataColumn(
+                            label: Text('Version',
+                                style: TextStyle(fontWeight: FontWeight.bold))),
+                        const DataColumn(
+                            label: Text('Actions',
+                                style: TextStyle(fontWeight: FontWeight.bold))),
+                      ],
+                rows: servers
+                    .map((s) => _buildServerRow(
+                          context,
+                          vm,
+                          s,
+                          hasServerConnectionCap: hasServerConnectionCap,
+                          isMedium: isMedium,
+                        ))
+                    .toList(),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildServerCardsList(
+    BuildContext context,
+    DownloadsViewModel vm,
+    List<Ed2kServerModel> servers, {
+    required bool hasServerConnectionCap,
+  }) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: servers.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final server = servers[index];
+        final isBlocked = server.filterStatus == ServerFilterStatus.blockedByFilter;
+        final isDisabled = server.filterStatus == ServerFilterStatus.disabled;
+        final isAllowed = server.filterStatus == ServerFilterStatus.allowed && !isDisabled;
+
+        final session = vm.serverSession;
+        final isActiveSession = session.serverAddress == server.address &&
+            session.status != ServerConnectionStatus.disconnected;
+
+        Widget statusBadge;
+        if (isBlocked) {
+          statusBadge = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.red.withAlpha(40),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.redAccent.withAlpha(100)),
+            ),
+            child: const Text('Bloque par IP Filter',
+                style: TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold)),
+          );
+        } else if (isDisabled) {
+          statusBadge = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.grey.withAlpha(40),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.grey.withAlpha(100)),
+            ),
+            child: const Text('Desactive',
+                style: TextStyle(color: Colors.white60, fontSize: 10.5)),
+          );
+        } else {
+          statusBadge = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.green.withAlpha(40),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.greenAccent.withAlpha(100)),
+            ),
+            child: const Text('Autorise',
+                style: TextStyle(
+                    color: Colors.greenAccent,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold)),
+          );
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.darkSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isActiveSession
+                  ? Colors.greenAccent.withAlpha(100)
+                  : AppTheme.darkBorder,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  statusBadge,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      server.name.isNotEmpty ? server.name : 'Sans nom',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                        color: Colors.white,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (server.ping > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(10),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${server.ping} ms',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(Icons.lan_outlined, size: 13, color: Colors.white38),
+                  const SizedBox(width: 5),
+                  Text(
+                    server.address,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11.5,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  if (server.version != null && server.version!.isNotEmpty) ...[
+                    const SizedBox(width: 10),
+                    Text(
+                      'v${server.version}',
+                      style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    ),
+                  ],
+                ],
+              ),
+              if (server.description.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  server.description,
+                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (hasServerConnectionCap && isAllowed) ...[
+                    if (isActiveSession) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.greenAccent.withAlpha(25),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.greenAccent.withAlpha(80)),
+                        ),
+                        child: Text(
+                          session.status.toDisplayString(),
+                          style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
+                        ),
+                      ),
+                    ] else ...[
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.power_rounded, size: 13),
+                        label: const Text('Se connecter', style: TextStyle(fontSize: 11)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: (!vm.isServerConnecting &&
+                                session.status == ServerConnectionStatus.disconnected)
+                            ? () => vm.connectServer(server.address)
+                            : null,
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                  ],
+                  IconButton(
+                    icon: Icon(
+                      isDisabled ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                      size: 18,
+                      color: isDisabled ? Colors.greenAccent : Colors.amberAccent,
+                    ),
+                    tooltip: isDisabled ? 'Activer' : 'Desactiver',
+                    onPressed: () => vm.setServerEnabled(server.address, isDisabled),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18, color: Colors.white54),
+                    tooltip: 'Supprimer',
+                    onPressed: () => vm.deleteServer(server.address),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -544,6 +936,7 @@ class _ServersViewState extends State<ServersView> {
     DownloadsViewModel vm,
     Ed2kServerModel server, {
     required bool hasServerConnectionCap,
+    bool isMedium = false,
   }) {
     final isBlocked = server.filterStatus == ServerFilterStatus.blockedByFilter;
     final isDisabled = server.filterStatus == ServerFilterStatus.disabled;
@@ -636,48 +1029,78 @@ class _ServersViewState extends State<ServersView> {
       }
     }
 
+    final actionsCell = DataCell(Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (connectBtn != null) ...[
+          connectBtn,
+          const SizedBox(width: 6),
+        ],
+        IconButton(
+          icon: Icon(
+            isDisabled ? Icons.play_arrow_rounded : Icons.pause_rounded,
+            size: 18,
+            color: isDisabled ? Colors.greenAccent : Colors.amberAccent,
+          ),
+          tooltip: isDisabled ? 'Activer' : 'Desactiver',
+          onPressed: () =>
+              vm.setServerEnabled(server.address, isDisabled),
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline,
+              size: 18, color: Colors.white54),
+          tooltip: 'Supprimer',
+          onPressed: () => vm.deleteServer(server.address),
+        ),
+      ],
+    ));
+
+    if (isMedium) {
+      return DataRow(
+        cells: [
+          DataCell(statusBadge),
+          DataCell(ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(
+              server.name.isNotEmpty ? server.name : 'Sans nom',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          )),
+          DataCell(Text(server.address,
+              style: const TextStyle(fontFamily: 'monospace'))),
+          DataCell(Text(server.ping > 0 ? '${server.ping} ms' : '-')),
+          actionsCell,
+        ],
+      );
+    }
+
     return DataRow(
       cells: [
         DataCell(statusBadge),
-        DataCell(Text(
+        DataCell(ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 240),
+          child: Text(
             server.name.isNotEmpty ? server.name : 'Sans nom',
-            style: const TextStyle(fontWeight: FontWeight.w500))),
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+        )),
         DataCell(Text(server.address,
             style: const TextStyle(fontFamily: 'monospace'))),
-        DataCell(Text(
-          server.description.isNotEmpty ? server.description : '-',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Colors.white60),
+        DataCell(ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 220),
+          child: Text(
+            server.description.isNotEmpty ? server.description : '-',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white60),
+          ),
         )),
         DataCell(Text(server.ping > 0 ? '${server.ping} ms' : '-')),
         DataCell(Text('${server.preference}')),
         DataCell(Text(server.version ?? '-')),
-        DataCell(Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (connectBtn != null) ...[
-              connectBtn,
-              const SizedBox(width: 6),
-            ],
-            IconButton(
-              icon: Icon(
-                isDisabled ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                size: 18,
-                color: isDisabled ? Colors.greenAccent : Colors.amberAccent,
-              ),
-              tooltip: isDisabled ? 'Activer' : 'Desactiver',
-              onPressed: () =>
-                  vm.setServerEnabled(server.address, isDisabled),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline,
-                  size: 18, color: Colors.white54),
-              tooltip: 'Supprimer',
-              onPressed: () => vm.deleteServer(server.address),
-            ),
-          ],
-        )),
+        actionsCell,
       ],
     );
   }

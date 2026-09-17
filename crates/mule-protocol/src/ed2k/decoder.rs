@@ -1334,4 +1334,24 @@ impl Ed2kDecoder {
 
         Ok(Ed2kSecIdentState { state, challenge })
     }
+
+    /// Decodes an incoming Source Exchange request (`OP_REQUESTSOURCES` or `OP_REQUESTSOURCES2`).
+    pub fn decode_request_sources(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+    ) -> Result<super::source_exchange::Ed2kRequestSources, Ed2kParseError> {
+        super::source_exchange::decode_request_sources(protocol, opcode, payload)
+    }
+
+    /// Decodes an incoming Source Exchange response (`OP_ANSWERSOURCES` or `OP_ANSWERSOURCES2`).
+    pub fn decode_answer_sources(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+    ) -> Result<super::source_exchange::Ed2kAnswerSources, Ed2kParseError> {
+        super::source_exchange::decode_answer_sources(protocol, opcode, payload)
+    }
 }

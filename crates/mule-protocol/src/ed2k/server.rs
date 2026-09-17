@@ -348,13 +348,26 @@ impl SearchResultFile {
 
     /// Helper to extract source count from tags.
     pub fn source_count(&self) -> Option<u32> {
-        self.tags.iter().find_map(|t| match (&t.name, &t.value) {
-            (TagName::Id(0x15), TagValue::UInt32(v)) => Some(*v),
-            (TagName::Id(0x15), TagValue::UInt16(v)) => Some(*v as u32),
-            (TagName::Text(txt), TagValue::UInt32(v)) if txt.to_lowercase().contains("source") => {
-                Some(*v)
+        self.tags.iter().find_map(|t| {
+            let is_source_tag = match &t.name {
+                TagName::Id(0x15) | TagName::Id(0x30) => true,
+                TagName::Text(txt) => {
+                    let lower = txt.to_lowercase();
+                    lower.contains("source") || lower.contains("availability") || lower.contains("complete")
+                }
+                _ => false,
+            };
+            if is_source_tag {
+                match &t.value {
+                    TagValue::UInt8(v) => Some(*v as u32),
+                    TagValue::UInt16(v) => Some(*v as u32),
+                    TagValue::UInt32(v) => Some(*v),
+                    TagValue::UInt64(v) => Some(*v as u32),
+                    _ => None,
+                }
+            } else {
+                None
             }
-            _ => None,
         })
     }
 }

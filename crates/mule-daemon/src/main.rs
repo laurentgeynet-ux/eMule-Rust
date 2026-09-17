@@ -111,24 +111,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&default_download_dir)?;
 
-    // Configure rotating file appender for daemon.log
+    // Configure file appender for daemon.log (reset on each startup)
     let log_file = std::fs::OpenOptions::new()
         .create(true)
-        .append(true)
+        .write(true)
+        .truncate(true)
         .open(data_dir.join("daemon.log"))
         .ok();
+
+    let timer = tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339()
+        .unwrap_or_else(|_| tracing_subscriber::fmt::time::OffsetTime::new(
+            time::UtcOffset::UTC,
+            time::format_description::well_known::Rfc3339,
+        ));
 
     let file_layer = log_file.map(|f| {
         tracing_subscriber::fmt::layer()
             .with_writer(std::sync::Arc::new(f))
             .with_ansi(false)
+            .with_timer(timer.clone())
     });
 
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_timer(timer))
         .with(file_layer)
         .init();
 
