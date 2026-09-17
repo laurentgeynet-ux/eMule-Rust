@@ -37,8 +37,8 @@ void main() {
       expect(find.text('Global Default Download Directory'), findsOneWidget);
       expect(find.text('Reset to Portable Default'), findsOneWidget);
       expect(find.text('Open Folder'), findsOneWidget);
-      expect(find.text('Strict Local Confinement (127.0.0.1)'), findsOneWidget);
-      expect(find.textContaining('No incoming or outgoing public internet P2P'), findsOneWidget);
+      expect(find.textContaining('Mode Réseau Public Ouvert (WAN & Kad)'), findsOneWidget);
+      expect(find.textContaining('Emule-Sion est connecté aux réseaux eD2K et Kademlia mondiaux'), findsOneWidget);
     });
 
     testWidgets('saving new default directory updates setting and shows success', (WidgetTester tester) async {

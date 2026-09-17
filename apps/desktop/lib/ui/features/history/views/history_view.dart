@@ -57,112 +57,133 @@ class HistoryView extends StatelessWidget {
         color: AppTheme.darkSurface,
         border: Border(bottom: BorderSide(color: AppTheme.darkBorder, width: 0.5)),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.history_rounded, color: AppTheme.primary, size: 22),
-          const SizedBox(width: 10),
-          const Flexible(
-            child: Text(
-              'History & Local Statistics',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const Spacer(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 680;
 
-          // Export Button
-          PopupMenuButton<String>(
-            tooltip: 'Export history report',
-            color: AppTheme.darkCard,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
-            ),
-            onSelected: (format) async {
-              final content = await viewModel.exportHistory(format);
-              if (context.mounted) {
-                _showExportDialog(context, format, content);
-              }
-            },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'json',
-                child: Row(
-                  children: [
-                    Icon(Icons.data_object_rounded, size: 18, color: Colors.white70),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Export as JSON (Sanitized)',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+          return Row(
+            children: [
+              const Icon(Icons.history_rounded, color: AppTheme.primary, size: 22),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'History & Local Statistics',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const PopupMenuItem(
-                value: 'csv',
-                child: Row(
-                  children: [
-                    Icon(Icons.table_chart_outlined, size: 18, color: Colors.white70),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Export as CSV (Sanitized)',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: 8),
+
+              // Export Button
+              PopupMenuButton<String>(
+                tooltip: 'Export history report',
+                color: AppTheme.darkCard,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
                 ),
+                onSelected: (format) async {
+                  final content = await viewModel.exportHistory(format);
+                  if (context.mounted) {
+                    _showExportDialog(context, format, content);
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'json',
+                    child: Row(
+                      children: [
+                        Icon(Icons.data_object_rounded, size: 18, color: Colors.white70),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Export as JSON (Sanitized)',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'csv',
+                    child: Row(
+                      children: [
+                        Icon(Icons.table_chart_outlined, size: 18, color: Colors.white70),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Export as CSV (Sanitized)',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompact ? 8 : 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.file_download_outlined, size: 16, color: Colors.white70),
+                      if (!isCompact) ...[
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Export Report',
+                          style: TextStyle(fontSize: 13, color: Colors.white70),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down, size: 18, color: Colors.white70),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // Clear History Button
+              if (isCompact)
+                IconButton(
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppTheme.statusFailed,
+                  ),
+                  icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                  tooltip: 'Clear History',
+                  onPressed: () => _confirmClearHistory(context),
+                )
+              else
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.statusFailed,
+                    side: BorderSide(color: AppTheme.statusFailed.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                  label: const Text('Clear History'),
+                  onPressed: () => _confirmClearHistory(context),
+                ),
+              const SizedBox(width: 6),
+
+              // Refresh Button
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.white70),
+                tooltip: 'Refresh',
+                onPressed: () => viewModel.fetchHistory(),
               ),
             ],
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white12,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.file_download_outlined, size: 16, color: Colors.white70),
-                  SizedBox(width: 6),
-                  Text(
-                    'Export Report',
-                    style: TextStyle(fontSize: 13, color: Colors.white70),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(Icons.arrow_drop_down, size: 18, color: Colors.white70),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-
-          // Clear History Button
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.statusFailed,
-              side: BorderSide(color: AppTheme.statusFailed.withValues(alpha: 0.5)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            icon: const Icon(Icons.delete_sweep_outlined, size: 16),
-            label: const Text('Clear History'),
-            onPressed: () => _confirmClearHistory(context),
-          ),
-          const SizedBox(width: 10),
-
-          // Refresh Button
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.white70),
-            tooltip: 'Refresh',
-            onPressed: () => viewModel.fetchHistory(),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -357,111 +378,195 @@ class HistoryView extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.darkBorder, width: 0.5),
       ),
-      child: Row(
-        children: [
-          // Event Type Pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: color.withValues(alpha: 0.4), width: 0.5),
-            ),
-            child: Text(
-              entry.eventType.toUpperCase(),
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
-            ),
-          ),
-          const SizedBox(width: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 700;
 
-          // File Name & ED2K Hash
-          Expanded(
-            flex: 4,
-            child: Column(
+          if (isCompact) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  entry.fileName,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.5),
+                      ),
+                      child: Text(
+                        entry.eventType.toUpperCase(),
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        entry.fileName,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _formatTimestamp(entry.timestamp),
+                      style: const TextStyle(fontSize: 11, color: Colors.white54),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.info_outline_rounded, size: 16, color: Colors.white54),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                      tooltip: 'View details',
+                      onPressed: () => _showEntryDetails(context, entry),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Hash: ${entry.ed2kHash}',
-                  style: const TextStyle(fontSize: 11, color: Colors.white38, fontFamily: 'monospace'),
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${Formatters.formatBytes(entry.transferredBytes)} of ${Formatters.formatBytes(entry.totalBytes)}',
+                      style: const TextStyle(fontSize: 11, color: Colors.white70),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          Formatters.formatDuration(entry.durationSecs),
+                          style: const TextStyle(fontSize: 11, color: Colors.white54),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: _getVerifColor(entry.verificationResult).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            entry.verificationResult,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: _getVerifColor(entry.verificationResult),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ),
+            );
+          }
 
-          // Transferred / Total Size
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  Formatters.formatBytes(entry.transferredBytes),
-                  style: const TextStyle(fontSize: 13, color: Colors.white),
+          return Row(
+            children: [
+              // Event Type Pill
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: color.withValues(alpha: 0.4), width: 0.5),
                 ),
-                Text(
-                  'of ${Formatters.formatBytes(entry.totalBytes)}',
-                  style: const TextStyle(fontSize: 11, color: Colors.white38),
+                child: Text(
+                  entry.eventType.toUpperCase(),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
                 ),
-              ],
-            ),
-          ),
-
-          // Duration & Attempts
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  Formatters.formatDuration(entry.durationSecs),
-                  style: const TextStyle(fontSize: 13, color: Colors.white),
-                ),
-                Text(
-                  '${entry.resumeCount} res. / ${entry.connectionAttempts} att.',
-                  style: const TextStyle(fontSize: 11, color: Colors.white38),
-                ),
-              ],
-            ),
-          ),
-
-          // Verification badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-            decoration: BoxDecoration(
-              color: _getVerifColor(entry.verificationResult).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              entry.verificationResult,
-              style: TextStyle(
-                fontSize: 11,
-                color: _getVerifColor(entry.verificationResult),
               ),
-            ),
-          ),
-          const SizedBox(width: 16),
+              const SizedBox(width: 16),
 
-          // Timestamp
-          Text(
-            _formatTimestamp(entry.timestamp),
-            style: const TextStyle(fontSize: 12, color: Colors.white54),
-          ),
-          const SizedBox(width: 8),
+              // File Name & ED2K Hash
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.fileName,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Hash: ${entry.ed2kHash}',
+                      style: const TextStyle(fontSize: 11, color: Colors.white38, fontFamily: 'monospace'),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
 
-          // Details Action
-          IconButton(
-            icon: const Icon(Icons.info_outline_rounded, size: 18, color: Colors.white54),
-            tooltip: 'View details',
-            onPressed: () => _showEntryDetails(context, entry),
-          ),
-        ],
+              // Transferred / Total Size
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Formatters.formatBytes(entry.transferredBytes),
+                      style: const TextStyle(fontSize: 13, color: Colors.white),
+                    ),
+                    Text(
+                      'of ${Formatters.formatBytes(entry.totalBytes)}',
+                      style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Duration & Attempts
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Formatters.formatDuration(entry.durationSecs),
+                      style: const TextStyle(fontSize: 13, color: Colors.white),
+                    ),
+                    Text(
+                      '${entry.resumeCount} res. / ${entry.connectionAttempts} att.',
+                      style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Verification badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _getVerifColor(entry.verificationResult).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  entry.verificationResult,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _getVerifColor(entry.verificationResult),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // Timestamp
+              Text(
+                _formatTimestamp(entry.timestamp),
+                style: const TextStyle(fontSize: 12, color: Colors.white54),
+              ),
+              const SizedBox(width: 8),
+
+              // Details Action
+              IconButton(
+                icon: const Icon(Icons.info_outline_rounded, size: 18, color: Colors.white54),
+                tooltip: 'View details',
+                onPressed: () => _showEntryDetails(context, entry),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

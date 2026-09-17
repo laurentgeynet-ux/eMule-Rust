@@ -22,21 +22,25 @@ class LargeListMockClient implements MuleDaemonClient {
   LargeListMockClient(int count) {
     final now = DateTime.now();
     for (var i = 1; i <= count; i++) {
-      _items.add(DownloadItem(
-        id: 'bulk-item-$i',
-        fileName: 'archive_part_$i.tar.gz',
-        totalBytes: 50000000 + i * 1000,
-        receivedBytes: (i % 2 == 0) ? 25000000 : 50000000 + i * 1000,
-        verifiedBytes: (i % 2 == 0) ? 25000000 : 50000000 + i * 1000,
-        progress: (i % 2 == 0) ? 0.5 : 1.0,
-        status: (i % 2 == 0) ? DownloadStatus.downloading : DownloadStatus.completed,
-        priority: DownloadPriority.normal,
-        sourceCount: (i % 20) + 1,
-        downloadRateBps: (i % 2 == 0) ? 500000 : 0,
-        uploadedBytes: 10000,
-        createdAt: now.subtract(Duration(minutes: i)),
-        updatedAt: now,
-      ));
+      _items.add(
+        DownloadItem(
+          id: 'bulk-item-$i',
+          fileName: 'archive_part_$i.tar.gz',
+          totalBytes: 50000000 + i * 1000,
+          receivedBytes: (i % 2 == 0) ? 25000000 : 50000000 + i * 1000,
+          verifiedBytes: (i % 2 == 0) ? 25000000 : 50000000 + i * 1000,
+          progress: (i % 2 == 0) ? 0.5 : 1.0,
+          status: (i % 2 == 0)
+              ? DownloadStatus.downloading
+              : DownloadStatus.completed,
+          priority: DownloadPriority.normal,
+          sourceCount: (i % 20) + 1,
+          downloadRateBps: (i % 2 == 0) ? 500000 : 0,
+          uploadedBytes: 10000,
+          createdAt: now.subtract(Duration(minutes: i)),
+          updatedAt: now,
+        ),
+      );
     }
   }
 
@@ -44,7 +48,8 @@ class LargeListMockClient implements MuleDaemonClient {
   DaemonInfo? get daemonInfo => null;
 
   @override
-  DaemonConnectionState get currentConnectionState => DaemonConnectionState.connected;
+  DaemonConnectionState get currentConnectionState =>
+      DaemonConnectionState.connected;
 
   @override
   Stream<DaemonConnectionState> get connectionState => const Stream.empty();
@@ -77,7 +82,12 @@ class LargeListMockClient implements MuleDaemonClient {
       _items.firstWhere((d) => d.id == id);
 
   @override
-  Future<String> addEd2kLink(String link, {String? targetDirectory, String? allocationPolicy, String? categoryId}) async => 'new-id';
+  Future<String> addEd2kLink(
+    String link, {
+    String? targetDirectory,
+    String? allocationPolicy,
+    String? categoryId,
+  }) async => 'new-id';
 
   @override
   Future<DownloadItem> pauseDownload(String id) async =>
@@ -91,16 +101,19 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<void> removeDownload(String id, {bool deleteFiles = false}) async {}
 
   @override
-  Future<DownloadItem> injectRange(String id, int offset, String hexData) async =>
-      _items.firstWhere((d) => d.id == id);
+  Future<DownloadItem> injectRange(
+    String id,
+    int offset,
+    String hexData,
+  ) async => _items.firstWhere((d) => d.id == id);
 
   @override
   Future<LabStatus> getLabStatus() async => const LabStatus(
-        workdirMode: 'Portable',
-        workdirPath: 'test_path',
-        isPortable: true,
-        fixtures: [],
-      );
+    workdirMode: 'Portable',
+    workdirPath: 'test_path',
+    isPortable: true,
+    fixtures: [],
+  );
 
   @override
   Future<LabFixtureInfo> createLabFixture(String fixtureType) async =>
@@ -109,34 +122,40 @@ class LargeListMockClient implements MuleDaemonClient {
         filePath: 'test.bin',
         sizeBytes: 1024,
         ed2kHash: '0123456789abcdef0123456789abcdef',
-        ed2kLink: 'ed2k://|file|test.bin|1024|0123456789abcdef0123456789abcdef|/',
+        ed2kLink:
+            'ed2k://|file|test.bin|1024|0123456789abcdef0123456789abcdef|/',
       );
 
   @override
   Future<LabPeerInfo> startLabPeer() async => const LabPeerInfo(
-        peerAddr: '127.0.0.1:4662',
-        sharedCount: 1,
-        status: 'running',
-      );
+    peerAddr: '127.0.0.1:39735',
+    sharedCount: 1,
+    status: 'running',
+  );
 
   @override
   Future<void> stopLabPeer() async {}
 
   @override
   Future<LabCleanupReport> cleanupLabTestData() async => const LabCleanupReport(
-        success: true,
-        cleanedFolders: ['fixtures'],
-        deletedFilesCount: 0,
-        freedBytes: 0,
-        message: 'Mock cleanup',
-      );
+    success: true,
+    cleanedFolders: ['fixtures'],
+    deletedFilesCount: 0,
+    freedBytes: 0,
+    message: 'Mock cleanup',
+  );
 
   @override
-  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {}
+  Future<void> connectDownloadToSource(
+    String downloadId,
+    String peerAddr,
+  ) async {}
 
   @override
-  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory) async =>
-      _items.firstWhere((d) => d.id == id);
+  Future<DownloadItem> setDownloadDestination(
+    String id,
+    String targetDirectory,
+  ) async => _items.firstWhere((d) => d.id == id);
 
   @override
   Future<DownloadItem> retryDownloadConnection(String id) async =>
@@ -144,10 +163,10 @@ class LargeListMockClient implements MuleDaemonClient {
 
   @override
   Future<Map<String, dynamic>> getSettings() async => {
-        'defaultDownloadDir': 'downloads',
-        'portableDownloadDir': 'downloads',
-        'isCustom': false,
-      };
+    'defaultDownloadDir': 'downloads',
+    'portableDownloadDir': 'downloads',
+    'isCustom': false,
+  };
 
   @override
   Future<void> setDefaultDownloadDirectory(String path) async {}
@@ -167,24 +186,28 @@ class LargeListMockClient implements MuleDaemonClient {
 
   @override
   Future<HistoryStats> getHistoryStats() async => const HistoryStats(
-        sessionCompletedCount: 0,
-        sessionCompletedBytes: 0,
-        last24hCompletedCount: 0,
-        last24hCompletedBytes: 0,
-        last7dCompletedCount: 0,
-        last7dCompletedBytes: 0,
-        totalCompletedCount: 0,
-        totalCompletedBytes: 0,
-        totalFailedCount: 0,
-        totalResumesCount: 0,
-        totalIntegrityFailures: 0,
-      );
+    sessionCompletedCount: 0,
+    sessionCompletedBytes: 0,
+    last24hCompletedCount: 0,
+    last24hCompletedBytes: 0,
+    last7dCompletedCount: 0,
+    last7dCompletedBytes: 0,
+    totalCompletedCount: 0,
+    totalCompletedBytes: 0,
+    totalFailedCount: 0,
+    totalResumesCount: 0,
+    totalIntegrityFailures: 0,
+  );
 
   @override
   Future<int> clearHistory() async => 0;
 
   @override
-  Future<String> exportHistory(String format, {String? eventType, String? status}) async => '';
+  Future<String> exportHistory(
+    String format, {
+    String? eventType,
+    String? status,
+  }) async => '';
 
   @override
   Future<void> setHistoryRetentionDays(int days) async {}
@@ -198,14 +221,13 @@ class LargeListMockClient implements MuleDaemonClient {
     required String color,
     String? defaultDestination,
     String? defaultPriority,
-  }) async =>
-      CategoryItem(
-        id: 'mock-cat',
-        name: name,
-        color: color,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
+  }) async => CategoryItem(
+    id: 'mock-cat',
+    name: name,
+    color: color,
+    createdAt: DateTime.now(),
+    updatedAt: DateTime.now(),
+  );
 
   @override
   Future<CategoryItem> updateCategory(
@@ -215,14 +237,13 @@ class LargeListMockClient implements MuleDaemonClient {
     String? defaultDestination,
     String? defaultPriority,
     int? sortOrder,
-  }) async =>
-      CategoryItem(
-        id: id,
-        name: name ?? 'Updated',
-        color: color ?? '#2196F3',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
+  }) async => CategoryItem(
+    id: id,
+    name: name ?? 'Updated',
+    color: color ?? '#2196F3',
+    createdAt: DateTime.now(),
+    updatedAt: DateTime.now(),
+  );
 
   @override
   Future<void> deleteCategory(String id) async {}
@@ -231,20 +252,24 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<void> reorderCategories(List<String> categoryIds) async {}
 
   @override
-  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId) async =>
-      _items.firstWhere((d) => d.id == downloadId);
+  Future<DownloadItem> setDownloadCategory(
+    String downloadId,
+    String? categoryId,
+  ) async => _items.firstWhere((d) => d.id == downloadId);
 
   @override
-  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) async =>
-      PartMetInspectionResult(
-        fileName: 'mock.bin',
-        totalSize: 1000,
-        ed2kHash: '00000000000000000000000000000000',
-        partCount: 1,
-        partMetPath: metPath,
-        partFileExists: true,
-        estimatedTransferredBytes: 1000,
-      );
+  Future<PartMetInspectionResult> inspectPartMet(
+    String metPath, {
+    String? partPath,
+  }) async => PartMetInspectionResult(
+    fileName: 'mock.bin',
+    totalSize: 1000,
+    ed2kHash: '00000000000000000000000000000000',
+    partCount: 1,
+    partMetPath: metPath,
+    partFileExists: true,
+    estimatedTransferredBytes: 1000,
+  );
 
   @override
   Future<ImportPartMetResult> importPartMet(
@@ -252,18 +277,18 @@ class LargeListMockClient implements MuleDaemonClient {
     String? partPath,
     String? targetDirectory,
     String? categoryId,
-  }) async =>
-      ImportPartMetResult(
-        download: _items.first,
-        totalParts: 1,
-        verifiedParts: 1,
-        corruptedParts: 0,
-        transferredBytes: 1000,
-        totalSize: 1000,
-      );
+  }) async => ImportPartMetResult(
+    download: _items.first,
+    totalParts: 1,
+    verifiedParts: 1,
+    corruptedParts: 0,
+    transferredBytes: 1000,
+    totalSize: 1000,
+  );
 
   @override
-  Future<NetworkPolicySnapshot> getNetworkPolicy() async => const NetworkPolicySnapshot(
+  Future<NetworkPolicySnapshot> getNetworkPolicy() async =>
+      const NetworkPolicySnapshot(
         profile: NetworkProfile.localLab,
         state: NetworkSubsystemState.previewActive,
         budgets: ResourceBudgetsModel(
@@ -280,8 +305,9 @@ class LargeListMockClient implements MuleDaemonClient {
       );
 
   @override
-  Future<NetworkPolicySnapshot> setNetworkProfile(NetworkProfile profile) async =>
-      getNetworkPolicy();
+  Future<NetworkPolicySnapshot> setNetworkProfile(
+    NetworkProfile profile,
+  ) async => getNetworkPolicy();
 
   @override
   Future<void> disconnectAll() async {}
@@ -290,59 +316,62 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<void> enableNetwork() async {}
 
   @override
-  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({int limit = 50}) async => [];
+  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({
+    int limit = 50,
+  }) async => [];
 
   @override
-  Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets) async =>
-      getNetworkPolicy();
+  Future<NetworkPolicySnapshot> setResourceBudgets(
+    ResourceBudgetsModel budgets,
+  ) async => getNetworkPolicy();
 
   @override
-  Future<FilterStatusModel> getFilterStatus() async => const FilterStatusModel(
-        enabled: true,
-        rangeCount: 0,
-        hitsCount: 0,
-      );
+  Future<FilterStatusModel> getFilterStatus() async =>
+      const FilterStatusModel(enabled: true, rangeCount: 0, hitsCount: 0);
 
   @override
-  Future<FilterStatusModel> importFilterFile(String filePath) async => const FilterStatusModel(
-        enabled: true,
-        rangeCount: 100,
-        hitsCount: 0,
-      );
+  Future<FilterStatusModel> importFilterFile(String filePath) async =>
+      const FilterStatusModel(enabled: true, rangeCount: 100, hitsCount: 0);
 
   @override
-  Future<FilterStatusModel> setFilterEnabled(bool enabled) async => const FilterStatusModel(
-        enabled: true,
-        rangeCount: 0,
-        hitsCount: 0,
-      );
+  Future<FilterStatusModel> setFilterEnabled(bool enabled) async =>
+      const FilterStatusModel(enabled: true, rangeCount: 0, hitsCount: 0);
 
   @override
-  Future<FilterStatusModel> clearFilter() async => const FilterStatusModel(
-        enabled: true,
-        rangeCount: 0,
-        hitsCount: 0,
-      );
+  Future<FilterStatusModel> clearFilter() async =>
+      const FilterStatusModel(enabled: true, rangeCount: 0, hitsCount: 0);
 
   @override
   Future<RateLimitsModel> getRateLimits() async => const RateLimitsModel(
-        downloadBytesPerSec: 0,
-        uploadBytesPerSec: 0,
-        connectionsPerMinute: 120,
-        serverRequestsPerSec: 10,
-        kadPacketsPerSec: 50,
-      );
+    downloadBytesPerSec: 0,
+    uploadBytesPerSec: 0,
+    connectionsPerMinute: 120,
+    serverRequestsPerSec: 10,
+    kadPacketsPerSec: 50,
+  );
 
   @override
   Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async => limits;
 
   @override
   Future<ServerInspectReport> inspectServerMet(String filePath) async =>
-      ServerInspectReport(filePath: filePath, totalCount: 0, allowedCount: 0, blockedCount: 0, servers: const []);
+      ServerInspectReport(
+        filePath: filePath,
+        totalCount: 0,
+        allowedCount: 0,
+        blockedCount: 0,
+        servers: const [],
+      );
 
   @override
   Future<ServerImportResult> importServerMet(String filePath) async =>
-      const ServerImportResult(success: true, imported: 0, totalCount: 0, allowedCount: 0, blockedCount: 0);
+      const ServerImportResult(
+        success: true,
+        imported: 0,
+        totalCount: 0,
+        allowedCount: 0,
+        blockedCount: 0,
+      );
 
   @override
   Future<List<Ed2kServerModel>> listServers() async => const [];
@@ -393,29 +422,33 @@ class LargeListMockClient implements MuleDaemonClient {
   Stream<PeerSessionModel> get peerSessionEvents => const Stream.empty();
 
   @override
+  Stream<ServerSessionModel> get serverSessionEvents => const Stream.empty();
+
+  @override
   Future<List<PeerSourceModel>> listSources(String fileHash) async => [];
 
   @override
-  Future<PeerSourceModel> addManualSource(String fileHash, String address) async =>
-      PeerSourceModel(
-        fileHash: fileHash,
-        address: address,
-        ip: 2130706433,
-        port: 4662,
-        status: PeerSourceStatus.allowed,
-        origin: PeerSourceOrigin.manual,
-        discoveredAtUnixMs: DateTime.now().millisecondsSinceEpoch,
-        lastSeenUnixMs: DateTime.now().millisecondsSinceEpoch,
-        failCount: 0,
-      );
+  Future<PeerSourceModel> addManualSource(
+    String fileHash,
+    String address,
+  ) async => PeerSourceModel(
+    fileHash: fileHash,
+    address: address,
+    ip: 2130706433,
+    port: 39735,
+    status: PeerSourceStatus.allowed,
+    origin: PeerSourceOrigin.manual,
+    discoveredAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+    lastSeenUnixMs: DateTime.now().millisecondsSinceEpoch,
+    failCount: 0,
+  );
 
   @override
   Future<PeerSessionModel> connectPeerSource(
     String fileHash,
     String address, {
     bool force = false,
-  }) async =>
-      PeerSessionModel.disconnected;
+  }) async => PeerSessionModel.disconnected;
 
   @override
   Future<PeerSessionModel> disconnectPeerSource({String? address}) async =>
@@ -441,29 +474,30 @@ class LargeListMockClient implements MuleDaemonClient {
     required String fileName,
     required int fileSize,
     required String filePath,
-  }) async =>
-      SharedFileModel(
-        fileHash: fileHash,
-        fileName: fileName,
-        fileSize: fileSize,
-        filePath: filePath,
-        sharedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
-        enabled: true,
-      );
+  }) async => SharedFileModel(
+    fileHash: fileHash,
+    fileName: fileName,
+    fileSize: fileSize,
+    filePath: filePath,
+    sharedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+    enabled: true,
+  );
 
   @override
   Future<void> removeSharedFile(String fileHash) async {}
 
   @override
-  Future<SharedFileModel> setSharedFileEnabled(String fileHash, bool enabled) async =>
-      SharedFileModel(
-        fileHash: fileHash,
-        fileName: 'file.bin',
-        fileSize: 1000,
-        filePath: 'C:\\file.bin',
-        sharedAtUnixMs: 0,
-        enabled: enabled,
-      );
+  Future<SharedFileModel> setSharedFileEnabled(
+    String fileHash,
+    bool enabled,
+  ) async => SharedFileModel(
+    fileHash: fileHash,
+    fileName: 'file.bin',
+    fileSize: 1000,
+    filePath: 'C:\\file.bin',
+    sharedAtUnixMs: 0,
+    enabled: enabled,
+  );
 
   @override
   Future<InboundListenerStatusModel> startListener({int port = 0}) async =>
@@ -478,7 +512,10 @@ class LargeListMockClient implements MuleDaemonClient {
       InboundListenerStatusModel.idle;
 
   @override
-  Future<Map<String, dynamic>> listUploads() async => {'active': [], 'queued': []};
+  Future<Map<String, dynamic>> listUploads() async => {
+    'active': [],
+    'queued': [],
+  };
 
   @override
   Future<UploadSessionModel?> getUploadStatus() async => null;
@@ -488,23 +525,37 @@ class LargeListMockClient implements MuleDaemonClient {
 
   @override
   Future<SecureIdentityStatusModel> getIdentityStatus() async =>
-      const SecureIdentityStatusModel(enabled: true, hasKey: true, pubkeyHash: 'mock_hash', keyBits: 384);
+      const SecureIdentityStatusModel(
+        enabled: true,
+        hasKey: true,
+        pubkeyHash: 'mock_hash',
+        keyBits: 384,
+      );
 
   @override
   Future<SecureIdentityStatusModel> rotateIdentity() async =>
-      const SecureIdentityStatusModel(enabled: true, hasKey: true, pubkeyHash: 'rotated_mock_hash', keyBits: 384);
+      const SecureIdentityStatusModel(
+        enabled: true,
+        hasKey: true,
+        pubkeyHash: 'rotated_mock_hash',
+        keyBits: 384,
+      );
 
   @override
-  Future<List<PeerCreditModel>> listPeerCredits({int limit = 50}) async => const [];
+  Future<List<PeerCreditModel>> listPeerCredits({int limit = 50}) async =>
+      const [];
 
   @override
-  Future<PeerCreditStatsModel> getPeerCreditStats() async => PeerCreditStatsModel.zero;
+  Future<PeerCreditStatsModel> getPeerCreditStats() async =>
+      PeerCreditStatsModel.zero;
 
   @override
   Future<KadStatusModel> getKadStatus() async => KadStatusModel.initial;
 
   @override
-  Future<Map<String, dynamic>> startKadUdp({String? bindAddress}) async => {'boundAddress': '127.0.0.1:4672'};
+  Future<Map<String, dynamic>> startKadUdp({String? bindAddress}) async => {
+    'boundAddress': '127.0.0.1:39737',
+  };
 
   @override
   Future<Map<String, dynamic>> stopKadUdp() async => {'stopped': true};
@@ -528,14 +579,23 @@ class LargeListMockClient implements MuleDaemonClient {
       );
 
   @override
-  Future<Map<String, dynamic>> importNodesDat(String filePath) async => {'importedCount': 0};
+  Future<Map<String, dynamic>> importNodesDat(String filePath) async => {
+    'importedCount': 0,
+  };
 
   @override
-  Future<List<KadContactModel>> listKadContacts({int limit = 100}) async => const [];
+  Future<List<KadContactModel>> listKadContacts({int limit = 100}) async =>
+      const [];
 
   @override
-  Future<Map<String, dynamic>> bootstrapKad({required String ip, required int port}) async =>
-      {'status': 'ok', 'contactsDiscovered': 0, 'bootstrapNode': '$ip:$port'};
+  Future<Map<String, dynamic>> bootstrapKad({
+    required String ip,
+    required int port,
+  }) async => {
+    'status': 'ok',
+    'contactsDiscovered': 0,
+    'bootstrapNode': '$ip:$port',
+  };
 
   @override
   Future<List<KadContactModel>> findKadNode(String targetId) async => const [];
@@ -544,39 +604,103 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<int> clearKadContacts() async => 0;
 
   @override
+  Future<List<PeerSourceModel>> searchKadSources({
+    required String fileHash,
+    int? fileSize,
+  }) async => const [];
+
+  @override
+  Future<List<SearchResultFileModel>> searchKadKeywords({
+    required String term,
+    int? minSize,
+    int? maxSize,
+  }) async => const [];
+
+  @override
+  Future<int> publishKadSource({
+    required String fileHash,
+    required int fileSize,
+    int tcpPort = 39735,
+  }) async => 0;
+
+  @override
+  Future<int> publishKadKeywords({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+  }) async => 0;
+
+  @override
+  Future<UpnpStatusModel> getUpnpStatus() async => const UpnpStatusModel(
+    enabled: true,
+    available: false,
+    gatewayAddr: null,
+    externalIp: null,
+    tcpPort: 39735,
+    udpPort: 39737,
+    tcpMapped: false,
+    udpMapped: false,
+  );
+
+  @override
+  Future<UpnpStatusModel> setUpnpEnabled(bool enabled) async => getUpnpStatus();
+
+  @override
+  Future<UpnpStatusModel> mapUpnpPorts({
+    int tcpPort = 39735,
+    int udpPort = 39737,
+  }) async => getUpnpStatus();
+
+  @override
+  Future<UpnpStatusModel> unmapUpnpPorts() async => getUpnpStatus();
+
+  @override
+  Future<Map<String, dynamic>> updateServersFromUrl(String url) async => {
+    'imported': 0,
+    'serversCount': 0,
+  };
+
+  @override
+  Future<Map<String, dynamic>> bootstrapKadFromUrl(String url) async => {
+    'importedNodes': 0,
+  };
+
+  @override
   void dispose() {}
 }
 
 void main() {
-  testWidgets('Large list virtualization with 500 items renders and scrolls without lag',
-      (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1280, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
+  testWidgets(
+    'Large list virtualization with 500 items renders and scrolls without lag',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
 
-    final mockClient = LargeListMockClient(500);
-    final viewModel = DownloadsViewModel(client: mockClient);
-    await viewModel.initialize(url: Uri.parse('ws://mock:4660/rpc'));
+      final mockClient = LargeListMockClient(500);
+      final viewModel = DownloadsViewModel(client: mockClient);
+      await viewModel.initialize(url: Uri.parse('ws://mock:4660/rpc'));
 
-    await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
 
-    // Verify initial viewport renders visible items
-    expect(find.byType(DownloadRow), findsWidgets);
-    expect(find.text('archive_part_1.tar.gz'), findsOneWidget);
+      // Verify initial viewport renders visible items
+      expect(find.byType(DownloadRow), findsWidgets);
+      expect(find.text('archive_part_1.tar.gz'), findsOneWidget);
 
-    // Scroll down 2000 pixels
-    await tester.drag(find.byType(ListView), const Offset(0, -2000));
-    await tester.pumpAndSettle();
+      // Scroll down 2000 pixels
+      await tester.drag(find.byType(ListView), const Offset(0, -2000));
+      await tester.pumpAndSettle();
 
-    // Elements off screen should be unmounted (virtualized)
-    expect(find.byType(DownloadRow), findsWidgets);
-    expect(find.text('archive_part_1.tar.gz'), findsNothing);
+      // Elements off screen should be unmounted (virtualized)
+      expect(find.byType(DownloadRow), findsWidgets);
+      expect(find.text('archive_part_1.tar.gz'), findsNothing);
 
-    // Filter to active items only
-    viewModel.setFilter(DownloadFilter.active);
-    await tester.pumpAndSettle();
+      // Filter to active items only
+      viewModel.setFilter(DownloadFilter.active);
+      await tester.pumpAndSettle();
 
-    expect(viewModel.filteredDownloads.length, 250);
-  });
+      expect(viewModel.filteredDownloads.length, 250);
+    },
+  );
 }

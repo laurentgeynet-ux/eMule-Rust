@@ -19,15 +19,15 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
 
     let db_path = data_dir.join("mule.db");
     let downloads = DownloadService::new(&db_path, data_dir.join("temp")).unwrap();
-    let config = DaemonConfig {
-        bind_addr: "127.0.0.1:0".parse().unwrap(),
-        auth_token: "test-token".to_string(),
-        data_dir,
-        default_download_dir: dl_dir,
-        workdir_mode: WorkDirMode::ExplicitCli,
-    };
+    let config = DaemonConfig::new(data_dir, "test-token")
+        .with_bind_addr("127.0.0.1:0".parse().unwrap())
+        .with_default_download_dir(dl_dir)
+        .with_workdir_mode(WorkDirMode::ExplicitCli);
 
     let state = AppState::new(config, downloads);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
     let mut authenticated = false;
 
     // 1. Handshake (system.hello)
@@ -59,8 +59,8 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
 
     // 3. Create a synthetic nodes.dat file
     let contacts = vec![
-        KadContactEntry::new([1u8; 16], Ipv4Addr::new(127, 0, 0, 1), 4672, 4662, 2),
-        KadContactEntry::new([2u8; 16], Ipv4Addr::new(127, 0, 0, 2), 4672, 0, 1),
+        KadContactEntry::new([1u8; 16], Ipv4Addr::new(127, 0, 0, 1), 39737, 39735, 2),
+        KadContactEntry::new([2u8; 16], Ipv4Addr::new(127, 0, 0, 2), 39737, 0, 1),
     ];
     let nodes_file = NodesDatFile::new(2, contacts);
     let mut nodes_dat_bytes = Vec::new();

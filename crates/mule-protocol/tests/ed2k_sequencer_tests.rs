@@ -563,7 +563,7 @@ fn test_tier3_rejects_compressedpart_in_passive_profile() {
     assert_eq!(decode_err.kind, Ed2kErrorKind::CompressedProtocolUnsupported);
 
     // 2. Active session rejects 0xD4 packet without attempting decompression
-    let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 4662);
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 39735);
     let session_err = session.on_packet_received(&compressed_pkt).unwrap_err();
     assert_eq!(session_err, Ed2kSessionError::CompressedProtocolUnsupported);
 }

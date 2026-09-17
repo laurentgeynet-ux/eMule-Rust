@@ -93,6 +93,17 @@ impl IdentityService {
         &self.pubkey_hash
     }
 
+    /// Returns the 16-byte user hash derived from the public key MD4 hash, marked with eMule magic bytes.
+    pub fn user_hash(&self) -> [u8; 16] {
+        let hash = Md4::digest(&self.public_key);
+        let mut out = [0u8; 16];
+        out.copy_from_slice(&hash[..16]);
+        // Official eMule client identification magic bytes (Preferences.cpp:1491-1492)
+        out[5] = 14;  // 0x0E
+        out[14] = 111; // 0x6F
+        out
+    }
+
     /// Returns the public identity status object.
     pub fn status(&self) -> IdentityStatus {
         IdentityStatus {

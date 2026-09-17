@@ -23,3 +23,4 @@ apps/desktop/.flutter-plugins-dependencies
 .DS_Store
 Thumbs.db
 *.log
+scratch/

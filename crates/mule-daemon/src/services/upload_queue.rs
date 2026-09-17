@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 /// Maximum number of queued upload requests.
-pub const MAX_UPLOAD_QUEUE: usize = 10;
+pub const MAX_UPLOAD_QUEUE: usize = 500;
 /// Maximum number of concurrent active uploads.
-pub const MAX_ACTIVE_UPLOADS: usize = 1;
+pub const MAX_ACTIVE_UPLOADS: usize = 10;
 
 /// State of an upload slot or queue entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

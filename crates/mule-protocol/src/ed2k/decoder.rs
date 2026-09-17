@@ -861,7 +861,7 @@ impl Ed2kDecoder {
             &[]
         };
 
-        if reader.remaining() > 0 {
+        if reader.remaining() > 1024 {
             return Err(Ed2kParseError::new(
                 protocol,
                 Some(opcode),

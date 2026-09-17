@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Resource limits and timeouts enforcing bounded networking operations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceBudgets {
-    /// Maximum concurrent peer TCP connections (default: 20).
+    /// Maximum concurrent peer TCP connections (default: 200).
     pub max_active_peer_connections: usize,
     /// Maximum concurrent server TCP connections (default: 2).
     pub max_active_server_connections: usize,
@@ -17,21 +17,21 @@ pub struct ResourceBudgets {
     pub max_frame_size_bytes: usize,
     /// Maximum aggregate buffer memory allocated across active network sockets (default: 32 MiB).
     pub max_total_buffer_bytes: usize,
-    /// Rate limit on connection attempts per rolling minute (default: 60).
+    /// Rate limit on connection attempts per rolling minute (default: 300).
     pub rate_limit_per_min: u32,
 }
 
 impl Default for ResourceBudgets {
     fn default() -> Self {
         Self {
-            max_active_peer_connections: 20,
+            max_active_peer_connections: 200,
             max_active_server_connections: 2,
             max_active_listeners: 2,
             connect_timeout_ms: 10_000,
             handshake_timeout_ms: 15_000,
             max_frame_size_bytes: 10 * 1024 * 1024,   // 10 MiB
             max_total_buffer_bytes: 32 * 1024 * 1024, // 32 MiB
-            rate_limit_per_min: 60,
+            rate_limit_per_min: 300,
         }
     }
 }

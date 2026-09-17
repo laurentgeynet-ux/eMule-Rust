@@ -40,7 +40,7 @@ async fn setup_nominal_client(peer_addr: SocketAddr) -> Ed2kLoopbackClient {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0x7F000001,
         4661,
@@ -370,7 +370,7 @@ async fn test_file_status_double_response_rejected() {
 
 #[test]
 fn test_file_status_req_before_ready_rejected() {
-    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 4662);
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 39735);
     assert_eq!(session.state.name(), "Connecting");
 
     let res = session.send_file_status_request([0x22; 16], Instant::now());
@@ -399,7 +399,7 @@ async fn test_file_status_received_before_ready_rejected() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0x7F000001,
         4661,
@@ -488,12 +488,12 @@ async fn test_file_status_timeout_cleans_tracker_late_response_rejected() {
 
 #[test]
 fn test_disconnect_clears_pending_file_status_tracker() {
-    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 4662);
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 39735);
     // Move session to Ready
     let answer = Ed2kHelloAnswer {
         user_hash: [0xEE; 16],
         client_id: 2,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,

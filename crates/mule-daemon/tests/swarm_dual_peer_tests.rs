@@ -11,8 +11,8 @@ use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart,
-    PartAvailabilityMask, OP_FILESTATUSREQ,
-    OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    PartAvailabilityMask, OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ,
+    OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_STARTUPLOADREQ,
     PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
@@ -26,6 +26,9 @@ async fn setup_test_state() -> (AppState, tempfile::TempDir, String) {
         DaemonConfig::new(dir.path().to_path_buf(), &token).with_workdir_mode(WorkDirMode::Portable);
     let downloads = DownloadService::in_memory(temp_dir).unwrap();
     let state = AppState::new(config, downloads);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
 
     let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
 
@@ -130,7 +133,30 @@ fn spawn_mock_peer_recorder(
         out.extend_from_slice(&status_pkt.payload);
         let _ = socket.write_all(&out).await;
 
-        // 3. Read OP_REQUESTPARTS and send data
+        // 3. Read OP_STARTUPLOADREQ and reply with OP_ACCEPTUPLOADREQ
+        let mut received_start_upload = false;
+        while !received_start_upload {
+            let n = socket.read(&mut raw_buf).await.unwrap();
+            if n == 0 {
+                return;
+            }
+            read_buf.extend_from_slice(&raw_buf[..n]);
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.protocol == PR_ED2K && pkt.opcode == OP_STARTUPLOADREQ {
+                    received_start_upload = true;
+                    break;
+                }
+            }
+        }
+
+        let accept_pkt = mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
+        out.clear();
+        out.push(accept_pkt.protocol);
+        out.extend_from_slice(&(accept_pkt.frame_len() as u32).to_le_bytes());
+        out.push(accept_pkt.opcode);
+        let _ = socket.write_all(&out).await;
+
+        // 4. Read OP_REQUESTPARTS and send data
         let mut received_req = false;
         while !received_req {
             let n = socket.read(&mut raw_buf).await.unwrap();
@@ -345,6 +371,7 @@ async fn test_swarm_kill_switch_aborts_all_peers_and_releases_permits() {
 async fn test_swarm_global_peer_limit_across_multiple_downloads() {
     let (state, _dir, hash1) = setup_test_state().await;
     let mut authenticated = true;
+    state.peer_session.set_swarm_limits(2, 4).await;
 
     // Add a second download
     let hash2 = "41d6cfe0d16ae931b73c59d7e0c089c1".to_string();

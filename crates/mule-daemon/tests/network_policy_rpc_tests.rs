@@ -55,7 +55,7 @@ async fn test_network_policy_capabilities_in_hello_and_status() {
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["networkState"], "preview-active");
-    assert_eq!(res["networkProfile"], "local-lab");
+    assert_eq!(res["networkProfile"], "public-ed2k-kad-preview");
     let caps = res["capabilities"].as_array().unwrap();
     assert!(caps.iter().any(|c| c.as_str() == Some("network-policy")));
 }
@@ -70,12 +70,12 @@ async fn test_network_get_and_set_policy_rpc() {
     let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
-    assert_eq!(res["profile"], "local-lab");
+    assert_eq!(res["profile"], "public-ed2k-kad-preview");
     assert_eq!(res["state"], "preview-active");
     assert_eq!(res["activeConnections"]["peers"], 0);
     assert_eq!(res["activeConnections"]["servers"], 0);
     assert_eq!(res["activeConnections"]["listeners"], 0);
-    assert_eq!(res["budgets"]["max_active_peer_connections"], 20);
+    assert_eq!(res["budgets"]["max_active_peer_connections"], 200);
 
     // 2. network.setProfile to public-ed2k-preview
     let set_req = make_req(

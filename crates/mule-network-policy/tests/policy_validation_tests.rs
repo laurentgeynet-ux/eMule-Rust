@@ -14,21 +14,21 @@ fn test_local_lab_profile_confinement() {
     );
 
     // Loopback IPv4 and IPv6 allowed
-    let loopback_v4: SocketAddr = "127.0.0.1:4662".parse().unwrap();
+    let loopback_v4: SocketAddr = "127.0.0.1:39735".parse().unwrap();
     let permit = manager.request_tcp_connect(loopback_v4, ConnectionPurpose::Ed2kPeer);
     assert!(permit.is_ok());
 
-    let loopback_v6: SocketAddr = "[::1]:4662".parse().unwrap();
+    let loopback_v6: SocketAddr = "[::1]:39735".parse().unwrap();
     let permit_v6 = manager.request_tcp_connect(loopback_v6, ConnectionPurpose::Ed2kPeer);
     assert!(permit_v6.is_ok());
 
     // Non-loopback public rejected
-    let public_ip: SocketAddr = "91.121.162.140:4662".parse().unwrap();
+    let public_ip: SocketAddr = "91.121.162.140:39735".parse().unwrap();
     let err = manager.request_tcp_connect(public_ip, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::NonLoopbackDisallowedInLab(_))));
 
     // Non-loopback LAN rejected
-    let lan_ip: SocketAddr = "192.168.1.1:4662".parse().unwrap();
+    let lan_ip: SocketAddr = "192.168.1.1:39735".parse().unwrap();
     let err = manager.request_tcp_connect(lan_ip, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::NonLoopbackDisallowedInLab(_))));
 }
@@ -41,49 +41,49 @@ fn test_public_preview_anti_ssrf_and_filtering() {
     );
 
     // Public routable IP allowed
-    let public_ip: SocketAddr = "91.121.162.140:4662".parse().unwrap();
+    let public_ip: SocketAddr = "91.121.162.140:39735".parse().unwrap();
     assert!(manager.request_tcp_connect(public_ip, ConnectionPurpose::Ed2kPeer).is_ok());
 
     // Private RFC 1918 rejected
-    let lan_10: SocketAddr = "10.0.0.1:4662".parse().unwrap();
+    let lan_10: SocketAddr = "10.0.0.1:39735".parse().unwrap();
     let err = manager.request_tcp_connect(lan_10, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
 
-    let lan_172: SocketAddr = "172.20.0.1:4662".parse().unwrap();
+    let lan_172: SocketAddr = "172.20.0.1:39735".parse().unwrap();
     let err = manager.request_tcp_connect(lan_172, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
 
-    let lan_192: SocketAddr = "192.168.1.100:4662".parse().unwrap();
+    let lan_192: SocketAddr = "192.168.1.100:39735".parse().unwrap();
     let err = manager.request_tcp_connect(lan_192, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
 
     // IPv4-mapped IPv6 private LAN rejected
-    let mapped_lan: SocketAddr = "[::ffff:192.168.1.1]:4662".parse().unwrap();
+    let mapped_lan: SocketAddr = "[::ffff:192.168.1.1]:39735".parse().unwrap();
     let err = manager.request_tcp_connect(mapped_lan, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
 
     // Loopback in public profile rejected
-    let loopback: SocketAddr = "127.0.0.1:4662".parse().unwrap();
+    let loopback: SocketAddr = "127.0.0.1:39735".parse().unwrap();
     let err = manager.request_tcp_connect(loopback, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::LoopbackDisallowedInPublicProfile(_))));
 
     // Link-local rejected
-    let link_local: SocketAddr = "169.254.10.20:4662".parse().unwrap();
+    let link_local: SocketAddr = "169.254.10.20:39735".parse().unwrap();
     let err = manager.request_tcp_connect(link_local, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::LinkLocalDisallowed(_))));
 
     // Multicast rejected
-    let multicast: SocketAddr = "224.0.0.1:4662".parse().unwrap();
+    let multicast: SocketAddr = "224.0.0.1:39735".parse().unwrap();
     let err = manager.request_tcp_connect(multicast, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::MulticastDisallowed(_))));
 
     // Broadcast rejected
-    let broadcast: SocketAddr = "255.255.255.255:4662".parse().unwrap();
+    let broadcast: SocketAddr = "255.255.255.255:39735".parse().unwrap();
     let err = manager.request_tcp_connect(broadcast, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::BroadcastDisallowed(_))));
 
     // Carrier-Grade NAT rejected
-    let cgnat: SocketAddr = "100.64.1.1:4662".parse().unwrap();
+    let cgnat: SocketAddr = "100.64.1.1:39735".parse().unwrap();
     let err = manager.request_tcp_connect(cgnat, ConnectionPurpose::Ed2kPeer).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::CarrierGradeNatDisallowed(_))));
 
@@ -95,7 +95,7 @@ fn test_public_preview_anti_ssrf_and_filtering() {
 
 #[test]
 fn test_kad_udp_profile_enforcement() {
-    let public_ip: SocketAddr = "91.121.162.140:4662".parse().unwrap();
+    let public_ip: SocketAddr = "91.121.162.140:39735".parse().unwrap();
 
     // In PublicEd2kPreview: KadNode is disallowed
     let manager = NetworkPolicyManager::new(
@@ -121,7 +121,7 @@ fn test_resource_budgets_exhaustion_and_drop() {
     };
 
     let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, budgets);
-    let target1: SocketAddr = "127.0.0.1:4662".parse().unwrap();
+    let target1: SocketAddr = "127.0.0.1:39735".parse().unwrap();
     let target2: SocketAddr = "127.0.0.1:4663".parse().unwrap();
     let target3: SocketAddr = "127.0.0.1:4664".parse().unwrap();
 
@@ -166,7 +166,7 @@ async fn test_kill_switch_atomic_cancellation_and_reenable() {
         ResourceBudgets::default(),
     );
 
-    let target: SocketAddr = "127.0.0.1:4662".parse().unwrap();
+    let target: SocketAddr = "127.0.0.1:39735".parse().unwrap();
     let permit = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap();
     assert!(!permit.is_cancelled());
 
@@ -211,8 +211,8 @@ fn test_redacted_audit_log() {
         ResourceBudgets::default(),
     );
 
-    let public_ip: SocketAddr = "91.121.162.140:4662".parse().unwrap();
-    let private_ip: SocketAddr = "192.168.1.50:4662".parse().unwrap();
+    let public_ip: SocketAddr = "91.121.162.140:39735".parse().unwrap();
+    let private_ip: SocketAddr = "192.168.1.50:39735".parse().unwrap();
 
     let _ = manager.request_tcp_connect(public_ip, ConnectionPurpose::Ed2kPeer);
     let _ = manager.request_tcp_connect(private_ip, ConnectionPurpose::Ed2kPeer);
@@ -221,17 +221,17 @@ fn test_redacted_audit_log() {
     assert!(entries.len() >= 2);
 
     // Check redaction
-    assert_eq!(redact_socket_addr(&public_ip), "91.121.*.*:4662");
-    assert_eq!(redact_socket_addr(&private_ip), "192.168.*.*:4662");
+    assert_eq!(redact_socket_addr(&public_ip), "91.121.*.*:39735");
+    assert_eq!(redact_socket_addr(&private_ip), "192.168.*.*:39735");
 
-    let loopback: SocketAddr = "127.0.0.1:4662".parse().unwrap();
-    assert_eq!(redact_socket_addr(&loopback), "127.0.0.1:4662");
+    let loopback: SocketAddr = "127.0.0.1:39735".parse().unwrap();
+    assert_eq!(redact_socket_addr(&loopback), "127.0.0.1:39735");
 
     // Verify recent log entry fields
     let last = &entries[0]; // most recent
     assert_eq!(last.decision, AuditDecision::Denied);
     assert_eq!(last.event_type, AuditEventType::ConnectAttempt);
-    assert_eq!(last.redacted_target, Some("192.168.*.*:4662".to_string()));
+    assert_eq!(last.redacted_target, Some("192.168.*.*:39735".to_string()));
 }
 
 #[test]
@@ -244,7 +244,7 @@ fn test_listener_policy_and_budget() {
     let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, budgets);
 
     // Loopback bind allowed
-    let loopback_bind: SocketAddr = "127.0.0.1:4662".parse().unwrap();
+    let loopback_bind: SocketAddr = "127.0.0.1:39735".parse().unwrap();
     let permit = manager.request_tcp_listen(loopback_bind, ConnectionPurpose::Listener);
     assert!(permit.is_ok());
     let permit = permit.unwrap();
@@ -260,7 +260,7 @@ fn test_listener_policy_and_budget() {
     assert_eq!(manager.active_listeners_count(), 0);
 
     // Non-loopback bind rejected in Lab profile
-    let lan_bind: SocketAddr = "192.168.1.1:4662".parse().unwrap();
+    let lan_bind: SocketAddr = "192.168.1.1:39735".parse().unwrap();
     let err = manager.request_tcp_listen(lan_bind, ConnectionPurpose::Listener).unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::ListenOnNonLoopbackDisallowed(_))));
 }
@@ -300,12 +300,12 @@ fn test_budget_mutation_and_validation() {
 
 #[test]
 fn test_ipv6_redaction_and_profile_parsing() {
-    let ipv6_pub: SocketAddr = "[2001:db8:85a3::8a2e:370:7334]:4662".parse().unwrap();
+    let ipv6_pub: SocketAddr = "[2001:db8:85a3::8a2e:370:7334]:39735".parse().unwrap();
     let redacted = redact_socket_addr(&ipv6_pub);
-    assert_eq!(redacted, "[2001:db8:*:*:*:*:*:*]:4662");
+    assert_eq!(redacted, "[2001:db8:*:*:*:*:*:*]:39735");
 
-    let ipv6_loopback: SocketAddr = "[::1]:4662".parse().unwrap();
-    assert_eq!(redact_socket_addr(&ipv6_loopback), "[::1]:4662");
+    let ipv6_loopback: SocketAddr = "[::1]:39735".parse().unwrap();
+    assert_eq!(redact_socket_addr(&ipv6_loopback), "[::1]:39735");
 
     // Profile from_str and display
     assert_eq!("local-lab".parse::<NetworkProfile>().unwrap(), NetworkProfile::LocalLab);
@@ -326,8 +326,8 @@ fn test_policy_ip_filter_blocking_and_pseudonyms() {
     let filter_content = "198.051.100.000 - 198.051.100.255 , 100 , Malicious Range\n";
     manager.ip_filter().load_from_str(filter_content).unwrap();
 
-    let blocked_target: SocketAddr = "198.51.100.10:4662".parse().unwrap();
-    let allowed_target: SocketAddr = "198.51.101.10:4662".parse().unwrap();
+    let blocked_target: SocketAddr = "198.51.100.10:39735".parse().unwrap();
+    let allowed_target: SocketAddr = "198.51.101.10:39735".parse().unwrap();
 
     // Blocked target returns PolicyError::IpFiltered
     let err = manager.request_tcp_connect(blocked_target, ConnectionPurpose::Ed2kPeer).unwrap_err();
@@ -348,8 +348,8 @@ fn test_policy_ip_filter_blocking_and_pseudonyms() {
     let entries = manager.audit_entries(10);
     let filter_entry = entries.iter().find(|e| e.event_type == mule_network_policy::audit::AuditEventType::FilterBlocked).unwrap();
     assert_eq!(filter_entry.decision, mule_network_policy::audit::AuditDecision::Denied);
-    assert_eq!(filter_entry.pseudonymized_target, Some("peer-01:4662".to_string()));
-    assert_eq!(filter_entry.redacted_target, Some("198.51.*.*:4662".to_string()));
+    assert_eq!(filter_entry.pseudonymized_target, Some("peer-01:39735".to_string()));
+    assert_eq!(filter_entry.redacted_target, Some("198.51.*.*:39735".to_string()));
 }
 
 #[test]
@@ -359,7 +359,7 @@ fn test_policy_profile_atomic_transition_disconnects_sockets() {
         ResourceBudgets::default(),
     );
 
-    let target: SocketAddr = "198.51.101.10:4662".parse().unwrap();
+    let target: SocketAddr = "198.51.101.10:39735".parse().unwrap();
     let permit = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap();
     assert!(!permit.is_cancelled());
 

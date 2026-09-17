@@ -23,7 +23,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   final List<HistoryEntry> _history = [];
   int _fakeRetentionDays = 30;
   String? _activePeer;
-  NetworkProfile _fakeProfile = NetworkProfile.localLab;
+  NetworkProfile _fakeProfile = NetworkProfile.publicEd2kKadPreview;
   NetworkSubsystemState _fakeNetState = NetworkSubsystemState.previewActive;
   ResourceBudgetsModel _fakeBudgets = const ResourceBudgetsModel(
     maxActivePeerConnections: 20,
@@ -58,11 +58,18 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<PeerSessionModel> _peerSessionController =
       StreamController<PeerSessionModel>.broadcast();
+  final StreamController<ServerSessionModel> _serverSessionController =
+      StreamController<ServerSessionModel>.broadcast();
   final Map<String, List<PeerSourceModel>> _peerSources = {};
   PeerSessionModel _peerSession = PeerSessionModel.disconnected;
 
   @override
-  Stream<PeerSessionModel> get peerSessionEvents => _peerSessionController.stream;
+  Stream<PeerSessionModel> get peerSessionEvents =>
+      _peerSessionController.stream;
+
+  @override
+  Stream<ServerSessionModel> get serverSessionEvents =>
+      _serverSessionController.stream;
 
   @override
   Stream<List<SearchResultFileModel>> get searchResultEvents =>
@@ -81,7 +88,11 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _seedDefaultDownloads();
   }
 
-  static List<DownloadPartInfo> _generateParts(int totalBytes, int receivedBytes, bool isCompleted) {
+  static List<DownloadPartInfo> _generateParts(
+    int totalBytes,
+    int receivedBytes,
+    bool isCompleted,
+  ) {
     const partSize = 9728000;
     final count = totalBytes > 0 ? (totalBytes / partSize).ceil() : 1;
     final list = <DownloadPartInfo>[];
@@ -103,17 +114,21 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       final isVerified = isCompleted || (partReceived == size && i % 2 == 0);
       final state = isVerified
           ? 'verified'
-          : (partReceived == size ? 'completed' : (partReceived > 0 ? 'downloading' : 'missing'));
+          : (partReceived == size
+                ? 'completed'
+                : (partReceived > 0 ? 'downloading' : 'missing'));
 
-      list.add(DownloadPartInfo(
-        partIndex: i,
-        startOffset: start,
-        endOffset: end,
-        size: size,
-        receivedBytes: partReceived,
-        isVerified: isVerified,
-        state: state,
-      ));
+      list.add(
+        DownloadPartInfo(
+          partIndex: i,
+          startOffset: start,
+          endOffset: end,
+          size: size,
+          receivedBytes: partReceived,
+          isVerified: isVerified,
+          state: state,
+        ),
+      );
     }
     return list;
   }
@@ -223,45 +238,50 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _downloads[d2.id] = d2;
     _downloads[d3.id] = d3;
 
-    _history.add(HistoryEntry(
-      id: 1,
-      downloadId: d3.id,
-      fileName: d3.fileName,
-      totalBytes: d3.totalBytes,
-      transferredBytes: d3.totalBytes,
-      ed2kHash: d3.ed2kHash ?? '',
-      eventType: 'completed',
-      status: 'completed',
-      durationSecs: 48,
-      connectionAttempts: 1,
-      resumeCount: 0,
-      verificationResult: 'verified_ok',
-      errorMessage: null,
-      timestamp: now.subtract(const Duration(hours: 5)),
-    ));
-    _history.add(HistoryEntry(
-      id: 2,
-      downloadId: d2.id,
-      fileName: d2.fileName,
-      totalBytes: d2.totalBytes,
-      transferredBytes: d2.receivedBytes,
-      ed2kHash: d2.ed2kHash ?? '',
-      eventType: 'resumed',
-      status: 'downloading',
-      durationSecs: 12,
-      connectionAttempts: 2,
-      resumeCount: 1,
-      verificationResult: 'unverified',
-      errorMessage: null,
-      timestamp: now.subtract(const Duration(hours: 1)),
-    ));
+    _history.add(
+      HistoryEntry(
+        id: 1,
+        downloadId: d3.id,
+        fileName: d3.fileName,
+        totalBytes: d3.totalBytes,
+        transferredBytes: d3.totalBytes,
+        ed2kHash: d3.ed2kHash ?? '',
+        eventType: 'completed',
+        status: 'completed',
+        durationSecs: 48,
+        connectionAttempts: 1,
+        resumeCount: 0,
+        verificationResult: 'verified_ok',
+        errorMessage: null,
+        timestamp: now.subtract(const Duration(hours: 5)),
+      ),
+    );
+    _history.add(
+      HistoryEntry(
+        id: 2,
+        downloadId: d2.id,
+        fileName: d2.fileName,
+        totalBytes: d2.totalBytes,
+        transferredBytes: d2.receivedBytes,
+        ed2kHash: d2.ed2kHash ?? '',
+        eventType: 'resumed',
+        status: 'downloading',
+        durationSecs: 12,
+        connectionAttempts: 2,
+        resumeCount: 1,
+        verificationResult: 'unverified',
+        errorMessage: null,
+        timestamp: now.subtract(const Duration(hours: 1)),
+      ),
+    );
   }
 
   @override
   DaemonConnectionState get currentConnectionState => _state;
 
   @override
-  Stream<DaemonConnectionState> get connectionState => _connectionController.stream;
+  Stream<DaemonConnectionState> get connectionState =>
+      _connectionController.stream;
 
   @override
   Stream<DownloadUpdatedEvent> get downloadEvents => _eventsController.stream;
@@ -345,7 +365,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       totalBytes = int.tryParse(parts[3]) ?? 10000000;
     }
 
-    final id = 'fake-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(9999)}';
+    final id =
+        'fake-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(9999)}';
     final now = DateTime.now();
 
     final item = DownloadItem(
@@ -409,13 +430,22 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<DownloadItem> injectRange(String id, int offset, String hexData) async {
+  Future<DownloadItem> injectRange(
+    String id,
+    int offset,
+    String hexData,
+  ) async {
     final existing = _downloads[id];
     if (existing == null) throw Exception('Download $id not found');
 
     final bytesCount = hexData.length ~/ 2;
-    final newReceived = min(existing.totalBytes, existing.receivedBytes + bytesCount);
-    final newProgress = existing.totalBytes > 0 ? newReceived / existing.totalBytes : 1.0;
+    final newReceived = min(
+      existing.totalBytes,
+      existing.receivedBytes + bytesCount,
+    );
+    final newProgress = existing.totalBytes > 0
+        ? newReceived / existing.totalBytes
+        : 1.0;
     final isDone = newReceived >= existing.totalBytes;
 
     final updated = existing.copyWith(
@@ -435,28 +465,33 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   void _emitUpdate(DownloadItem item) {
     _sequence += 1;
     if (!_eventsController.isClosed) {
-      _eventsController.add(DownloadUpdatedEvent(
-        sequence: _sequence,
-        download: item,
-      ));
+      _eventsController.add(
+        DownloadUpdatedEvent(sequence: _sequence, download: item),
+      );
     }
   }
 
   void _startSimulation() {
-    _simulationTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) {
+    _simulationTimer = Timer.periodic(const Duration(milliseconds: 1000), (
+      timer,
+    ) {
       for (final item in _downloads.values.toList()) {
         if (item.status == DownloadStatus.downloading) {
           final added = 350000 + Random().nextInt(400000);
           final newReceived = min(item.totalBytes, item.receivedBytes + added);
           final isDone = newReceived >= item.totalBytes;
-          final newProgress = item.totalBytes > 0 ? newReceived / item.totalBytes : 1.0;
+          final newProgress = item.totalBytes > 0
+              ? newReceived / item.totalBytes
+              : 1.0;
 
           final updated = item.copyWith(
             receivedBytes: newReceived,
             verifiedBytes: min(newReceived, item.verifiedBytes + added),
             progress: newProgress,
             downloadRateBps: isDone ? 0 : (added * 1.0).toInt(),
-            status: isDone ? DownloadStatus.completed : DownloadStatus.downloading,
+            status: isDone
+                ? DownloadStatus.completed
+                : DownloadStatus.downloading,
             updatedAt: DateTime.now(),
           );
 
@@ -489,8 +524,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     final ed2kHash = fixtureType == 'part_9728000'
         ? '0123456789abcdef0123456789abcdef'
         : (fixtureType == 'sample_1mb'
-            ? '123456789abcdef0123456789abcdef0'
-            : 'abcdef0123456789abcdef0123456789');
+              ? '123456789abcdef0123456789abcdef0'
+              : 'abcdef0123456789abcdef0123456789');
     final ed2kLink = 'ed2k://|file|$fileName|$sizeBytes|$ed2kHash|/';
 
     final fixture = LabFixtureInfo(
@@ -509,7 +544,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
 
   @override
   Future<LabPeerInfo> startLabPeer() async {
-    _activePeer = '127.0.0.1:4662';
+    _activePeer = '127.0.0.1:39735';
     return LabPeerInfo(
       peerAddr: _activePeer!,
       sharedCount: _fixtures.isEmpty ? 1 : _fixtures.length,
@@ -537,7 +572,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {
+  Future<void> connectDownloadToSource(
+    String downloadId,
+    String peerAddr,
+  ) async {
     final existing = _downloads[downloadId];
     if (existing != null) {
       final updated = existing.copyWith(
@@ -554,7 +592,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   String? _fakeCustomDownloadDir;
 
   @override
-  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory) async {
+  Future<DownloadItem> setDownloadDestination(
+    String id,
+    String targetDirectory,
+  ) async {
     final existing = _downloads[id];
     if (existing == null) throw Exception('Download $id not found');
     final updated = existing.copyWith(
@@ -612,16 +653,20 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     int? offset,
   }) async {
     var filtered = _history.where((e) {
-      if (eventType != null && eventType.isNotEmpty && e.eventType != eventType) {
+      if (eventType != null &&
+          eventType.isNotEmpty &&
+          e.eventType != eventType) {
         return false;
       }
       if (status != null && status.isNotEmpty && e.status != status) {
         return false;
       }
-      if (fromTimestampMs != null && e.timestamp.millisecondsSinceEpoch < fromTimestampMs) {
+      if (fromTimestampMs != null &&
+          e.timestamp.millisecondsSinceEpoch < fromTimestampMs) {
         return false;
       }
-      if (toTimestampMs != null && e.timestamp.millisecondsSinceEpoch > toTimestampMs) {
+      if (toTimestampMs != null &&
+          e.timestamp.millisecondsSinceEpoch > toTimestampMs) {
         return false;
       }
       return true;
@@ -642,10 +687,15 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Future<HistoryStats> getHistoryStats() async {
     final completed = _history.where((e) => e.eventType == 'completed');
     final completedCount = completed.length;
-    final completedBytes = completed.fold<int>(0, (sum, e) => sum + e.totalBytes);
+    final completedBytes = completed.fold<int>(
+      0,
+      (sum, e) => sum + e.totalBytes,
+    );
     final failedCount = _history.where((e) => e.eventType == 'failed').length;
     final resumesCount = _history.where((e) => e.eventType == 'resumed').length;
-    final integrityFailures = _history.where((e) => e.verificationResult == 'hash_mismatch').length;
+    final integrityFailures = _history
+        .where((e) => e.verificationResult == 'hash_mismatch')
+        .length;
 
     return HistoryStats(
       totalCompletedCount: completedCount,
@@ -670,19 +720,27 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<String> exportHistory(String format, {String? eventType, String? status}) async {
+  Future<String> exportHistory(
+    String format, {
+    String? eventType,
+    String? status,
+  }) async {
     final entries = await listHistory(eventType: eventType, status: status);
     if (format.toLowerCase() == 'csv') {
       final buffer = StringBuffer(
-          'id,download_id,file_name,total_size,transferred_bytes,ed2k_hash,event_type,status,duration_secs,connection_attempts,resume_count,verification_result,error_message,timestamp_unix_ms\n');
+        'id,download_id,file_name,total_size,transferred_bytes,ed2k_hash,event_type,status,duration_secs,connection_attempts,resume_count,verification_result,error_message,timestamp_unix_ms\n',
+      );
       for (final e in entries) {
         buffer.writeln(
-            '${e.id},${e.downloadId},"${e.fileName}",${e.totalBytes},${e.transferredBytes},${e.ed2kHash},${e.eventType},${e.status},${e.durationSecs},${e.connectionAttempts},${e.resumeCount},${e.verificationResult},"${e.errorMessage ?? ''}",${e.timestamp.millisecondsSinceEpoch}');
+          '${e.id},${e.downloadId},"${e.fileName}",${e.totalBytes},${e.transferredBytes},${e.ed2kHash},${e.eventType},${e.status},${e.durationSecs},${e.connectionAttempts},${e.resumeCount},${e.verificationResult},"${e.errorMessage ?? ''}",${e.timestamp.millisecondsSinceEpoch}',
+        );
       }
       return buffer.toString();
     } else {
-      return jsonEncode(entries
-          .map((e) => {
+      return jsonEncode(
+        entries
+            .map(
+              (e) => {
                 'id': e.id,
                 'downloadId': e.downloadId,
                 'fileName': e.fileName,
@@ -697,8 +755,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
                 'verificationResult': e.verificationResult,
                 'errorMessage': e.errorMessage,
                 'timestampUnixMs': e.timestamp.millisecondsSinceEpoch,
-              })
-          .toList());
+              },
+            )
+            .toList(),
+      );
     }
   }
 
@@ -721,7 +781,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     String? defaultDestination,
     String? defaultPriority,
   }) async {
-    final id = 'fake-cat-${DateTime.now().millisecondsSinceEpoch}-${_categories.length}';
+    final id =
+        'fake-cat-${DateTime.now().millisecondsSinceEpoch}-${_categories.length}';
     final now = DateTime.now();
     final cat = CategoryItem(
       id: id,
@@ -770,7 +831,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       if (dl.categoryId == id) {
         final updatedDl = dl.copyWith(clearCategoryId: true);
         _downloads[dlId] = updatedDl;
-        _eventsController.add(DownloadUpdatedEvent(sequence: _sequence++, download: updatedDl));
+        _eventsController.add(
+          DownloadUpdatedEvent(sequence: _sequence++, download: updatedDl),
+        );
       }
     }
   }
@@ -787,7 +850,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId) async {
+  Future<DownloadItem> setDownloadCategory(
+    String downloadId,
+    String? categoryId,
+  ) async {
     final dl = _downloads[downloadId];
     if (dl == null) throw Exception('Download not found: $downloadId');
     if (categoryId != null && !_categories.containsKey(categoryId)) {
@@ -798,13 +864,21 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       clearCategoryId: categoryId == null,
     );
     _downloads[downloadId] = updated;
-    _eventsController.add(DownloadUpdatedEvent(sequence: _sequence++, download: updated));
+    _eventsController.add(
+      DownloadUpdatedEvent(sequence: _sequence++, download: updated),
+    );
     return updated;
   }
 
   @override
-  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) async {
-    final fileName = metPath.split(RegExp(r'[\\/]')).last.replaceAll('.part.met', '.bin');
+  Future<PartMetInspectionResult> inspectPartMet(
+    String metPath, {
+    String? partPath,
+  }) async {
+    final fileName = metPath
+        .split(RegExp(r'[\\/]'))
+        .last
+        .replaceAll('.part.met', '.bin');
     return PartMetInspectionResult(
       fileName: fileName.isEmpty ? 'sample_imported.bin' : fileName,
       totalSize: 9728000,
@@ -848,7 +922,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       ed2kHash: inspection.ed2kHash,
     );
     _downloads[id] = dl;
-    _eventsController.add(DownloadUpdatedEvent(sequence: _sequence++, download: dl));
+    _eventsController.add(
+      DownloadUpdatedEvent(sequence: _sequence++, download: dl),
+    );
 
     final report =
         "=== Emule-Sion .part.met Import Audit Report ===\n"
@@ -884,7 +960,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<NetworkPolicySnapshot> setNetworkProfile(NetworkProfile profile) async {
+  Future<NetworkPolicySnapshot> setNetworkProfile(
+    NetworkProfile profile,
+  ) async {
     _fakeProfile = profile;
     _fakeAuditLog.insert(
       0,
@@ -933,12 +1011,16 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({int limit = 50}) async {
+  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({
+    int limit = 50,
+  }) async {
     return _fakeAuditLog.take(limit).toList();
   }
 
   @override
-  Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets) async {
+  Future<NetworkPolicySnapshot> setResourceBudgets(
+    ResourceBudgetsModel budgets,
+  ) async {
     _fakeBudgets = budgets;
     return getNetworkPolicy();
   }
@@ -1068,7 +1150,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       failedCount: existing.failedCount,
       dynIp: existing.dynIp,
       version: existing.version,
-      filterStatus: enabled ? ServerFilterStatus.allowed : ServerFilterStatus.disabled,
+      filterStatus: enabled
+          ? ServerFilterStatus.allowed
+          : ServerFilterStatus.disabled,
       lastSeenUnixMs: existing.lastSeenUnixMs,
       createdAtUnixMs: existing.createdAtUnixMs,
       updatedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
@@ -1154,15 +1238,12 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     int? fileSize,
   }) async {
     final sources = [
-      {'address': '192.168.1.50:4662', 'ip': 12345, 'port': 4662},
-      {'address': '10.0.0.12:4662', 'ip': 67890, 'port': 4662},
+      {'address': '192.168.1.50:39735', 'ip': 12345, 'port': 39735},
+      {'address': '10.0.0.12:39735', 'ip': 67890, 'port': 39735},
     ];
     Future.microtask(() {
       if (!_foundSourcesController.isClosed) {
-        _foundSourcesController.add({
-          'fileHash': fileHash,
-          'sources': sources,
-        });
+        _foundSourcesController.add({'fileHash': fileHash, 'sources': sources});
       }
     });
   }
@@ -1173,9 +1254,12 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<PeerSourceModel> addManualSource(String fileHash, String address) async {
+  Future<PeerSourceModel> addManualSource(
+    String fileHash,
+    String address,
+  ) async {
     final parts = address.split(':');
-    final port = parts.length > 1 ? int.tryParse(parts[1]) ?? 4662 : 4662;
+    final port = parts.length > 1 ? int.tryParse(parts[1]) ?? 39735 : 39735;
     final src = PeerSourceModel(
       fileHash: fileHash,
       address: address,
@@ -1246,7 +1330,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   final List<SharedFileModel> _fakeSharedFiles = [];
-  InboundListenerStatusModel _fakeListenerStatus = InboundListenerStatusModel.idle;
+  InboundListenerStatusModel _fakeListenerStatus =
+      InboundListenerStatusModel.idle;
   UploadSessionModel? _fakeActiveUpload;
 
   @override
@@ -1280,7 +1365,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<SharedFileModel> setSharedFileEnabled(String fileHash, bool enabled) async {
+  Future<SharedFileModel> setSharedFileEnabled(
+    String fileHash,
+    bool enabled,
+  ) async {
     final idx = _fakeSharedFiles.indexWhere((f) => f.fileHash == fileHash);
     if (idx != -1) {
       final cur = _fakeSharedFiles[idx];
@@ -1302,7 +1390,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Future<InboundListenerStatusModel> startListener({int port = 0}) async {
     _fakeListenerStatus = InboundListenerStatusModel(
       isListening: true,
-      listenAddress: '127.0.0.1:${port == 0 ? 4662 : port}',
+      listenAddress: '127.0.0.1:${port == 0 ? 39735 : port}',
       activeUploads: _fakeActiveUpload != null ? 1 : 0,
       queuedUploads: 0,
       uploadRateBps: 51200,
@@ -1383,8 +1471,14 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Future<PeerCreditStatsModel> getPeerCreditStats() async {
     return PeerCreditStatsModel(
       totalPeers: _fakeCredits.length,
-      totalUploadedBytes: _fakeCredits.fold(0, (sum, c) => sum + c.uploadedBytes),
-      totalDownloadedBytes: _fakeCredits.fold(0, (sum, c) => sum + c.downloadedBytes),
+      totalUploadedBytes: _fakeCredits.fold(
+        0,
+        (sum, c) => sum + c.uploadedBytes,
+      ),
+      totalDownloadedBytes: _fakeCredits.fold(
+        0,
+        (sum, c) => sum + c.downloadedBytes,
+      ),
       activeCreditedPeers: _fakeCredits.length,
     );
   }
@@ -1393,8 +1487,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     const KadContactModel(
       kadId: '0123456789abcdef0123456789abcdef',
       ip: '127.0.0.1',
-      udpPort: 4672,
-      tcpPort: 4662,
+      udpPort: 39737,
+      tcpPort: 39735,
       version: 2,
       verified: true,
       failCount: 0,
@@ -1427,7 +1521,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   @override
   Future<Map<String, dynamic>> startKadUdp({String? bindAddress}) async {
     _fakeKadUdpActive = true;
-    _fakeKadUdpBindAddress = bindAddress ?? '127.0.0.1:4672';
+    _fakeKadUdpBindAddress = bindAddress ?? '127.0.0.1:39737';
     return {
       'boundAddress': _fakeKadUdpBindAddress,
       'status': await getKadStatus(),
@@ -1438,10 +1532,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Future<Map<String, dynamic>> stopKadUdp() async {
     _fakeKadUdpActive = false;
     _fakeKadUdpBindAddress = null;
-    return {
-      'stopped': true,
-      'status': await getKadStatus(),
-    };
+    return {'stopped': true, 'status': await getKadStatus()};
   }
 
   @override
@@ -1455,7 +1546,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     }
     _fakeKadPacketsSent += 1;
     _fakeKadPacketsReceived += 1;
-    final idx = _fakeKadContacts.indexWhere((c) => c.ip == ip && c.udpPort == port);
+    final idx = _fakeKadContacts.indexWhere(
+      (c) => c.ip == ip && c.udpPort == port,
+    );
     if (idx != -1) {
       final old = _fakeKadContacts[idx];
       _fakeKadContacts[idx] = KadContactModel(
@@ -1469,11 +1562,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         lastSeenUnixMs: DateTime.now().millisecondsSinceEpoch,
       );
     }
-    return {
-      'success': true,
-      'latencyMs': 5,
-      'status': await getKadStatus(),
-    };
+    return {'success': true, 'latencyMs': 5, 'status': await getKadStatus()};
   }
 
   @override
@@ -1543,6 +1632,141 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<List<PeerSourceModel>> searchKadSources({
+    required String fileHash,
+    int? fileSize,
+  }) async {
+    return [];
+  }
+
+  @override
+  Future<List<SearchResultFileModel>> searchKadKeywords({
+    required String term,
+    int? minSize,
+    int? maxSize,
+  }) async {
+    return [
+      SearchResultFileModel(
+        fileHash: 'deadbeef0123456789abcdef01234567',
+        fileName: '$term-simulation-file.iso',
+        fileSize: 1024 * 1024 * 700,
+        sourceCount: 12,
+      ),
+      SearchResultFileModel(
+        fileHash: 'cafebabe0123456789abcdef01234567',
+        fileName: '$term-sample-archive.zip',
+        fileSize: 1024 * 1024 * 120,
+        sourceCount: 5,
+      ),
+    ];
+  }
+
+  @override
+  Future<int> publishKadSource({
+    required String fileHash,
+    required int fileSize,
+    int tcpPort = 39735,
+  }) async {
+    return 0;
+  }
+
+  @override
+  Future<int> publishKadKeywords({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+  }) async {
+    return 1;
+  }
+
+  UpnpStatusModel _upnpStatus = const UpnpStatusModel(
+    enabled: true,
+    available: true,
+    gatewayAddr: '192.168.1.1:5678',
+    externalIp: '198.51.100.42',
+    tcpMapped: true,
+    udpMapped: true,
+    tcpPort: 39735,
+    udpPort: 39737,
+  );
+
+  @override
+  Future<UpnpStatusModel> getUpnpStatus() async {
+    return _upnpStatus;
+  }
+
+  @override
+  Future<UpnpStatusModel> setUpnpEnabled(bool enabled) async {
+    _upnpStatus = UpnpStatusModel(
+      enabled: enabled,
+      available: enabled ? _upnpStatus.available : false,
+      gatewayAddr: enabled ? _upnpStatus.gatewayAddr : null,
+      externalIp: enabled ? _upnpStatus.externalIp : null,
+      tcpMapped: enabled,
+      udpMapped: enabled,
+      tcpPort: _upnpStatus.tcpPort,
+      udpPort: _upnpStatus.udpPort,
+      updatedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    return _upnpStatus;
+  }
+
+  @override
+  Future<UpnpStatusModel> mapUpnpPorts({
+    int tcpPort = 39735,
+    int udpPort = 39737,
+  }) async {
+    _upnpStatus = UpnpStatusModel(
+      enabled: true,
+      available: true,
+      gatewayAddr: '192.168.1.1:5678',
+      externalIp: '198.51.100.42',
+      tcpMapped: true,
+      udpMapped: true,
+      tcpPort: tcpPort,
+      udpPort: udpPort,
+      updatedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    return _upnpStatus;
+  }
+
+  @override
+  Future<UpnpStatusModel> unmapUpnpPorts() async {
+    _upnpStatus = UpnpStatusModel(
+      enabled: _upnpStatus.enabled,
+      available: _upnpStatus.available,
+      gatewayAddr: _upnpStatus.gatewayAddr,
+      externalIp: _upnpStatus.externalIp,
+      tcpMapped: false,
+      udpMapped: false,
+      tcpPort: _upnpStatus.tcpPort,
+      udpPort: _upnpStatus.udpPort,
+      updatedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    return _upnpStatus;
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateServersFromUrl(String url) async {
+    return {
+      'url': url,
+      'totalCount': 5,
+      'allowedCount': 5,
+      'blockedCount': 0,
+      'imported': 5,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> bootstrapKadFromUrl(String url) async {
+    return {
+      'url': url,
+      'importedCount': 10,
+      'status': {'activeContacts': 10},
+    };
+  }
+
+  @override
   void dispose() {
     _simulationTimer?.cancel();
     _connectionController.close();
@@ -1550,5 +1774,6 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _searchResultController.close();
     _foundSourcesController.close();
     _peerSessionController.close();
+    _serverSessionController.close();
   }
 }

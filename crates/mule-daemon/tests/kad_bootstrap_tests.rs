@@ -15,13 +15,10 @@ fn setup_test_state(tmp: &tempfile::TempDir) -> AppState {
 
     let db_path = data_dir.join("mule.db");
     let downloads = DownloadService::new(&db_path, data_dir.join("temp")).unwrap();
-    let config = DaemonConfig {
-        bind_addr: "127.0.0.1:0".parse().unwrap(),
-        auth_token: "test-token".to_string(),
-        data_dir,
-        default_download_dir: dl_dir,
-        workdir_mode: WorkDirMode::ExplicitCli,
-    };
+    let config = DaemonConfig::new(data_dir, "test-token")
+        .with_bind_addr("127.0.0.1:0".parse().unwrap())
+        .with_default_download_dir(dl_dir)
+        .with_workdir_mode(WorkDirMode::ExplicitCli);
 
     AppState::new(config, downloads)
 }
@@ -30,6 +27,9 @@ fn setup_test_state(tmp: &tempfile::TempDir) -> AppState {
 async fn test_kad_bootstrap_and_find_node_flow() {
     let tmp = tempdir().expect("create tempdir");
     let state = setup_test_state(&tmp);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
 
     // 1. Start daemon Kad UDP
     let _bound_addr = state

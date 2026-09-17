@@ -68,7 +68,7 @@ fn test_tier3_harness_rejects_non_loopback_address() {
         .join("tests/fixtures/ed2k/hello_v1_minimal.bin");
 
     // Attempting to configure a non-loopback address (e.g. 192.168.1.50) must be rejected
-    let non_loopback_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 4662);
+    let non_loopback_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 39735);
     assert!(!non_loopback_addr.ip().is_loopback());
 
     let test_port = allocate_ephemeral_loopback_port();

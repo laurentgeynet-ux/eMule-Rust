@@ -10,8 +10,8 @@ use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart,
-    PartAvailabilityMask, OP_FILESTATUSREQ,
-    OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    PartAvailabilityMask, OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ,
+    OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_STARTUPLOADREQ,
     PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
@@ -25,6 +25,9 @@ async fn setup_test_state() -> (AppState, tempfile::TempDir, String) {
         DaemonConfig::new(dir.path().to_path_buf(), &token).with_workdir_mode(WorkDirMode::Portable);
     let downloads = DownloadService::in_memory(temp_dir).unwrap();
     let state = AppState::new(config, downloads);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
 
     let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
 
@@ -63,12 +66,12 @@ async fn test_sources_list_and_add_manual() {
     let req = make_req(
         2,
         "sources.addManual",
-        Some(json!({ "fileHash": hash, "address": "127.0.0.1:4662" })),
+        Some(json!({ "fileHash": hash, "address": "127.0.0.1:39735" })),
     );
     let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
     assert!(resp.error.is_none());
     let added: Value = resp.result.unwrap();
-    assert_eq!(added["address"], "127.0.0.1:4662");
+    assert_eq!(added["address"], "127.0.0.1:39735");
     assert_eq!(added["origin"], "manual");
 
     // 3. Verify in list
@@ -76,7 +79,7 @@ async fn test_sources_list_and_add_manual() {
     let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
     let list: Vec<Value> = serde_json::from_value(resp.result.unwrap()).unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0]["address"], "127.0.0.1:4662");
+    assert_eq!(list[0]["address"], "127.0.0.1:39735");
 }
 
 #[tokio::test]
@@ -94,7 +97,7 @@ async fn test_peer_connect_refused_when_ip_filtered() {
     let req = make_req(
         1,
         "sources.connect",
-        Some(json!({ "fileHash": hash, "address": "127.0.0.1:4662" })),
+        Some(json!({ "fileHash": hash, "address": "127.0.0.1:39735" })),
     );
     let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
     assert!(resp.error.is_some(), "Must be blocked by IP filter");
@@ -118,7 +121,7 @@ async fn test_peer_connect_refused_under_local_lab_profile() {
     let req = make_req(
         1,
         "sources.connect",
-        Some(json!({ "fileHash": hash, "address": "91.121.162.155:4662" })),
+        Some(json!({ "fileHash": hash, "address": "91.121.162.155:39735" })),
     );
     let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
     assert!(resp.error.is_some(), "Must be rejected under LocalLab profile");
@@ -204,6 +207,27 @@ async fn test_peer_connect_nominal_handshake_and_transfer() {
         out.extend_from_slice(&status_pkt.payload);
         socket.write_all(&out).await.unwrap();
 
+        // 2b. Read OP_STARTUPLOADREQ and reply with OP_ACCEPTUPLOADREQ
+        let mut received_start_upload = false;
+        while !received_start_upload {
+            let n = socket.read(&mut raw_buf).await.unwrap();
+            assert!(n > 0);
+            read_buf.extend_from_slice(&raw_buf[..n]);
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.protocol == PR_ED2K && pkt.opcode == OP_STARTUPLOADREQ {
+                    received_start_upload = true;
+                    break;
+                }
+            }
+        }
+
+        let accept_pkt = mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
+        out.clear();
+        out.push(accept_pkt.protocol);
+        out.extend_from_slice(&(accept_pkt.frame_len() as u32).to_le_bytes());
+        out.push(accept_pkt.opcode);
+        let _ = socket.write_all(&out).await;
+
         // 3. Read OP_REQUESTPARTS
         let mut received_req_parts = false;
         while !received_req_parts {
@@ -274,6 +298,7 @@ async fn test_peer_connect_nominal_handshake_and_transfer() {
 async fn test_peer_connect_swarm_peer_limit() {
     let (state, _dir, hash) = setup_test_state().await;
     let mut authenticated = true;
+    state.peer_session.set_swarm_limits(2, 4).await;
 
     // Start 2 mock listeners that accept and hold open
     let listener1 = TcpListener::bind("127.0.0.1:0").await.unwrap();

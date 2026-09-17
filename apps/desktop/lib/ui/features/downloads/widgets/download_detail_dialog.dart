@@ -47,15 +47,18 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (context, _) {
-        final item = widget.viewModel.filteredDownloads
-            .where((d) => d.id == widget.downloadId)
-            .firstOrNull ??
+        final item =
+            widget.viewModel.filteredDownloads
+                .where((d) => d.id == widget.downloadId)
+                .firstOrNull ??
             widget.viewModel.selectedDownload;
 
         if (item == null) {
           return AlertDialog(
             title: const Text('Download Not Found'),
-            content: const Text('The requested download is no longer available.'),
+            content: const Text(
+              'The requested download is no longer available.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -93,7 +96,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                         const SizedBox(height: 16),
 
                         // Transfer Metrics & Progress Card
-                        _buildProgressAndMetricsCard(context, item, statusColor),
+                        _buildProgressAndMetricsCard(
+                          context,
+                          item,
+                          statusColor,
+                        ),
                         const SizedBox(height: 16),
 
                         // eD2K Peer Sources & Controlled WAN Session Card
@@ -125,7 +132,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, DownloadItem item, Color statusColor) {
+  Widget _buildHeader(
+    BuildContext context,
+    DownloadItem item,
+    Color statusColor,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: const BoxDecoration(
@@ -143,7 +154,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               color: statusColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.insert_drive_file_outlined, color: statusColor, size: 22),
+            child: Icon(
+              Icons.insert_drive_file_outlined,
+              color: statusColor,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -164,11 +179,17 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: statusColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: statusColor.withValues(alpha: 0.3), width: 0.8),
+                        border: Border.all(
+                          color: statusColor.withValues(alpha: 0.3),
+                          width: 0.8,
+                        ),
                       ),
                       child: Text(
                         item.status.label,
@@ -182,7 +203,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                     const SizedBox(width: 10),
                     Text(
                       '${Formatters.formatBytes(item.receivedBytes)} of ${Formatters.formatBytes(item.totalBytes)} (${Formatters.formatPercent(item.progress)})',
-                      style: const TextStyle(fontSize: 12, color: Colors.white60),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white60,
+                      ),
                     ),
                   ],
                 ),
@@ -221,7 +245,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
           _buildCopyRow(
             context,
             label: 'Canonical eD2K Link',
-            value: item.ed2kLink ?? 'ed2k://|file|${item.fileName}|${item.totalBytes}|${item.ed2kHash ?? ""}|/',
+            value:
+                item.ed2kLink ??
+                'ed2k://|file|${item.fileName}|${item.totalBytes}|${item.ed2kHash ?? ""}|/',
             monospace: true,
             maxLines: 2,
           ),
@@ -244,22 +270,36 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('Sans catégorie (None)', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                      ),
-                      ...widget.viewModel.categories.map((cat) => DropdownMenuItem<String?>(
-                        value: cat.id,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(color: cat.parsedColor, shape: BoxShape.circle),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(cat.name, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          ],
+                        child: Text(
+                          'Sans catégorie (None)',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
                         ),
-                      )),
+                      ),
+                      ...widget.viewModel.categories.map(
+                        (cat) => DropdownMenuItem<String?>(
+                          value: cat.id,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: cat.parsedColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                cat.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                     onChanged: (newCatId) {
                       widget.viewModel.setDownloadCategory(item.id, newCatId);
@@ -274,7 +314,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     );
   }
 
-  Widget _buildProgressAndMetricsCard(BuildContext context, DownloadItem item, Color statusColor) {
+  Widget _buildProgressAndMetricsCard(
+    BuildContext context,
+    DownloadItem item,
+    Color statusColor,
+  ) {
     return _buildSectionCard(
       title: 'Transfer Metrics & Speed',
       icon: Icons.speed_rounded,
@@ -295,17 +339,34 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
             spacing: 24,
             runSpacing: 12,
             children: [
-              _buildMetricTile('Received', Formatters.formatBytes(item.receivedBytes)),
-              _buildMetricTile('Remaining', Formatters.formatBytes(item.remainingBytes)),
-              _buildMetricTile('Verified', Formatters.formatBytes(item.verifiedBytes)),
-              _buildMetricTile('Current Rate', Formatters.formatSpeed(item.downloadRateBps)),
+              _buildMetricTile(
+                'Received',
+                Formatters.formatBytes(item.receivedBytes),
+              ),
+              _buildMetricTile(
+                'Remaining',
+                Formatters.formatBytes(item.remainingBytes),
+              ),
+              _buildMetricTile(
+                'Verified',
+                Formatters.formatBytes(item.verifiedBytes),
+              ),
+              _buildMetricTile(
+                'Current Rate',
+                Formatters.formatSpeed(item.downloadRateBps),
+              ),
               _buildMetricTile(
                 'Average Rate',
                 Formatters.formatSpeed(item.averageRateBps),
               ),
               _buildMetricTile(
                 'ETA',
-                item.etaSeconds != null ? Formatters.formatEta(item.remainingBytes, item.downloadRateBps) : 'N/A',
+                item.etaSeconds != null
+                    ? Formatters.formatEta(
+                        item.remainingBytes,
+                        item.downloadRateBps,
+                      )
+                    : 'N/A',
               ),
               _buildMetricTile('Sources', '${item.sourceCount} loopback'),
               _buildMetricTile('Attempts', '${item.connectionAttempts}'),
@@ -318,16 +379,25 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               decoration: BoxDecoration(
                 color: AppTheme.statusFailed.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppTheme.statusFailed.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppTheme.statusFailed.withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: AppTheme.statusFailed, size: 16),
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: AppTheme.statusFailed,
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Last Error: ${item.lastError}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.statusFailed),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.statusFailed,
+                      ),
                     ),
                   ),
                 ],
@@ -343,7 +413,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     final parts = item.parts;
     final verifiedCount = parts.where((p) => p.isVerified).length;
     final completedCount = parts.where((p) => p.state == 'completed').length;
-    final downloadingCount = parts.where((p) => p.state == 'downloading').length;
+    final downloadingCount = parts
+        .where((p) => p.state == 'downloading')
+        .length;
     final missingCount = parts.where((p) => p.state == 'missing').length;
 
     return _buildSectionCard(
@@ -373,7 +445,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                   children: parts.map((part) {
                     final color = _getPartColor(part);
                     return Tooltip(
-                      message: 'Part #${part.partIndex + 1}\n'
+                      message:
+                          'Part #${part.partIndex + 1}\n'
                           'Range: ${Formatters.formatBytes(part.startOffset)} - ${Formatters.formatBytes(part.endOffset)}\n'
                           'Size: ${Formatters.formatBytes(part.size)}\n'
                           'Received: ${Formatters.formatBytes(part.receivedBytes)}\n'
@@ -395,7 +468,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
-                            color: part.state == 'missing' ? Colors.white38 : Colors.white,
+                            color: part.state == 'missing'
+                                ? Colors.white38
+                                : Colors.white,
                           ),
                         ),
                       ),
@@ -467,7 +542,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.primary,
                   side: const BorderSide(color: AppTheme.primary),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
                 onPressed: () => _promptChangeDestination(context, item),
               ),
@@ -477,7 +555,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
           const Text(
             'Note: Changing destination redirects where the completed file is assembled. '
             'Ongoing .part chunks remain safely confined to data/temp/ until final verification.',
-            style: TextStyle(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white38,
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ],
       ),
@@ -511,7 +593,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               Clipboard.setData(ClipboardData(text: diag));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Download diagnostic copied to clipboard (sanitized: no secrets)'),
+                  content: Text(
+                    'Download diagnostic copied to clipboard (sanitized: no secrets)',
+                  ),
                   duration: Duration(seconds: 2),
                 ),
               );
@@ -530,9 +614,7 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
       decoration: const BoxDecoration(
         color: AppTheme.darkCard,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
-        border: Border(
-          top: BorderSide(color: AppTheme.darkBorder, width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: AppTheme.darkBorder, width: 0.5)),
       ),
       child: Wrap(
         spacing: 10,
@@ -550,14 +632,18 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 FilledButton.icon(
                   icon: const Icon(Icons.play_arrow_rounded, size: 18),
                   label: const Text('Resume'),
-                  style: FilledButton.styleFrom(backgroundColor: AppTheme.statusCompleted),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.statusCompleted,
+                  ),
                   onPressed: () => widget.viewModel.resumeDownload(item.id),
                 )
               else if (item.status.isActive)
                 FilledButton.icon(
                   icon: const Icon(Icons.pause_rounded, size: 18),
                   label: const Text('Pause'),
-                  style: FilledButton.styleFrom(backgroundColor: AppTheme.statusPaused),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.statusPaused,
+                  ),
                   onPressed: () => widget.viewModel.pauseDownload(item.id),
                 ),
 
@@ -569,7 +655,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                   foregroundColor: Colors.white70,
                   side: const BorderSide(color: AppTheme.darkBorder),
                 ),
-                onPressed: () => widget.viewModel.retryDownloadConnection(item.id),
+                onPressed: () =>
+                    widget.viewModel.retryDownloadConnection(item.id),
               ),
 
               // Open Completed File
@@ -581,10 +668,16 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                   icon: const Icon(Icons.folder_open_rounded, size: 16),
                   label: const Text('Open Completed File'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: isCompleted ? AppTheme.primary : Colors.white12,
-                    foregroundColor: isCompleted ? Colors.white : Colors.white38,
+                    backgroundColor: isCompleted
+                        ? AppTheme.primary
+                        : Colors.white12,
+                    foregroundColor: isCompleted
+                        ? Colors.white
+                        : Colors.white38,
                   ),
-                  onPressed: isCompleted ? () => widget.viewModel.openCompletedFile(item) : null,
+                  onPressed: isCompleted
+                      ? () => widget.viewModel.openCompletedFile(item)
+                      : null,
                 ),
               ),
             ],
@@ -592,10 +685,19 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
 
           // Destructive Action: Remove
           OutlinedButton.icon(
-            icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppTheme.statusFailed),
-            label: const Text('Remove...', style: TextStyle(color: AppTheme.statusFailed)),
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              size: 16,
+              color: AppTheme.statusFailed,
+            ),
+            label: const Text(
+              'Remove...',
+              style: TextStyle(color: AppTheme.statusFailed),
+            ),
             style: OutlinedButton.styleFrom(
-              side: BorderSide(color: AppTheme.statusFailed.withValues(alpha: 0.5)),
+              side: BorderSide(
+                color: AppTheme.statusFailed.withValues(alpha: 0.5),
+              ),
             ),
             onPressed: () => _showRemoveConfirmation(context, item),
           ),
@@ -647,7 +749,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
             onPressed: () async {
               final newDir = controller.text.trim();
               if (newDir.isNotEmpty) {
-                final success = await widget.viewModel.changeDownloadDestination(item.id, newDir);
+                final success = await widget.viewModel
+                    .changeDownloadDestination(item.id, newDir);
                 if (ctx.mounted && success) {
                   Navigator.of(ctx).pop();
                 }
@@ -688,7 +791,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                       '• The download entry in SQLite will be permanently deleted.\n'
                       '• Temporary files (.part and .part.met) in data/temp/ will be removed if selected below.\n'
                       '• The final completed file in destination (if completed) will NOT be deleted.',
-                      style: TextStyle(fontSize: 12, color: Colors.white70, height: 1.4),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ),
@@ -716,9 +823,14 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppTheme.statusFailed),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.statusFailed,
+              ),
               onPressed: () {
-                widget.viewModel.removeDownload(item.id, deleteFiles: deleteFilesOnDisk);
+                widget.viewModel.removeDownload(
+                  item.id,
+                  deleteFiles: deleteFilesOnDisk,
+                );
                 Navigator.of(ctx).pop(); // pop confirm dialog
                 Navigator.of(context).pop(); // pop detail dialog
               },
@@ -734,7 +846,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     final hash = item.ed2kHash ?? '';
     final sources = widget.viewModel.getSourcesForHash(hash);
     final session = widget.viewModel.peerSession;
-    final isConnectedToThis = session.fileHash == hash &&
+    final isConnectedToThis =
+        session.fileHash == hash &&
         session.status != PeerConnectionStatus.disconnected;
 
     return _buildSectionCard(
@@ -750,11 +863,17 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               decoration: BoxDecoration(
                 color: AppTheme.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.wifi_tethering, color: AppTheme.primary, size: 20),
+                  const Icon(
+                    Icons.wifi_tethering,
+                    color: AppTheme.primary,
+                    size: 20,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -772,7 +891,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                             ),
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.tealAccent.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(4),
@@ -791,7 +913,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                         const SizedBox(height: 2),
                         Text(
                           'Reçu : ${Formatters.formatBytes(session.transferredBytes)} (${Formatters.formatSpeed(session.transferRateBps)})',
-                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white70,
+                          ),
                         ),
                       ],
                     ),
@@ -799,11 +924,20 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.redAccent,
-                      side: const BorderSide(color: Colors.redAccent, width: 0.8),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      side: const BorderSide(
+                        color: Colors.redAccent,
+                        width: 0.8,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                     ),
                     icon: const Icon(Icons.link_off, size: 14),
-                    label: const Text('Déconnecter', style: TextStyle(fontSize: 11)),
+                    label: const Text(
+                      'Déconnecter',
+                      style: TextStyle(fontSize: 11),
+                    ),
                     onPressed: () => widget.viewModel.disconnectPeerSource(),
                   ),
                 ],
@@ -822,18 +956,29 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                     controller: _manualSourceController,
                     style: const TextStyle(fontSize: 12, color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: 'Ajouter source IP:port (ex: 127.0.0.1:4662)',
-                      hintStyle: const TextStyle(fontSize: 11, color: Colors.white38),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      hintText: 'Ajouter source IP:port (ex: 127.0.0.1:39735)',
+                      hintStyle: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white38,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       filled: true,
                       fillColor: AppTheme.darkSurface,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(6),
-                        borderSide: const BorderSide(color: AppTheme.darkBorder),
+                        borderSide: const BorderSide(
+                          color: AppTheme.darkBorder,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(6),
-                        borderSide: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
+                        borderSide: const BorderSide(
+                          color: AppTheme.darkBorder,
+                          width: 0.5,
+                        ),
                       ),
                     ),
                   ),
@@ -848,11 +993,17 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                   ),
                   icon: const Icon(Icons.add, size: 14, color: Colors.white),
-                  label: const Text('Ajouter', style: TextStyle(fontSize: 11, color: Colors.white)),
+                  label: const Text(
+                    'Ajouter',
+                    style: TextStyle(fontSize: 11, color: Colors.white),
+                  ),
                   onPressed: () async {
                     final addr = _manualSourceController.text.trim();
                     if (addr.isNotEmpty && hash.isNotEmpty) {
-                      final ok = await widget.viewModel.addManualSource(hash, addr);
+                      final ok = await widget.viewModel.addManualSource(
+                        hash,
+                        addr,
+                      );
                       if (ok) {
                         _manualSourceController.clear();
                       }
@@ -868,18 +1019,60 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                     side: const BorderSide(color: AppTheme.darkBorder),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
-                  icon: const Icon(Icons.search, size: 14, color: Colors.white70),
-                  label: const Text('Demander au serveur', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                  icon: const Icon(
+                    Icons.search,
+                    size: 14,
+                    color: Colors.white70,
+                  ),
+                  label: const Text(
+                    'Demander au serveur',
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
+                  ),
                   onPressed: hash.isNotEmpty
-                      ? () => widget.viewModel.queryServerSources(hash, fileSize: item.totalBytes)
+                      ? () => widget.viewModel.queryServerSources(
+                          hash,
+                          fileSize: item.totalBytes,
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.amberAccent),
+                    foregroundColor: Colors.amberAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(
+                    Icons.hub_rounded,
+                    size: 14,
+                    color: Colors.amberAccent,
+                  ),
+                  label: const Text(
+                    'Demander au réseau Kad',
+                    style: TextStyle(fontSize: 11, color: Colors.amberAccent),
+                  ),
+                  onPressed: hash.isNotEmpty
+                      ? () => widget.viewModel.searchKadSources(
+                          hash,
+                          fileSize: item.totalBytes,
+                        )
                       : null,
                 ),
               ),
               const SizedBox(width: 6),
               IconButton(
-                icon: const Icon(Icons.refresh, size: 16, color: Colors.white54),
+                icon: const Icon(
+                  Icons.refresh,
+                  size: 16,
+                  color: Colors.white54,
+                ),
                 tooltip: 'Actualiser la liste',
-                onPressed: hash.isNotEmpty ? () => widget.viewModel.loadSourcesForHash(hash) : null,
+                onPressed: hash.isNotEmpty
+                    ? () => widget.viewModel.loadSourcesForHash(hash)
+                    : null,
               ),
             ],
           ),
@@ -908,42 +1101,49 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: sources.length,
-                separatorBuilder: (context, index) => const Divider(height: 1, color: AppTheme.darkBorder),
+                separatorBuilder: (context, index) =>
+                    const Divider(height: 1, color: AppTheme.darkBorder),
                 itemBuilder: (context, index) {
                   final src = sources[index];
-                  final isThisConnected = session.peerAddress == src.address &&
+                  final isThisConnected =
+                      session.peerAddress == src.address &&
                       session.status != PeerConnectionStatus.disconnected;
 
                   final nowMs = DateTime.now().millisecondsSinceEpoch;
-                  final isInCooldown = src.cooldownUntilUnixMs != null && src.cooldownUntilUnixMs! > nowMs;
+                  final isInCooldown =
+                      src.cooldownUntilUnixMs != null &&
+                      src.cooldownUntilUnixMs! > nowMs;
                   final cooldownSecondsRemaining = isInCooldown
                       ? ((src.cooldownUntilUnixMs! - nowMs) / 1000).ceil()
                       : 0;
 
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
                         Icon(
                           src.status == PeerSourceStatus.filtered
                               ? Icons.block
                               : src.status == PeerSourceStatus.rejected
-                                  ? Icons.gpp_bad
-                                  : src.status == PeerSourceStatus.failed
-                                      ? Icons.error_outline
-                                      : src.status == PeerSourceStatus.connected
-                                          ? Icons.wifi_tethering
-                                          : Icons.computer,
+                              ? Icons.gpp_bad
+                              : src.status == PeerSourceStatus.failed
+                              ? Icons.error_outline
+                              : src.status == PeerSourceStatus.connected
+                              ? Icons.wifi_tethering
+                              : Icons.computer,
                           size: 16,
                           color: src.status == PeerSourceStatus.filtered
                               ? Colors.redAccent
                               : src.status == PeerSourceStatus.rejected
-                                  ? Colors.orangeAccent
-                                  : src.status == PeerSourceStatus.failed
-                                      ? Colors.redAccent
-                                      : src.status == PeerSourceStatus.connected
-                                          ? Colors.tealAccent
-                                          : Colors.white54,
+                              ? Colors.orangeAccent
+                              : src.status == PeerSourceStatus.failed
+                              ? Colors.redAccent
+                              : src.status == PeerSourceStatus.connected
+                              ? Colors.tealAccent
+                              : Colors.white54,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -966,11 +1166,21 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                                   if (isInCooldown) ...[
                                     const SizedBox(width: 6),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 1,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: Colors.amber.withValues(alpha: 0.2),
+                                        color: Colors.amber.withValues(
+                                          alpha: 0.2,
+                                        ),
                                         borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 0.5),
+                                        border: Border.all(
+                                          color: Colors.amber.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                          width: 0.5,
+                                        ),
                                       ),
                                       child: Text(
                                         'Cooldown ${cooldownSecondsRemaining}s',
@@ -985,14 +1195,21 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                                   const SizedBox(width: 6),
                                   Text(
                                     '(${src.origin.toApiString()})',
-                                    style: const TextStyle(fontSize: 10, color: Colors.white38),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white38,
+                                    ),
                                   ),
                                 ],
                               ),
-                              if (src.lastError != null && src.lastError!.isNotEmpty)
+                              if (src.lastError != null &&
+                                  src.lastError!.isNotEmpty)
                                 Text(
                                   src.lastError!,
-                                  style: const TextStyle(fontSize: 10, color: Colors.redAccent),
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.redAccent,
+                                  ),
                                 ),
                             ],
                           ),
@@ -1002,42 +1219,76 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                             OutlinedButton(
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.redAccent,
-                                side: const BorderSide(color: Colors.redAccent, width: 0.8),
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                side: const BorderSide(
+                                  color: Colors.redAccent,
+                                  width: 0.8,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              onPressed: () => widget.viewModel.disconnectPeerSource(address: src.address),
-                              child: const Text('Déconnecter', style: TextStyle(fontSize: 10)),
+                              onPressed: () => widget.viewModel
+                                  .disconnectPeerSource(address: src.address),
+                              child: const Text(
+                                'Déconnecter',
+                                style: TextStyle(fontSize: 10),
+                              ),
                             )
                           else if (isInCooldown)
                             OutlinedButton(
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.amberAccent,
-                                side: const BorderSide(color: Colors.amberAccent, width: 0.8),
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                side: const BorderSide(
+                                  color: Colors.amberAccent,
+                                  width: 0.8,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               onPressed: widget.viewModel.isPeerConnecting
                                   ? null
-                                  : () => widget.viewModel.connectPeerSource(hash, src.address, force: true),
-                              child: const Text('Forcer', style: TextStyle(fontSize: 10)),
+                                  : () => widget.viewModel.connectPeerSource(
+                                      hash,
+                                      src.address,
+                                      force: true,
+                                    ),
+                              child: const Text(
+                                'Forcer',
+                                style: TextStyle(fontSize: 10),
+                              ),
                             )
                           else
                             ElevatedButton(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primary,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               onPressed: widget.viewModel.isPeerConnecting
                                   ? null
-                                  : () => widget.viewModel.connectPeerSource(hash, src.address),
+                                  : () => widget.viewModel.connectPeerSource(
+                                      hash,
+                                      src.address,
+                                    ),
                               child: Text(
-                                src.status == PeerSourceStatus.failed ? 'Réessayer' : 'Connecter',
-                                style: const TextStyle(fontSize: 10, color: Colors.white),
+                                src.status == PeerSourceStatus.failed
+                                    ? 'Réessayer'
+                                    : 'Connecter',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                         ],
@@ -1149,11 +1400,18 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.white38)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Colors.white38),
+        ),
         const SizedBox(height: 3),
         Text(
           value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
       ],
     );
@@ -1221,7 +1479,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
           ),
         ),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.white70)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Colors.white70),
+        ),
       ],
     );
   }

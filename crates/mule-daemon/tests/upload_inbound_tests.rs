@@ -90,7 +90,7 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
     let hello = Ed2kHello {
         user_hash: [0x44u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -204,7 +204,7 @@ async fn test_inbound_request_unshared_file_does_not_upload() {
     let hello = Ed2kHello {
         user_hash: [0x44u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -271,7 +271,7 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
     let hello1 = Ed2kHello {
         user_hash: [0x11u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -410,7 +410,7 @@ async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
     let hello = Ed2kHello {
         user_hash: [0x33u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -452,4 +452,193 @@ async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
     // Socket should receive EOF on read
     let n = client.read(&mut raw_buf).await.unwrap_or(0);
     assert_eq!(n, 0, "Socket must be closed when kill switch triggers");
+}
+
+#[tokio::test]
+async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
+    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let mut authenticated = true;
+
+    // Start listener
+    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let listen_port: u16 = listen_addr_str.split(':').next_back().unwrap().parse().unwrap();
+
+    let expected_hash = state.identity.lock().await.user_hash();
+
+    let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let codec = PacketCodec::new();
+    let encoder = Ed2kEncoder::default();
+    let decoder = Ed2kDecoder::default();
+
+    let hello = Ed2kHello {
+        user_hash: [0x11u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let h_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(h_pkt.protocol);
+    out.extend_from_slice(&(h_pkt.frame_len() as u32).to_le_bytes());
+    out.push(h_pkt.opcode);
+    out.extend_from_slice(&h_pkt.payload);
+    client.write_all(&out).await.unwrap();
+
+    let mut raw_buf = [0u8; 8192];
+    let mut read_buf = bytes::BytesMut::with_capacity(65536);
+    let mut ans_opt = None;
+    while ans_opt.is_none() {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.protocol == PR_ED2K && pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
+                let ans = decoder.decode_hello_answer(pkt.protocol, pkt.opcode, &pkt.payload, 0).unwrap();
+                ans_opt = Some(ans);
+                break;
+            }
+        }
+    }
+
+    let ans = ans_opt.unwrap();
+    assert_eq!(ans.user_hash, expected_hash, "Ed2kHelloAnswer must use real identity user_hash");
+    assert_eq!(ans.tcp_port, listen_port, "Ed2kHelloAnswer must use actual listener port");
+}
+
+#[tokio::test]
+async fn test_inbound_connection_per_ip_limit() {
+    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let mut authenticated = true;
+
+    // Start listener
+    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+
+    // Connect 5 sockets (MAX_INBOUND_PER_IP)
+    let mut clients = Vec::new();
+    for _ in 0..5 {
+        let s = TcpStream::connect(&listen_addr_str).await.unwrap();
+        clients.push(s);
+    }
+
+    // Connect 6th socket: should be accepted and then dropped/closed immediately by per-IP limit
+    let mut sixth = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let mut buf = [0u8; 128];
+    // Reading on 6th socket should yield EOF
+    let res = tokio::time::timeout(Duration::from_millis(500), sixth.read(&mut buf)).await;
+    match res {
+        Ok(Ok(0)) => {
+            // Expected EOF due to drop
+        }
+        Ok(Ok(n)) => panic!("Expected EOF on 6th socket, but got {n} bytes"),
+        Ok(Err(e)) => panic!("Expected EOF on 6th socket, got error: {e}"),
+        Err(_) => panic!("Timed out waiting for EOF on 6th connection (not dropped)"),
+    }
+
+    // Drop one of the 5 clients
+    drop(clients.pop());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Now a new connection should be accepted and stay open
+    let mut new_client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let hello = Ed2kHello {
+        user_hash: [0x22u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let encoder = Ed2kEncoder::default();
+    let h_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(h_pkt.protocol);
+    out.extend_from_slice(&(h_pkt.frame_len() as u32).to_le_bytes());
+    out.push(h_pkt.opcode);
+    out.extend_from_slice(&h_pkt.payload);
+    new_client.write_all(&out).await.unwrap();
+
+    let mut raw_buf = [0u8; 8192];
+    let n = new_client.read(&mut raw_buf).await.unwrap();
+    assert!(n > 0, "New connection should be accepted after dropping an existing client");
+}
+
+#[tokio::test]
+async fn test_inbound_secident_signature_without_challenge_rejected() {
+    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let mut authenticated = true;
+
+    // Start listener
+    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+
+    let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let codec = PacketCodec::new();
+    let encoder = Ed2kEncoder::default();
+    let decoder = Ed2kDecoder::default();
+
+    // 1. Handshake
+    let hello = Ed2kHello {
+        user_hash: [0x33u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let h_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(h_pkt.protocol);
+    out.extend_from_slice(&(h_pkt.frame_len() as u32).to_le_bytes());
+    out.push(h_pkt.opcode);
+    out.extend_from_slice(&h_pkt.payload);
+    client.write_all(&out).await.unwrap();
+
+    let mut raw_buf = [0u8; 8192];
+    let mut read_buf = bytes::BytesMut::with_capacity(65536);
+    let mut h_ok = false;
+    while !h_ok {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.protocol == PR_ED2K && pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
+                h_ok = true;
+                break;
+            }
+        }
+    }
+
+    // 2. Send OP_SIGNATURE without having sent OP_PUBLICKEY / received challenge
+    let sig = mule_protocol::ed2k::Ed2kSignature {
+        signature_bytes: vec![0x99u8; 64].into(),
+    };
+    let sig_pkt = encoder.encode_signature(&sig).unwrap();
+    out.clear();
+    out.push(sig_pkt.protocol);
+    out.extend_from_slice(&(sig_pkt.frame_len() as u32).to_le_bytes());
+    out.push(sig_pkt.opcode);
+    out.extend_from_slice(&sig_pkt.payload);
+    client.write_all(&out).await.unwrap();
+
+    // 3. Expect Ed2kSecIdentState with state == 0 (rejected / unauthenticated)
+    let mut state_opt = None;
+    while state_opt.is_none() {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.protocol == mule_protocol::ed2k::PR_EMULE && pkt.opcode == mule_protocol::ed2k::OP_SECIDENTSTATE {
+                let st = decoder.decode_secident_state(pkt.protocol, pkt.opcode, &pkt.payload, 0).unwrap();
+                state_opt = Some(st);
+                break;
+            }
+        }
+    }
+
+    let st = state_opt.unwrap();
+    assert_eq!(st.state, 0, "Unsolicited signature without prior challenge must be rejected with state 0");
 }

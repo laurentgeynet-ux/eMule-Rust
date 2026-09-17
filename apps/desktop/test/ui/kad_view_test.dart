@@ -19,32 +19,35 @@ void main() {
       viewModel.dispose();
     });
 
-    testWidgets('renders Kad DHT safety banner and metrics cards', (tester) async {
+    testWidgets('renders Kad DHT safety banner and metrics cards', (
+      tester,
+    ) async {
       await viewModel.fetchKadStatus();
       await viewModel.fetchKadContacts();
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: KadView(viewModel: viewModel),
-          ),
+          home: Scaffold(body: KadView(viewModel: viewModel)),
         ),
       );
       await tester.pumpAndSettle();
 
       // Check title and safety banner
       expect(find.text('Réseau Kad DHT (Kademlia)'), findsOneWidget);
-      expect(find.textContaining('Phase 12.0b — Transport UDP Kad confiné'), findsOneWidget);
+      expect(find.textContaining('Transport UDP Kad'), findsOneWidget);
 
       // Check status cards and local ID
       expect(find.text('ID Kad Local :'), findsOneWidget);
       expect(find.text('deadbeefcafe0123456789abcdef0123'), findsOneWidget);
       expect(find.text('Contacts actifs: '), findsOneWidget);
-      expect(find.text('Démarrer UDP Loopback'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, 'Démarrer UDP Kad'),
+        findsOneWidget,
+      );
 
       // Check contacts table
       expect(find.text('Kad ID (128-bit XOR)'), findsOneWidget);
-      expect(find.textContaining('127.0.0.1:4672'), findsOneWidget);
+      expect(find.textContaining('127.0.0.1:39737'), findsOneWidget);
       expect(find.text('v2'), findsOneWidget);
     });
 
@@ -54,20 +57,18 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: KadView(viewModel: viewModel),
-          ),
+          home: Scaffold(body: KadView(viewModel: viewModel)),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('127.0.0.1:4672'), findsOneWidget);
+      expect(find.textContaining('127.0.0.1:39737'), findsOneWidget);
 
       // Enter search filter that does not match
       await tester.enterText(find.byType(TextField), 'nonexistent_ip');
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('127.0.0.1:4672'), findsNothing);
+      expect(find.textContaining('127.0.0.1:39737'), findsNothing);
       expect(find.text('Aucun contact Kad'), findsOneWidget);
     });
   });

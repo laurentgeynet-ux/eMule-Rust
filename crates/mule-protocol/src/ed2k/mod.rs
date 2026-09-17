@@ -11,6 +11,7 @@ pub mod decoder;
 pub mod encoder;
 pub mod error;
 pub mod limits;
+pub mod obfuscation;
 pub mod opcodes;
 pub mod packet;
 pub mod peer_info;
@@ -35,11 +36,11 @@ pub use limits::Ed2kLimits;
 pub use opcodes::{
     OP_ACCEPTUPLOADREQ, OP_CANCELTRANSFER, OP_COMPRESSEDPART, OP_EMULEINFO, OP_EMULE_INFO,
     OP_END_OF_DOWNLOAD, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_FOUNDSOURCES,
-    OP_GETSOURCES, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_IDCHANGE, OP_LOGINREQUEST,
-    OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
-    OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SECIDENTSTATE, OP_SENDINGPART, OP_SERVERIDENT,
-    OP_SERVERMESSAGE, OP_SERVERSTATUS, OP_SETREQFILEID, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
-    OP_STARTUPLOADREQ,
+    OP_FOUNDSOURCES_OBFU, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_IDCHANGE,
+    OP_LOGINREQUEST, OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING, OP_REQFILENAME,
+    OP_REQFILENAME_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SEARCHREQUEST,
+    OP_SEARCH_RESULT, OP_SECIDENTSTATE, OP_SENDINGPART, OP_SERVERIDENT, OP_SERVERMESSAGE,
+    OP_SERVERSTATUS, OP_SETREQFILEID, OP_SETREQFILEID_EMULE, OP_SIGNATURE, OP_STARTUPLOADREQ,
 };
 pub use packet::{
     expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
@@ -54,9 +55,9 @@ pub use sequencer::{
     ED2K_PART_SIZE, MAX_REQUEST_RANGES_PER_PACKET,
 };
 pub use server::{
-    decode_server_response, FoundSourcePeer, FoundSources, GetSourcesRequest, SearchQuery,
-    SearchResult, SearchResultFile, ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage,
-    ServerResponse, ServerStatus,
+    decode_server_response, FoundSourcePeer, FoundSourcePeerObfu, FoundSources, FoundSourcesObfu,
+    GetSourcesRequest, SearchQuery, SearchResult, SearchResultFile, ServerIdChange, ServerIdent,
+    ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus,
 };
 pub use session::{
     BlockRequestKey, BlockRequestTracker, Ed2kSession, Ed2kSessionError, Ed2kSessionState,

@@ -17,14 +17,14 @@ use mule_protocol::ed2k::{
 
 #[test]
 fn test_reference_peer_config_non_loopback_rejected() {
-    let public_addr: SocketAddr = "8.8.8.8:4662".parse().unwrap();
+    let public_addr: SocketAddr = "8.8.8.8:39735".parse().unwrap();
     let res = ReferencePeerConfig::new(public_addr);
     assert!(
         res.is_err(),
         "Non-loopback IP 8.8.8.8 must be rejected immediately"
     );
 
-    let lan_addr: SocketAddr = "192.168.1.50:4662".parse().unwrap();
+    let lan_addr: SocketAddr = "192.168.1.50:39735".parse().unwrap();
     let res_lan = ReferencePeerConfig::new(lan_addr);
     assert!(
         res_lan.is_err(),
@@ -38,7 +38,7 @@ fn test_reference_peer_config_non_loopback_rejected() {
         "Port 0 must be rejected for reference peer"
     );
 
-    let valid_loopback: SocketAddr = "127.0.0.1:4662".parse().unwrap();
+    let valid_loopback: SocketAddr = "127.0.0.1:39735".parse().unwrap();
     let res_valid = ReferencePeerConfig::new(valid_loopback);
     assert!(res_valid.is_ok());
 }

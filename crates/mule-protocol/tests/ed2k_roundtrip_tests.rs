@@ -188,7 +188,7 @@ fn test_synthetic_roundtrip_hello_all_tag_types() {
     let hello = Ed2kHello {
         user_hash: [0x42; 16],
         client_id: 0x12345678,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![
             Ed2kTag {
                 name: TagName::Id(TAG_SPECIAL_NAME),
@@ -229,7 +229,7 @@ fn test_synthetic_roundtrip_hello_all_tag_types() {
             },
             Ed2kTag {
                 name: TagName::Text("port16".to_string()),
-                value: TagValue::UInt16(4672),
+                value: TagValue::UInt16(39737),
             },
             Ed2kTag {
                 name: TagName::Text("flag8".to_string()),
@@ -268,7 +268,7 @@ fn test_synthetic_roundtrip_hello_minimal_no_server_info() {
     let hello = Ed2kHello {
         user_hash: [0x11; 16],
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -302,7 +302,7 @@ fn test_synthetic_roundtrip_hello_answer() {
     let answer = Ed2kHelloAnswer {
         user_hash: [0xAA; 16],
         client_id: 0x98765432,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_NAME),
             value: TagValue::String("RemotePeerAnswer".to_string()),
@@ -334,7 +334,7 @@ fn test_synthetic_roundtrip_unknown_raw_tags_preservation() {
     let hello = Ed2kHello {
         user_hash: [0x55; 16],
         client_id: 0x11111111,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_NAME),
             value: TagValue::String("TestPeer".to_string()),
@@ -453,7 +453,7 @@ fn test_encode_rejects_too_many_tags() {
     let hello = Ed2kHello {
         user_hash: [0; 16],
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags,
         unknown_tags: vec![],
         server_ip: 0,
@@ -479,7 +479,7 @@ fn test_encode_rejects_oversized_string_name() {
     let hello = Ed2kHello {
         user_hash: [0; 16],
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![Ed2kTag {
             name: TagName::Text("a".repeat(33)),
             value: TagValue::UInt32(1),
@@ -507,7 +507,7 @@ fn test_encode_rejects_oversized_string_value() {
     let hello = Ed2kHello {
         user_hash: [0; 16],
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_NAME),
             value: TagValue::String("x".repeat(51)),
@@ -535,7 +535,7 @@ fn test_encode_rejects_oversized_blob() {
     let hello = Ed2kHello {
         user_hash: [0; 16],
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![Ed2kTag {
             name: TagName::Text("blob".to_string()),
             value: TagValue::Blob(vec![0xAA; 65]),
@@ -565,7 +565,7 @@ fn test_encode_rejects_oversized_frame() {
     let hello = Ed2kHello {
         user_hash: [0; 16],
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![Ed2kTag {
             name: TagName::Text("custom".to_string()),
             value: TagValue::String("hello_world_large".to_string()),
@@ -1083,7 +1083,7 @@ fn test_multi_profile_invariance_matrix() {
         let hello = Ed2kHello {
             user_hash: [0x11; 16],
             client_id: 0,
-            tcp_port: 4662,
+            tcp_port: 39735,
             tags: vec![],
             unknown_tags: vec![],
             server_ip: 0,
@@ -1296,7 +1296,7 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
     let hello_order1 = Ed2kHello {
         user_hash: [0x12; 16],
         client_id: 12345,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![tag_name.clone(), tag_ver.clone(), tag_misc.clone()],
         unknown_tags: vec![raw_tag_1.clone(), raw_tag_2.clone()],
         server_ip: 0,
@@ -1305,7 +1305,7 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
     let hello_order2 = Ed2kHello {
         user_hash: [0x12; 16],
         client_id: 12345,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![tag_misc.clone(), tag_name.clone(), tag_ver.clone()],
         unknown_tags: vec![raw_tag_2.clone(), raw_tag_1.clone()],
         server_ip: 0,
@@ -1339,7 +1339,7 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
     let hello_mutated = Ed2kHello {
         user_hash: [0x12; 16],
         client_id: 12345,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![tag_name.clone(), tag_ver.clone(), tag_misc.clone()],
         unknown_tags: vec![raw_tag_1_mutated, raw_tag_2.clone()],
         server_ip: 0,
@@ -1367,7 +1367,7 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
     let hello_many = Ed2kHello {
         user_hash: [0x34; 16],
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![tag_name.clone()],
         unknown_tags: large_unknown_tags,
         server_ip: 0,

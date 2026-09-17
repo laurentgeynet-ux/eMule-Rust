@@ -286,6 +286,7 @@ pub enum PeerSourceOrigin {
     Server,
     Search,
     Manual,
+    Kad,
 }
 
 impl PeerSourceOrigin {
@@ -294,6 +295,7 @@ impl PeerSourceOrigin {
             Self::Server => "server",
             Self::Search => "search",
             Self::Manual => "manual",
+            Self::Kad => "kad",
         }
     }
 }
@@ -305,6 +307,7 @@ impl std::str::FromStr for PeerSourceOrigin {
         Ok(match s {
             "search" => Self::Search,
             "manual" => Self::Manual,
+            "kad" => Self::Kad,
             _ => Self::Server,
         })
     }
@@ -330,6 +333,8 @@ pub enum PeerFailureReason {
     CorruptedData,
     FileNotFound,
     KillSwitchAborted,
+    MissingUserHashForObfuscation,
+    ObfuscationNegotiationFailed,
 }
 
 impl PeerFailureReason {
@@ -351,6 +356,8 @@ impl PeerFailureReason {
             Self::CorruptedData => "corrupted_data",
             Self::FileNotFound => "file_not_found",
             Self::KillSwitchAborted => "kill_switch_aborted",
+            Self::MissingUserHashForObfuscation => "missing_user_hash_for_obfuscation",
+            Self::ObfuscationNegotiationFailed => "obfuscation_negotiation_failed",
         }
     }
 }
@@ -370,6 +377,41 @@ pub struct PeerSource {
     pub fail_count: u32,
     pub last_error: Option<String>,
     pub cooldown_until_unix_ms: Option<i64>,
+    #[serde(default)]
+    pub user_hash: Option<String>,
+    #[serde(default)]
+    pub crypt_options: u8,
+}
+
+impl PeerSource {
+    /// Returns the 16-byte decoded user hash if valid hex.
+    pub fn user_hash_bytes(&self) -> Option<[u8; 16]> {
+        self.user_hash.as_deref().and_then(|s| {
+            if s.len() != 32 {
+                return None;
+            }
+            let mut bytes = [0u8; 16];
+            for i in 0..16 {
+                bytes[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+            }
+            Some(bytes)
+        })
+    }
+
+    /// Whether this peer supports protocol obfuscation (bit 0).
+    pub fn supports_crypt(&self) -> bool {
+        (self.crypt_options & 0x01) != 0
+    }
+
+    /// Whether this peer requests protocol obfuscation (bit 1).
+    pub fn requests_crypt(&self) -> bool {
+        (self.crypt_options & 0x02) != 0
+    }
+
+    /// Whether this peer strictly requires protocol obfuscation (bit 2).
+    pub fn requires_crypt(&self) -> bool {
+        (self.crypt_options & 0x04) != 0
+    }
 }
 
 /// Explicitly approved shared file available for inbound eD2K upload.

@@ -77,7 +77,10 @@ abstract class MuleDaemonClient {
   Future<void> connectDownloadToSource(String downloadId, String peerAddr);
 
   /// Change finalization destination directory of a download.
-  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory);
+  Future<DownloadItem> setDownloadDestination(
+    String id,
+    String targetDirectory,
+  );
 
   /// Retry connecting loopback sources for a download.
   Future<DownloadItem> retryDownloadConnection(String id);
@@ -108,7 +111,11 @@ abstract class MuleDaemonClient {
   Future<int> clearHistory();
 
   /// Export history in 'csv' or 'json' format.
-  Future<String> exportHistory(String format, {String? eventType, String? status});
+  Future<String> exportHistory(
+    String format, {
+    String? eventType,
+    String? status,
+  });
 
   /// Update persistent history retention policy in days (0 = unlimited).
   Future<void> setHistoryRetentionDays(int days);
@@ -141,10 +148,16 @@ abstract class MuleDaemonClient {
   Future<void> reorderCategories(List<String> categoryIds);
 
   /// Set or clear the category assigned to a download.
-  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId);
+  Future<DownloadItem> setDownloadCategory(
+    String downloadId,
+    String? categoryId,
+  );
 
   /// Inspect an eMule .part.met file before importing.
-  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath});
+  Future<PartMetInspectionResult> inspectPartMet(
+    String metPath, {
+    String? partPath,
+  });
 
   /// Import an eMule .part.met file into the local download manager (strictly paused).
   Future<ImportPartMetResult> importPartMet(
@@ -170,7 +183,9 @@ abstract class MuleDaemonClient {
   Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({int limit = 50});
 
   /// Update resource budgets.
-  Future<NetworkPolicySnapshot> setResourceBudgets(ResourceBudgetsModel budgets);
+  Future<NetworkPolicySnapshot> setResourceBudgets(
+    ResourceBudgetsModel budgets,
+  );
 
   /// Fetch IP filter status and statistics.
   Future<FilterStatusModel> getFilterStatus();
@@ -226,10 +241,7 @@ abstract class MuleDaemonClient {
   });
 
   /// Request sources from the connected eD2K server for a file hash.
-  Future<void> queryServerSources({
-    required String fileHash,
-    int? fileSize,
-  });
+  Future<void> queryServerSources({required String fileHash, int? fileSize});
 
   /// List registered peer sources for a file hash.
   Future<List<PeerSourceModel>> listSources(String fileHash);
@@ -340,6 +352,33 @@ abstract class MuleDaemonClient {
   /// Clear all stored Kad contacts.
   Future<int> clearKadContacts();
 
+  /// Search for sources of a target file hash on Kad DHT.
+  Future<List<PeerSourceModel>> searchKadSources({
+    required String fileHash,
+    int? fileSize,
+  });
+
+  /// Search Kad DHT by keywords.
+  Future<List<SearchResultFileModel>> searchKadKeywords({
+    required String term,
+    int? minSize,
+    int? maxSize,
+  });
+
+  /// Publish a file to Kad DHT as a source.
+  Future<int> publishKadSource({
+    required String fileHash,
+    required int fileSize,
+    int tcpPort = 39735,
+  });
+
+  /// Publish file keywords to Kad DHT.
+  Future<int> publishKadKeywords({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+  });
+
   /// Stream of search result events.
   Stream<List<SearchResultFileModel>> get searchResultEvents;
 
@@ -348,6 +387,30 @@ abstract class MuleDaemonClient {
 
   /// Stream of peer session status updates.
   Stream<PeerSessionModel> get peerSessionEvents;
+
+  /// Stream of server session status updates.
+  Stream<ServerSessionModel> get serverSessionEvents;
+
+  /// Get current UPnP status and port mappings.
+  Future<UpnpStatusModel> getUpnpStatus();
+
+  /// Enable or disable UPnP service.
+  Future<UpnpStatusModel> setUpnpEnabled(bool enabled);
+
+  /// Map ports via UPnP IGD.
+  Future<UpnpStatusModel> mapUpnpPorts({
+    int tcpPort = 39735,
+    int udpPort = 39737,
+  });
+
+  /// Unmap ports via UPnP IGD.
+  Future<UpnpStatusModel> unmapUpnpPorts();
+
+  /// Update server list from remote URL.
+  Future<Map<String, dynamic>> updateServersFromUrl(String url);
+
+  /// Bootstrap Kad nodes from remote URL.
+  Future<Map<String, dynamic>> bootstrapKadFromUrl(String url);
 
   /// Clean up any resources/sockets.
   void dispose();

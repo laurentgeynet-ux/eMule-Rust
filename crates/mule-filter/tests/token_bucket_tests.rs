@@ -43,7 +43,7 @@ async fn test_token_bucket_cancellation() {
 #[test]
 fn test_session_pseudonymizer() {
     let pseudo = SessionPseudonymizer::new();
-    let addr1: std::net::SocketAddr = "192.0.2.1:4662".parse().unwrap();
+    let addr1: std::net::SocketAddr = "192.0.2.1:39735".parse().unwrap();
     let addr2: std::net::SocketAddr = "192.0.2.1:4665".parse().unwrap();
     let addr3: std::net::SocketAddr = "198.51.100.5:4661".parse().unwrap();
 
@@ -51,7 +51,7 @@ fn test_session_pseudonymizer() {
     let p2 = pseudo.pseudonymize_peer(addr2);
     let s1 = pseudo.pseudonymize_server(addr3);
 
-    assert_eq!(p1, "peer-01:4662");
+    assert_eq!(p1, "peer-01:39735");
     assert_eq!(p2, "peer-01:4665"); // Same IP preserves ID, port preserved
     assert_eq!(s1, "server-01:4661");
 }

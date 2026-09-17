@@ -15,6 +15,42 @@ use mule_protocol::kad::*;
 /// Transaction timeout in seconds.
 pub const KAD_TRANSACTION_TIMEOUT_SECS: u64 = 5;
 
+/// Maximum number of concurrent in-flight transactions to prevent memory exhaustion.
+pub const MAX_IN_FLIGHT_TRANSACTIONS: usize = 200;
+
+/// Maximum requests per second allowed per source IP (anti-amplification / rate limiting).
+pub const MAX_KAD_REQUESTS_PER_SEC_PER_IP: u32 = 20;
+
+/// Simple per-IP sliding rate limiter.
+#[derive(Debug, Default)]
+struct IpRateLimiter {
+    counts: HashMap<std::net::IpAddr, (u32, Instant)>,
+}
+
+impl IpRateLimiter {
+    fn new() -> Self {
+        Self { counts: HashMap::new() }
+    }
+
+    fn check_and_record(&mut self, ip: std::net::IpAddr) -> bool {
+        let now = Instant::now();
+        if self.counts.len() > 1000 {
+            self.counts.retain(|_, (_, ts)| now.duration_since(*ts) < Duration::from_secs(10));
+        }
+
+        let entry = self.counts.entry(ip).or_insert((0, now));
+        if now.duration_since(entry.1) >= Duration::from_secs(1) {
+            *entry = (1, now);
+            true
+        } else if entry.0 < MAX_KAD_REQUESTS_PER_SEC_PER_IP {
+            entry.0 += 1;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Pending in-flight transaction state.
 struct InFlightTransaction {
     target: SocketAddr,
@@ -41,6 +77,23 @@ struct KadUdpInner {
     bind_addr: Option<SocketAddr>,
     listen_task: Option<JoinHandle<()>>,
     in_flight: Arc<Mutex<HashMap<u32, InFlightTransaction>>>,
+}
+
+impl KadUdpInner {
+    async fn insert_in_flight(
+        &self,
+        tx_id: u32,
+        entry: InFlightTransaction,
+    ) -> Result<(), String> {
+        let mut inf = self.in_flight.lock().await;
+        if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
+            return Err(format!(
+                "Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"
+            ));
+        }
+        inf.insert(tx_id, entry);
+        Ok(())
+    }
 }
 
 /// Kad UDP Service managing transport and transaction lifecycles.
@@ -101,12 +154,16 @@ impl KadUdpService {
         inner.socket = Some(socket_arc.clone());
         inner.bind_addr = Some(local_addr);
         inner.listen_permit = Some(permit);
+        tracing::info!("Kad UDP listener started on {}", local_addr);
 
         // Spawn receive loop
         let in_flight_arc = inner.in_flight.clone();
         let socket_for_task = socket_arc.clone();
         let cancel_token = self.policy_mgr.cancellation_token();
         let local_kad_id_bytes = self.local_id.0;
+        let rate_limiter_arc = Arc::new(Mutex::new(IpRateLimiter::new()));
+        let ip_filter = self.policy_mgr.ip_filter();
+        let profile = self.policy_mgr.profile();
 
         let task = tokio::spawn(async move {
             let mut buf = vec![0u8; MAX_KAD_UDP_PACKET_SIZE];
@@ -121,9 +178,49 @@ impl KadUdpService {
                                 if len == 0 || len > MAX_KAD_UDP_PACKET_SIZE {
                                     continue;
                                 }
+
+                                tracing::trace!(
+                                    "Kad UDP received {} bytes from {}: {:02X?}",
+                                    len,
+                                    peer_addr,
+                                    &buf[..len.min(32)]
+                                );
+
+                                // 1. IP filter check (banned IPs)
+                                if ip_filter.check_ip(peer_addr.ip()).is_some() {
+                                    tracing::debug!("Kad UDP: dropped packet from banned IP {}", peer_addr.ip());
+                                    continue;
+                                }
+
+                                // 2. Network profile confinement check (anti-SSRF)
+                                let cat = mule_network_policy::validator::classify_ip(peer_addr.ip());
+                                let policy_allowed = match profile {
+                                    mule_network_policy::NetworkProfile::LocalLab => {
+                                        cat == mule_network_policy::validator::IpCategory::Loopback
+                                    }
+                                    _ => {
+                                        cat == mule_network_policy::validator::IpCategory::PublicRoutable
+                                            || cat == mule_network_policy::validator::IpCategory::Loopback
+                                    }
+                                };
+                                if !policy_allowed {
+                                    tracing::debug!("Kad UDP: dropped packet from non-conforming IP {} ({:?})", peer_addr.ip(), cat);
+                                    continue;
+                                }
+
+                                // 3. Anti-amplification / rate limiting per source IP
+                                {
+                                    let mut rl = rate_limiter_arc.lock().await;
+                                    if !rl.check_and_record(peer_addr.ip()) {
+                                        tracing::warn!("Kad UDP rate limit exceeded for {}", peer_addr.ip());
+                                        continue;
+                                    }
+                                }
+
                                 let packet_slice = &buf[..len];
                                 match KadCodec::decode(packet_slice) {
                                     Ok(msg) => {
+                                        tracing::debug!("Kad UDP decoded message from {peer_addr}");
                                         Self::handle_incoming_message(
                                             &socket_for_task,
                                             peer_addr,
@@ -133,8 +230,13 @@ impl KadUdpService {
                                             local_addr.port(),
                                         ).await;
                                     }
-                                    Err(_) => {
-                                        // Ignore malformed datagrams defensively
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            "Kad UDP: malformed packet from {}: {} (raw: {:02X?})",
+                                            peer_addr,
+                                            err,
+                                            &packet_slice[..packet_slice.len().min(32)]
+                                        );
                                     }
                                 }
                             }
@@ -212,13 +314,13 @@ impl KadUdpService {
 
         {
             let inner = self.inner.read().await;
-            let mut inf = inner.in_flight.lock().await;
-            inf.insert(tx_id, in_flight_entry);
+            inner.insert_in_flight(tx_id, in_flight_entry).await?;
         }
 
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
         let ping_bytes = KadCodec::encode_ping(&self.local_id.0, local_port);
 
+        tracing::info!("Kad sending Ping (0x60) to node {} (tx_id={})", target, tx_id);
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&ping_bytes, target)
@@ -233,6 +335,7 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
+                tracing::warn!("Kad Ping to node {} timed out after {}s (tx_id={})", target, KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad ping to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx => {
@@ -240,6 +343,7 @@ impl KadUdpService {
                 match res {
                     Ok(Ok(KadMessage::Pong(pong))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!("Kad received Pong (0x61) from node {} in {} ms (client_port={})", target, elapsed.as_millis(), pong.client_port);
                         Ok((pong, elapsed))
                     }
                     Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
@@ -276,13 +380,13 @@ impl KadUdpService {
 
         {
             let inner = self.inner.read().await;
-            let mut inf = inner.in_flight.lock().await;
-            inf.insert(tx_id, in_flight_entry);
+            inner.insert_in_flight(tx_id, in_flight_entry).await?;
         }
 
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
         let boot_bytes = KadCodec::encode_bootstrap_req(&self.local_id.0, local_port);
 
+        tracing::info!("Kad sending BootstrapReq (0x01) to node {} (tx_id={})", target, tx_id);
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&boot_bytes, target)
@@ -296,12 +400,14 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
+                tracing::warn!("Kad Bootstrap to node {} timed out after {}s (tx_id={})", target, KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad bootstrap to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx => {
                 match res {
                     Ok(Ok(KadMessage::BootstrapRes(boot_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!("Kad received BootstrapRes (0x09) from node {} with {} contacts", target, boot_res.contacts.len());
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -352,15 +458,14 @@ impl KadUdpService {
         let (tx, rx) = oneshot::channel();
         let in_flight_entry = InFlightTransaction {
             target,
-            expected_opcode: KADEMLIA2_BOOTSTRAP_RES, // 0x29 handles both bootstrap and find node res
+            expected_opcode: KADEMLIA2_RES,
             _created_at: Instant::now(),
             sender: tx,
         };
 
         {
             let inner = self.inner.read().await;
-            let mut inf = inner.in_flight.lock().await;
-            inf.insert(tx_id, in_flight_entry);
+            inner.insert_in_flight(tx_id, in_flight_entry).await?;
         }
 
         let find_bytes = KadCodec::encode_find_node_req(&target_kad_id.0, &self.local_id.0);
@@ -414,6 +519,284 @@ impl KadUdpService {
         }
     }
 
+    /// Sends a Kad2 Search Source request to target address and awaits discovered sources.
+    pub async fn send_search_sources(
+        &self,
+        target: SocketAddr,
+        target_file_hash: &[u8; 16],
+        file_size: u64,
+    ) -> Result<Vec<KadSourceWire>, String> {
+        let socket = {
+            let inner = self.inner.read().await;
+            inner.socket.clone().ok_or_else(|| "Kad UDP socket is not running".to_string())?
+        };
+
+        let _permit = self
+            .policy_mgr
+            .request_tcp_connect(target, ConnectionPurpose::KadNode)
+            .map_err(|e| format!("Policy denied Kad UDP send to {target}: {e}"))?;
+
+        let tx_id = self.next_tx_id.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = oneshot::channel();
+        let in_flight_entry = InFlightTransaction {
+            target,
+            expected_opcode: KADEMLIA2_SEARCH_SOURCE_RES,
+            _created_at: Instant::now(),
+            sender: tx,
+        };
+
+        {
+            let inner = self.inner.read().await;
+            inner.insert_in_flight(tx_id, in_flight_entry).await?;
+        }
+
+        let search_bytes = KadCodec::encode_search_source_req(
+            target_file_hash,
+            0,
+            file_size,
+            &self.local_id.0,
+        );
+
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        socket
+            .send_to(&search_bytes, target)
+            .await
+            .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
+
+        let timeout_fut = tokio::time::sleep(Duration::from_secs(KAD_TRANSACTION_TIMEOUT_SECS));
+
+        tokio::select! {
+            _ = timeout_fut => {
+                let inner = self.inner.read().await;
+                let mut inf = inner.in_flight.lock().await;
+                inf.remove(&tx_id);
+                Err(format!("Kad search_sources to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
+            }
+            res = rx => {
+                match res {
+                    Ok(Ok(KadMessage::SearchSourceRes(search_res))) => {
+                        self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        Ok(search_res.sources)
+                    }
+                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                }
+            }
+        }
+    }
+
+    /// Sends a Kad2 Publish Source request to target address and awaits status response.
+    pub async fn send_publish_source(
+        &self,
+        target: SocketAddr,
+        target_file_hash: &[u8; 16],
+        file_size: u64,
+        tcp_port: u16,
+    ) -> Result<u8, String> {
+        let socket = {
+            let inner = self.inner.read().await;
+            inner.socket.clone().ok_or_else(|| "Kad UDP socket is not running".to_string())?
+        };
+
+        let _permit = self
+            .policy_mgr
+            .request_tcp_connect(target, ConnectionPurpose::KadNode)
+            .map_err(|e| format!("Policy denied Kad UDP send to {target}: {e}"))?;
+
+        let tx_id = self.next_tx_id.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = oneshot::channel();
+        let in_flight_entry = InFlightTransaction {
+            target,
+            expected_opcode: KADEMLIA2_PUBLISH_SOURCE_RES,
+            _created_at: Instant::now(),
+            sender: tx,
+        };
+
+        {
+            let inner = self.inner.read().await;
+            inner.insert_in_flight(tx_id, in_flight_entry).await?;
+        }
+
+        let local_addr = socket.local_addr().map_err(|e| e.to_string())?;
+        let ip_bytes = match local_addr.ip() {
+            std::net::IpAddr::V4(v4) => v4.octets(),
+            std::net::IpAddr::V6(_) => [127, 0, 0, 1],
+        };
+
+        let contact = KadContactWire {
+            kad_id: self.local_id.0,
+            ip: ip_bytes,
+            udp_port: local_addr.port(),
+            tcp_port,
+            version: 2,
+        };
+
+        let pub_bytes = KadCodec::encode_publish_source_req(
+            target_file_hash,
+            &contact,
+            file_size,
+        );
+
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        socket
+            .send_to(&pub_bytes, target)
+            .await
+            .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
+
+        let timeout_fut = tokio::time::sleep(Duration::from_secs(KAD_TRANSACTION_TIMEOUT_SECS));
+
+        tokio::select! {
+            _ = timeout_fut => {
+                let inner = self.inner.read().await;
+                let mut inf = inner.in_flight.lock().await;
+                inf.remove(&tx_id);
+                Err(format!("Kad publish_source to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
+            }
+            res = rx => {
+                match res {
+                    Ok(Ok(KadMessage::PublishSourceRes(pub_res))) => {
+                        self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        Ok(pub_res.status)
+                    }
+                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                }
+            }
+        }
+    }
+
+    /// Sends a Kad2 Search Keyword request and waits for a SearchKeywordRes.
+    pub async fn send_search_keyword(
+        &self,
+        target: SocketAddr,
+        keyword_hash: &[u8; 16],
+        start_pos: u16,
+    ) -> Result<Vec<KadKeywordEntryWire>, String> {
+        let (socket, in_flight) = {
+            let inner = self.inner.read().await;
+            let socket = inner.socket.clone().ok_or("UDP socket is not active")?;
+            (socket, inner.in_flight.clone())
+        };
+
+        let tx_id = self.next_tx_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        {
+            let mut inf = in_flight.lock().await;
+            if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
+                return Err(format!("Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"));
+            }
+            inf.insert(
+                tx_id,
+                InFlightTransaction {
+                    target,
+                    expected_opcode: KADEMLIA2_SEARCH_KEYWORD_RES,
+                    _created_at: Instant::now(),
+                    sender: tx,
+                },
+            );
+        }
+
+        let search_bytes = KadCodec::encode_search_keyword_req(
+            keyword_hash,
+            start_pos,
+            &self.local_id.0,
+        );
+
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        socket
+            .send_to(&search_bytes, target)
+            .await
+            .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
+
+        let timeout_fut = tokio::time::sleep(Duration::from_secs(KAD_TRANSACTION_TIMEOUT_SECS));
+
+        tokio::select! {
+            _ = timeout_fut => {
+                let inner = self.inner.read().await;
+                let mut inf = inner.in_flight.lock().await;
+                inf.remove(&tx_id);
+                Err(format!("Kad search_keyword to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
+            }
+            res = rx => {
+                match res {
+                    Ok(Ok(KadMessage::SearchKeywordRes(search_res))) => {
+                        self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        Ok(search_res.entries)
+                    }
+                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                }
+            }
+        }
+    }
+
+    /// Sends a Kad2 Publish Keyword request and waits for a PublishKeywordRes.
+    pub async fn send_publish_keyword(
+        &self,
+        target: SocketAddr,
+        keyword_hash: &[u8; 16],
+        entries: &[KadKeywordEntryWire],
+    ) -> Result<u8, String> {
+        let (socket, in_flight) = {
+            let inner = self.inner.read().await;
+            let socket = inner.socket.clone().ok_or("UDP socket is not active")?;
+            (socket, inner.in_flight.clone())
+        };
+
+        let tx_id = self.next_tx_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        {
+            let mut inf = in_flight.lock().await;
+            if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
+                return Err(format!("Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"));
+            }
+            inf.insert(
+                tx_id,
+                InFlightTransaction {
+                    target,
+                    expected_opcode: KADEMLIA2_PUBLISH_KEYWORD_RES,
+                    _created_at: Instant::now(),
+                    sender: tx,
+                },
+            );
+        }
+
+        let pub_bytes = KadCodec::encode_publish_keyword_req(keyword_hash, entries);
+
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        socket
+            .send_to(&pub_bytes, target)
+            .await
+            .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
+
+        let timeout_fut = tokio::time::sleep(Duration::from_secs(KAD_TRANSACTION_TIMEOUT_SECS));
+
+        tokio::select! {
+            _ = timeout_fut => {
+                let inner = self.inner.read().await;
+                let mut inf = inner.in_flight.lock().await;
+                inf.remove(&tx_id);
+                Err(format!("Kad publish_keyword to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
+            }
+            res = rx => {
+                match res {
+                    Ok(Ok(KadMessage::PublishKeywordRes(pub_res))) => {
+                        self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        Ok(pub_res.status)
+                    }
+                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                }
+            }
+        }
+    }
+
     /// Internal dispatcher for incoming messages.
     async fn handle_incoming_message(
         socket: &Arc<UdpSocket>,
@@ -432,7 +815,7 @@ impl KadUdpService {
                 let mut inf = in_flight.lock().await;
                 let mut matched_tx = None;
                 for (id, tx) in inf.iter() {
-                    if tx.target == peer_addr && tx.expected_opcode == KADEMLIA2_PONG {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_PONG {
                         matched_tx = Some(*id);
                         break;
                     }
@@ -451,7 +834,7 @@ impl KadUdpService {
                 let mut inf = in_flight.lock().await;
                 let mut matched_tx = None;
                 for (id, tx) in inf.iter() {
-                    if tx.target == peer_addr && tx.expected_opcode == KADEMLIA2_HELLO_RES {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_HELLO_RES {
                         matched_tx = Some(*id);
                         break;
                     }
@@ -471,7 +854,7 @@ impl KadUdpService {
                 let mut inf = in_flight.lock().await;
                 let mut matched_tx = None;
                 for (id, tx) in inf.iter() {
-                    if tx.target == peer_addr && tx.expected_opcode == KADEMLIA2_BOOTSTRAP_RES {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && (tx.expected_opcode == KADEMLIA2_BOOTSTRAP_RES || tx.expected_opcode == KADEMLIA2_RES) {
                         matched_tx = Some(*id);
                         break;
                     }
@@ -479,6 +862,88 @@ impl KadUdpService {
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::BootstrapRes(boot_res)));
+                    }
+                }
+            }
+            KadMessage::SearchSourceReq(req) => {
+                let empty_res = KadCodec::encode_search_source_res(&req.target_file_hash, &[]);
+                let _ = socket.send_to(&empty_res, peer_addr).await;
+            }
+            KadMessage::SearchSourceRes(search_res) => {
+                let mut inf = in_flight.lock().await;
+                let mut matched_tx = None;
+                for (id, tx) in inf.iter() {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_SEARCH_SOURCE_RES {
+                        matched_tx = Some(*id);
+                        break;
+                    }
+                }
+                if let Some(id) = matched_tx {
+                    if let Some(tx) = inf.remove(&id) {
+                        let _ = tx.sender.send(Ok(KadMessage::SearchSourceRes(search_res)));
+                    }
+                }
+            }
+            KadMessage::PublishSourceReq(req) => {
+                let peer_ip_bytes = match peer_addr.ip() {
+                    std::net::IpAddr::V4(v4) => v4.octets(),
+                    std::net::IpAddr::V6(_) => [127, 0, 0, 1],
+                };
+                let valid_contact = req.contact.ip == peer_ip_bytes && req.contact.tcp_port > 0;
+                let status = if valid_contact { 0 } else { 1 };
+                let res = KadCodec::encode_publish_source_res(&req.target_file_hash, status);
+                let _ = socket.send_to(&res, peer_addr).await;
+            }
+            KadMessage::PublishSourceRes(pub_res) => {
+                let mut inf = in_flight.lock().await;
+                let mut matched_tx = None;
+                for (id, tx) in inf.iter() {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_PUBLISH_SOURCE_RES {
+                        matched_tx = Some(*id);
+                        break;
+                    }
+                }
+                if let Some(id) = matched_tx {
+                    if let Some(tx) = inf.remove(&id) {
+                        let _ = tx.sender.send(Ok(KadMessage::PublishSourceRes(pub_res)));
+                    }
+                }
+            }
+            KadMessage::SearchKeywordReq(req) => {
+                let empty_res = KadCodec::encode_search_keyword_res(&req.keyword_hash, &[]);
+                let _ = socket.send_to(&empty_res, peer_addr).await;
+            }
+            KadMessage::SearchKeywordRes(search_res) => {
+                let mut inf = in_flight.lock().await;
+                let mut matched_tx = None;
+                for (id, tx) in inf.iter() {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_SEARCH_KEYWORD_RES {
+                        matched_tx = Some(*id);
+                        break;
+                    }
+                }
+                if let Some(id) = matched_tx {
+                    if let Some(tx) = inf.remove(&id) {
+                        let _ = tx.sender.send(Ok(KadMessage::SearchKeywordRes(search_res)));
+                    }
+                }
+            }
+            KadMessage::PublishKeywordReq(req) => {
+                let res = KadCodec::encode_publish_keyword_res(&req.keyword_hash, 0);
+                let _ = socket.send_to(&res, peer_addr).await;
+            }
+            KadMessage::PublishKeywordRes(pub_res) => {
+                let mut inf = in_flight.lock().await;
+                let mut matched_tx = None;
+                for (id, tx) in inf.iter() {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_PUBLISH_KEYWORD_RES {
+                        matched_tx = Some(*id);
+                        break;
+                    }
+                }
+                if let Some(id) = matched_tx {
+                    if let Some(tx) = inf.remove(&id) {
+                        let _ = tx.sender.send(Ok(KadMessage::PublishKeywordRes(pub_res)));
                     }
                 }
             }

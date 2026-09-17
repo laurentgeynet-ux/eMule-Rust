@@ -80,7 +80,7 @@ async fn test_inbound_secure_ident_handshake_and_authentication() {
     let hello = Ed2kHello {
         user_hash: [0x77u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -243,7 +243,7 @@ async fn test_credit_weighted_queue_priority() {
     let hello0 = Ed2kHello {
         user_hash: [0x00u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -681,7 +681,7 @@ async fn test_invalid_and_corrupt_signature_rejection_and_fallback() {
     let hello = Ed2kHello {
         user_hash: [0x55u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -813,7 +813,7 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
     let now_ms = 1000000000000i64;
 
     let peer_a = QueuedUpload {
-        client_address: "127.0.0.1:4662".to_string(),
+        client_address: "127.0.0.1:39735".to_string(),
         file_hash: "hash_a".to_string(),
         file_name: "file.bin".to_string(),
         enqueued_at_unix_ms: now_ms - (300 * 1000), // 300s ago

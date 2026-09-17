@@ -80,6 +80,43 @@ La Phase 12 dote Emule-Sion du support complet de la table de routage distribué
   - Dialogue interactif permettant de renseigner IP et port d'un nœud d'amorçage.
   - Barre d'outils responsive adaptée aux fenêtres compactes et larges.
 
+### 2.4 Lot 12.2 — Recherche de Sources & Indexation de Fichiers Kad
+- **Codecs Wire Framing (`mule-protocol`)** :
+  - Opcodes Kad2 : `KADEMLIA2_SEARCH_SOURCE_REQ` (`0x22`), `KADEMLIA2_SEARCH_SOURCE_RES` (`0x2A`), `KADEMLIA2_PUBLISH_SOURCE_REQ` (`0x23`), `KADEMLIA2_PUBLISH_SOURCE_RES` (`0x2B`).
+  - Structures filaires : `KadSearchSourceReq`, `KadSearchSourceRes`, `KadPublishSourceReq`, `KadPublishSourceRes`, `KadSourceWire`.
+  - Bornes strictes : $\le 50$ sources par réponse, taille de trame $\le 1472$ B.
+- **Indexation & Persistance (`mule-core`)** :
+  - Table SQLite `kad_sources_index` avec gestion TTL (`expires_at_unix_ms`), purge automatique et indexation par clé de hachage.
+  - Ajout du variant `PeerSourceOrigin::Kad` pour identifier la provenance Kad dans le swarm.
+- **Moteur de Recherche & Publication (`mule-daemon`)** :
+  - `KadUdpService::send_search_sources` et `send_publish_source` avec transactions typées et timeouts.
+  - `KadService::search_sources` : sélection des 3 nœuds les plus proches selon la métrique XOR, interrogation UDP, filtrage par politique réseau / IPFilter, conversion en `PeerSource` (origine `Kad`) et injection automatique dans `DownloadService`.
+  - `KadService::publish_source` : annonce d'un fichier auprès des 20 nœuds les plus proches de son hash.
+  - Endpoints JSON-RPC : `kad.searchSources` et `kad.publishSource`.
+- **Intégration UI Desktop (`apps/desktop`)** :
+  - Bouton *"Demander au réseau Kad"* dans le dialogue de détail de téléchargement (`DownloadDetailDialog`).
+  - Badge d'origine `kad` dans la liste des sources eD2K/Kad.
+  - Prise en charge complète dans `MuleDaemonClient`, `RpcDaemonClient`, `FakeDaemonClient` et `DownloadsViewModel`.
+
+### 2.5 Lot 12.3 — Recherche par Mots-Clés sur la DHT Kad (Kad Keyword Search, Publishing & Distributed Indexing)
+- **Codecs Wire Framing (`mule-protocol`)** :
+  - Opcodes Kad2 : `KADEMLIA2_SEARCH_KEYWORD_REQ` (`0x24`), `KADEMLIA2_SEARCH_KEYWORD_RES` (`0x2C`), `KADEMLIA2_PUBLISH_KEYWORD_REQ` (`0x25`), `KADEMLIA2_PUBLISH_KEYWORD_RES` (`0x2D`).
+  - Structures filaires : `KadSearchKeywordReq`, `KadSearchKeywordRes`, `KadPublishKeywordReq`, `KadPublishKeywordRes`, `KadKeywordEntryWire`.
+  - Bornes strictes : $\le 50$ entrées de mots-clés par réponse (`MAX_KAD_SEARCH_KEYWORDS`), taille de trame $\le 1472$ B.
+- **Indexation par Mots-Clés & Persistance (`mule-core`)** :
+  - Normalisation des mots-clés : extraction des mots $\ge 3$ caractères, normalisation en minuscules et hachage MD4 128 bits (`KadId`).
+  - Table SQLite `kad_keywords_index` avec gestion TTL (`expires_at_unix_ms`), purge automatique et indexation combinée `(keyword_hash, file_hash)`.
+- **Moteur de Recherche & Publication (`mule-daemon`)** :
+  - `KadUdpService::send_search_keyword` et `send_publish_keyword` avec suivi des transactions et répondeurs entrants.
+  - `KadService::search_keywords` : extraction/hachage du terme, localisation des nœuds les plus proches dans la table de routage, interrogation UDP, filtrage de politique réseau (`LocalLab` / IPFilter), dédoublonnage et restitution sous format compatible `SearchResultFileModel`.
+  - `KadService::publish_keyword` : découpage du nom de fichier en mots-clés et publication auprès des 20 nœuds les plus proches de chaque mot-clé.
+  - Endpoints JSON-RPC : `kad.searchKeywords` et `kad.publishKeywords`.
+- **Intégration UI Desktop (`apps/desktop`)** :
+  - Sélecteur de cible de recherche dans `SearchView` (`SegmentedButton`: *Serveur eD2K* / *Réseau Kad DHT*).
+  - Adaptation dynamique du placeholder, de la bannière de statut (`Kad DHT Actif` / avertissement d'inactivité) et des boutons de redirection.
+  - Affichage des résultats Kad dans la table de recherche et téléchargement 1-clic direct en lien eD2K.
+  - Prise en charge dans `MuleDaemonClient`, `RpcDaemonClient`, `FakeDaemonClient`, `DownloadsViewModel` et suites de tests UI.
+
 ---
 
 ## 3. Matrice des Endpoints RPC Kad
@@ -92,6 +129,10 @@ La Phase 12 dote Emule-Sion du support complet de la table de routage distribué
 | `kad.ping` | `ip`, `port`, `kadId` | `{ "success": bool, "latencyMs": u64 }` | Émet un datagramme `Ping` et mesure le RTT |
 | `kad.bootstrap` | `ip`, `port` | `{ "status": "ok", "contactsDiscovered": u32 }` | Effectue l'amorçage initial auprès d'un nœud |
 | `kad.findNode` | `targetKadId` | `[KadContactModel]` | Exécute une recherche itérative ($\alpha=3$) |
+| `kad.searchSources` | `fileHash`, `fileSize` (opt) | `{ "sources": [PeerSource], "count": u32 }` | Recherche des sources Kad pour un hash et les injecte au swarm |
+| `kad.publishSource` | `fileHash`, `fileSize`, `tcpPort` (opt) | `{ "publishedCount": u32 }` | Publie ce nœud comme source d'un fichier sur Kad |
+| `kad.searchKeywords` | `term`, `minSize` (opt), `maxSize` (opt) | `{ "results": [SearchResultFileModel], "count": u32 }` | Recherche de fichiers par mots-clés sur Kad DHT |
+| `kad.publishKeywords` | `fileHash`, `fileName`, `fileSize` | `{ "publishedCount": u32 }` | Indexe et publie les mots-clés d'un fichier sur Kad DHT |
 | `kad.listContacts` | `limit` (opt) | `[KadContactModel]` | Liste les contacts enregistrés en base SQLite |
 | `kad.clearContacts` | Aucun | `{ "clearedCount": u32 }` | Vide la table des contacts |
 | `kad.inspectNodesDat` | `filePath` | `NodesDatInspectReportModel` | Analyse défensive d'un fichier `nodes.dat` |
@@ -103,8 +144,14 @@ La Phase 12 dote Emule-Sion du support complet de la table de routage distribué
 
 ### A. Backend Rust
 - `cargo test --workspace` : **100 % des tests unitaires, d'intégration et d'isolation réussis** sur l'ensemble des 6 crates du workspace.
+- `kad_sources_tests` : Test d'intégration de bout en bout validé (Bootstrap mock $\to$ Publication $\to$ Recherche $\to$ Injection automatique dans `DownloadService`).
+- `kad_keywords_tests` : Test d'intégration de bout en bout validé (Bootstrap mock $\to$ Publication mots-clés $\to$ Recherche mots-clés $\to$ Validation des résultats).
+- `sqlite_kad_keywords_tests` : Validation de l'insertion, de la persistance et de la purge TTL en base SQLite.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` : **0 warning, 0 lint**.
 - Zéro fuite de socket en dehors du loopback local `127.0.0.1`.
 
 ### B. Client Flutter
 - `flutter analyze` : **0 avertissement, 0 erreur**.
-- `flutter test` : **92/92 tests au vert**.
+- `flutter test` : **93/93 tests au vert**.
+
+

@@ -40,8 +40,8 @@ class _KadViewState extends State<KadView> {
           child: vm.isKadLoading && contacts.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : contacts.isEmpty
-                  ? _buildEmptyState(context, vm)
-                  : _buildContactsTable(context, vm, contacts),
+              ? _buildEmptyState(context, vm)
+              : _buildContactsTable(context, vm, contacts),
         ),
       ],
     );
@@ -54,7 +54,9 @@ class _KadViewState extends State<KadView> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: const BoxDecoration(
         color: AppTheme.darkSurface,
-        border: Border(bottom: BorderSide(color: AppTheme.darkBorder, width: 0.5)),
+        border: Border(
+          bottom: BorderSide(color: AppTheme.darkBorder, width: 0.5),
+        ),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -86,13 +88,30 @@ class _KadViewState extends State<KadView> {
                 ),
                 IconButton(
                   tooltip: 'Amorcer (Bootstrap)',
-                  icon: const Icon(Icons.rocket_launch_outlined, size: 18, color: Colors.purpleAccent),
+                  icon: const Icon(
+                    Icons.rocket_launch_outlined,
+                    size: 18,
+                    color: Colors.purpleAccent,
+                  ),
                   onPressed: () => _handleBootstrapDialog(context, vm),
                 ),
                 IconButton(
                   tooltip: 'Importer nodes.dat',
-                  icon: const Icon(Icons.file_upload_outlined, size: 18, color: AppTheme.primary),
+                  icon: const Icon(
+                    Icons.file_upload_outlined,
+                    size: 18,
+                    color: AppTheme.primary,
+                  ),
                   onPressed: () => _handleImportNodesDat(context, vm),
+                ),
+                IconButton(
+                  tooltip: 'Amorcer depuis URL',
+                  icon: const Icon(
+                    Icons.cloud_download_outlined,
+                    size: 18,
+                    color: Colors.tealAccent,
+                  ),
+                  onPressed: () => _handleBootstrapFromUrl(context, vm),
                 ),
               ] else ...[
                 OutlinedButton.icon(
@@ -105,8 +124,15 @@ class _KadViewState extends State<KadView> {
                 ),
                 const SizedBox(width: 10),
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.rocket_launch_outlined, size: 16, color: Colors.purpleAccent),
-                  label: const Text('Amorcer (Bootstrap)', style: TextStyle(color: Colors.purpleAccent)),
+                  icon: const Icon(
+                    Icons.rocket_launch_outlined,
+                    size: 16,
+                    color: Colors.purpleAccent,
+                  ),
+                  label: const Text(
+                    'Amorcer (Bootstrap)',
+                    style: TextStyle(color: Colors.purpleAccent),
+                  ),
                   onPressed: () => _handleBootstrapDialog(context, vm),
                 ),
                 const SizedBox(width: 10),
@@ -119,6 +145,16 @@ class _KadViewState extends State<KadView> {
                   ),
                   onPressed: () => _handleImportNodesDat(context, vm),
                 ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  icon: const Icon(Icons.cloud_download_outlined, size: 16),
+                  label: const Text('Amorcer depuis URL'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.teal[700],
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _handleBootstrapFromUrl(context, vm),
+                ),
               ],
             ],
           );
@@ -130,24 +166,41 @@ class _KadViewState extends State<KadView> {
   // ── Safety Banner ──────────────────────────────────────────────────────────
 
   Widget _buildSafetyBanner(BuildContext context, KadStatusModel status) {
+    final isPublic = status.networkProfile != 'local-lab';
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.purple.withAlpha(20),
+        color: (isPublic ? Colors.teal : Colors.purple).withAlpha(20),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.purpleAccent.withAlpha(80)),
+        border: Border.all(
+          color: (isPublic ? Colors.tealAccent : Colors.purpleAccent).withAlpha(
+            80,
+          ),
+        ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.shield_outlined, color: Colors.purpleAccent, size: 18),
+          Icon(
+            isPublic ? Icons.public : Icons.shield_outlined,
+            color: isPublic ? Colors.tealAccent : Colors.purpleAccent,
+            size: 18,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               status.isUdpActive
-                  ? 'Phase 12.0b — Socket UDP actif : ${status.udpBindAddress ?? "127.0.0.1:4672"} (Loopback uniquement) | Trame défensive ≤ 1472 B | Kill switch instantané.'
-                  : 'Phase 12.0b — Transport UDP Kad confiné : Seul le trafic loopback (127.0.0.1) est autorisé dans le profil LocalLab. Cliquez sur "Démarrer UDP Loopback" pour activer le socket.',
-              style: const TextStyle(fontSize: 12, color: Colors.white70, height: 1.3),
+                  ? (isPublic
+                        ? 'Réseau Kad DHT Mondial actif sur ${status.udpBindAddress ?? "0.0.0.0:39737"} | Routage Kademlia ouvert | Protection Anti-SSRF active.'
+                        : 'Socket UDP actif : ${status.udpBindAddress ?? "127.0.0.1:39737"} (Mode Laboratoire Confiné) | Kill switch instantané.')
+                  : (isPublic
+                        ? 'Transport UDP Kad : Cliquez sur "Démarrer UDP" pour vous connecter au réseau Kademlia mondial.'
+                        : 'Transport UDP Kad confiné : Seul le trafic loopback (127.0.0.1) est autorisé dans le profil LocalLab.'),
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white70,
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -157,7 +210,12 @@ class _KadViewState extends State<KadView> {
 
   // ── Status Card ────────────────────────────────────────────────────
 
-  Widget _buildStatusCard(BuildContext context, DownloadsViewModel vm, KadStatusModel status) {
+  Widget _buildStatusCard(
+    BuildContext context,
+    DownloadsViewModel vm,
+    KadStatusModel status,
+  ) {
+    final isPublic = status.networkProfile != 'local-lab';
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       padding: const EdgeInsets.all(14),
@@ -171,7 +229,11 @@ class _KadViewState extends State<KadView> {
         children: [
           Row(
             children: [
-              const Icon(Icons.fingerprint_rounded, size: 16, color: Colors.white70),
+              const Icon(
+                Icons.fingerprint_rounded,
+                size: 16,
+                color: Colors.white70,
+              ),
               const SizedBox(width: 6),
               const Text(
                 'ID Kad Local :',
@@ -184,7 +246,10 @@ class _KadViewState extends State<KadView> {
               const SizedBox(width: 8),
               Expanded(
                 child: SelectableText(
-                  status.localId.isNotEmpty ? status.localId : '(Généré à l''initialisation)',
+                  status.localId.isNotEmpty
+                      ? status.localId
+                      : '(Généré à l'
+                            'initialisation)',
                   style: const TextStyle(
                     fontSize: 12,
                     fontFamily: 'monospace',
@@ -195,23 +260,43 @@ class _KadViewState extends State<KadView> {
               const SizedBox(width: 8),
               if (status.isUdpActive)
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.stop_circle_outlined, size: 14, color: Colors.redAccent),
-                  label: const Text('Arrêter UDP', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                  icon: const Icon(
+                    Icons.stop_circle_outlined,
+                    size: 14,
+                    color: Colors.redAccent,
+                  ),
+                  label: const Text(
+                    'Arrêter UDP',
+                    style: TextStyle(fontSize: 11, color: Colors.redAccent),
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.redAccent, width: 0.5),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                   ),
                   onPressed: () => vm.stopKadUdp(),
                 )
               else
                 FilledButton.icon(
                   icon: const Icon(Icons.play_circle_outline, size: 14),
-                  label: const Text('Démarrer UDP Loopback', style: TextStyle(fontSize: 11)),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.purpleAccent,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  label: Text(
+                    isPublic ? 'Démarrer UDP Kad' : 'Démarrer UDP Loopback',
+                    style: const TextStyle(fontSize: 11),
                   ),
-                  onPressed: () => vm.startKadUdp(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isPublic
+                        ? AppTheme.primary
+                        : Colors.purpleAccent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                  ),
+                  onPressed: () => vm.startKadUdp(
+                    bindAddress: isPublic ? '0.0.0.0:39737' : '127.0.0.1:39737',
+                  ),
                 ),
             ],
           ),
@@ -222,8 +307,12 @@ class _KadViewState extends State<KadView> {
               children: [
                 _buildStatBadge(
                   label: 'Socket UDP',
-                  value: status.isUdpActive ? 'Actif (${status.udpBindAddress ?? "127.0.0.1"})' : 'Inactif',
-                  color: status.isUdpActive ? Colors.greenAccent : Colors.orangeAccent,
+                  value: status.isUdpActive
+                      ? 'Actif (${status.udpBindAddress ?? (isPublic ? "0.0.0.0:39737" : "127.0.0.1:39737")})'
+                      : 'Inactif',
+                  color: status.isUdpActive
+                      ? Colors.greenAccent
+                      : Colors.orangeAccent,
                 ),
                 const SizedBox(width: 12),
                 _buildStatBadge(
@@ -308,18 +397,31 @@ class _KadViewState extends State<KadView> {
               decoration: InputDecoration(
                 hintText: 'Filtrer par Kad ID, IP ou Port...',
                 hintStyle: const TextStyle(fontSize: 13, color: Colors.white38),
-                prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Colors.white38),
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  size: 18,
+                  color: Colors.white38,
+                ),
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 filled: true,
                 fillColor: AppTheme.darkSurface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
+                  borderSide: const BorderSide(
+                    color: AppTheme.darkBorder,
+                    width: 0.5,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
+                  borderSide: const BorderSide(
+                    color: AppTheme.darkBorder,
+                    width: 0.5,
+                  ),
                 ),
               ),
               onChanged: (val) => setState(() => _searchQuery = val),
@@ -327,8 +429,15 @@ class _KadViewState extends State<KadView> {
           ),
           const SizedBox(width: 12),
           TextButton.icon(
-            icon: const Icon(Icons.delete_sweep_outlined, size: 16, color: Colors.redAccent),
-            label: const Text('Effacer la table', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+            icon: const Icon(
+              Icons.delete_sweep_outlined,
+              size: 16,
+              color: Colors.redAccent,
+            ),
+            label: const Text(
+              'Effacer la table',
+              style: TextStyle(color: Colors.redAccent, fontSize: 12),
+            ),
             onPressed: () => _confirmClearContacts(context, vm),
           ),
         ],
@@ -398,12 +507,19 @@ class _KadViewState extends State<KadView> {
                 ),
                 DataCell(
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: c.verified ? Colors.green.withAlpha(20) : Colors.amber.withAlpha(20),
+                      color: c.verified
+                          ? Colors.green.withAlpha(20)
+                          : Colors.amber.withAlpha(20),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(
-                        color: c.verified ? Colors.greenAccent.withAlpha(80) : Colors.amberAccent.withAlpha(80),
+                        color: c.verified
+                            ? Colors.greenAccent.withAlpha(80)
+                            : Colors.amberAccent.withAlpha(80),
                         width: 0.5,
                       ),
                     ),
@@ -412,7 +528,9 @@ class _KadViewState extends State<KadView> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: c.verified ? Colors.greenAccent : Colors.amberAccent,
+                        color: c.verified
+                            ? Colors.greenAccent
+                            : Colors.amberAccent,
                       ),
                     ),
                   ),
@@ -422,7 +540,9 @@ class _KadViewState extends State<KadView> {
                     '${c.failCount}',
                     style: TextStyle(
                       fontSize: 12,
-                      color: c.failCount > 0 ? Colors.orangeAccent : Colors.white54,
+                      color: c.failCount > 0
+                          ? Colors.orangeAccent
+                          : Colors.white54,
                     ),
                   ),
                 ),
@@ -434,7 +554,11 @@ class _KadViewState extends State<KadView> {
                 ),
                 DataCell(
                   IconButton(
-                    icon: const Icon(Icons.network_ping_rounded, size: 16, color: Colors.cyanAccent),
+                    icon: const Icon(
+                      Icons.network_ping_rounded,
+                      size: 16,
+                      color: Colors.cyanAccent,
+                    ),
                     tooltip: 'Envoyer Kad Ping (0x60)',
                     onPressed: () => vm.pingKadContact(
                       ip: c.ip,
@@ -482,7 +606,11 @@ class _KadViewState extends State<KadView> {
           const SizedBox(height: 12),
           const Text(
             'Aucun contact Kad',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white54),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Colors.white54,
+            ),
           ),
           const SizedBox(height: 6),
           const Text(
@@ -502,7 +630,10 @@ class _KadViewState extends State<KadView> {
 
   // ── Import nodes.dat Dialog ────────────────────────────────────────
 
-  Future<void> _handleImportNodesDat(BuildContext context, DownloadsViewModel vm) async {
+  Future<void> _handleImportNodesDat(
+    BuildContext context,
+    DownloadsViewModel vm,
+  ) async {
     final pathController = TextEditingController();
     NodesDatInspectReportModel? report;
     bool isInspecting = false;
@@ -519,7 +650,11 @@ class _KadViewState extends State<KadView> {
             ),
             title: Row(
               children: const [
-                Icon(Icons.file_upload_outlined, color: AppTheme.primary, size: 20),
+                Icon(
+                  Icons.file_upload_outlined,
+                  color: AppTheme.primary,
+                  size: 20,
+                ),
                 SizedBox(width: 8),
                 Text('Importer un fichier nodes.dat'),
               ],
@@ -540,17 +675,29 @@ class _KadViewState extends State<KadView> {
                       Expanded(
                         child: TextField(
                           controller: pathController,
-                          style: const TextStyle(fontSize: 13, color: Colors.white),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.white,
+                          ),
                           decoration: InputDecoration(
                             hintText: 'C:\\...\\nodes.dat',
-                            hintStyle: const TextStyle(fontSize: 13, color: Colors.white38),
+                            hintStyle: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.white38,
+                            ),
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 10,
+                            ),
                             filled: true,
                             fillColor: AppTheme.darkCard,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(6),
-                              borderSide: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
+                              borderSide: const BorderSide(
+                                color: AppTheme.darkBorder,
+                                width: 0.5,
+                              ),
                             ),
                           ),
                         ),
@@ -573,7 +720,9 @@ class _KadViewState extends State<KadView> {
                             ? const SizedBox(
                                 width: 14,
                                 height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text('Inspecter'),
                       ),
@@ -586,7 +735,10 @@ class _KadViewState extends State<KadView> {
                       decoration: BoxDecoration(
                         color: AppTheme.darkCard,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+                        border: Border.all(
+                          color: AppTheme.darkBorder,
+                          width: 0.5,
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -602,7 +754,10 @@ class _KadViewState extends State<KadView> {
                           const SizedBox(height: 6),
                           Text(
                             '• Contacts déclarés : ${report!.declaredCount}',
-                            style: const TextStyle(fontSize: 12, color: Colors.white70),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white70,
+                            ),
                           ),
                           Text(
                             '• Contacts valides & admissibles : ${report!.validContactsCount}',
@@ -615,12 +770,18 @@ class _KadViewState extends State<KadView> {
                           if (report!.rejectedByPolicyCount > 0)
                             Text(
                               '• Rejetés par la politique réseau : ${report!.rejectedByPolicyCount}',
-                              style: const TextStyle(fontSize: 12, color: Colors.orangeAccent),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.orangeAccent,
+                              ),
                             ),
                           if (report!.rejectedByFilterCount > 0)
                             Text(
                               '• Rejetés par le filtre IP : ${report!.rejectedByFilterCount}',
-                              style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.redAccent,
+                              ),
                             ),
                         ],
                       ),
@@ -632,10 +793,15 @@ class _KadViewState extends State<KadView> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Annuler', style: TextStyle(color: Colors.white60)),
+                child: const Text(
+                  'Annuler',
+                  style: TextStyle(color: Colors.white60),
+                ),
               ),
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                ),
                 onPressed: report == null || report!.validContactsCount == 0
                     ? null
                     : () async {
@@ -654,9 +820,15 @@ class _KadViewState extends State<KadView> {
 
   // ── Bootstrap Dialog ───────────────────────────────────────────────
 
-  Future<void> _handleBootstrapDialog(BuildContext context, DownloadsViewModel vm) async {
-    final ipController = TextEditingController(text: '127.0.0.1');
-    final portController = TextEditingController(text: '4672');
+  Future<void> _handleBootstrapDialog(
+    BuildContext context,
+    DownloadsViewModel vm,
+  ) async {
+    final isPublic = vm.kadStatus.networkProfile != 'local-lab';
+    final ipController = TextEditingController(
+      text: isPublic ? '' : '127.0.0.1',
+    );
+    final portController = TextEditingController(text: '39737');
 
     await showDialog(
       context: context,
@@ -668,7 +840,11 @@ class _KadViewState extends State<KadView> {
         ),
         title: Row(
           children: const [
-            Icon(Icons.rocket_launch_outlined, color: Colors.purpleAccent, size: 20),
+            Icon(
+              Icons.rocket_launch_outlined,
+              color: Colors.purpleAccent,
+              size: 20,
+            ),
             SizedBox(width: 8),
             Text('Amorcer le réseau Kad (Bootstrap)'),
           ],
@@ -679,9 +855,11 @@ class _KadViewState extends State<KadView> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Entrez l\'adresse IP et le port UDP d\'un nœud d\'amorçage (en profil LocalLab, seul 127.0.0.1 est permis).',
-                style: TextStyle(fontSize: 12, color: Colors.white70),
+              Text(
+                isPublic
+                    ? 'Entrez l\'adresse IP publique et le port UDP d\'un nœud Kad pour amorcer la table de routage (ex: 212.83.184.225).'
+                    : 'Entrez l\'adresse IP et le port UDP d\'un nœud d\'amorçage (en profil LocalLab, seul 127.0.0.1 est permis).',
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -689,11 +867,13 @@ class _KadViewState extends State<KadView> {
                 style: const TextStyle(fontSize: 13, color: Colors.white),
                 decoration: InputDecoration(
                   labelText: 'Adresse IP',
-                  hintText: '127.0.0.1',
+                  hintText: isPublic ? 'ex: 212.83.184.225' : '127.0.0.1',
                   isDense: true,
                   filled: true,
                   fillColor: AppTheme.darkCard,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
@@ -703,11 +883,13 @@ class _KadViewState extends State<KadView> {
                 style: const TextStyle(fontSize: 13, color: Colors.white),
                 decoration: InputDecoration(
                   labelText: 'Port UDP',
-                  hintText: '4672',
+                  hintText: '39737',
                   isDense: true,
                   filled: true,
                   fillColor: AppTheme.darkCard,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                 ),
               ),
             ],
@@ -716,13 +898,16 @@ class _KadViewState extends State<KadView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annuler', style: TextStyle(color: Colors.white60)),
+            child: const Text(
+              'Annuler',
+              style: TextStyle(color: Colors.white60),
+            ),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.purpleAccent),
             onPressed: () async {
               final ip = ipController.text.trim();
-              final port = int.tryParse(portController.text.trim()) ?? 4672;
+              final port = int.tryParse(portController.text.trim()) ?? 39737;
               Navigator.of(ctx).pop();
               await vm.bootstrapKad(ip: ip, port: port);
             },
@@ -753,7 +938,10 @@ class _KadViewState extends State<KadView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annuler', style: TextStyle(color: Colors.white60)),
+            child: const Text(
+              'Annuler',
+              style: TextStyle(color: Colors.white60),
+            ),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
@@ -766,5 +954,101 @@ class _KadViewState extends State<KadView> {
         ],
       ),
     );
+  }
+
+  // ── Bootstrap From URL Dialog ───────────────────────────────────────
+
+  Future<void> _handleBootstrapFromUrl(
+    BuildContext context,
+    DownloadsViewModel vm,
+  ) async {
+    final urlController = TextEditingController(
+      text: 'https://upd.emule-security.org/nodes.dat',
+    );
+
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.darkSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
+        ),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.cloud_download_outlined,
+              color: Colors.tealAccent,
+              size: 20,
+            ),
+            SizedBox(width: 8),
+            Text('Amorcer Kad depuis une URL'),
+          ],
+        ),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Téléchargez un fichier nodes.dat distant pour amorcer votre table de routage Kad Kademlia (ex: https://upd.emule-security.org/nodes.dat) :',
+                style: TextStyle(fontSize: 13, color: Colors.white70),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: urlController,
+                autofocus: true,
+                style: const TextStyle(fontSize: 13, color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'URL du nodes.dat',
+                  hintText: 'https://upd.emule-security.org/nodes.dat',
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppTheme.darkCard,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  prefixIcon: const Icon(Icons.link_rounded, size: 18),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Note : Seuls les protocoles HTTP/HTTPS publics sont acceptés. Le trafic vers les réseaux locaux (RFC1918) et loopback est rejeté par sécurité (anti-SSRF).',
+                style: TextStyle(fontSize: 11, color: Colors.white38),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text(
+              'Annuler',
+              style: TextStyle(color: Colors.white60),
+            ),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.download_rounded, size: 16),
+            label: const Text('Télécharger et Amorcer'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.teal[700],
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              final text = urlController.text.trim();
+              if (text.isNotEmpty) {
+                Navigator.of(ctx).pop(text);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+
+    if (url == null || url.isEmpty) return;
+
+    if (!context.mounted) return;
+    await vm.bootstrapKadFromUrl(url);
   }
 }

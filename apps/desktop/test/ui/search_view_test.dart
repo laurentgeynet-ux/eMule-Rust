@@ -126,5 +126,50 @@ void main() {
       expect(viewModel.searchResults, isEmpty);
       expect(find.textContaining('Entrez des mots-clés ci-dessus'), findsOneWidget);
     });
+
+    testWidgets('switches to Kad DHT search, executes keyword search and displays results',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // Start Kad UDP socket
+      await viewModel.startKadUdp();
+      await tester.pumpAndSettle();
+
+      // Navigate to search
+      final searchNav = find.text('Recherche eD2K');
+      await tester.ensureVisible(searchNav);
+      await tester.pumpAndSettle();
+      await tester.tap(searchNav);
+      await tester.pumpAndSettle();
+
+      // Select Kad DHT in segmented button
+      final kadSegment = find.text('Réseau Kad DHT');
+      expect(kadSegment, findsOneWidget);
+      await tester.tap(kadSegment);
+      await tester.pumpAndSettle();
+
+      // Verify Kad DHT active banner
+      expect(find.textContaining('Kad DHT Actif'), findsOneWidget);
+
+      // Enter search term
+      final searchInput = find.byType(TextField).first;
+      await tester.enterText(searchInput, 'ubuntu');
+      await tester.pumpAndSettle();
+
+      // Tap Rechercher button
+      final searchButton = find.widgetWithText(ElevatedButton, 'Rechercher');
+      expect(searchButton, findsOneWidget);
+      await tester.tap(searchButton);
+      await tester.pumpAndSettle();
+
+      // Verify simulated results
+      expect(find.text('ubuntu-simulation-file.iso'), findsOneWidget);
+      expect(find.text('ubuntu-sample-archive.zip'), findsOneWidget);
+    });
   });
 }

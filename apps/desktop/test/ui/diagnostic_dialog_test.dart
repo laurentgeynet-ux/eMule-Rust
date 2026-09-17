@@ -39,9 +39,9 @@ void main() {
       // Dialog title
       expect(find.text('System & Lab Diagnostics'), findsOneWidget);
 
-      // Confinement card
-      expect(find.text('Strict Loopback Confinement (127.0.0.1)'), findsOneWidget);
-      expect(find.textContaining('Zero WAN traffic'), findsOneWidget);
+      // Network Profile / Confinement card
+      expect(find.text('Network Profile: Public eD2K + Kad Preview'), findsOneWidget);
+      expect(find.textContaining('Public network traffic enabled'), findsOneWidget);
 
       // Workdir mode & path
       expect(find.text('Portable'), findsOneWidget);

@@ -1,8 +1,9 @@
 use mule_protocol::ed2k::{
     decode_server_response, Ed2kLimits, GetSourcesRequest, SearchQuery, SearchResult,
     ServerIdChange, ServerLoginRequest, ServerResponse, ServerStatus, OP_FOUNDSOURCES,
-    OP_GETSOURCES, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST, OP_SEARCH_RESULT,
+    OP_FOUNDSOURCES_OBFU, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST, OP_SEARCH_RESULT,
     OP_SERVERMESSAGE, OP_SERVERSTATUS, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME,
+    TAG_SPECIAL_VERSION,
 };
 use mule_protocol::PR_ED2K;
 
@@ -10,7 +11,7 @@ use mule_protocol::PR_ED2K;
 fn test_encode_server_login_request() {
     let limits = Ed2kLimits::default();
     let user_hash = [1u8; 16];
-    let req = ServerLoginRequest::new(user_hash, 4662, "TestUser", 0x3c);
+    let req = ServerLoginRequest::new(user_hash, 39735, "TestUser", 0x3c);
     let packet = req.encode(&limits).expect("encode login request");
 
     assert_eq!(packet.protocol, PR_ED2K);
@@ -124,7 +125,7 @@ fn test_decode_search_result() {
     let file_hash = [42u8; 16];
     payload.extend_from_slice(&file_hash);
     payload.extend_from_slice(&100u32.to_le_bytes()); // client id
-    payload.extend_from_slice(&4662u16.to_le_bytes()); // client port
+    payload.extend_from_slice(&39735u16.to_le_bytes()); // client port
 
     // 2 tags: name and size
     payload.extend_from_slice(&2u32.to_le_bytes()); // tag count
@@ -172,15 +173,15 @@ fn test_encode_get_sources_and_decode_found_sources() {
     payload.extend_from_slice(&file_hash);
     payload.push(2u8); // 2 sources
 
-    // Source 1: 192.168.1.10:4662 (little endian IP: 10, 1, 168, 192)
+    // Source 1: 192.168.1.10:39735 (little endian IP: 10, 1, 168, 192)
     let ip1: u32 = 192 | (168 << 8) | (1 << 16) | (10 << 24);
     payload.extend_from_slice(&ip1.to_le_bytes());
-    payload.extend_from_slice(&4662u16.to_le_bytes());
+    payload.extend_from_slice(&39735u16.to_le_bytes());
 
-    // Source 2: 10.0.0.5:4662
+    // Source 2: 10.0.0.5:39735
     let ip2: u32 = 10 | (5 << 24);
     payload.extend_from_slice(&ip2.to_le_bytes());
-    payload.extend_from_slice(&4672u16.to_le_bytes());
+    payload.extend_from_slice(&39737u16.to_le_bytes());
 
     let resp = decode_server_response(PR_ED2K, OP_FOUNDSOURCES, &payload, &limits)
         .expect("decode found sources");
@@ -189,8 +190,142 @@ fn test_encode_get_sources_and_decode_found_sources() {
         ServerResponse::FoundSources(fs) => {
             assert_eq!(fs.file_hash, file_hash);
             assert_eq!(fs.sources.len(), 2);
-            assert_eq!(fs.sources[0].to_address_string(), "192.168.1.10:4662");
-            assert_eq!(fs.sources[1].to_address_string(), "10.0.0.5:4672");
+            assert_eq!(fs.sources[0].to_address_string(), "192.168.1.10:39735");
+            assert_eq!(fs.sources[1].to_address_string(), "10.0.0.5:39737");
+        }
+        _ => panic!("unexpected response type"),
+    }
+}
+
+#[test]
+fn test_encode_get_sources_obfu() {
+    let limits = Ed2kLimits::default();
+    let file_hash = [0x77u8; 16];
+    let req = GetSourcesRequest::with_obfuscation(file_hash, 100_000_000, true);
+    let packet = req.encode(&limits).expect("encode get sources obfu");
+
+    assert_eq!(packet.protocol, PR_ED2K);
+    assert_eq!(packet.opcode, OP_GETSOURCES_OBFU);
+    assert_eq!(&packet.payload[0..16], &file_hash);
+    assert_eq!(
+        u32::from_le_bytes(packet.payload[16..20].try_into().unwrap()),
+        100_000_000
+    );
+}
+
+#[test]
+fn test_decode_server_found_sources_obfu() {
+    let limits = Ed2kLimits::default();
+    let file_hash = [0xABu8; 16];
+    let user_hash_peer1 = [0x55u8; 16];
+
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&file_hash);
+    payload.push(2); // 2 sources
+
+    // Source 1: 87.221.131.17:4662, obf_settings: 0x83 (supports=1, requests=2, hash_present=0x80)
+    let ip1: u32 = 87 | (221 << 8) | (131 << 16) | (17 << 24);
+    payload.extend_from_slice(&ip1.to_le_bytes());
+    payload.extend_from_slice(&4662u16.to_le_bytes());
+    payload.push(0x83); // bit 0 (support), bit 1 (request), bit 7 (hash present)
+    payload.extend_from_slice(&user_hash_peer1);
+
+    // Source 2: 31.190.77.29:4662, obf_settings: 0x05 (supports=1, requires=4, no hash)
+    let ip2: u32 = 31 | (190 << 8) | (77 << 16) | (29 << 24);
+    payload.extend_from_slice(&ip2.to_le_bytes());
+    payload.extend_from_slice(&4662u16.to_le_bytes());
+    payload.push(0x05); // bit 0 (support), bit 2 (require), no hash
+
+    let resp = decode_server_response(PR_ED2K, OP_FOUNDSOURCES_OBFU, &payload, &limits)
+        .expect("decode found sources obfu");
+
+    match resp {
+        ServerResponse::FoundSourcesObfu(fs) => {
+            assert_eq!(fs.file_hash, file_hash);
+            assert_eq!(fs.sources.len(), 2);
+
+            let s1 = &fs.sources[0];
+            assert_eq!(s1.to_address_string(), "87.221.131.17:4662");
+            assert!(s1.supports_crypt());
+            assert!(s1.requests_crypt());
+            assert!(!s1.requires_crypt());
+            assert_eq!(s1.user_hash, Some(user_hash_peer1));
+
+            let s2 = &fs.sources[1];
+            assert_eq!(s2.to_address_string(), "31.190.77.29:4662");
+            assert!(s2.supports_crypt());
+            assert!(!s2.requests_crypt());
+            assert!(s2.requires_crypt());
+            assert_eq!(s2.user_hash, None);
+        }
+        _ => panic!("unexpected response type"),
+    }
+}
+
+#[test]
+fn test_decode_server_ident_with_compact_tags() {
+    let limits = Ed2kLimits::default();
+    let server_hash = [42u8; 16];
+    let ip = 0x0100007Fu32;
+    let port = 6082u16;
+
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&server_hash);
+    payload.extend_from_slice(&ip.to_le_bytes());
+    payload.extend_from_slice(&port.to_le_bytes());
+    payload.extend_from_slice(&2u32.to_le_bytes()); // 2 tags
+
+    // Compact Tag 1: String name (type = TAGTYPE_STRING | 0x80 = 0x82, special ID = 0x01 TAG_SPECIAL_NAME)
+    payload.push(0x82); // tag_type with 0x80 set
+    payload.push(TAG_SPECIAL_NAME); // 1-byte special ID (no 16-bit length!)
+    let server_name = "eDonkeyServer No1";
+    payload.extend_from_slice(&(server_name.len() as u16).to_le_bytes());
+    payload.extend_from_slice(server_name.as_bytes());
+
+    // Compact Tag 2: Uint32 version (type = TAGTYPE_UINT32 | 0x80 = 0x83, special ID = 0x11 TAG_SPECIAL_VERSION)
+    payload.push(0x83);
+    payload.push(TAG_SPECIAL_VERSION);
+    payload.extend_from_slice(&1740u32.to_le_bytes());
+
+    let resp = decode_server_response(PR_ED2K, mule_protocol::ed2k::OP_SERVERIDENT, &payload, &limits)
+        .expect("decode server ident with compact tags");
+
+    match resp {
+        ServerResponse::Ident(ident) => {
+            assert_eq!(ident.server_hash, server_hash);
+            assert_eq!(ident.name().as_deref(), Some("eDonkeyServer No1"));
+            assert_eq!(ident.tags.len(), 2);
+        }
+        _ => panic!("unexpected response type"),
+    }
+}
+
+#[test]
+fn test_decode_server_ident_with_str_fixed_tags() {
+    let limits = Ed2kLimits::default();
+    let server_hash = [42u8; 16];
+    let ip = 0x0100007Fu32;
+    let port = 6082u16;
+
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&server_hash);
+    payload.extend_from_slice(&ip.to_le_bytes());
+    payload.extend_from_slice(&port.to_le_bytes());
+    payload.extend_from_slice(&1u32.to_le_bytes()); // 1 tag
+
+    // Tag 1: TAGTYPE_STR9 (0x19), Name = 0x01 (TAG_SPECIAL_NAME), value = "Lugdunum9" (9 bytes, no length prefix)
+    payload.push(0x19); // TAGTYPE_STR9
+    payload.extend_from_slice(&1u16.to_le_bytes()); // name_len = 1
+    payload.push(TAG_SPECIAL_NAME); // special ID 0x01
+    payload.extend_from_slice(b"Lugdunum9"); // exactly 9 bytes
+
+    let resp = decode_server_response(PR_ED2K, mule_protocol::ed2k::OP_SERVERIDENT, &payload, &limits)
+        .expect("decode server ident with fixed str tag 0x19");
+
+    match resp {
+        ServerResponse::Ident(ident) => {
+            assert_eq!(ident.server_hash, server_hash);
+            assert_eq!(ident.name().as_deref(), Some("Lugdunum9"));
         }
         _ => panic!("unexpected response type"),
     }

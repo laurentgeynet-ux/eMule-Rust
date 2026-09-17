@@ -27,7 +27,7 @@ fn test_parse_link_with_url_encoding_and_spaces() {
 #[test]
 fn test_parse_link_with_aich_and_sources() {
     // 32 chars base32 = 20 bytes SHA1
-    let link_str = "ed2k://|file|sample.dat|9728000|0123456789abcdef0123456789abcdef|h=OBTXIKUQC6F7E4424IWSU5V5MOMN2WZA|/|sources,192.168.1.50:4662,node.network.org:4662|/";
+    let link_str = "ed2k://|file|sample.dat|9728000|0123456789abcdef0123456789abcdef|h=OBTXIKUQC6F7E4424IWSU5V5MOMN2WZA|/|sources,192.168.1.50:39735,node.network.org:39735|/";
     let link = Ed2kFileLink::parse(link_str).unwrap();
 
     assert_eq!(link.file_name, "sample.dat");
@@ -38,10 +38,10 @@ fn test_parse_link_with_aich_and_sources() {
     assert_eq!(aich_b32, "OBTXIKUQC6F7E4424IWSU5V5MOMN2WZA");
 
     assert_eq!(link.peer_sources.len(), 2);
-    assert_eq!(link.peer_sources[0], PeerSource::new("192.168.1.50", 4662));
+    assert_eq!(link.peer_sources[0], PeerSource::new("192.168.1.50", 39735));
     assert_eq!(
         link.peer_sources[1],
-        PeerSource::new("node.network.org", 4662)
+        PeerSource::new("node.network.org", 39735)
     );
 }
 

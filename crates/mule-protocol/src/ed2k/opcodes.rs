@@ -9,8 +9,10 @@ pub const OP_HELLO: u8 = 0x01;
 /// Client login request to server (`0x01`).
 pub const OP_LOGINREQUEST: u8 = 0x01;
 
-/// Server status response with user and file counts (`0x14`).
-pub const OP_SERVERSTATUS: u8 = 0x14;
+/// Server status response with user and file counts (`0x34`, legacy `0x14`).
+pub const OP_SERVERSTATUS: u8 = 0x34;
+/// Legacy server status response opcode (`0x14`).
+pub const OP_SERVERSTATUS_LEGACY: u8 = 0x14;
 
 /// Server identification and metadata (`0x41`).
 pub const OP_SERVERIDENT: u8 = 0x41;
@@ -30,8 +32,14 @@ pub const OP_SEARCH_RESULT: u8 = 0x33;
 /// Get sources request sent by client to server for a file (`0x19`).
 pub const OP_GETSOURCES: u8 = 0x19;
 
+/// Get sources request with obfuscation sent by client to server (`0x23`).
+pub const OP_GETSOURCES_OBFU: u8 = 0x23;
+
 /// Found sources response sent by server to client (`0x42`).
 pub const OP_FOUNDSOURCES: u8 = 0x42;
+
+/// Found sources response with obfuscation settings and optional user hashes (`0x44`).
+pub const OP_FOUNDSOURCES_OBFU: u8 = 0x44;
 
 /// Handshake response packet (`0x4C`).
 pub const OP_HELLO_ANSWER: u8 = 0x4C;
@@ -150,7 +158,9 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_SEARCHREQUEST => "OP_SEARCHREQUEST",
             OP_SEARCH_RESULT => "OP_SEARCH_RESULT",
             OP_GETSOURCES => "OP_GETSOURCES",
+            OP_GETSOURCES_OBFU => "OP_GETSOURCES_OBFU",
             OP_FOUNDSOURCES => "OP_FOUNDSOURCES",
+            OP_FOUNDSOURCES_OBFU => "OP_FOUNDSOURCES_OBFU",
             OP_OFFERFILES => "OP_OFFERFILES",
             OP_SENDINGPART => "OP_SENDINGPART",
             OP_SETREQFILEID => "OP_SETREQFILEID",

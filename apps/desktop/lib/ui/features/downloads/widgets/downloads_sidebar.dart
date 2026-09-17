@@ -12,13 +12,18 @@ import 'settings_dialog.dart';
 
 class DownloadsSidebar extends StatelessWidget {
   final DownloadsViewModel viewModel;
+  final bool isCompact;
 
-  const DownloadsSidebar({super.key, required this.viewModel});
+  const DownloadsSidebar({
+    super.key,
+    required this.viewModel,
+    this.isCompact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 260,
+      width: isCompact ? 68 : 260,
       decoration: const BoxDecoration(
         color: AppTheme.darkSurface,
         border: Border(
@@ -30,51 +35,60 @@ class DownloadsSidebar extends StatelessWidget {
         children: [
           // App Brand Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 10 : 20,
+              vertical: 14,
+            ),
             decoration: const BoxDecoration(
               border: Border(
                 bottom: BorderSide(color: AppTheme.darkBorder, width: 0.5),
               ),
             ),
             child: Row(
+              mainAxisAlignment: isCompact ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.cloud_download_rounded,
-                    color: AppTheme.primary,
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        AppStrings.appName,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        AppStrings.appTagline,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white54,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                Tooltip(
+                  message: '${AppStrings.appName} - ${AppStrings.appTagline}',
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_download_rounded,
+                      color: AppTheme.primary,
+                      size: 26,
+                    ),
                   ),
                 ),
+                if (!isCompact) ...[
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AppStrings.appName,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          AppStrings.appTagline,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white54,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -88,18 +102,19 @@ class DownloadsSidebar extends StatelessWidget {
                   const SizedBox(height: 8),
 
                   // Section Title
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                    child: Text(
-                      AppStrings.sectionDownloads,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white38,
-                        letterSpacing: 1.0,
+                  if (!isCompact)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                      child: Text(
+                        AppStrings.sectionDownloads,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white38,
+                          letterSpacing: 1.0,
+                        ),
                       ),
                     ),
-                  ),
 
                   // Filter Navigation Items
                   _buildFilterItem(
@@ -137,102 +152,105 @@ class DownloadsSidebar extends StatelessWidget {
                   const SizedBox(height: 6),
 
                   // Categories Section Header
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'CATEGORIES',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white38,
-                            letterSpacing: 1.0,
+                  if (!isCompact) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'CATEGORIES',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white38,
+                              letterSpacing: 1.0,
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add_rounded, size: 16, color: Colors.white60),
-                          tooltip: 'Add Category',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (ctx) => CategoryEditDialog(viewModel: viewModel),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Virtual: All Downloads
-                  _buildCategoryItem(
-                    context: context,
-                    title: 'All Downloads',
-                    color: Colors.white70,
-                    icon: Icons.folder_outlined,
-                    count: viewModel.countAll,
-                    isSelected: viewModel.currentSection == AppNavSection.downloads &&
-                        viewModel.selectedCategoryId == null,
-                    onTap: () {
-                      viewModel.selectCategory(null);
-                      viewModel.setSection(AppNavSection.downloads);
-                    },
-                  ),
-
-                  // Virtual: Uncategorized
-                  _buildCategoryItem(
-                    context: context,
-                    title: 'Sans catégorie',
-                    color: Colors.white38,
-                    icon: Icons.label_off_outlined,
-                    count: viewModel.uncategorizedCount,
-                    isSelected: viewModel.currentSection == AppNavSection.downloads &&
-                        viewModel.selectedCategoryId == 'uncategorized',
-                    onTap: () {
-                      viewModel.selectCategory('uncategorized');
-                      viewModel.setSection(AppNavSection.downloads);
-                    },
-                  ),
-
-                  // User Categories
-                  ...viewModel.categories.map((cat) {
-                    final isSelected = viewModel.currentSection == AppNavSection.downloads &&
-                        viewModel.selectedCategoryId == cat.id;
-                    final count = viewModel.categoryCounts[cat.id] ?? 0;
-                    return _buildCategoryItem(
-                      context: context,
-                      title: cat.name,
-                      color: cat.parsedColor,
-                      count: count,
-                      isSelected: isSelected,
-                      category: cat,
-                      onTap: () {
-                        viewModel.selectCategory(cat.id);
-                        viewModel.setSection(AppNavSection.downloads);
-                      },
-                    );
-                  }),
-
-                  const SizedBox(height: 6),
-                  const Divider(color: AppTheme.darkBorder, height: 1),
-                  const SizedBox(height: 6),
-
-                  // Section Title
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                    child: Text(
-                      'AUDIT & ACTIVITY',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white38,
-                        letterSpacing: 1.0,
+                          IconButton(
+                            icon: const Icon(Icons.add_rounded, size: 16, color: Colors.white60),
+                            tooltip: 'Add Category',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => CategoryEditDialog(viewModel: viewModel),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+
+                    // Virtual: All Downloads
+                    _buildCategoryItem(
+                      context: context,
+                      title: 'All Downloads',
+                      color: Colors.white70,
+                      icon: Icons.folder_outlined,
+                      count: viewModel.countAll,
+                      isSelected: viewModel.currentSection == AppNavSection.downloads &&
+                          viewModel.selectedCategoryId == null,
+                      onTap: () {
+                        viewModel.selectCategory(null);
+                        viewModel.setSection(AppNavSection.downloads);
+                      },
+                    ),
+
+                    // Virtual: Uncategorized
+                    _buildCategoryItem(
+                      context: context,
+                      title: 'Sans catégorie',
+                      color: Colors.white38,
+                      icon: Icons.label_off_outlined,
+                      count: viewModel.uncategorizedCount,
+                      isSelected: viewModel.currentSection == AppNavSection.downloads &&
+                          viewModel.selectedCategoryId == 'uncategorized',
+                      onTap: () {
+                        viewModel.selectCategory('uncategorized');
+                        viewModel.setSection(AppNavSection.downloads);
+                      },
+                    ),
+
+                    // User Categories
+                    ...viewModel.categories.map((cat) {
+                      final isSelected = viewModel.currentSection == AppNavSection.downloads &&
+                          viewModel.selectedCategoryId == cat.id;
+                      final count = viewModel.categoryCounts[cat.id] ?? 0;
+                      return _buildCategoryItem(
+                        context: context,
+                        title: cat.name,
+                        color: cat.parsedColor,
+                        count: count,
+                        isSelected: isSelected,
+                        category: cat,
+                        onTap: () {
+                          viewModel.selectCategory(cat.id);
+                          viewModel.setSection(AppNavSection.downloads);
+                        },
+                      );
+                    }),
+
+                    const SizedBox(height: 6),
+                    const Divider(color: AppTheme.darkBorder, height: 1),
+                    const SizedBox(height: 6),
+                  ],
+
+                  // Section Title
+                  if (!isCompact)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                      child: Text(
+                        'AUDIT & ACTIVITY',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white38,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ),
 
                   // History & Statistics Nav Item
                   _buildNavItem(
@@ -274,7 +292,7 @@ class DownloadsSidebar extends StatelessWidget {
 
                   // Settings Button
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 12),
                     child: Material(
                       color: Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
@@ -286,24 +304,30 @@ class DownloadsSidebar extends StatelessWidget {
                             builder: (ctx) => SettingsDialog(viewModel: viewModel),
                           );
                         },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          child: Row(
-                            children: const [
-                              Icon(Icons.settings_outlined, size: 20, color: Colors.white70),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Settings',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.normal,
-                                    color: Colors.white70,
+                        child: Tooltip(
+                          message: isCompact ? 'Settings' : '',
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 12, vertical: 6),
+                            child: Row(
+                              mainAxisAlignment: isCompact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.settings_outlined, size: 20, color: Colors.white70),
+                                if (!isCompact) ...[
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Text(
+                                      'Settings',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.normal,
+                                        color: Colors.white70,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                                ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -313,7 +337,7 @@ class DownloadsSidebar extends StatelessWidget {
 
                   // Import .part.met Button
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 12),
                     child: Material(
                       color: Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
@@ -326,24 +350,30 @@ class DownloadsSidebar extends StatelessWidget {
                             builder: (ctx) => ImportPartMetDialog(viewModel: viewModel),
                           );
                         },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          child: Row(
-                            children: const [
-                              Icon(Icons.file_download_outlined, size: 20, color: Colors.tealAccent),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Import .part.met',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.normal,
-                                    color: Colors.white70,
+                        child: Tooltip(
+                          message: isCompact ? 'Import .part.met' : '',
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 12, vertical: 6),
+                            child: Row(
+                              mainAxisAlignment: isCompact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.file_download_outlined, size: 20, color: Colors.tealAccent),
+                                if (!isCompact) ...[
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Text(
+                                      'Import .part.met',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.normal,
+                                        color: Colors.white70,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                                ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -357,7 +387,7 @@ class DownloadsSidebar extends StatelessWidget {
 
           // Daemon Connection Status Card (Clickable to view Diagnostics)
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(isCompact ? 8 : 16),
             child: Material(
               color: AppTheme.darkCard,
               borderRadius: BorderRadius.circular(8),
@@ -369,61 +399,89 @@ class DownloadsSidebar extends StatelessWidget {
                     builder: (ctx) => DiagnosticDialog(viewModel: viewModel),
                   );
                 },
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.darkBorder, width: 0.5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: viewModel.supervisor != null
-                                  ? _getSupervisorColor(viewModel.supervisorState)
-                                  : _getConnectionColor(viewModel.connectionState),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (viewModel.supervisor != null
-                                          ? _getSupervisorColor(viewModel.supervisorState)
-                                          : _getConnectionColor(viewModel.connectionState))
-                                      .withValues(alpha: 0.5),
-                                  blurRadius: 6,
-                                  spreadRadius: 1,
-                                )
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              viewModel.supervisor != null
-                                  ? viewModel.supervisorState.label
-                                  : viewModel.connectionState.label,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                child: Tooltip(
+                  message: isCompact
+                      ? 'Daemon Status: ${viewModel.supervisor != null ? viewModel.supervisorState.label : viewModel.connectionState.label}\nClick to view Diagnostics'
+                      : '',
+                  child: Container(
+                    padding: EdgeInsets.all(isCompact ? 10 : 14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+                    ),
+                    child: isCompact
+                        ? Center(
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: viewModel.supervisor != null
+                                    ? _getSupervisorColor(viewModel.supervisorState)
+                                    : _getConnectionColor(viewModel.connectionState),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (viewModel.supervisor != null
+                                            ? _getSupervisorColor(viewModel.supervisorState)
+                                            : _getConnectionColor(viewModel.connectionState))
+                                        .withValues(alpha: 0.5),
+                                    blurRadius: 6,
+                                    spreadRadius: 1,
+                                  )
+                                ],
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: viewModel.supervisor != null
+                                          ? _getSupervisorColor(viewModel.supervisorState)
+                                          : _getConnectionColor(viewModel.connectionState),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (viewModel.supervisor != null
+                                                  ? _getSupervisorColor(viewModel.supervisorState)
+                                                  : _getConnectionColor(viewModel.connectionState))
+                                              .withValues(alpha: 0.5),
+                                          blurRadius: 6,
+                                          spreadRadius: 1,
+                                        )
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      viewModel.supervisor != null
+                                          ? viewModel.supervisorState.label
+                                          : viewModel.connectionState.label,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const Icon(Icons.info_outline, size: 14, color: Colors.white38),
+                                ],
+                              ),
+                              if (viewModel.daemonInfo != null) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Daemon v${viewModel.daemonInfo!.version} (proto v${viewModel.daemonInfo!.protocolVersion})',
+                                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                                ),
+                              ],
+                            ],
                           ),
-                          const Icon(Icons.info_outline, size: 14, color: Colors.white38),
-                        ],
-                      ),
-                      if (viewModel.daemonInfo != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          'Daemon v${viewModel.daemonInfo!.version} (proto v${viewModel.daemonInfo!.protocolVersion})',
-                          style: const TextStyle(fontSize: 11, color: Colors.white54),
-                        ),
-                      ],
-                    ],
                   ),
                 ),
               ),
@@ -441,8 +499,8 @@ class DownloadsSidebar extends StatelessWidget {
     required VoidCallback onTap,
     int? count,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+    final content = Padding(
+      padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 12, vertical: 2),
       child: Material(
         color: isSelected
             ? AppTheme.primary.withValues(alpha: 0.15)
@@ -452,27 +510,150 @@ class DownloadsSidebar extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 12, vertical: 6),
             child: Row(
+              mainAxisAlignment: isCompact ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: isSelected ? AppTheme.primary : Colors.white70,
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: isSelected ? AppTheme.primary : Colors.white70,
+                    ),
+                    if (isCompact && count != null && count > 0)
+                      Positioned(
+                        top: -4,
+                        right: -6,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(minWidth: 10, minHeight: 10),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
-                      color: isSelected ? Colors.white : Colors.white70,
+                if (!isCompact) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected ? Colors.white : Colors.white70,
+                      ),
                     ),
                   ),
+                  if (count != null)
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppTheme.primary.withValues(alpha: 0.3)
+                            : Colors.white10,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: isSelected ? Colors.white : Colors.white60,
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (isCompact) {
+      return Tooltip(
+        message: count != null ? '$title ($count)' : title,
+        preferBelow: false,
+        child: content,
+      );
+    }
+    return content;
+  }
+
+  Widget _buildFilterItem({
+    required DownloadFilter filter,
+    required IconData icon,
+    required int count,
+    Color? color,
+  }) {
+    final isSelected =
+        viewModel.currentSection == AppNavSection.downloads &&
+        viewModel.currentFilter == filter;
+    final isDimmed = count == 0 && !isSelected;
+
+    final item = Padding(
+      padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 12, vertical: 2),
+      child: Material(
+        color: isSelected
+            ? AppTheme.primary.withValues(alpha: 0.15)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => viewModel.setFilter(filter),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 12, vertical: 6),
+            child: Row(
+              mainAxisAlignment: isCompact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: isSelected
+                          ? AppTheme.primary
+                          : (color ?? Colors.white70),
+                    ),
+                    if (isCompact && count > 0)
+                      Positioned(
+                        top: -4,
+                        right: -6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: color ?? AppTheme.primary,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '$count',
+                            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                if (count != null)
+                if (!isCompact) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      filter.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected ? Colors.white : Colors.white70,
+                      ),
+                    ),
+                  ),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -491,87 +672,26 @@ class DownloadsSidebar extends StatelessWidget {
                       ),
                     ),
                   ),
+                ],
               ],
             ),
           ),
         ),
       ),
     );
-  }
 
-  Widget _buildFilterItem({
-    required DownloadFilter filter,
-    required IconData icon,
-    required int count,
-    Color? color,
-  }) {
-    final isSelected =
-        viewModel.currentSection == AppNavSection.downloads &&
-        viewModel.currentFilter == filter;
-    final isDimmed = count == 0 && !isSelected;
-
-    final item = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Material(
-        color: isSelected
-            ? AppTheme.primary.withValues(alpha: 0.15)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => viewModel.setFilter(filter),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: isSelected
-                      ? AppTheme.primary
-                      : (color ?? Colors.white70),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    filter.label,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
-                      color: isSelected ? Colors.white : Colors.white70,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppTheme.primary.withValues(alpha: 0.3)
-                        : Colors.white10,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$count',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isSelected ? Colors.white : Colors.white60,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    final wrapped = isCompact
+        ? Tooltip(
+            message: '${filter.label} ($count)',
+            preferBelow: false,
+            child: item,
+          )
+        : item;
 
     if (isDimmed) {
-      return Opacity(opacity: 0.55, child: item);
+      return Opacity(opacity: 0.55, child: wrapped);
     }
-    return item;
+    return wrapped;
   }
 
   Color _getConnectionColor(DaemonConnectionState state) {

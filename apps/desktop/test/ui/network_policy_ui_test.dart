@@ -33,9 +33,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify network badge is visible with initial local-lab profile
+      // Verify network badge is visible with initial public-ed2k-kad-preview profile
       expect(find.byKey(const Key('network_policy_badge')), findsOneWidget);
-      expect(find.text('local-lab'), findsOneWidget);
+      expect(find.text('public-ed2k-kad-preview'), findsOneWidget);
 
       // Verify kill switch button is visible
       expect(find.byKey(const Key('network_kill_switch_button')), findsOneWidget);
@@ -70,7 +70,7 @@ void main() {
 
       // State is restored to preview-active
       expect(viewModel.isNetworkKillSwitchActive, isFalse);
-      expect(find.text('local-lab'), findsOneWidget);
+      expect(find.text('public-ed2k-kad-preview'), findsOneWidget);
     });
 
     testWidgets('network policy dialog allows inspecting budgets and switching profile',
@@ -98,18 +98,20 @@ void main() {
       expect(find.text('Server Sockets'), findsOneWidget);
       expect(find.text('Listeners'), findsOneWidget);
 
+      // Initial profile is public-ed2k-kad-preview
+      expect(viewModel.currentNetworkProfile, NetworkProfile.publicEd2kKadPreview);
+
       // Switch profile to public-ed2k-preview
-      expect(viewModel.currentNetworkProfile, NetworkProfile.localLab);
       await tester.tap(find.byKey(const Key('profile_public-ed2k-preview')));
       await tester.pumpAndSettle();
 
       expect(viewModel.currentNetworkProfile, NetworkProfile.publicEd2kPreview);
 
-      // Switch profile to public-ed2k-kad-preview
-      await tester.tap(find.byKey(const Key('profile_public-ed2k-kad-preview')));
+      // Switch profile to local-lab
+      await tester.tap(find.byKey(const Key('profile_local-lab')));
       await tester.pumpAndSettle();
 
-      expect(viewModel.currentNetworkProfile, NetworkProfile.publicEd2kKadPreview);
+      expect(viewModel.currentNetworkProfile, NetworkProfile.localLab);
 
       // Tap Disconnect All inside dialog
       await tester.tap(find.byKey(const Key('kill_switch_dialog_button')));

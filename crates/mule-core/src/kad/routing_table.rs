@@ -8,6 +8,8 @@ pub const K_BUCKET_SIZE: usize = 20;
 pub const REPLACEMENT_CACHE_SIZE: usize = 10;
 /// Total number of K-buckets for 128-bit Kad ID.
 pub const NUM_BUCKETS: usize = 128;
+/// Maximum number of contacts allowed from the same /24 IPv4 subnet per bucket (anti-Sybil).
+pub const MAX_CONTACTS_PER_SUBNET_24: usize = 2;
 
 #[derive(Debug, Clone)]
 pub struct KBucket {
@@ -52,6 +54,16 @@ impl KBucket {
             self.contacts.push_back(existing);
             None
         } else if self.contacts.len() < K_BUCKET_SIZE {
+            // Anti-Sybil protection: limit maximum number of contacts from the same /24 subnet in one bucket
+            if !contact.ip.is_loopback() {
+                let subnet_count = self.contacts.iter().filter(|c| {
+                    c.ip.octets()[..3] == contact.ip.octets()[..3]
+                }).count();
+                if subnet_count >= MAX_CONTACTS_PER_SUBNET_24 {
+                    // Do not admit more from the same /24 subnet into the active bucket
+                    return None;
+                }
+            }
             // Not full: push to tail
             self.contacts.push_back(contact);
             None
@@ -157,6 +169,31 @@ impl KBucketTable {
             let dist_a = a.kad_id.xor_distance(target);
             let dist_b = b.kad_id.xor_distance(target);
             dist_a.cmp(&dist_b)
+        });
+
+        all_contacts.truncate(count);
+        all_contacts
+    }
+
+    /// Finds up to `count` closest contacts, prioritizing verified contacts.
+    pub fn find_closest_verified(&self, target: &KadId, count: usize) -> Vec<KadContact> {
+        let mut all_contacts = Vec::new();
+        for b in &self.buckets {
+            for c in &b.contacts {
+                all_contacts.push(c.clone());
+            }
+        }
+
+        all_contacts.sort_by(|a, b| {
+            match (a.verified, b.verified) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => {
+                    let dist_a = a.kad_id.xor_distance(target);
+                    let dist_b = b.kad_id.xor_distance(target);
+                    dist_a.cmp(&dist_b)
+                }
+            }
         });
 
         all_contacts.truncate(count);

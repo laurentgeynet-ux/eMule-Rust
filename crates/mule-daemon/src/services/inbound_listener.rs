@@ -1,4 +1,5 @@
-use std::net::SocketAddr;
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +23,15 @@ use mule_protocol::framing::PacketCodec;
 use crate::services::downloads::DownloadService;
 use crate::services::upload_queue::{UploadManager, UploadSlotState};
 
+/// Maximum concurrent inbound connections globally.
+pub const MAX_INBOUND_CONNECTIONS: usize = 200;
+
+/// Maximum concurrent inbound connections from a single IP.
+pub const MAX_INBOUND_PER_IP: usize = 5;
+
+/// Maximum buffer size for inbound connection framing (256 KiB) to prevent OOM.
+pub const MAX_READ_BUFFER_SIZE: usize = 256 * 1024;
+
 /// Snapshot of the Inbound Listener service state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -42,12 +52,21 @@ pub struct InboundListenerService {
     is_running: Arc<AtomicBool>,
     listen_addr: Arc<Mutex<Option<SocketAddr>>>,
     listener_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
+    user_hash: [u8; 16],
+    active_conns: Arc<Mutex<HashMap<IpAddr, usize>>>,
+    obfuscation_enabled: bool,
+    obfuscation_required: bool,
+    obfuscation_padding_max: u8,
 }
 
 impl InboundListenerService {
     pub fn new(
         network_policy: Arc<NetworkPolicyManager>,
         downloads: Arc<Mutex<DownloadService>>,
+        user_hash: [u8; 16],
+        obfuscation_enabled: bool,
+        obfuscation_required: bool,
+        obfuscation_padding_max: u8,
     ) -> Self {
         Self {
             network_policy,
@@ -56,6 +75,11 @@ impl InboundListenerService {
             is_running: Arc::new(AtomicBool::new(false)),
             listen_addr: Arc::new(Mutex::new(None)),
             listener_handle: Arc::new(Mutex::new(None)),
+            user_hash,
+            active_conns: Arc::new(Mutex::new(HashMap::new())),
+            obfuscation_enabled,
+            obfuscation_required,
+            obfuscation_padding_max,
         }
     }
 
@@ -65,26 +89,43 @@ impl InboundListenerService {
 
     /// Starts the inbound listener on the requested bind address.
     pub async fn start(&self, bind_addr: SocketAddr) -> Result<SocketAddr, String> {
-        if self.is_running.load(Ordering::SeqCst) {
+        if self
+            .is_running
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             return Err("Inbound listener is already running".to_string());
         }
 
         // 1. Obtain listen permit from NetworkPolicy
-        let listen_permit = self
+        let listen_permit = match self
             .network_policy
             .request_tcp_listen(bind_addr, ConnectionPurpose::Listener)
-            .map_err(|e| format!("Policy denied listener on {bind_addr}: {e}"))?;
+        {
+            Ok(p) => p,
+            Err(e) => {
+                self.is_running.store(false, Ordering::SeqCst);
+                return Err(format!("Policy denied listener on {bind_addr}: {e}"));
+            }
+        };
 
-        let tokio_listener = TcpListener::bind(bind_addr)
-            .await
-            .map_err(|e| format!("Failed to bind TCP listener to {bind_addr}: {e}"))?;
+        let tokio_listener = match TcpListener::bind(bind_addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                self.is_running.store(false, Ordering::SeqCst);
+                return Err(format!("Failed to bind TCP listener to {bind_addr}: {e}"));
+            }
+        };
 
-        let actual_addr = tokio_listener
-            .local_addr()
-            .map_err(|e| format!("Failed to retrieve local address: {e}"))?;
+        let actual_addr = match tokio_listener.local_addr() {
+            Ok(a) => a,
+            Err(e) => {
+                self.is_running.store(false, Ordering::SeqCst);
+                return Err(format!("Failed to retrieve local address: {e}"));
+            }
+        };
 
         *self.listen_addr.lock().await = Some(actual_addr);
-        self.is_running.store(true, Ordering::SeqCst);
 
         let cancel_token = listen_permit.cancellation_token().clone();
         let service_self = self.clone();
@@ -102,10 +143,37 @@ impl InboundListenerService {
                     accept_res = tokio_listener.accept() => {
                         match accept_res {
                             Ok((socket, remote_addr)) => {
+                                // Enforce inbound connection limits
+                                let ip = remote_addr.ip();
+                                let mut conns = service_self.active_conns.lock().await;
+                                let total_conns: usize = conns.values().sum();
+                                if total_conns >= MAX_INBOUND_CONNECTIONS {
+                                    warn!("Rejected inbound connection from {}: global limit reached ({MAX_INBOUND_CONNECTIONS})", remote_addr);
+                                    drop(socket);
+                                    continue;
+                                }
+                                let ip_count = conns.entry(ip).or_insert(0);
+                                if *ip_count >= MAX_INBOUND_PER_IP {
+                                    warn!("Rejected inbound connection from {}: per-IP limit reached ({MAX_INBOUND_PER_IP})", remote_addr);
+                                    drop(socket);
+                                    continue;
+                                }
+                                *ip_count += 1;
+                                drop(conns);
+
                                 let service_clone = service_self.clone();
                                 let cancel_clone = cancel_token.clone();
                                 tokio::spawn(async move {
-                                    service_clone.handle_inbound_connection(socket, remote_addr, cancel_clone).await;
+                                    service_clone.handle_inbound_connection(socket, remote_addr, actual_addr, cancel_clone).await;
+                                    // Decrement connection count upon termination
+                                    let mut conns = service_clone.active_conns.lock().await;
+                                    if let std::collections::hash_map::Entry::Occupied(mut e) = conns.entry(ip) {
+                                        if *e.get() <= 1 {
+                                            e.remove();
+                                        } else {
+                                            *e.get_mut() -= 1;
+                                        }
+                                    }
                                 });
                             }
                             Err(e) => {
@@ -120,6 +188,7 @@ impl InboundListenerService {
             service_self.is_running.store(false, Ordering::SeqCst);
             *service_self.listen_addr.lock().await = None;
             service_self.upload_manager.abort_all().await;
+            service_self.active_conns.lock().await.clear();
             info!("Inbound eD2K listener stopped");
         });
 
@@ -130,12 +199,14 @@ impl InboundListenerService {
     /// Stops the inbound listener cleanly.
     pub async fn stop(&self) {
         self.is_running.store(false, Ordering::SeqCst);
-        let mut handle = self.listener_handle.lock().await;
-        if let Some(h) = handle.take() {
+        let handle = self.listener_handle.lock().await.take();
+        if let Some(h) = handle {
             h.abort();
+            let _ = h.await;
         }
         *self.listen_addr.lock().await = None;
         self.upload_manager.abort_all().await;
+        self.active_conns.lock().await.clear();
     }
 
     /// Returns a snapshot of listener status.
@@ -159,6 +230,7 @@ impl InboundListenerService {
         &self,
         mut socket: TcpStream,
         remote_addr: SocketAddr,
+        actual_listen_addr: SocketAddr,
         cancel_token: mule_network_policy::CancellationToken,
     ) {
         let remote_str = remote_addr.to_string();
@@ -168,6 +240,41 @@ impl InboundListenerService {
             warn!("Rejected inbound peer {} by IP filter rule: {}", remote_str, rule.description);
             return;
         }
+
+        // Protocol Obfuscation detection on first byte
+        let mut first_byte = [0u8; 1];
+        if socket.read_exact(&mut first_byte).await.is_err() {
+            return;
+        }
+        let b = first_byte[0];
+        let is_standard_proto = mule_protocol::ed2k::obfuscation::is_standard_protocol_marker(b);
+
+        let mut stream = if is_standard_proto {
+            if self.obfuscation_required {
+                warn!("Rejected unencrypted inbound connection from {} because obfuscation is required", remote_str);
+                return;
+            }
+            crate::services::obfuscation_stream::ObfuscatedStream::plaintext_with_prefix(socket, vec![b])
+        } else {
+            if !self.obfuscation_enabled {
+                warn!("Rejected obfuscated inbound connection from {} because obfuscation is disabled", remote_str);
+                return;
+            }
+            match crate::services::obfuscation_stream::ObfuscatedStream::accept_peer_incoming(
+                socket,
+                b,
+                &self.user_hash,
+                self.obfuscation_padding_max,
+            )
+            .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("Inbound obfuscation handshake failed from {}: {}", remote_str, e);
+                    return;
+                }
+            }
+        };
 
         let mut read_buf = BytesMut::with_capacity(65536);
         let mut raw_buf = [0u8; 8192];
@@ -180,11 +287,14 @@ impl InboundListenerService {
         // --- Step 1: Handshake (OP_HELLO) ---
         let handshake_res = tokio::time::timeout(handshake_timeout, async {
             loop {
-                let n = socket.read(&mut raw_buf).await.map_err(|e| e.to_string())?;
+                let n = stream.read(&mut raw_buf).await.map_err(|e| e.to_string())?;
                 if n == 0 {
                     return Err("EOF during handshake".to_string());
                 }
                 read_buf.extend_from_slice(&raw_buf[..n]);
+                if read_buf.len() > MAX_READ_BUFFER_SIZE {
+                    return Err("Read buffer limit exceeded during handshake".to_string());
+                }
 
                 while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
                     if pkt.protocol == PR_ED2K && pkt.opcode == OP_HELLO {
@@ -200,12 +310,27 @@ impl InboundListenerService {
 
         match handshake_res {
             Ok(Ok(())) => {
-                // Send OP_HELLO_ANSWER
+                // Send OP_HELLO_ANSWER with real identity, listening port, and crypt options
+                let mut tags = Vec::new();
+                let mut misc2: u32 = 0;
+                if self.obfuscation_enabled {
+                    misc2 |= (1 << 7) | (1 << 8); // CryptLayerSupported | CryptLayerRequested
+                }
+                if self.obfuscation_required {
+                    misc2 |= 1 << 9; // CryptLayerRequires
+                }
+                if misc2 > 0 {
+                    tags.push(mule_protocol::ed2k::tags::Ed2kTag {
+                        name: mule_protocol::ed2k::tags::TagName::Id(mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS2),
+                        value: mule_protocol::ed2k::tags::TagValue::UInt32(misc2),
+                    });
+                }
+
                 let ans = Ed2kHelloAnswer {
-                    user_hash: [0x55u8; 16],
+                    user_hash: self.user_hash,
                     client_id: 0x0100007F,
-                    tcp_port: remote_addr.port(),
-                    tags: vec![],
+                    tcp_port: actual_listen_addr.port(),
+                    tags,
                     unknown_tags: vec![],
                     server_ip: 0,
                     server_port: 0,
@@ -216,7 +341,7 @@ impl InboundListenerService {
                     out.extend_from_slice(&(ans_pkt.frame_len() as u32).to_le_bytes());
                     out.push(ans_pkt.opcode);
                     out.extend_from_slice(&ans_pkt.payload);
-                    let _ = socket.write_all(&out).await;
+                    let _ = stream.write_all(&out).await;
                 }
             }
             _ => {
@@ -227,6 +352,7 @@ impl InboundListenerService {
         let mut remote_pubkey_hash: Option<String> = None;
         let mut remote_pubkey_hex: Option<String> = None;
         let mut credit_multiplier = 1.0f64;
+        let mut active_challenge: Option<u32> = None;
 
         // --- Step 2: Request Dispatch Loop ---
         loop {
@@ -234,12 +360,16 @@ impl InboundListenerService {
                 _ = cancel_token.cancelled() => {
                     break;
                 }
-                read_res = socket.read(&mut raw_buf) => {
+                read_res = stream.read(&mut raw_buf) => {
                     let n = match read_res {
                         Ok(n) if n > 0 => n,
                         _ => break,
                     };
                     read_buf.extend_from_slice(&raw_buf[..n]);
+                    if read_buf.len() > MAX_READ_BUFFER_SIZE {
+                        warn!("Inbound peer {} exceeded maximum read buffer size ({}), disconnecting", remote_str, MAX_READ_BUFFER_SIZE);
+                        break;
+                    }
 
                     while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
                         if pkt.protocol == PR_EMULE {
@@ -263,6 +393,7 @@ impl InboundListenerService {
 
                                         // Generate random 32-bit challenge
                                         let challenge_val: u32 = rand::random();
+                                        active_challenge = Some(challenge_val);
                                         let sec_state = Ed2kSecIdentState {
                                             state: 1, // Challenge sent
                                             challenge: challenge_val,
@@ -273,18 +404,23 @@ impl InboundListenerService {
                                             out.extend_from_slice(&(st_pkt.frame_len() as u32).to_le_bytes());
                                             out.push(st_pkt.opcode);
                                             out.extend_from_slice(&st_pkt.payload);
-                                            let _ = socket.write_all(&out).await;
+                                            let _ = stream.write_all(&out).await;
                                         }
                                     }
                                 }
                                 OP_SIGNATURE => {
-                                    // Verify signature format
-                                    let is_valid = if let Ok(sig) = decoder.decode_signature(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
-                                        // Signature must be non-empty (standard RSA signature is 48..64+ bytes)
-                                        !sig.signature_bytes.is_empty() && sig.signature_bytes.len() >= 16
+                                    // Verify signature format and challenge presence
+                                    let is_valid = if active_challenge.is_some() {
+                                        if let Ok(sig) = decoder.decode_signature(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
+                                            // RSA signature must be valid length (48..=96 bytes)
+                                            (48..=96).contains(&sig.signature_bytes.len())
+                                        } else {
+                                            false
+                                        }
                                     } else {
                                         false
                                     };
+                                    active_challenge = None;
 
                                     if is_valid {
                                         let sec_state = Ed2kSecIdentState {
@@ -297,7 +433,7 @@ impl InboundListenerService {
                                             out.extend_from_slice(&(st_pkt.frame_len() as u32).to_le_bytes());
                                             out.push(st_pkt.opcode);
                                             out.extend_from_slice(&st_pkt.payload);
-                                            let _ = socket.write_all(&out).await;
+                                            let _ = stream.write_all(&out).await;
                                         }
                                     } else {
                                         // Signature failed or invalid -> fallback to unauthenticated state 0
@@ -314,7 +450,7 @@ impl InboundListenerService {
                                             out.extend_from_slice(&(st_pkt.frame_len() as u32).to_le_bytes());
                                             out.push(st_pkt.opcode);
                                             out.extend_from_slice(&st_pkt.payload);
-                                            let _ = socket.write_all(&out).await;
+                                            let _ = stream.write_all(&out).await;
                                         }
                                     }
                                 }
@@ -366,7 +502,7 @@ impl InboundListenerService {
                                         out.extend_from_slice(&(st_pkt.frame_len() as u32).to_le_bytes());
                                         out.push(st_pkt.opcode);
                                         out.extend_from_slice(&st_pkt.payload);
-                                        let _ = socket.write_all(&out).await;
+                                        let _ = stream.write_all(&out).await;
                                     }
                                 }
                             }
@@ -413,14 +549,16 @@ impl InboundListenerService {
                                                     out.extend_from_slice(&(send_pkt.frame_len() as u32).to_le_bytes());
                                                     out.push(send_pkt.opcode);
                                                     out.extend_from_slice(&send_pkt.payload);
-                                                    let _ = socket.write_all(&out).await;
+                                                    let _ = stream.write_all(&out).await;
 
                                                     self.upload_manager.update_progress(&remote_str, length as u64, 51200).await;
 
-                                                    // Record credit upload if authenticated
-                                                    if let (Some(ref ph), Some(ref pk_hex)) = (&remote_pubkey_hash, &remote_pubkey_hex) {
-                                                        let mut dl_svc = self.downloads.lock().await;
-                                                        let _ = dl_svc.record_credit_upload(ph, pk_hex, length as u64);
+                                                    // Record credit upload if authenticated and file has valid size
+                                                    if shared_file.file_size > 0 && u64::from(start + length) <= shared_file.file_size {
+                                                        if let (Some(ref ph), Some(ref pk_hex)) = (&remote_pubkey_hash, &remote_pubkey_hex) {
+                                                            let mut dl_svc = self.downloads.lock().await;
+                                                            let _ = dl_svc.record_credit_upload(ph, pk_hex, length as u64);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -432,7 +570,7 @@ impl InboundListenerService {
                                             out.extend_from_slice(&5u32.to_le_bytes());
                                             out.push(OP_QUEUERANKING);
                                             out.extend_from_slice(&rank.to_le_bytes());
-                                            let _ = socket.write_all(&out).await;
+                                            let _ = stream.write_all(&out).await;
                                         }
                                         _ => {
                                             // Queue full

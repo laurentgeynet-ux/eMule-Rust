@@ -72,7 +72,9 @@ class Ed2kServerModel {
       failedCount: json['failedCount'] as int? ?? 0,
       dynIp: json['dynIp'] as String?,
       version: json['version'] as String?,
-      filterStatus: ServerFilterStatus.fromString(json['filterStatus'] as String?),
+      filterStatus: ServerFilterStatus.fromString(
+        json['filterStatus'] as String?,
+      ),
       lastSeenUnixMs: json['lastSeenUnixMs'] as int?,
       createdAtUnixMs: json['createdAtUnixMs'] as int? ?? 0,
       updatedAtUnixMs: json['updatedAtUnixMs'] as int? ?? 0,
@@ -314,7 +316,8 @@ enum PeerSourceStatus {
 enum PeerSourceOrigin {
   server,
   search,
-  manual;
+  manual,
+  kad;
 
   static PeerSourceOrigin fromString(String? val) {
     switch (val?.toLowerCase()) {
@@ -322,6 +325,8 @@ enum PeerSourceOrigin {
         return PeerSourceOrigin.search;
       case 'manual':
         return PeerSourceOrigin.manual;
+      case 'kad':
+        return PeerSourceOrigin.kad;
       case 'server':
       default:
         return PeerSourceOrigin.server;
@@ -336,6 +341,8 @@ enum PeerSourceOrigin {
         return 'search';
       case PeerSourceOrigin.manual:
         return 'manual';
+      case PeerSourceOrigin.kad:
+        return 'kad';
     }
   }
 }
@@ -369,23 +376,28 @@ class PeerSourceModel {
 
   factory PeerSourceModel.fromJson(Map<String, dynamic> json) {
     return PeerSourceModel(
-      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
+      fileHash:
+          json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
       address: json['address'] as String? ?? '',
       ip: (json['ip'] as num?)?.toInt() ?? 0,
       port: (json['port'] as num?)?.toInt() ?? 0,
       origin: PeerSourceOrigin.fromString(json['origin'] as String?),
-      discoveredAtUnixMs: (json['discoveredAtUnixMs'] as num?)?.toInt() ??
+      discoveredAtUnixMs:
+          (json['discoveredAtUnixMs'] as num?)?.toInt() ??
           (json['discovered_at_unix_ms'] as num?)?.toInt() ??
           0,
-      lastSeenUnixMs: (json['lastSeenUnixMs'] as num?)?.toInt() ??
+      lastSeenUnixMs:
+          (json['lastSeenUnixMs'] as num?)?.toInt() ??
           (json['last_seen_unix_ms'] as num?)?.toInt() ??
           0,
       status: PeerSourceStatus.fromString(json['status'] as String?),
-      failCount: (json['failCount'] as num?)?.toInt() ??
+      failCount:
+          (json['failCount'] as num?)?.toInt() ??
           (json['fail_count'] as num?)?.toInt() ??
           0,
       lastError: json['lastError'] as String? ?? json['last_error'] as String?,
-      cooldownUntilUnixMs: (json['cooldownUntilUnixMs'] as num?)?.toInt() ??
+      cooldownUntilUnixMs:
+          (json['cooldownUntilUnixMs'] as num?)?.toInt() ??
           (json['cooldown_until_unix_ms'] as num?)?.toInt(),
     );
   }
@@ -464,20 +476,27 @@ class PeerSessionModel {
     return PeerSessionModel(
       status: PeerConnectionStatus.fromString(json['status'] as String?),
       fileHash: json['fileHash'] as String? ?? json['file_hash'] as String?,
-      peerAddress: json['peerAddress'] as String? ?? json['peer_address'] as String?,
-      currentPart: (json['currentPart'] as num?)?.toInt() ??
+      peerAddress:
+          json['peerAddress'] as String? ?? json['peer_address'] as String?,
+      currentPart:
+          (json['currentPart'] as num?)?.toInt() ??
           (json['current_part'] as num?)?.toInt(),
-      transferRateBps: (json['transferRateBps'] as num?)?.toInt() ??
+      transferRateBps:
+          (json['transferRateBps'] as num?)?.toInt() ??
           (json['transfer_rate_bps'] as num?)?.toInt() ??
           0,
-      transferredBytes: (json['transferredBytes'] as num?)?.toInt() ??
+      transferredBytes:
+          (json['transferredBytes'] as num?)?.toInt() ??
           (json['transferred_bytes'] as num?)?.toInt() ??
           0,
-      queueRank: (json['queueRank'] as num?)?.toInt() ??
+      queueRank:
+          (json['queueRank'] as num?)?.toInt() ??
           (json['queue_rank'] as num?)?.toInt(),
       lastError: json['lastError'] as String? ?? json['last_error'] as String?,
-      failureReason: json['failureReason'] as String? ?? json['failure_reason'] as String?,
-      connectedAtUnixMs: (json['connectedAtUnixMs'] as num?)?.toInt() ??
+      failureReason:
+          json['failureReason'] as String? ?? json['failure_reason'] as String?,
+      connectedAtUnixMs:
+          (json['connectedAtUnixMs'] as num?)?.toInt() ??
           (json['connected_at_unix_ms'] as num?)?.toInt(),
     );
   }
@@ -507,15 +526,18 @@ class InFlightBlockModel {
   factory InFlightBlockModel.fromJson(Map<String, dynamic> json) {
     return InFlightBlockModel(
       peerId: json['peerId'] as String? ?? json['peer_id'] as String? ?? '',
-      partIndex: (json['partIndex'] as num?)?.toInt() ??
+      partIndex:
+          (json['partIndex'] as num?)?.toInt() ??
           (json['part_index'] as num?)?.toInt() ??
           0,
       start: (json['start'] as num?)?.toInt() ?? 0,
       end: (json['end'] as num?)?.toInt() ?? 0,
-      issuedAtUnixMs: (json['issuedAtUnixMs'] as num?)?.toInt() ??
+      issuedAtUnixMs:
+          (json['issuedAtUnixMs'] as num?)?.toInt() ??
           (json['issued_at_unix_ms'] as num?)?.toInt() ??
           0,
-      deadlineUnixMs: (json['deadlineUnixMs'] as num?)?.toInt() ??
+      deadlineUnixMs:
+          (json['deadlineUnixMs'] as num?)?.toInt() ??
           (json['deadline_unix_ms'] as num?)?.toInt() ??
           0,
     );
@@ -541,7 +563,8 @@ class SwarmStatusModel {
         .map((p) => PeerSessionModel.fromJson(p as Map<String, dynamic>))
         .toList();
 
-    final rawBlocks = json['inFlightBlocks'] as List<dynamic>? ??
+    final rawBlocks =
+        json['inFlightBlocks'] as List<dynamic>? ??
         json['in_flight_blocks'] as List<dynamic>? ??
         [];
     final blocksList = rawBlocks
@@ -550,7 +573,8 @@ class SwarmStatusModel {
 
     return SwarmStatusModel(
       fileHash: json['fileHash'] as String? ?? json['file_hash'] as String?,
-      activePeerCount: (json['activePeerCount'] as num?)?.toInt() ??
+      activePeerCount:
+          (json['activePeerCount'] as num?)?.toInt() ??
           (json['active_peer_count'] as num?)?.toInt() ??
           peersList.length,
       peers: peersList,
@@ -580,13 +604,18 @@ class SharedFileModel {
 
   factory SharedFileModel.fromJson(Map<String, dynamic> json) {
     return SharedFileModel(
-      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
-      fileName: json['fileName'] as String? ?? json['file_name'] as String? ?? '',
-      fileSize: (json['fileSize'] as num?)?.toInt() ??
+      fileHash:
+          json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
+      fileName:
+          json['fileName'] as String? ?? json['file_name'] as String? ?? '',
+      fileSize:
+          (json['fileSize'] as num?)?.toInt() ??
           (json['file_size'] as num?)?.toInt() ??
           0,
-      filePath: json['filePath'] as String? ?? json['file_path'] as String? ?? '',
-      sharedAtUnixMs: (json['sharedAtUnixMs'] as num?)?.toInt() ??
+      filePath:
+          json['filePath'] as String? ?? json['file_path'] as String? ?? '',
+      sharedAtUnixMs:
+          (json['sharedAtUnixMs'] as num?)?.toInt() ??
           (json['shared_at_unix_ms'] as num?)?.toInt() ??
           0,
       enabled: json['enabled'] as bool? ?? true,
@@ -617,21 +646,28 @@ class UploadSessionModel {
 
   factory UploadSessionModel.fromJson(Map<String, dynamic> json) {
     return UploadSessionModel(
-      clientAddress: json['clientAddress'] as String? ??
+      clientAddress:
+          json['clientAddress'] as String? ??
           json['client_address'] as String? ??
           '',
-      fileHash: json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
-      fileName: json['fileName'] as String? ?? json['file_name'] as String? ?? '',
-      transferredBytes: (json['transferredBytes'] as num?)?.toInt() ??
+      fileHash:
+          json['fileHash'] as String? ?? json['file_hash'] as String? ?? '',
+      fileName:
+          json['fileName'] as String? ?? json['file_name'] as String? ?? '',
+      transferredBytes:
+          (json['transferredBytes'] as num?)?.toInt() ??
           (json['transferred_bytes'] as num?)?.toInt() ??
           0,
-      uploadRateBps: (json['uploadRateBps'] as num?)?.toInt() ??
+      uploadRateBps:
+          (json['uploadRateBps'] as num?)?.toInt() ??
           (json['upload_rate_bps'] as num?)?.toInt() ??
           0,
       state: json['state'] as String? ?? 'idle',
-      queueRank: (json['queueRank'] as num?)?.toInt() ??
+      queueRank:
+          (json['queueRank'] as num?)?.toInt() ??
           (json['queue_rank'] as num?)?.toInt(),
-      startedAtUnixMs: (json['startedAtUnixMs'] as num?)?.toInt() ??
+      startedAtUnixMs:
+          (json['startedAtUnixMs'] as num?)?.toInt() ??
           (json['started_at_unix_ms'] as num?)?.toInt() ??
           0,
     );
@@ -655,15 +691,22 @@ class InboundListenerStatusModel {
 
   factory InboundListenerStatusModel.fromJson(Map<String, dynamic> json) {
     return InboundListenerStatusModel(
-      isListening: json['isListening'] as bool? ?? json['is_listening'] as bool? ?? false,
-      listenAddress: json['listenAddress'] as String? ?? json['listen_address'] as String?,
-      activeUploads: (json['activeUploads'] as num?)?.toInt() ??
+      isListening:
+          json['isListening'] as bool? ??
+          json['is_listening'] as bool? ??
+          false,
+      listenAddress:
+          json['listenAddress'] as String? ?? json['listen_address'] as String?,
+      activeUploads:
+          (json['activeUploads'] as num?)?.toInt() ??
           (json['active_uploads'] as num?)?.toInt() ??
           0,
-      queuedUploads: (json['queuedUploads'] as num?)?.toInt() ??
+      queuedUploads:
+          (json['queuedUploads'] as num?)?.toInt() ??
           (json['queued_uploads'] as num?)?.toInt() ??
           0,
-      uploadRateBps: (json['uploadRateBps'] as num?)?.toInt() ??
+      uploadRateBps:
+          (json['uploadRateBps'] as num?)?.toInt() ??
           (json['upload_rate_bps'] as num?)?.toInt() ??
           0,
     );
@@ -689,12 +732,18 @@ class SecureIdentityStatusModel {
     return SecureIdentityStatusModel(
       enabled: json['enabled'] as bool? ?? false,
       hasKey: json['hasKey'] as bool? ?? json['has_key'] as bool? ?? false,
-      pubkeyHash: json['pubkeyHash'] as String? ?? json['pubkey_hash'] as String?,
-      keyBits: (json['keyBits'] as num?)?.toInt() ?? (json['key_bits'] as num?)?.toInt(),
+      pubkeyHash:
+          json['pubkeyHash'] as String? ?? json['pubkey_hash'] as String?,
+      keyBits:
+          (json['keyBits'] as num?)?.toInt() ??
+          (json['key_bits'] as num?)?.toInt(),
     );
   }
 
-  static const unauthenticated = SecureIdentityStatusModel(enabled: false, hasKey: false);
+  static const unauthenticated = SecureIdentityStatusModel(
+    enabled: false,
+    hasKey: false,
+  );
 }
 
 class PeerCreditModel {
@@ -718,21 +767,28 @@ class PeerCreditModel {
 
   factory PeerCreditModel.fromJson(Map<String, dynamic> json) {
     return PeerCreditModel(
-      pubkeyHash: json['pubkeyHash'] as String? ?? json['pubkey_hash'] as String? ?? '',
-      pubkeyHex: json['pubkeyHex'] as String? ?? json['pubkey_hex'] as String? ?? '',
-      uploadedBytes: (json['uploadedBytes'] as num?)?.toInt() ??
+      pubkeyHash:
+          json['pubkeyHash'] as String? ?? json['pubkey_hash'] as String? ?? '',
+      pubkeyHex:
+          json['pubkeyHex'] as String? ?? json['pubkey_hex'] as String? ?? '',
+      uploadedBytes:
+          (json['uploadedBytes'] as num?)?.toInt() ??
           (json['uploaded_bytes'] as num?)?.toInt() ??
           0,
-      downloadedBytes: (json['downloadedBytes'] as num?)?.toInt() ??
+      downloadedBytes:
+          (json['downloadedBytes'] as num?)?.toInt() ??
           (json['downloaded_bytes'] as num?)?.toInt() ??
           0,
-      creditMultiplier: (json['creditMultiplier'] as num?)?.toDouble() ??
+      creditMultiplier:
+          (json['creditMultiplier'] as num?)?.toDouble() ??
           (json['credit_multiplier'] as num?)?.toDouble() ??
           1.0,
-      firstSeenUnixMs: (json['firstSeenUnixMs'] as num?)?.toInt() ??
+      firstSeenUnixMs:
+          (json['firstSeenUnixMs'] as num?)?.toInt() ??
           (json['first_seen_unix_ms'] as num?)?.toInt() ??
           0,
-      lastSeenUnixMs: (json['lastSeenUnixMs'] as num?)?.toInt() ??
+      lastSeenUnixMs:
+          (json['lastSeenUnixMs'] as num?)?.toInt() ??
           (json['last_seen_unix_ms'] as num?)?.toInt() ??
           0,
     );
@@ -754,10 +810,22 @@ class PeerCreditStatsModel {
 
   factory PeerCreditStatsModel.fromJson(Map<String, dynamic> json) {
     return PeerCreditStatsModel(
-      totalPeers: (json['totalPeers'] as num?)?.toInt() ?? (json['total_peers'] as num?)?.toInt() ?? 0,
-      totalUploadedBytes: (json['totalUploadedBytes'] as num?)?.toInt() ?? (json['total_uploaded_bytes'] as num?)?.toInt() ?? 0,
-      totalDownloadedBytes: (json['totalDownloadedBytes'] as num?)?.toInt() ?? (json['total_downloaded_bytes'] as num?)?.toInt() ?? 0,
-      activeCreditedPeers: (json['activeCreditedPeers'] as num?)?.toInt() ?? (json['active_credited_peers'] as num?)?.toInt() ?? 0,
+      totalPeers:
+          (json['totalPeers'] as num?)?.toInt() ??
+          (json['total_peers'] as num?)?.toInt() ??
+          0,
+      totalUploadedBytes:
+          (json['totalUploadedBytes'] as num?)?.toInt() ??
+          (json['total_uploaded_bytes'] as num?)?.toInt() ??
+          0,
+      totalDownloadedBytes:
+          (json['totalDownloadedBytes'] as num?)?.toInt() ??
+          (json['total_downloaded_bytes'] as num?)?.toInt() ??
+          0,
+      activeCreditedPeers:
+          (json['activeCreditedPeers'] as num?)?.toInt() ??
+          (json['active_credited_peers'] as num?)?.toInt() ??
+          0,
     );
   }
 
@@ -799,33 +867,43 @@ class KadStatusModel {
   factory KadStatusModel.fromJson(Map<String, dynamic> json) {
     return KadStatusModel(
       localId: json['localId'] as String? ?? json['local_id'] as String? ?? '',
-      totalContacts: (json['totalContacts'] as num?)?.toInt() ??
+      totalContacts:
+          (json['totalContacts'] as num?)?.toInt() ??
           (json['total_contacts'] as num?)?.toInt() ??
           0,
-      totalReplacements: (json['totalReplacements'] as num?)?.toInt() ??
+      totalReplacements:
+          (json['totalReplacements'] as num?)?.toInt() ??
           (json['total_replacements'] as num?)?.toInt() ??
           0,
-      dbContactsCount: (json['dbContactsCount'] as num?)?.toInt() ??
+      dbContactsCount:
+          (json['dbContactsCount'] as num?)?.toInt() ??
           (json['db_contacts_count'] as num?)?.toInt() ??
           0,
-      activeBuckets: (json['activeBuckets'] as num?)?.toInt() ??
+      activeBuckets:
+          (json['activeBuckets'] as num?)?.toInt() ??
           (json['active_buckets'] as num?)?.toInt() ??
           0,
-      networkProfile: json['networkProfile'] as String? ??
+      networkProfile:
+          json['networkProfile'] as String? ??
           json['network_profile'] as String? ??
           'local-lab',
-      isUdpActive: json['isUdpActive'] as bool? ??
+      isUdpActive:
+          json['isUdpActive'] as bool? ??
           json['is_udp_active'] as bool? ??
           false,
-      udpBindAddress: json['udpBindAddress'] as String? ??
+      udpBindAddress:
+          json['udpBindAddress'] as String? ??
           json['udp_bind_address'] as String?,
-      packetsSent: (json['packetsSent'] as num?)?.toInt() ??
+      packetsSent:
+          (json['packetsSent'] as num?)?.toInt() ??
           (json['packets_sent'] as num?)?.toInt() ??
           0,
-      packetsReceived: (json['packetsReceived'] as num?)?.toInt() ??
+      packetsReceived:
+          (json['packetsReceived'] as num?)?.toInt() ??
           (json['packets_received'] as num?)?.toInt() ??
           0,
-      activeTransactions: (json['activeTransactions'] as num?)?.toInt() ??
+      activeTransactions:
+          (json['activeTransactions'] as num?)?.toInt() ??
           (json['active_transactions'] as num?)?.toInt() ??
           0,
     );
@@ -871,17 +949,21 @@ class KadContactModel {
     return KadContactModel(
       kadId: json['kadId'] as String? ?? json['kad_id'] as String? ?? '',
       ip: json['ip'] as String? ?? '',
-      udpPort: (json['udpPort'] as num?)?.toInt() ??
+      udpPort:
+          (json['udpPort'] as num?)?.toInt() ??
           (json['udp_port'] as num?)?.toInt() ??
           0,
-      tcpPort: (json['tcpPort'] as num?)?.toInt() ??
+      tcpPort:
+          (json['tcpPort'] as num?)?.toInt() ??
           (json['tcp_port'] as num?)?.toInt(),
       version: (json['version'] as num?)?.toInt() ?? 0,
       verified: json['verified'] as bool? ?? false,
-      failCount: (json['failCount'] as num?)?.toInt() ??
+      failCount:
+          (json['failCount'] as num?)?.toInt() ??
           (json['fail_count'] as num?)?.toInt() ??
           0,
-      lastSeenUnixMs: (json['lastSeenUnixMs'] as num?)?.toInt() ??
+      lastSeenUnixMs:
+          (json['lastSeenUnixMs'] as num?)?.toInt() ??
           (json['last_seen_unix_ms'] as num?)?.toInt() ??
           0,
     );
@@ -906,7 +988,8 @@ class NodesDatInspectReportModel {
   });
 
   factory NodesDatInspectReportModel.fromJson(Map<String, dynamic> json) {
-    final rawSamples = json['sampleContacts'] as List<dynamic>? ??
+    final rawSamples =
+        json['sampleContacts'] as List<dynamic>? ??
         json['sample_contacts'] as List<dynamic>? ??
         [];
     final samples = rawSamples
@@ -915,16 +998,20 @@ class NodesDatInspectReportModel {
 
     return NodesDatInspectReportModel(
       version: (json['version'] as num?)?.toInt() ?? 0,
-      declaredCount: (json['declaredCount'] as num?)?.toInt() ??
+      declaredCount:
+          (json['declaredCount'] as num?)?.toInt() ??
           (json['declared_count'] as num?)?.toInt() ??
           0,
-      validContactsCount: (json['validContactsCount'] as num?)?.toInt() ??
+      validContactsCount:
+          (json['validContactsCount'] as num?)?.toInt() ??
           (json['valid_contacts_count'] as num?)?.toInt() ??
           0,
-      rejectedByPolicyCount: (json['rejectedByPolicyCount'] as num?)?.toInt() ??
+      rejectedByPolicyCount:
+          (json['rejectedByPolicyCount'] as num?)?.toInt() ??
           (json['rejected_by_policy_count'] as num?)?.toInt() ??
           0,
-      rejectedByFilterCount: (json['rejectedByFilterCount'] as num?)?.toInt() ??
+      rejectedByFilterCount:
+          (json['rejectedByFilterCount'] as num?)?.toInt() ??
           (json['rejected_by_filter_count'] as num?)?.toInt() ??
           0,
       sampleContacts: samples,
@@ -932,4 +1019,43 @@ class NodesDatInspectReportModel {
   }
 }
 
+class UpnpStatusModel {
+  final bool enabled;
+  final bool available;
+  final String? gatewayAddr;
+  final String? externalIp;
+  final bool tcpMapped;
+  final bool udpMapped;
+  final int tcpPort;
+  final int udpPort;
+  final String? lastError;
+  final int updatedAtUnixMs;
 
+  const UpnpStatusModel({
+    this.enabled = false,
+    this.available = false,
+    this.gatewayAddr,
+    this.externalIp,
+    this.tcpMapped = false,
+    this.udpMapped = false,
+    this.tcpPort = 39735,
+    this.udpPort = 39737,
+    this.lastError,
+    this.updatedAtUnixMs = 0,
+  });
+
+  factory UpnpStatusModel.fromJson(Map<String, dynamic> json) {
+    return UpnpStatusModel(
+      enabled: json['enabled'] == true,
+      available: json['available'] == true,
+      gatewayAddr: json['gatewayAddr'] as String?,
+      externalIp: json['externalIp'] as String?,
+      tcpMapped: json['tcpMapped'] == true,
+      udpMapped: json['udpMapped'] == true,
+      tcpPort: (json['tcpPort'] as num?)?.toInt() ?? 39735,
+      udpPort: (json['udpPort'] as num?)?.toInt() ?? 39737,
+      lastError: json['lastError'] as String?,
+      updatedAtUnixMs: (json['updatedAtUnixMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+}

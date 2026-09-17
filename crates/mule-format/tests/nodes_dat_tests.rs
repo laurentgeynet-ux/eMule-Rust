@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::net::Ipv4Addr;
 use mule_format::kad::{KadContactEntry, NodesDatFile, MAX_NODES_COUNT};
-use mule_format::met::tags::{Tag, TagValue};
+
 
 #[test]
 fn test_nodes_dat_v0_roundtrip() {
@@ -26,24 +26,29 @@ fn test_nodes_dat_v0_roundtrip() {
 }
 
 #[test]
-fn test_nodes_dat_v2_with_tags_roundtrip() {
-    let mut contact = KadContactEntry::new([0xAA; 16], Ipv4Addr::new(1, 2, 3, 4), 4000, 4001, 2);
-    contact.tags.push(Tag::new_id(0x01, TagValue::String("eMule v0.50a".into())));
+fn test_nodes_dat_v2_roundtrip() {
+    let contact = KadContactEntry::new([0xAA; 16], Ipv4Addr::new(1, 2, 3, 4), 4000, 4001, 2)
+        .with_kad_udp_key(0x12345678, 0x9ABCDEF0)
+        .with_verified(true);
 
     let file = NodesDatFile::new(2, vec![contact]);
 
     let mut buf = Vec::new();
     file.write(&mut buf).unwrap();
 
+    // 12 bytes header (0, 2, 1) + 34 bytes contact = 46 bytes
+    assert_eq!(buf.len(), 12 + 34);
+
     let parsed = NodesDatFile::parse(Cursor::new(buf)).unwrap();
     assert_eq!(parsed.version, 2);
     assert_eq!(parsed.contacts.len(), 1);
     assert_eq!(parsed.contacts[0].client_id, [0xAA; 16]);
     assert_eq!(parsed.contacts[0].ip, Ipv4Addr::new(1, 2, 3, 4));
+    assert_eq!(parsed.contacts[0].udp_port, 4000);
+    assert_eq!(parsed.contacts[0].tcp_port, 4001);
     assert_eq!(parsed.contacts[0].version, 2);
-    assert_eq!(parsed.contacts[0].tags.len(), 1);
-    assert_eq!(parsed.contacts[0].tags[0].name_id, 0x01);
-    assert_eq!(parsed.contacts[0].tags[0].as_str(), Some("eMule v0.50a"));
+    assert_eq!(parsed.contacts[0].kad_udp_key, Some((0x12345678, 0x9ABCDEF0)));
+    assert!(parsed.contacts[0].verified);
 }
 
 #[test]

@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 pub enum NetworkProfile {
     /// Strict lab confinement: only loopback addresses (127.0.0.0/8, ::1) are allowed.
-    #[default]
     LocalLab,
     /// Controlled preview: allows connection to public eD2K servers and peers.
     /// Strictly rejects private LAN, loopback, link-local, multicast, etc. (anti-SSRF).
     PublicEd2kPreview,
     /// Controlled preview with UDP support for Kademlia.
     /// Same address filtering rules as PublicEd2kPreview.
+    #[default]
     PublicEd2kKadPreview,
 }
 

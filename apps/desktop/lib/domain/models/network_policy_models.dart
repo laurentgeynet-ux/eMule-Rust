@@ -13,8 +13,9 @@ enum NetworkProfile {
         return NetworkProfile.publicEd2kKadPreview;
       case 'local-lab':
       case 'local_lab':
-      default:
         return NetworkProfile.localLab;
+      default:
+        return NetworkProfile.publicEd2kKadPreview;
     }
   }
 

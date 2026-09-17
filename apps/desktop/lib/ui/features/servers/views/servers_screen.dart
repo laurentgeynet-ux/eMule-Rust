@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../domain/models/server_models.dart';
 import '../../../core/theme.dart';
 import '../../downloads/view_models/downloads_view_model.dart';
+import '../../downloads/widgets/network_policy_dialog.dart';
 
 class ServersView extends StatefulWidget {
   final DownloadsViewModel viewModel;
@@ -36,7 +37,9 @@ class _ServersViewState extends State<ServersView> {
       children: [
         _buildToolbar(context, vm),
         if (hasServerConnectionCap) _buildSessionBar(context, vm),
-        _buildSafetyBanner(context, hasServerConnectionCap),
+        if (vm.errorMessage != null && vm.errorMessage!.isNotEmpty)
+          _buildErrorBanner(context, vm),
+        _buildSafetyBanner(context, vm, hasServerConnectionCap),
         _buildFilterBar(context, vm),
         const Divider(color: AppTheme.darkBorder, height: 1),
         Expanded(
@@ -60,38 +63,71 @@ class _ServersViewState extends State<ServersView> {
         color: AppTheme.darkSurface,
         border: Border(bottom: BorderSide(color: AppTheme.darkBorder, width: 0.5)),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.dns_rounded, color: AppTheme.primary, size: 22),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Gestion Locale des Serveurs eD2K',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 1150;
+          return Row(
+            children: [
+              const Icon(Icons.dns_rounded, color: AppTheme.primary, size: 22),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Gestion Locale des Serveurs eD2K',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 12),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.refresh_rounded, size: 16),
-            label: const Text('Actualiser'),
-            onPressed: () => vm.fetchServers(),
-          ),
-          const SizedBox(width: 10),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.file_upload_outlined, size: 16),
-            label: const Text('Importer server.met'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => _handleImportMet(context, vm),
-          ),
-        ],
+              const SizedBox(width: 12),
+              if (isCompact) ...[
+                IconButton(
+                  tooltip: 'Actualiser',
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  onPressed: () => vm.fetchServers(),
+                ),
+                IconButton(
+                  tooltip: 'Importer server.met',
+                  icon: const Icon(Icons.file_upload_outlined, size: 18, color: AppTheme.primary),
+                  onPressed: () => _handleImportMet(context, vm),
+                ),
+                IconButton(
+                  tooltip: 'Mettre à jour depuis URL',
+                  icon: const Icon(Icons.cloud_download_outlined, size: 18, color: Colors.tealAccent),
+                  onPressed: () => _handleUpdateFromUrl(context, vm),
+                ),
+              ] else ...[
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Actualiser'),
+                  onPressed: () => vm.fetchServers(),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.file_upload_outlined, size: 16),
+                  label: const Text('Importer server.met'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _handleImportMet(context, vm),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  icon: const Icon(Icons.cloud_download_outlined, size: 16),
+                  label: const Text('Mettre à jour depuis URL'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.teal[700],
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _handleUpdateFromUrl(context, vm),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -222,17 +258,22 @@ class _ServersViewState extends State<ServersView> {
                 ),
               if (!isDisconnected)
                 TextButton.icon(
-                  icon: const Icon(Icons.power_settings_new,
-                      size: 16, color: Colors.redAccent),
-                  label: const Text('Deconnecter',
-                      style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  icon: Icon(
+                    isConnecting ? Icons.close_rounded : Icons.power_settings_new,
+                    size: 16,
+                    color: Colors.redAccent,
+                  ),
+                  label: Text(
+                    isConnecting ? 'Annuler' : 'Deconnecter',
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                  ),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 6),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  onPressed: isConnecting ? null : () => vm.disconnectServer(),
+                  onPressed: () => vm.disconnectServer(),
                 ),
             ],
           ),
@@ -260,12 +301,79 @@ class _ServersViewState extends State<ServersView> {
     return '$v';
   }
 
+  // ── Error Banner ───────────────────────────────────────────────────────────
+
+  Widget _buildErrorBanner(BuildContext context, DownloadsViewModel vm) {
+    final error = vm.errorMessage ?? '';
+    final isPolicyError = error.toLowerCase().contains('policy') ||
+        error.toLowerCase().contains('networkprofile') ||
+        error.toLowerCase().contains('réseau');
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.statusFailed.withAlpha(30),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.statusFailed.withAlpha(120)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: AppTheme.statusFailed, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  error,
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500),
+                ),
+                if (isPolicyError) ...[
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Par défaut, Emule-Sion est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.',
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (isPolicyError) ...[
+            const SizedBox(width: 10),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => NetworkPolicyDialog(viewModel: vm),
+                );
+              },
+              child: const Text('Modifier le profil', style: TextStyle(fontSize: 11)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ── Safety Banner ──────────────────────────────────────────────────────────
 
-  Widget _buildSafetyBanner(BuildContext context, bool hasConnectionCap) {
+  Widget _buildSafetyBanner(
+      BuildContext context, DownloadsViewModel vm, bool hasConnectionCap) {
     final text = hasConnectionCap
-        ? 'Connexions eD2K disponibles. Verifiez le profil reseau avant de vous connecter. Les adresses dans votre filtre IP sont automatiquement signalee.'
-        : 'Avertissement Reseau : Importer ou gerer une liste de serveurs netablit aucune connexion reseau sortante. Les adresses figurant dans votre filtre IP actif sont automatiquement signalee.';
+        ? 'Connexions eD2K disponibles. Vérifiez votre profil réseau (LocalLab vs PublicEd2kPreview) avant de vous connecter. Les adresses dans votre filtre IP sont automatiquement signalées.'
+        : 'Avertissement Réseau : Importer ou gérer une liste de serveurs n\'établit aucune connexion réseau sortante. Les adresses figurant dans votre filtre IP actif sont automatiquement signalées.';
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 14, 20, 4),
@@ -285,6 +393,24 @@ class _ServersViewState extends State<ServersView> {
               style:
                   const TextStyle(fontSize: 12.5, color: Colors.white70, height: 1.3),
             ),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: Colors.blueAccent.withAlpha(120)),
+              foregroundColor: Colors.blueAccent,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(Icons.security_rounded, size: 14),
+            label: const Text('Sécurité / Profil', style: TextStyle(fontSize: 11)),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => NetworkPolicyDialog(viewModel: vm),
+              );
+            },
           ),
         ],
       ),
@@ -776,4 +902,82 @@ class _ServersViewState extends State<ServersView> {
       await vm.clearServers();
     }
   }
+
+  // ── Update From URL Dialog ─────────────────────────────────────────────────
+
+  Future<void> _handleUpdateFromUrl(
+      BuildContext context, DownloadsViewModel vm) async {
+    final urlController = TextEditingController(
+      text: 'http://upd.emule-security.org/server.met',
+    );
+
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.cloud_download_outlined, color: Colors.tealAccent),
+            SizedBox(width: 8),
+            Text('Mettre à jour depuis une URL'),
+          ],
+        ),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs :',
+                style: TextStyle(fontSize: 13, color: Colors.white70),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: urlController,
+                autofocus: true,
+                style: const TextStyle(fontSize: 13),
+                decoration: const InputDecoration(
+                  labelText: 'URL du server.met',
+                  hintText: 'http://upd.emule-security.org/server.met',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.link_rounded, size: 18),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Note : Les adresses IP de réseaux privés (LAN/RFC1918) et loopback sont rejetées par sécurité (anti-SSRF).',
+                style: TextStyle(fontSize: 11, color: Colors.white38),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Annuler'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.download_rounded, size: 16),
+            label: const Text('Télécharger et Mettre à jour'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.teal[700],
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              final text = urlController.text.trim();
+              if (text.isNotEmpty) {
+                Navigator.of(ctx).pop(text);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+
+    if (url == null || url.isEmpty) return;
+
+    if (!context.mounted) return;
+    await vm.updateServersFromUrl(url);
+  }
 }
+

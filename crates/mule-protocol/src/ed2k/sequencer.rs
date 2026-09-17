@@ -456,7 +456,12 @@ impl Ed2kDownloadSequencer {
 
 /// Safe in-memory byte sink for receiving, validating, and assembling transferred eD2K blocks.
 ///
-/// Guarantees:
+/// Maximum allowable in-memory sink allocation (512 MiB) to prevent OOM denial-of-service.
+pub const MAX_MEMORY_SINK_SIZE: u64 = 512 * 1024 * 1024;
+
+/// In-memory sink for assembled eD2K block data.
+///
+/// Invariants:
 /// - Exact pre-allocated buffer matching the total file size.
 /// - Validates every incoming block against the active `Ed2kDownloadSequencer`.
 /// - Rejects duplicate receptions of the same block range (`Ed2kSequencerError::DuplicateBlock`).
@@ -470,12 +475,33 @@ pub struct Ed2kBlockSink {
 
 impl Ed2kBlockSink {
     /// Creates a new zero-initialized `Ed2kBlockSink` for a given file size.
+    /// Panics if `file_size > MAX_MEMORY_SINK_SIZE`.
     pub fn new(file_size: u64) -> Self {
+        assert!(
+            file_size <= MAX_MEMORY_SINK_SIZE,
+            "file_size {} exceeds MAX_MEMORY_SINK_SIZE ({})",
+            file_size,
+            MAX_MEMORY_SINK_SIZE
+        );
         Self {
             file_size,
             buffer: vec![0u8; file_size as usize],
             received_ranges: Vec::new(),
         }
+    }
+
+    /// Safely attempts to create an `Ed2kBlockSink`, returning an error if `file_size` exceeds limit.
+    pub fn try_new(file_size: u64) -> Result<Self, String> {
+        if file_size > MAX_MEMORY_SINK_SIZE {
+            return Err(format!(
+                "Requested file size {file_size} exceeds in-memory sink maximum of {MAX_MEMORY_SINK_SIZE} bytes"
+            ));
+        }
+        Ok(Self {
+            file_size,
+            buffer: vec![0u8; file_size as usize],
+            received_ranges: Vec::new(),
+        })
     }
 
     /// Returns the total file size in bytes.

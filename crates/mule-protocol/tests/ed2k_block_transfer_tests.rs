@@ -40,7 +40,7 @@ async fn setup_nominal_client(peer_addr: SocketAddr) -> Ed2kLoopbackClient {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0x7F000001,
         4661,
@@ -302,7 +302,7 @@ async fn test_adversarial_sending_part_before_ready() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0x7F000001,
         4661,
@@ -610,7 +610,7 @@ fn dummy_peer_info() -> mule_protocol::ed2k::Ed2kPeerInfo {
     let hello = mule_protocol::ed2k::Ed2kHello {
         user_hash: [0x22; 16],
         client_id: 2,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -621,7 +621,7 @@ fn dummy_peer_info() -> mule_protocol::ed2k::Ed2kPeerInfo {
 
 #[test]
 fn test_request_bounds_and_limits_rejected() {
-    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 4662);
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 39735);
     // Move to ready state
     session.state = Ed2kSessionState::Ready {
         peer: dummy_peer_info(),
@@ -653,7 +653,7 @@ fn test_request_bounds_and_limits_rejected() {
 
 #[test]
 fn test_disconnect_cancels_all_in_flight_requests() {
-    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 4662);
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 1, 39735);
     session.state = Ed2kSessionState::Ready {
         peer: dummy_peer_info(),
     };

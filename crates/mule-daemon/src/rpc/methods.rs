@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::error::JsonRpcError;
-use crate::rpc::types::{JsonRpcRequest, JsonRpcResponse};
+use crate::rpc::types::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 use crate::state::AppState;
 
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -81,6 +81,7 @@ pub async fn handle_request(
         "servers.status" => handle_servers_status(state).await,
         "servers.search" => handle_servers_search(state, req.params).await,
         "servers.querySources" => handle_servers_query_sources(state, req.params).await,
+        "servers.updateFromUrl" => handle_servers_update_from_url(state, req.params).await,
         "sources.list" => handle_sources_list(state, req.params).await,
         "sources.addManual" => handle_sources_add_manual(state, req.params).await,
         "sources.connect" => handle_sources_connect(state, req.params).await,
@@ -101,6 +102,10 @@ pub async fn handle_request(
         "identity.rotate" => handle_identity_rotate(state).await,
         "credits.list" => handle_credits_list(state, req.params).await,
         "credits.stats" => handle_credits_stats(state).await,
+        "upnp.status" => handle_upnp_status(state).await,
+        "upnp.mapPorts" => handle_upnp_map_ports(state, req.params).await,
+        "upnp.unmapPorts" => handle_upnp_unmap_ports(state).await,
+        "upnp.setEnabled" => handle_upnp_set_enabled(state, req.params).await,
         "kad.status" => handle_kad_status(state).await,
         "kad.startUdp" => handle_kad_start_udp(state, req.params).await,
         "kad.stopUdp" => handle_kad_stop_udp(state).await,
@@ -111,6 +116,11 @@ pub async fn handle_request(
         "kad.importNodesDat" => handle_kad_import_nodes_dat(state, req.params).await,
         "kad.listContacts" => handle_kad_list_contacts(state, req.params).await,
         "kad.clearContacts" => handle_kad_clear_contacts(state).await,
+        "kad.searchSources" => handle_kad_search_sources(state, req.params).await,
+        "kad.publishSource" => handle_kad_publish_source(state, req.params).await,
+        "kad.searchKeywords" => handle_kad_search_keywords(state, req.params).await,
+        "kad.publishKeywords" => handle_kad_publish_keywords(state, req.params).await,
+        "kad.bootstrapFromUrl" => handle_kad_bootstrap_from_url(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
@@ -382,6 +392,28 @@ async fn handle_add_ed2k_link(
 
     state.broadcast_download_update(snapshot.clone());
 
+    // Trigger immediate source query from server and Kad
+    let file_info = {
+        state.downloads.lock().await.get_download_file_info(&snapshot.id)
+    };
+    if let Some((_, _, hash, size)) = file_info {
+        let hash_hex = hex::encode(hash.0);
+        if state.server_session.snapshot().await.status == crate::services::server_session::ServerConnectionStatus::Connected {
+            let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
+                hash.0,
+                size,
+                state.config.obfuscation_enabled,
+            );
+            let _ = state.server_session.get_sources(req).await;
+        }
+        if state.network_policy.profile().allows_udp_kad() {
+            let kad = state.kad.clone();
+            tokio::spawn(async move {
+                let _ = kad.search_sources(&hash_hex, size).await;
+            });
+        }
+    }
+
     Ok(json!({
         "downloadId": snapshot.id.to_string(),
         "status": snapshot.status
@@ -410,6 +442,28 @@ async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Value,
 
     let snapshot = state.downloads.lock().await.resume_download(&id)?;
     state.broadcast_download_update(snapshot.clone());
+
+    // Trigger immediate source query on resume
+    let file_info = {
+        state.downloads.lock().await.get_download_file_info(&snapshot.id)
+    };
+    if let Some((_, _, hash, size)) = file_info {
+        let hash_hex = hex::encode(hash.0);
+        if state.server_session.snapshot().await.status == crate::services::server_session::ServerConnectionStatus::Connected {
+            let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
+                hash.0,
+                size,
+                state.config.obfuscation_enabled,
+            );
+            let _ = state.server_session.get_sources(req).await;
+        }
+        if state.network_policy.profile().allows_udp_kad() {
+            let kad = state.kad.clone();
+            tokio::spawn(async move {
+                let _ = kad.search_sources(&hash_hex, size).await;
+            });
+        }
+    }
 
     Ok(serde_json::to_value(snapshot).unwrap_or_default())
 }
@@ -856,7 +910,7 @@ async fn handle_ed2k_probe_source(
         peer_addr,
         local_hash,
         0x7F000001,
-        4662,
+        39735,
         vec![
             mule_protocol::ed2k::Ed2kTag {
                 name: mule_protocol::ed2k::TagName::Id(mule_protocol::ed2k::TAG_SPECIAL_NAME),
@@ -954,9 +1008,9 @@ async fn handle_ed2k_start_download(
         .parse()
         .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid socket address: {e}")))?;
 
-    if !peer_addr.ip().is_loopback() {
+    if state.network_policy.profile().is_loopback_only() && !peer_addr.ip().is_loopback() {
         return Err(JsonRpcError::invalid_params(
-            "Non-loopback peer address is strictly forbidden in Phase 6.4",
+            "Non-loopback peer address is forbidden in LocalLab profile",
         ));
     }
 
@@ -1826,18 +1880,21 @@ async fn handle_servers_connect(
         .request_tcp_connect(addr, mule_network_policy::ConnectionPurpose::Ed2kServer)
         .map_err(|e| JsonRpcError::business(format!("Connection rejected by network policy: {e}")))?;
 
-    // Start session
+    let user_hash = state.identity.lock().await.user_hash();
+    let ed2k_port = state.config.ed2k_port;
+
+    // Start session with WAN-adapted timeouts (10s connect, 15s handshake)
     state
         .server_session
         .connect(
             addr,
             server_name,
             permit,
-            5000,
             10000,
-            4662,
-            "Emule-Sion".to_string(),
-            [0x3cu8; 16],
+            15000,
+            ed2k_port,
+            "http://emule-project.net".to_string(),
+            user_hash,
         )
         .await?;
 
@@ -1897,7 +1954,11 @@ async fn handle_servers_query_sources(
     let mut file_hash = [0u8; 16];
     file_hash.copy_from_slice(&raw_bytes);
 
-    let req = mule_protocol::ed2k::GetSourcesRequest::new(file_hash, file_size);
+    let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
+        file_hash,
+        file_size,
+        state.config.obfuscation_enabled,
+    );
     state.server_session.get_sources(req).await?;
     Ok(json!({ "sent": true }))
 }
@@ -1959,6 +2020,15 @@ async fn handle_sources_add_manual(
         .unwrap_or_default()
         .as_millis() as i64;
 
+    let user_hash_param = params["userHash"]
+        .as_str()
+        .or_else(|| params["user_hash"].as_str())
+        .map(|s| s.to_string());
+    let crypt_options_param = params["cryptOptions"]
+        .as_u64()
+        .or_else(|| params["crypt_options"].as_u64())
+        .unwrap_or(0) as u8;
+
     let source = mule_core::model::PeerSource {
         file_hash: hash_str.to_string(),
         address: address.to_string(),
@@ -1975,6 +2045,8 @@ async fn handle_sources_add_manual(
             None
         },
         cooldown_until_unix_ms: None,
+        user_hash: user_hash_param,
+        crypt_options: crypt_options_param,
     };
 
     state.downloads.lock().await.upsert_peer_sources(hash_str, std::slice::from_ref(&source))?;
@@ -1998,6 +2070,15 @@ async fn handle_sources_connect(
     let addr: std::net::SocketAddr = address.parse().map_err(|e| {
         JsonRpcError::invalid_params(&format!("Invalid socket address format '{address}': {e}"))
     })?;
+
+    let user_hash_param = params["userHash"]
+        .as_str()
+        .or_else(|| params["user_hash"].as_str())
+        .map(|s| s.to_string());
+    let crypt_options_param = params["cryptOptions"]
+        .as_u64()
+        .or_else(|| params["crypt_options"].as_u64())
+        .map(|v| v as u8);
 
     // Check if network is disabled (Kill Switch)
     if state.network_policy.state() == mule_network_policy::NetworkState::Disabled {
@@ -2027,6 +2108,8 @@ async fn handle_sources_connect(
             fail_count: 1,
             last_error: Some("Blocked by local IP filter".to_string()),
             cooldown_until_unix_ms: None,
+            user_hash: user_hash_param.clone(),
+            crypt_options: crypt_options_param.unwrap_or(0),
         };
         let mut dl_svc = state.downloads.lock().await;
         let _ = dl_svc.upsert_peer_sources(hash_str, &[filtered_src]);
@@ -2078,8 +2161,31 @@ async fn handle_sources_connect(
             fail_count: 0,
             last_error: None,
             cooldown_until_unix_ms: None,
+            user_hash: user_hash_param,
+            crypt_options: crypt_options_param.unwrap_or(0),
         };
         let _ = dl_svc.upsert_peer_sources(hash_str, &[init_src]);
+    }
+
+    // Look up target peer source capabilities from database
+    let (target_user_hash, peer_crypt_options) = {
+        let dl_svc = state.downloads.lock().await;
+        if let Ok(sources) = dl_svc.list_peer_sources(hash_str) {
+            if let Some(src) = sources.into_iter().find(|s| s.address == address) {
+                (src.user_hash_bytes(), src.crypt_options)
+            } else {
+                (None, 0)
+            }
+        } else {
+            (None, 0)
+        }
+    };
+
+    let peer_requires_crypt = (peer_crypt_options & 0x04) != 0;
+    if (state.config.obfuscation_required || peer_requires_crypt) && target_user_hash.is_none() {
+        return Err(JsonRpcError::business(
+            "Peer requires protocol obfuscation but its user hash is unknown",
+        ));
     }
 
     // Request TCP connect permit from NetworkPolicyManager
@@ -2088,6 +2194,32 @@ async fn handle_sources_connect(
         .request_tcp_connect(addr, mule_network_policy::ConnectionPurpose::Ed2kPeer)
         .map_err(|e| JsonRpcError::business(format!("Connection rejected by network policy: {e}")))?;
 
+    let client_port = state.config.ed2k_port;
+    let user_hash = state.identity.lock().await.user_hash();
+
+    let (client_id, server_ip, server_port) = {
+        let s_snap = state.server_session.snapshot().await;
+        if s_snap.status == crate::services::server_session::ServerConnectionStatus::Connected {
+            let cid = s_snap.client_id.unwrap_or(0);
+            let (s_ip, s_port) = if let Some(addr_str) = s_snap.server_address.as_deref() {
+                if let Ok(sa) = addr_str.parse::<std::net::SocketAddr>() {
+                    let ip_u32 = match sa.ip() {
+                        std::net::IpAddr::V4(v4) => u32::from_le_bytes(v4.octets()),
+                        _ => 0,
+                    };
+                    (ip_u32, sa.port())
+                } else {
+                    (0, 0)
+                }
+            } else {
+                (0, 0)
+            };
+            (cid, s_ip, s_port)
+        } else {
+            (0, 0, 0)
+        }
+    };
+
     // Start single controlled peer session
     state
         .peer_session
@@ -2095,10 +2227,19 @@ async fn handle_sources_connect(
             hash_str,
             addr,
             permit,
-            4662,
+            client_port,
             "Emule-Sion".to_string(),
-            [0x3cu8; 16],
+            user_hash,
             std::sync::Arc::clone(&state.downloads),
+            client_id,
+            server_ip,
+            server_port,
+            state.config.kad_port,
+            target_user_hash,
+            peer_crypt_options,
+            state.config.obfuscation_enabled,
+            state.config.obfuscation_required,
+            state.config.obfuscation_padding_max,
         )
         .await?;
 
@@ -2228,9 +2369,17 @@ async fn handle_listener_start(
     let port = params
         .as_ref()
         .and_then(|p| p["port"].as_u64())
-        .unwrap_or(4662) as u16;
+        .unwrap_or(39735) as u16;
 
-    let bind_addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let bind_ip = params
+        .as_ref()
+        .and_then(|p| p["bindIp"].as_str())
+        .unwrap_or("127.0.0.1");
+
+    let bind_addr: std::net::SocketAddr = format!("{bind_ip}:{port}")
+        .parse()
+        .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid bind address: {e}")))?;
+
     let actual_addr = state
         .inbound_listener
         .start(bind_addr)
@@ -2458,10 +2607,15 @@ async fn handle_kad_start_udp(
     state: &AppState,
     params: Option<Value>,
 ) -> Result<Value, JsonRpcError> {
+    let default_bind = if state.network_policy.profile().is_loopback_only() {
+        "127.0.0.1:39737"
+    } else {
+        "0.0.0.0:39737"
+    };
     let bind_addr_str = params
         .as_ref()
         .and_then(|p| p["bindAddress"].as_str())
-        .unwrap_or("127.0.0.1:4672");
+        .unwrap_or(default_bind);
 
     let addr: std::net::SocketAddr = bind_addr_str
         .parse()
@@ -2576,6 +2730,329 @@ async fn handle_kad_find_node(
     Ok(json!({
         "contacts": contacts,
         "count": contacts.len(),
+        "status": status,
+    }))
+}
+
+async fn handle_kad_search_sources(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+    let file_size = params["fileSize"].as_u64().unwrap_or(0);
+
+    let sources = state
+        .kad
+        .search_sources(file_hash, file_size)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    Ok(json!({
+        "fileHash": file_hash,
+        "sources": sources,
+        "count": sources.len(),
+    }))
+}
+
+async fn handle_kad_publish_source(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+    let file_size = params["fileSize"]
+        .as_u64()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileSize' parameter"))?;
+    let tcp_port = params["tcpPort"].as_u64().unwrap_or(39735) as u16;
+
+    let published_count = state
+        .kad
+        .publish_source(file_hash, file_size, tcp_port)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    Ok(json!({
+        "fileHash": file_hash,
+        "publishedCount": published_count,
+    }))
+}
+
+async fn handle_kad_search_keywords(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let term = params["term"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'term' parameter"))?;
+    let min_size = params["minSize"].as_u64();
+    let max_size = params["maxSize"].as_u64();
+
+    let results = state
+        .kad
+        .search_keywords(term, min_size, max_size)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    Ok(json!({
+        "term": term,
+        "results": results,
+        "count": results.len(),
+    }))
+}
+
+async fn handle_kad_publish_keywords(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+    let file_name = params["fileName"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileName' parameter"))?;
+    let file_size = params["fileSize"]
+        .as_u64()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileSize' parameter"))?;
+
+    let published_count = state
+        .kad
+        .publish_keyword(file_hash, file_name, file_size)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    Ok(json!({
+        "fileHash": file_hash,
+        "fileName": file_name,
+        "publishedCount": published_count,
+    }))
+}
+
+async fn handle_upnp_status(state: &AppState) -> Result<Value, JsonRpcError> {
+    let snap = state.upnp.snapshot().await;
+    Ok(serde_json::to_value(snap).unwrap_or_default())
+}
+
+async fn handle_upnp_map_ports(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let snap = state.upnp.snapshot().await;
+    let tcp_port = params
+        .as_ref()
+        .and_then(|p| p["tcpPort"].as_u64())
+        .map(|p| p as u16)
+        .unwrap_or(snap.tcp_port);
+    let udp_port = params
+        .as_ref()
+        .and_then(|p| p["udpPort"].as_u64())
+        .map(|p| p as u16)
+        .unwrap_or(snap.udp_port);
+
+    if tcp_port < 1024 || udp_port < 1024 {
+        return Err(JsonRpcError::invalid_params("Privileged ports (< 1024) are not allowed for UPnP mapping"));
+    }
+
+    let _ = state.upnp.map_ports(tcp_port, udp_port).await;
+    let updated_snap = state.upnp.snapshot().await;
+
+    let notif = JsonRpcNotification::new(
+        "upnp.statusChanged",
+        serde_json::to_value(&updated_snap).unwrap_or_default(),
+    );
+    if let Ok(json) = serde_json::to_string(&notif) {
+        let _ = state.event_tx.send(json);
+    }
+
+    Ok(serde_json::to_value(updated_snap).unwrap_or_default())
+}
+
+async fn handle_upnp_unmap_ports(state: &AppState) -> Result<Value, JsonRpcError> {
+    let _ = state.upnp.unmap_ports().await;
+    let snap = state.upnp.snapshot().await;
+
+    let notif = JsonRpcNotification::new(
+        "upnp.statusChanged",
+        serde_json::to_value(&snap).unwrap_or_default(),
+    );
+    if let Ok(json) = serde_json::to_string(&notif) {
+        let _ = state.event_tx.send(json);
+    }
+
+    Ok(serde_json::to_value(snap).unwrap_or_default())
+}
+
+async fn handle_upnp_set_enabled(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let enabled = params["enabled"]
+        .as_bool()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'enabled' boolean parameter"))?;
+
+    state.upnp.set_enabled(enabled).await;
+    if !enabled {
+        let _ = state.upnp.unmap_ports().await;
+    }
+    let snap = state.upnp.snapshot().await;
+
+    let notif = JsonRpcNotification::new(
+        "upnp.statusChanged",
+        serde_json::to_value(&snap).unwrap_or_default(),
+    );
+    if let Ok(json) = serde_json::to_string(&notif) {
+        let _ = state.event_tx.send(json);
+    }
+
+    Ok(serde_json::to_value(snap).unwrap_or_default())
+}
+
+async fn handle_servers_update_from_url(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let url = params["url"]
+        .as_str()
+        .unwrap_or("http://upd.emule-security.org/server.met");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| JsonRpcError::business(format!("HTTP client build error: {e}")))?;
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| JsonRpcError::business(format!("Failed to fetch server.met from {url}: {e}")))?;
+
+    if !response.status().is_success() {
+        return Err(JsonRpcError::business(format!(
+            "HTTP request to {url} returned status {}",
+            response.status()
+        )));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| JsonRpcError::business(format!("Failed to read response body: {e}")))?;
+
+    let mut cursor = std::io::Cursor::new(&bytes);
+    let parsed = mule_format::ServerMetFile::read_from(&mut cursor)
+        .map_err(|e| JsonRpcError::business(format!("Failed to parse server.met: {e}")))?;
+
+    let ip_filter = state.network_policy.ip_filter();
+    let filter_active = ip_filter.is_enabled();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
+    let mut allowed_count = 0;
+    let mut blocked_count = 0;
+    let mut to_upsert = Vec::with_capacity(parsed.servers.len());
+
+    for s in parsed.servers {
+        let is_blocked = filter_active && ip_filter.check_ip(std::net::IpAddr::V4(s.ip)).is_some();
+        let filter_status = if is_blocked {
+            blocked_count += 1;
+            mule_core::model::ServerFilterStatus::BlockedByFilter
+        } else {
+            allowed_count += 1;
+            mule_core::model::ServerFilterStatus::Allowed
+        };
+
+        to_upsert.push(mule_core::model::Ed2kServer {
+            address: format!("{}:{}", s.ip, s.port),
+            ip: s.ip.to_string(),
+            port: s.port,
+            name: s.name,
+            description: s.description,
+            ping: s.ping,
+            preference: s.preference,
+            failed_count: s.failed_count,
+            dyn_ip: s.dyn_ip,
+            version: s.version,
+            filter_status,
+            last_seen_unix_ms: None,
+            created_at_unix_ms: now,
+            updated_at_unix_ms: now,
+        });
+    }
+
+    let total = to_upsert.len();
+    let mut dl = state.downloads.lock().await;
+    let imported = dl
+        .upsert_servers(&to_upsert)
+        .map_err(|e| JsonRpcError::business(format!("Database error saving servers: {e}")))?;
+
+    Ok(json!({
+        "url": url,
+        "totalCount": total,
+        "imported": imported,
+        "allowedCount": allowed_count,
+        "blockedCount": blocked_count,
+    }))
+}
+
+async fn handle_kad_bootstrap_from_url(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
+    let url = params["url"]
+        .as_str()
+        .unwrap_or("http://upd.emule-security.org/nodes.dat");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| JsonRpcError::business(format!("HTTP client build error: {e}")))?;
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| JsonRpcError::business(format!("Failed to fetch nodes.dat from {url}: {e}")))?;
+
+    if !response.status().is_success() {
+        return Err(JsonRpcError::business(format!(
+            "HTTP request to {url} returned status {}",
+            response.status()
+        )));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| JsonRpcError::business(format!("Failed to read response body: {e}")))?;
+
+    let imported_count = state
+        .kad
+        .import_nodes_dat(&bytes)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    // Spawn background bootstrap across seed contacts to discover active live neighbors
+    let kad_clone = state.kad.clone();
+    tokio::spawn(async move {
+        kad_clone.bootstrap_active_contacts(15).await;
+    });
+
+    let status = state.kad.get_status().await;
+
+    Ok(json!({
+        "url": url,
+        "importedCount": imported_count,
         "status": status,
     }))
 }

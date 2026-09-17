@@ -30,74 +30,93 @@ class DownloadsScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: viewModel,
       builder: (context, _) {
-        return Scaffold(
-          backgroundColor: AppTheme.darkBackground,
-          body: Row(
-            children: [
-              // Left Navigation Sidebar
-              DownloadsSidebar(viewModel: viewModel),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = constraints.maxWidth < 750;
+            final isMedium = constraints.maxWidth >= 750 && constraints.maxWidth < 1100;
 
-              // Right Workspace Area
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Incompatible protocol banner if any
-                    if (viewModel.protocolMismatchError != null)
-                      IncompatibleVersionBanner(
-                        errorMessage: viewModel.protocolMismatchError!,
-                        onRetry: () => viewModel.supervisor?.start(),
+            return Scaffold(
+              backgroundColor: AppTheme.darkBackground,
+              drawer: isSmall
+                  ? Drawer(
+                      backgroundColor: AppTheme.darkSurface,
+                      child: SafeArea(
+                        child: DownloadsSidebar(viewModel: viewModel, isCompact: false),
                       ),
+                    )
+                  : null,
+              body: Row(
+                children: [
+                  // Left Navigation Sidebar (Hidden on small screen, compact on medium, full on large)
+                  if (!isSmall)
+                    DownloadsSidebar(
+                      viewModel: viewModel,
+                      isCompact: isMedium,
+                    ),
 
-                    // Status Notification banner if any
-                    if (viewModel.statusNotification != null)
-                      _buildStatusNotificationBanner(context, viewModel.statusNotification!),
+                  // Right Workspace Area
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Incompatible protocol banner if any
+                        if (viewModel.protocolMismatchError != null)
+                          IncompatibleVersionBanner(
+                            errorMessage: viewModel.protocolMismatchError!,
+                            onRetry: () => viewModel.supervisor?.start(),
+                          ),
 
-                    // Main Workspace Area
-                    if (viewModel.currentSection == AppNavSection.history) ...[
-                      Expanded(
-                        child: HistoryView(viewModel: viewModel),
-                      ),
-                    ] else if (viewModel.currentSection == AppNavSection.servers) ...[
-                      Expanded(
-                        child: ServersView(viewModel: viewModel),
-                      ),
-                    ] else if (viewModel.currentSection == AppNavSection.search) ...[
-                      Expanded(
-                        child: SearchView(viewModel: viewModel),
-                      ),
-                    ] else if (viewModel.currentSection == AppNavSection.kad) ...[
-                      Expanded(
-                        child: KadView(viewModel: viewModel),
-                      ),
-                    ] else ...[
-                      // Top Navigation / Actions Bar
-                      _buildTopBar(context),
+                        // Status Notification banner if any
+                        if (viewModel.statusNotification != null)
+                          _buildStatusNotificationBanner(context, viewModel.statusNotification!),
 
-                      // Main Content: Downloads Table or Empty State
-                      Expanded(
-                        child: _buildDownloadsArea(context),
-                      ),
+                        // Main Workspace Area
+                        if (viewModel.currentSection == AppNavSection.history) ...[
+                          Expanded(
+                            child: HistoryView(viewModel: viewModel),
+                          ),
+                        ] else if (viewModel.currentSection == AppNavSection.servers) ...[
+                          Expanded(
+                            child: ServersView(viewModel: viewModel),
+                          ),
+                        ] else if (viewModel.currentSection == AppNavSection.search) ...[
+                          Expanded(
+                            child: SearchView(viewModel: viewModel),
+                          ),
+                        ] else if (viewModel.currentSection == AppNavSection.kad) ...[
+                          Expanded(
+                            child: KadView(viewModel: viewModel),
+                          ),
+                        ] else ...[
+                          // Top Navigation / Actions Bar
+                          _buildTopBar(context, isSmall: isSmall),
 
-                      // Selected item details panel (collapsible)
-                      if (viewModel.selectedDownload != null)
-                        _buildDetailsPanel(context, viewModel.selectedDownload!),
-                    ],
+                          // Main Content: Downloads Table or Empty State
+                          Expanded(
+                            child: _buildDownloadsArea(context),
+                          ),
 
-                    // Optional Debug Bar
-                    if (viewModel.isDebugBarVisible)
-                      DebugSimulationBar(viewModel: viewModel),
-                  ],
-                ),
+                          // Selected item details panel (collapsible)
+                          if (viewModel.selectedDownload != null)
+                            _buildDetailsPanel(context, viewModel.selectedDownload!, isSmall: isSmall),
+                        ],
+
+                        // Optional Debug Bar
+                        if (viewModel.isDebugBarVisible)
+                          DebugSimulationBar(viewModel: viewModel),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildTopBar(BuildContext context) {
+  Widget _buildTopBar(BuildContext context, {bool isSmall = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
@@ -108,16 +127,29 @@ class DownloadsScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Drawer opener button if on small screen
+          if (isSmall) ...[
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu_rounded, color: Colors.white70),
+                tooltip: 'Ouvrir le menu de navigation',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           // Filter title
-          Text(
-            viewModel.currentFilter.label,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(width: 16),
+          if (!isSmall) ...[
+            Text(
+              viewModel.currentFilter.label,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 16),
+          ],
 
           // Search Field
           SizedBox(
-            width: 180,
+            width: isSmall ? 130 : 180,
             height: 36,
             child: TextField(
               onChanged: viewModel.setSearchQuery,
@@ -419,20 +451,35 @@ class DownloadsScreen extends StatelessWidget {
           const SizedBox(width: 6),
 
           // Add Link Button
-          FilledButton.icon(
-            icon: const Icon(Icons.add_rounded, size: 16),
-            label: const Text(AppStrings.btnAddLink),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          if (isSmall)
+            IconButton.filled(
+              icon: const Icon(Icons.add_rounded, size: 18),
+              tooltip: AppStrings.btnAddLink,
+              style: IconButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+              ),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AddLinkDialog(viewModel: viewModel),
+                );
+              },
+            )
+          else
+            FilledButton.icon(
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text(AppStrings.btnAddLink),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AddLinkDialog(viewModel: viewModel),
+                );
+              },
             ),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AddLinkDialog(viewModel: viewModel),
-              );
-            },
-          ),
           ],
         ),
       ),
@@ -550,7 +597,7 @@ class DownloadsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailsPanel(BuildContext context, DownloadItem item) {
+  Widget _buildDetailsPanel(BuildContext context, DownloadItem item, {bool isSmall = false}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -573,24 +620,42 @@ class DownloadsScreen extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                label: const Text('Inspect Full Details', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primary,
-                  side: const BorderSide(color: AppTheme.primary, width: 0.8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              if (isSmall)
+                IconButton(
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  tooltip: 'Inspect Full Details',
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                  ),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => DownloadDetailDialog(
+                        downloadId: item.id,
+                        viewModel: viewModel,
+                      ),
+                    );
+                  },
+                )
+              else
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                  label: const Text('Inspect Full Details', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.primary, width: 0.8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => DownloadDetailDialog(
+                        downloadId: item.id,
+                        viewModel: viewModel,
+                      ),
+                    );
+                  },
                 ),
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => DownloadDetailDialog(
-                      downloadId: item.id,
-                      viewModel: viewModel,
-                    ),
-                  );
-                },
-              ),
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.close, size: 16, color: Colors.white54),

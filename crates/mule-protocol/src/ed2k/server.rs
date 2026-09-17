@@ -9,13 +9,16 @@ use super::encoder::Ed2kEncoder;
 use super::error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
-    OP_FOUNDSOURCES, OP_GETSOURCES, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST,
-    OP_SEARCH_RESULT, OP_SERVERIDENT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
+    OP_FOUNDSOURCES, OP_FOUNDSOURCES_OBFU, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST,
+    OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SERVERIDENT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
+    OP_SERVERSTATUS_LEGACY,
 };
 use super::protocol::PR_ED2K;
 use super::tags::{
-    Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE,
-    TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+    Ed2kTag, RawTag, TagName, TagReader, TagValue, SRVCAP_LARGEFILES, SRVCAP_NEWTAGS,
+    SRVCAP_UNICODE, TAG_SPECIAL_CT_EMULE_VERSION, TAG_SPECIAL_EMULE_MISCOPTIONS1,
+    TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE, TAG_SPECIAL_NAME,
+    TAG_SPECIAL_SERVER_FLAGS, TAG_SPECIAL_VERSION,
 };
 use crate::framing::RawPacket;
 
@@ -33,8 +36,15 @@ pub struct ServerLoginRequest {
 }
 
 impl ServerLoginRequest {
-    /// Creates a new default login request with user hash, port, and standard nickname and version tags.
+    /// Creates a new default login request with user hash, port, and standard modern nickname and version tags (eMule 0.60d compatible).
     pub fn new(user_hash: [u8; 16], tcp_port: u16, nickname: &str, version: u32) -> Self {
+        // eMule 0.60d version encodings:
+        // Packed integer: (major << 17) | (minor << 10) | (update << 7)
+        // 0.60d => major=0, minor=60, update=4 ('d')
+        let emule_ver_packed: u32 = (0 << 17) | (60 << 10) | (4 << 7);
+        // Extended format: (vMajor << 24) | (vMinor << 17) | (vUpdate)
+        let emule_ver_ext: u32 = (0x3c << 24) | (60 << 17) | 4;
+
         let tags = vec![
             Ed2kTag {
                 name: TagName::Id(TAG_SPECIAL_NAME),
@@ -43,6 +53,22 @@ impl ServerLoginRequest {
             Ed2kTag {
                 name: TagName::Id(TAG_SPECIAL_VERSION),
                 value: TagValue::UInt32(version),
+            },
+            Ed2kTag {
+                name: TagName::Id(TAG_SPECIAL_SERVER_FLAGS),
+                value: TagValue::UInt32(SRVCAP_NEWTAGS | SRVCAP_UNICODE | SRVCAP_LARGEFILES),
+            },
+            Ed2kTag {
+                name: TagName::Id(TAG_SPECIAL_EMULE_VERSION),
+                value: TagValue::UInt32(emule_ver_ext),
+            },
+            Ed2kTag {
+                name: TagName::Id(TAG_SPECIAL_CT_EMULE_VERSION),
+                value: TagValue::UInt32(emule_ver_packed),
+            },
+            Ed2kTag {
+                name: TagName::Id(TAG_SPECIAL_EMULE_MISCOPTIONS1),
+                value: TagValue::UInt32(0x01), // Support extended requests
             },
         ];
         Self {
@@ -157,6 +183,8 @@ pub enum ServerResponse {
     SearchResult(SearchResult),
     /// Sources returned by server for a requested file hash.
     FoundSources(FoundSources),
+    /// Sources returned by server with obfuscation metadata (OP_FOUNDSOURCES_OBFU).
+    FoundSourcesObfu(FoundSourcesObfu),
     /// Other unparsed packet.
     Other {
         /// Opcode of unparsed packet.
@@ -321,26 +349,43 @@ pub struct SearchResult {
     pub files: Vec<SearchResultFile>,
 }
 
-/// Request to find sources for a specific file (`OP_GETSOURCES` = `0x19`).
+/// Request to find sources for a specific file (`OP_GETSOURCES` = `0x19` or `OP_GETSOURCES_OBFU` = `0x23`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GetSourcesRequest {
     /// 16-byte MD4 file hash.
     pub file_hash: [u8; 16],
     /// File size in bytes.
     pub file_size: u64,
+    /// Whether to request sources with obfuscation parameters (`OP_GETSOURCES_OBFU` = `0x23`).
+    pub obfuscation: bool,
 }
 
 impl GetSourcesRequest {
-    /// Creates a new GetSourcesRequest.
+    /// Creates a new GetSourcesRequest (legacy plaintext OP_GETSOURCES = 0x19).
     pub fn new(file_hash: [u8; 16], file_size: u64) -> Self {
         Self {
             file_hash,
             file_size,
+            obfuscation: false,
+        }
+    }
+
+    /// Creates a new GetSourcesRequest with obfuscation toggle (0x23 if true, 0x19 if false).
+    pub fn with_obfuscation(file_hash: [u8; 16], file_size: u64, obfuscation: bool) -> Self {
+        Self {
+            file_hash,
+            file_size,
+            obfuscation,
         }
     }
 
     /// Encodes the request into a `RawPacket`.
     pub fn encode(&self, limits: &Ed2kLimits) -> Result<RawPacket, Ed2kEncodeError> {
+        let opcode = if self.obfuscation {
+            OP_GETSOURCES_OBFU
+        } else {
+            OP_GETSOURCES
+        };
         let mut buf = Vec::with_capacity(24);
         buf.extend_from_slice(&self.file_hash);
 
@@ -355,7 +400,7 @@ impl GetSourcesRequest {
         let payload_len = buf.len() + 1;
         if payload_len > limits.max_frame_bytes {
             return Err(Ed2kEncodeError::new(
-                OP_GETSOURCES,
+                opcode,
                 "get_sources",
                 Ed2kErrorKind::FrameTooLarge {
                     size: payload_len,
@@ -364,7 +409,7 @@ impl GetSourcesRequest {
             ));
         }
 
-        Ok(RawPacket::with_vec(PR_ED2K, OP_GETSOURCES, buf))
+        Ok(RawPacket::with_vec(PR_ED2K, opcode, buf))
     }
 }
 
@@ -395,6 +440,57 @@ pub struct FoundSources {
     pub file_hash: [u8; 16],
     /// Sources list.
     pub sources: Vec<FoundSourcePeer>,
+}
+
+/// A peer source entry with obfuscation flags and optional UserHash (`OP_FOUNDSOURCES_OBFU` = `0x44`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoundSourcePeerObfu {
+    /// IPv4 address in network byte order / host integer.
+    pub ip: u32,
+    /// Port number.
+    pub port: u16,
+    /// Obfuscation settings byte.
+    pub obf_settings: u8,
+    /// Optional 16-byte user hash (present if obf_settings & 0x80 != 0).
+    pub user_hash: Option<[u8; 16]>,
+}
+
+impl FoundSourcePeerObfu {
+    /// Converts the source address to "A.B.C.D:port" string format.
+    pub fn to_address_string(&self) -> String {
+        let bytes = self.ip.to_le_bytes();
+        format!(
+            "{}.{}.{}.{}:{}",
+            bytes[0], bytes[1], bytes[2], bytes[3], self.port
+        )
+    }
+
+    /// Whether this peer supports protocol obfuscation (bit 0).
+    #[inline]
+    pub fn supports_crypt(&self) -> bool {
+        (self.obf_settings & 0x01) != 0
+    }
+
+    /// Whether this peer requests protocol obfuscation (bit 1).
+    #[inline]
+    pub fn requests_crypt(&self) -> bool {
+        (self.obf_settings & 0x02) != 0
+    }
+
+    /// Whether this peer strictly requires protocol obfuscation (bit 2).
+    #[inline]
+    pub fn requires_crypt(&self) -> bool {
+        (self.obf_settings & 0x04) != 0
+    }
+}
+
+/// Found sources response with obfuscation from server (`OP_FOUNDSOURCES_OBFU` = `0x44`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FoundSourcesObfu {
+    /// 16-byte MD4 file hash.
+    pub file_hash: [u8; 16],
+    /// Sources list with obfuscation parameters.
+    pub sources: Vec<FoundSourcePeerObfu>,
 }
 
 /// Decodes a server packet payload given its opcode and protocol.
@@ -432,7 +528,7 @@ pub fn decode_server_response(
             }))
         }
 
-        OP_SERVERSTATUS => {
+        OP_SERVERSTATUS | OP_SERVERSTATUS_LEGACY => {
             let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
             let current_users = reader.read_u32_le("server_current_users")?;
             let current_files = reader.read_u32_le("server_current_files")?;
@@ -553,6 +649,35 @@ pub fn decode_server_response(
             }
 
             Ok(ServerResponse::FoundSources(FoundSources {
+                file_hash,
+                sources,
+            }))
+        }
+
+        OP_FOUNDSOURCES_OBFU => {
+            let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
+            let file_hash = reader.read_hash("file_hash")?;
+            let count = reader.read_u8("sources_count")? as usize;
+
+            let mut sources = Vec::with_capacity(count);
+            for _ in 0..count {
+                let ip = reader.read_u32_le("source_ip")?;
+                let port = reader.read_u16_le("source_port")?;
+                let obf_settings = reader.read_u8("obf_settings")?;
+                let user_hash = if (obf_settings & 0x80) != 0 {
+                    Some(reader.read_hash("source_user_hash")?)
+                } else {
+                    None
+                };
+                sources.push(FoundSourcePeerObfu {
+                    ip,
+                    port,
+                    obf_settings,
+                    user_hash,
+                });
+            }
+
+            Ok(ServerResponse::FoundSourcesObfu(FoundSourcesObfu {
                 file_hash,
                 sources,
             }))

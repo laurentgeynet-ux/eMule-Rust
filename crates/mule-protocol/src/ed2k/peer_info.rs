@@ -168,4 +168,19 @@ impl Ed2kPeerInfo {
             .as_ref()
             .is_some_and(|info| info.has_source_exchange_capability())
     }
+
+    /// Returns true if this peer supports protocol obfuscation (bit 7 of misc_options2).
+    pub fn supports_crypt_layer(&self) -> bool {
+        self.misc_options2.map(|m| (m & (1 << 7)) != 0).unwrap_or(false)
+    }
+
+    /// Returns true if this peer requests protocol obfuscation (bit 8 of misc_options2).
+    pub fn requests_crypt_layer(&self) -> bool {
+        self.misc_options2.map(|m| (m & (1 << 8)) != 0).unwrap_or(false)
+    }
+
+    /// Returns true if this peer strictly requires protocol obfuscation (bit 9 of misc_options2).
+    pub fn requires_crypt_layer(&self) -> bool {
+        self.misc_options2.map(|m| (m & (1 << 9)) != 0).unwrap_or(false)
+    }
 }

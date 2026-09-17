@@ -197,7 +197,7 @@ async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
         "method": "ed2k.probeSource",
         "params": {
             "downloadId": download_id,
-            "peerAddr": "198.51.100.1:4662"
+            "peerAddr": "198.51.100.1:39735"
         }
     });
     write

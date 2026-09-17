@@ -3,10 +3,7 @@ use std::net::Ipv4Addr;
 use crate::error::FormatError;
 use crate::met::error::MetError;
 use crate::met::reader::CountingReader;
-use crate::met::tags::{
-    Tag, TagValue, TAGTYPE_BLOB, TAGTYPE_BOOL, TAGTYPE_BSOB, TAGTYPE_FLOAT32, TAGTYPE_HASH16,
-    TAGTYPE_STRING, TAGTYPE_UINT16, TAGTYPE_UINT32, TAGTYPE_UINT64, TAGTYPE_UINT8,
-};
+use crate::met::tags::Tag;
 
 /// Maximum size allowed for a nodes.dat file to prevent DoS (5 MiB).
 pub const MAX_NODES_DAT_SIZE: usize = 5 * 1024 * 1024;
@@ -22,6 +19,8 @@ pub struct KadContactEntry {
     pub udp_port: u16,
     pub tcp_port: u16,
     pub version: u8,
+    pub kad_udp_key: Option<(u32, u32)>,
+    pub verified: bool,
     pub tags: Vec<Tag>,
 }
 
@@ -39,8 +38,20 @@ impl KadContactEntry {
             udp_port,
             tcp_port,
             version,
+            kad_udp_key: None,
+            verified: false,
             tags: Vec::new(),
         }
+    }
+
+    pub fn with_kad_udp_key(mut self, key: u32, ip: u32) -> Self {
+        self.kad_udp_key = Some((key, ip));
+        self
+    }
+
+    pub fn with_verified(mut self, verified: bool) -> Self {
+        self.verified = verified;
+        self
     }
 }
 
@@ -100,24 +111,14 @@ impl NodesDatFile {
                 0
             };
 
-            let mut tags = Vec::new();
-            if file_version >= 2 {
-                if let Ok(tag_count) = cr.read_u32_le("node tag count") {
-                    let tag_count = tag_count as usize;
-                    if tag_count > MAX_TAGS_PER_NODE {
-                        return Err(FormatError::Met(MetError::InvalidLength {
-                            offset: cr.offset(),
-                            declared: tag_count as u64,
-                            maximum: MAX_TAGS_PER_NODE as u64,
-                            context: "node tag count",
-                        }));
-                    }
-                    for _ in 0..tag_count {
-                        let tag = cr.read_tag()?;
-                        tags.push(tag);
-                    }
-                }
-            }
+            let (kad_udp_key, verified) = if file_version >= 2 {
+                let key = cr.read_u32_le("node kad_udp_key")?;
+                let ip_key = cr.read_u32_le("node kad_udp_ip")?;
+                let verified_byte = cr.read_u8("node verified")?;
+                (Some((key, ip_key)), verified_byte != 0)
+            } else {
+                (None, false)
+            };
 
             contacts.push(KadContactEntry {
                 client_id,
@@ -125,7 +126,9 @@ impl NodesDatFile {
                 udp_port,
                 tcp_port,
                 version,
-                tags,
+                kad_udp_key,
+                verified,
+                tags: Vec::new(),
             });
         }
 
@@ -169,10 +172,10 @@ impl NodesDatFile {
             }
 
             if self.version >= 2 {
-                writer.write_all(&(contact.tags.len() as u32).to_le_bytes())?;
-                for tag in &contact.tags {
-                    write_tag(&mut writer, tag)?;
-                }
+                let (key, ip_key) = contact.kad_udp_key.unwrap_or((0, 0));
+                writer.write_all(&key.to_le_bytes())?;
+                writer.write_all(&ip_key.to_le_bytes())?;
+                writer.write_all(&[if contact.verified { 1 } else { 0 }])?;
             }
         }
 
@@ -181,106 +184,4 @@ impl NodesDatFile {
     }
 }
 
-fn write_tag<W: Write>(writer: &mut W, tag: &Tag) -> Result<(), FormatError> {
-    match &tag.value {
-        TagValue::String(s) => {
-            if tag.name_id != 0 {
-                writer.write_all(&[TAGTYPE_STRING | 0x80])?;
-                writer.write_all(&[tag.name_id])?;
-            } else {
-                writer.write_all(&[TAGTYPE_STRING])?;
-                let name_bytes = tag.name.as_bytes();
-                writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?;
-                writer.write_all(name_bytes)?;
-            }
-            let s_bytes = s.as_bytes();
-            writer.write_all(&(s_bytes.len() as u16).to_le_bytes())?;
-            writer.write_all(s_bytes)?;
-        }
-        TagValue::Uint64(v) => {
-            let (raw_type, val_bytes): (u8, Vec<u8>) = if *v <= u8::MAX as u64 {
-                (TAGTYPE_UINT8, vec![*v as u8])
-            } else if *v <= u16::MAX as u64 {
-                (TAGTYPE_UINT16, (*v as u16).to_le_bytes().to_vec())
-            } else if *v <= u32::MAX as u64 {
-                (TAGTYPE_UINT32, (*v as u32).to_le_bytes().to_vec())
-            } else {
-                (TAGTYPE_UINT64, v.to_le_bytes().to_vec())
-            };
 
-            if tag.name_id != 0 {
-                writer.write_all(&[raw_type | 0x80])?;
-                writer.write_all(&[tag.name_id])?;
-            } else {
-                writer.write_all(&[raw_type])?;
-                let name_bytes = tag.name.as_bytes();
-                writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?;
-                writer.write_all(name_bytes)?;
-            }
-            writer.write_all(&val_bytes)?;
-        }
-        TagValue::Float32(f) => {
-            if tag.name_id != 0 {
-                writer.write_all(&[TAGTYPE_FLOAT32 | 0x80])?;
-                writer.write_all(&[tag.name_id])?;
-            } else {
-                writer.write_all(&[TAGTYPE_FLOAT32])?;
-                let name_bytes = tag.name.as_bytes();
-                writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?;
-                writer.write_all(name_bytes)?;
-            }
-            writer.write_all(&f.to_le_bytes())?;
-        }
-        TagValue::Bool(b) => {
-            if tag.name_id != 0 {
-                writer.write_all(&[TAGTYPE_BOOL | 0x80])?;
-                writer.write_all(&[tag.name_id])?;
-            } else {
-                writer.write_all(&[TAGTYPE_BOOL])?;
-                let name_bytes = tag.name.as_bytes();
-                writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?;
-                writer.write_all(name_bytes)?;
-            }
-            writer.write_all(&[if *b { 1 } else { 0 }])?;
-        }
-        TagValue::Hash16(h) => {
-            if tag.name_id != 0 {
-                writer.write_all(&[TAGTYPE_HASH16 | 0x80])?;
-                writer.write_all(&[tag.name_id])?;
-            } else {
-                writer.write_all(&[TAGTYPE_HASH16])?;
-                let name_bytes = tag.name.as_bytes();
-                writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?;
-                writer.write_all(name_bytes)?;
-            }
-            writer.write_all(&h.0)?;
-        }
-        TagValue::Blob(b) => {
-            if tag.name_id != 0 {
-                writer.write_all(&[TAGTYPE_BLOB | 0x80])?;
-                writer.write_all(&[tag.name_id])?;
-            } else {
-                writer.write_all(&[TAGTYPE_BLOB])?;
-                let name_bytes = tag.name.as_bytes();
-                writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?;
-                writer.write_all(name_bytes)?;
-            }
-            writer.write_all(&(b.len() as u32).to_le_bytes())?;
-            writer.write_all(b)?;
-        }
-        TagValue::Bsob(b) => {
-            if tag.name_id != 0 {
-                writer.write_all(&[TAGTYPE_BSOB | 0x80])?;
-                writer.write_all(&[tag.name_id])?;
-            } else {
-                writer.write_all(&[TAGTYPE_BSOB])?;
-                let name_bytes = tag.name.as_bytes();
-                writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?;
-                writer.write_all(name_bytes)?;
-            }
-            writer.write_all(&[b.len() as u8])?;
-            writer.write_all(b)?;
-        }
-    }
-    Ok(())
-}

@@ -9,7 +9,7 @@ use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_network_policy::NetworkProfile;
 use mule_protocol::ed2k::{
-    OP_FOUNDSOURCES, OP_GETSOURCES, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST,
+    OP_FOUNDSOURCES, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST,
     OP_SEARCH_RESULT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
 };
 use mule_protocol::PR_ED2K;
@@ -41,7 +41,8 @@ async fn test_server_connect_refused_under_local_lab_profile() {
     let (state, _dir) = setup_test_state();
     let mut authenticated = true;
 
-    // Profile defaults to LocalLab. Trying to connect to public IP should be rejected.
+    // Explicitly test LocalLab profile rejects public WAN address
+    state.network_policy.set_profile(NetworkProfile::LocalLab);
     let req = make_req(
         1,
         "servers.connect",
@@ -266,6 +267,7 @@ async fn test_server_search_and_query_sources() {
 
     // 2. Setup mock server on 127.0.0.1
     state.network_policy.enable();
+    state.network_policy.set_profile(mule_network_policy::NetworkProfile::LocalLab);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mock_addr = listener.local_addr().unwrap();
 
@@ -305,7 +307,7 @@ async fn test_server_search_and_query_sources() {
         let file_hash = [0xabu8; 16];
         res_payload.extend_from_slice(&file_hash);
         res_payload.extend_from_slice(&100u32.to_le_bytes()); // client_id
-        res_payload.extend_from_slice(&4662u16.to_le_bytes()); // client_port
+        res_payload.extend_from_slice(&39735u16.to_le_bytes()); // client_port
         res_payload.extend_from_slice(&2u32.to_le_bytes()); // 2 tags
 
         // Tag 1: filename
@@ -329,11 +331,11 @@ async fn test_server_search_and_query_sources() {
         res_pkt.extend_from_slice(&res_payload);
         socket.write_all(&res_pkt).await.unwrap();
 
-        // C. Read OP_GETSOURCES
+        // C. Read OP_GETSOURCES or OP_GETSOURCES_OBFU
         let mut get_src_hdr = [0u8; 6];
         socket.read_exact(&mut get_src_hdr).await.unwrap();
         assert_eq!(get_src_hdr[0], PR_ED2K);
-        assert_eq!(get_src_hdr[5], OP_GETSOURCES);
+        assert!(get_src_hdr[5] == OP_GETSOURCES || get_src_hdr[5] == OP_GETSOURCES_OBFU);
         let src_payload_len = u32::from_le_bytes(get_src_hdr[1..5].try_into().unwrap()) as usize - 1;
         let mut get_src_payload = vec![0u8; src_payload_len];
         socket.read_exact(&mut get_src_payload).await.unwrap();
@@ -344,7 +346,7 @@ async fn test_server_search_and_query_sources() {
         found_payload.push(1u8); // 1 source
         let ip_val: u32 = 127 | (1 << 24);
         found_payload.extend_from_slice(&ip_val.to_le_bytes());
-        found_payload.extend_from_slice(&4662u16.to_le_bytes());
+        found_payload.extend_from_slice(&39735u16.to_le_bytes());
 
         let mut found_pkt = Vec::new();
         found_pkt.push(PR_ED2K);
@@ -406,7 +408,7 @@ async fn test_server_search_and_query_sources() {
                     assert_eq!(val["params"]["fileHash"], "abababababababababababababababab");
                     let sources = val["params"]["sources"].as_array().unwrap();
                     assert_eq!(sources.len(), 1);
-                    assert_eq!(sources[0]["address"], "127.0.0.1:4662");
+                    assert_eq!(sources[0]["address"], "127.0.0.1:39735");
                 }
             }
         }

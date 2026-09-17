@@ -3,7 +3,7 @@ use mule_protocol::kad::*;
 #[test]
 fn test_kad_ping_pong_roundtrip() {
     let kad_id = [0x42u8; 16];
-    let udp_port = 4672;
+    let udp_port = 39737;
 
     let encoded_ping = KadCodec::encode_ping(&kad_id, udp_port);
     assert_eq!(encoded_ping.len(), 2 + 16 + 2);
@@ -33,9 +33,9 @@ fn test_kad_ping_pong_roundtrip() {
 #[test]
 fn test_kad_hello_roundtrip() {
     let kad_id = [0xAAu8; 16];
-    let udp_port = 4672;
+    let udp_port = 39737;
     let version = 2;
-    let tcp_port = 4662;
+    let tcp_port = 39735;
 
     let encoded_hello_req = KadCodec::encode_hello_req(&kad_id, udp_port, version, tcp_port);
     let decoded_hello_req = KadCodec::decode(&encoded_hello_req).expect("should decode hello req");
@@ -66,7 +66,7 @@ fn test_kad_hello_roundtrip() {
 #[test]
 fn test_kad_bootstrap_and_find_node_roundtrip() {
     let kad_id = [0x11u8; 16];
-    let udp_port = 4672;
+    let udp_port = 39737;
 
     let encoded_boot_req = KadCodec::encode_bootstrap_req(&kad_id, udp_port);
     let decoded_boot_req = KadCodec::decode(&encoded_boot_req).expect("decode bootstrap req");
@@ -82,8 +82,8 @@ fn test_kad_bootstrap_and_find_node_roundtrip() {
         KadContactWire {
             kad_id: [0x22u8; 16],
             ip: [127, 0, 0, 1],
-            udp_port: 4672,
-            tcp_port: 4662,
+            udp_port: 39737,
+            tcp_port: 39735,
             version: 2,
         },
         KadContactWire {
@@ -141,4 +141,154 @@ fn test_kad_truncated_payload_rejected() {
     let truncated = vec![PR_KADEMLIA, KADEMLIA2_PING, 1, 2, 3];
     let err = KadCodec::decode(&truncated).unwrap_err();
     assert!(err.to_string().contains("unexpected EOF"));
+}
+
+#[test]
+fn test_kad_search_and_publish_source_roundtrip() {
+    let file_hash = [0x77u8; 16];
+    let sender_id = [0x88u8; 16];
+    let start_pos = 0;
+    let file_size = 10_485_760;
+
+    let enc_search_req = KadCodec::encode_search_source_req(&file_hash, start_pos, file_size, &sender_id);
+    let dec_search_req = KadCodec::decode(&enc_search_req).expect("decode search source req");
+    match dec_search_req {
+        KadMessage::SearchSourceReq(r) => {
+            assert_eq!(r.target_file_hash, file_hash);
+            assert_eq!(r.sender_id, sender_id);
+            assert_eq!(r.start_pos, start_pos);
+            assert_eq!(r.file_size, file_size);
+        }
+        _ => panic!("expected SearchSourceReq"),
+    }
+
+    let sources = vec![
+        KadSourceWire {
+            kad_id: [0x11u8; 16],
+            ip: [127, 0, 0, 1],
+            udp_port: 39737,
+            tcp_port: 39735,
+            encryption: 0,
+        },
+        KadSourceWire {
+            kad_id: [0x22u8; 16],
+            ip: [127, 0, 0, 2],
+            udp_port: 4673,
+            tcp_port: 4663,
+            encryption: 1,
+        },
+    ];
+
+    let enc_search_res = KadCodec::encode_search_source_res(&file_hash, &sources);
+    let dec_search_res = KadCodec::decode(&enc_search_res).expect("decode search source res");
+    match dec_search_res {
+        KadMessage::SearchSourceRes(r) => {
+            assert_eq!(r.target_file_hash, file_hash);
+            assert_eq!(r.sources.len(), 2);
+            assert_eq!(r.sources[0].kad_id, [0x11u8; 16]);
+            assert_eq!(r.sources[1].tcp_port, 4663);
+            assert_eq!(r.sources[1].encryption, 1);
+        }
+        _ => panic!("expected SearchSourceRes"),
+    }
+
+    let contact = KadContactWire {
+        kad_id: sender_id,
+        ip: [127, 0, 0, 1],
+        udp_port: 39737,
+        tcp_port: 39735,
+        version: 2,
+    };
+
+    let enc_pub_req = KadCodec::encode_publish_source_req(&file_hash, &contact, file_size);
+    let dec_pub_req = KadCodec::decode(&enc_pub_req).expect("decode publish source req");
+    match dec_pub_req {
+        KadMessage::PublishSourceReq(r) => {
+            assert_eq!(r.target_file_hash, file_hash);
+            assert_eq!(r.contact.kad_id, sender_id);
+            assert_eq!(r.file_size, file_size);
+        }
+        _ => panic!("expected PublishSourceReq"),
+    }
+
+    let enc_pub_res = KadCodec::encode_publish_source_res(&file_hash, 0);
+    let dec_pub_res = KadCodec::decode(&enc_pub_res).expect("decode publish source res");
+    match dec_pub_res {
+        KadMessage::PublishSourceRes(r) => {
+            assert_eq!(r.target_file_hash, file_hash);
+            assert_eq!(r.status, 0);
+        }
+        _ => panic!("expected PublishSourceRes"),
+    }
+}
+
+#[test]
+fn test_kad_search_and_publish_keyword_roundtrip() {
+    let keyword_hash = [0x55u8; 16];
+    let sender_id = [0xAAu8; 16];
+
+    // 1. Search Keyword Req
+    let enc_req = KadCodec::encode_search_keyword_req(&keyword_hash, 0, &sender_id);
+    let dec_req = KadCodec::decode(&enc_req).expect("decode search keyword req");
+    match dec_req {
+        KadMessage::SearchKeywordReq(r) => {
+            assert_eq!(r.keyword_hash, keyword_hash);
+            assert_eq!(r.sender_id, sender_id);
+            assert_eq!(r.start_pos, 0);
+        }
+        _ => panic!("expected SearchKeywordReq"),
+    }
+
+    // 2. Search Keyword Res
+    let entries = vec![
+        mule_protocol::kad::codec::KadKeywordEntryWire {
+            file_hash: [0x11u8; 16],
+            file_name: "ubuntu-22.04-live-server.iso".to_string(),
+            file_size: 1_500_000_000,
+            source_count: 42,
+        },
+        mule_protocol::kad::codec::KadKeywordEntryWire {
+            file_hash: [0x22u8; 16],
+            file_name: "debian-12.0.0-amd64-netinst.iso".to_string(),
+            file_size: 650_000_000,
+            source_count: 12,
+        },
+    ];
+
+    let enc_res = KadCodec::encode_search_keyword_res(&keyword_hash, &entries);
+    let dec_res = KadCodec::decode(&enc_res).expect("decode search keyword res");
+    match dec_res {
+        KadMessage::SearchKeywordRes(r) => {
+            assert_eq!(r.keyword_hash, keyword_hash);
+            assert_eq!(r.entries.len(), 2);
+            assert_eq!(r.entries[0].file_name, "ubuntu-22.04-live-server.iso");
+            assert_eq!(r.entries[0].file_size, 1_500_000_000);
+            assert_eq!(r.entries[0].source_count, 42);
+            assert_eq!(r.entries[1].file_name, "debian-12.0.0-amd64-netinst.iso");
+        }
+        _ => panic!("expected SearchKeywordRes"),
+    }
+
+    // 3. Publish Keyword Req
+    let enc_pub_req = KadCodec::encode_publish_keyword_req(&keyword_hash, &entries);
+    let dec_pub_req = KadCodec::decode(&enc_pub_req).expect("decode publish keyword req");
+    match dec_pub_req {
+        KadMessage::PublishKeywordReq(r) => {
+            assert_eq!(r.keyword_hash, keyword_hash);
+            assert_eq!(r.entries.len(), 2);
+            assert_eq!(r.entries[0].file_hash, [0x11u8; 16]);
+        }
+        _ => panic!("expected PublishKeywordReq"),
+    }
+
+    // 4. Publish Keyword Res
+    let enc_pub_res = KadCodec::encode_publish_keyword_res(&keyword_hash, 0);
+    let dec_pub_res = KadCodec::decode(&enc_pub_res).expect("decode publish keyword res");
+    match dec_pub_res {
+        KadMessage::PublishKeywordRes(r) => {
+            assert_eq!(r.keyword_hash, keyword_hash);
+            assert_eq!(r.status, 0);
+        }
+        _ => panic!("expected PublishKeywordRes"),
+    }
 }

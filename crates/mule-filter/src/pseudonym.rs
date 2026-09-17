@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::RwLock;
 
 /// Deterministic session pseudonymizer for addresses in audit logs and reports.
-/// Transforms `198.51.100.23:4662` into `peer-01:4662` or `server-01:4662` without leaking raw IP.
+/// Transforms `198.51.100.23:39735` into `peer-01:39735` or `server-01:39735` without leaking raw IP.
 pub struct SessionPseudonymizer {
     peer_map: RwLock<HashMap<String, String>>,
     server_map: RwLock<HashMap<String, String>>,
@@ -24,7 +24,7 @@ impl SessionPseudonymizer {
     }
 
     /// Returns a deterministic identifier for a peer address, preserving the port.
-    /// Example: `peer-01:4662`.
+    /// Example: `peer-01:39735`.
     pub fn pseudonymize_peer(&self, addr: SocketAddr) -> String {
         let ip_str = addr.ip().to_string();
         let mut map = self.peer_map.write().unwrap();

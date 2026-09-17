@@ -10,8 +10,8 @@ use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart,
-    PartAvailabilityMask, OP_FILESTATUSREQ,
-    OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    PartAvailabilityMask, OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ,
+    OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_STARTUPLOADREQ,
     PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
@@ -25,6 +25,9 @@ async fn setup_test_state() -> (AppState, tempfile::TempDir, String) {
         DaemonConfig::new(dir.path().to_path_buf(), &token).with_workdir_mode(WorkDirMode::Portable);
     let downloads = DownloadService::in_memory(temp_dir).unwrap();
     let state = AppState::new(config, downloads);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
 
     let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
 
@@ -119,6 +122,8 @@ async fn test_adversarial_cooldown_rejection_and_force_bypass() {
             fail_count: 2,
             last_error: Some("Timeout connect".to_string()),
             cooldown_until_unix_ms: Some(now + 60_000), // 60s cooldown
+            user_hash: None,
+            crypt_options: 0,
         };
         let _ = dl_svc.upsert_peer_sources(&hash, &[src]);
     }
@@ -357,6 +362,27 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
         out.extend_from_slice(&status_pkt.payload);
         socket.write_all(&out).await.unwrap();
 
+        // 2b. Read OP_STARTUPLOADREQ and reply with OP_ACCEPTUPLOADREQ
+        let mut received_start_upload = false;
+        while !received_start_upload {
+            let n = socket.read(&mut raw_buf).await.unwrap();
+            assert!(n > 0);
+            read_buf.extend_from_slice(&raw_buf[..n]);
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.protocol == PR_ED2K && pkt.opcode == OP_STARTUPLOADREQ {
+                    received_start_upload = true;
+                    break;
+                }
+            }
+        }
+
+        let accept_pkt = mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
+        out.clear();
+        out.push(accept_pkt.protocol);
+        out.extend_from_slice(&(accept_pkt.frame_len() as u32).to_le_bytes());
+        out.push(accept_pkt.opcode);
+        let _ = socket.write_all(&out).await;
+
         // 3. Read OP_REQUESTPARTS
         let mut received_req_parts = false;
         while !received_req_parts {
@@ -478,6 +504,27 @@ async fn test_adversarial_unexpected_disconnect_during_transfer() {
         out.push(status_pkt.opcode);
         out.extend_from_slice(&status_pkt.payload);
         socket.write_all(&out).await.unwrap();
+
+        // 2b. Read OP_STARTUPLOADREQ and reply with OP_ACCEPTUPLOADREQ
+        let mut received_start_upload = false;
+        while !received_start_upload {
+            let n = socket.read(&mut raw_buf).await.unwrap();
+            assert!(n > 0);
+            read_buf.extend_from_slice(&raw_buf[..n]);
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.protocol == PR_ED2K && pkt.opcode == OP_STARTUPLOADREQ {
+                    received_start_upload = true;
+                    break;
+                }
+            }
+        }
+
+        let accept_pkt = mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
+        out.clear();
+        out.push(accept_pkt.protocol);
+        out.extend_from_slice(&(accept_pkt.frame_len() as u32).to_le_bytes());
+        out.push(accept_pkt.opcode);
+        let _ = socket.write_all(&out).await;
 
         // 3. Read OP_REQUESTPARTS
         let mut received_req_parts = false;

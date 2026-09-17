@@ -15,6 +15,9 @@ pub const ED2K_MAX_TAGS: usize = 256;
 /// Maximum length in bytes permitted for any string tag value or tag name (1 KiB).
 pub const ED2K_MAX_STRING_BYTES: usize = 1024;
 
+/// Maximum length in bytes permitted for server strings such as MOTD / server ident banner (64 KiB).
+pub const ED2K_MAX_SERVER_STRING_BYTES: usize = 64 * 1024;
+
 /// Maximum number of file parts in a status bitfield (65,530 parts).
 pub const ED2K_MAX_PARTS: usize = 65_530;
 
@@ -55,6 +58,13 @@ impl Ed2kLimits {
     /// Creates a new `Ed2kLimits` with default values.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates limits tuned for eD2K server communication, allowing larger MOTD / server ident strings.
+    pub fn for_server() -> Self {
+        let mut limits = Self::default();
+        limits.max_string_bytes = ED2K_MAX_SERVER_STRING_BYTES;
+        limits
     }
 
     /// Returns the maximum permitted frame size for a specific opcode.

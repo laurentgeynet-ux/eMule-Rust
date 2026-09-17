@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
+import '../../../../domain/models/network_policy_models.dart';
 import '../view_models/downloads_view_model.dart';
+import '../../settings/widgets/network_mode_dialog.dart';
 
 class SettingsDialog extends StatefulWidget {
   final DownloadsViewModel viewModel;
@@ -309,7 +311,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       const Divider(color: AppTheme.darkBorder),
                       const SizedBox(height: 12),
 
-                      // Section 3: Confinement & Architecture Notice
+                      // Section 3: Network Architecture & Policy Status
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -325,27 +327,70 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
+                                children: [
                                   Text(
-                                    'Strict Local Confinement (127.0.0.1)',
-                                    style: TextStyle(
+                                    widget.viewModel.currentNetworkProfile != NetworkProfile.localLab
+                                        ? 'Mode Réseau Public Ouvert (WAN & Kad)'
+                                        : 'Mode Laboratoire Confiné (127.0.0.1)',
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  const SizedBox(height: 4),
                                   Text(
-                                    'Emule-Sion operates exclusively on the loopback interface. '
-                                    'No incoming or outgoing public internet P2P connections are made. '
-                                    'Active transfers are isolated within data/temp/ to guarantee storage integrity.',
-                                    style: TextStyle(fontSize: 11, color: Colors.white54, height: 1.4),
+                                    widget.viewModel.currentNetworkProfile != NetworkProfile.localLab
+                                        ? 'Emule-Sion est connecté aux réseaux eD2K et Kademlia mondiaux avec ports ouverts et protection Anti-SSRF active. Les transferts actifs sont sécurisés dans data/temp/.'
+                                        : 'Emule-Sion fonctionne exclusivement sur la boucle locale (127.0.0.1). Aucune connexion publique entrante ou sortante n\'est effectuée.',
+                                    style: const TextStyle(fontSize: 11, color: Colors.white54, height: 1.4),
                                   ),
                                 ],
                               ),
                             ),
                           ],
                         ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Section 4: Network Mode & UPnP
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Text(
+                                  'Mode Réseau & Traversée Box (UPnP)',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Bascule entre laboratoire local et réseau public mondial.',
+                                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.public, size: 16),
+                            label: const Text('Configurer'),
+                            style: FilledButton.styleFrom(backgroundColor: Colors.amber[800]),
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => NetworkModeDialog(viewModel: widget.viewModel),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),

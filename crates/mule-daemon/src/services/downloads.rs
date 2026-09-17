@@ -47,6 +47,19 @@ struct ActiveDownload {
     last_status_change_unix_ms: i64,
     session_start_ms: i64,
     session_bytes_start: u64,
+    current_rate_bps: u64,
+    source_count: u32,
+}
+
+impl ActiveDownload {
+    fn snapshot(&self) -> DownloadSnapshot {
+        make_snapshot(
+            &self.download,
+            &self.ranges,
+            self.source_count.max(self.sources.len() as u32),
+            self.current_rate_bps,
+        )
+    }
 }
 
 pub struct DownloadService {
@@ -71,6 +84,10 @@ impl DownloadService {
             let part_file =
                 PartFile::open_or_create(&dl.temp_path, dl.total_size, AllocationPolicy::None).ok();
             let covered = ranges.covered_len();
+            let source_count = db
+                .list_peer_sources(&dl.ed2k_hash.to_hex())
+                .map(|s| s.len() as u32)
+                .unwrap_or(0);
             active.insert(
                 dl.id,
                 ActiveDownload {
@@ -84,6 +101,8 @@ impl DownloadService {
                     ranges,
                     part_file,
                     sources: HashMap::new(),
+                    current_rate_bps: 0,
+                    source_count,
                 },
             );
         }
@@ -164,7 +183,7 @@ impl DownloadService {
             .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
         let ranges = RangeSet::new();
-        let snapshot = make_snapshot(&download, &ranges, 0);
+        let snapshot = make_snapshot(&download, &ranges, 0, 0);
         let now = now_ms();
 
         self.active.insert(
@@ -180,6 +199,8 @@ impl DownloadService {
                 last_status_change_unix_ms: now,
                 session_start_ms: now,
                 session_bytes_start: 0,
+                current_rate_bps: 0,
+                source_count: 0,
             },
         );
 
@@ -419,7 +440,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             None,
         );
 
-        let snapshot = make_snapshot(&download, &range_set, 0);
+        let snapshot = make_snapshot(&download, &range_set, 0, 0);
 
         self.active.insert(
             id,
@@ -434,6 +455,8 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
                 last_status_change_unix_ms: now,
                 session_start_ms: now,
                 session_bytes_start: snapshot.received_bytes,
+                current_rate_bps: 0,
+                source_count: 0,
             },
         );
 
@@ -478,19 +501,19 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
     pub fn list_downloads(&self) -> Vec<DownloadSnapshot> {
         self.active
             .values()
-            .map(|a| make_snapshot(&a.download, &a.ranges, a.sources.len() as u32))
+            .map(|a| a.snapshot())
             .collect()
     }
 
     pub fn get_download(&self, id: &Uuid) -> Option<DownloadSnapshot> {
         self.active
             .get(id)
-            .map(|a| make_snapshot(&a.download, &a.ranges, a.sources.len() as u32))
+            .map(|a| a.snapshot())
     }
 
     pub fn get_download_detail(&self, id: &Uuid) -> Option<DownloadDetail> {
         let active = self.active.get(id)?;
-        let snapshot = make_snapshot(&active.download, &active.ranges, active.sources.len() as u32);
+        let snapshot = active.snapshot();
 
         let total_size = active.download.total_size;
         let part_size_const = mule_format::ed2k::hash::ED2K_PART_SIZE as u64;
@@ -621,7 +644,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             .update_status(id, DownloadStatus::Paused)
             .map_err(|e| JsonRpcError::business(format!("DB error: {e}")))?;
 
-        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
+        Ok(active.snapshot())
     }
 
     pub fn resume_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, JsonRpcError> {
@@ -659,7 +682,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         );
 
         let active = self.active.get(id).unwrap();
-        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
+        Ok(active.snapshot())
     }
 
     pub fn remove_download(&mut self, id: &Uuid, delete_files: bool) -> Result<(), JsonRpcError> {
@@ -750,6 +773,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             .map_err(|e| JsonRpcError::business(format!("DB sync error: {e}")))?;
 
         active.download.status = if active.ranges.covered_len() == active.download.total_size {
+            let _ = active.part_file.take(); // Close write handle when 100% complete
             DownloadStatus::Verifying
         } else {
             DownloadStatus::Downloading
@@ -757,7 +781,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         active.download.updated_at = now_ms();
         let _ = self.db.update_status(id, active.download.status);
 
-        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
+        Ok(active.snapshot())
     }
 
     pub fn update_status(
@@ -816,7 +840,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         }
 
         let active = self.active.get(id).unwrap();
-        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
+        Ok(active.snapshot())
     }
 
     pub fn get_missing_ranges(&self, id: &Uuid) -> Option<Vec<std::ops::Range<u64>>> {
@@ -863,7 +887,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         entry.last_seen_unix_ms = now;
         active.download.updated_at = now;
 
-        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
+        Ok(active.snapshot())
     }
 
     /// Returns the sanitized source availability summaries for external clients (neutral DTO, zero raw IP/port).
@@ -921,6 +945,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             active.download.status = DownloadStatus::Completed;
             active.download.updated_at = now;
             active.last_status_change_unix_ms = now;
+            active.current_rate_bps = 0;
         }
         self.db
             .update_status(id, DownloadStatus::Completed)
@@ -939,7 +964,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         );
 
         let active = self.active.get(id).unwrap();
-        Ok(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32))
+        Ok(active.snapshot())
     }
 
     /// Updates the finalization target directory for a download.
@@ -1323,9 +1348,74 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         file_hash: &str,
         sources: &[mule_core::model::PeerSource],
     ) -> Result<usize, JsonRpcError> {
-        self.db
+        let res = self.db
             .upsert_peer_sources(file_hash, sources)
-            .map_err(|e| JsonRpcError::business(format!("DB error upserting peer sources: {e}")))
+            .map_err(|e| JsonRpcError::business(format!("DB error upserting peer sources: {e}")))?;
+        let count = self.db.list_peer_sources(file_hash).map(|s| s.len() as u32).unwrap_or(0);
+        let clean_hex = file_hash.trim().to_lowercase();
+        for active in self.active.values_mut() {
+            if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
+                active.source_count = count;
+            }
+        }
+        Ok(res)
+    }
+
+    pub fn set_download_rate(&mut self, id: &Uuid, rate_bps: u64) -> Option<DownloadSnapshot> {
+        if let Some(active) = self.active.get_mut(id) {
+            active.current_rate_bps = rate_bps;
+            Some(active.snapshot())
+        } else {
+            None
+        }
+    }
+
+    pub fn set_download_rate_by_hash(&mut self, hex_hash: &str, rate_bps: u64) -> Option<DownloadSnapshot> {
+        let clean_hex = hex_hash.trim().to_lowercase();
+        for active in self.active.values_mut() {
+            if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
+                active.current_rate_bps = rate_bps;
+                return Some(active.snapshot());
+            }
+        }
+        None
+    }
+
+    pub fn get_pending_verifications(&mut self) -> Vec<(Uuid, PathBuf, PathBuf, [u8; 16], u64)> {
+        let mut pending = Vec::new();
+        let now = now_ms();
+        for (id, active) in self.active.iter_mut() {
+            if active.download.status == DownloadStatus::Completed || active.download.status == DownloadStatus::Failed {
+                continue;
+            }
+            let total_size = active.download.total_size;
+            let file_len_on_disk = if active.download.temp_path.exists() {
+                std::fs::metadata(&active.download.temp_path).map(|m| m.len()).unwrap_or(0)
+            } else {
+                0
+            };
+            let is_complete = (total_size > 0 && active.ranges.covered_len() == total_size)
+                || (total_size > 0 && file_len_on_disk == total_size);
+
+            if is_complete {
+                if active.ranges.covered_len() < total_size {
+                    let _ = active.ranges.insert(0..total_size);
+                    let _ = self.db.sync_received_ranges(id, &active.ranges);
+                }
+                active.download.status = DownloadStatus::Verifying;
+                active.download.updated_at = now;
+                let _ = self.db.update_status(id, DownloadStatus::Verifying);
+                let _ = active.part_file.take();
+                pending.push((
+                    *id,
+                    active.download.temp_path.clone(),
+                    active.download.target_path.clone(),
+                    active.download.ed2k_hash.0,
+                    total_size,
+                ));
+            }
+        }
+        pending
     }
 
     pub fn list_peer_sources(
@@ -1380,7 +1470,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         let clean_hex = hex_hash.trim().to_lowercase();
         for active in self.active.values() {
             if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
-                return Some(make_snapshot(&active.download, &active.ranges, active.sources.len() as u32));
+                return Some(active.snapshot());
             }
         }
         None
@@ -1460,7 +1550,12 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-fn make_snapshot(dl: &Download, ranges: &RangeSet, source_count: u32) -> DownloadSnapshot {
+fn make_snapshot(
+    dl: &Download,
+    ranges: &RangeSet,
+    source_count: u32,
+    download_rate_bps: u64,
+) -> DownloadSnapshot {
     let received_bytes = ranges.covered_len();
     let progress = if dl.total_size > 0 {
         (received_bytes as f64 / dl.total_size as f64).min(1.0)
@@ -1484,7 +1579,7 @@ fn make_snapshot(dl: &Download, ranges: &RangeSet, source_count: u32) -> Downloa
         status: dl.status.as_str().to_string(),
         priority: "normal".to_string(),
         source_count,
-        download_rate_bps: 0,
+        download_rate_bps,
         uploaded_bytes: 0,
         created_at_unix_ms: dl.created_at,
         updated_at_unix_ms: dl.updated_at,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../../domain/models/category_item.dart';
@@ -18,13 +19,7 @@ import '../../../../domain/services/mule_daemon_client.dart';
 import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
 
-enum AppNavSection {
-  downloads,
-  history,
-  servers,
-  search,
-  kad,
-}
+enum AppNavSection { downloads, history, servers, search, kad }
 
 enum DownloadFilter {
   all,
@@ -98,6 +93,7 @@ class DownloadsViewModel extends ChangeNotifier {
   bool _isKadLoading = false;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
+  StreamSubscription<ServerSessionModel>? _serverSessionSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
@@ -112,6 +108,17 @@ class DownloadsViewModel extends ChangeNotifier {
   }) {
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
+      notifyListeners();
+    });
+
+    _serverSessionSub = client.serverSessionEvents.listen((session) {
+      _serverSession = session;
+      if (session.status == ServerConnectionStatus.connected ||
+          session.status == ServerConnectionStatus.disconnected) {
+        _isServerConnecting = false;
+      } else if (session.status == ServerConnectionStatus.connecting) {
+        _isServerConnecting = true;
+      }
       notifyListeners();
     });
 
@@ -135,7 +142,8 @@ class DownloadsViewModel extends ChangeNotifier {
     _foundSourcesSub = client.foundSourcesEvents.listen((params) {
       final rawSources = params['sources'] as List<dynamic>? ?? [];
       final hash = params['file_hash'] as String? ?? '';
-      _statusNotification = '${rawSources.length} source(s) trouvée(s) pour $hash';
+      _statusNotification =
+          '${rawSources.length} source(s) trouvée(s) pour $hash';
       if (hash.isNotEmpty) {
         loadSourcesForHash(hash);
       }
@@ -144,7 +152,8 @@ class DownloadsViewModel extends ChangeNotifier {
 
     _peerSessionSub = client.peerSessionEvents.listen((session) {
       _peerSession = session;
-      _isPeerConnecting = session.status == PeerConnectionStatus.connecting ||
+      _isPeerConnecting =
+          session.status == PeerConnectionStatus.connecting ||
           session.status == PeerConnectionStatus.handshaking;
       notifyListeners();
     });
@@ -201,7 +210,9 @@ class DownloadsViewModel extends ChangeNotifier {
   Map<String, int> get categoryCounts {
     final map = <String, int>{};
     for (final cat in _categories) {
-      map[cat.id] = _downloads.values.where((d) => d.categoryId == cat.id).length;
+      map[cat.id] = _downloads.values
+          .where((d) => d.categoryId == cat.id)
+          .length;
     }
     return map;
   }
@@ -222,7 +233,8 @@ class DownloadsViewModel extends ChangeNotifier {
     if (isDevToolsAvailable) return true;
     final info = daemonInfo;
     if (info == null) return false;
-    final isPortable = (info.workdirMode?.toLowerCase() == 'portable') ||
+    final isPortable =
+        (info.workdirMode?.toLowerCase() == 'portable') ||
         (supervisor?.resolveWorkDir().mode == WorkDirMode.portable);
     return isPortable && info.capabilities.contains('lab-tools');
   }
@@ -272,10 +284,14 @@ class DownloadsViewModel extends ChangeNotifier {
   int get totalUploadSpeed => 0;
 
   int get countAll => _downloads.length;
-  int get countActive => _downloads.values.where((d) => d.status.isActive).length;
-  int get countPaused => _downloads.values.where((d) => d.status.isPaused).length;
-  int get countCompleted => _downloads.values.where((d) => d.status.isCompleted).length;
-  int get countFailed => _downloads.values.where((d) => d.status.isFailed).length;
+  int get countActive =>
+      _downloads.values.where((d) => d.status.isActive).length;
+  int get countPaused =>
+      _downloads.values.where((d) => d.status.isPaused).length;
+  int get countCompleted =>
+      _downloads.values.where((d) => d.status.isCompleted).length;
+  int get countFailed =>
+      _downloads.values.where((d) => d.status.isFailed).length;
 
   List<DownloadItem> get filteredDownloads {
     final query = _searchQuery.trim().toLowerCase();
@@ -313,8 +329,7 @@ class DownloadsViewModel extends ChangeNotifier {
       }
 
       return true;
-    }).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   // Actions
@@ -435,7 +450,10 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) {
+  Future<PartMetInspectionResult> inspectPartMet(
+    String metPath, {
+    String? partPath,
+  }) {
     return client.inspectPartMet(metPath, partPath: partPath);
   }
 
@@ -507,11 +525,16 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> injectSimulationChunk(String id, int offset, String hexData) async {
+  Future<void> injectSimulationChunk(
+    String id,
+    int offset,
+    String hexData,
+  ) async {
     try {
       final updated = await client.injectRange(id, offset, hexData);
       _downloads[updated.id] = updated;
-      _statusNotification = 'Injected ${hexData.length ~/ 2} bytes at offset $offset';
+      _statusNotification =
+          'Injected ${hexData.length ~/ 2} bytes at offset $offset';
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Injection failed: $e';
@@ -550,7 +573,10 @@ class DownloadsViewModel extends ChangeNotifier {
     return report;
   }
 
-  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {
+  Future<void> connectDownloadToSource(
+    String downloadId,
+    String peerAddr,
+  ) async {
     await client.connectDownloadToSource(downloadId, peerAddr);
     _statusNotification = 'Connected download to $peerAddr';
     await refresh();
@@ -559,7 +585,8 @@ class DownloadsViewModel extends ChangeNotifier {
   Future<void> fetchSettings() async {
     try {
       _settings = await client.getSettings();
-      _historyRetentionDays = (_settings['historyRetentionDays'] as num?)?.toInt() ?? 30;
+      _historyRetentionDays =
+          (_settings['historyRetentionDays'] as num?)?.toInt() ?? 30;
       notifyListeners();
     } catch (_) {
       // Non-critical in older or restricted daemons
@@ -707,7 +734,8 @@ class DownloadsViewModel extends ChangeNotifier {
     try {
       final updated = await client.retryDownloadConnection(id);
       _downloads[updated.id] = updated;
-      _statusNotification = 'Retrying loopback connection for "${updated.fileName}"';
+      _statusNotification =
+          'Retrying loopback connection for "${updated.fileName}"';
       notifyListeners();
       return true;
     } catch (e) {
@@ -759,14 +787,20 @@ class DownloadsViewModel extends ChangeNotifier {
     final sanitizedTemp = 'data/temp/${item.id}.part';
     final totalParts = item.parts.length;
     final verifiedParts = item.parts.where((p) => p.isVerified).length;
-    final completedParts = item.parts.where((p) => p.state == 'completed').length;
-    final downloadingParts = item.parts.where((p) => p.state == 'downloading').length;
+    final completedParts = item.parts
+        .where((p) => p.state == 'completed')
+        .length;
+    final downloadingParts = item.parts
+        .where((p) => p.state == 'downloading')
+        .length;
     final missingParts = item.parts.where((p) => p.state == 'missing').length;
 
     final buffer = StringBuffer();
     buffer.writeln('=== Emule-Sion Download Diagnostic (Sanitized) ===');
     buffer.writeln('Generated: ${DateTime.now().toUtc().toIso8601String()}');
-    buffer.writeln('Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)');
+    buffer.writeln(
+      'Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)',
+    );
     buffer.writeln('Download ID: ${item.id}');
     buffer.writeln('File Name: ${item.fileName}');
     buffer.writeln('Status: ${item.status.label}');
@@ -791,7 +825,9 @@ class DownloadsViewModel extends ChangeNotifier {
     }
     buffer.writeln('Temp Path: $sanitizedTemp');
     buffer.writeln('Destination Target: $sanitizedTarget');
-    buffer.writeln('Part Map Summary: $totalParts parts total ($verifiedParts verified, $completedParts unverified, $downloadingParts downloading, $missingParts missing)');
+    buffer.writeln(
+      'Part Map Summary: $totalParts parts total ($verifiedParts verified, $completedParts unverified, $downloadingParts downloading, $missingParts missing)',
+    );
     buffer.writeln('Created At: ${item.createdAt.toIso8601String()}');
     buffer.writeln('Updated At: ${item.updatedAt.toIso8601String()}');
     return buffer.toString();
@@ -895,12 +931,16 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> setDownloadCategory(String downloadId, String? categoryId) async {
+  Future<bool> setDownloadCategory(
+    String downloadId,
+    String? categoryId,
+  ) async {
     try {
       final updated = await client.setDownloadCategory(downloadId, categoryId);
       _downloads[downloadId] = updated;
       final catName = categoryId != null
-          ? (_categories.where((c) => c.id == categoryId).firstOrNull?.name ?? 'Category')
+          ? (_categories.where((c) => c.id == categoryId).firstOrNull?.name ??
+                'Category')
           : 'None';
       _statusNotification = 'Assigned to category "$catName"';
       notifyListeners();
@@ -919,7 +959,7 @@ class DownloadsViewModel extends ChangeNotifier {
   NetworkPolicySnapshot? get networkPolicy => _networkPolicy;
   List<NetworkAuditEntryItem> get networkAuditLog => _networkAuditLog;
   NetworkProfile get currentNetworkProfile =>
-      _networkPolicy?.profile ?? NetworkProfile.localLab;
+      _networkPolicy?.profile ?? NetworkProfile.publicEd2kKadPreview;
   NetworkSubsystemState get currentNetworkState =>
       _networkPolicy?.state ?? NetworkSubsystemState.previewActive;
   bool get isNetworkKillSwitchActive =>
@@ -948,7 +988,8 @@ class DownloadsViewModel extends ChangeNotifier {
       await client.disconnectAll();
       await fetchNetworkPolicy();
       _serverSession = ServerSessionModel.disconnected;
-      _statusNotification = 'Kill Switch engaged: All network connections disconnected';
+      _statusNotification =
+          'Kill Switch engaged: All network connections disconnected';
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Kill switch failed: $e';
@@ -1003,7 +1044,8 @@ class DownloadsViewModel extends ChangeNotifier {
   Future<bool> importFilterFile(String filePath) async {
     try {
       _filterStatus = await client.importFilterFile(filePath);
-      _statusNotification = 'Imported ${_filterStatus?.rangeCount ?? 0} IP filter ranges';
+      _statusNotification =
+          'Imported ${_filterStatus?.rangeCount ?? 0} IP filter ranges';
       notifyListeners();
       return true;
     } catch (e) {
@@ -1016,7 +1058,9 @@ class DownloadsViewModel extends ChangeNotifier {
   Future<void> setFilterEnabled(bool enabled) async {
     try {
       _filterStatus = await client.setFilterEnabled(enabled);
-      _statusNotification = enabled ? 'IP Filter enabled' : 'IP Filter disabled';
+      _statusNotification = enabled
+          ? 'IP Filter enabled'
+          : 'IP Filter disabled';
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to toggle IP filter: $e';
@@ -1094,6 +1138,27 @@ class DownloadsViewModel extends ChangeNotifier {
       _errorMessage = 'Failed to import server.met: $e';
       notifyListeners();
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> updateServersFromUrl(String url) async {
+    _isServersLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final result = await client.updateServersFromUrl(url);
+      final count = result['serversCount'] ?? result['imported'] ?? 0;
+      _statusNotification =
+          'Mise à jour réussie : $count serveurs traités depuis l\'URL';
+      await fetchServers();
+      return result;
+    } catch (e) {
+      _errorMessage = 'Échec de la mise à jour des serveurs depuis l\'URL : $e';
+      notifyListeners();
+      return null;
+    } finally {
+      _isServersLoading = false;
+      notifyListeners();
     }
   }
 
@@ -1204,6 +1269,42 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> searchKadKeywords({
+    required String term,
+    int? minSize,
+    int? maxSize,
+  }) async {
+    final trimmed = term.trim();
+    if (trimmed.isEmpty) return;
+    _isSearching = true;
+    _searchResults.clear();
+    _lastSearchTerm = trimmed;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final results = await client.searchKadKeywords(
+        term: trimmed,
+        minSize: minSize,
+        maxSize: maxSize,
+      );
+      final existingHashes = _searchResults.map((f) => f.fileHash).toSet();
+      for (final f in results) {
+        if (!existingHashes.contains(f.fileHash)) {
+          _searchResults.add(f);
+          existingHashes.add(f.fileHash);
+        }
+      }
+      _statusNotification =
+          'Recherche Kad "$trimmed" terminée (${_searchResults.length} résultat(s))';
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche Kad : $e';
+    } finally {
+      _isSearching = false;
+      notifyListeners();
+    }
+  }
+
   void clearSearchResults() {
     _searchResults.clear();
     _isSearching = false;
@@ -1274,12 +1375,20 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> connectPeerSource(String fileHash, String address, {bool force = false}) async {
+  Future<bool> connectPeerSource(
+    String fileHash,
+    String address, {
+    bool force = false,
+  }) async {
     _isPeerConnecting = true;
     _errorMessage = null;
     notifyListeners();
     try {
-      _peerSession = await client.connectPeerSource(fileHash, address, force: force);
+      _peerSession = await client.connectPeerSource(
+        fileHash,
+        address,
+        force: force,
+      );
       _statusNotification = 'Connexion à $address initialisée';
       await loadSourcesForHash(fileHash);
       return true;
@@ -1364,7 +1473,8 @@ class DownloadsViewModel extends ChangeNotifier {
     try {
       final res = await client.importNodesDat(filePath);
       final count = res['importedCount'] ?? 0;
-      _statusNotification = 'Importé $count contacts Kad dans la table K-buckets';
+      _statusNotification =
+          'Importé $count contacts Kad dans la table K-buckets';
       await fetchKadStatus();
       await fetchKadContacts();
       return true;
@@ -1396,7 +1506,8 @@ class DownloadsViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       await client.startKadUdp(bindAddress: bindAddress);
-      _statusNotification = 'Socket UDP Kad démarré sur ${bindAddress ?? "127.0.0.1:4672"}';
+      _statusNotification =
+          'Socket UDP Kad démarré sur ${bindAddress ?? "127.0.0.1:39737"}';
       await fetchKadStatus();
       return true;
     } catch (e) {
@@ -1447,10 +1558,7 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> bootstrapKad({
-    required String ip,
-    required int port,
-  }) async {
+  Future<bool> bootstrapKad({required String ip, required int port}) async {
     _isKadLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -1471,13 +1579,36 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> bootstrapKadFromUrl(String url) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final res = await client.bootstrapKadFromUrl(url);
+      final count = (res['importedNodes'] as num?)?.toInt() ?? 0;
+      _statusNotification =
+          'Amorçage Kad depuis URL réussi ($count nœuds importés)';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'amorçage Kad depuis URL : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<List<KadContactModel>> findKadNode(String targetId) async {
     _isKadLoading = true;
     _errorMessage = null;
     notifyListeners();
     try {
       final contacts = await client.findKadNode(targetId);
-      _statusNotification = 'Recherche Kad : ${contacts.length} nœuds les plus proches trouvés';
+      _statusNotification =
+          'Recherche Kad : ${contacts.length} nœuds les plus proches trouvés';
       await fetchKadStatus();
       await fetchKadContacts();
       return contacts;
@@ -1491,9 +1622,66 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
+  /// Searches Kad DHT for sources of a specific file hash and auto-injects them.
+  Future<List<PeerSourceModel>> searchKadSources(
+    String fileHash, {
+    int? fileSize,
+  }) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final sources = await client.searchKadSources(
+        fileHash: fileHash,
+        fileSize: fileSize,
+      );
+      _statusNotification =
+          'Kad : ${sources.length} sources trouvées pour ${fileHash.substring(0, 8)}…';
+      notifyListeners();
+      return sources;
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche de sources Kad : $e';
+      notifyListeners();
+      return const [];
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Publishes this node as a source for a file hash to Kad DHT.
+  Future<int> publishKadSource(
+    String fileHash,
+    int fileSize, {
+    int tcpPort = 39735,
+  }) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final count = await client.publishKadSource(
+        fileHash: fileHash,
+        fileSize: fileSize,
+        tcpPort: tcpPort,
+      );
+      _statusNotification =
+          'Kad : publié sur $count nœuds pour ${fileHash.substring(0, 8)}…';
+      notifyListeners();
+      return count;
+    } catch (e) {
+      _errorMessage = 'Échec de la publication Kad : $e';
+      notifyListeners();
+      return 0;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _connSub?.cancel();
+    _serverSessionSub?.cancel();
     _eventSub?.cancel();
     _supervisorSub?.cancel();
     _instanceSub?.cancel();
