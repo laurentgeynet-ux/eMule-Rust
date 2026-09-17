@@ -803,22 +803,92 @@ impl KadService {
         min_size: Option<u64>,
         max_size: Option<u64>,
     ) -> Result<Vec<serde_json::Value>, String> {
-        let (_norm_word, keyword_kad_id) = extract_kad_keywords(term)
+        let (norm_word, keyword_kad_id) = extract_kad_keywords(term)
             .into_iter()
             .next()
             .unwrap_or_else(|| hash_kad_keyword(term));
 
         let initial_closest = {
             let table = self.routing_table.lock().await;
-            table.find_closest(&keyword_kad_id, 3)
+            table.find_closest(&keyword_kad_id, 10)
         };
+
+        if initial_closest.is_empty() {
+            tracing::warn!(
+                "Kad search_keywords for '{}' (norm='{}'): routing table is empty (0 contacts)",
+                term,
+                norm_word
+            );
+            return Ok(Vec::new());
+        }
+
+        tracing::info!(
+            "Kad search_keywords: starting search for '{}' (hash={}): performing iterative find_node convergence...",
+            term,
+            keyword_kad_id.to_hex()
+        );
+
+        let mut closest_nodes = initial_closest;
+        let mut queried_find_nodes = std::collections::HashSet::new();
+
+        // 1. Iterative find_node step: query closest contacts to converge towards the keyword ID
+        for iter in 0..2 {
+            let mut find_futs = Vec::new();
+            for contact in closest_nodes.iter().take(5) {
+                let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
+                if queried_find_nodes.insert(addr) {
+                    let udp = Arc::clone(&self.udp);
+                    let target_id = keyword_kad_id;
+                    find_futs.push(async move {
+                        udp.send_find_node(addr, &target_id).await
+                    });
+                }
+            }
+
+            if find_futs.is_empty() {
+                break;
+            }
+
+            let find_results = futures_util::future::join_all(find_futs).await;
+            let mut new_contacts = Vec::new();
+            for res in find_results {
+                if let Ok(contacts) = res {
+                    for c in contacts {
+                        new_contacts.push(c);
+                    }
+                }
+            }
+
+            if new_contacts.is_empty() {
+                break;
+            }
+
+            {
+                let mut table = self.routing_table.lock().await;
+                for c in &new_contacts {
+                    table.insert_or_update(c.clone());
+                }
+                closest_nodes = table.find_closest(&keyword_kad_id, 12);
+            }
+            tracing::debug!(
+                "Kad search_keywords: iteration {} found {} closer contacts",
+                iter + 1,
+                new_contacts.len()
+            );
+        }
+
+        tracing::info!(
+            "Kad search_keywords: querying {} converged contacts for keyword '{}'...",
+            closest_nodes.len(),
+            term
+        );
 
         let mut discovered_entries: Vec<serde_json::Value> = Vec::new();
         let mut seen_hashes = std::collections::HashSet::new();
-
         let profile = self.policy_mgr.profile();
 
-        for contact in initial_closest {
+        let mut futs = Vec::with_capacity(closest_nodes.len());
+        for contact in closest_nodes {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
             let cat = classify_ip(IpAddr::V4(contact.ip));
             let policy_allowed = match profile {
@@ -832,31 +902,57 @@ impl KadService {
                 continue;
             }
 
-            if let Ok(wires) = self.udp.send_search_keyword(addr, &keyword_kad_id.0, 0).await {
-                for w in wires {
-                    let file_hash_hex = KadId(w.file_hash).to_hex();
-                    if let Some(min) = min_size {
-                        if w.file_size < min {
-                            continue;
-                        }
-                    }
-                    if let Some(max) = max_size {
-                        if w.file_size > max {
-                            continue;
-                        }
-                    }
+            let udp = Arc::clone(&self.udp);
+            let target_kw = keyword_kad_id.0;
+            futs.push(async move {
+                let res = udp.send_search_keyword(addr, &target_kw, 0).await;
+                (addr, res)
+            });
+        }
 
-                    if seen_hashes.insert(file_hash_hex.clone()) {
-                        discovered_entries.push(serde_json::json!({
-                            "fileHash": file_hash_hex,
-                            "fileName": w.file_name,
-                            "fileSize": w.file_size,
-                            "sourceCount": w.source_count,
-                        }));
+        let results = futures_util::future::join_all(futs).await;
+        for (addr, res) in results {
+            match res {
+                Ok(wires) => {
+                    tracing::info!(
+                        "Kad received {} keyword search entries from node {}",
+                        wires.len(),
+                        addr
+                    );
+                    for w in wires {
+                        let file_hash_hex = KadId(w.file_hash).to_hex();
+                        if let Some(min) = min_size {
+                            if w.file_size < min {
+                                continue;
+                            }
+                        }
+                        if let Some(max) = max_size {
+                            if w.file_size > max {
+                                continue;
+                            }
+                        }
+
+                        if seen_hashes.insert(file_hash_hex.clone()) {
+                            discovered_entries.push(serde_json::json!({
+                                "fileHash": file_hash_hex,
+                                "fileName": w.file_name,
+                                "fileSize": w.file_size,
+                                "sourceCount": w.source_count,
+                            }));
+                        }
                     }
+                }
+                Err(e) => {
+                    tracing::debug!("Kad search_keyword to {} failed/timed out: {}", addr, e);
                 }
             }
         }
+
+        tracing::info!(
+            "Kad search_keywords for '{}' finished: found {} unique file results",
+            term,
+            discovered_entries.len()
+        );
 
         Ok(discovered_entries)
     }

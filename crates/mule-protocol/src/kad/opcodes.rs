@@ -10,6 +10,8 @@ pub const PR_KADEMLIA_PACKED: u8 = 0xE5;
 pub const PR_KADEMLIA_RESERVED: u8 = 0x8D;
 
 // --- Kad v1.0 Opcodes (Legacy) ---
+/// Legacy Bootstrap request (0x00).
+pub const KADEMLIA_BOOTSTRAP_REQ_OLD: u8 = 0x00;
 /// Bootstrap request (0x01).
 pub const KADEMLIA_BOOTSTRAP_REQ: u8 = 0x01;
 /// Bootstrap response (0x09).

@@ -638,14 +638,26 @@ async fn handle_retry_connection(
 }
 
 async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError> {
-    let (custom_dir, retention_days) = {
+    let (custom_dir, retention_days, max_global, max_per_file, min_per_file) = {
         let dls = state.downloads.lock().await;
         let dir = dls.get_setting("default_download_directory")?;
         let ret = dls
             .get_setting("history_retention_days")?
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(30);
-        (dir, ret)
+        let max_g = dls
+            .get_setting("max_global_download_peers")?
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(state.config.max_global_download_peers);
+        let max_f = dls
+            .get_setting("max_peers_per_download")?
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(state.config.max_peers_per_download);
+        let min_f = dls
+            .get_setting("min_peers_per_download")?
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(state.config.min_peers_per_download);
+        (dir, ret, max_g, max_f, min_f)
     };
 
     let current_dir = custom_dir
@@ -660,7 +672,10 @@ async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError> {
         "defaultDownloadDir": current_dir.to_string_lossy(),
         "portableDownloadDir": portable_default.to_string_lossy(),
         "isCustom": custom_dir.is_some(),
-        "historyRetentionDays": retention_days
+        "historyRetentionDays": retention_days,
+        "maxGlobalDownloadPeers": max_global,
+        "maxPeersPerDownload": max_per_file,
+        "minPeersPerDownload": min_per_file,
     }))
 }
 
@@ -671,6 +686,9 @@ async fn handle_settings_set(
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let mut updated_dir = None;
     let mut updated_retention = None;
+    let mut updated_max_global = None;
+    let mut updated_max_per_file = None;
+    let mut updated_min_per_file = None;
 
     if let Some(dir_str) = params["defaultDownloadDir"].as_str() {
         let dir = std::path::PathBuf::from(dir_str);
@@ -706,10 +724,46 @@ async fn handle_settings_set(
         updated_retention = Some(ret_days);
     }
 
+    if let Some(val) = params.get("maxGlobalDownloadPeers") {
+        let max_g = val.as_u64().ok_or_else(|| {
+            JsonRpcError::invalid_params("Invalid 'maxGlobalDownloadPeers' parameter")
+        })? as usize;
+        let mut dls = state.downloads.lock().await;
+        dls.set_setting("max_global_download_peers", &max_g.to_string())?;
+        updated_max_global = Some(max_g);
+    }
+
+    if let Some(val) = params.get("maxPeersPerDownload") {
+        let max_f = val.as_u64().ok_or_else(|| {
+            JsonRpcError::invalid_params("Invalid 'maxPeersPerDownload' parameter")
+        })? as usize;
+        let mut dls = state.downloads.lock().await;
+        dls.set_setting("max_peers_per_download", &max_f.to_string())?;
+        updated_max_per_file = Some(max_f);
+    }
+
+    if let Some(val) = params.get("minPeersPerDownload") {
+        let min_f = val.as_u64().ok_or_else(|| {
+            JsonRpcError::invalid_params("Invalid 'minPeersPerDownload' parameter")
+        })? as usize;
+        let mut dls = state.downloads.lock().await;
+        dls.set_setting("min_peers_per_download", &min_f.to_string())?;
+        updated_min_per_file = Some(min_f);
+    }
+
+    if updated_max_global.is_some() || updated_max_per_file.is_some() {
+        let max_g = updated_max_global.unwrap_or(state.config.max_global_download_peers);
+        let max_f = updated_max_per_file.unwrap_or(state.config.max_peers_per_download);
+        state.peer_session.set_swarm_limits(max_f, max_g).await;
+    }
+
     Ok(json!({
         "success": true,
         "defaultDownloadDir": updated_dir,
-        "historyRetentionDays": updated_retention
+        "historyRetentionDays": updated_retention,
+        "maxGlobalDownloadPeers": updated_max_global,
+        "maxPeersPerDownload": updated_max_per_file,
+        "minPeersPerDownload": updated_min_per_file,
     }))
 }
 
@@ -1500,6 +1554,7 @@ async fn handle_network_disconnect_all(state: &AppState) -> Result<Value, JsonRp
     state.network_policy.disconnect_all();
     let _ = state.server_session.disconnect().await;
     let _ = state.peer_session.disconnect().await;
+    state.inbound_listener.stop().await;
     state.abort_all_tasks().await;
     Ok(json!({
         "success": true,
@@ -1926,6 +1981,14 @@ async fn handle_servers_search(
     query.min_size = params["minSize"].as_u64();
     query.max_size = params["maxSize"].as_u64();
     query.extension = params["extension"].as_str().map(|s| s.to_string());
+
+    tracing::info!(
+        "RPC servers.search received: term='{}', min_size={:?}, max_size={:?}, extension={:?}",
+        term,
+        query.min_size,
+        query.max_size,
+        query.extension
+    );
 
     state.server_session.search(query).await?;
     Ok(json!({ "sent": true }))

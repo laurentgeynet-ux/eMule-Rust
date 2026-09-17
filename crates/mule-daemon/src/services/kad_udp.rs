@@ -680,6 +680,11 @@ impl KadUdpService {
             (socket, inner.in_flight.clone())
         };
 
+        let _permit = self
+            .policy_mgr
+            .request_tcp_connect(target, ConnectionPurpose::KadNode)
+            .map_err(|e| format!("Policy denied Kad UDP send to {target}: {e}"))?;
+
         let tx_id = self.next_tx_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
 

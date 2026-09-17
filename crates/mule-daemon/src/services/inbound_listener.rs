@@ -243,7 +243,11 @@ impl InboundListenerService {
 
         // Protocol Obfuscation detection on first byte
         let mut first_byte = [0u8; 1];
-        if socket.read_exact(&mut first_byte).await.is_err() {
+        let read_res = tokio::select! {
+            _ = cancel_token.cancelled() => return,
+            res = socket.read_exact(&mut first_byte) => res,
+        };
+        if read_res.is_err() {
             return;
         }
         let b = first_byte[0];

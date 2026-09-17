@@ -166,6 +166,16 @@ impl ServerSessionManager {
         let packet = query
             .encode(&limits)
             .map_err(|e| JsonRpcError::business(format!("Failed to encode search query: {e}")))?;
+        
+        info!(
+            "Sending eD2K OP_SEARCHREQUEST to server (term='{}', min_size={:?}, max_size={:?}, ext={:?}, payload_len={})",
+            query.term,
+            query.min_size,
+            query.max_size,
+            query.extension,
+            packet.payload.len()
+        );
+
         tx.send(packet).await.map_err(|_| {
             JsonRpcError::business("Failed to send search request to server")
         })?;

@@ -17,6 +17,9 @@ pub struct DaemonConfig {
     pub obfuscation_enabled: bool,
     pub obfuscation_required: bool,
     pub obfuscation_padding_max: u8,
+    pub max_global_download_peers: usize,
+    pub max_peers_per_download: usize,
+    pub min_peers_per_download: usize,
 }
 
 impl DaemonConfig {
@@ -35,6 +38,9 @@ impl DaemonConfig {
             obfuscation_enabled: true,
             obfuscation_required: false,
             obfuscation_padding_max: 16,
+            max_global_download_peers: 50,
+            max_peers_per_download: 40,
+            min_peers_per_download: 2,
         }
     }
 
@@ -72,6 +78,18 @@ impl DaemonConfig {
     pub fn with_obfuscation(mut self, enabled: bool, required: bool) -> Self {
         self.obfuscation_enabled = enabled;
         self.obfuscation_required = required;
+        self
+    }
+
+    pub fn with_swarm_limits(
+        mut self,
+        max_global: usize,
+        max_per_dl: usize,
+        min_per_dl: usize,
+    ) -> Self {
+        self.max_global_download_peers = max_global;
+        self.max_peers_per_download = max_per_dl;
+        self.min_peers_per_download = min_per_dl;
         self
     }
 

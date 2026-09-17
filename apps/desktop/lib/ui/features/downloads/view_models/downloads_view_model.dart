@@ -91,6 +91,7 @@ class DownloadsViewModel extends ChangeNotifier {
   KadStatusModel _kadStatus = KadStatusModel.initial;
   List<KadContactModel> _kadContacts = [];
   bool _isKadLoading = false;
+  Timer? _kadStatusTimer;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<ServerSessionModel>? _serverSessionSub;
@@ -108,6 +109,12 @@ class DownloadsViewModel extends ChangeNotifier {
   }) {
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
+      if (state == DaemonConnectionState.connected) {
+        _startKadStatusTimer();
+      } else {
+        _kadStatusTimer?.cancel();
+        _kadStatusTimer = null;
+      }
       notifyListeners();
     });
 
@@ -359,6 +366,7 @@ class DownloadsViewModel extends ChangeNotifier {
       await fetchHistory();
       await fetchCategories();
       await fetchNetworkPolicy();
+      await fetchKadStatus();
       final list = await client.listDownloads();
       _downloads.clear();
       for (final item in list) {
@@ -1678,8 +1686,24 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
+  void _startKadStatusTimer() {
+    _kadStatusTimer?.cancel();
+    _kadStatusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (_connectionState == DaemonConnectionState.connected) {
+        await fetchKadStatus();
+        if (_currentSection == AppNavSection.kad && !_isKadLoading) {
+          try {
+            _kadContacts = await client.listKadContacts(limit: 100);
+            notifyListeners();
+          } catch (_) {}
+        }
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _kadStatusTimer?.cancel();
     _connSub?.cancel();
     _serverSessionSub?.cancel();
     _eventSub?.cancel();

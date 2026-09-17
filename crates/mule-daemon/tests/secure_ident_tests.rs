@@ -871,7 +871,12 @@ async fn test_kill_switch_during_secure_handshake_aborts_cleanly() {
 
     // Write should fail or connection close
     let mut raw_buf = [0u8; 1024];
-    let res = client_socket.read(&mut raw_buf).await;
+    let res = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        client_socket.read(&mut raw_buf),
+    )
+    .await
+    .expect("Socket read should complete or terminate within timeout");
     if let Ok(n) = res {
         assert_eq!(n, 0, "Socket must be closed on kill switch");
     }

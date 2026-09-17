@@ -39,11 +39,11 @@ use crate::rpc::events::DownloadSnapshot;
 use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::DownloadService;
 
-/// Maximum active peer connections per file hash.
-pub const MAX_PEERS_PER_DOWNLOAD: usize = 4;
+/// Maximum active peer connections per file hash (hard safety ceiling).
+pub const MAX_PEERS_PER_DOWNLOAD: usize = 40;
 
 /// Maximum active peer connections across the entire daemon.
-pub const MAX_GLOBAL_PEERS: usize = 20;
+pub const MAX_GLOBAL_PEERS: usize = 50;
 
 /// Maximum read buffer capacity for incoming peer data (256 KiB) to prevent OOM.
 pub const MAX_PEER_READ_BUFFER_SIZE: usize = 256 * 1024;
@@ -234,6 +234,15 @@ impl PeerSessionManager {
     /// Sets custom timeouts.
     pub fn with_timeouts(mut self, timeouts: PeerTimeouts) -> Self {
         self.timeouts = timeouts;
+        self
+    }
+
+    /// Configures initial swarm connection limits.
+    pub fn with_limits(self, max_per_download: usize, max_global: usize) -> Self {
+        if let Ok(mut guard) = self.inner.try_lock() {
+            guard.max_peers_per_download = max_per_download;
+            guard.max_global_peers = max_global;
+        }
         self
     }
 
@@ -468,6 +477,10 @@ impl PeerSessionManager {
                     info!("Peer session with {} was aborted by Kill Switch / user action without peer penalty.", target_addr);
                     (PeerSourceStatus::Tried, Some(e.reason), Some(e.message))
                 }
+                Err(e) if e.reason == PeerFailureReason::TimeoutStatus => {
+                    info!("Peer session with {} timed out waiting for status/queue (peer may be busy). Gentle retry scheduled.", target_addr);
+                    (PeerSourceStatus::Tried, Some(e.reason), Some(e.message))
+                }
                 Err(e) => {
                     warn!("Peer session with {} ended with failure: [{:?}] {}", target_addr, e.reason, e.message);
                     (PeerSourceStatus::Failed, Some(e.reason), Some(e.message))
@@ -478,7 +491,7 @@ impl PeerSessionManager {
             {
                 let mut dl_svc = downloads.lock().await;
                 let sources = dl_svc.list_peer_sources(&file_hash_str).unwrap_or_default();
-                let current_source = sources.into_iter().find(|s| s.address == addr_for_task);
+                let current_source = sources.iter().find(|s| s.address == addr_for_task);
                 let current_fail_count = current_source.map(|s| s.fail_count).unwrap_or(0);
                 let new_fail_count = if final_status == PeerSourceStatus::Failed {
                     current_fail_count + 1
@@ -490,8 +503,15 @@ impl PeerSessionManager {
                 let cooldown_until = if final_status == PeerSourceStatus::Failed && cooldown_ms > 0 {
                     Some(now + cooldown_ms)
                 } else if final_status == PeerSourceStatus::Tried {
-                    // Standard eMule 15-minute re-ask interval for queued/tried peers
-                    Some(now + 15 * 60 * 1000)
+                    // For files with scarce sources (< 15), re-ask in 3 minutes (180s) or 45s for status timeouts
+                    let reask_ms = if reason == Some(PeerFailureReason::TimeoutStatus) {
+                        45 * 1000 // 45 seconds gentle retry for busy peers
+                    } else if sources.len() < 15 {
+                        3 * 60 * 1000 // 3 minutes for scarce swarms
+                    } else {
+                        15 * 60 * 1000 // Standard eMule 15 minutes for large swarms
+                    };
+                    Some(now + reask_ms)
                 } else {
                     None
                 };
@@ -1001,6 +1021,41 @@ async fn run_peer_connection(
                                     }
                                 } else if packet.opcode == OP_REQFILENAME_ANSWER {
                                     tracing::debug!("Peer {target_addr} sent OP_REQFILENAME_ANSWER (len={})", packet.payload.len());
+                                } else if packet.opcode == OP_QUEUERANKING {
+                                    let rank = if packet.payload.len() >= 4 {
+                                        u32::from_le_bytes(packet.payload[..4].try_into().unwrap_or([0, 0, 0, 0]))
+                                    } else if packet.payload.len() >= 2 {
+                                        u16::from_le_bytes(packet.payload[..2].try_into().unwrap_or([0, 0])) as u32
+                                    } else {
+                                        0
+                                    };
+                                    tracing::info!("Peer {target_addr} responded with queue ranking {rank} during status query");
+                                    let queue_update = {
+                                        let mut g = inner.lock().await;
+                                        if let Some(session) = g.sessions.get_mut(&address_str) {
+                                            session.snapshot.queue_rank = Some(rank);
+                                            Some(session.snapshot.clone())
+                                        } else {
+                                            None
+                                        }
+                                    };
+                                    if let Some(snap) = queue_update {
+                                        emit_event(&event_tx, &sequence, &snap);
+                                    }
+                                    file_status_opt = Some(mule_protocol::ed2k::Ed2kFileStatus {
+                                        file_hash: dl_hash_bytes,
+                                        part_count: 0,
+                                        availability_mask: mule_protocol::ed2k::PartAvailabilityMask::from_parts(&[], 0),
+                                    });
+                                    break;
+                                } else if packet.opcode == OP_ACCEPTUPLOADREQ {
+                                    tracing::info!("Peer {target_addr} directly accepted upload slot (OP_ACCEPTUPLOADREQ) during status query!");
+                                    file_status_opt = Some(mule_protocol::ed2k::Ed2kFileStatus {
+                                        file_hash: dl_hash_bytes,
+                                        part_count: 0,
+                                        availability_mask: mule_protocol::ed2k::PartAvailabilityMask::from_parts(&[], 0),
+                                    });
+                                    break;
                                 } else if packet.opcode == OP_FILEREQANSNOFILE {
                                     return Err(PeerError::new(PeerFailureReason::FileNotFound, "Remote peer does not share this file (OP_FILEREQANSNOFILE)"));
                                 }

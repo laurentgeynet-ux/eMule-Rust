@@ -42,7 +42,8 @@ impl AppState {
         );
         let sequence = Arc::new(AtomicU64::new(1));
         let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
-        let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
+        let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence))
+            .with_limits(config.max_peers_per_download, config.max_global_download_peers);
         let dl_arc = Arc::new(Mutex::new(downloads));
         server_session.set_downloads(Arc::clone(&dl_arc));
         let identity_service = crate::services::IdentityService::load_or_generate(&config.data_dir);

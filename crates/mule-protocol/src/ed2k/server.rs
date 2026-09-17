@@ -17,7 +17,7 @@ use super::protocol::PR_ED2K;
 use super::tags::{
     Ed2kTag, RawTag, TagName, TagReader, TagValue, SRVCAP_LARGEFILES, SRVCAP_NEWTAGS,
     SRVCAP_UNICODE, TAG_SPECIAL_CT_EMULE_VERSION, TAG_SPECIAL_EMULE_MISCOPTIONS1,
-    TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE, TAG_SPECIAL_NAME,
+    TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME,
     TAG_SPECIAL_SERVER_FLAGS, TAG_SPECIAL_VERSION,
 };
 use crate::framing::RawPacket;
@@ -218,12 +218,11 @@ impl SearchQuery {
         }
     }
 
-    /// Encodes the search request into a `RawPacket`.
+    /// Encodes the search request into a `RawPacket` as a canonical eD2K Query Tree.
+    ///
+    /// The root is either a string leaf (0x01) or a chain of binary boolean AND operators (0x00, 0x00)
+    /// combining the keyword string leaf and any constraint leaves (min_size, max_size, extension).
     pub fn encode(&self, limits: &Ed2kLimits) -> Result<RawPacket, Ed2kEncodeError> {
-        let mut buf = Vec::new();
-
-        // Historical standard simple eD2K search request:
-        // string (2-byte len + bytes)
         let term_bytes = self.term.as_bytes();
         if term_bytes.len() > limits.max_string_bytes {
             return Err(Ed2kEncodeError::new(
@@ -236,51 +235,69 @@ impl SearchQuery {
             ));
         }
 
-        buf.extend_from_slice(&(term_bytes.len() as u16).to_le_bytes());
-        buf.extend_from_slice(term_bytes);
+        // 1. Encode term leaf: 0x01 (EDONKEY_SEARCH_NAME) + u16 len + term bytes
+        let mut term_leaf = Vec::with_capacity(3 + term_bytes.len());
+        term_leaf.push(0x01);
+        term_leaf.extend_from_slice(&(term_bytes.len() as u16).to_le_bytes());
+        term_leaf.extend_from_slice(term_bytes);
 
-        // Optional parameters encoded as eD2K tags if present
-        let mut tags = Vec::new();
+        // 2. Prepare filter leaves
+        let mut filter_leaves = Vec::new();
+
+        // Min size filter leaf:
+        // 0x03 (EDONKEY_SEARCH_LIMIT) + limit (u32 le) + 0x01 (EDONKEY_SEARCH_MIN) + tag_name_len (u16 le = 1) + 0x02 (TAG_SPECIAL_FILESIZE)
         if let Some(min) = self.min_size {
-            if min <= u32::MAX as u64 {
-                tags.push(Ed2kTag {
-                    name: TagName::Text("min_size".to_string()),
-                    value: TagValue::UInt32(min as u32),
-                });
-            } else {
-                tags.push(Ed2kTag {
-                    name: TagName::Text("min_size".to_string()),
-                    value: TagValue::UInt64(min),
-                });
-            }
-        }
-        if let Some(max) = self.max_size {
-            if max <= u32::MAX as u64 {
-                tags.push(Ed2kTag {
-                    name: TagName::Text("max_size".to_string()),
-                    value: TagValue::UInt32(max as u32),
-                });
-            } else {
-                tags.push(Ed2kTag {
-                    name: TagName::Text("max_size".to_string()),
-                    value: TagValue::UInt64(max),
-                });
-            }
-        }
-        if let Some(ext) = &self.extension {
-            tags.push(Ed2kTag {
-                name: TagName::Id(TAG_SPECIAL_FILETYPE),
-                value: TagValue::String(ext.clone()),
-            });
+            let mut leaf = Vec::with_capacity(9);
+            leaf.push(0x03);
+            let val = (min.min(u32::MAX as u64)) as u32;
+            leaf.extend_from_slice(&val.to_le_bytes());
+            leaf.push(0x01); // MIN
+            leaf.extend_from_slice(&1u16.to_le_bytes());
+            leaf.push(TAG_SPECIAL_FILESIZE);
+            filter_leaves.push(leaf);
         }
 
-        if !tags.is_empty() {
-            let encoder = Ed2kEncoder::with_limits(limits.clone());
-            buf.extend_from_slice(&(tags.len() as u32).to_le_bytes());
-            for tag in &tags {
-                encoder.encode_tag(OP_SEARCHREQUEST, tag, &mut buf)?;
-            }
+        // Max size filter leaf:
+        // 0x03 (EDONKEY_SEARCH_LIMIT) + limit (u32 le) + 0x02 (EDONKEY_SEARCH_MAX) + tag_name_len (u16 le = 1) + 0x02 (TAG_SPECIAL_FILESIZE)
+        if let Some(max) = self.max_size {
+            let mut leaf = Vec::with_capacity(9);
+            leaf.push(0x03);
+            let val = (max.min(u32::MAX as u64)) as u32;
+            leaf.extend_from_slice(&val.to_le_bytes());
+            leaf.push(0x02); // MAX
+            leaf.extend_from_slice(&1u16.to_le_bytes());
+            leaf.push(TAG_SPECIAL_FILESIZE);
+            filter_leaves.push(leaf);
         }
+
+        // Extension / Format filter leaf:
+        // 0x02 (EDONKEY_SEARCH_META) + str_len (u16 le) + str_bytes + tag_name_len (u16 le = 1) + 0x04 (EDONKEY_STAG_FORMAT)
+        if let Some(ext) = &self.extension {
+            let ext_bytes = ext.as_bytes();
+            let mut leaf = Vec::with_capacity(6 + ext_bytes.len());
+            leaf.push(0x02); // META
+            leaf.extend_from_slice(&(ext_bytes.len() as u16).to_le_bytes());
+            leaf.extend_from_slice(ext_bytes);
+            leaf.extend_from_slice(&1u16.to_le_bytes());
+            leaf.push(0x04); // EDONKEY_STAG_FORMAT
+            filter_leaves.push(leaf);
+        }
+
+        // 3. Assemble binary tree in preorder traversal:
+        // If no filters: [term_leaf]
+        // If 1 filter: [0x00, 0x00] (AND) + [term_leaf] + [filter_1]
+        // If N filters: AND( ... AND(term_leaf, filter_1) ..., filter_N)
+        let mut current_tree = term_leaf;
+        for filter in filter_leaves {
+            let mut new_tree = Vec::with_capacity(2 + current_tree.len() + filter.len());
+            new_tree.push(0x00); // EDONKEY_SEARCH_BOOL
+            new_tree.push(0x00); // EDONKEY_SEARCH_AND
+            new_tree.extend_from_slice(&current_tree);
+            new_tree.extend_from_slice(&filter);
+            current_tree = new_tree;
+        }
+
+        let buf = current_tree;
 
         let payload_len = buf.len() + 1; // + 1 for opcode
         if payload_len > limits.max_frame_bytes {

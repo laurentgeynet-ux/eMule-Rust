@@ -15,8 +15,8 @@ use mule_core::model::{DownloadStatus, PeerSourceStatus};
 use mule_protocol::ed2k::GetSourcesRequest;
 
 use crate::rpc::events::DownloadSnapshot;
-use crate::services::peer_session::MAX_PEERS_PER_DOWNLOAD;
 use crate::services::server_session::ServerConnectionStatus;
+use crate::services::swarm_allocator::{FileDemand, SwarmAllocationConfig, SwarmAllocator};
 use crate::state::AppState;
 
 /// Interval between coordinator evaluation ticks.
@@ -26,7 +26,7 @@ const COORDINATOR_TICK_INTERVAL: Duration = Duration::from_secs(3);
 const SOURCE_REQUERY_INTERVAL: Duration = Duration::from_secs(300);
 
 /// Maximum number of new peer connections to initiate per file per tick (burst prevention).
-const MAX_CONNECT_PER_TICK: usize = 2;
+const MAX_CONNECT_PER_TICK: usize = 5;
 
 pub struct SwarmCoordinator {
     state: AppState,
@@ -162,6 +162,83 @@ impl SwarmCoordinator {
             .unwrap_or_default()
             .as_millis() as i64;
 
+        // Build demands and compute dynamic swarm quotas using Water-filling allocator
+        let mut demands = Vec::with_capacity(active_downloads.len());
+        for dl in &active_downloads {
+            let file_info = {
+                let dl_guard = self.state.downloads.lock().await;
+                dl_guard.get_download_file_info(&dl.id)
+            };
+            if let Some((_, _, hash, _)) = file_info {
+                let hash_hex = hex::encode(hash.0);
+                let viable_sources = {
+                    let dl_guard = self.state.downloads.lock().await;
+                    dl_guard
+                        .list_peer_sources(&hash_hex)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|s| match s.status {
+                            PeerSourceStatus::Candidate
+                            | PeerSourceStatus::Tried
+                            | PeerSourceStatus::Allowed
+                            | PeerSourceStatus::Failed => {
+                                if let Some(cooldown) = s.cooldown_until_unix_ms {
+                                    cooldown <= now_ms
+                                } else {
+                                    true
+                                }
+                            }
+                            _ => false,
+                        })
+                        .count()
+                };
+
+                let remaining_bytes = dl.total_bytes.saturating_sub(dl.received_bytes);
+                let remaining_parts = ((remaining_bytes + 9_727_999) / 9_728_000) as usize;
+                let active_peers = self
+                    .state
+                    .peer_session
+                    .active_peer_count_for_hash(&hash_hex)
+                    .await;
+
+                demands.push(FileDemand::new(
+                    hash_hex,
+                    &dl.priority,
+                    viable_sources,
+                    remaining_parts,
+                    active_peers,
+                ));
+            }
+        }
+
+        let alloc_config = {
+            let dl_guard = self.state.downloads.lock().await;
+            let max_g = dl_guard
+                .get_setting("max_global_download_peers")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(self.state.config.max_global_download_peers);
+            let max_f = dl_guard
+                .get_setting("max_peers_per_download")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(self.state.config.max_peers_per_download);
+            let min_f = dl_guard
+                .get_setting("min_peers_per_download")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(self.state.config.min_peers_per_download);
+            SwarmAllocationConfig {
+                max_global_peers: max_g,
+                max_peers_per_file: max_f,
+                min_peers_per_file: min_f,
+            }
+        };
+        let quotas = SwarmAllocator::compute_quotas(&demands, &alloc_config);
+
         for dl in active_downloads {
             // Get detailed file info (hash and total size)
             let file_info = {
@@ -189,9 +266,14 @@ impl SwarmCoordinator {
                     .then_with(|| b.last_seen_unix_ms.cmp(&a.last_seen_unix_ms))
             });
 
-            // 3. Periodic source discovery (30s if 0 sources, 300s once sources exist)
+            // Dynamic source discovery interval:
+            // - If 0 sources: 30s
+            // - If < 15 sources: 60s (aggressive discovery while sources are scarce)
+            // - If >= 15 sources: 300s (standard 5-minute maintenance)
             let query_interval = if candidate_sources.is_empty() {
                 Duration::from_secs(30)
+            } else if candidate_sources.len() < 15 {
+                Duration::from_secs(60)
             } else {
                 SOURCE_REQUERY_INTERVAL
             };
@@ -296,11 +378,12 @@ impl SwarmCoordinator {
                 .await;
             let active_count = swarm_snap.active_peer_count;
 
-            if active_count >= MAX_PEERS_PER_DOWNLOAD {
+            let target_quota = *quotas.get(&hash_hex).unwrap_or(&0);
+            if active_count >= target_quota {
                 continue;
             }
 
-            let needed = (MAX_PEERS_PER_DOWNLOAD - active_count).min(MAX_CONNECT_PER_TICK);
+            let needed = (target_quota - active_count).min(MAX_CONNECT_PER_TICK);
             if needed == 0 {
                 continue;
             }
@@ -368,7 +451,7 @@ impl SwarmCoordinator {
                 let obfu_pad_max = self.state.config.obfuscation_padding_max;
 
                 tracing::info!(
-                    "Swarm coordinator initiating peer connection to {peer_addr} for {file_hash_str} (obfu_target_hash={:?}, crypt_opts=0x{:02x})",
+                    "Swarm coordinator initiating peer connection to {peer_addr} for {file_hash_str} (quota={target_quota}, active={active_count}, obfu_target_hash={:?}, crypt_opts=0x{:02x})",
                     target_user_hash.is_some(),
                     peer_crypt_options
                 );

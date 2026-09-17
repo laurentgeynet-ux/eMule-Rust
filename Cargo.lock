@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "mule-cli"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap",
  "data-encoding",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "mule-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "md4",
  "mule-format",
@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "mule-daemon"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "axum",
  "bytes",
@@ -978,7 +978,7 @@ dependencies = [
 
 [[package]]
 name = "mule-filter"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "mule-format"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "data-encoding",
  "hex",
@@ -1004,7 +1004,7 @@ dependencies = [
 
 [[package]]
 name = "mule-network-policy"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "mule-filter",
  "serde",
@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "mule-protocol"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "bytes",
  "flate2",

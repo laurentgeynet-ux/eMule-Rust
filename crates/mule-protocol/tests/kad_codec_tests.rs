@@ -292,3 +292,26 @@ fn test_kad_search_and_publish_keyword_roundtrip() {
         _ => panic!("expected PublishKeywordRes"),
     }
 }
+
+#[test]
+fn test_legacy_kad_bootstrap_req_opcode_0x00() {
+    // Exact 27-byte payload observed from live eMule/aMule client
+    let raw = [
+        0xE4, 0x00, 0xD6, 0x24, 0x69, 0xF6, 0x75, 0x20, 0x5B, 0x69, 0xBA, 0xD1, 0x1F, 0xE5,
+        0x0A, 0x43, 0x86, 0x84, 0x24, 0xDA, 0xAA, 0x56, 0x94, 0x1E, 0xBE, 0x25, 0x00,
+    ];
+
+    let decoded = KadCodec::decode(&raw).expect("should decode legacy Kad bootstrap req 0x00");
+    match decoded {
+        KadMessage::BootstrapReq(req) => {
+            assert_eq!(
+                req.kad_id,
+                [
+                    0xD6, 0x24, 0x69, 0xF6, 0x75, 0x20, 0x5B, 0x69, 0xBA, 0xD1, 0x1F, 0xE5,
+                    0x0A, 0x43, 0x86, 0x84
+                ]
+            );
+        }
+        _ => panic!("expected BootstrapReq message"),
+    }
+}

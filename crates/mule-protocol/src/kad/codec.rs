@@ -404,7 +404,7 @@ impl KadCodec {
                     tcp_port,
                 }))
             }
-            KADEMLIA2_BOOTSTRAP_REQ => {
+            KADEMLIA_BOOTSTRAP_REQ_OLD | KADEMLIA2_BOOTSTRAP_REQ => {
                 if payload.is_empty() {
                     Ok(KadMessage::BootstrapReq(KadBootstrapReq {
                         kad_id: [0u8; 16],

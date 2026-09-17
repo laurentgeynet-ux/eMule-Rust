@@ -104,6 +104,18 @@ fn test_decode_server_status() {
 #[test]
 fn test_encode_search_query() {
     let limits = Ed2kLimits::default();
+
+    // Simple search (no filters): starts with 0x01 (NAME), u16 len, then term
+    let simple_query = SearchQuery::new("windows");
+    let packet_simple = simple_query.encode(&limits).expect("encode simple search query");
+    assert_eq!(packet_simple.protocol, PR_ED2K);
+    assert_eq!(packet_simple.opcode, OP_SEARCHREQUEST);
+    assert_eq!(packet_simple.payload[0], 0x01);
+    let term_len = u16::from_le_bytes([packet_simple.payload[1], packet_simple.payload[2]]) as usize;
+    assert_eq!(term_len, 7);
+    assert_eq!(&packet_simple.payload[3..3 + term_len], b"windows");
+
+    // Filtered search: Query Tree binary operators 0x00, 0x00 (AND)
     let mut query = SearchQuery::new("debian");
     query.min_size = Some(1024);
     query.extension = Some("iso".to_string());
@@ -111,7 +123,9 @@ fn test_encode_search_query() {
     let packet = query.encode(&limits).expect("encode search query");
     assert_eq!(packet.protocol, PR_ED2K);
     assert_eq!(packet.opcode, OP_SEARCHREQUEST);
-    assert!(packet.payload.len() > 8);
+    assert_eq!(packet.payload[0], 0x00); // BOOL
+    assert_eq!(packet.payload[1], 0x00); // AND
+    assert!(packet.payload.len() > 15);
 }
 
 #[test]
