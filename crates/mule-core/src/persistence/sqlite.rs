@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::model::{
-    Download, DownloadCategory, DownloadStatus, HistoryEntry, HistoryFilter, HistoryStats,
+    Download, DownloadCategory, DownloadStatus, Ed2kServer, HistoryEntry, HistoryFilter,
+    HistoryStats, PeerCredit, PeerSource, PeerSourceOrigin, PeerSourceStatus, ServerFilterStatus,
+    SharedFile,
 };
 use crate::ranges::RangeSet;
 
@@ -109,6 +111,107 @@ impl Database {
             );
 
             CREATE INDEX IF NOT EXISTS idx_categories_order ON download_categories(sort_order ASC);
+
+            CREATE TABLE IF NOT EXISTS ed2k_servers (
+                address TEXT PRIMARY KEY,
+                ip TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                ping INTEGER NOT NULL DEFAULT 0,
+                preference INTEGER NOT NULL DEFAULT 0,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                dyn_ip TEXT,
+                version TEXT,
+                filter_status TEXT NOT NULL DEFAULT 'allowed',
+                last_seen_unix_ms INTEGER,
+                created_at_unix_ms INTEGER NOT NULL,
+                updated_at_unix_ms INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_servers_filter_status ON ed2k_servers(filter_status);
+
+            CREATE TABLE IF NOT EXISTS peer_sources (
+                file_hash TEXT NOT NULL,
+                address TEXT NOT NULL,
+                ip INTEGER NOT NULL,
+                port INTEGER NOT NULL,
+                origin TEXT NOT NULL,
+                discovered_at_unix_ms INTEGER NOT NULL,
+                last_seen_unix_ms INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'candidate',
+                fail_count INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                cooldown_until_unix_ms INTEGER,
+                user_hash TEXT,
+                crypt_options INTEGER DEFAULT 0,
+                PRIMARY KEY(file_hash, address)
+            );
+
+            CREATE TABLE IF NOT EXISTS shared_files (
+                file_hash TEXT PRIMARY KEY,
+                file_name TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                file_path TEXT NOT NULL,
+                shared_at_unix_ms INTEGER NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_shared_files_enabled ON shared_files(enabled);
+
+            CREATE TABLE IF NOT EXISTS peer_credits (
+                pubkey_hash TEXT PRIMARY KEY,
+                pubkey_hex TEXT NOT NULL,
+                uploaded_bytes INTEGER NOT NULL DEFAULT 0,
+                downloaded_bytes INTEGER NOT NULL DEFAULT 0,
+                first_seen_unix_ms INTEGER NOT NULL,
+                last_seen_unix_ms INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS kad_contacts (
+                kad_id TEXT PRIMARY KEY,
+                ip TEXT NOT NULL,
+                udp_port INTEGER NOT NULL,
+                tcp_port INTEGER,
+                version INTEGER NOT NULL DEFAULT 0,
+                verified INTEGER NOT NULL DEFAULT 0,
+                fail_count INTEGER NOT NULL DEFAULT 0,
+                first_seen_unix_ms INTEGER NOT NULL,
+                last_seen_unix_ms INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_kad_contacts_last_seen ON kad_contacts(last_seen_unix_ms DESC);
+            CREATE INDEX IF NOT EXISTS idx_kad_contacts_verified ON kad_contacts(verified);
+
+            CREATE TABLE IF NOT EXISTS kad_sources_index (
+                file_hash TEXT NOT NULL,
+                source_kad_id TEXT NOT NULL,
+                ip TEXT NOT NULL,
+                udp_port INTEGER NOT NULL,
+                tcp_port INTEGER NOT NULL,
+                file_size INTEGER NOT NULL,
+                encryption INTEGER NOT NULL DEFAULT 0,
+                expires_at_unix_ms INTEGER NOT NULL,
+                updated_at_unix_ms INTEGER NOT NULL,
+                PRIMARY KEY(file_hash, source_kad_id, ip, tcp_port)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_kad_sources_file_hash ON kad_sources_index(file_hash);
+            CREATE INDEX IF NOT EXISTS idx_kad_sources_expires ON kad_sources_index(expires_at_unix_ms);
+
+            CREATE TABLE IF NOT EXISTS kad_keywords_index (
+                keyword_hash TEXT NOT NULL,
+                file_hash TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                source_count INTEGER NOT NULL DEFAULT 1,
+                discovered_at_unix_ms INTEGER NOT NULL,
+                expires_at_unix_ms INTEGER NOT NULL,
+                PRIMARY KEY(keyword_hash, file_hash)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_kad_keywords_lookup ON kad_keywords_index(keyword_hash);
+            CREATE INDEX IF NOT EXISTS idx_kad_keywords_expires ON kad_keywords_index(expires_at_unix_ms);
             ",
         )?;
 
@@ -126,6 +229,44 @@ impl Database {
         if !has_category_id {
             self.conn
                 .execute_batch("ALTER TABLE downloads ADD COLUMN category_id TEXT;")?;
+        }
+
+        // Ensure cooldown_until_unix_ms exists in peer_sources table (migration)
+        let mut stmt_peer = self.conn.prepare("PRAGMA table_info(peer_sources)")?;
+        let mut rows_peer = stmt_peer.query([])?;
+        let mut has_cooldown = false;
+        while let Some(row) = rows_peer.next()? {
+            let col_name: String = row.get(1)?;
+            if col_name == "cooldown_until_unix_ms" {
+                has_cooldown = true;
+                break;
+            }
+        }
+        if !has_cooldown {
+            self.conn
+                .execute_batch("ALTER TABLE peer_sources ADD COLUMN cooldown_until_unix_ms INTEGER;")?;
+        }
+
+        // Ensure user_hash and crypt_options exist in peer_sources table (migration)
+        let mut stmt_peer2 = self.conn.prepare("PRAGMA table_info(peer_sources)")?;
+        let mut rows_peer2 = stmt_peer2.query([])?;
+        let mut has_user_hash = false;
+        let mut has_crypt_options = false;
+        while let Some(row) = rows_peer2.next()? {
+            let col_name: String = row.get(1)?;
+            if col_name == "user_hash" {
+                has_user_hash = true;
+            } else if col_name == "crypt_options" {
+                has_crypt_options = true;
+            }
+        }
+        if !has_user_hash {
+            self.conn
+                .execute_batch("ALTER TABLE peer_sources ADD COLUMN user_hash TEXT;")?;
+        }
+        if !has_crypt_options {
+            self.conn
+                .execute_batch("ALTER TABLE peer_sources ADD COLUMN crypt_options INTEGER DEFAULT 0;")?;
         }
 
         Ok(())
@@ -742,5 +883,830 @@ impl Database {
             params![category_id, now, download_id.to_string()],
         )?;
         Ok(rows > 0)
+    }
+
+    /// Upserts a batch of eD2K servers.
+    /// If an address already exists, updates metadata while preserving its manual enabled/disabled status if previously disabled.
+    pub fn upsert_servers(&mut self, servers: &[Ed2kServer]) -> Result<usize, CoreError> {
+        let tx = self.conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO ed2k_servers (
+                    address, ip, port, name, description, ping, preference, failed_count,
+                    dyn_ip, version, filter_status, last_seen_unix_ms, created_at_unix_ms, updated_at_unix_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                ON CONFLICT(address) DO UPDATE SET
+                    ip = excluded.ip,
+                    port = excluded.port,
+                    name = excluded.name,
+                    description = excluded.description,
+                    ping = excluded.ping,
+                    preference = excluded.preference,
+                    failed_count = excluded.failed_count,
+                    dyn_ip = excluded.dyn_ip,
+                    version = excluded.version,
+                    filter_status = CASE
+                        WHEN ed2k_servers.filter_status = 'disabled' THEN 'disabled'
+                        ELSE excluded.filter_status
+                    END,
+                    updated_at_unix_ms = excluded.updated_at_unix_ms"
+            )?;
+
+            for s in servers {
+                stmt.execute(params![
+                    s.address,
+                    s.ip,
+                    s.port,
+                    s.name,
+                    s.description,
+                    s.ping,
+                    s.preference,
+                    s.failed_count,
+                    s.dyn_ip,
+                    s.version,
+                    s.filter_status.as_str(),
+                    s.last_seen_unix_ms,
+                    s.created_at_unix_ms,
+                    s.updated_at_unix_ms,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// Lists all persisted eD2K servers ordered by preference DESC, name ASC.
+    pub fn list_servers(&self) -> Result<Vec<Ed2kServer>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT address, ip, port, name, description, ping, preference, failed_count,
+                    dyn_ip, version, filter_status, last_seen_unix_ms, created_at_unix_ms, updated_at_unix_ms
+             FROM ed2k_servers
+             ORDER BY preference DESC, name ASC"
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let filter_status_str: String = row.get(10)?;
+            let filter_status: ServerFilterStatus = filter_status_str.parse().unwrap_or(ServerFilterStatus::Allowed);
+
+            Ok(Ed2kServer {
+                address: row.get(0)?,
+                ip: row.get(1)?,
+                port: row.get(2)?,
+                name: row.get(3)?,
+                description: row.get(4)?,
+                ping: row.get(5)?,
+                preference: row.get(6)?,
+                failed_count: row.get(7)?,
+                dyn_ip: row.get(8)?,
+                version: row.get(9)?,
+                filter_status,
+                last_seen_unix_ms: row.get(11)?,
+                created_at_unix_ms: row.get(12)?,
+                updated_at_unix_ms: row.get(13)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Updates the enabled/disabled state of a server.
+    /// If enabled is true, sets status to 'allowed'; if false, sets to 'disabled'.
+    pub fn set_server_enabled(&mut self, address: &str, enabled: bool) -> Result<bool, CoreError> {
+        let new_status = if enabled {
+            ServerFilterStatus::Allowed.as_str()
+        } else {
+            ServerFilterStatus::Disabled.as_str()
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        let rows = self.conn.execute(
+            "UPDATE ed2k_servers SET filter_status = ?1, updated_at_unix_ms = ?2 WHERE address = ?3",
+            params![new_status, now, address],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Deletes a server from SQLite by address ("ip:port").
+    pub fn delete_server(&mut self, address: &str) -> Result<bool, CoreError> {
+        let rows = self.conn.execute(
+            "DELETE FROM ed2k_servers WHERE address = ?1",
+            params![address],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Removes all servers from SQLite.
+    pub fn clear_servers(&mut self) -> Result<usize, CoreError> {
+        let rows = self.conn.execute("DELETE FROM ed2k_servers", [])?;
+        Ok(rows)
+    }
+
+    // ── Peer Sources Registry ───────────────────────────────────────────────
+
+    /// Upserts a batch of peer sources for a given file hash.
+    /// Deduplicates on (file_hash, address). If existing, preserves fail_count, status and updates last_seen_unix_ms.
+    pub fn upsert_peer_sources(
+        &mut self,
+        file_hash: &str,
+        sources: &[PeerSource],
+    ) -> Result<usize, CoreError> {
+        let tx = self.conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut insert_stmt = tx.prepare(
+                "INSERT INTO peer_sources (
+                    file_hash, address, ip, port, origin,
+                    discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
+                    user_hash, crypt_options
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                ON CONFLICT(file_hash, address) DO UPDATE SET
+                    last_seen_unix_ms = excluded.last_seen_unix_ms,
+                    ip = excluded.ip,
+                    port = excluded.port,
+                    user_hash = COALESCE(excluded.user_hash, peer_sources.user_hash),
+                    crypt_options = CASE WHEN excluded.crypt_options != 0 THEN excluded.crypt_options ELSE peer_sources.crypt_options END"
+            )?;
+
+            for s in sources {
+                insert_stmt.execute(params![
+                    file_hash,
+                    s.address,
+                    s.ip as i64,
+                    s.port as i32,
+                    s.origin.as_str(),
+                    s.discovered_at_unix_ms,
+                    s.last_seen_unix_ms,
+                    s.status.as_str(),
+                    s.fail_count as i32,
+                    s.last_error,
+                    s.cooldown_until_unix_ms,
+                    s.user_hash,
+                    s.crypt_options as i32,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// Lists all persisted peer sources for a given file hash, ordered by status ASC, last_seen_unix_ms DESC.
+    pub fn list_peer_sources(&self, file_hash: &str) -> Result<Vec<PeerSource>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT file_hash, address, ip, port, origin,
+                    discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
+                    user_hash, crypt_options
+             FROM peer_sources
+             WHERE file_hash = ?1
+             ORDER BY status ASC, last_seen_unix_ms DESC"
+        )?;
+
+        let rows = stmt.query_map(params![file_hash], |row| {
+            let origin_str: String = row.get(4)?;
+            let origin: PeerSourceOrigin = origin_str.parse().unwrap_or(PeerSourceOrigin::Server);
+            let status_str: String = row.get(7)?;
+            let status: PeerSourceStatus = status_str.parse().unwrap_or(PeerSourceStatus::Candidate);
+            let ip_i64: i64 = row.get(2)?;
+            let port_i32: i32 = row.get(3)?;
+            let fail_count_i32: i32 = row.get(8)?;
+            let crypt_options_i32: i32 = row.get(12).unwrap_or(0);
+
+            Ok(PeerSource {
+                file_hash: row.get(0)?,
+                address: row.get(1)?,
+                ip: ip_i64 as u32,
+                port: port_i32 as u16,
+                origin,
+                discovered_at_unix_ms: row.get(5)?,
+                last_seen_unix_ms: row.get(6)?,
+                status,
+                fail_count: fail_count_i32 as u32,
+                last_error: row.get(9)?,
+                cooldown_until_unix_ms: row.get(10)?,
+                user_hash: row.get(11)?,
+                crypt_options: crypt_options_i32 as u8,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Updates the status, fail_count, last_error and optional cooldown of a peer source.
+    pub fn update_peer_source_status(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        status: PeerSourceStatus,
+        error: Option<&str>,
+        cooldown_until_unix_ms: Option<i64>,
+    ) -> Result<bool, CoreError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        let increment_fail = status == PeerSourceStatus::Failed;
+        let rows = if increment_fail {
+            self.conn.execute(
+                "UPDATE peer_sources SET status = ?1, fail_count = fail_count + 1, last_error = ?2, last_seen_unix_ms = ?3, cooldown_until_unix_ms = ?4
+                 WHERE file_hash = ?5 AND address = ?6",
+                params![status.as_str(), error, now, cooldown_until_unix_ms, file_hash, address],
+            )?
+        } else {
+            self.conn.execute(
+                "UPDATE peer_sources SET status = ?1, last_error = ?2, last_seen_unix_ms = ?3, cooldown_until_unix_ms = ?4
+                 WHERE file_hash = ?5 AND address = ?6",
+                params![status.as_str(), error, now, cooldown_until_unix_ms, file_hash, address],
+            )?
+        };
+        Ok(rows > 0)
+    }
+
+    /// Resets the cooldown and fail count for a peer source (e.g. manual retry by user).
+    pub fn reset_peer_source_cooldown(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+    ) -> Result<bool, CoreError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        let rows = self.conn.execute(
+            "UPDATE peer_sources SET cooldown_until_unix_ms = NULL, status = 'allowed', last_seen_unix_ms = ?1
+             WHERE file_hash = ?2 AND address = ?3",
+            params![now, file_hash, address],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Deletes a specific peer source from SQLite.
+    pub fn delete_peer_source(&mut self, file_hash: &str, address: &str) -> Result<bool, CoreError> {
+        let rows = self.conn.execute(
+            "DELETE FROM peer_sources WHERE file_hash = ?1 AND address = ?2",
+            params![file_hash, address],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Clears all peer sources for a file hash.
+    pub fn clear_peer_sources(&mut self, file_hash: &str) -> Result<usize, CoreError> {
+        let rows = self.conn.execute(
+            "DELETE FROM peer_sources WHERE file_hash = ?1",
+            params![file_hash],
+        )?;
+        Ok(rows)
+    }
+
+    /// Upserts a shared file in SQLite.
+    pub fn upsert_shared_file(&mut self, file: &crate::model::SharedFile) -> Result<(), CoreError> {
+        self.conn.execute(
+            "INSERT INTO shared_files (file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(file_hash) DO UPDATE SET
+                file_name = excluded.file_name,
+                file_size = excluded.file_size,
+                file_path = excluded.file_path,
+                enabled = excluded.enabled",
+            params![
+                file.file_hash,
+                file.file_name,
+                file.file_size as i64,
+                file.file_path,
+                file.shared_at_unix_ms,
+                if file.enabled { 1 } else { 0 },
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Lists all shared files in SQLite.
+    pub fn list_shared_files(&self) -> Result<Vec<crate::model::SharedFile>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled
+             FROM shared_files
+             ORDER BY shared_at_unix_ms DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let size_i64: i64 = row.get(2)?;
+            let enabled_int: i32 = row.get(5)?;
+            Ok(crate::model::SharedFile {
+                file_hash: row.get(0)?,
+                file_name: row.get(1)?,
+                file_size: size_i64.max(0) as u64,
+                file_path: row.get(3)?,
+                shared_at_unix_ms: row.get(4)?,
+                enabled: enabled_int != 0,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Retrieves a specific shared file by hash.
+    pub fn get_shared_file(&self, file_hash: &str) -> Result<Option<crate::model::SharedFile>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled
+             FROM shared_files
+             WHERE file_hash = ?1",
+        )?;
+        let mut rows = stmt.query(params![file_hash])?;
+        if let Some(row) = rows.next()? {
+            let size_i64: i64 = row.get(2)?;
+            let enabled_int: i32 = row.get(5)?;
+            Ok(Some(SharedFile {
+                file_hash: row.get(0)?,
+                file_name: row.get(1)?,
+                file_size: size_i64.max(0) as u64,
+                file_path: row.get(3)?,
+                shared_at_unix_ms: row.get(4)?,
+                enabled: enabled_int != 0,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Deletes a shared file entry from SQLite.
+    pub fn delete_shared_file(&mut self, file_hash: &str) -> Result<bool, CoreError> {
+        let rows = self.conn.execute(
+            "DELETE FROM shared_files WHERE file_hash = ?1",
+            params![file_hash],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Toggles the enabled state of a shared file.
+    pub fn set_shared_file_enabled(&mut self, file_hash: &str, enabled: bool) -> Result<bool, CoreError> {
+        let rows = self.conn.execute(
+            "UPDATE shared_files SET enabled = ?1 WHERE file_hash = ?2",
+            params![if enabled { 1 } else { 0 }, file_hash],
+        )?;
+        Ok(rows > 0)
+    }
+
+    /// Upserts a peer credit record into SQLite.
+    pub fn upsert_peer_credit(&mut self, credit: &PeerCredit) -> Result<(), CoreError> {
+        self.conn.execute(
+            "INSERT INTO peer_credits (pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(pubkey_hash) DO UPDATE SET
+                pubkey_hex = excluded.pubkey_hex,
+                uploaded_bytes = excluded.uploaded_bytes,
+                downloaded_bytes = excluded.downloaded_bytes,
+                last_seen_unix_ms = excluded.last_seen_unix_ms",
+            params![
+                credit.pubkey_hash,
+                credit.pubkey_hex,
+                credit.uploaded_bytes as i64,
+                credit.downloaded_bytes as i64,
+                credit.first_seen_unix_ms,
+                credit.last_seen_unix_ms,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Retrieves a peer credit record by public key hash.
+    pub fn get_peer_credit(&self, pubkey_hash: &str) -> Result<Option<PeerCredit>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms
+             FROM peer_credits
+             WHERE pubkey_hash = ?1",
+        )?;
+        let mut rows = stmt.query(params![pubkey_hash])?;
+        if let Some(row) = rows.next()? {
+            let up: i64 = row.get(2)?;
+            let down: i64 = row.get(3)?;
+            Ok(Some(PeerCredit {
+                pubkey_hash: row.get(0)?,
+                pubkey_hex: row.get(1)?,
+                uploaded_bytes: up.max(0) as u64,
+                downloaded_bytes: down.max(0) as u64,
+                first_seen_unix_ms: row.get(4)?,
+                last_seen_unix_ms: row.get(5)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Increments uploaded bytes counter for a peer credit record.
+    pub fn record_credit_upload(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), CoreError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.conn.execute(
+            "INSERT INTO peer_credits (pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms)
+             VALUES (?1, ?2, ?3, 0, ?4, ?4)
+             ON CONFLICT(pubkey_hash) DO UPDATE SET
+                uploaded_bytes = uploaded_bytes + ?3,
+                last_seen_unix_ms = ?4",
+            params![pubkey_hash, pubkey_hex, bytes as i64, now],
+        )?;
+        Ok(())
+    }
+
+    /// Increments downloaded bytes counter for a peer credit record.
+    pub fn record_credit_download(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), CoreError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        self.conn.execute(
+            "INSERT INTO peer_credits (pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms)
+             VALUES (?1, ?2, 0, ?3, ?4, ?4)
+             ON CONFLICT(pubkey_hash) DO UPDATE SET
+                downloaded_bytes = downloaded_bytes + ?3,
+                last_seen_unix_ms = ?4",
+            params![pubkey_hash, pubkey_hex, bytes as i64, now],
+        )?;
+        Ok(())
+    }
+
+    /// Lists top peer credits.
+    pub fn list_peer_credits(&self, limit: usize) -> Result<Vec<PeerCredit>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms
+             FROM peer_credits
+             ORDER BY downloaded_bytes DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            let up: i64 = row.get(2)?;
+            let down: i64 = row.get(3)?;
+            Ok(PeerCredit {
+                pubkey_hash: row.get(0)?,
+                pubkey_hex: row.get(1)?,
+                uploaded_bytes: up.max(0) as u64,
+                downloaded_bytes: down.max(0) as u64,
+                first_seen_unix_ms: row.get(4)?,
+                last_seen_unix_ms: row.get(5)?,
+            })
+        })?;
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Upserts a Kad contact record.
+    pub fn upsert_kad_contact(&mut self, contact: &crate::kad::KadContact) -> Result<(), CoreError> {
+        self.conn.execute(
+            "INSERT INTO kad_contacts (
+                kad_id, ip, udp_port, tcp_port, version, verified, fail_count, first_seen_unix_ms, last_seen_unix_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(kad_id) DO UPDATE SET
+                ip = ?2,
+                udp_port = ?3,
+                tcp_port = ?4,
+                version = ?5,
+                verified = CASE WHEN ?6 = 1 THEN 1 ELSE verified END,
+                fail_count = ?7,
+                last_seen_unix_ms = ?9",
+            params![
+                contact.kad_id.to_hex(),
+                contact.ip.to_string(),
+                contact.udp_port as i64,
+                contact.tcp_port.map(|p| p as i64),
+                contact.version as i64,
+                if contact.verified { 1 } else { 0 },
+                contact.fail_count as i64,
+                contact.first_seen_unix_ms as i64,
+                contact.last_seen_unix_ms as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Batch upserts Kad contacts in a single transaction.
+    pub fn batch_upsert_kad_contacts(&mut self, contacts: &[crate::kad::KadContact]) -> Result<usize, CoreError> {
+        let tx = self.conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO kad_contacts (
+                    kad_id, ip, udp_port, tcp_port, version, verified, fail_count, first_seen_unix_ms, last_seen_unix_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                ON CONFLICT(kad_id) DO UPDATE SET
+                    ip = ?2,
+                    udp_port = ?3,
+                    tcp_port = ?4,
+                    version = ?5,
+                    verified = CASE WHEN ?6 = 1 THEN 1 ELSE verified END,
+                    fail_count = ?7,
+                    last_seen_unix_ms = ?9",
+            )?;
+
+            for contact in contacts {
+                stmt.execute(params![
+                    contact.kad_id.to_hex(),
+                    contact.ip.to_string(),
+                    contact.udp_port as i64,
+                    contact.tcp_port.map(|p| p as i64),
+                    contact.version as i64,
+                    if contact.verified { 1 } else { 0 },
+                    contact.fail_count as i64,
+                    contact.first_seen_unix_ms as i64,
+                    contact.last_seen_unix_ms as i64,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// Retrieves all Kad contacts up to a given limit, ordered by last_seen_unix_ms DESC.
+    pub fn list_kad_contacts(&self, limit: usize) -> Result<Vec<crate::kad::KadContact>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT kad_id, ip, udp_port, tcp_port, version, verified, fail_count, first_seen_unix_ms, last_seen_unix_ms
+             FROM kad_contacts
+             ORDER BY last_seen_unix_ms DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            let kad_id_str: String = row.get(0)?;
+            let kad_id = crate::kad::KadId::from_hex(&kad_id_str).unwrap_or(crate::kad::KadId::ZERO);
+            let ip_str: String = row.get(1)?;
+            let ip: std::net::Ipv4Addr = ip_str.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+            let udp_port: i64 = row.get(2)?;
+            let tcp_port: Option<i64> = row.get(3)?;
+            let version: i64 = row.get(4)?;
+            let verified: i64 = row.get(5)?;
+            let fail_count: i64 = row.get(6)?;
+            let first_seen: i64 = row.get(7)?;
+            let last_seen: i64 = row.get(8)?;
+
+            Ok(crate::kad::KadContact {
+                kad_id,
+                ip,
+                udp_port: udp_port.max(0) as u16,
+                tcp_port: tcp_port.map(|p| p.max(0) as u16),
+                version: version.max(0) as u8,
+                verified: verified != 0,
+                fail_count: fail_count.max(0) as u32,
+                first_seen_unix_ms: first_seen.max(0) as u64,
+                last_seen_unix_ms: last_seen.max(0) as u64,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Counts total Kad contacts stored in SQLite.
+    pub fn count_kad_contacts(&self) -> Result<usize, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM kad_contacts",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(count.max(0) as usize)
+    }
+
+    /// Deletes all Kad contacts.
+    pub fn clear_kad_contacts(&mut self) -> Result<usize, CoreError> {
+        let rows = self.conn.execute("DELETE FROM kad_contacts", [])?;
+        Ok(rows)
+    }
+
+    /// Inserts or replaces a batch of Kad indexed sources.
+    pub fn insert_kad_indexed_sources(
+        &mut self,
+        sources: &[crate::kad::KadIndexedSource],
+    ) -> Result<usize, CoreError> {
+        if sources.is_empty() {
+            return Ok(0);
+        }
+        let tx = self.conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO kad_sources_index (
+                    file_hash, source_kad_id, ip, udp_port, tcp_port, file_size,
+                    encryption, expires_at_unix_ms, updated_at_unix_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                ON CONFLICT(file_hash, source_kad_id, ip, tcp_port) DO UPDATE SET
+                    udp_port = ?4,
+                    file_size = ?6,
+                    encryption = ?7,
+                    expires_at_unix_ms = ?8,
+                    updated_at_unix_ms = ?9",
+            )?;
+
+            for s in sources {
+                let file_hash_hex = crate::kad::KadId(s.file_hash).to_hex();
+                stmt.execute(params![
+                    file_hash_hex,
+                    s.source_kad_id.to_hex(),
+                    s.ip.to_string(),
+                    s.udp_port as i64,
+                    s.tcp_port as i64,
+                    s.file_size as i64,
+                    s.encryption as i64,
+                    s.expires_at_unix_ms as i64,
+                    s.updated_at_unix_ms as i64,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// Retrieves unexpired indexed Kad sources for a given file hash.
+    pub fn get_kad_indexed_sources(
+        &self,
+        file_hash: &[u8; 16],
+        max_results: usize,
+        now_unix_ms: u64,
+    ) -> Result<Vec<crate::kad::KadIndexedSource>, CoreError> {
+        let file_hash_hex = crate::kad::KadId(*file_hash).to_hex();
+        let mut stmt = self.conn.prepare(
+            "SELECT file_hash, source_kad_id, ip, udp_port, tcp_port, file_size, encryption, expires_at_unix_ms, updated_at_unix_ms
+             FROM kad_sources_index
+             WHERE file_hash = ?1 AND expires_at_unix_ms > ?2
+             ORDER BY updated_at_unix_ms DESC
+             LIMIT ?3",
+        )?;
+
+        let rows = stmt.query_map(params![file_hash_hex, now_unix_ms as i64, max_results as i64], |row| {
+            let f_hash_str: String = row.get(0)?;
+            let f_hash = crate::kad::KadId::from_hex(&f_hash_str)
+                .map(|k| k.0)
+                .unwrap_or([0u8; 16]);
+
+            let kad_id_str: String = row.get(1)?;
+            let source_kad_id = crate::kad::KadId::from_hex(&kad_id_str).unwrap_or(crate::kad::KadId::ZERO);
+
+            let ip_str: String = row.get(2)?;
+            let ip: std::net::Ipv4Addr = ip_str.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+
+            let udp_port: i64 = row.get(3)?;
+            let tcp_port: i64 = row.get(4)?;
+            let file_size: i64 = row.get(5)?;
+            let encryption: i64 = row.get(6)?;
+            let expires_at: i64 = row.get(7)?;
+            let updated_at: i64 = row.get(8)?;
+
+            Ok(crate::kad::KadIndexedSource {
+                file_hash: f_hash,
+                source_kad_id,
+                ip,
+                udp_port: udp_port.max(0) as u16,
+                tcp_port: tcp_port.max(0) as u16,
+                file_size: file_size.max(0) as u64,
+                encryption: encryption.max(0) as u8,
+                expires_at_unix_ms: expires_at.max(0) as u64,
+                updated_at_unix_ms: updated_at.max(0) as u64,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Purges expired Kad indexed sources.
+    pub fn purge_expired_kad_sources(&mut self, now_unix_ms: u64) -> Result<usize, CoreError> {
+        let count = self.conn.execute(
+            "DELETE FROM kad_sources_index WHERE expires_at_unix_ms <= ?1",
+            params![now_unix_ms as i64],
+        )?;
+        Ok(count)
+    }
+
+    /// Counts total indexed Kad sources.
+    pub fn count_kad_indexed_sources(&self) -> Result<usize, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM kad_sources_index",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(count.max(0) as usize)
+    }
+
+    /// Inserts or updates Kad keyword index entries in batch.
+    pub fn insert_kad_keyword_entries(
+        &mut self,
+        entries: &[crate::kad::KadKeywordEntry],
+    ) -> Result<usize, CoreError> {
+        let tx = self.conn.transaction()?;
+        let mut inserted = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO kad_keywords_index (
+                    keyword_hash, file_hash, file_name, file_size, source_count,
+                    discovered_at_unix_ms, expires_at_unix_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                ON CONFLICT(keyword_hash, file_hash) DO UPDATE SET
+                    file_name = excluded.file_name,
+                    file_size = excluded.file_size,
+                    source_count = MAX(kad_keywords_index.source_count, excluded.source_count),
+                    expires_at_unix_ms = excluded.expires_at_unix_ms",
+            )?;
+
+            for e in entries {
+                stmt.execute(params![
+                    e.keyword_hash.to_lowercase(),
+                    e.file_hash.to_lowercase(),
+                    e.file_name,
+                    e.file_size as i64,
+                    e.source_count as i64,
+                    e.discovered_at_unix_ms,
+                    e.expires_at_unix_ms,
+                ])?;
+                inserted += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(inserted)
+    }
+
+    /// Retrieves all active Kad keyword index entries matching a keyword hash.
+    pub fn get_kad_keyword_entries(
+        &self,
+        keyword_hash: &str,
+        now_unix_ms: u64,
+    ) -> Result<Vec<crate::kad::KadKeywordEntry>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT keyword_hash, file_hash, file_name, file_size, source_count,
+                    discovered_at_unix_ms, expires_at_unix_ms
+             FROM kad_keywords_index
+             WHERE keyword_hash = ?1 AND expires_at_unix_ms > ?2
+             ORDER BY source_count DESC
+             LIMIT 100",
+        )?;
+
+        let rows = stmt.query_map(params![keyword_hash.to_lowercase(), now_unix_ms as i64], |row| {
+            let keyword_hash: String = row.get(0)?;
+            let file_hash: String = row.get(1)?;
+            let file_name: String = row.get(2)?;
+            let file_size: i64 = row.get(3)?;
+            let source_count: i64 = row.get(4)?;
+            let discovered_at: i64 = row.get(5)?;
+            let expires_at: i64 = row.get(6)?;
+
+            Ok(crate::kad::KadKeywordEntry {
+                keyword_hash,
+                file_hash,
+                file_name,
+                file_size: file_size.max(0) as u64,
+                source_count: source_count.max(1) as u32,
+                discovered_at_unix_ms: discovered_at,
+                expires_at_unix_ms: expires_at,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    /// Purges expired Kad keyword entries.
+    pub fn purge_expired_kad_keywords(&mut self, now_unix_ms: u64) -> Result<usize, CoreError> {
+        let count = self.conn.execute(
+            "DELETE FROM kad_keywords_index WHERE expires_at_unix_ms <= ?1",
+            params![now_unix_ms as i64],
+        )?;
+        Ok(count)
+    }
+
+    /// Counts total indexed Kad keyword entries.
+    pub fn count_kad_keyword_entries(&self) -> Result<usize, CoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM kad_keywords_index",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(count.max(0) as usize)
     }
 }

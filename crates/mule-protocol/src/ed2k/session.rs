@@ -893,6 +893,9 @@ impl Ed2kSession {
                 };
                 Ok(Some(Ed2kMessage::SendingPart(part)))
             }
+            Ed2kMessage::PublicKey(pk) => Ok(Some(Ed2kMessage::PublicKey(pk))),
+            Ed2kMessage::Signature(sig) => Ok(Some(Ed2kMessage::Signature(sig))),
+            Ed2kMessage::SecIdentState(state) => Ok(Some(Ed2kMessage::SecIdentState(state))),
             Ed2kMessage::Raw(raw) => {
                 if !self.is_ready() && raw.protocol != PR_EMULE {
                     let err = Ed2kSessionError::UnexpectedMessageInState {

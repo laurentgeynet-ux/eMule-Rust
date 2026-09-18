@@ -19,7 +19,7 @@ impl PeerSource {
         }
     }
 
-    /// Parses a source string item, e.g. "192.168.1.10:4662" or "host.example.com:4662"
+    /// Parses a source string item, e.g. "192.168.1.10:39735" or "host.example.com:39735"
     pub fn parse(s: &str) -> Option<Self> {
         let trimmed = s.trim();
         let parts: Vec<&str> = trimmed.split(':').collect();

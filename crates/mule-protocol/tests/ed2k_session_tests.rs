@@ -46,7 +46,7 @@ async fn test_nominal_ed2k_handshake_on_loopback() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0x7F000001,
         4661,
@@ -66,13 +66,13 @@ async fn test_nominal_ed2k_handshake_on_loopback() {
 
 #[tokio::test]
 async fn test_non_loopback_connection_strictly_rejected() {
-    let non_loopback_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 4662);
+    let non_loopback_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 39735);
 
     let result = Ed2kLoopbackClient::connect_and_handshake(
         non_loopback_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0,
         0,
@@ -106,7 +106,7 @@ async fn test_hello_encoded_byte_by_byte_received_faithfully() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0x7F000001,
         4661,
@@ -121,7 +121,7 @@ async fn test_hello_encoded_byte_by_byte_received_faithfully() {
 
     assert_eq!(hello.user_hash, sample_user_hash());
     assert_eq!(hello.client_id, 0xC0A80001);
-    assert_eq!(hello.tcp_port, 4662);
+    assert_eq!(hello.tcp_port, 39735);
     assert_eq!(hello.tags.len(), 2);
     assert_eq!(hello.server_ip, 0x7F000001);
     assert_eq!(hello.server_port, 4661);
@@ -142,7 +142,7 @@ async fn test_hello_answer_fragmented_byte_by_byte_reassembled() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0x7F000001,
         4661,
@@ -170,7 +170,7 @@ fn test_peer_info_extraction_and_unknown_tag_preservation() {
     let hello = Ed2kHello {
         user_hash: sample_user_hash(),
         client_id: 0x12345678,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![
             Ed2kTag {
                 name: TagName::Id(TAG_SPECIAL_NAME),
@@ -214,7 +214,7 @@ async fn test_zero_user_hash_rejected() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0,
         0,
@@ -236,11 +236,11 @@ async fn test_zero_user_hash_rejected() {
 #[tokio::test]
 async fn test_early_hello_answer_rejected() {
     // 1. Direct state machine transition test: A listener receiving HelloAnswer before Hello must fail
-    let mut listener_session = Ed2kSession::new_listener(sample_user_hash(), 0, 4662);
+    let mut listener_session = Ed2kSession::new_listener(sample_user_hash(), 0, 39735);
     let early_answer = mule_protocol::ed2k::Ed2kHelloAnswer {
         user_hash: sample_user_hash(),
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -284,7 +284,7 @@ async fn test_early_hello_answer_rejected() {
     assert_eq!(packet.opcode, mule_protocol::ed2k::opcodes::OP_HELLO_ANSWER);
 
     // Listener session processing this packet fails with HelloAnswerBeforeHello
-    let mut session = Ed2kSession::new_listener(sample_user_hash(), 0, 4662);
+    let mut session = Ed2kSession::new_listener(sample_user_hash(), 0, 39735);
     let session_res = session.on_packet_received(&packet);
     assert!(session_res.is_err());
     assert!(matches!(
@@ -298,11 +298,11 @@ async fn test_early_hello_answer_rejected() {
 
 #[test]
 fn test_double_hello_rejected() {
-    let mut listener_session = Ed2kSession::new_listener(sample_user_hash(), 0, 4662);
+    let mut listener_session = Ed2kSession::new_listener(sample_user_hash(), 0, 39735);
     let hello = mule_protocol::ed2k::Ed2kHello {
         user_hash: sample_user_hash(),
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -335,7 +335,7 @@ async fn test_unexpected_opcode_rejected() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0,
         0,
@@ -366,7 +366,7 @@ async fn test_compressed_protocol_0xd4_explicitly_rejected() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0,
         0,
@@ -402,7 +402,7 @@ async fn test_handshake_timeout_fails_cleanly() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0,
         0,
@@ -433,7 +433,7 @@ async fn test_immediate_remote_close_fails_cleanly() {
         peer_addr,
         sample_user_hash(),
         0xC0A80001,
-        4662,
+        39735,
         sample_client_tags(),
         0,
         0,
@@ -488,11 +488,11 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
     use std::time::Instant;
 
     // 1. Establish session in Ready state
-    let mut session = Ed2kSession::new_listener(sample_user_hash(), 0, 4662);
+    let mut session = Ed2kSession::new_listener(sample_user_hash(), 0, 39735);
     let hello = mule_protocol::ed2k::Ed2kHello {
         user_hash: sample_user_hash(),
         client_id: 0,
-        tcp_port: 4662,
+        tcp_port: 39735,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -581,7 +581,7 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
 
 #[test]
 fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_answer() {
-    let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 4662);
+    let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 39735);
     let _hello = session.create_hello(vec![], 0, 0).expect("create_hello succeeds");
     // Initiator is now in AwaitingHelloAnswer
     assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer { .. }));
@@ -606,7 +606,7 @@ fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_an
     let mut answer_payload = Vec::new();
     answer_payload.extend_from_slice(&[0x22; 16]); // remote hash
     answer_payload.extend_from_slice(&0u32.to_le_bytes()); // client_id = 0
-    answer_payload.extend_from_slice(&4662u16.to_le_bytes()); // tcp_port
+    answer_payload.extend_from_slice(&39735u16.to_le_bytes()); // tcp_port
     answer_payload.extend_from_slice(&0u32.to_le_bytes()); // tag count = 0
     let hello_answer_pkt = RawPacket {
         protocol: mule_protocol::types::PR_ED2K,

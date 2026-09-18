@@ -19,6 +19,8 @@ ed2k-reference-loopback = ["ed2k-loopback", "mule-protocol/ed2k-reference-loopba
 mule-core = { path = "../mule-core" }
 mule-format = { path = "../mule-format" }
 mule-protocol = { path = "../mule-protocol" }
+mule-network-policy = { path = "../mule-network-policy" }
+mule-filter = { path = "../mule-filter" }
 tokio.workspace = true
 axum.workspace = true
 serde.workspace = true
@@ -32,6 +34,12 @@ hex.workspace = true
 rand.workspace = true
 fs4 = "1.1.0"
 bytes.workspace = true
+md4.workspace = true
+data-encoding.workspace = true
+igd-next.workspace = true
+reqwest.workspace = true
+flate2.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 tokio-tungstenite.workspace = true

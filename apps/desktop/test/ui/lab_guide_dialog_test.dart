@@ -19,44 +19,51 @@ void main() {
       viewModel.dispose();
     });
 
-    testWidgets('renders all 5 steps of the guided local test flow',
-        (WidgetTester tester) async {
+    testWidgets('renders all 5 steps of the guided local test flow', (
+      WidgetTester tester,
+    ) async {
       tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: LabGuideDialog(viewModel: viewModel),
-          ),
+          home: Scaffold(body: LabGuideDialog(viewModel: viewModel)),
         ),
       );
       await tester.pumpAndSettle();
 
       // Title & subtitle
       expect(find.text('Guided Local Loopback Test Flow'), findsOneWidget);
-      expect(find.textContaining('Full end-to-end eD2K testing on 127.0.0.1'), findsOneWidget);
+      expect(
+        find.textContaining('Full end-to-end eD2K testing on 127.0.0.1'),
+        findsOneWidget,
+      );
 
       // Step cards
       expect(find.text('Generate Local Test Fixture'), findsOneWidget);
-      expect(find.text('Obtain Canonical eD2K Link & Add to Downloads'), findsOneWidget);
+      expect(
+        find.text('Obtain Canonical eD2K Link & Add to Downloads'),
+        findsOneWidget,
+      );
       expect(find.text('Loopback Test Peer (127.0.0.1)'), findsOneWidget);
       expect(find.text('Connect Download to Loopback Source'), findsOneWidget);
-      expect(find.text('Clean Test Data (Fixtures & Incomplete Parts)'), findsOneWidget);
+      expect(
+        find.text('Clean Test Data (Fixtures & Incomplete Parts)'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('executes complete 5-step local loopback flow interactively',
-        (WidgetTester tester) async {
+    testWidgets('executes complete 5-step local loopback flow interactively', (
+      WidgetTester tester,
+    ) async {
       tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: LabGuideDialog(viewModel: viewModel),
-          ),
+          home: Scaffold(body: LabGuideDialog(viewModel: viewModel)),
         ),
       );
       await tester.pumpAndSettle();
@@ -66,10 +73,16 @@ void main() {
       await tester.tap(find.text('Generate Fixture'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('lab_sample_1mb.bin (1.0 MB)'), findsOneWidget);
+      expect(
+        find.textContaining('lab_sample_1mb.bin (1.0 MB)'),
+        findsOneWidget,
+      );
 
       // Step 2: Canonical Link & Add to Downloads
-      expect(find.textContaining('ed2k://|file|lab_sample_1mb.bin|1048576|'), findsOneWidget);
+      expect(
+        find.textContaining('ed2k://|file|lab_sample_1mb.bin|1048576|'),
+        findsOneWidget,
+      );
       final addBtn = find.widgetWithText(FilledButton, 'Add to Downloads');
       expect(addBtn, findsOneWidget);
       await tester.ensureVisible(addBtn);
@@ -80,14 +93,17 @@ void main() {
       expect(find.text('Download task created in UI'), findsOneWidget);
 
       // Step 3: Start Loopback Test Peer
-      final startPeerBtn = find.widgetWithText(FilledButton, 'Start Loopback Peer');
+      final startPeerBtn = find.widgetWithText(
+        FilledButton,
+        'Start Loopback Peer',
+      );
       expect(startPeerBtn, findsOneWidget);
       await tester.ensureVisible(startPeerBtn);
       await tester.tap(startPeerBtn);
       await tester.pumpAndSettle();
 
       expect(find.text('Stop Loopback Peer'), findsOneWidget);
-      expect(find.textContaining('Active on 127.0.0.1:4662'), findsOneWidget);
+      expect(find.textContaining('Active on 127.0.0.1:39735'), findsOneWidget);
 
       // Step 4: Connect Download to Source
       final connectBtn = find.widgetWithText(FilledButton, 'Connect to Source');
@@ -97,7 +113,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Step 5: Cleanup Test Data (opens confirmation dialog)
-      final cleanupBtn = find.widgetWithText(OutlinedButton, 'Cleanup Test Data');
+      final cleanupBtn = find.widgetWithText(
+        OutlinedButton,
+        'Cleanup Test Data',
+      );
       expect(cleanupBtn, findsOneWidget);
       await tester.ensureVisible(cleanupBtn);
       await tester.tap(cleanupBtn);

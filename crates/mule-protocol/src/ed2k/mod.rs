@@ -11,13 +11,16 @@ pub mod decoder;
 pub mod encoder;
 pub mod error;
 pub mod limits;
+pub mod obfuscation;
 pub mod opcodes;
 pub mod packet;
 pub mod peer_info;
 pub mod profile;
 pub mod protocol;
 pub mod sequencer;
+pub mod server;
 pub mod session;
+pub mod source_exchange;
 pub mod storage;
 pub mod tags;
 
@@ -32,22 +35,37 @@ pub use encoder::Ed2kEncoder;
 pub use error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 pub use limits::Ed2kLimits;
 pub use opcodes::{
-    OP_ACCEPTUPLOADREQ, OP_COMPRESSEDPART, OP_EMULEINFO, OP_EMULE_INFO, OP_FILEREQANSNOFILE,
-    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_QUEUERANKING,
-    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID, OP_SETREQFILEID_EMULE,
+    OP_ACCEPTUPLOADREQ, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CANCELTRANSFER,
+    OP_COMPRESSEDPART, OP_EMULEINFO, OP_EMULE_INFO, OP_END_OF_DOWNLOAD, OP_FILEREQANSNOFILE,
+    OP_FILESTATUS, OP_FILESTATUSREQ, OP_FOUNDSOURCES, OP_FOUNDSOURCES_OBFU, OP_GETSOURCES,
+    OP_GETSOURCES_OBFU, OP_HELLO, OP_HELLOANSWER, OP_HELLO_ANSWER, OP_IDCHANGE, OP_LOGINREQUEST,
+    OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER,
+    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
+    OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SECIDENTSTATE, OP_SENDINGPART, OP_SERVERIDENT,
+    OP_SERVERMESSAGE, OP_SERVERSTATUS, OP_SETREQFILEID, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
     OP_STARTUPLOADREQ,
+};
+pub use source_exchange::{
+    decode_answer_sources, decode_request_sources, encode_answer_sources, encode_request_sources,
+    Ed2kAnswerSources, Ed2kRequestSources, SxSource, MAX_SX_SOURCES_PER_PACKET,
+    SOURCE_EXCHANGE2_VERSION,
 };
 pub use packet::{
     expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
-    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts,
-    Ed2kSendingPart, PartAvailabilityMask,
+    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts,
+    Ed2kSecIdentState, Ed2kSendingPart, Ed2kSignature, PartAvailabilityMask,
 };
 pub use peer_info::Ed2kPeerInfo;
 pub use profile::Ed2kCompatibilityProfile;
 pub use protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
 pub use sequencer::{
-    Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kSequencerError, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
-    MAX_REQUEST_RANGES_PER_PACKET,
+    Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kSequencerError, InFlightBlock, ED2K_BLOCK_SIZE,
+    ED2K_PART_SIZE, MAX_REQUEST_RANGES_PER_PACKET,
+};
+pub use server::{
+    decode_server_response, FoundSourcePeer, FoundSourcePeerObfu, FoundSources, FoundSourcesObfu,
+    GetSourcesRequest, SearchQuery, SearchResult, SearchResultFile, ServerIdChange, ServerIdent,
+    ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus,
 };
 pub use session::{
     BlockRequestKey, BlockRequestTracker, Ed2kSession, Ed2kSessionError, Ed2kSessionState,

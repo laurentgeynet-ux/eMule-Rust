@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme.dart';
+import '../../../../domain/models/network_policy_models.dart';
 import '../../../../services/work_directory_resolver.dart';
 import '../view_models/downloads_view_model.dart';
 import 'lab_guide_dialog.dart';
@@ -150,41 +151,59 @@ class DiagnosticDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Network Isolation Card (Key Guarantee)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0x2210B981),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0x6610B981), width: 0.5),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.shield_outlined, color: Color(0xFF10B981), size: 22),
-                            SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Strict Loopback Confinement (127.0.0.1)',
-                                    style: TextStyle(
-                                      color: Color(0xFF10B981),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    'Zero WAN traffic. No public eD2K servers, Kad nodes, or external peers.',
-                                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                                  ),
-                                ],
+                      // Network Isolation Card / Profile Status
+                      () {
+                        final isLoopbackOnly = viewModel.currentNetworkProfile == NetworkProfile.localLab;
+                        final profileName = viewModel.currentNetworkProfile.label;
+                        final cardColor = isLoopbackOnly ? const Color(0x2210B981) : const Color(0x223B82F6);
+                        final borderColor = isLoopbackOnly ? const Color(0x6610B981) : const Color(0x663B82F6);
+                        final iconColor = isLoopbackOnly ? const Color(0xFF10B981) : const Color(0xFF60A5FA);
+                        final title = isLoopbackOnly
+                            ? 'Strict Loopback Confinement (127.0.0.1)'
+                            : 'Network Profile: $profileName';
+                        final subtitle = isLoopbackOnly
+                            ? 'Zero WAN traffic. No public eD2K servers, Kad nodes, or external peers.'
+                            : 'Public network traffic enabled under active network policy.';
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: borderColor, width: 0.5),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isLoopbackOnly ? Icons.shield_outlined : Icons.public_rounded,
+                                color: iconColor,
+                                size: 22,
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      title,
+                                      style: TextStyle(
+                                        color: iconColor,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      subtitle,
+                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }(),
 
                       const SizedBox(height: 16),
 
@@ -374,6 +393,43 @@ class DiagnosticDialog extends StatelessWidget {
                             ),
                             const Divider(height: 16, color: AppTheme.darkBorder),
                             _buildInfoRow(
+                              'Daemon Log',
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Tooltip(
+                                      message: '$workdirPath\\daemon.log',
+                                      child: SelectableText(
+                                        _formatPathForDisplay('$workdirPath\\daemon.log'),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontFamily: 'monospace',
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                                    tooltip: 'Copy daemon log path',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    onPressed: () {
+                                      Clipboard.setData(ClipboardData(text: '$workdirPath\\daemon.log'));
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Daemon log path copied to clipboard'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 16, color: AppTheme.darkBorder),
+                            _buildInfoRow(
                               'Capabilities',
                               Wrap(
                                 spacing: 4,
@@ -438,6 +494,7 @@ class DiagnosticDialog extends StatelessWidget {
                           isPortable: isPortable,
                           isInstalled: isInstalled,
                           countAll: viewModel.countAll,
+                          networkProfile: viewModel.currentNetworkProfile,
                         );
                         Clipboard.setData(ClipboardData(text: sanitized));
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -463,6 +520,7 @@ class DiagnosticDialog extends StatelessWidget {
                           pidText: pidText,
                           rpcEndpoint: rpcEndpoint,
                           countAll: viewModel.countAll,
+                          networkProfile: viewModel.currentNetworkProfile,
                         );
                         Clipboard.setData(ClipboardData(text: full));
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -544,6 +602,7 @@ class DiagnosticDialog extends StatelessWidget {
     required bool isPortable,
     required bool isInstalled,
     required int countAll,
+    required NetworkProfile networkProfile,
   }) {
     String maskId(String? id) {
       if (id == null || id.isEmpty || id == 'N/A') return 'N/A';
@@ -555,11 +614,15 @@ class DiagnosticDialog extends StatelessWidget {
         ? '<portable-data>'
         : (isInstalled ? '<installed-data>' : '<custom-data>');
 
+    final confinement = networkProfile == NetworkProfile.localLab
+        ? '127.0.0.1 (Loopback only)'
+        : 'Public (${networkProfile.toKebabCase()})';
+
     final sb = StringBuffer();
     sb.writeln('=== Emule-Sion Diagnostics (Sanitized) ===');
     sb.writeln('Workdir Mode: $workdirMode');
     sb.writeln('Workdir Path: $maskedWorkdir');
-    sb.writeln('Confinement: 127.0.0.1 (Loopback only)');
+    sb.writeln('Confinement: $confinement');
     sb.writeln('Process PID: [local-process]');
     sb.writeln('RPC Endpoint: ws://loopback:4660/rpc');
     sb.writeln('Daemon Version: $daemonVersion');
@@ -581,12 +644,17 @@ class DiagnosticDialog extends StatelessWidget {
     required String pidText,
     required String rpcEndpoint,
     required int countAll,
+    required NetworkProfile networkProfile,
   }) {
+    final confinement = networkProfile == NetworkProfile.localLab
+        ? '127.0.0.1 (Loopback only)'
+        : 'Public (${networkProfile.toKebabCase()})';
+
     final sb = StringBuffer();
     sb.writeln('=== Emule-Sion Diagnostics (Full Local) ===');
     sb.writeln('Workdir Mode: $workdirMode');
     sb.writeln('Workdir Path: $workdirPath');
-    sb.writeln('Confinement: 127.0.0.1 (Loopback only)');
+    sb.writeln('Confinement: $confinement');
     sb.writeln('Process PID: $pidText');
     sb.writeln('RPC Endpoint: $rpcEndpoint');
     sb.writeln('Daemon Version: $daemonVersion');

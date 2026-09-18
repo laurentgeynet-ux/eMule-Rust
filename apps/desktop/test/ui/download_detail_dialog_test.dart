@@ -161,7 +161,10 @@ void main() {
       expect(find.text('Change Target Destination'), findsOneWidget);
       expect(find.text('Save Destination'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'custom_downloads');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'downloads'),
+        'custom_downloads',
+      );
       await tester.tap(find.text('Save Destination'));
       await tester.pumpAndSettle();
 

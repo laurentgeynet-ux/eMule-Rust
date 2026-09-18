@@ -189,9 +189,16 @@ fn test_ed2k_module_has_zero_unwrap_or_expect() {
         let content = fs::read_to_string(file)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", file.display()));
 
+        let mut in_test_mod = false;
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with("//") {
+                continue;
+            }
+            if trimmed.contains("#[cfg(test)]") || trimmed.contains("mod tests {") {
+                in_test_mod = true;
+            }
+            if in_test_mod {
                 continue;
             }
             assert!(

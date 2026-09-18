@@ -22,6 +22,10 @@ unicode-normalization.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 md4.workspace = true
+md-5.workspace = true
+num-bigint.workspace = true
+rand.workspace = true
+flate2.workspace = true
 
 
 [dev-dependencies]

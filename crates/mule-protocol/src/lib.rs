@@ -7,6 +7,7 @@
 pub mod ed2k;
 pub mod error;
 pub mod framing;
+pub mod kad;
 #[cfg(feature = "lab-loopback")]
 pub mod lab;
 pub mod limits;
@@ -15,6 +16,7 @@ pub mod types;
 
 pub use error::{FramingError, ProtocolError};
 pub use framing::{PacketCodec, RawPacket};
+pub use kad::*;
 #[cfg(feature = "lab-loopback")]
 pub use lab::*;
 pub use limits::*;

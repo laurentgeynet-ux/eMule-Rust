@@ -1,7 +1,26 @@
+# Rust
 /target
 /dist
 amule-ref/
 **/*.rs.bk
 *.pdb
+
+# Flutter / Dart
+apps/desktop/.dart_tool/
+apps/desktop/.pub-cache/
+apps/desktop/.pub/
+apps/desktop/build/
+apps/desktop/.flutter-plugins-dependencies
+
+# IDE & Tooling
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS
 .DS_Store
 Thumbs.db
+*.log
+scratch/

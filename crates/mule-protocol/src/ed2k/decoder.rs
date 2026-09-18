@@ -6,12 +6,13 @@ use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::{Ed2kLimits, ED2K_MAX_PARTS};
 use super::opcodes::{
     OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLO_ANSWER,
-    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
+    OP_PUBLICKEY, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SECIDENTSTATE, OP_SENDINGPART,
+    OP_SETREQFILEID_EMULE, OP_SIGNATURE,
 };
 use super::packet::{
     expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
-    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kRequestParts,
-    Ed2kSendingPart, PartAvailabilityMask,
+    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts,
+    Ed2kSecIdentState, Ed2kSendingPart, Ed2kSignature, PartAvailabilityMask,
 };
 use super::profile::Ed2kCompatibilityProfile;
 use super::protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
@@ -287,6 +288,18 @@ impl Ed2kDecoder {
                 let info = self.decode_emule_info(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::EmuleInfo(info))
             }
+            (PR_EMULE, OP_PUBLICKEY) => {
+                let key = self.decode_public_key(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::PublicKey(key))
+            }
+            (PR_EMULE, OP_SIGNATURE) => {
+                let sig = self.decode_signature(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::Signature(sig))
+            }
+            (PR_EMULE, OP_SECIDENTSTATE) => {
+                let state = self.decode_secident_state(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::SecIdentState(state))
+            }
             _ => {
                 // Return as unparsed RawPacket for passive observation of other opcodes
                 let raw_packet = RawPacket::new(protocol, opcode, Bytes::copy_from_slice(payload));
@@ -471,6 +484,33 @@ impl Ed2kDecoder {
                     0,
                 )?;
                 Ok(Ed2kMessage::EmuleInfo(info))
+            }
+            (PR_EMULE, OP_PUBLICKEY) => {
+                let key = self.decode_public_key(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::PublicKey(key))
+            }
+            (PR_EMULE, OP_SIGNATURE) => {
+                let sig = self.decode_signature(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::Signature(sig))
+            }
+            (PR_EMULE, OP_SECIDENTSTATE) => {
+                let state = self.decode_secident_state(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::SecIdentState(state))
             }
             _ => Ok(Ed2kMessage::Raw(packet.clone())),
         }
@@ -821,7 +861,7 @@ impl Ed2kDecoder {
             &[]
         };
 
-        if reader.remaining() > 0 {
+        if (part_count == 0 && reader.remaining() > 0) || reader.remaining() > 1024 {
             return Err(Ed2kParseError::new(
                 protocol,
                 Some(opcode),
@@ -1188,5 +1228,130 @@ impl Ed2kDecoder {
             end_offset,
             data,
         ))
+    }
+
+    /// Decodes an `OP_PUBLICKEY` (`0x85`) payload.
+    pub fn decode_public_key(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kPublicKey, Ed2kParseError> {
+        if payload.is_empty() {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset,
+                "public_key_len",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 1,
+                    available: 0,
+                },
+            ));
+        }
+
+        let key_len = payload[0] as usize;
+        if payload.len() < 1 + key_len {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + 1,
+                "public_key_payload",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 1 + key_len,
+                    available: payload.len(),
+                },
+            ));
+        }
+
+        let key_bytes = Bytes::copy_from_slice(&payload[1..1 + key_len]);
+        Ok(Ed2kPublicKey { key_bytes })
+    }
+
+    /// Decodes an `OP_SIGNATURE` (`0x87`) payload.
+    pub fn decode_signature(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kSignature, Ed2kParseError> {
+        if payload.is_empty() {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset,
+                "signature_len",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 1,
+                    available: 0,
+                },
+            ));
+        }
+
+        let sig_len = payload[0] as usize;
+        if payload.len() < 1 + sig_len {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + 1,
+                "signature_payload",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 1 + sig_len,
+                    available: payload.len(),
+                },
+            ));
+        }
+
+        let signature_bytes = Bytes::copy_from_slice(&payload[1..1 + sig_len]);
+        Ok(Ed2kSignature { signature_bytes })
+    }
+
+    /// Decodes an `OP_SECIDENTSTATE` (`0x86`) payload.
+    pub fn decode_secident_state(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kSecIdentState, Ed2kParseError> {
+        if payload.len() < 5 {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset,
+                "secident_state_payload",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 5,
+                    available: payload.len(),
+                },
+            ));
+        }
+
+        let state = payload[0];
+        let challenge = u32::from_le_bytes([payload[1], payload[2], payload[3], payload[4]]);
+
+        Ok(Ed2kSecIdentState { state, challenge })
+    }
+
+    /// Decodes an incoming Source Exchange request (`OP_REQUESTSOURCES` or `OP_REQUESTSOURCES2`).
+    pub fn decode_request_sources(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+    ) -> Result<super::source_exchange::Ed2kRequestSources, Ed2kParseError> {
+        super::source_exchange::decode_request_sources(protocol, opcode, payload)
+    }
+
+    /// Decodes an incoming Source Exchange response (`OP_ANSWERSOURCES` or `OP_ANSWERSOURCES2`).
+    pub fn decode_answer_sources(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+    ) -> Result<super::source_exchange::Ed2kAnswerSources, Ed2kParseError> {
+        super::source_exchange::decode_answer_sources(protocol, opcode, payload)
     }
 }

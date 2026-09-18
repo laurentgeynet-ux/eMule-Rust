@@ -21,9 +21,9 @@ pub async fn run_ed2k_download(
     peer_addr: SocketAddr,
     state: AppState,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // 0. Enforce loopback confinement
-    if !peer_addr.ip().is_loopback() {
-        return Err(format!("Non-loopback address {peer_addr} is strictly forbidden").into());
+    // 0. Enforce network policy confinement
+    if state.network_policy.profile().is_loopback_only() && !peer_addr.ip().is_loopback() {
+        return Err(format!("Non-loopback address {peer_addr} is forbidden in LocalLab profile").into());
     }
 
     // 1. Transition to WaitingForSources
@@ -54,7 +54,7 @@ pub async fn run_ed2k_download(
         peer_addr,
         local_hash,
         0x7F000001,
-        4662,
+        39735,
         tags,
         0x7F000001,
         4661,

@@ -6,13 +6,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
     let args: Vec<String> = std::env::args().collect();
     let mut data_dir_arg: Option<PathBuf> = None;
     let mut downloads_dir_arg: Option<PathBuf> = None;
@@ -21,6 +14,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut auth_token_arg: Option<String> = None;
     let mut token_file_arg: Option<PathBuf> = None;
     let mut parent_pid_arg: Option<u32> = None;
+    let mut profile_arg: Option<mule_network_policy::NetworkProfile> = None;
+    let mut ed2k_port_arg: Option<u16> = None;
+    let mut kad_port_arg: Option<u16> = None;
+    let mut upnp_arg: Option<bool> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -39,6 +36,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "installeddefault" | "installed" => Some(mule_daemon::WorkDirMode::InstalledDefault),
                     "environment" | "env" => Some(mule_daemon::WorkDirMode::Environment),
                     "explicitcli" | "cli" => Some(mule_daemon::WorkDirMode::ExplicitCli),
+                    _ => None,
+                };
+                i += 2;
+            }
+            "--profile" | "--network-profile" if i + 1 < args.len() => {
+                if let Ok(p) = args[i + 1].parse() {
+                    profile_arg = Some(p);
+                }
+                i += 2;
+            }
+            "--ed2k-port" if i + 1 < args.len() => {
+                if let Ok(port) = args[i + 1].parse::<u16>() {
+                    ed2k_port_arg = Some(port);
+                }
+                i += 2;
+            }
+            "--kad-port" if i + 1 < args.len() => {
+                if let Ok(port) = args[i + 1].parse::<u16>() {
+                    kad_port_arg = Some(port);
+                }
+                i += 2;
+            }
+            "--upnp" if i + 1 < args.len() => {
+                upnp_arg = match args[i + 1].to_lowercase().as_str() {
+                    "true" | "1" | "yes" | "enable" => Some(true),
+                    "false" | "0" | "no" | "disable" => Some(false),
                     _ => None,
                 };
                 i += 2;
@@ -87,6 +110,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("==> Default download dir: {}", default_download_dir.display());
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&default_download_dir)?;
+
+    // Configure file appender for daemon.log (reset on each startup)
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(data_dir.join("daemon.log"))
+        .ok();
+
+    let timer = tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339()
+        .unwrap_or_else(|_| tracing_subscriber::fmt::time::OffsetTime::new(
+            time::UtcOffset::UTC,
+            time::format_description::well_known::Rfc3339,
+        ));
+
+    let file_layer = log_file.map(|f| {
+        tracing_subscriber::fmt::layer()
+            .with_writer(std::sync::Arc::new(f))
+            .with_ansi(false)
+            .with_timer(timer.clone())
+    });
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer().with_timer(timer))
+        .with(file_layer)
+        .init();
 
     // 1. Acquire exclusive directory lock
     let _lock = DirectoryLock::acquire(&data_dir).map_err(|e| {
@@ -151,10 +203,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or(default_download_dir);
 
+    let ed2k_port = ed2k_port_arg.unwrap_or(39735);
+    let kad_port = kad_port_arg.unwrap_or(39737);
+    let upnp_enabled = upnp_arg.unwrap_or(true);
+    let network_profile = profile_arg.unwrap_or(mule_network_policy::NetworkProfile::PublicEd2kKadPreview);
+
     let config = DaemonConfig::new(data_dir.clone(), auth_token)
         .with_bind_addr(actual_addr)
         .with_workdir_mode(resolved_workdir.mode)
-        .with_default_download_dir(initial_download_dir);
+        .with_default_download_dir(initial_download_dir)
+        .with_network_profile(network_profile)
+        .with_upnp_enabled(upnp_enabled)
+        .with_ports(ed2k_port, kad_port);
     let state = AppState::new(config, downloads);
 
     // 4. Atomically write session file
@@ -163,12 +223,97 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("==> mule-daemon listening on http://{actual_addr}");
     println!("==> WebSocket RPC endpoint: {endpoint}");
+    println!("==> Network profile: {network_profile}");
+    println!("==> eD2K port: {ed2k_port}, Kad port: {kad_port}, UPnP: {upnp_enabled}");
     println!(
         "==> Session file: {}",
         data_dir.join("session.json").display()
     );
 
+    // If UPnP is enabled and in a preview profile, attempt background port mapping with progressive retries and periodic refresh
+    if upnp_enabled && network_profile.is_preview() {
+        let upnp_svc = state.upnp.clone();
+        let cancel_token = state.network_policy.cancellation_token();
+        let cancel_token_retry = cancel_token.clone();
+        tokio::spawn(async move {
+            let retry_delays = [
+                tokio::time::Duration::from_secs(30),
+                tokio::time::Duration::from_secs(120),
+                tokio::time::Duration::from_secs(300),
+            ];
+            let mut result = upnp_svc.map_ports(ed2k_port, kad_port).await;
+            if result.is_err() {
+                for delay in retry_delays {
+                    tokio::select! {
+                        _ = cancel_token_retry.cancelled() => break,
+                        _ = tokio::time::sleep(delay) => {}
+                    }
+                    tracing::info!("Retrying UPnP port mapping after initial failure...");
+                    result = upnp_svc.map_ports(ed2k_port, kad_port).await;
+                    if result.is_ok() {
+                        tracing::info!("UPnP port mapping succeeded on background retry!");
+                        break;
+                    }
+                }
+            }
+        });
+        let refresh_handle = state.upnp.clone().start_periodic_refresh(
+            tokio::time::Duration::from_secs(45 * 60),
+            cancel_token,
+        );
+        state.register_task(refresh_handle.abort_handle()).await;
+    }
+
+    // Auto-initialize Kad routing table and UDP socket if in a preview profile
+    if network_profile.allows_udp_kad() {
+        let kad_svc = state.kad.clone();
+        let kad_cancel = state.network_policy.cancellation_token();
+        let kad_bind_ip = if network_profile.is_loopback_only() {
+            "127.0.0.1"
+        } else {
+            "0.0.0.0"
+        };
+        let kad_bind_addr: std::net::SocketAddr = format!("{kad_bind_ip}:{kad_port}").parse().unwrap();
+        tokio::spawn(async move {
+            kad_svc.init_from_db().await;
+            if let Err(e) = kad_svc.udp().start(kad_bind_addr).await {
+                tracing::warn!("Failed to auto-start Kad UDP on {kad_bind_addr}: {e}");
+            } else {
+                tracing::info!("Kad UDP socket auto-started on {kad_bind_addr}");
+                kad_svc.bootstrap_active_contacts(15).await;
+                kad_svc.start_background_maintenance(kad_cancel);
+            }
+        });
+    }
+
+    // Auto-start Inbound TCP Listener on the eD2K port if in a preview or enabled profile
+    if network_profile.is_preview() || network_profile.is_loopback_only() {
+        let listener_svc = state.inbound_listener.clone();
+        let inbound_bind_ip = if network_profile.is_loopback_only() {
+            "127.0.0.1"
+        } else {
+            "0.0.0.0"
+        };
+        let inbound_bind_addr: std::net::SocketAddr = format!("{inbound_bind_ip}:{ed2k_port}").parse().unwrap();
+        tokio::spawn(async move {
+            match listener_svc.start(inbound_bind_addr).await {
+                Ok(bound) => {
+                    println!("==> Inbound eD2K TCP listener auto-started on {bound}");
+                }
+                Err(e) => {
+                    eprintln!("==> Warning: Failed to auto-start Inbound TCP listener on {inbound_bind_addr}: {e}");
+                }
+            }
+        });
+    }
+
+    // Auto-start autonomous Swarm Coordinator for background source discovery & peer connections
+    let coordinator_handle = mule_daemon::services::SwarmCoordinator::start(state.clone());
+    state.register_task(coordinator_handle.abort_handle()).await;
+
     let shutdown_notify = state.shutdown_notify.clone();
+    let upnp_cleanup = state.upnp.clone();
+    let listener_cleanup = state.inbound_listener.clone();
     let app = create_router(state);
 
     if let Some(parent_pid) = parent_pid_arg {
@@ -190,6 +335,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             DaemonSession::remove(&data_dir_cleanup);
+            listener_cleanup.stop().await;
+            let _ = tokio::time::timeout(
+                tokio::time::Duration::from_millis(500),
+                upnp_cleanup.unmap_ports(),
+            )
+            .await;
         })
         .await?;
 

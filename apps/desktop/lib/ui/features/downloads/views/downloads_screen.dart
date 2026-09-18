@@ -13,7 +13,12 @@ import '../widgets/downloads_sidebar.dart';
 import '../widgets/import_part_met_dialog.dart';
 import '../widgets/incompatible_version_dialog.dart';
 import '../widgets/lab_guide_dialog.dart';
+import '../widgets/network_policy_dialog.dart';
+import '../widgets/ip_filter_dialog.dart';
 import '../../history/views/history_view.dart';
+import '../../servers/views/servers_screen.dart';
+import '../../search/views/search_screen.dart';
+import '../../kad/views/kad_screen.dart';
 
 class DownloadsScreen extends StatelessWidget {
   final DownloadsViewModel viewModel;
@@ -25,61 +30,93 @@ class DownloadsScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: viewModel,
       builder: (context, _) {
-        return Scaffold(
-          backgroundColor: AppTheme.darkBackground,
-          body: Row(
-            children: [
-              // Left Navigation Sidebar
-              DownloadsSidebar(viewModel: viewModel),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = constraints.maxWidth < 750;
+            final isMedium = constraints.maxWidth >= 750 && constraints.maxWidth < 1100;
 
-              // Right Workspace Area
-              Expanded(
-                child: Column(
-                  children: [
-                    // Incompatible protocol banner if any
-                    if (viewModel.protocolMismatchError != null)
-                      IncompatibleVersionBanner(
-                        errorMessage: viewModel.protocolMismatchError!,
-                        onRetry: () => viewModel.supervisor?.start(),
+            return Scaffold(
+              backgroundColor: AppTheme.darkBackground,
+              drawer: isSmall
+                  ? Drawer(
+                      backgroundColor: AppTheme.darkSurface,
+                      child: SafeArea(
+                        child: DownloadsSidebar(viewModel: viewModel, isCompact: false),
                       ),
+                    )
+                  : null,
+              body: Row(
+                children: [
+                  // Left Navigation Sidebar (Hidden on small screen, compact on medium, full on large)
+                  if (!isSmall)
+                    DownloadsSidebar(
+                      viewModel: viewModel,
+                      isCompact: isMedium,
+                    ),
 
-                    // Status Notification banner if any
-                    if (viewModel.statusNotification != null)
-                      _buildStatusNotificationBanner(context, viewModel.statusNotification!),
+                  // Right Workspace Area
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Incompatible protocol banner if any
+                        if (viewModel.protocolMismatchError != null)
+                          IncompatibleVersionBanner(
+                            errorMessage: viewModel.protocolMismatchError!,
+                            onRetry: () => viewModel.supervisor?.start(),
+                          ),
 
-                    // Main Workspace Area
-                    if (viewModel.currentSection == AppNavSection.history) ...[
-                      Expanded(
-                        child: HistoryView(viewModel: viewModel),
-                      ),
-                    ] else ...[
-                      // Top Navigation / Actions Bar
-                      _buildTopBar(context),
+                        // Status Notification banner if any
+                        if (viewModel.statusNotification != null)
+                          _buildStatusNotificationBanner(context, viewModel.statusNotification!),
 
-                      // Main Content: Downloads Table or Empty State
-                      Expanded(
-                        child: _buildDownloadsArea(context),
-                      ),
+                        // Main Workspace Area
+                        if (viewModel.currentSection == AppNavSection.history) ...[
+                          Expanded(
+                            child: HistoryView(viewModel: viewModel),
+                          ),
+                        ] else if (viewModel.currentSection == AppNavSection.servers) ...[
+                          Expanded(
+                            child: ServersView(viewModel: viewModel),
+                          ),
+                        ] else if (viewModel.currentSection == AppNavSection.search) ...[
+                          Expanded(
+                            child: SearchView(viewModel: viewModel),
+                          ),
+                        ] else if (viewModel.currentSection == AppNavSection.kad) ...[
+                          Expanded(
+                            child: KadView(viewModel: viewModel),
+                          ),
+                        ] else ...[
+                          // Top Navigation / Actions Bar
+                          _buildTopBar(context, isSmall: isSmall),
 
-                      // Selected item details panel (collapsible)
-                      if (viewModel.selectedDownload != null)
-                        _buildDetailsPanel(context, viewModel.selectedDownload!),
-                    ],
+                          // Main Content: Downloads Table or Empty State
+                          Expanded(
+                            child: _buildDownloadsArea(context),
+                          ),
 
-                    // Optional Debug Bar
-                    if (viewModel.isDebugBarVisible)
-                      DebugSimulationBar(viewModel: viewModel),
-                  ],
-                ),
+                          // Selected item details panel (collapsible)
+                          if (viewModel.selectedDownload != null)
+                            _buildDetailsPanel(context, viewModel.selectedDownload!, isSmall: isSmall),
+                        ],
+
+                        // Optional Debug Bar
+                        if (viewModel.isDebugBarVisible)
+                          DebugSimulationBar(viewModel: viewModel),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildTopBar(BuildContext context) {
+  Widget _buildTopBar(BuildContext context, {bool isSmall = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
@@ -90,41 +127,58 @@ class DownloadsScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Drawer opener button if on small screen
+          if (isSmall) ...[
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu_rounded, color: Colors.white70),
+                tooltip: 'Ouvrir le menu de navigation',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           // Filter title
-          Text(
-            viewModel.currentFilter.label,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(width: 16),
+          if (!isSmall) ...[
+            Text(
+              viewModel.currentFilter.label,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 16),
+          ],
 
-          // Search Field (Flexible responsive width)
-          Expanded(
-            child: SizedBox(
-              height: 36,
-              child: TextField(
-                onChanged: viewModel.setSearchQuery,
-                style: const TextStyle(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: AppStrings.searchPlaceholder,
-                  hintStyle: const TextStyle(fontSize: 12, color: Colors.white38),
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search, size: 16, color: Colors.white38),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                  filled: true,
-                  fillColor: AppTheme.darkCard,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
+          // Search Field
+          SizedBox(
+            width: isSmall ? 130 : 180,
+            height: 36,
+            child: TextField(
+              onChanged: viewModel.setSearchQuery,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: AppStrings.searchPlaceholder,
+                hintStyle: const TextStyle(fontSize: 12, color: Colors.white38),
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 16, color: Colors.white38),
+                prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                filled: true,
+                fillColor: AppTheme.darkCard,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
                 ),
               ),
             ),
           ),
 
-          const SizedBox(width: 10),
-
-          // Mode Badge (Clickable for Diagnostics)
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Mode Badge (Clickable for Diagnostics)
           Tooltip(
             message: viewModel.isLabModeAvailable
                 ? '${AppStrings.tooltipLoopbackLabMode}\n\nClick to inspect system & workdir diagnostics.'
@@ -239,6 +293,114 @@ class DownloadsScreen extends StatelessWidget {
             ),
           ),
 
+          const SizedBox(width: 8),
+
+          // Central Network Policy & Kill Switch Indicator
+          Tooltip(
+            message: viewModel.isNetworkKillSwitchActive
+                ? 'Network Subsystem is DISABLED (Kill Switch engaged).\nClick to view policy and re-enable.'
+                : 'Network Policy: ${viewModel.currentNetworkProfile.label}\nStatus: ${viewModel.currentNetworkState.label}\nClick to inspect policy, quotas, and audit log.',
+            child: InkWell(
+              key: const Key('network_policy_badge'),
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => NetworkPolicyDialog(viewModel: viewModel),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: viewModel.isNetworkKillSwitchActive
+                      ? Colors.red.withValues(alpha: 0.2)
+                      : Colors.cyan.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: viewModel.isNetworkKillSwitchActive
+                        ? Colors.redAccent.withValues(alpha: 0.5)
+                        : Colors.cyan.withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      viewModel.isNetworkKillSwitchActive
+                          ? Icons.shield_rounded
+                          : Icons.security_rounded,
+                      size: 13,
+                      color: viewModel.isNetworkKillSwitchActive
+                          ? Colors.redAccent
+                          : Colors.cyanAccent,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      viewModel.isNetworkKillSwitchActive
+                          ? 'Disabled'
+                          : viewModel.currentNetworkProfile.toKebabCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: viewModel.isNetworkKillSwitchActive
+                            ? Colors.redAccent
+                            : Colors.cyanAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Quick Kill Switch / Re-enable Toggle Button
+          IconButton(
+            key: const Key('network_kill_switch_button'),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              viewModel.isNetworkKillSwitchActive
+                  ? Icons.play_circle_outline_rounded
+                  : Icons.power_settings_new_rounded,
+              color: viewModel.isNetworkKillSwitchActive
+                  ? Colors.greenAccent
+                  : Colors.redAccent.withValues(alpha: 0.85),
+              size: 18,
+            ),
+            tooltip: viewModel.isNetworkKillSwitchActive
+                ? 'Re-enable Network Subsystem'
+                : 'Kill Switch: Disconnect All Sockets Immediately',
+            onPressed: () {
+              if (viewModel.isNetworkKillSwitchActive) {
+                viewModel.enableNetwork();
+              } else {
+                viewModel.disconnectAllNetwork();
+              }
+            },
+          ),
+
+          // IP Filter & Rate Limits dialog button
+          IconButton(
+            key: const Key('ip_filter_button'),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(
+              Icons.filter_alt_outlined,
+              color: Colors.amber,
+              size: 18,
+            ),
+            tooltip: 'IP Filter & Rate Limits',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => IpFilterDialog(viewModel: viewModel),
+              );
+            },
+          ),
+
           // Dev Tools Gating: Only visible if enabled via --dart-define=ENABLE_DEV_TOOLS=true or fake client
           if (viewModel.isDevToolsAvailable) ...[
             const SizedBox(width: 8),
@@ -289,24 +451,43 @@ class DownloadsScreen extends StatelessWidget {
           const SizedBox(width: 6),
 
           // Add Link Button
-          FilledButton.icon(
-            icon: const Icon(Icons.add_rounded, size: 16),
-            label: const Text(AppStrings.btnAddLink),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          if (isSmall)
+            IconButton.filled(
+              icon: const Icon(Icons.add_rounded, size: 18),
+              tooltip: AppStrings.btnAddLink,
+              style: IconButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+              ),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AddLinkDialog(viewModel: viewModel),
+                );
+              },
+            )
+          else
+            FilledButton.icon(
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text(AppStrings.btnAddLink),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AddLinkDialog(viewModel: viewModel),
+                );
+              },
             ),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AddLinkDialog(viewModel: viewModel),
-              );
-            },
-          ),
-        ],
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  ],
+),
+);
+}
 
   Widget _buildDownloadsArea(BuildContext context) {
     final list = viewModel.filteredDownloads;
@@ -416,7 +597,7 @@ class DownloadsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailsPanel(BuildContext context, DownloadItem item) {
+  Widget _buildDetailsPanel(BuildContext context, DownloadItem item, {bool isSmall = false}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -439,24 +620,42 @@ class DownloadsScreen extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                label: const Text('Inspect Full Details', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primary,
-                  side: const BorderSide(color: AppTheme.primary, width: 0.8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              if (isSmall)
+                IconButton(
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  tooltip: 'Inspect Full Details',
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                  ),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => DownloadDetailDialog(
+                        downloadId: item.id,
+                        viewModel: viewModel,
+                      ),
+                    );
+                  },
+                )
+              else
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                  label: const Text('Inspect Full Details', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.primary, width: 0.8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => DownloadDetailDialog(
+                        downloadId: item.id,
+                        viewModel: viewModel,
+                      ),
+                    );
+                  },
                 ),
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => DownloadDetailDialog(
-                      downloadId: item.id,
-                      viewModel: viewModel,
-                    ),
-                  );
-                },
-              ),
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.close, size: 16, color: Colors.white54),

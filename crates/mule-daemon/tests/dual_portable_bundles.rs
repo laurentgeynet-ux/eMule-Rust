@@ -6,8 +6,9 @@ use tempfile::tempdir;
 
 #[tokio::test]
 async fn test_dual_portable_bundles_independent_execution() {
-    // 1. Occupy default port 4660 with a dummy listener so both daemons must use ephemeral ports
-    let occupier = TcpListener::bind("127.0.0.1:4660").ok();
+    // 1. Ensure default port 4660 is occupied so both daemons must use ephemeral ports.
+    // If a live dev daemon is already running on 4660, that also satisfies the requirement.
+    let _occupier = TcpListener::bind("127.0.0.1:4660").ok();
 
     let daemon_bin = env!("CARGO_BIN_EXE_mule-daemon");
 
@@ -93,5 +94,5 @@ async fn test_dual_portable_bundles_independent_execution() {
     let _ = proc_b.kill();
     let _ = proc_a.wait();
     let _ = proc_b.wait();
-    drop(occupier);
+    drop(_occupier);
 }

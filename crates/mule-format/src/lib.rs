@@ -2,7 +2,12 @@ pub mod aich;
 pub mod ed2k;
 pub mod error;
 pub mod fixtures;
+pub mod kad;
 pub mod met;
+
+pub use kad::{
+    KadContactEntry, NodesDatFile, MAX_NODES_COUNT, MAX_NODES_DAT_SIZE, MAX_TAGS_PER_NODE,
+};
 
 pub use aich::{
     calculate_aich_root, compute_expected_path, verify_aich_proof, AichHash, AichNode, AichProof,
@@ -20,6 +25,8 @@ pub use fixtures::{
     REPEATING_0_TO_255,
 };
 pub use met::{
-    read_tag, CountingReader, MetError, PartMetFile, Tag, TagValue, PARTFILE_SPLITTEDVERSION,
-    PARTFILE_VERSION, PARTFILE_VERSION_LARGEFILE,
+    read_tag, CountingReader, MetError, PartMetFile, ServerEntry, ServerMetFile, Tag, TagValue,
+    MAX_SERVER_COUNT, PARTFILE_SPLITTEDVERSION, PARTFILE_VERSION, PARTFILE_VERSION_LARGEFILE,
+    SERVER_MET_VERSION, SN_DESCRIPTION, SN_DYNIP, SN_FAIL, SN_HARDFILES, SN_IP, SN_LASTPING,
+    SN_MAXUSERS, SN_NAME, SN_PING, SN_PORT, SN_PREFERENCE, SN_SOFTFILES, SN_VERSION,
 };

@@ -374,6 +374,7 @@ class DaemonSupervisor {
       process.stderr.transform(utf8.decoder).listen((data) {
         _stderrBuffer.write(data);
       });
+      process.stdout.listen((_) {});
 
       process.exitCode.then((exitCode) {
         _lastExitCode = exitCode;
@@ -439,8 +440,10 @@ class DaemonSupervisor {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
 
-    // 1. Send graceful shutdown RPC if connected
-    if (client.currentConnectionState == DaemonConnectionState.connected) {
+    final wasManaged = _managedProcess != null;
+
+    // 1. Send graceful shutdown RPC if connected and this supervisor owns the process
+    if (wasManaged && client.currentConnectionState == DaemonConnectionState.connected) {
       try {
         await client.stopDaemon().timeout(const Duration(milliseconds: 800));
       } catch (_) {}
@@ -449,7 +452,7 @@ class DaemonSupervisor {
     // 2. Wait for managed process to exit or kill it
     if (_managedProcess != null) {
       try {
-        await _managedProcess!.exitCode.timeout(const Duration(milliseconds: 1000));
+        await _managedProcess!.exitCode.timeout(const Duration(milliseconds: 1500));
       } catch (_) {
         _managedProcess!.kill();
         try {
@@ -460,6 +463,13 @@ class DaemonSupervisor {
     }
     _activePid = null;
     _activeSession = null;
+
+    if (wasManaged) {
+      try {
+        final f = File('${resolveDataDir().path}/session.json');
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+    }
 
     // 3. Disconnect client channel
     await client.disconnect();

@@ -1,24 +1,25 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../../domain/models/category_item.dart';
 import '../../../../domain/models/daemon_event.dart';
 import '../../../../domain/models/daemon_info.dart';
 import '../../../../domain/models/download_item.dart';
+import '../../../../domain/models/filter_models.dart';
 import '../../../../domain/models/history_entry.dart';
 import '../../../../domain/models/history_stats.dart';
 import '../../../../domain/models/lab_models.dart';
+import '../../../../domain/models/network_policy_models.dart';
 import '../../../../domain/models/part_met_models.dart';
+import '../../../../domain/models/server_models.dart';
 import '../../../../domain/services/mule_daemon_client.dart';
 
 import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
 
-enum AppNavSection {
-  downloads,
-  history,
-}
+enum AppNavSection { downloads, history, servers, search, kad }
 
 enum DownloadFilter {
   all,
@@ -73,10 +74,34 @@ class DownloadsViewModel extends ChangeNotifier {
   String? _historyStatusFilter;
   int _historyRetentionDays = 30;
 
+  List<Ed2kServerModel> _servers = [];
+  bool _isServersLoading = false;
+  ServerSessionModel _serverSession = ServerSessionModel.disconnected;
+  bool _isServerConnecting = false;
+
+  final List<SearchResultFileModel> _searchResults = [];
+  bool _isSearching = false;
+  String? _lastSearchTerm;
+  int _searchEpoch = 0;
+
+  final Map<String, List<PeerSourceModel>> _peerSources = {};
+  bool _isSourcesLoading = false;
+  PeerSessionModel _peerSession = PeerSessionModel.disconnected;
+  bool _isPeerConnecting = false;
+
+  KadStatusModel _kadStatus = KadStatusModel.initial;
+  List<KadContactModel> _kadContacts = [];
+  bool _isKadLoading = false;
+  Timer? _kadStatusTimer;
+
   StreamSubscription<DaemonConnectionState>? _connSub;
+  StreamSubscription<ServerSessionModel>? _serverSessionSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
+  StreamSubscription<List<SearchResultFileModel>>? _searchResultSub;
+  StreamSubscription<Map<String, dynamic>>? _foundSourcesSub;
+  StreamSubscription<PeerSessionModel>? _peerSessionSub;
 
   DownloadsViewModel({
     required this.client,
@@ -85,11 +110,60 @@ class DownloadsViewModel extends ChangeNotifier {
   }) {
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
+      if (state == DaemonConnectionState.connected) {
+        _startKadStatusTimer();
+      } else {
+        _kadStatusTimer?.cancel();
+        _kadStatusTimer = null;
+      }
+      notifyListeners();
+    });
+
+    _serverSessionSub = client.serverSessionEvents.listen((session) {
+      _serverSession = session;
+      if (session.status == ServerConnectionStatus.connected ||
+          session.status == ServerConnectionStatus.disconnected) {
+        _isServerConnecting = false;
+      } else if (session.status == ServerConnectionStatus.connecting) {
+        _isServerConnecting = true;
+      }
       notifyListeners();
     });
 
     _eventSub = client.downloadEvents.listen((event) {
       _downloads[event.download.id] = event.download;
+      notifyListeners();
+    });
+
+    _searchResultSub = client.searchResultEvents.listen((files) {
+      final existingHashes = _searchResults.map((f) => f.fileHash).toSet();
+      for (final f in files) {
+        if (!existingHashes.contains(f.fileHash)) {
+          _searchResults.add(f);
+          existingHashes.add(f.fileHash);
+        }
+      }
+      _searchEpoch++;
+      _isSearching = false;
+      notifyListeners();
+    });
+
+    _foundSourcesSub = client.foundSourcesEvents.listen((params) {
+      final rawSources = params['sources'] as List<dynamic>? ?? [];
+      final hash = params['file_hash'] as String? ?? '';
+      _statusNotification =
+          '${rawSources.length} source(s) trouvée(s) pour $hash';
+      if (hash.isNotEmpty) {
+        loadSourcesForHash(hash);
+      }
+      notifyListeners();
+    });
+
+    _peerSessionSub = client.peerSessionEvents.listen((session) {
+      _peerSession = session;
+      _isPeerConnecting =
+          session.status == PeerConnectionStatus.connecting ||
+          session.status == PeerConnectionStatus.handshaking;
       notifyListeners();
     });
 
@@ -145,7 +219,9 @@ class DownloadsViewModel extends ChangeNotifier {
   Map<String, int> get categoryCounts {
     final map = <String, int>{};
     for (final cat in _categories) {
-      map[cat.id] = _downloads.values.where((d) => d.categoryId == cat.id).length;
+      map[cat.id] = _downloads.values
+          .where((d) => d.categoryId == cat.id)
+          .length;
     }
     return map;
   }
@@ -166,7 +242,8 @@ class DownloadsViewModel extends ChangeNotifier {
     if (isDevToolsAvailable) return true;
     final info = daemonInfo;
     if (info == null) return false;
-    final isPortable = (info.workdirMode?.toLowerCase() == 'portable') ||
+    final isPortable =
+        (info.workdirMode?.toLowerCase() == 'portable') ||
         (supervisor?.resolveWorkDir().mode == WorkDirMode.portable);
     return isPortable && info.capabilities.contains('lab-tools');
   }
@@ -216,10 +293,27 @@ class DownloadsViewModel extends ChangeNotifier {
   int get totalUploadSpeed => 0;
 
   int get countAll => _downloads.length;
-  int get countActive => _downloads.values.where((d) => d.status.isActive).length;
-  int get countPaused => _downloads.values.where((d) => d.status.isPaused).length;
-  int get countCompleted => _downloads.values.where((d) => d.status.isCompleted).length;
-  int get countFailed => _downloads.values.where((d) => d.status.isFailed).length;
+  int get countActive =>
+      _downloads.values.where((d) => d.status.isActive).length;
+  int get countPaused =>
+      _downloads.values.where((d) => d.status.isPaused).length;
+  int get countCompleted =>
+      _downloads.values.where((d) => d.status.isCompleted).length;
+  int get countFailed =>
+      _downloads.values.where((d) => d.status.isFailed).length;
+
+  List<DownloadItem> get allDownloads => _downloads.values.toList();
+
+  DownloadItem? getDownloadByHash(String? hash) {
+    if (hash == null || hash.isEmpty) return null;
+    final lower = hash.toLowerCase();
+    for (final d in _downloads.values) {
+      if (d.ed2kHash?.toLowerCase() == lower) {
+        return d;
+      }
+    }
+    return null;
+  }
 
   List<DownloadItem> get filteredDownloads {
     final query = _searchQuery.trim().toLowerCase();
@@ -257,8 +351,7 @@ class DownloadsViewModel extends ChangeNotifier {
       }
 
       return true;
-    }).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   // Actions
@@ -287,6 +380,8 @@ class DownloadsViewModel extends ChangeNotifier {
       await fetchSettings();
       await fetchHistory();
       await fetchCategories();
+      await fetchNetworkPolicy();
+      await fetchKadStatus();
       final list = await client.listDownloads();
       _downloads.clear();
       for (final item in list) {
@@ -303,6 +398,11 @@ class DownloadsViewModel extends ChangeNotifier {
     _currentSection = section;
     if (section == AppNavSection.history) {
       fetchHistory();
+    } else if (section == AppNavSection.servers) {
+      fetchServers();
+    } else if (section == AppNavSection.kad) {
+      fetchKadStatus();
+      fetchKadContacts();
     }
     notifyListeners();
   }
@@ -342,6 +442,20 @@ class DownloadsViewModel extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
+      // Check for existing download with the same eD2K hash
+      final tokens = link.split('|');
+      String? linkHash;
+      if (tokens.length >= 5 && tokens[1].toLowerCase() == 'file') {
+        linkHash = tokens[4].toLowerCase();
+      }
+      if (linkHash != null) {
+        final existing = getDownloadByHash(linkHash);
+        if (existing != null) {
+          _errorMessage = 'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}", statut : ${existing.status.label})';
+          return false;
+        }
+      }
+
       final dlId = await client.addEd2kLink(
         link,
         targetDirectory: targetDirectory,
@@ -351,7 +465,6 @@ class DownloadsViewModel extends ChangeNotifier {
 
       // Extract human-friendly filename from eD2K link for clean user notification
       String displayName = dlId;
-      final tokens = link.split('|');
       if (tokens.length >= 4 && tokens[1].toLowerCase() == 'file') {
         final rawName = tokens[2];
         try {
@@ -361,11 +474,12 @@ class DownloadsViewModel extends ChangeNotifier {
         }
       }
 
-      _statusNotification = 'Added "$displayName" to downloads';
+      _statusNotification = 'Fichier "$displayName" ajouté aux téléchargements';
       await refresh();
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to add link: $e';
+      final msg = e.toString().replaceAll(RegExp(r'^Exception:\s*'), '');
+      _errorMessage = msg;
       return false;
     } finally {
       _isLoading = false;
@@ -373,7 +487,10 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) {
+  Future<PartMetInspectionResult> inspectPartMet(
+    String metPath, {
+    String? partPath,
+  }) {
     return client.inspectPartMet(metPath, partPath: partPath);
   }
 
@@ -445,11 +562,16 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> injectSimulationChunk(String id, int offset, String hexData) async {
+  Future<void> injectSimulationChunk(
+    String id,
+    int offset,
+    String hexData,
+  ) async {
     try {
       final updated = await client.injectRange(id, offset, hexData);
       _downloads[updated.id] = updated;
-      _statusNotification = 'Injected ${hexData.length ~/ 2} bytes at offset $offset';
+      _statusNotification =
+          'Injected ${hexData.length ~/ 2} bytes at offset $offset';
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Injection failed: $e';
@@ -488,7 +610,10 @@ class DownloadsViewModel extends ChangeNotifier {
     return report;
   }
 
-  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {
+  Future<void> connectDownloadToSource(
+    String downloadId,
+    String peerAddr,
+  ) async {
     await client.connectDownloadToSource(downloadId, peerAddr);
     _statusNotification = 'Connected download to $peerAddr';
     await refresh();
@@ -497,7 +622,8 @@ class DownloadsViewModel extends ChangeNotifier {
   Future<void> fetchSettings() async {
     try {
       _settings = await client.getSettings();
-      _historyRetentionDays = (_settings['historyRetentionDays'] as num?)?.toInt() ?? 30;
+      _historyRetentionDays =
+          (_settings['historyRetentionDays'] as num?)?.toInt() ?? 30;
       notifyListeners();
     } catch (_) {
       // Non-critical in older or restricted daemons
@@ -645,7 +771,8 @@ class DownloadsViewModel extends ChangeNotifier {
     try {
       final updated = await client.retryDownloadConnection(id);
       _downloads[updated.id] = updated;
-      _statusNotification = 'Retrying loopback connection for "${updated.fileName}"';
+      _statusNotification =
+          'Retrying loopback connection for "${updated.fileName}"';
       notifyListeners();
       return true;
     } catch (e) {
@@ -697,14 +824,20 @@ class DownloadsViewModel extends ChangeNotifier {
     final sanitizedTemp = 'data/temp/${item.id}.part';
     final totalParts = item.parts.length;
     final verifiedParts = item.parts.where((p) => p.isVerified).length;
-    final completedParts = item.parts.where((p) => p.state == 'completed').length;
-    final downloadingParts = item.parts.where((p) => p.state == 'downloading').length;
+    final completedParts = item.parts
+        .where((p) => p.state == 'completed')
+        .length;
+    final downloadingParts = item.parts
+        .where((p) => p.state == 'downloading')
+        .length;
     final missingParts = item.parts.where((p) => p.state == 'missing').length;
 
     final buffer = StringBuffer();
     buffer.writeln('=== Emule-Sion Download Diagnostic (Sanitized) ===');
     buffer.writeln('Generated: ${DateTime.now().toUtc().toIso8601String()}');
-    buffer.writeln('Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)');
+    buffer.writeln(
+      'Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)',
+    );
     buffer.writeln('Download ID: ${item.id}');
     buffer.writeln('File Name: ${item.fileName}');
     buffer.writeln('Status: ${item.status.label}');
@@ -729,7 +862,9 @@ class DownloadsViewModel extends ChangeNotifier {
     }
     buffer.writeln('Temp Path: $sanitizedTemp');
     buffer.writeln('Destination Target: $sanitizedTarget');
-    buffer.writeln('Part Map Summary: $totalParts parts total ($verifiedParts verified, $completedParts unverified, $downloadingParts downloading, $missingParts missing)');
+    buffer.writeln(
+      'Part Map Summary: $totalParts parts total ($verifiedParts verified, $completedParts unverified, $downloadingParts downloading, $missingParts missing)',
+    );
     buffer.writeln('Created At: ${item.createdAt.toIso8601String()}');
     buffer.writeln('Updated At: ${item.updatedAt.toIso8601String()}');
     return buffer.toString();
@@ -833,12 +968,16 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> setDownloadCategory(String downloadId, String? categoryId) async {
+  Future<bool> setDownloadCategory(
+    String downloadId,
+    String? categoryId,
+  ) async {
     try {
       final updated = await client.setDownloadCategory(downloadId, categoryId);
       _downloads[downloadId] = updated;
       final catName = categoryId != null
-          ? (_categories.where((c) => c.id == categoryId).firstOrNull?.name ?? 'Category')
+          ? (_categories.where((c) => c.id == categoryId).firstOrNull?.name ??
+                'Category')
           : 'None';
       _statusNotification = 'Assigned to category "$catName"';
       notifyListeners();
@@ -850,12 +989,763 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
+  // Network Policy & Kill Switch
+  NetworkPolicySnapshot? _networkPolicy;
+  List<NetworkAuditEntryItem> _networkAuditLog = [];
+
+  NetworkPolicySnapshot? get networkPolicy => _networkPolicy;
+  List<NetworkAuditEntryItem> get networkAuditLog => _networkAuditLog;
+  NetworkProfile get currentNetworkProfile =>
+      _networkPolicy?.profile ?? NetworkProfile.publicEd2kKadPreview;
+  NetworkSubsystemState get currentNetworkState =>
+      _networkPolicy?.state ?? NetworkSubsystemState.previewActive;
+  bool get isNetworkKillSwitchActive =>
+      currentNetworkState == NetworkSubsystemState.disabled;
+
+  Future<void> fetchNetworkPolicy() async {
+    try {
+      _networkPolicy = await client.getNetworkPolicy();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setNetworkProfile(NetworkProfile profile) async {
+    try {
+      _networkPolicy = await client.setNetworkProfile(profile);
+      _statusNotification = 'Switched network profile to ${profile.label}';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to switch network profile: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> disconnectAllNetwork() async {
+    try {
+      await client.disconnectAll();
+      await fetchNetworkPolicy();
+      _serverSession = ServerSessionModel.disconnected;
+      _statusNotification =
+          'Kill Switch engaged: All network connections disconnected';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Kill switch failed: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> enableNetwork() async {
+    try {
+      await client.enableNetwork();
+      await fetchNetworkPolicy();
+      _statusNotification = 'Network policy re-enabled';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to re-enable network: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchNetworkAuditLog({int limit = 50}) async {
+    try {
+      _networkAuditLog = await client.getNetworkAuditLog(limit: limit);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setResourceBudgets(ResourceBudgetsModel budgets) async {
+    try {
+      _networkPolicy = await client.setResourceBudgets(budgets);
+      _statusNotification = 'Resource budgets updated';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to set resource budgets: $e';
+      notifyListeners();
+    }
+  }
+
+  // IP Filter & Rate Limiter
+  FilterStatusModel? _filterStatus;
+  RateLimitsModel? _rateLimits;
+
+  FilterStatusModel? get filterStatus => _filterStatus;
+  RateLimitsModel? get rateLimits => _rateLimits;
+
+  Future<void> fetchFilterStatus() async {
+    try {
+      _filterStatus = await client.getFilterStatus();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<bool> importFilterFile(String filePath) async {
+    try {
+      _filterStatus = await client.importFilterFile(filePath);
+      _statusNotification =
+          'Imported ${_filterStatus?.rangeCount ?? 0} IP filter ranges';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to import IP filter: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> setFilterEnabled(bool enabled) async {
+    try {
+      _filterStatus = await client.setFilterEnabled(enabled);
+      _statusNotification = enabled
+          ? 'IP Filter enabled'
+          : 'IP Filter disabled';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to toggle IP filter: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearFilter() async {
+    try {
+      _filterStatus = await client.clearFilter();
+      _statusNotification = 'IP Filter cleared';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to clear IP filter: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchRateLimits() async {
+    try {
+      _rateLimits = await client.getRateLimits();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setRateLimits(RateLimitsModel limits) async {
+    try {
+      _rateLimits = await client.setRateLimits(limits);
+      _statusNotification = 'Rate limits updated';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to set rate limits: $e';
+      notifyListeners();
+    }
+  }
+
+  List<Ed2kServerModel> get servers => _servers;
+  bool get isServersLoading => _isServersLoading;
+  ServerSessionModel get serverSession => _serverSession;
+  bool get isServerConnecting => _isServerConnecting;
+
+  Future<void> fetchServers() async {
+    _isServersLoading = true;
+    notifyListeners();
+    try {
+      _servers = await client.listServers();
+      _errorMessage = null;
+    } catch (e) {
+      _errorMessage = 'Failed to list servers: $e';
+    } finally {
+      _isServersLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<ServerInspectReport?> inspectServerMet(String filePath) async {
+    try {
+      final report = await client.inspectServerMet(filePath);
+      return report;
+    } catch (e) {
+      _errorMessage = 'Failed to inspect server.met: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> importServerMet(String filePath) async {
+    try {
+      final result = await client.importServerMet(filePath);
+      _statusNotification =
+          'Imported ${result.imported} servers (${result.allowedCount} allowed, ${result.blockedCount} blocked by filter)';
+      await fetchServers();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to import server.met: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> updateServersFromUrl(String url) async {
+    _isServersLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final result = await client.updateServersFromUrl(url);
+      final count = result['serversCount'] ?? result['imported'] ?? 0;
+      _statusNotification =
+          'Mise à jour réussie : $count serveurs traités depuis l\'URL';
+      await fetchServers();
+      return result;
+    } catch (e) {
+      _errorMessage = 'Échec de la mise à jour des serveurs depuis l\'URL : $e';
+      notifyListeners();
+      return null;
+    } finally {
+      _isServersLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setServerEnabled(String address, bool enabled) async {
+    try {
+      await client.setServerEnabled(address, enabled);
+      await fetchServers();
+    } catch (e) {
+      _errorMessage = 'Failed to toggle server state: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteServer(String address) async {
+    try {
+      await client.deleteServer(address);
+      await fetchServers();
+    } catch (e) {
+      _errorMessage = 'Failed to delete server: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearServers() async {
+    try {
+      final count = await client.clearServers();
+      _statusNotification = 'Cleared $count servers';
+      await fetchServers();
+    } catch (e) {
+      _errorMessage = 'Failed to clear servers: $e';
+      notifyListeners();
+    }
+  }
+
+  // ── eD2K Server Session ─────────────────────────────────────────────────────
+
+  Future<void> connectServer(String address) async {
+    if (_isServerConnecting) return;
+    _isServerConnecting = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      _serverSession = await client.connectServer(address);
+      _statusNotification =
+          'Connexion au serveur ${_serverSession.serverName ?? address}...';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Connexion impossible : $e';
+      _serverSession = ServerSessionModel.disconnected;
+      notifyListeners();
+    } finally {
+      _isServerConnecting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> disconnectServer() async {
+    try {
+      _serverSession = await client.disconnectServer();
+      _statusNotification = 'Déconnecté du serveur eD2K';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Erreur de déconnexion : $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshServerSession() async {
+    try {
+      _serverSession = await client.getServerStatus();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  // ── eD2K Server Search & Sources ──────────────────────────────────────────
+
+  List<SearchResultFileModel> get searchResults => _searchResults;
+  bool get isSearching => _isSearching;
+  String? get lastSearchTerm => _lastSearchTerm;
+  int get searchEpoch => _searchEpoch;
+
+  Future<void> searchServer({
+    required String term,
+    int? minSize,
+    int? maxSize,
+    String? extension,
+  }) async {
+    final trimmed = term.trim();
+    if (trimmed.isEmpty) return;
+    _isSearching = true;
+    _searchResults.clear();
+    _searchEpoch++;
+    _lastSearchTerm = trimmed;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await client.searchServer(
+        term: trimmed,
+        minSize: minSize,
+        maxSize: maxSize,
+        extension: extension,
+      );
+      _statusNotification = 'Recherche "$trimmed" envoyée au serveur';
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche : $e';
+      _isSearching = false;
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  Future<void> searchKadKeywords({
+    required String term,
+    int? minSize,
+    int? maxSize,
+  }) async {
+    final trimmed = term.trim();
+    if (trimmed.isEmpty) return;
+    _isSearching = true;
+    _searchResults.clear();
+    _searchEpoch++;
+    _lastSearchTerm = trimmed;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final results = await client.searchKadKeywords(
+        term: trimmed,
+        minSize: minSize,
+        maxSize: maxSize,
+      );
+      final existingHashes = _searchResults.map((f) => f.fileHash).toSet();
+      for (final f in results) {
+        if (!existingHashes.contains(f.fileHash)) {
+          _searchResults.add(f);
+          existingHashes.add(f.fileHash);
+        }
+      }
+      _searchEpoch++;
+      _statusNotification =
+          'Recherche Kad "$trimmed" terminée (${_searchResults.length} résultat(s))';
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche Kad : $e';
+    } finally {
+      _isSearching = false;
+      notifyListeners();
+    }
+  }
+
+  void clearSearchResults() {
+    _searchResults.clear();
+    _searchEpoch++;
+    _isSearching = false;
+    _lastSearchTerm = null;
+    notifyListeners();
+  }
+
+  Future<bool> downloadSearchResult(
+    SearchResultFileModel file, {
+    String? categoryId,
+    String? targetDirectory,
+  }) async {
+    return addEd2kLink(
+      file.ed2kLink,
+      categoryId: categoryId,
+      targetDirectory: targetDirectory,
+    );
+  }
+
+  Future<void> queryServerSources(String fileHash, {int? fileSize}) async {
+    try {
+      await client.queryServerSources(fileHash: fileHash, fileSize: fileSize);
+      _statusNotification = 'Demande de sources envoyée pour $fileHash';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Échec de la demande de sources : $e';
+      notifyListeners();
+    }
+  }
+
+  // --- Peer Sources & Session ---
+
+  bool get isSourcesLoading => _isSourcesLoading;
+  PeerSessionModel get peerSession => _peerSession;
+  bool get isPeerConnecting => _isPeerConnecting;
+
+  List<PeerSourceModel> getSourcesForHash(String fileHash) {
+    return _peerSources[fileHash] ?? [];
+  }
+
+  Future<void> loadSourcesForHash(String fileHash) async {
+    _isSourcesLoading = true;
+    notifyListeners();
+    try {
+      final sources = await client.listSources(fileHash);
+      _peerSources[fileHash] = sources;
+    } catch (e) {
+      _errorMessage = 'Échec du chargement des sources : $e';
+    } finally {
+      _isSourcesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> addManualSource(String fileHash, String address) async {
+    try {
+      final src = await client.addManualSource(fileHash, address);
+      final list = _peerSources.putIfAbsent(fileHash, () => []);
+      list.removeWhere((s) => s.address == address);
+      list.insert(0, src);
+      _statusNotification = 'Source $address ajoutée';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'ajout de la source : $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> connectPeerSource(
+    String fileHash,
+    String address, {
+    bool force = false,
+  }) async {
+    _isPeerConnecting = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      _peerSession = await client.connectPeerSource(
+        fileHash,
+        address,
+        force: force,
+      );
+      _statusNotification = 'Connexion à $address initialisée';
+      await loadSourcesForHash(fileHash);
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de la connexion à la source : $e';
+      await loadSourcesForHash(fileHash);
+      return false;
+    } finally {
+      _isPeerConnecting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> disconnectPeerSource({String? address}) async {
+    try {
+      _peerSession = await client.disconnectPeerSource(address: address);
+      _statusNotification = address != null
+          ? 'Peer $address déconnecté'
+          : 'Session(s) peer déconnectée(s)';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Échec de la déconnexion peer : $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearSourcesForHash(String fileHash) async {
+    try {
+      await client.clearSources(fileHash);
+      _peerSources.remove(fileHash);
+      _statusNotification = 'Sources effacées';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Échec de l\'effacement des sources : $e';
+      notifyListeners();
+    }
+  }
+
+  // --- Kad DHT (Phase 12.0a) ---
+
+  KadStatusModel get kadStatus => _kadStatus;
+  List<KadContactModel> get kadContacts => _kadContacts;
+  bool get isKadLoading => _isKadLoading;
+
+  Future<void> fetchKadStatus() async {
+    try {
+      _kadStatus = await client.getKadStatus();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Failed to fetch Kad status: $e');
+    }
+  }
+
+  Future<void> fetchKadContacts({int limit = 100}) async {
+    _isKadLoading = true;
+    notifyListeners();
+    try {
+      _kadContacts = await client.listKadContacts(limit: limit);
+      _errorMessage = null;
+    } catch (e) {
+      _errorMessage = 'Échec de la récupération des contacts Kad : $e';
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<NodesDatInspectReportModel?> inspectNodesDat(String filePath) async {
+    try {
+      return await client.inspectNodesDat(filePath);
+    } catch (e) {
+      _errorMessage = 'Échec de l\'inspection de nodes.dat : $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> importNodesDat(String filePath) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final res = await client.importNodesDat(filePath);
+      final count = res['importedCount'] ?? 0;
+      _statusNotification =
+          'Importé $count contacts Kad dans la table K-buckets';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'importation de nodes.dat : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearKadContacts() async {
+    try {
+      final count = await client.clearKadContacts();
+      _statusNotification = 'Effacé $count contacts Kad';
+      await fetchKadStatus();
+      await fetchKadContacts();
+    } catch (e) {
+      _errorMessage = 'Échec de l\'effacement des contacts Kad : $e';
+      notifyListeners();
+    }
+  }
+
+  Future<bool> startKadUdp({String? bindAddress}) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await client.startKadUdp(bindAddress: bindAddress);
+      _statusNotification =
+          'Socket UDP Kad démarré sur ${bindAddress ?? "127.0.0.1:39737"}';
+      await fetchKadStatus();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec du démarrage UDP Kad : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> stopKadUdp() async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await client.stopKadUdp();
+      _statusNotification = 'Socket UDP Kad arrêté';
+      await fetchKadStatus();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'arrêt UDP Kad : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<int?> pingKadContact({
+    required String ip,
+    required int port,
+    String? kadId,
+  }) async {
+    try {
+      final res = await client.pingKadContact(ip: ip, port: port, kadId: kadId);
+      final latency = (res['latencyMs'] as num?)?.toInt() ?? 0;
+      _statusNotification = 'Pong reçu de $ip:$port en ${latency}ms';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return latency;
+    } catch (e) {
+      _errorMessage = 'Échec du ping Kad ($ip:$port) : $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> bootstrapKad({required String ip, required int port}) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final res = await client.bootstrapKad(ip: ip, port: port);
+      final count = (res['receivedContacts'] as num?)?.toInt() ?? 0;
+      _statusNotification = 'Amorçage Kad réussi ($count contacts reçus)';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'amorçage Kad : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> bootstrapKadFromUrl(String url) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final res = await client.bootstrapKadFromUrl(url);
+      final count = (res['importedNodes'] as num?)?.toInt() ?? 0;
+      _statusNotification =
+          'Amorçage Kad depuis URL réussi ($count nœuds importés)';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Échec de l\'amorçage Kad depuis URL : $e';
+      notifyListeners();
+      return false;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<KadContactModel>> findKadNode(String targetId) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final contacts = await client.findKadNode(targetId);
+      _statusNotification =
+          'Recherche Kad : ${contacts.length} nœuds les plus proches trouvés';
+      await fetchKadStatus();
+      await fetchKadContacts();
+      return contacts;
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche Kad : $e';
+      notifyListeners();
+      return const [];
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Searches Kad DHT for sources of a specific file hash and auto-injects them.
+  Future<List<PeerSourceModel>> searchKadSources(
+    String fileHash, {
+    int? fileSize,
+  }) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final sources = await client.searchKadSources(
+        fileHash: fileHash,
+        fileSize: fileSize,
+      );
+      _statusNotification =
+          'Kad : ${sources.length} sources trouvées pour ${fileHash.substring(0, 8)}…';
+      notifyListeners();
+      return sources;
+    } catch (e) {
+      _errorMessage = 'Échec de la recherche de sources Kad : $e';
+      notifyListeners();
+      return const [];
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Publishes this node as a source for a file hash to Kad DHT.
+  Future<int> publishKadSource(
+    String fileHash,
+    int fileSize, {
+    int tcpPort = 39735,
+  }) async {
+    _isKadLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final count = await client.publishKadSource(
+        fileHash: fileHash,
+        fileSize: fileSize,
+        tcpPort: tcpPort,
+      );
+      _statusNotification =
+          'Kad : publié sur $count nœuds pour ${fileHash.substring(0, 8)}…';
+      notifyListeners();
+      return count;
+    } catch (e) {
+      _errorMessage = 'Échec de la publication Kad : $e';
+      notifyListeners();
+      return 0;
+    } finally {
+      _isKadLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void _startKadStatusTimer() {
+    _kadStatusTimer?.cancel();
+    _kadStatusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (_connectionState == DaemonConnectionState.connected) {
+        await fetchKadStatus();
+        if (_currentSection == AppNavSection.kad && !_isKadLoading) {
+          try {
+            _kadContacts = await client.listKadContacts(limit: 100);
+            notifyListeners();
+          } catch (_) {}
+        }
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _kadStatusTimer?.cancel();
     _connSub?.cancel();
+    _serverSessionSub?.cancel();
     _eventSub?.cancel();
     _supervisorSub?.cancel();
     _instanceSub?.cancel();
+    _searchResultSub?.cancel();
+    _foundSourcesSub?.cancel();
+    _peerSessionSub?.cancel();
     supervisor?.dispose();
     client.dispose();
     super.dispose();

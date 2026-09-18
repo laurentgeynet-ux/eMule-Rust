@@ -8,10 +8,13 @@ import '../../domain/models/category_item.dart';
 import '../../domain/models/daemon_event.dart';
 import '../../domain/models/daemon_info.dart';
 import '../../domain/models/download_item.dart';
+import '../../domain/models/filter_models.dart';
 import '../../domain/models/history_entry.dart';
 import '../../domain/models/history_stats.dart';
 import '../../domain/models/lab_models.dart';
+import '../../domain/models/network_policy_models.dart';
 import '../../domain/models/part_met_models.dart';
+import '../../domain/models/server_models.dart';
 import '../../domain/services/mule_daemon_client.dart';
 import 'dto/rpc_dto.dart';
 
@@ -29,6 +32,14 @@ class RpcDaemonClient implements MuleDaemonClient {
       StreamController<DaemonConnectionState>.broadcast();
   final StreamController<DownloadUpdatedEvent> _eventsController =
       StreamController<DownloadUpdatedEvent>.broadcast();
+  final StreamController<List<SearchResultFileModel>> _searchResultController =
+      StreamController<List<SearchResultFileModel>>.broadcast();
+  final StreamController<Map<String, dynamic>> _foundSourcesController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<PeerSessionModel> _peerSessionController =
+      StreamController<PeerSessionModel>.broadcast();
+  final StreamController<ServerSessionModel> _serverSessionController =
+      StreamController<ServerSessionModel>.broadcast();
 
   // Factory constructor or provider callback for custom channel (useful for testing)
   final WebSocketChannel Function(Uri uri)? channelFactory;
@@ -44,6 +55,22 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<DownloadUpdatedEvent> get downloadEvents => _eventsController.stream;
+
+  @override
+  Stream<List<SearchResultFileModel>> get searchResultEvents =>
+      _searchResultController.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get foundSourcesEvents =>
+      _foundSourcesController.stream;
+
+  @override
+  Stream<PeerSessionModel> get peerSessionEvents =>
+      _peerSessionController.stream;
+
+  @override
+  Stream<ServerSessionModel> get serverSessionEvents =>
+      _serverSessionController.stream;
 
   @override
   DaemonInfo? get daemonInfo => _daemonInfo;
@@ -79,7 +106,9 @@ class RpcDaemonClient implements MuleDaemonClient {
         'token': token ?? '',
       });
 
-      _daemonInfo = RpcDto.daemonInfoFromJson(helloResp as Map<String, dynamic>);
+      _daemonInfo = RpcDto.daemonInfoFromJson(
+        helloResp as Map<String, dynamic>,
+      );
 
       // Subscribe to real-time events
       await _call('events.subscribe', {});
@@ -118,7 +147,11 @@ class RpcDaemonClient implements MuleDaemonClient {
             final msg = err is Map ? err['message'] : err.toString();
             final code = err is Map ? err['code'] : 0;
             completer.completeError(
-                RpcException(code: code ?? 0, message: msg?.toString() ?? 'RPC Error'));
+              RpcException(
+                code: code ?? 0,
+                message: msg?.toString() ?? 'RPC Error',
+              ),
+            );
           } else {
             completer.complete(data['result']);
           }
@@ -144,12 +177,46 @@ class RpcDaemonClient implements MuleDaemonClient {
             if (dlJson != null) {
               final item = RpcDto.downloadFromSnapshotJson(dlJson);
               if (!_eventsController.isClosed) {
-                _eventsController.add(DownloadUpdatedEvent(
-                  sequence: seq,
-                  download: item,
-                ));
+                _eventsController.add(
+                  DownloadUpdatedEvent(sequence: seq, download: item),
+                );
               }
             }
+          }
+        }
+      } else if (method == 'server.searchResult') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null) {
+          final rawFiles = params['files'] as List<dynamic>? ?? [];
+          final files = rawFiles
+              .whereType<Map<String, dynamic>>()
+              .map((j) => SearchResultFileModel.fromJson(j))
+              .toList();
+          if (!_searchResultController.isClosed) {
+            _searchResultController.add(files);
+          }
+        }
+      } else if (method == 'server.foundSources') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null && !_foundSourcesController.isClosed) {
+          _foundSourcesController.add(params);
+        }
+      } else if (method == 'event.peerSessionUpdated') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null) {
+          final sessionJson = params['session'] as Map<String, dynamic>?;
+          if (sessionJson != null && !_peerSessionController.isClosed) {
+            _peerSessionController.add(PeerSessionModel.fromJson(sessionJson));
+          }
+        }
+      } else if (method == 'server.sessionUpdated') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null) {
+          final sessionJson = params['session'] as Map<String, dynamic>?;
+          if (sessionJson != null && !_serverSessionController.isClosed) {
+            _serverSessionController.add(
+              ServerSessionModel.fromJson(sessionJson),
+            );
           }
         }
       }
@@ -158,7 +225,10 @@ class RpcDaemonClient implements MuleDaemonClient {
     }
   }
 
-  Future<dynamic> _call(String method, [Map<String, dynamic> params = const {}]) {
+  Future<dynamic> _call(
+    String method, [
+    Map<String, dynamic> params = const {},
+  ]) {
     final channel = _channel;
     if (channel == null) {
       return Future.error(StateError('Not connected to daemon'));
@@ -195,7 +265,9 @@ class RpcDaemonClient implements MuleDaemonClient {
 
       final rawList = resp['downloads'] as List<dynamic>? ?? const [];
       return rawList
-          .map((e) => RpcDto.downloadFromSnapshotJson(e as Map<String, dynamic>))
+          .map(
+            (e) => RpcDto.downloadFromSnapshotJson(e as Map<String, dynamic>),
+          )
           .toList();
     }
     return [];
@@ -247,14 +319,15 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Future<void> removeDownload(String id, {bool deleteFiles = false}) async {
-    await _call('downloads.remove', {
-      'id': id,
-      'deleteFiles': deleteFiles,
-    });
+    await _call('downloads.remove', {'id': id, 'deleteFiles': deleteFiles});
   }
 
   @override
-  Future<DownloadItem> injectRange(String id, int offset, String hexData) async {
+  Future<DownloadItem> injectRange(
+    String id,
+    int offset,
+    String hexData,
+  ) async {
     final resp = await _call('debug.injectRange', {
       'id': id,
       'offset': offset,
@@ -274,7 +347,10 @@ class RpcDaemonClient implements MuleDaemonClient {
     _subscription = null;
 
     try {
-      await _channel?.sink.close().timeout(const Duration(milliseconds: 500), onTimeout: () {});
+      await _channel?.sink.close().timeout(
+        const Duration(milliseconds: 500),
+        onTimeout: () {},
+      );
     } catch (_) {}
     _channel = null;
 
@@ -296,9 +372,7 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Future<LabFixtureInfo> createLabFixture(String fixtureType) async {
-    final resp = await _call('lab.createFixture', {
-      'fixtureType': fixtureType,
-    });
+    final resp = await _call('lab.createFixture', {'fixtureType': fixtureType});
     return LabFixtureInfo.fromJson(resp as Map<String, dynamic>);
   }
 
@@ -320,7 +394,10 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<void> connectDownloadToSource(String downloadId, String peerAddr) async {
+  Future<void> connectDownloadToSource(
+    String downloadId,
+    String peerAddr,
+  ) async {
     try {
       await _call('ed2k.probeSource', {
         'downloadId': downloadId,
@@ -339,7 +416,10 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<DownloadItem> setDownloadDestination(String id, String targetDirectory) async {
+  Future<DownloadItem> setDownloadDestination(
+    String id,
+    String targetDirectory,
+  ) async {
     final resp = await _call('downloads.setDestination', {
       'id': id,
       'targetDirectory': targetDirectory,
@@ -349,9 +429,7 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Future<DownloadItem> retryDownloadConnection(String id) async {
-    final resp = await _call('downloads.retryConnection', {
-      'id': id,
-    });
+    final resp = await _call('downloads.retryConnection', {'id': id});
     return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
   }
 
@@ -363,9 +441,7 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Future<void> setDefaultDownloadDirectory(String path) async {
-    await _call('settings.set', {
-      'defaultDownloadDir': path,
-    });
+    await _call('settings.set', {'defaultDownloadDir': path});
   }
 
   @override
@@ -415,7 +491,11 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<String> exportHistory(String format, {String? eventType, String? status}) async {
+  Future<String> exportHistory(
+    String format, {
+    String? eventType,
+    String? status,
+  }) async {
     final params = <String, dynamic>{'format': format};
     if (eventType != null) params['eventType'] = eventType;
     if (status != null) params['status'] = status;
@@ -429,9 +509,7 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Future<void> setHistoryRetentionDays(int days) async {
-    await _call('settings.setRetentionDays', {
-      'retentionDays': days,
-    });
+    await _call('settings.setRetentionDays', {'retentionDays': days});
   }
 
   @override
@@ -452,10 +530,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     String? defaultDestination,
     String? defaultPriority,
   }) async {
-    final params = <String, dynamic>{
-      'name': name,
-      'color': color,
-    };
+    final params = <String, dynamic>{'name': name, 'color': color};
     if (defaultDestination != null && defaultDestination.isNotEmpty) {
       params['defaultDestination'] = defaultDestination;
     }
@@ -479,7 +554,9 @@ class RpcDaemonClient implements MuleDaemonClient {
     final params = <String, dynamic>{'id': id};
     if (name != null) params['name'] = name;
     if (color != null) params['color'] = color;
-    if (defaultDestination != null) params['defaultDestination'] = defaultDestination;
+    if (defaultDestination != null) {
+      params['defaultDestination'] = defaultDestination;
+    }
     if (defaultPriority != null) params['defaultPriority'] = defaultPriority;
     if (sortOrder != null) params['sortOrder'] = sortOrder;
 
@@ -498,7 +575,10 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<DownloadItem> setDownloadCategory(String downloadId, String? categoryId) async {
+  Future<DownloadItem> setDownloadCategory(
+    String downloadId,
+    String? categoryId,
+  ) async {
     final resp = await _call('downloads.setCategory', {
       'id': downloadId,
       'categoryId': categoryId,
@@ -507,10 +587,11 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<PartMetInspectionResult> inspectPartMet(String metPath, {String? partPath}) async {
-    final params = <String, dynamic>{
-      'metPath': metPath,
-    };
+  Future<PartMetInspectionResult> inspectPartMet(
+    String metPath, {
+    String? partPath,
+  }) async {
+    final params = <String, dynamic>{'metPath': metPath};
     if (partPath != null && partPath.isNotEmpty) {
       params['partPath'] = partPath;
     }
@@ -525,9 +606,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     String? targetDirectory,
     String? categoryId,
   }) async {
-    final params = <String, dynamic>{
-      'metPath': metPath,
-    };
+    final params = <String, dynamic>{'metPath': metPath};
     if (partPath != null && partPath.isNotEmpty) {
       params['partPath'] = partPath;
     }
@@ -542,10 +621,550 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<NetworkPolicySnapshot> getNetworkPolicy() async {
+    final resp = await _call('network.getPolicy');
+    return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> setNetworkProfile(
+    NetworkProfile profile,
+  ) async {
+    final resp = await _call('network.setProfile', {
+      'profile': profile.toKebabCase(),
+    });
+    return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> disconnectAll() async {
+    await _call('network.disconnectAll');
+  }
+
+  @override
+  Future<void> enableNetwork() async {
+    await _call('network.enable');
+  }
+
+  @override
+  Future<List<NetworkAuditEntryItem>> getNetworkAuditLog({
+    int limit = 50,
+  }) async {
+    final resp = await _call('network.getAuditLog', {'limit': limit});
+    final list =
+        (resp as Map<String, dynamic>)['entries'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => NetworkAuditEntryItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<NetworkPolicySnapshot> setResourceBudgets(
+    ResourceBudgetsModel budgets,
+  ) async {
+    final resp = await _call('network.setBudgets', {
+      'budgets': budgets.toJson(),
+    });
+    return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> getFilterStatus() async {
+    final resp = await _call('filter.getStatus');
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> importFilterFile(String filePath) async {
+    final resp = await _call('filter.importFile', {'filePath': filePath});
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> setFilterEnabled(bool enabled) async {
+    final resp = await _call('filter.setEnabled', {'enabled': enabled});
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FilterStatusModel> clearFilter() async {
+    final resp = await _call('filter.clear');
+    return FilterStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<RateLimitsModel> getRateLimits() async {
+    final resp = await _call('limits.get');
+    return RateLimitsModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<RateLimitsModel> setRateLimits(RateLimitsModel limits) async {
+    final resp = await _call('limits.set', limits.toJson());
+    return RateLimitsModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerInspectReport> inspectServerMet(String filePath) async {
+    final resp = await _call('servers.inspectMet', {'filePath': filePath});
+    return ServerInspectReport.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerImportResult> importServerMet(String filePath) async {
+    final resp = await _call('servers.importMet', {'filePath': filePath});
+    return ServerImportResult.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<Ed2kServerModel>> listServers() async {
+    final resp = await _call('servers.list');
+    final rawList =
+        (resp as Map<String, dynamic>)['servers'] as List<dynamic>? ?? const [];
+    return rawList
+        .map((e) => Ed2kServerModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<bool> setServerEnabled(String address, bool enabled) async {
+    final resp = await _call('servers.setEnabled', {
+      'address': address,
+      'enabled': enabled,
+    });
+    return (resp as Map<String, dynamic>)['updated'] as bool? ?? false;
+  }
+
+  @override
+  Future<bool> deleteServer(String address) async {
+    final resp = await _call('servers.delete', {'address': address});
+    return (resp as Map<String, dynamic>)['deleted'] as bool? ?? false;
+  }
+
+  @override
+  Future<int> clearServers() async {
+    final resp = await _call('servers.clear');
+    return (resp as Map<String, dynamic>)['deletedCount'] as int? ?? 0;
+  }
+
+  @override
+  Future<ServerSessionModel> connectServer(String address) async {
+    final resp = await _call('servers.connect', {'address': address});
+    return ServerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerSessionModel> disconnectServer() async {
+    final resp = await _call('servers.disconnect');
+    return ServerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ServerSessionModel> getServerStatus() async {
+    final resp = await _call('servers.status');
+    return ServerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> searchServer({
+    required String term,
+    int? minSize,
+    int? maxSize,
+    String? extension,
+  }) async {
+    final params = <String, dynamic>{'term': term};
+    if (minSize != null) params['minSize'] = minSize;
+    if (maxSize != null) params['maxSize'] = maxSize;
+    if (extension != null) params['extension'] = extension;
+    await _call('servers.search', params);
+  }
+
+  @override
+  Future<void> queryServerSources({
+    required String fileHash,
+    int? fileSize,
+  }) async {
+    final params = <String, dynamic>{'fileHash': fileHash};
+    if (fileSize != null) params['fileSize'] = fileSize;
+    await _call('servers.querySources', params);
+  }
+
+  @override
+  Future<List<PeerSourceModel>> listSources(String fileHash) async {
+    final resp = await _call('sources.list', {'fileHash': fileHash});
+    final list = resp as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((j) => PeerSourceModel.fromJson(j))
+        .toList();
+  }
+
+  @override
+  Future<PeerSourceModel> addManualSource(
+    String fileHash,
+    String address,
+  ) async {
+    final resp = await _call('sources.addManual', {
+      'fileHash': fileHash,
+      'address': address,
+    });
+    return PeerSourceModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<PeerSessionModel> connectPeerSource(
+    String fileHash,
+    String address, {
+    bool force = false,
+  }) async {
+    final params = <String, dynamic>{'fileHash': fileHash, 'address': address};
+    if (force) {
+      params['force'] = true;
+    }
+    final resp = await _call('sources.connect', params);
+    return PeerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<PeerSessionModel> disconnectPeerSource({String? address}) async {
+    final params = address != null
+        ? <String, dynamic>{'address': address}
+        : const <String, dynamic>{};
+    final resp = await _call('sources.disconnect', params);
+    return PeerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<PeerSessionModel> getPeerSessionStatus() async {
+    final resp = await _call('sources.status');
+    return PeerSessionModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<SwarmStatusModel> getSwarmStatus({String? fileHash}) async {
+    final params = fileHash != null
+        ? <String, dynamic>{'fileHash': fileHash}
+        : const <String, dynamic>{};
+    final resp = await _call('sources.swarmStatus', params);
+    return SwarmStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<int> clearSources(String fileHash) async {
+    final resp = await _call('sources.clear', {'fileHash': fileHash});
+    return (resp as Map<String, dynamic>)['removed'] as int? ?? 0;
+  }
+
+  @override
+  Future<List<SharedFileModel>> listSharedFiles() async {
+    final resp = await _call('shares.list', {});
+    if (resp is List) {
+      return resp
+          .map((e) => SharedFileModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  @override
+  Future<SharedFileModel> addSharedFile({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String filePath,
+  }) async {
+    final resp = await _call('shares.add', {
+      'fileHash': fileHash,
+      'fileName': fileName,
+      'fileSize': fileSize,
+      'filePath': filePath,
+    });
+    return SharedFileModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> removeSharedFile(String fileHash) async {
+    await _call('shares.remove', {'fileHash': fileHash});
+  }
+
+  @override
+  Future<SharedFileModel> setSharedFileEnabled(
+    String fileHash,
+    bool enabled,
+  ) async {
+    final resp = await _call('shares.setEnabled', {
+      'fileHash': fileHash,
+      'enabled': enabled,
+    });
+    return SharedFileModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<InboundListenerStatusModel> startListener({int port = 0}) async {
+    final resp = await _call('listener.start', {'port': port});
+    return InboundListenerStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<InboundListenerStatusModel> stopListener() async {
+    final resp = await _call('listener.stop', {});
+    return InboundListenerStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<InboundListenerStatusModel> getListenerStatus() async {
+    final resp = await _call('listener.status', {});
+    return InboundListenerStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Map<String, dynamic>> listUploads() async {
+    final resp = await _call('uploads.list', {});
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
+  Future<UploadSessionModel?> getUploadStatus() async {
+    final resp = await _call('uploads.status', {});
+    if (resp == null || resp is! Map<String, dynamic>) {
+      return null;
+    }
+    return UploadSessionModel.fromJson(resp);
+  }
+
+  @override
+  Future<void> cancelUpload(String clientAddress) async {
+    await _call('uploads.cancel', {'clientAddress': clientAddress});
+  }
+
+  @override
+  Future<SecureIdentityStatusModel> getIdentityStatus() async {
+    final resp = await _call('identity.status', {});
+    return SecureIdentityStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<SecureIdentityStatusModel> rotateIdentity() async {
+    final resp = await _call('identity.rotate', {});
+    return SecureIdentityStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<PeerCreditModel>> listPeerCredits({int limit = 50}) async {
+    final resp = await _call('credits.list', {'limit': limit});
+    final list =
+        (resp as Map<String, dynamic>?)?['credits'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((j) => PeerCreditModel.fromJson(j))
+        .toList();
+  }
+
+  @override
+  Future<PeerCreditStatsModel> getPeerCreditStats() async {
+    final resp = await _call('credits.stats', {});
+    return PeerCreditStatsModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<KadStatusModel> getKadStatus() async {
+    final resp = await _call('kad.status', {});
+    return KadStatusModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Map<String, dynamic>> startKadUdp({String? bindAddress}) async {
+    final params = bindAddress != null
+        ? {'bindAddress': bindAddress}
+        : <String, dynamic>{};
+    final resp = await _call('kad.startUdp', params);
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> stopKadUdp() async {
+    final resp = await _call('kad.stopUdp', {});
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> pingKadContact({
+    required String ip,
+    required int port,
+    String? kadId,
+  }) async {
+    final params = <String, dynamic>{'ip': ip, 'port': port};
+    if (kadId != null) {
+      params['kadId'] = kadId;
+    }
+    final resp = await _call('kad.ping', params);
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> bootstrapKad({
+    required String ip,
+    required int port,
+  }) async {
+    final resp = await _call('kad.bootstrap', {'ip': ip, 'port': port});
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
+  Future<List<KadContactModel>> findKadNode(String targetId) async {
+    final resp = await _call('kad.findNode', {'targetId': targetId});
+    final list =
+        (resp as Map<String, dynamic>?)?['contacts'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((j) => KadContactModel.fromJson(j))
+        .toList();
+  }
+
+  @override
+  Future<NodesDatInspectReportModel> inspectNodesDat(String filePath) async {
+    final resp = await _call('kad.inspectNodesDat', {'path': filePath});
+    return NodesDatInspectReportModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Map<String, dynamic>> importNodesDat(String filePath) async {
+    final resp = await _call('kad.importNodesDat', {'path': filePath});
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
+  Future<List<KadContactModel>> listKadContacts({int limit = 100}) async {
+    final resp = await _call('kad.listContacts', {'limit': limit});
+    final list =
+        (resp as Map<String, dynamic>?)?['contacts'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((j) => KadContactModel.fromJson(j))
+        .toList();
+  }
+
+  @override
+  Future<int> clearKadContacts() async {
+    final resp = await _call('kad.clearContacts', {});
+    return (resp as Map<String, dynamic>?)?['cleared'] as int? ?? 0;
+  }
+
+  @override
+  Future<List<PeerSourceModel>> searchKadSources({
+    required String fileHash,
+    int? fileSize,
+  }) async {
+    final resp = await _call('kad.searchSources', {
+      'fileHash': fileHash,
+      'fileSize': ?fileSize,
+    });
+    final list =
+        (resp as Map<String, dynamic>?)?['sources'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((j) => PeerSourceModel.fromJson(j))
+        .toList();
+  }
+
+  @override
+  Future<List<SearchResultFileModel>> searchKadKeywords({
+    required String term,
+    int? minSize,
+    int? maxSize,
+  }) async {
+    final resp = await _call('kad.searchKeywords', {
+      'term': term,
+      'minSize': ?minSize,
+      'maxSize': ?maxSize,
+    });
+    final list =
+        (resp as Map<String, dynamic>?)?['results'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((j) => SearchResultFileModel.fromJson(j))
+        .toList();
+  }
+
+  @override
+  Future<int> publishKadSource({
+    required String fileHash,
+    required int fileSize,
+    int tcpPort = 39735,
+  }) async {
+    final resp = await _call('kad.publishSource', {
+      'fileHash': fileHash,
+      'fileSize': fileSize,
+      'tcpPort': tcpPort,
+    });
+    return (resp as Map<String, dynamic>?)?['publishedCount'] as int? ?? 0;
+  }
+
+  @override
+  Future<int> publishKadKeywords({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+  }) async {
+    final resp = await _call('kad.publishKeywords', {
+      'fileHash': fileHash,
+      'fileName': fileName,
+      'fileSize': fileSize,
+    });
+    return (resp as Map<String, dynamic>?)?['publishedCount'] as int? ?? 0;
+  }
+
+  @override
+  Future<UpnpStatusModel> getUpnpStatus() async {
+    final resp = await _call('upnp.status', {});
+    return UpnpStatusModel.fromJson(resp as Map<String, dynamic>? ?? {});
+  }
+
+  @override
+  Future<UpnpStatusModel> setUpnpEnabled(bool enabled) async {
+    final resp = await _call('upnp.setEnabled', {'enabled': enabled});
+    return UpnpStatusModel.fromJson(resp as Map<String, dynamic>? ?? {});
+  }
+
+  @override
+  Future<UpnpStatusModel> mapUpnpPorts({
+    int tcpPort = 39735,
+    int udpPort = 39737,
+  }) async {
+    final resp = await _call('upnp.mapPorts', {
+      'tcpPort': tcpPort,
+      'udpPort': udpPort,
+    });
+    return UpnpStatusModel.fromJson(resp as Map<String, dynamic>? ?? {});
+  }
+
+  @override
+  Future<UpnpStatusModel> unmapUpnpPorts() async {
+    final resp = await _call('upnp.unmapPorts', {});
+    return UpnpStatusModel.fromJson(resp as Map<String, dynamic>? ?? {});
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateServersFromUrl(String url) async {
+    final resp = await _call('servers.updateFromUrl', {'url': url});
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> bootstrapKadFromUrl(String url) async {
+    final resp = await _call('kad.bootstrapFromUrl', {'url': url});
+    return resp as Map<String, dynamic>? ?? {};
+  }
+
+  @override
   void dispose() {
     disconnect();
     _connectionController.close();
     _eventsController.close();
+    _searchResultController.close();
+    _foundSourcesController.close();
+    _peerSessionController.close();
+    _serverSessionController.close();
   }
 }
 
@@ -575,4 +1194,3 @@ class RpcException implements Exception {
   @override
   String toString() => 'RpcException(code: $code, message: $message)';
 }
-

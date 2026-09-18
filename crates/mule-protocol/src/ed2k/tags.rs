@@ -11,16 +11,22 @@ pub const TAGTYPE_STRING: u8 = 0x02;
 pub const TAGTYPE_UINT32: u8 = 0x03;
 /// 32-bit floating point tag type.
 pub const TAGTYPE_FLOAT32: u8 = 0x04;
-/// Boolean tag type (1 byte).
-pub const TAGTYPE_BOOL: u8 = 0x06;
+/// Boolean tag type (1 byte, historical 0x05).
+pub const TAGTYPE_BOOL: u8 = 0x05;
+/// Boolean array tag type (1 byte, historical 0x06).
+pub const TAGTYPE_BOOLARRAY: u8 = 0x06;
 /// Raw byte blob tag type (4-byte length + bytes).
 pub const TAGTYPE_BLOB: u8 = 0x07;
 /// 16-bit unsigned integer tag type.
 pub const TAGTYPE_UINT16: u8 = 0x08;
 /// 8-bit unsigned integer tag type.
 pub const TAGTYPE_UINT8: u8 = 0x09;
+/// Byte-sized blob tag type (1-byte length + bytes).
+pub const TAGTYPE_BSOB: u8 = 0x0A;
 /// 64-bit unsigned integer tag type.
-pub const TAGTYPE_UINT64: u8 = 0x0A;
+pub const TAGTYPE_UINT64: u8 = 0x0B;
+/// Fixed-length string tag type base (TAGTYPE_STR1 = 0x11, len = tag_type - 0x10).
+pub const TAGTYPE_STR1: u8 = 0x11;
 
 /// Standard special tag IDs (when tag name length is 1).
 pub const TAG_SPECIAL_NAME: u8 = 0x01;
@@ -28,9 +34,13 @@ pub const TAG_SPECIAL_NAME: u8 = 0x01;
 pub const TAG_SPECIAL_FILESIZE: u8 = 0x02;
 /// Standard special file type tag ID.
 pub const TAG_SPECIAL_FILETYPE: u8 = 0x03;
-/// Standard special version tag ID.
+/// Standard special port tag ID (`0x0F` = 15).
+pub const TAG_SPECIAL_PORT: u8 = 0x0F;
+/// Standard special version tag ID (`0x11` = 17).
 pub const TAG_SPECIAL_VERSION: u8 = 0x11;
-/// Standard special eMule version tag ID.
+/// Canonical eD2K / eMule server flags tag ID (`0x20` = 32, CT_SERVER_FLAGS).
+pub const TAG_SPECIAL_SERVER_FLAGS: u8 = 0x20;
+/// Standard special eMule version tag ID (`0x5A` = 90, SO_EMULEVERSION).
 pub const TAG_SPECIAL_EMULE_VERSION: u8 = 0x5A;
 /// Standard special miscellaneous options 1 tag ID (historical 0x5B).
 pub const TAG_SPECIAL_MISCOPTIONS1: u8 = 0x5B;
@@ -40,6 +50,8 @@ pub const TAG_SPECIAL_MISCOPTIONS2: u8 = 0x5C;
 pub const TAG_SPECIAL_EMULE_UDPPORTS: u8 = 0xF9;
 /// Canonical eMule miscellaneous options 1 tag ID (`0xFA` = 250).
 pub const TAG_SPECIAL_EMULE_MISCOPTIONS1: u8 = 0xFA;
+/// Canonical eMule version tag ID for server login (`0xFB` = 251, CT_EMULE_VERSION).
+pub const TAG_SPECIAL_CT_EMULE_VERSION: u8 = 0xFB;
 /// Canonical eMule UDP options / flags tag ID (`0xFB` = 251).
 pub const TAG_SPECIAL_EMULE_UDPOPTIONS: u8 = 0xFB;
 /// Standard special UDP options / port tag ID (alias to 0xFB).
@@ -61,6 +73,25 @@ pub const TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST: u8 = 0x25;
 /// Canonical eMule extension compatible client tag ID (`0x27` = 39).
 pub const TAG_SPECIAL_EMULE_EXT_COMPATIBLECLIENT: u8 = 0x27;
 
+/// Server capability flag: Zlib TCP compression supported.
+pub const SRVCAP_ZLIB: u32 = 0x0001;
+/// Server capability flag: Client sends IP in login.
+pub const SRVCAP_IP_IN_LOGIN: u32 = 0x0002;
+/// Server capability flag: Auxiliary port support.
+pub const SRVCAP_AUXPORT: u32 = 0x0004;
+/// Server capability flag: Modern tag format supported.
+pub const SRVCAP_NEWTAGS: u32 = 0x0008;
+/// Server capability flag: Unicode character support.
+pub const SRVCAP_UNICODE: u32 = 0x0010;
+/// Server capability flag: Files larger than 4 GiB supported.
+pub const SRVCAP_LARGEFILES: u32 = 0x0100;
+/// Server capability flag: Cryptographic obfuscation supported.
+pub const SRVCAP_SUPPORTCRYPT: u32 = 0x0200;
+/// Server capability flag: Cryptographic obfuscation requested.
+pub const SRVCAP_REQUESTCRYPT: u32 = 0x0400;
+/// Server capability flag: Cryptographic obfuscation required.
+pub const SRVCAP_REQUIRECRYPT: u32 = 0x0800;
+
 /// Tag name identifier: either a 1-byte special ID or a textual string.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TagName {
@@ -78,6 +109,7 @@ impl TagName {
                 TAG_SPECIAL_NAME => "name".to_string(),
                 TAG_SPECIAL_FILESIZE => "filesize".to_string(),
                 TAG_SPECIAL_FILETYPE => "filetype".to_string(),
+                TAG_SPECIAL_PORT => "port".to_string(),
                 TAG_SPECIAL_VERSION => "version".to_string(),
                 TAG_SPECIAL_EMULE_VERSION => "emule_version".to_string(),
                 TAG_SPECIAL_EMULE_UDPPORTS => "emule_udp_ports".to_string(),
@@ -303,8 +335,15 @@ impl<'a> TagReader<'a> {
         &mut self,
         limits: &Ed2kLimits,
     ) -> Result<(Option<Ed2kTag>, Option<RawTag>), Ed2kParseError> {
-        let tag_type = self.read_u8("tag_type")?;
-        let name = self.read_tag_name(limits.max_string_bytes)?;
+        let raw_type = self.read_u8("tag_type")?;
+        let (tag_type, name) = if raw_type & 0x80 != 0 {
+            let tag_type = raw_type & 0x7F;
+            let id = self.read_u8("tag_special_id")?;
+            (tag_type, TagName::Id(id))
+        } else {
+            let name = self.read_tag_name(limits.max_string_bytes)?;
+            (raw_type, name)
+        };
 
         match tag_type {
             TAGTYPE_HASH => {
@@ -347,7 +386,7 @@ impl<'a> TagReader<'a> {
                     None,
                 ))
             }
-            TAGTYPE_BOOL => {
+            TAGTYPE_BOOL | TAGTYPE_BOOLARRAY => {
                 let b = self.read_u8("tag_value_bool")? != 0;
                 Ok((
                     Some(Ed2kTag {
@@ -372,6 +411,17 @@ impl<'a> TagReader<'a> {
                     ));
                 }
                 let blob_bytes = self.read_bytes(blob_len, "tag_value_blob_bytes")?;
+                Ok((
+                    Some(Ed2kTag {
+                        name,
+                        value: TagValue::Blob(blob_bytes.to_vec()),
+                    }),
+                    None,
+                ))
+            }
+            TAGTYPE_BSOB => {
+                let blob_len = self.read_u8("tag_value_bsob_len")? as usize;
+                let blob_bytes = self.read_bytes(blob_len, "tag_value_bsob_bytes")?;
                 Ok((
                     Some(Ed2kTag {
                         name,
@@ -406,6 +456,18 @@ impl<'a> TagReader<'a> {
                     Some(Ed2kTag {
                         name,
                         value: TagValue::UInt64(v),
+                    }),
+                    None,
+                ))
+            }
+            t if (0x11..=0x7F).contains(&t) => {
+                let len = (t - 0x10) as usize;
+                let bytes = self.read_bytes(len, "tag_value_str_fixed")?;
+                let s = String::from_utf8_lossy(bytes).into_owned();
+                Ok((
+                    Some(Ed2kTag {
+                        name,
+                        value: TagValue::String(s),
                     }),
                     None,
                 ))

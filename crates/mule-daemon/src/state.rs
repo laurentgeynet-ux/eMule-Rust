@@ -3,15 +3,26 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
+use mule_network_policy::{NetworkPolicyManager, ResourceBudgets};
+
 use crate::config::DaemonConfig;
 use crate::rpc::events::{DownloadSnapshot, DownloadUpdatedEvent};
 use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::DownloadService;
+use crate::services::peer_session::PeerSessionManager;
+use crate::services::server_session::ServerSessionManager;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: DaemonConfig,
     pub downloads: Arc<Mutex<DownloadService>>,
+    pub network_policy: NetworkPolicyManager,
+    pub server_session: ServerSessionManager,
+    pub peer_session: PeerSessionManager,
+    pub inbound_listener: crate::services::inbound_listener::InboundListenerService,
+    pub identity: Arc<Mutex<crate::services::IdentityService>>,
+    pub kad: Arc<crate::services::KadService>,
+    pub upnp: Arc<crate::services::UpnpService>,
     pub sequence: Arc<AtomicU64>,
     pub event_tx: broadcast::Sender<String>,
     pub instance_id: Uuid,
@@ -25,10 +36,51 @@ pub struct AppState {
 impl AppState {
     pub fn new(config: DaemonConfig, downloads: DownloadService) -> Self {
         let (event_tx, _) = broadcast::channel(1024);
+        let network_policy = NetworkPolicyManager::new(
+            config.network_profile,
+            ResourceBudgets::default(),
+        );
+        let sequence = Arc::new(AtomicU64::new(1));
+        let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
+        let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence))
+            .with_limits(config.max_peers_per_download, config.max_global_download_peers);
+        let dl_arc = Arc::new(Mutex::new(downloads));
+        server_session.set_downloads(Arc::clone(&dl_arc));
+        let identity_service = crate::services::IdentityService::load_or_generate(&config.data_dir);
+        let user_hash = identity_service.user_hash();
+        let identity = Arc::new(Mutex::new(identity_service));
+        let inbound_listener = crate::services::inbound_listener::InboundListenerService::new(
+            Arc::new(network_policy.clone()),
+            Arc::clone(&dl_arc),
+            user_hash,
+            config.obfuscation_enabled,
+            config.obfuscation_required,
+            config.obfuscation_padding_max,
+        );
+        let kad_id = mule_core::kad::KadId::random();
+        let kad = Arc::new(crate::services::KadService::new(
+            kad_id,
+            Arc::clone(&dl_arc),
+            network_policy.clone(),
+            network_policy.ip_filter(),
+        ));
+        peer_session.set_kad(Arc::clone(&kad));
+        let upnp = Arc::new(crate::services::UpnpService::new(
+            config.upnp_enabled,
+            config.ed2k_port,
+            config.kad_port,
+        ));
         Self {
             config,
-            downloads: Arc::new(Mutex::new(downloads)),
-            sequence: Arc::new(AtomicU64::new(1)),
+            downloads: dl_arc,
+            network_policy,
+            server_session,
+            peer_session,
+            inbound_listener,
+            identity,
+            kad,
+            upnp,
+            sequence,
             event_tx,
             instance_id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),

@@ -68,7 +68,7 @@ fn test_tier3_harness_rejects_non_loopback_address() {
         .join("tests/fixtures/ed2k/hello_v1_minimal.bin");
 
     // Attempting to configure a non-loopback address (e.g. 192.168.1.50) must be rejected
-    let non_loopback_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 4662);
+    let non_loopback_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 39735);
     assert!(!non_loopback_addr.ip().is_loopback());
 
     let test_port = allocate_ephemeral_loopback_port();
@@ -1584,8 +1584,8 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
 
     // Compute expected root multi-part eD2K hash: MD4(Part0 || Part1)
     let mut root_hasher = md4::Md4::new();
-    root_hasher.update(&expected_part0_md4);
-    root_hasher.update(&expected_part1_md4);
+    root_hasher.update(expected_part0_md4);
+    root_hasher.update(expected_part1_md4);
     let sealed_hash: [u8; 16] = root_hasher.finalize().into();
     assert_eq!(
         hex::encode(sealed_hash),

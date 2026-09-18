@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../domain/models/download_item.dart';
+import '../../../../domain/models/server_models.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
@@ -21,10 +22,24 @@ class DownloadDetailDialog extends StatefulWidget {
 }
 
 class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
+  final TextEditingController _manualSourceController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     widget.viewModel.fetchDownloadDetail(widget.downloadId);
+    final item = widget.viewModel.filteredDownloads
+        .where((d) => d.id == widget.downloadId)
+        .firstOrNull;
+    if (item?.ed2kHash != null && item!.ed2kHash!.isNotEmpty) {
+      widget.viewModel.loadSourcesForHash(item.ed2kHash!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _manualSourceController.dispose();
+    super.dispose();
   }
 
   @override
@@ -32,15 +47,18 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (context, _) {
-        final item = widget.viewModel.filteredDownloads
-            .where((d) => d.id == widget.downloadId)
-            .firstOrNull ??
+        final item =
+            widget.viewModel.filteredDownloads
+                .where((d) => d.id == widget.downloadId)
+                .firstOrNull ??
             widget.viewModel.selectedDownload;
 
         if (item == null) {
           return AlertDialog(
             title: const Text('Download Not Found'),
-            content: const Text('The requested download is no longer available.'),
+            content: const Text(
+              'The requested download is no longer available.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -78,7 +96,15 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                         const SizedBox(height: 16),
 
                         // Transfer Metrics & Progress Card
-                        _buildProgressAndMetricsCard(context, item, statusColor),
+                        _buildProgressAndMetricsCard(
+                          context,
+                          item,
+                          statusColor,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // eD2K Peer Sources & Controlled WAN Session Card
+                        _buildSourcesCard(context, item),
                         const SizedBox(height: 16),
 
                         // eD2K Part Map Card
@@ -106,7 +132,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, DownloadItem item, Color statusColor) {
+  Widget _buildHeader(
+    BuildContext context,
+    DownloadItem item,
+    Color statusColor,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: const BoxDecoration(
@@ -124,7 +154,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               color: statusColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.insert_drive_file_outlined, color: statusColor, size: 22),
+            child: Icon(
+              Icons.insert_drive_file_outlined,
+              color: statusColor,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -145,11 +179,17 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: statusColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: statusColor.withValues(alpha: 0.3), width: 0.8),
+                        border: Border.all(
+                          color: statusColor.withValues(alpha: 0.3),
+                          width: 0.8,
+                        ),
                       ),
                       child: Text(
                         item.status.label,
@@ -163,7 +203,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                     const SizedBox(width: 10),
                     Text(
                       '${Formatters.formatBytes(item.receivedBytes)} of ${Formatters.formatBytes(item.totalBytes)} (${Formatters.formatPercent(item.progress)})',
-                      style: const TextStyle(fontSize: 12, color: Colors.white60),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white60,
+                      ),
                     ),
                   ],
                 ),
@@ -202,7 +245,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
           _buildCopyRow(
             context,
             label: 'Canonical eD2K Link',
-            value: item.ed2kLink ?? 'ed2k://|file|${item.fileName}|${item.totalBytes}|${item.ed2kHash ?? ""}|/',
+            value:
+                item.ed2kLink ??
+                'ed2k://|file|${item.fileName}|${item.totalBytes}|${item.ed2kHash ?? ""}|/',
             monospace: true,
             maxLines: 2,
           ),
@@ -225,22 +270,36 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                     items: [
                       const DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('Sans catégorie (None)', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                      ),
-                      ...widget.viewModel.categories.map((cat) => DropdownMenuItem<String?>(
-                        value: cat.id,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(color: cat.parsedColor, shape: BoxShape.circle),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(cat.name, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          ],
+                        child: Text(
+                          'Sans catégorie (None)',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
                         ),
-                      )),
+                      ),
+                      ...widget.viewModel.categories.map(
+                        (cat) => DropdownMenuItem<String?>(
+                          value: cat.id,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: cat.parsedColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                cat.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                     onChanged: (newCatId) {
                       widget.viewModel.setDownloadCategory(item.id, newCatId);
@@ -255,7 +314,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     );
   }
 
-  Widget _buildProgressAndMetricsCard(BuildContext context, DownloadItem item, Color statusColor) {
+  Widget _buildProgressAndMetricsCard(
+    BuildContext context,
+    DownloadItem item,
+    Color statusColor,
+  ) {
     return _buildSectionCard(
       title: 'Transfer Metrics & Speed',
       icon: Icons.speed_rounded,
@@ -276,17 +339,34 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
             spacing: 24,
             runSpacing: 12,
             children: [
-              _buildMetricTile('Received', Formatters.formatBytes(item.receivedBytes)),
-              _buildMetricTile('Remaining', Formatters.formatBytes(item.remainingBytes)),
-              _buildMetricTile('Verified', Formatters.formatBytes(item.verifiedBytes)),
-              _buildMetricTile('Current Rate', Formatters.formatSpeed(item.downloadRateBps)),
+              _buildMetricTile(
+                'Received',
+                Formatters.formatBytes(item.receivedBytes),
+              ),
+              _buildMetricTile(
+                'Remaining',
+                Formatters.formatBytes(item.remainingBytes),
+              ),
+              _buildMetricTile(
+                'Verified',
+                Formatters.formatBytes(item.verifiedBytes),
+              ),
+              _buildMetricTile(
+                'Current Rate',
+                Formatters.formatSpeed(item.downloadRateBps),
+              ),
               _buildMetricTile(
                 'Average Rate',
                 Formatters.formatSpeed(item.averageRateBps),
               ),
               _buildMetricTile(
                 'ETA',
-                item.etaSeconds != null ? Formatters.formatEta(item.remainingBytes, item.downloadRateBps) : 'N/A',
+                item.etaSeconds != null
+                    ? Formatters.formatEta(
+                        item.remainingBytes,
+                        item.downloadRateBps,
+                      )
+                    : 'N/A',
               ),
               _buildMetricTile('Sources', '${item.sourceCount} loopback'),
               _buildMetricTile('Attempts', '${item.connectionAttempts}'),
@@ -299,16 +379,25 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               decoration: BoxDecoration(
                 color: AppTheme.statusFailed.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppTheme.statusFailed.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppTheme.statusFailed.withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: AppTheme.statusFailed, size: 16),
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: AppTheme.statusFailed,
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Last Error: ${item.lastError}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.statusFailed),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.statusFailed,
+                      ),
                     ),
                   ),
                 ],
@@ -324,7 +413,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     final parts = item.parts;
     final verifiedCount = parts.where((p) => p.isVerified).length;
     final completedCount = parts.where((p) => p.state == 'completed').length;
-    final downloadingCount = parts.where((p) => p.state == 'downloading').length;
+    final downloadingCount = parts
+        .where((p) => p.state == 'downloading')
+        .length;
     final missingCount = parts.where((p) => p.state == 'missing').length;
 
     return _buildSectionCard(
@@ -354,7 +445,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                   children: parts.map((part) {
                     final color = _getPartColor(part);
                     return Tooltip(
-                      message: 'Part #${part.partIndex + 1}\n'
+                      message:
+                          'Part #${part.partIndex + 1}\n'
                           'Range: ${Formatters.formatBytes(part.startOffset)} - ${Formatters.formatBytes(part.endOffset)}\n'
                           'Size: ${Formatters.formatBytes(part.size)}\n'
                           'Received: ${Formatters.formatBytes(part.receivedBytes)}\n'
@@ -376,7 +468,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
-                            color: part.state == 'missing' ? Colors.white38 : Colors.white,
+                            color: part.state == 'missing'
+                                ? Colors.white38
+                                : Colors.white,
                           ),
                         ),
                       ),
@@ -448,7 +542,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.primary,
                   side: const BorderSide(color: AppTheme.primary),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
                 onPressed: () => _promptChangeDestination(context, item),
               ),
@@ -458,7 +555,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
           const Text(
             'Note: Changing destination redirects where the completed file is assembled. '
             'Ongoing .part chunks remain safely confined to data/temp/ until final verification.',
-            style: TextStyle(fontSize: 11, color: Colors.white38, fontStyle: FontStyle.italic),
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white38,
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ],
       ),
@@ -492,7 +593,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               Clipboard.setData(ClipboardData(text: diag));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Download diagnostic copied to clipboard (sanitized: no secrets)'),
+                  content: Text(
+                    'Download diagnostic copied to clipboard (sanitized: no secrets)',
+                  ),
                   duration: Duration(seconds: 2),
                 ),
               );
@@ -511,9 +614,7 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
       decoration: const BoxDecoration(
         color: AppTheme.darkCard,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
-        border: Border(
-          top: BorderSide(color: AppTheme.darkBorder, width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: AppTheme.darkBorder, width: 0.5)),
       ),
       child: Wrap(
         spacing: 10,
@@ -531,14 +632,18 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 FilledButton.icon(
                   icon: const Icon(Icons.play_arrow_rounded, size: 18),
                   label: const Text('Resume'),
-                  style: FilledButton.styleFrom(backgroundColor: AppTheme.statusCompleted),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.statusCompleted,
+                  ),
                   onPressed: () => widget.viewModel.resumeDownload(item.id),
                 )
               else if (item.status.isActive)
                 FilledButton.icon(
                   icon: const Icon(Icons.pause_rounded, size: 18),
                   label: const Text('Pause'),
-                  style: FilledButton.styleFrom(backgroundColor: AppTheme.statusPaused),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.statusPaused,
+                  ),
                   onPressed: () => widget.viewModel.pauseDownload(item.id),
                 ),
 
@@ -550,7 +655,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                   foregroundColor: Colors.white70,
                   side: const BorderSide(color: AppTheme.darkBorder),
                 ),
-                onPressed: () => widget.viewModel.retryDownloadConnection(item.id),
+                onPressed: () =>
+                    widget.viewModel.retryDownloadConnection(item.id),
               ),
 
               // Open Completed File
@@ -562,10 +668,16 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                   icon: const Icon(Icons.folder_open_rounded, size: 16),
                   label: const Text('Open Completed File'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: isCompleted ? AppTheme.primary : Colors.white12,
-                    foregroundColor: isCompleted ? Colors.white : Colors.white38,
+                    backgroundColor: isCompleted
+                        ? AppTheme.primary
+                        : Colors.white12,
+                    foregroundColor: isCompleted
+                        ? Colors.white
+                        : Colors.white38,
                   ),
-                  onPressed: isCompleted ? () => widget.viewModel.openCompletedFile(item) : null,
+                  onPressed: isCompleted
+                      ? () => widget.viewModel.openCompletedFile(item)
+                      : null,
                 ),
               ),
             ],
@@ -573,10 +685,19 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
 
           // Destructive Action: Remove
           OutlinedButton.icon(
-            icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppTheme.statusFailed),
-            label: const Text('Remove...', style: TextStyle(color: AppTheme.statusFailed)),
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              size: 16,
+              color: AppTheme.statusFailed,
+            ),
+            label: const Text(
+              'Remove...',
+              style: TextStyle(color: AppTheme.statusFailed),
+            ),
             style: OutlinedButton.styleFrom(
-              side: BorderSide(color: AppTheme.statusFailed.withValues(alpha: 0.5)),
+              side: BorderSide(
+                color: AppTheme.statusFailed.withValues(alpha: 0.5),
+              ),
             ),
             onPressed: () => _showRemoveConfirmation(context, item),
           ),
@@ -628,7 +749,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
             onPressed: () async {
               final newDir = controller.text.trim();
               if (newDir.isNotEmpty) {
-                final success = await widget.viewModel.changeDownloadDestination(item.id, newDir);
+                final success = await widget.viewModel
+                    .changeDownloadDestination(item.id, newDir);
                 if (ctx.mounted && success) {
                   Navigator.of(ctx).pop();
                 }
@@ -669,7 +791,11 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                       '• The download entry in SQLite will be permanently deleted.\n'
                       '• Temporary files (.part and .part.met) in data/temp/ will be removed if selected below.\n'
                       '• The final completed file in destination (if completed) will NOT be deleted.',
-                      style: TextStyle(fontSize: 12, color: Colors.white70, height: 1.4),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ),
@@ -697,9 +823,14 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppTheme.statusFailed),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.statusFailed,
+              ),
               onPressed: () {
-                widget.viewModel.removeDownload(item.id, deleteFiles: deleteFilesOnDisk);
+                widget.viewModel.removeDownload(
+                  item.id,
+                  deleteFiles: deleteFilesOnDisk,
+                );
                 Navigator.of(ctx).pop(); // pop confirm dialog
                 Navigator.of(context).pop(); // pop detail dialog
               },
@@ -707,6 +838,523 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSourcesCard(BuildContext context, DownloadItem item) {
+    final hash = item.ed2kHash ?? '';
+    final sources = widget.viewModel.getSourcesForHash(hash);
+    final session = widget.viewModel.peerSession;
+    final isConnectedToThis =
+        session.fileHash == hash &&
+        session.status != PeerConnectionStatus.disconnected;
+
+    return _buildSectionCard(
+      title: 'SOURCES ED2K & SESSION PEER',
+      icon: Icons.hub_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Active Peer Session Banner
+          if (isConnectedToThis) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.wifi_tethering,
+                    color: AppTheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Session active : ${session.peerAddress ?? ""}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.tealAccent.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                session.status.toDisplayString(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.tealAccent,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Reçu : ${Formatters.formatBytes(session.transferredBytes)} (${Formatters.formatSpeed(session.transferRateBps)})',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(
+                        color: Colors.redAccent,
+                        width: 0.8,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                    ),
+                    icon: const Icon(Icons.link_off, size: 14),
+                    label: const Text(
+                      'Déconnecter',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    onPressed: () => widget.viewModel.disconnectPeerSource(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Toolbar: Add manual source & Refresh / Ask server
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 32,
+                  child: TextField(
+                    controller: _manualSourceController,
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Ajouter source IP:port (ex: 127.0.0.1:39735)',
+                      hintStyle: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white38,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      filled: true,
+                      fillColor: AppTheme.darkSurface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(
+                          color: AppTheme.darkBorder,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(
+                          color: AppTheme.darkBorder,
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  icon: const Icon(Icons.add, size: 14, color: Colors.white),
+                  label: const Text(
+                    'Ajouter',
+                    style: TextStyle(fontSize: 11, color: Colors.white),
+                  ),
+                  onPressed: () async {
+                    final addr = _manualSourceController.text.trim();
+                    if (addr.isNotEmpty && hash.isNotEmpty) {
+                      final ok = await widget.viewModel.addManualSource(
+                        hash,
+                        addr,
+                      );
+                      if (ok) {
+                        _manualSourceController.clear();
+                      }
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.darkBorder),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(
+                    Icons.search,
+                    size: 14,
+                    color: Colors.white70,
+                  ),
+                  label: const Text(
+                    'Demander au serveur',
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
+                  ),
+                  onPressed: hash.isNotEmpty
+                      ? () => widget.viewModel.queryServerSources(
+                          hash,
+                          fileSize: item.totalBytes,
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.amberAccent),
+                    foregroundColor: Colors.amberAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(
+                    Icons.hub_rounded,
+                    size: 14,
+                    color: Colors.amberAccent,
+                  ),
+                  label: const Text(
+                    'Demander au réseau Kad',
+                    style: TextStyle(fontSize: 11, color: Colors.amberAccent),
+                  ),
+                  onPressed: hash.isNotEmpty
+                      ? () => widget.viewModel.searchKadSources(
+                          hash,
+                          fileSize: item.totalBytes,
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                icon: const Icon(
+                  Icons.refresh,
+                  size: 16,
+                  color: Colors.white54,
+                ),
+                tooltip: 'Actualiser la liste',
+                onPressed: hash.isNotEmpty
+                    ? () => widget.viewModel.loadSourcesForHash(hash)
+                    : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Sources Table / List
+          if (sources.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              alignment: Alignment.center,
+              child: Text(
+                widget.viewModel.isSourcesLoading
+                    ? 'Chargement des sources...'
+                    : 'Aucune source enregistrée pour ce fichier.',
+                style: const TextStyle(fontSize: 12, color: Colors.white38),
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: sources.length,
+                separatorBuilder: (context, index) =>
+                    const Divider(height: 1, color: AppTheme.darkBorder),
+                itemBuilder: (context, index) {
+                  final src = sources[index];
+                  final isThisConnected =
+                      session.peerAddress == src.address &&
+                      session.status != PeerConnectionStatus.disconnected;
+
+                  final nowMs = DateTime.now().millisecondsSinceEpoch;
+                  final isInCooldown =
+                      src.cooldownUntilUnixMs != null &&
+                      src.cooldownUntilUnixMs! > nowMs;
+                  final cooldownSecondsRemaining = isInCooldown
+                      ? ((src.cooldownUntilUnixMs! - nowMs) / 1000).ceil()
+                      : 0;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          src.status == PeerSourceStatus.filtered
+                              ? Icons.block
+                              : src.status == PeerSourceStatus.rejected
+                              ? Icons.gpp_bad
+                              : src.status == PeerSourceStatus.failed
+                              ? Icons.error_outline
+                              : src.status == PeerSourceStatus.connected
+                              ? Icons.wifi_tethering
+                              : Icons.computer,
+                          size: 16,
+                          color: src.status == PeerSourceStatus.filtered
+                              ? Colors.redAccent
+                              : src.status == PeerSourceStatus.rejected
+                              ? Colors.orangeAccent
+                              : src.status == PeerSourceStatus.failed
+                              ? Colors.redAccent
+                              : src.status == PeerSourceStatus.connected
+                              ? Colors.tealAccent
+                              : Colors.white54,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    src.address,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildSourceStatusBadge(src.status),
+                                  if (isInCooldown) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 1,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: Colors.amber.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                          width: 0.5,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Cooldown ${cooldownSecondsRemaining}s',
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.amberAccent,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '(${src.origin.toApiString()})',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white38,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (src.lastError != null &&
+                                  src.lastError!.isNotEmpty)
+                                Text(
+                                  src.lastError!,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (src.status != PeerSourceStatus.filtered) ...[
+                          if (isThisConnected)
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.redAccent,
+                                side: const BorderSide(
+                                  color: Colors.redAccent,
+                                  width: 0.8,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => widget.viewModel
+                                  .disconnectPeerSource(address: src.address),
+                              child: const Text(
+                                'Déconnecter',
+                                style: TextStyle(fontSize: 10),
+                              ),
+                            )
+                          else if (isInCooldown)
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amberAccent,
+                                side: const BorderSide(
+                                  color: Colors.amberAccent,
+                                  width: 0.8,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: widget.viewModel.isPeerConnecting
+                                  ? null
+                                  : () => widget.viewModel.connectPeerSource(
+                                      hash,
+                                      src.address,
+                                      force: true,
+                                    ),
+                              child: const Text(
+                                'Forcer',
+                                style: TextStyle(fontSize: 10),
+                              ),
+                            )
+                          else
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: widget.viewModel.isPeerConnecting
+                                  ? null
+                                  : () => widget.viewModel.connectPeerSource(
+                                      hash,
+                                      src.address,
+                                    ),
+                              child: Text(
+                                src.status == PeerSourceStatus.failed
+                                    ? 'Réessayer'
+                                    : 'Connecter',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceStatusBadge(PeerSourceStatus status) {
+    Color bg;
+    Color fg;
+    String text;
+
+    switch (status) {
+      case PeerSourceStatus.allowed:
+        bg = Colors.greenAccent.withValues(alpha: 0.15);
+        fg = Colors.greenAccent;
+        text = 'Autorisé';
+        break;
+      case PeerSourceStatus.filtered:
+        bg = Colors.redAccent.withValues(alpha: 0.15);
+        fg = Colors.redAccent;
+        text = 'Filtré IP';
+        break;
+      case PeerSourceStatus.rejected:
+        bg = Colors.orangeAccent.withValues(alpha: 0.15);
+        fg = Colors.orangeAccent;
+        text = 'Rejeté profil';
+        break;
+      case PeerSourceStatus.connected:
+        bg = Colors.tealAccent.withValues(alpha: 0.15);
+        fg = Colors.tealAccent;
+        text = 'Connecté';
+        break;
+      case PeerSourceStatus.tried:
+        bg = Colors.blueAccent.withValues(alpha: 0.15);
+        fg = Colors.blueAccent;
+        text = 'Essayé';
+        break;
+      case PeerSourceStatus.failed:
+        bg = Colors.red.withValues(alpha: 0.15);
+        fg = Colors.red;
+        text = 'Échec';
+        break;
+      case PeerSourceStatus.candidate:
+        bg = Colors.white12;
+        fg = Colors.white70;
+        text = 'Candidat';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: fg),
       ),
     );
   }
@@ -752,11 +1400,18 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.white38)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Colors.white38),
+        ),
         const SizedBox(height: 3),
         Text(
           value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
       ],
     );
@@ -824,7 +1479,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
           ),
         ),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.white70)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Colors.white70),
+        ),
       ],
     );
   }

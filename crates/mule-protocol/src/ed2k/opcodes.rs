@@ -6,6 +6,40 @@
 
 /// Handshake initialization packet (`0x01`).
 pub const OP_HELLO: u8 = 0x01;
+/// Client login request to server (`0x01`).
+pub const OP_LOGINREQUEST: u8 = 0x01;
+
+/// Server status response with user and file counts (`0x34`, legacy `0x14`).
+pub const OP_SERVERSTATUS: u8 = 0x34;
+/// Legacy server status response opcode (`0x14`).
+pub const OP_SERVERSTATUS_LEGACY: u8 = 0x14;
+
+/// Server identification and metadata (`0x41`).
+pub const OP_SERVERIDENT: u8 = 0x41;
+
+/// Server message containing server greetings or notice text (`0x38`).
+pub const OP_SERVERMESSAGE: u8 = 0x38;
+
+/// Server assigns client ID and TCP flags (`0x40`).
+pub const OP_IDCHANGE: u8 = 0x40;
+
+/// Search request sent by client to server (`0x16`).
+pub const OP_SEARCHREQUEST: u8 = 0x16;
+
+/// Search result sent by server to client (`0x33`).
+pub const OP_SEARCH_RESULT: u8 = 0x33;
+
+/// Get sources request sent by client to server for a file (`0x19`).
+pub const OP_GETSOURCES: u8 = 0x19;
+
+/// Get sources request with obfuscation sent by client to server (`0x23`).
+pub const OP_GETSOURCES_OBFU: u8 = 0x23;
+
+/// Found sources response sent by server to client (`0x42`).
+pub const OP_FOUNDSOURCES: u8 = 0x42;
+
+/// Found sources response with obfuscation settings and optional user hashes (`0x44`).
+pub const OP_FOUNDSOURCES_OBFU: u8 = 0x44;
 
 /// Handshake response packet (`0x4C`).
 pub const OP_HELLO_ANSWER: u8 = 0x4C;
@@ -92,8 +126,29 @@ pub const OP_AICH_ANSWER: u8 = 0x13;
 /// Request AICH recovery hashset / proof tree (`0x14`).
 pub const OP_AICHFILEHASHREQ: u8 = 0x14;
 
-/// AICH recovery hashset / proof tree response (`0x15`).
+/// Request AICH recovery hashset / proof tree response (`0x15`).
 pub const OP_AICHFILEHASHRES: u8 = 0x15;
+
+/// Request sources from peer (SX1 - legacy, `0x81`).
+pub const OP_REQUESTSOURCES: u8 = 0x81;
+
+/// Answer sources to peer (SX1 - legacy, `0x82`).
+pub const OP_ANSWERSOURCES: u8 = 0x82;
+
+/// Request sources from peer (SX2, `0x83`).
+pub const OP_REQUESTSOURCES2: u8 = 0x83;
+
+/// Answer sources to peer (SX2, `0x84`).
+pub const OP_ANSWERSOURCES2: u8 = 0x84;
+
+/// Public Key exchange for Secure User Identification (`0x85`).
+pub const OP_PUBLICKEY: u8 = 0x85;
+
+/// Signature exchange for Secure User Identification (`0x87`).
+pub const OP_SIGNATURE: u8 = 0x87;
+
+/// Secure User Identification State (`0x86`).
+pub const OP_SECIDENTSTATE: u8 = 0x86;
 
 // ---------------------------------------------------------------------------
 // Compressed Protocol Opcodes (Protocol 0xD4)
@@ -106,8 +161,18 @@ pub const OP_COMPRESSEDPART: u8 = 0x40;
 pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
     match protocol {
         super::protocol::PR_ED2K => match opcode {
-            OP_HELLO => "OP_HELLO",
+            OP_HELLO => "OP_HELLO / OP_LOGINREQUEST",
             OP_HELLO_ANSWER => "OP_HELLO_ANSWER",
+            OP_SERVERMESSAGE => "OP_SERVERMESSAGE",
+            OP_IDCHANGE => "OP_IDCHANGE",
+            OP_SERVERSTATUS => "OP_SERVERSTATUS",
+            OP_SERVERIDENT => "OP_SERVERIDENT",
+            OP_SEARCHREQUEST => "OP_SEARCHREQUEST",
+            OP_SEARCH_RESULT => "OP_SEARCH_RESULT",
+            OP_GETSOURCES => "OP_GETSOURCES",
+            OP_GETSOURCES_OBFU => "OP_GETSOURCES_OBFU",
+            OP_FOUNDSOURCES => "OP_FOUNDSOURCES",
+            OP_FOUNDSOURCES_OBFU => "OP_FOUNDSOURCES_OBFU",
             OP_OFFERFILES => "OP_OFFERFILES",
             OP_SENDINGPART => "OP_SENDINGPART",
             OP_SETREQFILEID => "OP_SETREQFILEID",
@@ -133,10 +198,16 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_AICH_ANSWER => "OP_AICH_ANSWER",
             OP_AICHFILEHASHREQ => "OP_AICHFILEHASHREQ",
             OP_AICHFILEHASHRES => "OP_AICHFILEHASHRES",
+            OP_REQUESTSOURCES => "OP_REQUESTSOURCES",
+            OP_ANSWERSOURCES => "OP_ANSWERSOURCES",
+            OP_REQUESTSOURCES2 => "OP_REQUESTSOURCES2",
+            OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
             _ => "OP_UNKNOWN_EMULE",
         },
         super::protocol::PR_EMULE_COMPRESSED => match opcode {
             OP_COMPRESSEDPART => "OP_COMPRESSEDPART",
+            OP_ANSWERSOURCES => "OP_ANSWERSOURCES",
+            OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
             _ => "OP_UNKNOWN_COMPRESSED",
         },
         _ => "OP_UNKNOWN_PROTOCOL",
