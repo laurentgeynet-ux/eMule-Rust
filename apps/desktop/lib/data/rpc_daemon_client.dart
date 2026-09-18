@@ -554,8 +554,9 @@ class RpcDaemonClient implements MuleDaemonClient {
     final params = <String, dynamic>{'id': id};
     if (name != null) params['name'] = name;
     if (color != null) params['color'] = color;
-    if (defaultDestination != null)
+    if (defaultDestination != null) {
       params['defaultDestination'] = defaultDestination;
+    }
     if (defaultPriority != null) params['defaultPriority'] = defaultPriority;
     if (sortOrder != null) params['sortOrder'] = sortOrder;
 

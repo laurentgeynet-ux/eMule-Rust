@@ -296,3 +296,169 @@ async fn test_settings_rpc_get_set_reset() {
     let resp = recv_response_by_id(&mut read, 5).await;
     assert_eq!(resp["result"]["isCustom"], false);
 }
+
+#[test]
+fn test_get_pending_verifications_does_not_trigger_on_sparse_file_length() {
+    let dir = tempfile::tempdir().unwrap();
+    let temp_dir = dir.path().join("temp");
+    let target_dir = dir.path().join("incoming");
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let mut service = DownloadService::in_memory(temp_dir).unwrap();
+    let ed2k = "ed2k://|file|test.bin|1000000|0123456789abcdef0123456789abcdef|/";
+    let snap = service
+        .add_ed2k_link(
+            ed2k,
+            &target_dir,
+            mule_core::storage::AllocationPolicy::None,
+            None,
+        )
+        .unwrap();
+
+    // Simulate writing only the last 1,000 bytes (offset 999_000 to 1_000_000).
+    // On NTFS/filesystems, this extends the file length on disk to 1_000_000 bytes!
+    let data = vec![0xaa; 1000];
+    let _ = service.inject_range(&snap.id, 999_000, &data).unwrap();
+
+    // Verify that covered_len is only 1,000 bytes
+    assert_eq!(service.get_covered_len(&snap.id), Some(1000));
+
+    // Even though file length on disk is 1,000,000 bytes (total_size),
+    // get_pending_verifications MUST NOT queue it for verification because ranges are incomplete!
+    let pending = service.get_pending_verifications();
+    assert!(
+        pending.is_empty(),
+        "Sparse file must not trigger premature verification!"
+    );
+
+    // Now inject the remaining 0..999_000 bytes
+    let rest = vec![0xbb; 999_000];
+    let _ = service.inject_range(&snap.id, 0, &rest).unwrap();
+    assert_eq!(service.get_covered_len(&snap.id), Some(1_000_000));
+
+    // Now that all 1,000,000 bytes are covered, it MUST trigger verification!
+    let pending = service.get_pending_verifications();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].0, snap.id);
+}
+
+#[test]
+fn test_add_duplicate_ed2k_link_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let temp_dir = dir.path().join("temp");
+    let target_dir = dir.path().join("incoming");
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let mut service = DownloadService::in_memory(temp_dir).unwrap();
+    let ed2k = "ed2k://|file|sample.txt|1000|abcdefabcdefabcdefabcdefabcdefab|/";
+    let res1 = service.add_ed2k_link(
+        ed2k,
+        &target_dir,
+        mule_core::storage::AllocationPolicy::None,
+        None,
+    );
+    assert!(res1.is_ok(), "First add must succeed");
+
+    // Attempting to add the exact same ed2k hash again must fail
+    let ed2k_duplicate = "ed2k://|file|sample_renamed.txt|1000|abcdefabcdefabcdefabcdefabcdefab|/";
+    let res2 = service.add_ed2k_link(
+        ed2k_duplicate,
+        &target_dir,
+        mule_core::storage::AllocationPolicy::None,
+        None,
+    );
+    assert!(res2.is_err(), "Duplicate add must be rejected");
+    let err = res2.unwrap_err();
+    assert!(
+        err.message.contains("déjà dans la liste des téléchargements"),
+        "Error message must indicate duplicate: {}",
+        err.message
+    );
+}
+
+#[test]
+fn test_inject_range_after_completed_does_not_regress_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let temp_dir = dir.path().join("temp");
+    let target_dir = dir.path().join("incoming");
+
+    let mut service = DownloadService::new(&dir.path().join("mule.db"), temp_dir).unwrap();
+
+    let ed2k = "ed2k://|file|packet_test.bin|50000|0123456789abcdef0123456789abcdef|/";
+    let snap = service
+        .add_ed2k_link(
+            ed2k,
+            &target_dir,
+            mule_core::storage::AllocationPolicy::None,
+            None,
+        )
+        .unwrap();
+
+    // 1. Inject all 50,000 bytes -> reaches 100% and Verifying
+    let data = vec![0x42; 50000];
+    let snap_verif = service.inject_range(&snap.id, 0, &data).unwrap();
+    assert_eq!(snap_verif.status.to_lowercase(), "verifying");
+
+    // 2. Finalize download -> Completed
+    let snap_completed = service.finalize_download(&snap.id).unwrap();
+    assert_eq!(snap_completed.status.to_lowercase(), "completed");
+
+    // 3. Late duplicate packet arrives from peer session
+    let late_data = vec![0x42; 1000];
+    let snap_after_late = service.inject_range(&snap.id, 0, &late_data).unwrap();
+    assert_eq!(
+        snap_after_late.status.to_lowercase(),
+        "completed",
+        "Late packet must NOT regress Completed download to Verifying!"
+    );
+
+    // 4. get_pending_verifications must be empty
+    let pending = service.get_pending_verifications();
+    assert!(
+        pending.is_empty(),
+        "Completed download must not be queued for verification"
+    );
+}
+
+#[test]
+fn test_startup_self_heal_completed() {
+    let dir = tempfile::tempdir().unwrap();
+    let temp_dir = dir.path().join("temp");
+    let target_dir = dir.path().join("incoming");
+    let db_path = dir.path().join("mule.db");
+
+    let download_id = {
+        let mut service = DownloadService::new(&db_path, temp_dir.clone()).unwrap();
+        let ed2k = "ed2k://|file|heal_test.bin|2048|fedcba9876543210fedcba9876543210|/";
+        let snap = service
+            .add_ed2k_link(
+                ed2k,
+                &target_dir,
+                mule_core::storage::AllocationPolicy::None,
+                None,
+            )
+            .unwrap();
+
+        // Inject full data
+        let data = vec![0x11; 2048];
+        let _ = service.inject_range(&snap.id, 0, &data).unwrap();
+        let _ = service.finalize_download(&snap.id).unwrap();
+
+        // Force status back to verifying in DB to simulate old bug
+        service.db_mut().update_status(&snap.id, mule_core::model::DownloadStatus::Verifying).unwrap();
+        snap.id
+    };
+
+    // Reopen service: startup should self-heal since target file exists with size 2048
+    let service = DownloadService::new(&db_path, temp_dir).unwrap();
+    let dl = service.get_download(&download_id).unwrap();
+    assert_eq!(
+        dl.status.to_lowercase(),
+        "completed",
+        "Startup self-healing must restore status to Completed"
+    );
+}
+
+

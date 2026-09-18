@@ -72,7 +72,20 @@ impl SwarmCoordinator {
 
     /// Evaluates all active downloads, runs source discovery, and connects to peers.
     pub async fn tick(&mut self) {
-        // 0. Auto-verify and finalize any completed downloads
+        // 0. Decay stale download rates (reset frozen speed to 0 if inactive > 2s)
+        let decayed_snapshots = {
+            let mut dl_guard = self.state.downloads.lock().await;
+            dl_guard.decay_stale_rates()
+        };
+        for snap in decayed_snapshots {
+            crate::services::peer_session::emit_download_update(
+                &self.state.event_tx,
+                &self.state.sequence,
+                &snap,
+            );
+        }
+
+        // 1. Auto-verify and finalize any completed downloads
         let pending_verifications = {
             let mut dl_guard = self.state.downloads.lock().await;
             dl_guard.get_pending_verifications()
@@ -81,9 +94,13 @@ impl SwarmCoordinator {
         for (id, temp_path, target_path, expected_hash, total_size) in pending_verifications {
             let state_clone = self.state.clone();
             tokio::spawn(async move {
-                tracing::info!("Starting eD2K hash verification for download {id} ({total_size} bytes)...");
+                tracing::info!(
+                    "Starting eD2K hash verification for download {id} ({total_size} bytes, temp_path={})...",
+                    temp_path.display()
+                );
+                let temp_path_for_hashing = temp_path.clone();
                 let hash_res = tokio::task::spawn_blocking(move || {
-                    let mut file = std::fs::File::open(&temp_path)?;
+                    let mut file = std::fs::File::open(&temp_path_for_hashing)?;
                     mule_format::ed2k::hash_reader(&mut file)
                 })
                 .await;
@@ -96,20 +113,36 @@ impl SwarmCoordinator {
                                 Ok(snap) => {
                                     state_clone.broadcast_download_update(snap.clone());
                                     tracing::info!(
-                                        "Download {id} ({}) successfully verified and finalized to {}",
+                                        "Download {id} ('{}') successfully verified eD2K hash ({}) and finalized to {}",
                                         snap.file_name,
+                                        hex::encode(expected_hash),
                                         target_path.display()
                                     );
                                 }
                                 Err(e) => {
                                     tracing::error!("Failed to finalize download {id}: {e}");
+                                    if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
+                                        state_clone.broadcast_download_update(snap);
+                                    }
                                 }
                             }
                         } else {
+                            let (covered_bytes, missing_ranges) = {
+                                let dl_guard = state_clone.downloads.lock().await;
+                                (
+                                    dl_guard.get_covered_len(&id).unwrap_or(0),
+                                    dl_guard.get_missing_ranges(&id).unwrap_or_default(),
+                                )
+                            };
+                            let disk_len = std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
                             tracing::error!(
-                                "Download {id} hash mismatch: expected {}, got {}",
+                                "Download {id} hash mismatch: expected {}, got {}. File size: expected={} bytes, on-disk={} bytes, covered_in_ranges={} bytes. Missing ranges: {:?}",
                                 hex::encode(expected_hash),
-                                hex::encode(computed.root_hash.0)
+                                hex::encode(computed.root_hash.0),
+                                total_size,
+                                disk_len,
+                                covered_bytes,
+                                missing_ranges
                             );
                             let mut dl_guard = state_clone.downloads.lock().await;
                             if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
@@ -118,14 +151,25 @@ impl SwarmCoordinator {
                         }
                     }
                     Ok(Err(e)) => {
-                        tracing::error!("Download {id} hash reader failed: {e}");
+                        tracing::error!("Download {id} hash reader failed for {}: {e}", temp_path.display());
                         let mut dl_guard = state_clone.downloads.lock().await;
-                        if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
+                        let already_finalized = target_path.exists()
+                            && std::fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0) == total_size;
+                        if already_finalized {
+                            tracing::info!("Download {id} target file already exists in {}; marking Completed", target_path.display());
+                            if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Completed) {
+                                state_clone.broadcast_download_update(snap);
+                            }
+                        } else if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
                             state_clone.broadcast_download_update(snap);
                         }
                     }
                     Err(e) => {
                         tracing::error!("Download {id} spawn_blocking failed: {e}");
+                        let mut dl_guard = state_clone.downloads.lock().await;
+                        if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
+                            state_clone.broadcast_download_update(snap);
+                        }
                     }
                 }
             });
@@ -280,15 +324,7 @@ impl SwarmCoordinator {
 
             let should_query = match self.last_source_query.get(&hash_hex) {
                 Some(last) => now.duration_since(*last) >= query_interval,
-                None => {
-                    let was_recently_created = (now_ms - dl.created_at_unix_ms) < 15_000;
-                    if was_recently_created {
-                        self.last_source_query.insert(hash_hex.clone(), now);
-                        false
-                    } else {
-                        true
-                    }
-                }
+                None => true,
             };
 
             if should_query {

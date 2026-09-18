@@ -1,6 +1,10 @@
 //! Bounded encoding and decoding for Kad UDP packets (Ping, Pong, Hello, HelloAnswer, Bootstrap, Req/Res).
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use crate::ed2k::limits::Ed2kLimits;
+use crate::ed2k::tags::{
+    TagName, TagReader, TagValue, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME, TAG_SPECIAL_PORT,
+};
 use crate::ed2k::{Ed2kErrorKind, Ed2kParseError};
 use crate::kad::opcodes::*;
 
@@ -468,8 +472,12 @@ impl KadCodec {
                 for _ in 0..max_contacts {
                     let mut c_id = [0u8; 16];
                     payload.copy_to_slice(&mut c_id);
-                    let mut ip = [0u8; 4];
-                    payload.copy_to_slice(&mut ip);
+                    let mut raw_ip = [0u8; 4];
+                    payload.copy_to_slice(&mut raw_ip);
+                    // Official eMule writes host IP via LE WriteUInt32(pContact->GetIPAddress()),
+                    // where GetIPAddress() is host order (e.g. 0x58ABBAD4 for 88.171.182.212).
+                    // On little-endian wire, this is [0xD4, 0xBA, 0xAB, 0x58]. Reversing gives [88, 171, 182, 212].
+                    let ip = [raw_ip[3], raw_ip[2], raw_ip[1], raw_ip[0]];
                     let c_udp = payload.get_u16_le();
                     let c_tcp = payload.get_u16_le();
                     let c_ver = payload.get_u8();
@@ -556,8 +564,11 @@ impl KadCodec {
                     for _ in 0..max_contacts {
                         let mut c_id = [0u8; 16];
                         payload.copy_to_slice(&mut c_id);
-                        let mut ip = [0u8; 4];
-                        payload.copy_to_slice(&mut ip);
+                        let mut raw_ip = [0u8; 4];
+                        payload.copy_to_slice(&mut raw_ip);
+                        // Official eMule writes host IP via LE WriteUInt32(pContact->GetIPAddress()),
+                        // where GetIPAddress() is host order. Reversing gives canonical network order [a,b,c,d].
+                        let ip = [raw_ip[3], raw_ip[2], raw_ip[1], raw_ip[0]];
                         let c_udp = payload.get_u16_le();
                         let c_tcp = payload.get_u16_le();
                         let c_ver = payload.get_u8();
@@ -621,8 +632,198 @@ impl KadCodec {
                     file_size,
                 }))
             }
-            KADEMLIA2_SEARCH_SOURCE_RES => {
-                // target_file_hash (16B) + count (2B) = 18B header
+            KADEMLIA2_SEARCH_RES => {
+                // Official Kad2 search response opcode (0x3B):
+                // May represent Keyword search results or Source search results.
+                // Standard header: sender_kad_id (16B) + target_hash (16B) + count (2B) = 34B.
+                // Followed by `count` entries: answer_hash (16B) + tag_count (1B) + eD2K TagList.
+                //
+                // Fallback: Legacy flat binary format (target_hash 16B + count 2B + count * 25B).
+
+                let raw_bytes = payload.as_ref();
+                let limits = Ed2kLimits::default();
+
+                // Attempt standard Kad2 TagList parsing if payload has at least 34 bytes
+                let mut taglist_result: Option<KadMessage> = None;
+                if raw_bytes.len() >= 34 {
+                    let mut _sender_id = [0u8; 16];
+                    _sender_id.copy_from_slice(&raw_bytes[0..16]);
+                    let mut target_hash = [0u8; 16];
+                    target_hash.copy_from_slice(&raw_bytes[16..32]);
+                    let count = u16::from_le_bytes([raw_bytes[32], raw_bytes[33]]) as usize;
+
+                    if count <= MAX_KAD_SEARCH_KEYWORDS {
+                        let mut cursor = 34;
+                        let mut keyword_entries = Vec::with_capacity(count);
+                        let mut source_entries = Vec::with_capacity(count);
+                        let mut is_source_res = false;
+                        let mut parse_ok = true;
+
+                        for _ in 0..count {
+                            if cursor + 17 > raw_bytes.len() {
+                                parse_ok = false;
+                                break;
+                            }
+                            let mut answer_hash = [0u8; 16];
+                            answer_hash.copy_from_slice(&raw_bytes[cursor..cursor + 16]);
+                            cursor += 16;
+                            let tag_count = raw_bytes[cursor];
+                            cursor += 1;
+
+                            let mut file_name = String::new();
+                            let mut file_size = 0u64;
+                            let mut source_count = 0u32;
+                            let mut ip = [0u8; 4];
+                            let mut udp_port = 0u16;
+                            let mut tcp_port = 0u16;
+                            let mut entry_is_source = false;
+
+                            let mut reader = TagReader::new(raw_bytes, cursor, protocol, Some(opcode));
+                            for _ in 0..tag_count {
+                                match reader.read_tag(&limits) {
+                                    Ok((Some(tag), _)) => {
+                                        match &tag.name {
+                                            TagName::Id(TAG_SPECIAL_NAME) => {
+                                                if let TagValue::String(s) = tag.value {
+                                                    file_name = s.chars().filter(|c| !c.is_control()).collect();
+                                                }
+                                            }
+                                            TagName::Id(TAG_SPECIAL_FILESIZE) => {
+                                                match tag.value {
+                                                    TagValue::UInt32(v) => file_size = v as u64,
+                                                    TagValue::UInt64(v) => file_size = v,
+                                                    TagValue::UInt16(v) => file_size = v as u64,
+                                                    TagValue::UInt8(v) => file_size = v as u64,
+                                                    _ => {}
+                                                }
+                                            }
+                                            TagName::Id(0x15) => { // TAG_SOURCES
+                                                match tag.value {
+                                                    TagValue::UInt32(v) => source_count = v,
+                                                    TagValue::UInt16(v) => source_count = v as u32,
+                                                    TagValue::UInt8(v) => source_count = v as u32,
+                                                    _ => {}
+                                                }
+                                            }
+                                            TagName::Id(0xFD) | TagName::Id(TAG_SPECIAL_PORT) => { // TAG_SOURCEPORT / TAG_SPECIAL_PORT
+                                                entry_is_source = true;
+                                                match tag.value {
+                                                    TagValue::UInt16(p) => tcp_port = p,
+                                                    TagValue::UInt32(p) => tcp_port = p as u16,
+                                                    _ => {}
+                                                }
+                                            }
+                                            TagName::Id(0xFE) => { // TAG_SOURCEIP
+                                                entry_is_source = true;
+                                                match tag.value {
+                                                    TagValue::UInt32(ip_val) => {
+                                                        ip = ip_val.to_le_bytes();
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                            TagName::Id(0xFA) => { // TAG_SOURCEUPORT
+                                                entry_is_source = true;
+                                                match tag.value {
+                                                    TagValue::UInt16(p) => udp_port = p,
+                                                    TagValue::UInt32(p) => udp_port = p as u16,
+                                                    _ => {}
+                                                }
+                                            }
+                                            TagName::Text(name) => {
+                                                let lower = name.to_lowercase();
+                                                if lower == "name" || lower == "filename" {
+                                                    if let TagValue::String(s) = tag.value {
+                                                        file_name = s.chars().filter(|c| !c.is_control()).collect();
+                                                    }
+                                                } else if lower == "size" || lower == "filesize" {
+                                                    match tag.value {
+                                                        TagValue::UInt32(v) => file_size = v as u64,
+                                                        TagValue::UInt64(v) => file_size = v,
+                                                        TagValue::UInt16(v) => file_size = v as u64,
+                                                        TagValue::UInt8(v) => file_size = v as u64,
+                                                        _ => {}
+                                                    }
+                                                } else if lower == "sources" {
+                                                    match tag.value {
+                                                        TagValue::UInt32(v) => source_count = v,
+                                                        TagValue::UInt16(v) => source_count = v as u32,
+                                                        TagValue::UInt8(v) => source_count = v as u32,
+                                                        _ => {}
+                                                    }
+                                                } else if lower == "port" || lower == "sourceport" {
+                                                    entry_is_source = true;
+                                                    match tag.value {
+                                                        TagValue::UInt16(p) => tcp_port = p,
+                                                        TagValue::UInt32(p) => tcp_port = p as u16,
+                                                        _ => {}
+                                                    }
+                                                } else if lower == "ip" || lower == "sourceip" {
+                                                    entry_is_source = true;
+                                                    match tag.value {
+                                                        TagValue::UInt32(ip_val) => {
+                                                            ip = ip_val.to_le_bytes();
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    Ok((None, _)) => {}
+                                    Err(_) => {
+                                        parse_ok = false;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if !parse_ok {
+                                break;
+                            }
+                            cursor = reader.pos();
+
+                            if entry_is_source {
+                                is_source_res = true;
+                                source_entries.push(KadSourceWire {
+                                    kad_id: answer_hash,
+                                    ip,
+                                    udp_port,
+                                    tcp_port,
+                                    encryption: 0,
+                                });
+                            } else {
+                                keyword_entries.push(KadKeywordEntryWire {
+                                    file_hash: answer_hash,
+                                    file_name,
+                                    file_size,
+                                    source_count,
+                                });
+                            }
+                        }
+
+                        if parse_ok && cursor <= raw_bytes.len() {
+                            if is_source_res {
+                                taglist_result = Some(KadMessage::SearchSourceRes(KadSearchSourceRes {
+                                    target_file_hash: target_hash,
+                                    sources: source_entries,
+                                }));
+                            } else {
+                                taglist_result = Some(KadMessage::SearchKeywordRes(KadSearchKeywordRes {
+                                    keyword_hash: target_hash,
+                                    entries: keyword_entries,
+                                }));
+                            }
+                        }
+                    }
+                }
+
+                if let Some(msg) = taglist_result {
+                    return Ok(msg);
+                }
+
+                // Fallback: decode legacy flat source response
                 if payload.len() < 18 {
                     return Err(Ed2kParseError::new(
                         protocol,
@@ -652,7 +853,6 @@ impl KadCodec {
                     ));
                 }
 
-                // Each source entry: kad_id (16B) + ip (4B) + udp_port (2B) + tcp_port (2B) + encryption (1B) = 25B
                 let needed_bytes = count * 25;
                 if payload.len() < needed_bytes {
                     return Err(Ed2kParseError::new(
@@ -671,8 +871,9 @@ impl KadCodec {
                 for _ in 0..count {
                     let mut kad_id = [0u8; 16];
                     payload.copy_to_slice(&mut kad_id);
-                    let mut ip = [0u8; 4];
-                    payload.copy_to_slice(&mut ip);
+                    let mut raw_ip = [0u8; 4];
+                    payload.copy_to_slice(&mut raw_ip);
+                    let ip = [raw_ip[3], raw_ip[2], raw_ip[1], raw_ip[0]];
                     let udp_port = payload.get_u16_le();
                     let tcp_port = payload.get_u16_le();
                     let encryption = payload.get_u8();
@@ -779,14 +980,14 @@ impl KadCodec {
                     start_pos,
                 }))
             }
-            KADEMLIA2_SEARCH_KEYWORD_RES => {
-                // keyword_hash (16B) + count (2B)
+            KADEMLIA2_SEARCH_KEYWORD_RES_LEGACY => {
+                // Legacy internal search keyword response format
                 if payload.len() < 18 {
                     return Err(Ed2kParseError::new(
                         protocol,
                         Some(opcode),
                         2,
-                        "KadSearchKeywordRes",
+                        "KadSearchKeywordResLegacy",
                         Ed2kErrorKind::UnexpectedEof {
                             needed: 18,
                             available: payload.len(),
@@ -956,13 +1157,14 @@ impl KadCodec {
     }
 
     /// Encodes a Kad2 Bootstrap request packet (0x01).
-    pub fn encode_bootstrap_req(kad_id: &KadIdBytes, udp_port: u16) -> Bytes {
-        let mut buf = BytesMut::with_capacity(21);
+    ///
+    /// According to official eMule sources (`CKademliaUDPListener::Bootstrap`, `KademliaUDPListener.cpp:97`),
+    /// `KADEMLIA2_BOOTSTRAP_REQ` has a 0-byte payload (`CSafeMemFile fileIO(0)`), consisting only of
+    /// the protocol header and opcode: `[0xE4, 0x01]`.
+    pub fn encode_bootstrap_req(_kad_id: &KadIdBytes, _udp_port: u16) -> Bytes {
+        let mut buf = BytesMut::with_capacity(2);
         buf.put_u8(PR_KADEMLIA);
         buf.put_u8(KADEMLIA2_BOOTSTRAP_REQ);
-        buf.put_slice(kad_id);
-        buf.put_u16_le(udp_port);
-        buf.put_u8(2);
         buf.freeze()
     }
 
@@ -983,7 +1185,11 @@ impl KadCodec {
         buf.put_u16_le(count as u16);
         for c in &contacts[..count] {
             buf.put_slice(&c.kad_id);
-            buf.put_slice(&c.ip);
+            // Write IP in eMule wire format (reversed canonical order)
+            buf.put_u8(c.ip[3]);
+            buf.put_u8(c.ip[2]);
+            buf.put_u8(c.ip[1]);
+            buf.put_u8(c.ip[0]);
             buf.put_u16_le(c.udp_port);
             buf.put_u16_le(c.tcp_port);
             buf.put_u8(c.version);
@@ -992,13 +1198,19 @@ impl KadCodec {
     }
 
     /// Encodes a Kad2 Find Node request packet.
-    pub fn encode_find_node_req(target_id: &KadIdBytes, sender_id: &KadIdBytes) -> Bytes {
+    ///
+    /// According to official eMule specs (srchybrid/kademlia/kademlia/Search.cpp & KademliaUDPListener.cpp),
+    /// the first payload byte is the contact count / request subtype (KADEMLIA_FIND_NODE = 0x0B).
+    /// Target contact drops any packet where (byType & 0x1F) == 0.
+    /// The second 128-bit field is the target key being searched.
+    /// The third 128-bit field is receiver_id (the target node's Kad ID, for receiver sanity verification).
+    pub fn encode_find_node_req(target_id: &KadIdBytes, receiver_id: &KadIdBytes) -> Bytes {
         let mut buf = BytesMut::with_capacity(35);
         buf.put_u8(PR_KADEMLIA);
         buf.put_u8(KADEMLIA2_REQ);
-        buf.put_u8(0); // 0 = Find Node
+        buf.put_u8(KADEMLIA_FIND_NODE); // 0x0B (11 contacts requested)
         buf.put_slice(target_id);
-        buf.put_slice(sender_id);
+        buf.put_slice(receiver_id);
         buf.freeze()
     }
 
@@ -1032,7 +1244,10 @@ impl KadCodec {
         buf.put_u16_le(count as u16);
         for s in &sources[..count] {
             buf.put_slice(&s.kad_id);
-            buf.put_slice(&s.ip);
+            buf.put_u8(s.ip[3]);
+            buf.put_u8(s.ip[2]);
+            buf.put_u8(s.ip[1]);
+            buf.put_u8(s.ip[0]);
             buf.put_u16_le(s.udp_port);
             buf.put_u16_le(s.tcp_port);
             buf.put_u8(s.encryption);
@@ -1069,39 +1284,55 @@ impl KadCodec {
         buf.freeze()
     }
 
-    /// Encodes a Kad2 Search Keyword request packet.
+    /// Encodes a Kad2 Search Keyword request packet (standard 18-byte Kad2 payload).
     pub fn encode_search_keyword_req(
         keyword_hash: &KadIdBytes,
         start_pos: u16,
-        sender_id: &KadIdBytes,
+        _sender_id: &KadIdBytes,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(36);
+        let mut buf = BytesMut::with_capacity(20);
         buf.put_u8(PR_KADEMLIA);
         buf.put_u8(KADEMLIA2_SEARCH_KEYWORD_REQ);
         buf.put_slice(keyword_hash);
         buf.put_u16_le(start_pos);
-        buf.put_slice(sender_id);
         buf.freeze()
     }
 
-    /// Encodes a Kad2 Search Keyword response packet.
+    /// Encodes a Kad2 Search Keyword response packet with TagList.
     pub fn encode_search_keyword_res(
         keyword_hash: &KadIdBytes,
         entries: &[KadKeywordEntryWire],
     ) -> Bytes {
         let count = entries.len().min(MAX_KAD_SEARCH_KEYWORDS);
-        let mut buf = BytesMut::with_capacity(2 + 16 + 2 + count * 64);
+        let mut buf = BytesMut::with_capacity(2 + 34 + count * 64);
         buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_SEARCH_KEYWORD_RES);
+        buf.put_u8(KADEMLIA2_SEARCH_RES);
+        // Sender Kad ID (16 bytes)
+        buf.put_slice(&[0u8; 16]);
+        // Target Keyword Hash (16 bytes)
         buf.put_slice(keyword_hash);
+        // Result count (2 bytes)
         buf.put_u16_le(count as u16);
         for entry in &entries[..count] {
             buf.put_slice(&entry.file_hash);
+            buf.put_u8(3); // 3 tags: name, size, sources
+
+            // Tag 1: TAG_SPECIAL_NAME (compact string tag)
             let name_bytes = entry.file_name.as_bytes();
             let name_len = name_bytes.len().min(255) as u16;
+            buf.put_u8(0x82); // TAGTYPE_STRING | 0x80
+            buf.put_u8(TAG_SPECIAL_NAME);
             buf.put_u16_le(name_len);
             buf.put_slice(&name_bytes[..name_len as usize]);
+
+            // Tag 2: TAG_SPECIAL_FILESIZE (compact uint64 tag)
+            buf.put_u8(0x8B); // TAGTYPE_UINT64 | 0x80
+            buf.put_u8(TAG_SPECIAL_FILESIZE);
             buf.put_u64_le(entry.file_size);
+
+            // Tag 3: TAG_SOURCES (compact uint32 tag)
+            buf.put_u8(0x83); // TAGTYPE_UINT32 | 0x80
+            buf.put_u8(0x15); // TAG_SOURCES
             buf.put_u32_le(entry.source_count);
         }
         buf.freeze()

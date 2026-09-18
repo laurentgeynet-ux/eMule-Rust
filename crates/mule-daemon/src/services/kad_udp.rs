@@ -179,16 +179,12 @@ impl KadUdpService {
                                     continue;
                                 }
 
-                                tracing::trace!(
-                                    "Kad UDP received {} bytes from {}: {:02X?}",
-                                    len,
-                                    peer_addr,
-                                    &buf[..len.min(32)]
-                                );
+                                let proto_byte = buf.first().copied().unwrap_or(0);
+                                let opcode_byte = buf.get(1).copied().unwrap_or(0);
 
                                 // 1. IP filter check (banned IPs)
                                 if ip_filter.check_ip(peer_addr.ip()).is_some() {
-                                    tracing::debug!("Kad UDP: dropped packet from banned IP {}", peer_addr.ip());
+                                    tracing::warn!("Kad UDP: dropped packet from banned IP {}", peer_addr.ip());
                                     continue;
                                 }
 
@@ -204,7 +200,7 @@ impl KadUdpService {
                                     }
                                 };
                                 if !policy_allowed {
-                                    tracing::debug!("Kad UDP: dropped packet from non-conforming IP {} ({:?})", peer_addr.ip(), cat);
+                                    tracing::warn!("Kad UDP: dropped packet from non-conforming IP {} ({:?})", peer_addr.ip(), cat);
                                     continue;
                                 }
 
@@ -218,9 +214,16 @@ impl KadUdpService {
                                 }
 
                                 let packet_slice = &buf[..len];
+                                tracing::info!(
+                                    "Kad UDP recv {} bytes from {} (proto=0x{:02X}, opcode=0x{:02X})",
+                                    len,
+                                    peer_addr,
+                                    proto_byte,
+                                    opcode_byte
+                                );
+
                                 match KadCodec::decode(packet_slice) {
                                     Ok(msg) => {
-                                        tracing::debug!("Kad UDP decoded message from {peer_addr}");
                                         Self::handle_incoming_message(
                                             &socket_for_task,
                                             peer_addr,
@@ -232,16 +235,22 @@ impl KadUdpService {
                                     }
                                     Err(err) => {
                                         tracing::warn!(
-                                            "Kad UDP: malformed packet from {}: {} (raw: {:02X?})",
+                                            "Kad UDP: decode error from {} (proto=0x{:02X}, opcode=0x{:02X}, len={}): {} (prefix: {:02X?})",
                                             peer_addr,
+                                            proto_byte,
+                                            opcode_byte,
+                                            len,
                                             err,
-                                            &packet_slice[..packet_slice.len().min(32)]
+                                            &packet_slice[..packet_slice.len().min(16)]
                                         );
                                     }
                                 }
                             }
-                            Err(_) => {
-                                break;
+                            Err(e) => {
+                                tracing::warn!("Kad UDP: recv_from error: {e}");
+                                // On Windows, UDP sockets can receive WSAECONNRESET (10054) when a previously sent
+                                // UDP packet resulted in an ICMP Port Unreachable message. Do NOT break the loop!
+                                tokio::time::sleep(Duration::from_millis(10)).await;
                             }
                         }
                     }
@@ -443,6 +452,7 @@ impl KadUdpService {
         &self,
         target: SocketAddr,
         target_kad_id: &KadId,
+        receiver_kad_id: &KadId,
     ) -> Result<Vec<KadContact>, String> {
         let socket = {
             let inner = self.inner.read().await;
@@ -468,7 +478,14 @@ impl KadUdpService {
             inner.insert_in_flight(tx_id, in_flight_entry).await?;
         }
 
-        let find_bytes = KadCodec::encode_find_node_req(&target_kad_id.0, &self.local_id.0);
+        let find_bytes = KadCodec::encode_find_node_req(&target_kad_id.0, &receiver_kad_id.0);
+        tracing::info!(
+            "Kad sending FindNodeReq (0x21) to node {} for target {} (receiver={}, tx_id={})",
+            target,
+            target_kad_id.to_hex(),
+            receiver_kad_id.to_hex(),
+            tx_id
+        );
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
@@ -483,12 +500,24 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
+                tracing::warn!(
+                    "Kad FindNode to node {} timed out after {}s (target={}, tx_id={})",
+                    target,
+                    KAD_TRANSACTION_TIMEOUT_SECS,
+                    target_kad_id.to_hex(),
+                    tx_id
+                );
                 Err(format!("Kad find_node to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx => {
                 match res {
                     Ok(Ok(KadMessage::BootstrapRes(boot_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            "Kad received FindNode response from node {} with {} contacts",
+                            target,
+                            boot_res.contacts.len()
+                        );
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -557,6 +586,14 @@ impl KadUdpService {
             &self.local_id.0,
         );
 
+        tracing::info!(
+            "Kad sending SearchSourceReq (0x22) to node {} for file {} (size={}, tx_id={})",
+            target,
+            hex::encode(target_file_hash),
+            file_size,
+            tx_id
+        );
+
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&search_bytes, target)
@@ -570,12 +607,25 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
+                tracing::warn!(
+                    "Kad SearchSources to node {} timed out after {}s (file={}, tx_id={})",
+                    target,
+                    KAD_TRANSACTION_TIMEOUT_SECS,
+                    hex::encode(target_file_hash),
+                    tx_id
+                );
                 Err(format!("Kad search_sources to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx => {
                 match res {
                     Ok(Ok(KadMessage::SearchSourceRes(search_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            "Kad received SearchSourceRes from node {} with {} sources (tx_id={})",
+                            target,
+                            search_res.sources.len(),
+                            tx_id
+                        );
                         Ok(search_res.sources)
                     }
                     Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
@@ -638,6 +688,13 @@ impl KadUdpService {
             file_size,
         );
 
+        tracing::info!(
+            "Kad sending PublishSourceReq (0x23) to node {} for file {} (tx_id={})",
+            target,
+            hex::encode(target_file_hash),
+            tx_id
+        );
+
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&pub_bytes, target)
@@ -651,12 +708,24 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
+                tracing::warn!(
+                    "Kad PublishSource to node {} timed out after {}s (tx_id={})",
+                    target,
+                    KAD_TRANSACTION_TIMEOUT_SECS,
+                    tx_id
+                );
                 Err(format!("Kad publish_source to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx => {
                 match res {
                     Ok(Ok(KadMessage::PublishSourceRes(pub_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            "Kad received PublishSourceRes from node {} with status {} (tx_id={})",
+                            target,
+                            pub_res.status,
+                            tx_id
+                        );
                         Ok(pub_res.status)
                     }
                     Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
@@ -710,6 +779,14 @@ impl KadUdpService {
             &self.local_id.0,
         );
 
+        tracing::info!(
+            "Kad sending SearchKeywordReq (0x24) to node {} for keyword {} (start_pos={}, tx_id={})",
+            target,
+            hex::encode(keyword_hash),
+            start_pos,
+            tx_id
+        );
+
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&search_bytes, target)
@@ -723,12 +800,25 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
+                tracing::warn!(
+                    "Kad SearchKeyword to node {} timed out after {}s (keyword={}, tx_id={})",
+                    target,
+                    KAD_TRANSACTION_TIMEOUT_SECS,
+                    hex::encode(keyword_hash),
+                    tx_id
+                );
                 Err(format!("Kad search_keyword to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx => {
                 match res {
                     Ok(Ok(KadMessage::SearchKeywordRes(search_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            "Kad received SearchKeywordRes from node {} with {} entries (tx_id={})",
+                            target,
+                            search_res.entries.len(),
+                            tx_id
+                        );
                         Ok(search_res.entries)
                     }
                     Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
@@ -773,6 +863,14 @@ impl KadUdpService {
 
         let pub_bytes = KadCodec::encode_publish_keyword_req(keyword_hash, entries);
 
+        tracing::info!(
+            "Kad sending PublishKeywordReq (0x25) to node {} for keyword {} with {} entries (tx_id={})",
+            target,
+            hex::encode(keyword_hash),
+            entries.len(),
+            tx_id
+        );
+
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&pub_bytes, target)
@@ -786,12 +884,25 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
+                tracing::warn!(
+                    "Kad PublishKeyword to node {} timed out after {}s (keyword={}, tx_id={})",
+                    target,
+                    KAD_TRANSACTION_TIMEOUT_SECS,
+                    hex::encode(keyword_hash),
+                    tx_id
+                );
                 Err(format!("Kad publish_keyword to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx => {
                 match res {
                     Ok(Ok(KadMessage::PublishKeywordRes(pub_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            "Kad received PublishKeywordRes from node {} with status {} (tx_id={})",
+                            target,
+                            pub_res.status,
+                            tx_id
+                        );
                         Ok(pub_res.status)
                     }
                     Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
@@ -813,6 +924,7 @@ impl KadUdpService {
     ) {
         match msg {
             KadMessage::Ping(_ping) => {
+                tracing::info!("Kad UDP: received Ping from {peer_addr}, replying with Pong");
                 let pong_bytes = KadCodec::encode_pong(peer_addr.port());
                 let _ = socket.send_to(&pong_bytes, peer_addr).await;
             }
@@ -825,6 +937,7 @@ impl KadUdpService {
                         break;
                     }
                 }
+                tracing::info!("Kad UDP: received Pong from {peer_addr} (matched_tx={matched_tx:?})");
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::Pong(pong)));
@@ -832,6 +945,7 @@ impl KadUdpService {
                 }
             }
             KadMessage::HelloReq(_hello) => {
+                tracing::info!("Kad UDP: received HelloReq from {peer_addr}, replying with HelloRes");
                 let hello_res = KadCodec::encode_hello_res(local_kad_id, local_port, 2, 0);
                 let _ = socket.send_to(&hello_res, peer_addr).await;
             }
@@ -844,6 +958,7 @@ impl KadUdpService {
                         break;
                     }
                 }
+                tracing::info!("Kad UDP: received HelloRes from {peer_addr} (matched_tx={matched_tx:?})");
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::HelloRes(hello_res)));
@@ -851,7 +966,7 @@ impl KadUdpService {
                 }
             }
             KadMessage::BootstrapReq(_) | KadMessage::Req(_) => {
-                // Return empty list of contacts for now when queried
+                tracing::info!("Kad UDP: received BootstrapReq/Req from {peer_addr}, replying with empty contacts");
                 let empty_res = KadCodec::encode_bootstrap_res(local_kad_id, local_port, 2, &[]);
                 let _ = socket.send_to(&empty_res, peer_addr).await;
             }
@@ -864,6 +979,10 @@ impl KadUdpService {
                         break;
                     }
                 }
+                tracing::info!(
+                    "Kad UDP: received BootstrapRes/FindNodeRes from {peer_addr} with {} contacts (matched_tx={matched_tx:?})",
+                    boot_res.contacts.len()
+                );
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::BootstrapRes(boot_res)));
@@ -871,6 +990,10 @@ impl KadUdpService {
                 }
             }
             KadMessage::SearchSourceReq(req) => {
+                tracing::info!(
+                    "Kad UDP: received SearchSourceReq from {peer_addr} for file {}, replying with empty",
+                    hex::encode(req.target_file_hash)
+                );
                 let empty_res = KadCodec::encode_search_source_res(&req.target_file_hash, &[]);
                 let _ = socket.send_to(&empty_res, peer_addr).await;
             }
@@ -878,11 +1001,19 @@ impl KadUdpService {
                 let mut inf = in_flight.lock().await;
                 let mut matched_tx = None;
                 for (id, tx) in inf.iter() {
-                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_SEARCH_SOURCE_RES {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip())
+                        && (tx.expected_opcode == KADEMLIA2_SEARCH_SOURCE_RES
+                            || tx.expected_opcode == KADEMLIA2_SEARCH_RES)
+                    {
                         matched_tx = Some(*id);
                         break;
                     }
                 }
+                tracing::info!(
+                    "Kad UDP: received SearchSourceRes from {peer_addr} with {} sources for file {} (matched_tx={matched_tx:?})",
+                    search_res.sources.len(),
+                    hex::encode(search_res.target_file_hash)
+                );
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::SearchSourceRes(search_res)));
@@ -896,6 +1027,11 @@ impl KadUdpService {
                 };
                 let valid_contact = req.contact.ip == peer_ip_bytes && req.contact.tcp_port > 0;
                 let status = if valid_contact { 0 } else { 1 };
+                tracing::info!(
+                    "Kad UDP: received PublishSourceReq from {peer_addr} for file {} (status={})",
+                    hex::encode(req.target_file_hash),
+                    status
+                );
                 let res = KadCodec::encode_publish_source_res(&req.target_file_hash, status);
                 let _ = socket.send_to(&res, peer_addr).await;
             }
@@ -908,6 +1044,10 @@ impl KadUdpService {
                         break;
                     }
                 }
+                tracing::info!(
+                    "Kad UDP: received PublishSourceRes from {peer_addr} with status {} (matched_tx={matched_tx:?})",
+                    pub_res.status
+                );
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::PublishSourceRes(pub_res)));
@@ -915,6 +1055,10 @@ impl KadUdpService {
                 }
             }
             KadMessage::SearchKeywordReq(req) => {
+                tracing::info!(
+                    "Kad UDP: received SearchKeywordReq from {peer_addr} for keyword {}, replying with empty",
+                    hex::encode(req.keyword_hash)
+                );
                 let empty_res = KadCodec::encode_search_keyword_res(&req.keyword_hash, &[]);
                 let _ = socket.send_to(&empty_res, peer_addr).await;
             }
@@ -922,11 +1066,20 @@ impl KadUdpService {
                 let mut inf = in_flight.lock().await;
                 let mut matched_tx = None;
                 for (id, tx) in inf.iter() {
-                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip()) && tx.expected_opcode == KADEMLIA2_SEARCH_KEYWORD_RES {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip())
+                        && (tx.expected_opcode == KADEMLIA2_SEARCH_KEYWORD_RES
+                            || tx.expected_opcode == KADEMLIA2_SEARCH_KEYWORD_RES_LEGACY
+                            || tx.expected_opcode == KADEMLIA2_SEARCH_RES)
+                    {
                         matched_tx = Some(*id);
                         break;
                     }
                 }
+                tracing::info!(
+                    "Kad UDP: received SearchKeywordRes from {peer_addr} with {} entries for keyword {} (matched_tx={matched_tx:?})",
+                    search_res.entries.len(),
+                    hex::encode(search_res.keyword_hash)
+                );
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::SearchKeywordRes(search_res)));
@@ -934,6 +1087,10 @@ impl KadUdpService {
                 }
             }
             KadMessage::PublishKeywordReq(req) => {
+                tracing::info!(
+                    "Kad UDP: received PublishKeywordReq from {peer_addr} for keyword {}",
+                    hex::encode(req.keyword_hash)
+                );
                 let res = KadCodec::encode_publish_keyword_res(&req.keyword_hash, 0);
                 let _ = socket.send_to(&res, peer_addr).await;
             }
@@ -946,6 +1103,10 @@ impl KadUdpService {
                         break;
                     }
                 }
+                tracing::info!(
+                    "Kad UDP: received PublishKeywordRes from {peer_addr} with status {} (matched_tx={matched_tx:?})",
+                    pub_res.status
+                );
                 if let Some(id) = matched_tx {
                     if let Some(tx) = inf.remove(&id) {
                         let _ = tx.sender.send(Ok(KadMessage::PublishKeywordRes(pub_res)));

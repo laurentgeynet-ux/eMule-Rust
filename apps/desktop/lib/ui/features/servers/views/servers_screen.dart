@@ -305,7 +305,7 @@ class _ServersViewState extends State<ServersView> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(child: statusIndicator),
-                    if (actionBtn != null) actionBtn,
+                    ?actionBtn,
                   ],
                 ),
                 const SizedBox(height: 6),

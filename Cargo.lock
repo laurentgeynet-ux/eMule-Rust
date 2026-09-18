@@ -1010,6 +1010,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mule-mcp"
+version = "0.1.6"
+dependencies = [
+ "axum",
+ "clap",
+ "futures-util",
+ "hex",
+ "mule-daemon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "mule-network-policy"
 version = "0.1.6"
 dependencies = [

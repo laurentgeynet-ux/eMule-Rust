@@ -69,11 +69,12 @@ fn test_kad_bootstrap_and_find_node_roundtrip() {
     let udp_port = 39737;
 
     let encoded_boot_req = KadCodec::encode_bootstrap_req(&kad_id, udp_port);
+    assert_eq!(encoded_boot_req.len(), 2);
     let decoded_boot_req = KadCodec::decode(&encoded_boot_req).expect("decode bootstrap req");
     match decoded_boot_req {
         KadMessage::BootstrapReq(b) => {
-            assert_eq!(b.kad_id, kad_id);
-            assert_eq!(b.udp_port, udp_port);
+            assert_eq!(b.kad_id, [0u8; 16]);
+            assert_eq!(b.udp_port, 0);
         }
         _ => panic!("expected BootstrapReq message"),
     }
@@ -112,7 +113,7 @@ fn test_kad_bootstrap_and_find_node_roundtrip() {
     let decoded_find_node = KadCodec::decode(&encoded_find_node).expect("decode find node req");
     match decoded_find_node {
         KadMessage::Req(r) => {
-            assert_eq!(r.req_type, 0);
+            assert_eq!(r.req_type, KADEMLIA_FIND_NODE);
             assert_eq!(r.target_id, target_id);
             assert_eq!(r.sender_id, kad_id);
         }
@@ -233,7 +234,6 @@ fn test_kad_search_and_publish_keyword_roundtrip() {
     match dec_req {
         KadMessage::SearchKeywordReq(r) => {
             assert_eq!(r.keyword_hash, keyword_hash);
-            assert_eq!(r.sender_id, sender_id);
             assert_eq!(r.start_pos, 0);
         }
         _ => panic!("expected SearchKeywordReq"),

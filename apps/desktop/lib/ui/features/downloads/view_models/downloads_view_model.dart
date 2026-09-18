@@ -82,6 +82,7 @@ class DownloadsViewModel extends ChangeNotifier {
   final List<SearchResultFileModel> _searchResults = [];
   bool _isSearching = false;
   String? _lastSearchTerm;
+  int _searchEpoch = 0;
 
   final Map<String, List<PeerSourceModel>> _peerSources = {};
   bool _isSourcesLoading = false;
@@ -142,6 +143,7 @@ class DownloadsViewModel extends ChangeNotifier {
           existingHashes.add(f.fileHash);
         }
       }
+      _searchEpoch++;
       _isSearching = false;
       notifyListeners();
     });
@@ -300,6 +302,19 @@ class DownloadsViewModel extends ChangeNotifier {
   int get countFailed =>
       _downloads.values.where((d) => d.status.isFailed).length;
 
+  List<DownloadItem> get allDownloads => _downloads.values.toList();
+
+  DownloadItem? getDownloadByHash(String? hash) {
+    if (hash == null || hash.isEmpty) return null;
+    final lower = hash.toLowerCase();
+    for (final d in _downloads.values) {
+      if (d.ed2kHash?.toLowerCase() == lower) {
+        return d;
+      }
+    }
+    return null;
+  }
+
   List<DownloadItem> get filteredDownloads {
     final query = _searchQuery.trim().toLowerCase();
     return _downloads.values.where((item) {
@@ -427,6 +442,20 @@ class DownloadsViewModel extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
+      // Check for existing download with the same eD2K hash
+      final tokens = link.split('|');
+      String? linkHash;
+      if (tokens.length >= 5 && tokens[1].toLowerCase() == 'file') {
+        linkHash = tokens[4].toLowerCase();
+      }
+      if (linkHash != null) {
+        final existing = getDownloadByHash(linkHash);
+        if (existing != null) {
+          _errorMessage = 'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}", statut : ${existing.status.label})';
+          return false;
+        }
+      }
+
       final dlId = await client.addEd2kLink(
         link,
         targetDirectory: targetDirectory,
@@ -436,7 +465,6 @@ class DownloadsViewModel extends ChangeNotifier {
 
       // Extract human-friendly filename from eD2K link for clean user notification
       String displayName = dlId;
-      final tokens = link.split('|');
       if (tokens.length >= 4 && tokens[1].toLowerCase() == 'file') {
         final rawName = tokens[2];
         try {
@@ -450,7 +478,8 @@ class DownloadsViewModel extends ChangeNotifier {
       await refresh();
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to add link: $e';
+      final msg = e.toString().replaceAll(RegExp(r'^Exception:\s*'), '');
+      _errorMessage = msg;
       return false;
     } finally {
       _isLoading = false;
@@ -1246,6 +1275,7 @@ class DownloadsViewModel extends ChangeNotifier {
   List<SearchResultFileModel> get searchResults => _searchResults;
   bool get isSearching => _isSearching;
   String? get lastSearchTerm => _lastSearchTerm;
+  int get searchEpoch => _searchEpoch;
 
   Future<void> searchServer({
     required String term,
@@ -1257,6 +1287,7 @@ class DownloadsViewModel extends ChangeNotifier {
     if (trimmed.isEmpty) return;
     _isSearching = true;
     _searchResults.clear();
+    _searchEpoch++;
     _lastSearchTerm = trimmed;
     _errorMessage = null;
     notifyListeners();
@@ -1286,6 +1317,7 @@ class DownloadsViewModel extends ChangeNotifier {
     if (trimmed.isEmpty) return;
     _isSearching = true;
     _searchResults.clear();
+    _searchEpoch++;
     _lastSearchTerm = trimmed;
     _errorMessage = null;
     notifyListeners();
@@ -1303,6 +1335,7 @@ class DownloadsViewModel extends ChangeNotifier {
           existingHashes.add(f.fileHash);
         }
       }
+      _searchEpoch++;
       _statusNotification =
           'Recherche Kad "$trimmed" terminée (${_searchResults.length} résultat(s))';
     } catch (e) {
@@ -1315,6 +1348,7 @@ class DownloadsViewModel extends ChangeNotifier {
 
   void clearSearchResults() {
     _searchResults.clear();
+    _searchEpoch++;
     _isSearching = false;
     _lastSearchTerm = null;
     notifyListeners();

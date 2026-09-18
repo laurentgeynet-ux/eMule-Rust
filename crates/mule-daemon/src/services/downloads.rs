@@ -6,6 +6,7 @@ use mule_protocol::ed2k::PartAvailabilityMask;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::error::JsonRpcError;
@@ -48,16 +49,28 @@ struct ActiveDownload {
     session_start_ms: i64,
     session_bytes_start: u64,
     current_rate_bps: u64,
+    last_rate_update: Option<Instant>,
     source_count: u32,
+    verification_in_progress: bool,
 }
 
 impl ActiveDownload {
     fn snapshot(&self) -> DownloadSnapshot {
+        let effective_rate = if let Some(last_update) = self.last_rate_update {
+            if last_update.elapsed() > Duration::from_secs(2) {
+                0
+            } else {
+                self.current_rate_bps
+            }
+        } else {
+            0
+        };
+
         make_snapshot(
             &self.download,
             &self.ranges,
             self.source_count.max(self.sources.len() as u32),
-            self.current_rate_bps,
+            effective_rate,
         )
     }
 }
@@ -79,11 +92,34 @@ impl DownloadService {
         let session_start_ms = now_ms();
         let existing = db.get_all_downloads().unwrap_or_default();
         let mut active = HashMap::new();
-        for dl in existing {
+        for mut dl in existing {
             let ranges = db.load_received_ranges(&dl.id).unwrap_or_default();
-            let part_file =
-                PartFile::open_or_create(&dl.temp_path, dl.total_size, AllocationPolicy::None).ok();
             let covered = ranges.covered_len();
+
+            // Self-healing: If target file already exists and matches expected size,
+            // or if it was marked as Verifying while already finalized, ensure status is Completed.
+            let is_finalized_on_disk = dl.target_path.exists()
+                && std::fs::metadata(&dl.target_path).map(|m| m.len()).unwrap_or(0) == dl.total_size;
+
+            if (dl.status == DownloadStatus::Verifying || dl.status == DownloadStatus::Downloading)
+                && is_finalized_on_disk
+            {
+                tracing::info!(
+                    "Healing download {} ('{}') from {:?} to Completed (target file exists on disk)",
+                    dl.id,
+                    dl.display_name,
+                    dl.status
+                );
+                dl.status = DownloadStatus::Completed;
+                let _ = db.update_status(&dl.id, DownloadStatus::Completed);
+            }
+
+            let part_file = if dl.status == DownloadStatus::Completed {
+                None
+            } else {
+                PartFile::open_or_create(&dl.temp_path, dl.total_size, AllocationPolicy::None).ok()
+            };
+
             let source_count = db
                 .list_peer_sources(&dl.ed2k_hash.to_hex())
                 .map(|s| s.len() as u32)
@@ -102,7 +138,9 @@ impl DownloadService {
                     part_file,
                     sources: HashMap::new(),
                     current_rate_bps: 0,
+                    last_rate_update: None,
                     source_count,
+                    verification_in_progress: false,
                 },
             );
         }
@@ -147,6 +185,19 @@ impl DownloadService {
     ) -> Result<DownloadSnapshot, JsonRpcError> {
         let link = Ed2kFileLink::parse(link_str)
             .map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+
+        // Deduplication check: prevent adding duplicate downloads with identical eD2K hash
+        let clean_hex = link.ed2k_hash.to_hex().to_lowercase();
+        if let Some(existing) = self
+            .active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex)
+        {
+            return Err(JsonRpcError::business(format!(
+                "Ce fichier est déjà dans la liste des téléchargements ('{}', statut: {:?})",
+                existing.download.display_name, existing.download.status
+            )));
+        }
 
         let id = Uuid::new_v4();
         let temp_filename = format!("{id}.part");
@@ -200,7 +251,9 @@ impl DownloadService {
                 session_start_ms: now,
                 session_bytes_start: 0,
                 current_rate_bps: 0,
+                last_rate_update: None,
                 source_count: 0,
+                verification_in_progress: false,
             },
         );
 
@@ -288,6 +341,18 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
 
         let met = mule_format::PartMetFile::open(met_path)
             .map_err(|e| JsonRpcError::business(format!("Invalid .part.met file: {e}")))?;
+
+        let ed2k_hex = met.file_hash.to_hex().to_lowercase();
+        if let Some(existing) = self
+            .active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == ed2k_hex)
+        {
+            return Err(JsonRpcError::business(format!(
+                "Ce fichier .part.met est déjà importé ('{}', statut: {:?})",
+                existing.download.display_name, existing.download.status
+            )));
+        }
 
         let total_size = met
             .file_size
@@ -456,7 +521,9 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
                 session_start_ms: now,
                 session_bytes_start: snapshot.received_bytes,
                 current_rate_bps: 0,
+                last_rate_update: None,
                 source_count: 0,
+                verification_in_progress: false,
             },
         );
 
@@ -655,10 +722,26 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
                 .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
 
             let now = now_ms();
+            if active.download.status == DownloadStatus::Failed
+                && active.ranges.covered_len() == active.download.total_size
+            {
+                // Invalidate falsely full ranges resulting from previous premature verification bug
+                active.ranges = RangeSet::new();
+                let _ = self.db.sync_received_ranges(id, &active.ranges);
+            }
+            if active.part_file.is_none() {
+                active.part_file = PartFile::open_or_create(
+                    &active.download.temp_path,
+                    active.download.total_size,
+                    AllocationPolicy::None,
+                )
+                .ok();
+            }
             active.download.status = DownloadStatus::Downloading;
             active.download.updated_at = now;
             active.last_status_change_unix_ms = now;
             active.resume_count = active.resume_count.saturating_add(1);
+            active.verification_in_progress = false;
             (
                 active.download.clone(),
                 active.ranges.clone(),
@@ -753,6 +836,16 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             .get_mut(id)
             .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
 
+        // If the download is already completed or verifying, late peer packets must not corrupt state or regress status!
+        if active.download.status == DownloadStatus::Completed {
+            tracing::debug!("Download {id} is already completed; ignoring incoming range {offset}..{}", offset + data.len() as u64);
+            return Ok(active.snapshot());
+        }
+        if active.download.status == DownloadStatus::Verifying {
+            tracing::debug!("Download {id} is currently verifying; ignoring incoming range {offset}..{}", offset + data.len() as u64);
+            return Ok(active.snapshot());
+        }
+
         let end = offset + data.len() as u64;
 
         if let Some(pf) = &mut active.part_file {
@@ -761,6 +854,9 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             pf.flush()
                 .map_err(|e| JsonRpcError::business(format!("Flush error: {e}")))?;
         }
+
+        let was_complete = active.download.total_size > 0
+            && active.ranges.covered_len() == active.download.total_size;
 
         active
             .ranges
@@ -772,14 +868,21 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             .sync_received_ranges(id, &active.ranges)
             .map_err(|e| JsonRpcError::business(format!("DB sync error: {e}")))?;
 
-        active.download.status = if active.ranges.covered_len() == active.download.total_size {
+        let is_now_complete = active.download.total_size > 0
+            && active.ranges.covered_len() == active.download.total_size;
+
+        if is_now_complete && !was_complete {
             let _ = active.part_file.take(); // Close write handle when 100% complete
-            DownloadStatus::Verifying
-        } else {
-            DownloadStatus::Downloading
-        };
-        active.download.updated_at = now_ms();
-        let _ = self.db.update_status(id, active.download.status);
+            active.download.status = DownloadStatus::Verifying;
+            active.download.updated_at = now_ms();
+            let _ = self.db.update_status(id, DownloadStatus::Verifying);
+        } else if active.download.status != DownloadStatus::Verifying
+            && active.download.status != DownloadStatus::Completed
+        {
+            active.download.status = DownloadStatus::Downloading;
+            active.download.updated_at = now_ms();
+            let _ = self.db.update_status(id, active.download.status);
+        }
 
         Ok(active.snapshot())
     }
@@ -798,6 +901,9 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
             let old = active.download.status;
             active.download.status = status;
             active.download.updated_at = now_ms();
+            if status != DownloadStatus::Verifying {
+                active.verification_in_progress = false;
+            }
             (
                 old,
                 active.download.clone(),
@@ -847,6 +953,10 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         self.active
             .get(id)
             .map(|a| a.ranges.missing_within(0..a.download.total_size))
+    }
+
+    pub fn get_covered_len(&self, id: &Uuid) -> Option<u64> {
+        self.active.get(id).map(|a| a.ranges.covered_len())
     }
 
     pub fn get_download_file_info(
@@ -943,9 +1053,11 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         {
             let active = self.active.get_mut(id).unwrap();
             active.download.status = DownloadStatus::Completed;
+            active.verification_in_progress = false;
             active.download.updated_at = now;
             active.last_status_change_unix_ms = now;
             active.current_rate_bps = 0;
+            let _ = active.part_file.take();
         }
         self.db
             .update_status(id, DownloadStatus::Completed)
@@ -1027,7 +1139,23 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         if active.download.status == DownloadStatus::Failed
             || active.download.status == DownloadStatus::Paused
         {
+            if active.download.status == DownloadStatus::Failed
+                && active.ranges.covered_len() == active.download.total_size
+            {
+                // Invalidate falsely full ranges resulting from previous premature verification bug
+                active.ranges = RangeSet::new();
+                let _ = self.db.sync_received_ranges(id, &active.ranges);
+            }
+            if active.part_file.is_none() {
+                active.part_file = PartFile::open_or_create(
+                    &active.download.temp_path,
+                    active.download.total_size,
+                    AllocationPolicy::None,
+                )
+                .ok();
+            }
             active.download.status = DownloadStatus::Downloading;
+            active.verification_in_progress = false;
             let _ = self.db.update_status(id, DownloadStatus::Downloading);
         }
 
@@ -1364,6 +1492,7 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
     pub fn set_download_rate(&mut self, id: &Uuid, rate_bps: u64) -> Option<DownloadSnapshot> {
         if let Some(active) = self.active.get_mut(id) {
             active.current_rate_bps = rate_bps;
+            active.last_rate_update = if rate_bps > 0 { Some(Instant::now()) } else { None };
             Some(active.snapshot())
         } else {
             None
@@ -1375,33 +1504,58 @@ pub const MAX_IMPORT_PART_COUNT: u32 = 65_536; // 65,536 parts ceiling
         for active in self.active.values_mut() {
             if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
                 active.current_rate_bps = rate_bps;
+                active.last_rate_update = if rate_bps > 0 { Some(Instant::now()) } else { None };
                 return Some(active.snapshot());
             }
         }
         None
     }
 
+    pub fn decay_stale_rates(&mut self) -> Vec<DownloadSnapshot> {
+        let mut decayed = Vec::new();
+        for active in self.active.values_mut() {
+            if active.current_rate_bps > 0 {
+                let is_stale = match active.last_rate_update {
+                    Some(inst) => inst.elapsed() > Duration::from_secs(2),
+                    None => true,
+                };
+                if is_stale {
+                    active.current_rate_bps = 0;
+                    active.last_rate_update = None;
+                    decayed.push(active.snapshot());
+                }
+            }
+        }
+        decayed
+    }
+
     pub fn get_pending_verifications(&mut self) -> Vec<(Uuid, PathBuf, PathBuf, [u8; 16], u64)> {
         let mut pending = Vec::new();
         let now = now_ms();
         for (id, active) in self.active.iter_mut() {
-            if active.download.status == DownloadStatus::Completed || active.download.status == DownloadStatus::Failed {
+            if active.download.status == DownloadStatus::Completed
+                || active.download.status == DownloadStatus::Failed
+                || active.download.status == DownloadStatus::Paused
+            {
+                continue;
+            }
+            if active.verification_in_progress {
                 continue;
             }
             let total_size = active.download.total_size;
-            let file_len_on_disk = if active.download.temp_path.exists() {
-                std::fs::metadata(&active.download.temp_path).map(|m| m.len()).unwrap_or(0)
-            } else {
-                0
-            };
-            let is_complete = (total_size > 0 && active.ranges.covered_len() == total_size)
-                || (total_size > 0 && file_len_on_disk == total_size);
+            let covered_len = active.ranges.covered_len();
+            // A download is strictly complete ONLY when all required bytes have been received.
+            // Under sparse/non-sequential P2P writes, file length on disk extends to total_size
+            // as soon as the last sub-block is written, so file length on disk must NEVER be used
+            // as a proxy for range completion.
+            let is_complete = total_size > 0 && covered_len == total_size;
 
             if is_complete {
-                if active.ranges.covered_len() < total_size {
-                    let _ = active.ranges.insert(0..total_size);
-                    let _ = self.db.sync_received_ranges(id, &active.ranges);
-                }
+                tracing::info!(
+                    "Download {id} ('{}') completed all byte ranges ({covered_len}/{total_size} bytes). Queuing for eD2K hash verification.",
+                    active.download.display_name
+                );
+                active.verification_in_progress = true;
                 active.download.status = DownloadStatus::Verifying;
                 active.download.updated_at = now;
                 let _ = self.db.update_status(id, DownloadStatus::Verifying);

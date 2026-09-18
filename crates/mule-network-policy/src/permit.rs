@@ -47,9 +47,10 @@ impl SocketPermit {
         tracker: Arc<PermitTracker>,
     ) -> Self {
         match purpose {
-            ConnectionPurpose::Ed2kPeer | ConnectionPurpose::KadNode => {
+            ConnectionPurpose::Ed2kPeer => {
                 tracker.active_peer_conns.fetch_add(1, Ordering::SeqCst);
             }
+            ConnectionPurpose::KadNode => {}
             ConnectionPurpose::Ed2kServer => {
                 tracker.active_server_conns.fetch_add(1, Ordering::SeqCst);
             }
@@ -94,9 +95,10 @@ impl SocketPermit {
 impl Drop for SocketPermit {
     fn drop(&mut self) {
         match self.purpose {
-            ConnectionPurpose::Ed2kPeer | ConnectionPurpose::KadNode => {
+            ConnectionPurpose::Ed2kPeer => {
                 self.tracker.active_peer_conns.fetch_sub(1, Ordering::SeqCst);
             }
+            ConnectionPurpose::KadNode => {}
             ConnectionPurpose::Ed2kServer => {
                 self.tracker.active_server_conns.fetch_sub(1, Ordering::SeqCst);
             }

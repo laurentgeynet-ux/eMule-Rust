@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../domain/models/download_item.dart';
 import '../../../../domain/models/server_models.dart';
 import '../../../core/theme.dart';
 import '../../downloads/view_models/downloads_view_model.dart';
@@ -33,10 +34,18 @@ class _SearchViewState extends State<SearchView> {
   final TextEditingController _minSizeController = TextEditingController();
   final TextEditingController _maxSizeController = TextEditingController();
   final TextEditingController _extController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   SearchTarget _searchTarget = SearchTarget.server;
   bool _showFilters = false;
   int _sortColumnIndex = 2;
   bool _sortAscending = false;
+
+  List<SearchResultFileModel> _cachedResults = const [];
+  int _lastResultsLength = -1;
+  int _lastSortCol = -1;
+  bool _lastSortAsc = false;
+  int _lastSearchEpoch = -1;
+  List<SearchResultFileModel>? _lastRawListRef;
 
   @override
   void dispose() {
@@ -44,10 +53,64 @@ class _SearchViewState extends State<SearchView> {
     _minSizeController.dispose();
     _maxSizeController.dispose();
     _extController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
+  List<SearchResultFileModel> _getSortedResults(
+    List<SearchResultFileModel> rawResults,
+    int epoch,
+  ) {
+    if (rawResults.isEmpty) {
+      _cachedResults = const [];
+      _lastResultsLength = 0;
+      _lastSearchEpoch = epoch;
+      _lastRawListRef = null;
+      return const [];
+    }
+
+    if (identical(rawResults, _lastRawListRef) &&
+        epoch == _lastSearchEpoch &&
+        rawResults.length == _lastResultsLength &&
+        _sortColumnIndex == _lastSortCol &&
+        _sortAscending == _lastSortAsc) {
+      return _cachedResults;
+    }
+
+    final sorted = List<SearchResultFileModel>.from(rawResults);
+    sorted.sort((a, b) {
+      int cmp = 0;
+      switch (_sortColumnIndex) {
+        case 0:
+          cmp = a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase());
+          break;
+        case 1:
+          cmp = a.fileSize.compareTo(b.fileSize);
+          break;
+        case 2:
+          cmp = a.sourceCount.compareTo(b.sourceCount);
+          break;
+        default:
+          cmp = a.sourceCount.compareTo(b.sourceCount);
+      }
+      return _sortAscending ? cmp : -cmp;
+    });
+
+    _lastRawListRef = rawResults;
+    _lastResultsLength = rawResults.length;
+    _lastSearchEpoch = epoch;
+    _lastSortCol = _sortColumnIndex;
+    _lastSortAsc = _sortAscending;
+    _cachedResults = sorted;
+    return sorted;
+  }
+
   void _handleSearch() {
+    _cachedResults = const [];
+    _lastResultsLength = -1;
+    _lastSearchEpoch = -1;
+    _lastRawListRef = null;
+
     final term = _queryController.text.trim();
     if (term.isEmpty) return;
 
@@ -667,201 +730,358 @@ class _SearchViewState extends State<SearchView> {
 
   // ── Results Table ──────────────────────────────────────────────────────────
 
+  // ── Results Table (Virtualized) ───────────────────────────────────────────
+
   Widget _buildResultsTable(BuildContext context, DownloadsViewModel vm) {
-    final results = List<SearchResultFileModel>.from(vm.searchResults);
-    results.sort((a, b) {
-      int cmp = 0;
-      switch (_sortColumnIndex) {
-        case 0:
-          cmp = a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase());
-          break;
-        case 1:
-          cmp = a.fileSize.compareTo(b.fileSize);
-          break;
-        case 2:
-          cmp = a.sourceCount.compareTo(b.sourceCount);
-          break;
-        default:
-          cmp = a.sourceCount.compareTo(b.sourceCount);
+    final results = _getSortedResults(vm.searchResults, vm.searchEpoch);
+    final downloadsByHash = <String, DownloadItem>{};
+    for (final d in vm.allDownloads) {
+      if (d.ed2kHash != null) {
+        downloadsByHash[d.ed2kHash!.toLowerCase()] = d;
       }
-      return _sortAscending ? cmp : -cmp;
-    });
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        const minTableWidth = 950.0;
+        final tableWidth = constraints.maxWidth < minTableWidth ? minTableWidth : constraints.maxWidth;
+
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: DataTable(
-                sortColumnIndex: _sortColumnIndex,
-                sortAscending: _sortAscending,
-                headingRowColor: WidgetStateProperty.all(AppTheme.darkSurface),
-                dataRowColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.hovered)) {
-                    return AppTheme.primary.withAlpha(15);
-                  }
-                  return Colors.transparent;
-                }),
-                columnSpacing: 14,
-                horizontalMargin: 16,
-          columns: [
-            DataColumn(
-              label: const Text(
-                'Nom du fichier',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
-              ),
-              onSort: (columnIndex, ascending) {
-                setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
-                });
-              },
+          child: SizedBox(
+            width: tableWidth,
+            child: Column(
+              children: [
+                _buildTableHeader(context),
+                const Divider(color: AppTheme.darkBorder, height: 1, thickness: 0.5),
+                Expanded(
+                  child: Scrollbar(
+                    controller: _scrollController,
+                    thumbVisibility: true,
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      itemCount: results.length,
+                      itemExtent: 44.0,
+                      itemBuilder: (context, index) {
+                        final file = results[index];
+                        final existingDl = downloadsByHash[file.fileHash.toLowerCase()];
+                        return _buildResultRow(context, file, index, vm, existingDl);
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
-            DataColumn(
-              label: const Text(
-                'Taille',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
-              ),
-              numeric: true,
-              onSort: (columnIndex, ascending) {
-                setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
-                });
-              },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTableHeader(BuildContext context) {
+    return Container(
+      height: 40,
+      color: AppTheme.darkSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          _buildHeaderCell(label: 'Nom du fichier', columnIndex: 0, flex: 4),
+          const SizedBox(width: 12),
+          _buildHeaderCell(label: 'Taille', columnIndex: 1, width: 95, numeric: true),
+          const SizedBox(width: 12),
+          _buildHeaderCell(label: 'Sources', columnIndex: 2, width: 100, numeric: true),
+          const SizedBox(width: 12),
+          _buildHeaderCell(label: 'Hachage eD2K', columnIndex: 3, width: 220, sortable: false),
+          const SizedBox(width: 12),
+          _buildHeaderCell(label: 'Actions', columnIndex: 4, width: 280, sortable: false),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell({
+    required String label,
+    required int columnIndex,
+    int flex = 0,
+    double? width,
+    bool numeric = false,
+    bool sortable = true,
+  }) {
+    final isSorted = _sortColumnIndex == columnIndex;
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: numeric ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isSorted ? Colors.white : Colors.white70,
+              fontSize: 12.5,
             ),
-            DataColumn(
-              label: const Text(
-                'Sources',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
-              ),
-              numeric: true,
-              onSort: (columnIndex, ascending) {
-                setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
-                });
-              },
-            ),
-            const DataColumn(
-              label: Text(
-                'Hachage eD2K',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
-              ),
-            ),
-            const DataColumn(
-              label: Text(
-                'Actions',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white70),
-              ),
-            ),
-          ],
-          rows: results.map((file) {
-            return DataRow(
-              cells: [
-                DataCell(
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 350),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.insert_drive_file_outlined,
-                            size: 16, color: Colors.white54),
-                        const SizedBox(width: 8),
-                        Flexible(
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (sortable) ...[
+          const SizedBox(width: 4),
+          Icon(
+            isSorted
+                ? (_sortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded)
+                : Icons.unfold_more_rounded,
+            size: 14,
+            color: isSorted ? AppTheme.primary : Colors.white24,
+          ),
+        ],
+      ],
+    );
+
+    final Widget cellWidget;
+    if (sortable) {
+      cellWidget = Align(
+        alignment: numeric ? Alignment.centerRight : Alignment.centerLeft,
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              if (_sortColumnIndex == columnIndex) {
+                _sortAscending = !_sortAscending;
+              } else {
+                _sortColumnIndex = columnIndex;
+                _sortAscending = (columnIndex == 0);
+              }
+            });
+          },
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: content,
+          ),
+        ),
+      );
+    } else {
+      cellWidget = Align(
+        alignment: numeric ? Alignment.centerRight : Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: content,
+        ),
+      );
+    }
+
+    if (flex > 0) {
+      return Expanded(flex: flex, child: cellWidget);
+    }
+    return SizedBox(width: width, child: cellWidget);
+  }
+
+  Widget _buildResultRow(
+    BuildContext context,
+    SearchResultFileModel file,
+    int index,
+    DownloadsViewModel vm,
+    DownloadItem? existingDl,
+  ) {
+    final isCompleted = existingDl != null && existingDl.status.isCompleted;
+
+    return Container(
+      height: 44.0,
+      decoration: BoxDecoration(
+        border: const Border(
+          bottom: BorderSide(color: AppTheme.darkBorder, width: 0.3),
+        ),
+        color: index.isEven ? Colors.transparent : Colors.white.withAlpha(2),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          hoverColor: AppTheme.primary.withAlpha(15),
+          onTap: () {},
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                // Nom du fichier
+                Expanded(
+                  flex: 4,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.insert_drive_file_outlined,
+                          size: 16, color: Colors.white54),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Tooltip(
+                          message: file.fileName,
+                          waitDuration: const Duration(milliseconds: 500),
                           child: Text(
                             file.fileName,
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w500,
+                              fontSize: 13,
                             ),
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-                DataCell(
-                  Text(
-                    _formatBytes(file.fileSize),
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ),
-                DataCell(
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: file.sourceCount > 0
-                          ? Colors.green.withAlpha(30)
-                          : Colors.white10,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                const SizedBox(width: 12),
+
+                // Taille
+                SizedBox(
+                  width: 95,
+                  child: Align(
+                    alignment: Alignment.centerRight,
                     child: Text(
-                      '${file.sourceCount}',
-                      style: TextStyle(
+                      _formatBytes(file.fileSize),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Sources
+                SizedBox(
+                  width: 100,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
                         color: file.sourceCount > 0
-                            ? Colors.greenAccent
-                            : Colors.white38,
-                        fontWeight: FontWeight.bold,
+                            ? Colors.green.withAlpha(30)
+                            : Colors.white10,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${file.sourceCount}',
+                        style: TextStyle(
+                          color: file.sourceCount > 0
+                              ? Colors.greenAccent
+                              : Colors.white38,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
                 ),
-                DataCell(
-                  SelectableText(
-                    file.fileHash,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: Colors.white54,
+                const SizedBox(width: 12),
+
+                // Hachage eD2K
+                SizedBox(
+                  width: 220,
+                  child: Tooltip(
+                    message: 'Cliquer pour copier le hash : ${file.fileHash}',
+                    waitDuration: const Duration(milliseconds: 400),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: file.fileHash));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Hachage copié : ${file.fileHash}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                        child: Text(
+                          file.fileHash,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: Colors.white54,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                DataCell(
-                  Row(
+                const SizedBox(width: 12),
+
+                // Actions
+                SizedBox(
+                  width: 280,
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.download_rounded, size: 14),
-                        label: const Text('Télécharger', style: TextStyle(fontSize: 12)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        onPressed: () async {
-                          final success = await vm.downloadSearchResult(file);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  success
-                                      ? 'Téléchargement lancé : ${file.fileName}'
-                                      : 'Échec de l\'ajout au téléchargement',
+                      if (isCompleted)
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.check_circle_rounded,
+                              size: 14, color: AppTheme.statusCompleted),
+                          label: const Text('Terminé',
+                              style: TextStyle(fontSize: 12, color: AppTheme.statusCompleted)),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppTheme.statusCompleted),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: () {
+                            vm.setSection(AppNavSection.downloads);
+                          },
+                        )
+                      else if (existingDl != null)
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.sync_rounded,
+                              size: 14, color: AppTheme.primary),
+                          label: Text(existingDl.status.label,
+                              style: const TextStyle(fontSize: 12, color: AppTheme.primary)),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppTheme.primary),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: () {
+                            vm.setSection(AppNavSection.downloads);
+                          },
+                        )
+                      else
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.download_rounded, size: 14),
+                          label: const Text('Télécharger', style: TextStyle(fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: () async {
+                            final success = await vm.downloadSearchResult(file);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    success
+                                        ? 'Téléchargement lancé : ${file.fileName}'
+                                        : (vm.errorMessage ?? 'Échec de l\'ajout au téléchargement'),
+                                  ),
+                                  duration: const Duration(seconds: 4),
+                                  backgroundColor: success ? null : Colors.orangeAccent.shade700,
+                                  action: success
+                                      ? SnackBarAction(
+                                          label: 'Afficher',
+                                          onPressed: () {
+                                            vm.setSection(AppNavSection.downloads);
+                                          },
+                                        )
+                                      : null,
                                 ),
-                                duration: const Duration(seconds: 4),
-                                action: success
-                                    ? SnackBarAction(
-                                        label: 'Afficher',
-                                        onPressed: () {
-                                          vm.setSection(AppNavSection.downloads);
-                                        },
-                                      )
-                                    : null,
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 6),
+                              );
+                            }
+                          },
+                        ),
+                      const SizedBox(width: 4),
                       IconButton(
                         icon: const Icon(Icons.hub_outlined, size: 16),
                         tooltip: 'Demander sources au serveur',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                         onPressed: () {
                           vm.queryServerSources(file.fileHash, fileSize: file.fileSize);
                         },
@@ -869,6 +1089,8 @@ class _SearchViewState extends State<SearchView> {
                       IconButton(
                         icon: const Icon(Icons.copy_rounded, size: 16),
                         tooltip: 'Copier lien eD2K',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: file.ed2kLink));
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -883,15 +1105,13 @@ class _SearchViewState extends State<SearchView> {
                   ),
                 ),
               ],
-            );
-          }).toList(),
+            ),
+          ),
         ),
       ),
-    ),
-  );
-      },
     );
   }
+
 
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';

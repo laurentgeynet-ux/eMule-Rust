@@ -100,6 +100,48 @@ void main() {
       expect(viewModel.statusNotification, contains('ajouté aux téléchargements'));
     });
 
+    testWidgets('subsequent search displays new results even with identical result count',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // Connect to server
+      await viewModel.connectServer('195.154.52.200:4661');
+      await tester.pumpAndSettle();
+
+      // Navigate to search
+      final searchNav = find.text('Recherche eD2K');
+      await tester.ensureVisible(searchNav);
+      await tester.tap(searchNav);
+      await tester.pumpAndSettle();
+
+      // First search: debian
+      final searchInput = find.byType(TextField).first;
+      await tester.enterText(searchInput, 'debian');
+      await tester.pumpAndSettle();
+      final searchButton = find.widgetWithText(ElevatedButton, 'Rechercher');
+      await tester.tap(searchButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('debian-release.iso'), findsOneWidget);
+      expect(find.text('debian-documentation.pdf'), findsOneWidget);
+
+      // Second search: windows (returns same count: 2 results)
+      await tester.enterText(searchInput, 'windows');
+      await tester.pumpAndSettle();
+      await tester.tap(searchButton);
+      await tester.pumpAndSettle();
+
+      // Must display windows results, NOT debian results!
+      expect(find.text('windows-release.iso'), findsOneWidget);
+      expect(find.text('windows-documentation.pdf'), findsOneWidget);
+      expect(find.text('debian-release.iso'), findsNothing);
+    });
+
     testWidgets('clearing search results resets to empty state',
         (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1280, 800);

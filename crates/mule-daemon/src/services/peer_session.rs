@@ -1323,6 +1323,35 @@ async fn run_peer_connection(
     let mut current_part_idx = part_idx;
     let mut current_req_range = req_range;
 
+    struct RateResetGuard<'a> {
+        downloads: &'a Arc<Mutex<DownloadService>>,
+        file_hash_str: &'a str,
+        event_tx: &'a broadcast::Sender<String>,
+        sequence: &'a Arc<AtomicU64>,
+    }
+
+    impl<'a> Drop for RateResetGuard<'a> {
+        fn drop(&mut self) {
+            let downloads = Arc::clone(self.downloads);
+            let file_hash_str = self.file_hash_str.to_string();
+            let event_tx = self.event_tx.clone();
+            let sequence = Arc::clone(self.sequence);
+            tokio::spawn(async move {
+                let mut dl_svc = downloads.lock().await;
+                if let Some(snap) = dl_svc.set_download_rate_by_hash(&file_hash_str, 0) {
+                    emit_download_update(&event_tx, &sequence, &snap);
+                }
+            });
+        }
+    }
+
+    let _rate_guard = RateResetGuard {
+        downloads: &downloads,
+        file_hash_str: &file_hash_str,
+        event_tx: &event_tx,
+        sequence: &sequence,
+    };
+
     'transfer_loop: loop {
         let timeout_duration = if !first_data_received {
             timeouts.first_data_timeout
@@ -1387,7 +1416,8 @@ async fn run_peer_connection(
                                             part.start_offset as u64,
                                             &part.data,
                                         ) {
-                                            snap.status.to_lowercase() == "verifying" || snap.progress >= 1.0
+                                            let s = snap.status.to_lowercase();
+                                            s == "verifying" || s == "completed" || snap.progress >= 1.0
                                         } else {
                                             false
                                         }
@@ -1480,7 +1510,8 @@ async fn run_peer_connection(
                                                     decompressed_offset,
                                                     &out[..produced],
                                                 ) {
-                                                    snap.status.to_lowercase() == "verifying" || snap.progress >= 1.0
+                                                    let s = snap.status.to_lowercase();
+                                                    s == "verifying" || s == "completed" || snap.progress >= 1.0
                                                 } else {
                                                     false
                                                 }
@@ -1509,19 +1540,39 @@ async fn run_peer_connection(
 
                                     match res {
                                         Ok(Status::StreamEnd) => {
-                                            info!("Peer {target_addr}: completed decompression of block at offset {}", decompressed_offset);
+                                            if decompressed_offset < current_req_range.end as u64 {
+                                                tracing::warn!(
+                                                    "Peer {target_addr}: Zlib stream ended at offset {} before reaching sub-block boundary {}",
+                                                    decompressed_offset,
+                                                    current_req_range.end
+                                                );
+                                            } else {
+                                                tracing::info!(
+                                                    "Peer {target_addr}: completed decompression of block at offset {}",
+                                                    decompressed_offset
+                                                );
+                                            }
                                             decompressor = None;
-                                            block_finished = true;
+                                            block_finished = decompressed_offset >= current_req_range.end as u64;
                                             break;
                                         }
                                         Ok(Status::Ok) => {
+                                            if decompressed_offset >= current_req_range.end as u64 {
+                                                tracing::info!(
+                                                    "Peer {target_addr}: sub-block reached requested boundary {}",
+                                                    decompressed_offset
+                                                );
+                                                decompressor = None;
+                                                block_finished = true;
+                                                break;
+                                            }
                                             if consumed == 0 && produced == 0 {
                                                 break;
                                             }
                                         }
                                         Ok(Status::BufError) => break,
                                         Err(e) => {
-                                            warn!("Peer {target_addr}: Zlib decompression error: {e}");
+                                            tracing::warn!("Peer {target_addr}: Zlib decompression error: {e}");
                                             break;
                                         }
                                     }
@@ -1692,7 +1743,7 @@ fn emit_event(
     }
 }
 
-fn emit_download_update(
+pub fn emit_download_update(
     event_tx: &broadcast::Sender<String>,
     sequence: &Arc<AtomicU64>,
     snapshot: &DownloadSnapshot,

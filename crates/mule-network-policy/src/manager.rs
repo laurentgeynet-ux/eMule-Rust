@@ -263,8 +263,15 @@ impl NetworkPolicyManager {
         }
 
         // 4. Check Connection Rate Limiter (Token Bucket)
-        if !self.rate_limiters.conn_bucket.try_acquire(1) {
-            let reason = "Connection creation rate limit exceeded".to_string();
+        let rate_allowed = match purpose {
+            ConnectionPurpose::KadNode => self.rate_limiters.kad_bucket.try_acquire(1),
+            _ => self.rate_limiters.conn_bucket.try_acquire(1),
+        };
+        if !rate_allowed {
+            let reason = match purpose {
+                ConnectionPurpose::KadNode => "Kad UDP packet rate limit exceeded".to_string(),
+                _ => "Connection creation rate limit exceeded".to_string(),
+            };
             inner.audit_log.record(
                 AuditEventType::BudgetExhausted,
                 Some(&addr),
@@ -292,7 +299,7 @@ impl NetworkPolicyManager {
 
         // 6. Validate resource budgets
         match purpose {
-            ConnectionPurpose::Ed2kPeer | ConnectionPurpose::KadNode => {
+            ConnectionPurpose::Ed2kPeer => {
                 let active = self.tracker.active_peer_conns.load(Ordering::SeqCst);
                 if active >= inner.budgets.max_active_peer_connections {
                     let reason = format!(
@@ -309,6 +316,10 @@ impl NetworkPolicyManager {
                     );
                     return Err(PolicyError::BudgetExhausted("max_active_peer_connections"));
                 }
+            }
+            ConnectionPurpose::KadNode => {
+                // KadNode is connectionless UDP datagram operations; tracked by kad_bucket,
+                // not bounded by persistent TCP peer connection capacity.
             }
             ConnectionPurpose::Ed2kServer => {
                 let active = self.tracker.active_server_conns.load(Ordering::SeqCst);

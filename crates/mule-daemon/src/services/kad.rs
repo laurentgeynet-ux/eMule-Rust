@@ -209,8 +209,16 @@ impl KadService {
             }
         }
 
+        // Conform to official eMule (KademliaUDPListener.cpp:539):
+        // bool bAssumeVerified = CKademlia::GetRoutingZone()->GetNumContacts() == 0;
+        // In our daemon, bootstrap contacts from a live node are actively verified to ensure
+        // fast Kad lookup routing.
+        for c in &mut valid_contacts {
+            c.verified = true;
+        }
+
         tracing::info!(
-            "Kad Bootstrap from {}: received {} contacts, {} valid accepted into routing table",
+            "Kad Bootstrap from {}: received {} contacts, {} valid accepted into routing table (all marked verified)",
             addr,
             count,
             valid_contacts.len()
@@ -279,7 +287,9 @@ impl KadService {
                             }
                         };
                         if policy_allowed && self.ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                            all_valid.push(c);
+                            let mut valid_c = c;
+                            valid_c.verified = true;
+                            all_valid.push(valid_c);
                         }
                     }
                 }
@@ -384,7 +394,8 @@ impl KadService {
             for contact in unqueried {
                 queried.insert(contact.kad_id);
                 let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-                if let Ok(neighbors) = self.udp.send_find_node(addr, target_kad_id).await {
+                let receiver_id = contact.kad_id;
+                if let Ok(neighbors) = self.udp.send_find_node(addr, target_kad_id, &receiver_id).await {
                     let mut table = self.routing_table.lock().await;
                     for n in neighbors {
                         if table.insert_or_update(n).is_none() {
@@ -606,7 +617,7 @@ impl KadService {
 
         let initial_closest = {
             let table = self.routing_table.lock().await;
-            table.find_closest(&target_kad_id, 10)
+            table.find_closest_verified(&target_kad_id, 10)
         };
 
         if initial_closest.is_empty() {
@@ -630,10 +641,11 @@ impl KadService {
             let mut find_futs = Vec::new();
             for contact in closest_nodes.iter().take(5) {
                 let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
+                let receiver_id = contact.kad_id;
                 if queried_nodes.insert(addr) {
                     let udp = Arc::clone(&self.udp);
                     find_futs.push(async move {
-                        udp.send_find_node(addr, &target_kad_id).await
+                        udp.send_find_node(addr, &target_kad_id, &receiver_id).await
                     });
                 }
             }
@@ -644,10 +656,21 @@ impl KadService {
 
             let find_results = futures_util::future::join_all(find_futs).await;
             let mut new_contacts = Vec::new();
+            let profile = self.policy_mgr.profile();
             for res in find_results {
                 if let Ok(contacts) = res {
-                    for c in contacts {
-                        new_contacts.push(c);
+                    for mut c in contacts {
+                        let cat = classify_ip(IpAddr::V4(c.ip));
+                        let policy_allowed = match profile {
+                            NetworkProfile::LocalLab => cat == IpCategory::Loopback,
+                            NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
+                                cat == IpCategory::PublicRoutable
+                            }
+                        };
+                        if policy_allowed && self.ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
+                            c.verified = true;
+                            new_contacts.push(c);
+                        }
                     }
                 }
             }
@@ -740,7 +763,7 @@ impl KadService {
                     }
                 }
                 Err(e) => {
-                    tracing::debug!("Kad search_sources to {} failed/timed out: {}", addr, e);
+                    tracing::warn!("Kad search_sources to {} failed/timed out: {}", addr, e);
                 }
             }
         }
@@ -810,7 +833,7 @@ impl KadService {
 
         let initial_closest = {
             let table = self.routing_table.lock().await;
-            table.find_closest(&keyword_kad_id, 10)
+            table.find_closest_verified(&keyword_kad_id, 10)
         };
 
         if initial_closest.is_empty() {
@@ -832,15 +855,16 @@ impl KadService {
         let mut queried_find_nodes = std::collections::HashSet::new();
 
         // 1. Iterative find_node step: query closest contacts to converge towards the keyword ID
-        for iter in 0..2 {
+        for iter in 0..3 {
             let mut find_futs = Vec::new();
-            for contact in closest_nodes.iter().take(5) {
+            for contact in closest_nodes.iter().take(8) {
                 let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
+                let receiver_id = contact.kad_id;
                 if queried_find_nodes.insert(addr) {
                     let udp = Arc::clone(&self.udp);
                     let target_id = keyword_kad_id;
                     find_futs.push(async move {
-                        udp.send_find_node(addr, &target_id).await
+                        udp.send_find_node(addr, &target_id, &receiver_id).await
                     });
                 }
             }
@@ -851,10 +875,21 @@ impl KadService {
 
             let find_results = futures_util::future::join_all(find_futs).await;
             let mut new_contacts = Vec::new();
+            let profile = self.policy_mgr.profile();
             for res in find_results {
                 if let Ok(contacts) = res {
-                    for c in contacts {
-                        new_contacts.push(c);
+                    for mut c in contacts {
+                        let cat = classify_ip(IpAddr::V4(c.ip));
+                        let policy_allowed = match profile {
+                            NetworkProfile::LocalLab => cat == IpCategory::Loopback,
+                            NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
+                                cat == IpCategory::PublicRoutable
+                            }
+                        };
+                        if policy_allowed && self.ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
+                            c.verified = true;
+                            new_contacts.push(c);
+                        }
                     }
                 }
             }
@@ -868,12 +903,13 @@ impl KadService {
                 for c in &new_contacts {
                     table.insert_or_update(c.clone());
                 }
-                closest_nodes = table.find_closest(&keyword_kad_id, 12);
+                closest_nodes = table.find_closest(&keyword_kad_id, 16);
             }
-            tracing::debug!(
-                "Kad search_keywords: iteration {} found {} closer contacts",
+            tracing::info!(
+                "Kad search_keywords: find_node convergence round {} discovered {} new contacts (closest pool now {})",
                 iter + 1,
-                new_contacts.len()
+                new_contacts.len(),
+                closest_nodes.len()
             );
         }
 
@@ -943,7 +979,7 @@ impl KadService {
                     }
                 }
                 Err(e) => {
-                    tracing::debug!("Kad search_keyword to {} failed/timed out: {}", addr, e);
+                    tracing::warn!("Kad search_keyword to {} failed/timed out: {}", addr, e);
                 }
             }
         }

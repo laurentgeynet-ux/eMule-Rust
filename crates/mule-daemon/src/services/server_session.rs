@@ -195,6 +195,11 @@ impl ServerSessionManager {
         let packet = request
             .encode(&limits)
             .map_err(|e| JsonRpcError::business(format!("Failed to encode get sources request: {e}")))?;
+        info!(
+            "Sending eD2K OP_GETSOURCES (obfuscation={}) to server for file hash: {}",
+            request.obfuscation,
+            hex::encode(request.file_hash)
+        );
         tx.send(packet).await.map_err(|_| {
             JsonRpcError::business("Failed to send get sources request to server")
         })?;
@@ -388,6 +393,12 @@ const MAX_SERVER_READ_BUFFER_SIZE: usize = 256 * 1024;
                                 loop {
                                     match codec.decode(&mut read_buf) {
                                         Ok(Some(raw_packet)) => {
+                                            tracing::debug!(
+                                                "Server TCP packet received: proto=0x{:02X}, opcode=0x{:02X}, payload_len={}",
+                                                raw_packet.protocol,
+                                                raw_packet.opcode,
+                                                raw_packet.payload.len()
+                                            );
                                             match decode_server_response(raw_packet.protocol, raw_packet.opcode, &raw_packet.payload, &limits) {
                                                 Ok(resp) => {
                                                     let mut g = inner_clone.lock().await;

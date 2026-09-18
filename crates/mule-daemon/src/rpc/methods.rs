@@ -398,6 +398,7 @@ async fn handle_add_ed2k_link(
     };
     if let Some((_, _, hash, size)) = file_info {
         let hash_hex = hex::encode(hash.0);
+        tracing::info!("Download added: requesting immediate sources from server and Kad for file {}", hash_hex);
         if state.server_session.snapshot().await.status == crate::services::server_session::ServerConnectionStatus::Connected {
             let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
                 hash.0,

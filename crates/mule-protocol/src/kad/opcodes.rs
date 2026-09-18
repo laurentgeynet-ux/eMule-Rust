@@ -34,6 +34,10 @@ pub const KADEMLIA2_HELLO_RES: u8 = 0x19;
 pub const KADEMLIA2_HELLO_RES_ACK: u8 = 0x22;
 /// Kad2 Find Node / Value request (0x21).
 pub const KADEMLIA2_REQ: u8 = 0x21;
+/// Kad2 Find Node contact count / subtype (0x0B = 11 contacts requested).
+pub const KADEMLIA_FIND_NODE: u8 = 0x0B;
+/// Kad2 Find Value contact count / subtype (0x02 contacts requested).
+pub const KADEMLIA_FIND_VALUE: u8 = 0x02;
 /// Kad2 Find Node / Value response (0x29).
 pub const KADEMLIA2_RES: u8 = 0x29;
 /// Kad2 Search Keyword request (0x33).
@@ -48,8 +52,10 @@ pub const KADEMLIA2_SEARCH_RES: u8 = 0x3B;
 pub const KADEMLIA2_SEARCH_SOURCE_RES: u8 = 0x3B;
 /// Kad2 Search Keyword request (0x33).
 pub const KADEMLIA2_SEARCH_KEYWORD_REQ: u8 = 0x33;
-/// Kad2 Search Keyword response (0x2C).
-pub const KADEMLIA2_SEARCH_KEYWORD_RES: u8 = 0x2C;
+/// Kad2 Search Keyword response (0x3B, official Kad2 search response).
+pub const KADEMLIA2_SEARCH_KEYWORD_RES: u8 = 0x3B;
+/// Legacy internal search keyword response opcode (0x2C, preserved for fallback/tests).
+pub const KADEMLIA2_SEARCH_KEYWORD_RES_LEGACY: u8 = 0x2C;
 /// Kad2 Publish Keyword request (0x43).
 pub const KADEMLIA2_PUBLISH_KEY_REQ: u8 = 0x43;
 /// Kad2 Publish Source request (0x44).

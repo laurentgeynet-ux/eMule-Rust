@@ -8,6 +8,7 @@ members = [
     "crates/mule-protocol",
     "crates/mule-network-policy",
     "crates/mule-filter",
+    "crates/mule-mcp",
 ]
 
 [workspace.package]

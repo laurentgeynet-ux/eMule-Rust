@@ -93,6 +93,17 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
       return;
     }
 
+    final existing = widget.viewModel.getDownloadByHash(hash);
+    if (existing != null) {
+      setState(() {
+        _parsedFileName = null;
+        _parsedSize = null;
+        _parsedHash = null;
+        _parseError = 'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}")';
+      });
+      return;
+    }
+
     setState(() {
       _parsedFileName = name;
       _parsedSize = size;
@@ -433,6 +444,14 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
 
     if (success && mounted) {
       Navigator.of(context).pop();
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.viewModel.errorMessage ?? 'Erreur lors de l\'ajout du téléchargement'),
+          backgroundColor: Colors.orangeAccent.shade700,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 }
