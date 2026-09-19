@@ -619,7 +619,22 @@ impl DownloadService {
     }
 
     pub fn get_shared_file(&self, file_hash: &str) -> Result<Option<mule_core::model::SharedFile>, DaemonError> {
-        peers_servers::get_shared_file(&self.db, file_hash)
+        if let Some(sf) = peers_servers::get_shared_file(&self.db, file_hash)? {
+            return Ok(Some(sf));
+        }
+        for act in self.active.values() {
+            if act.download.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
+                && act.download.status == mule_core::DownloadStatus::Completed
+            {
+                return Ok(Some(mule_core::model::SharedFile::new(
+                    &act.download.ed2k_hash.to_hex(),
+                    &act.download.display_name,
+                    act.download.total_size,
+                    act.download.target_path.to_string_lossy().as_ref(),
+                )));
+            }
+        }
+        Ok(None)
     }
 
     pub fn get_peer_credit(&self, pubkey_hash: &str) -> Result<Option<mule_core::model::PeerCredit>, DaemonError> {

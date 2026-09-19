@@ -13,8 +13,12 @@ pub const SOURCE_REQUERY_INTERVAL: Duration = Duration::from_secs(300);
 /// Maximum number of new peer connections to initiate per file per tick (burst prevention).
 pub const MAX_CONNECT_PER_TICK: usize = 5;
 
+/// Interval between periodic system heartbeats (60 seconds).
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Swarm coordinator orchestrating peer connections and background downloads.
 pub struct SwarmCoordinator {
     pub(crate) state: AppState,
     pub(crate) last_source_query: HashMap<String, Instant>,
+    pub(crate) last_heartbeat: Instant,
 }

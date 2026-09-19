@@ -162,11 +162,15 @@ impl Ed2kPeerInfo {
             .is_some_and(|info| info.has_compression_capability())
     }
 
-    /// Returns true if source exchange capability was announced in OP_EMULEINFO.
+    /// Returns true if source exchange capability was announced in OP_EMULEINFO or CT_EMULE_MISCOPTIONS1.
     pub fn has_source_exchange_capability(&self) -> bool {
         self.emule_info
             .as_ref()
             .is_some_and(|info| info.has_source_exchange_capability())
+            || self
+                .misc_options1
+                .map(|m| ((m >> 12) & 0x0F) > 0)
+                .unwrap_or(false)
     }
 
     /// Returns true if this peer supports Source Exchange 2 (bit 10 of misc_options2).
@@ -192,5 +196,39 @@ impl Ed2kPeerInfo {
     /// Returns true if this peer strictly requires protocol obfuscation (bit 9 of misc_options2).
     pub fn requires_crypt_layer(&self) -> bool {
         self.misc_options2.map(|m| (m & (1 << 9)) != 0).unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sx1_capability_detected_from_misc_options1() {
+        let mut info = Ed2kPeerInfo {
+            user_hash: [0u8; 16],
+            client_id: 123456789,
+            tcp_port: 4662,
+            name: None,
+            version: None,
+            emule_version: None,
+            misc_options1: Some(4 << 12), // SX1 version = 4
+            misc_options2: None,
+            emule_udp_port: None,
+            server_ip: 0,
+            server_port: 0,
+            tags: vec![],
+            unknown_tags: vec![],
+            emule_info: None,
+        };
+
+        assert!(info.has_source_exchange_capability());
+        assert!(info.supports_source_exchange());
+        assert!(!info.supports_source_exchange2());
+
+        // Now set SX2 bit 10 in misc_options2
+        info.misc_options2 = Some(1 << 10);
+        assert!(info.supports_source_exchange2());
+        assert!(info.supports_source_exchange());
     }
 }

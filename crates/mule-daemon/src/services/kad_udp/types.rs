@@ -13,7 +13,7 @@ pub const KAD_TRANSACTION_TIMEOUT_SECS: u64 = 3;
 pub const MAX_IN_FLIGHT_TRANSACTIONS: usize = 200;
 
 /// Maximum requests per second allowed per source IP (anti-amplification / rate limiting).
-pub const MAX_KAD_REQUESTS_PER_SEC_PER_IP: u32 = 20;
+pub const MAX_KAD_REQUESTS_PER_SEC_PER_IP: u32 = 120;
 
 /// Simple per-IP sliding rate limiter.
 #[derive(Debug, Default)]

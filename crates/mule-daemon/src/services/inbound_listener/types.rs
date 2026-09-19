@@ -13,7 +13,7 @@ use crate::services::downloads::DownloadService;
 use crate::services::upload_queue::UploadManager;
 
 /// Maximum concurrent inbound connections globally.
-pub const MAX_INBOUND_CONNECTIONS: usize = 200;
+pub const MAX_INBOUND_CONNECTIONS: usize = 500;
 
 /// Maximum concurrent inbound connections from a single IP.
 pub const MAX_INBOUND_PER_IP: usize = 5;

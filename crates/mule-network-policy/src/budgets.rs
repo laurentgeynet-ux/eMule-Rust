@@ -24,7 +24,7 @@ pub struct ResourceBudgets {
 impl Default for ResourceBudgets {
     fn default() -> Self {
         Self {
-            max_active_peer_connections: 200,
+            max_active_peer_connections: 500,
             max_active_server_connections: 2,
             max_active_listeners: 2,
             connect_timeout_ms: 10_000,
@@ -42,8 +42,8 @@ impl ResourceBudgets {
         if self.max_active_peer_connections == 0 {
             return Err("max_active_peer_connections must be at least 1");
         }
-        if self.max_active_peer_connections > 500 {
-            return Err("max_active_peer_connections cannot exceed 500");
+        if self.max_active_peer_connections > 1500 {
+            return Err("max_active_peer_connections cannot exceed 1500");
         }
         if self.max_active_server_connections == 0 {
             return Err("max_active_server_connections must be at least 1");

@@ -87,8 +87,8 @@ pub const KADEMLIA2_FIREWALLUDP: u8 = 0x62;
 /// Maximum allowable search keywords returned in a single packet.
 pub const MAX_KAD_SEARCH_KEYWORDS: usize = 50;
 
-/// Maximum allowable UDP datagram payload size in bytes (1472 bytes, standard Ethernet MTU 1500 - 20 IP - 8 UDP).
-pub const MAX_KAD_UDP_PACKET_SIZE: usize = 1472;
+/// Maximum allowable UDP datagram payload size in bytes (maximum IPv4 UDP payload is 65507 bytes).
+pub const MAX_KAD_UDP_PACKET_SIZE: usize = 65507;
 
 /// Checks if the protocol byte is a recognized Kademlia UDP protocol magic.
 #[inline]

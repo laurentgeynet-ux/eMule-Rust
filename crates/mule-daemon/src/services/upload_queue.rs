@@ -118,6 +118,10 @@ impl UploadManager {
             };
             *active = Some(snap);
             self.active_count.store(1, Ordering::SeqCst);
+            tracing::info!(
+                "[UPLOAD_SLOT_GRANTED] Client {} granted active upload slot immediately for file '{}' (hash: {})",
+                client_address, file_name, file_hash
+            );
             return Ok((UploadSlotState::Uploading, None));
         }
 
@@ -160,6 +164,11 @@ impl UploadManager {
             .map(|pos| (pos + 1) as u32)
             .unwrap_or(q.len() as u32);
 
+        tracing::info!(
+            "[UPLOAD_QUEUED] Client {} queued for file '{}' (hash: {}) with rank #{} (credits mult: {:.2}x, queue size: {})",
+            client_address, file_name, file_hash, rank, credit_multiplier, q.len()
+        );
+
         Ok((UploadSlotState::Waiting, Some(rank)))
     }
 
@@ -179,9 +188,19 @@ impl UploadManager {
         let mut active = self.active_upload.lock().await;
         if let Some(ref cur) = *active {
             if cur.client_address == client_address {
+                tracing::info!(
+                    "[UPLOAD_RELEASED] Active upload slot released by client {} for file '{}' (transferred: {} bytes)",
+                    client_address, cur.file_name, cur.transferred_bytes
+                );
                 *active = None;
                 self.active_count.store(0, Ordering::SeqCst);
             }
+        }
+
+        // Also remove from waiting queue if queued
+        {
+            let mut q = self.queue.lock().await;
+            q.retain(|entry| entry.client_address != client_address);
         }
 
         // Promote next from queue
@@ -203,6 +222,10 @@ impl UploadManager {
                     queue_rank: None,
                     started_at_unix_ms: now,
                 };
+                tracing::info!(
+                    "[UPLOAD_PROMOTED] Client {} promoted from queue to active upload slot for file '{}' (hash: {})",
+                    snap.client_address, snap.file_name, snap.file_hash
+                );
                 *active = Some(snap);
                 self.active_count.store(1, Ordering::SeqCst);
             }

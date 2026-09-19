@@ -302,6 +302,11 @@ impl KadService {
                             table.total_contacts()
                         };
 
+                        tracing::info!(
+                            "[KAD_ROUTING] Kad routing table status: {} verified contacts in memory",
+                            total_contacts
+                        );
+
                         if total_contacts > 0 && total_contacts < 400 {
                             tracing::info!(
                                 "Kad background maintenance: routing table has {}/400 contacts, performing expansion...",
@@ -452,6 +457,7 @@ impl KadService {
         }
 
         let mut success_count = 0;
+        let total_queried = closest_contacts.len();
         for contact in closest_contacts {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
             if let Ok(status) = self.udp.send_publish_source(addr, &target_kad_id.0, file_size, tcp_port).await {
@@ -460,6 +466,15 @@ impl KadService {
                 }
             }
         }
+
+        tracing::info!(
+            "[KAD_PUBLISH] Published source for file {} ({} bytes, port {}) to {}/{} closest Kad nodes",
+            file_hash_hex,
+            file_size,
+            tcp_port,
+            success_count,
+            total_queried
+        );
 
         Ok(success_count)
     }

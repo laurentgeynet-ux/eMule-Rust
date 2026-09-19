@@ -38,9 +38,9 @@ impl DaemonConfig {
             obfuscation_enabled: true,
             obfuscation_required: false,
             obfuscation_padding_max: 16,
-            max_global_download_peers: 50,
-            max_peers_per_download: 40,
-            min_peers_per_download: 2,
+            max_global_download_peers: 500,
+            max_peers_per_download: 400,
+            min_peers_per_download: 5,
         }
     }
 

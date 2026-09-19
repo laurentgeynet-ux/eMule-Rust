@@ -75,7 +75,7 @@ async fn test_network_get_and_set_policy_rpc() {
     assert_eq!(res["activeConnections"]["peers"], 0);
     assert_eq!(res["activeConnections"]["servers"], 0);
     assert_eq!(res["activeConnections"]["listeners"], 0);
-    assert_eq!(res["budgets"]["max_active_peer_connections"], 200);
+    assert_eq!(res["budgets"]["max_active_peer_connections"], 500);
 
     // 2. network.setProfile to public-ed2k-preview
     let set_req = make_req(

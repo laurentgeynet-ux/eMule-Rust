@@ -111,7 +111,9 @@ impl KadUdpService {
         let rate_limiter_arc = Arc::new(Mutex::new(IpRateLimiter::new()));
 
         let task = tokio::spawn(async move {
-            let mut buf = vec![0u8; MAX_KAD_UDP_PACKET_SIZE + 512];
+            // Official eMule allocates a 64KB receive buffer to guarantee that incoming UDP datagrams
+            // up to the maximum IP payload (65507 bytes) never fail with WSAEMSGSIZE (OS error 10040).
+            let mut buf = vec![0u8; 65536];
             loop {
                 tokio::select! {
                     recv_res = socket_for_task.recv_from(&mut buf) => {
@@ -150,7 +152,7 @@ impl KadUdpService {
                                 {
                                     let mut rl = rate_limiter_arc.lock().await;
                                     if !rl.check_and_record(peer_addr.ip()) {
-                                        tracing::warn!("Kad UDP rate limit exceeded for {}", peer_addr.ip());
+                                        tracing::debug!("Kad UDP rate limit exceeded for {}", peer_addr.ip());
                                         continue;
                                     }
                                 }

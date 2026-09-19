@@ -55,12 +55,17 @@ pub async fn handle_sx_answer(
                         }
                     }
                     if !discovered_sources.is_empty() {
-                        tracing::info!(
-                            "Discovered {} new sources via Source Exchange from peer {target_addr} for file {file_hash_str}",
-                            discovered_sources.len()
-                        );
                         let mut dl_svc = downloads.lock().await;
-                        let _ = dl_svc.upsert_peer_sources(file_hash_str, &discovered_sources);
+                        let inserted = dl_svc.upsert_peer_sources(file_hash_str, &discovered_sources).unwrap_or(0);
+                        let total_swarm = dl_svc.find_by_ed2k_hash(file_hash_str).map(|d| d.source_count).unwrap_or(0);
+                        tracing::info!(
+                            "[SOURCE_EXCHANGE] Received {} sources via SX from peer {} for file {} -> {} new unique sources persisted (total swarm: {} sources)",
+                            discovered_sources.len(),
+                            target_addr,
+                            file_hash_str,
+                            inserted,
+                            total_swarm
+                        );
                     }
                 }
             }
@@ -73,8 +78,7 @@ pub async fn handle_sx_answer(
 
 pub async fn handle_sx_request(
     packet: &mule_protocol::framing::RawPacket,
-    dl_hash_bytes: [u8; 16],
-    file_hash_str: &str,
+    dl_hash_bytes: Option<[u8; 16]>,
     target_addr: SocketAddr,
     decoder: &Ed2kDecoder,
     encoder: &Ed2kEncoder,
@@ -86,10 +90,11 @@ pub async fn handle_sx_request(
     {
         match decoder.decode_request_sources(packet.protocol, packet.opcode, &packet.payload) {
             Ok(req) => {
-                if req.file_hash == dl_hash_bytes {
+                if dl_hash_bytes.is_none() || dl_hash_bytes == Some(req.file_hash) {
+                    let file_hash_str = hex::encode(req.file_hash);
                     let known_sources = {
                         let dl_svc = downloads.lock().await;
-                        dl_svc.list_peer_sources(file_hash_str).unwrap_or_default()
+                        dl_svc.list_peer_sources(&file_hash_str).unwrap_or_default()
                     };
                     let mut resp_sources = Vec::new();
                     for src in known_sources {
@@ -97,7 +102,7 @@ pub async fn handle_sx_request(
                             break;
                         }
                         if src.port > 0 && src.ip >= 16_777_216 {
-                            let ip_bytes = src.ip.to_be_bytes();
+                            let ip_bytes = src.ip.to_le_bytes();
                             let user_hash_opt = if let Some(ref h) = src.user_hash {
                                 if let Ok(hb) = hex::decode(h) {
                                     if hb.len() == 16 {
@@ -122,7 +127,7 @@ pub async fn handle_sx_request(
                         }
                     }
 
-                    let ans = Ed2kAnswerSources::new(dl_hash_bytes, resp_sources);
+                    let ans = Ed2kAnswerSources::new(req.file_hash, resp_sources);
                     if let Ok(ans_pkt) = encoder.encode_answer_sources(&ans, true) {
                         let mut resp_wire = Vec::with_capacity(6 + ans_pkt.payload.len());
                         resp_wire.push(ans_pkt.protocol);
@@ -134,10 +139,10 @@ pub async fn handle_sx_request(
                             tracing::warn!("Failed to send SX answer to {target_addr}: {e}");
                         } else {
                             tracing::info!(
-                                "Sent SX answer with {} sources (proto=0x{:02X}, len={}) to peer {target_addr}",
+                                "[SOURCE_EXCHANGE] Sent SX response with {} sources to peer {} for file {}",
                                 ans.sources.len(),
-                                ans_pkt.protocol,
-                                resp_wire.len()
+                                target_addr,
+                                file_hash_str
                             );
                         }
                     }

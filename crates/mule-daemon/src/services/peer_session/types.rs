@@ -7,10 +7,10 @@ use std::time::Duration;
 use mule_network_policy::SocketPermit;
 
 /// Maximum active peer connections per file hash (hard safety ceiling).
-pub const MAX_PEERS_PER_DOWNLOAD: usize = 40;
+pub const MAX_PEERS_PER_DOWNLOAD: usize = 400;
 
 /// Maximum active peer connections across the entire daemon.
-pub const MAX_GLOBAL_PEERS: usize = 50;
+pub const MAX_GLOBAL_PEERS: usize = 500;
 
 /// Maximum read buffer capacity for incoming peer data (256 KiB) to prevent OOM.
 pub const MAX_PEER_READ_BUFFER_SIZE: usize = 256 * 1024;

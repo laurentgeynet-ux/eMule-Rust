@@ -182,9 +182,29 @@ pub async fn handle_settings_set(
     }
 
     if updated_max_global.is_some() || updated_max_per_file.is_some() {
-        let max_g = updated_max_global.unwrap_or(state.config.max_global_download_peers);
-        let max_f = updated_max_per_file.unwrap_or(state.config.max_peers_per_download);
-        state.peer_session.set_swarm_limits(max_f, max_g).await;
+        let (current_max_g, current_max_f) = {
+            let dls = state.downloads.lock().await;
+            let g = dls
+                .get_setting("max_global_download_peers")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(state.config.max_global_download_peers);
+            let f = dls
+                .get_setting("max_peers_per_download")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(state.config.max_peers_per_download);
+            (g, f)
+        };
+        state.peer_session.set_swarm_limits(current_max_f, current_max_g).await;
+
+        let mut b = state.network_policy.budgets();
+        if b.max_active_peer_connections < current_max_g {
+            b.max_active_peer_connections = current_max_g.min(1500);
+            let _ = state.network_policy.set_budgets(b);
+        }
     }
 
     Ok(json!({

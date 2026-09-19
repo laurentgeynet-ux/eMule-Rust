@@ -3,6 +3,28 @@
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [0.1.8] - 2026-09-19
+
+Release de performance et de fidélité protocolaire eMule : agrégation multi-pairs des débits de téléchargement, gestion conforme des files d'attente distantes (Queue Ranking) et préservation des quotas d'essaim.
+
+### Ajouté & Optimisé
+- **Agrégation Multi-Pairs & Stabilisation du Débit (`transfer.rs`)** :
+  - Calcul et synchronisation en temps réel du débit cumulé de téléchargement sur l'ensemble des sessions actives pour un même fichier (`sync_transfer_rates`).
+  - Suppression des artefacts d'affichage à 0 B/s : `RateResetGuard` recalcule le débit restant lors de la déconnexion d'un pair au lieu d'écraser la vitesse globale à zéro.
+  - Journalisation de télémétrie `[DL_PROGRESS]` périodique claire affichant le débit global cumulé et la contribution par pair actif.
+- **Gestion Conforme des Files d'Attente Distantes (`peer_session.rs`)** :
+  - Détection appropriée de la déconnexion en file d'attente (`Disconnected in queue`) : lorsque les pairs eMule ferment le socket TCP pour préserver leurs ressources tout en maintenant notre rang (`OP_QUEUERANKING`), la source reste en statut `Allowed`.
+  - Application du délai de réinterrogation conforme eMule (10 à 15 minutes) au lieu d'une re-connexion immédiate agressive à 60s, évitant les pénalités et bannissements de file.
+- **Protection du Plafond de Quota de l'Essaim (`swarm_coordinator/strategy.rs`, `types.rs`)** :
+  - Intégration des sources en file d'attente (`Candidate`, `Tried`, `Allowed`) dans le calcul des sources viables, empêchant l'effondrement du plafond d'allocation water-filling.
+- **Inbound Listener & Upload Queue (`dispatcher.rs`, `upload_queue.rs`)** :
+  - Traitement complet des requêtes de téléversement entrantes (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`) et libération dynamique des slots d'envoi.
+  - Logs de diagnostic stratégiques (`[UPLOAD_REQUEST]`, `[UPLOAD_SLOT_GRANTED]`, `[UPLOAD_RELEASED]`).
+- **Cartographie Globale du Dépôt (`INDEX.md`)** :
+  - Inventaire exhaustif et documentation de tous les fichiers versionnés du projet Emule-Sion.
+
+---
+
 ## [0.1.3-lab] - 2026-09-15
 
 Release de consolidation majeure intégrant l'implémentation complète du protocole eD2K réel (Tier 3.1 à Tier 3.6), l'inspection détaillée et la Part Map (Phase 8.1), l'historique et statistiques locales avec exports caviardés (Phase 8.2), les catégories locales et la hiérarchie de destination à 4 niveaux (Phase 8.3), l'import défensif de fichiers `.part.met` eMule avec rapport d'audit (Phase 8.4), ainsi que le packaging multi-saveurs Windows et la migration de schéma SQLite (Phase 8.5).

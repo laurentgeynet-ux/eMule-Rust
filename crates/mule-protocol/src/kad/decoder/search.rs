@@ -272,8 +272,8 @@ pub fn decode_search_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result
                 }
             }
 
-            if parse_ok && cursor <= raw_bytes.len() {
-                if is_source_res {
+            if (parse_ok || !source_entries.is_empty() || !keyword_entries.is_empty()) && cursor <= raw_bytes.len() {
+                if is_source_res || !source_entries.is_empty() {
                     taglist_result = Some(KadMessage::SearchSourceRes(KadSearchSourceRes {
                         target_file_hash: target_hash,
                         sources: source_entries,
@@ -290,6 +290,19 @@ pub fn decode_search_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result
 
     if let Some(msg) = taglist_result {
         return Ok(msg);
+    }
+
+    // For Kad2 packets or packets with 34+ byte headers, never fall back to Kad1 decoding
+    // as bytes 16..18 contain arbitrary target hash bytes, not a count.
+    if raw_bytes.len() >= 34 || protocol == PR_KADEMLIA || protocol == PR_KADEMLIA_PACKED {
+        if raw_bytes.len() >= 32 {
+            let mut target_hash = [0u8; 16];
+            target_hash.copy_from_slice(&raw_bytes[16..32]);
+            return Ok(KadMessage::SearchSourceRes(KadSearchSourceRes {
+                target_file_hash: target_hash,
+                sources: Vec::new(),
+            }));
+        }
     }
 
     if payload.len() < 18 {

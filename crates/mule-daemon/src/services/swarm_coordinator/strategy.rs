@@ -11,11 +11,19 @@ use crate::services::downloads::types::DownloadSnapshot;
 use crate::services::server_session::ServerConnectionStatus;
 use crate::services::swarm_allocator::{FileDemand, SwarmAllocationConfig, SwarmAllocator};
 
-use super::types::{SwarmCoordinator, MAX_CONNECT_PER_TICK, SOURCE_REQUERY_INTERVAL};
+use super::types::{
+    SwarmCoordinator, HEARTBEAT_INTERVAL, MAX_CONNECT_PER_TICK, SOURCE_REQUERY_INTERVAL,
+};
 
 impl SwarmCoordinator {
     /// Evaluates all active downloads, runs source discovery, and connects to peers.
     pub async fn tick(&mut self) {
+        // Periodic consolidated system heartbeat (every 60s)
+        if self.last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
+            self.last_heartbeat = Instant::now();
+            self.emit_heartbeat().await;
+        }
+
         // 0. Decay stale download rates (reset frozen speed to 0 if inactive > 2s)
         let decayed_snapshots = {
             let mut dl_guard = self.state.downloads.lock().await;
@@ -168,8 +176,8 @@ impl SwarmCoordinator {
                         .filter(|s| match s.status {
                             PeerSourceStatus::Candidate
                             | PeerSourceStatus::Tried
-                            | PeerSourceStatus::Allowed
-                            | PeerSourceStatus::Failed => {
+                            | PeerSourceStatus::Allowed => true,
+                            PeerSourceStatus::Failed => {
                                 if let Some(cooldown) = s.cooldown_until_unix_ms {
                                     cooldown <= now_ms
                                 } else {
@@ -264,7 +272,9 @@ impl SwarmCoordinator {
                 None => true,
             };
 
-            if should_query {
+            // Match official eMule: if file has already reached its max sources limit,
+            // do not waste server and Kad bandwidth re-querying.
+            if should_query && candidate_sources.len() < alloc_config.max_peers_per_file {
                 self.last_source_query.insert(hash_hex.clone(), now);
 
                 if self.state.server_session.snapshot().await.status
@@ -450,5 +460,73 @@ impl SwarmCoordinator {
                 }
             }
         }
+    }
+
+    /// Emits a consolidated periodic system heartbeat summarizing the entire daemon status.
+    pub(crate) async fn emit_heartbeat(&self) {
+        // 1. Server info
+        let srv_snap = self.state.server_session.snapshot().await;
+        let srv_str = match srv_snap.status {
+            ServerConnectionStatus::Connected => {
+                let name = srv_snap.server_name.as_deref().unwrap_or("Server");
+                let addr = srv_snap.server_address.as_deref().unwrap_or("");
+                let client_id = srv_snap.client_id.map(|id| format!("{id}")).unwrap_or_else(|| "N/A".into());
+                format!("Connected to {name} ({addr}, ID: {client_id})")
+            }
+            ServerConnectionStatus::Connecting => "Connecting...".to_string(),
+            ServerConnectionStatus::Disconnected => "Disconnected".to_string(),
+            _ => format!("{:?}", srv_snap.status),
+        };
+
+        // 2. Kad info
+        let kad_snap = self.state.kad.get_status().await;
+        let kad_str = if kad_snap.is_udp_active {
+            format!("Running ({} contacts, {}/{} pkts)", kad_snap.total_contacts, kad_snap.packets_sent, kad_snap.packets_received)
+        } else {
+            "Inactive".to_string()
+        };
+
+        // 3. Downloads info
+        let (active_dl_count, other_dl_count, total_dl_rate, total_sources) = {
+            let dl_guard = self.state.downloads.lock().await;
+            let dls = dl_guard.list_downloads();
+            let mut active = 0;
+            let mut other = 0;
+            let mut rate = 0u64;
+            let mut sources = 0;
+            for d in dls {
+                if d.status.to_lowercase() == "downloading" {
+                    active += 1;
+                } else {
+                    other += 1;
+                }
+                rate = rate.saturating_add(d.download_rate_bps);
+                sources += d.source_count;
+            }
+            (active, other, rate, sources)
+        };
+        let swarm_snap = self.state.peer_session.swarm_snapshot(None).await;
+        let dl_str = format!(
+            "{} active, {} other ({:.1} KB/s, {} peers connected, {} known sources)",
+            active_dl_count,
+            other_dl_count,
+            total_dl_rate as f64 / 1024.0,
+            swarm_snap.active_peer_count,
+            total_sources
+        );
+
+        // 4. Upload info
+        let listener_snap = self.state.inbound_listener.snapshot().await;
+        let ul_str = format!(
+            "{} active ({:.1} KB/s, {} queued)",
+            listener_snap.active_uploads,
+            listener_snap.upload_rate_bps as f64 / 1024.0,
+            listener_snap.queued_uploads
+        );
+
+        tracing::info!(
+            "[SYSTEM_HEARTBEAT] Server: {} | Kad: {} | DL: {} | UL: {}",
+            srv_str, kad_str, dl_str, ul_str
+        );
     }
 }

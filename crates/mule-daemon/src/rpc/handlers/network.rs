@@ -175,10 +175,17 @@ pub async fn handle_limits_set(
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
     let mut cfg = mule_filter::RateLimitsConfig::default();
 
-    if let Some(dl) = params["downloadBytesPerSec"].as_u64() {
+    let dl_bytes = params["downloadBytesPerSec"]
+        .as_u64()
+        .or_else(|| params["downloadLimit"].as_u64().map(|kb| kb * 1024));
+    if let Some(dl) = dl_bytes {
         cfg.download_bytes_per_sec = dl;
     }
-    if let Some(ul) = params["uploadBytesPerSec"].as_u64() {
+
+    let ul_bytes = params["uploadBytesPerSec"]
+        .as_u64()
+        .or_else(|| params["uploadLimit"].as_u64().map(|kb| kb * 1024));
+    if let Some(ul) = ul_bytes {
         cfg.upload_bytes_per_sec = ul;
     }
     if let Some(cpm) = params["connectionsPerMinute"].as_u64() {

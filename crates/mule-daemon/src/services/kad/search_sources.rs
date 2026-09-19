@@ -220,7 +220,11 @@ pub async fn search_sources_iterative(
                         }
                     };
 
-                    if !policy_allowed || ip_filter.check_ip(ip_addr).is_some() {
+                    if !policy_allowed {
+                        continue;
+                    }
+                    if let Some(rule) = ip_filter.check_ip(ip_addr) {
+                        tracing::debug!("[IP_FILTER] Discarded Kad source candidate {} for {} (rule: {})", ip_addr, file_hash_hex, rule.description);
                         continue;
                     }
 
@@ -255,16 +259,19 @@ pub async fn search_sources_iterative(
     }
 
     if !discovered_sources.is_empty() {
-        tracing::info!(
-            "Kad search_sources for {} finished: discovered {} new peer sources (persisted to download swarm)",
-            file_hash_hex,
-            discovered_sources.len()
-        );
         let mut dl = downloads.lock().await;
-        let _ = dl.upsert_peer_sources(file_hash_hex, &discovered_sources);
+        let upserted = dl.upsert_peer_sources(file_hash_hex, &discovered_sources).unwrap_or(0);
+        let total_swarm = dl.find_by_ed2k_hash(file_hash_hex).map(|d| d.source_count).unwrap_or(0);
+        tracing::info!(
+            "[KAD_SEARCH] SearchSources for file {} finished: {} candidate responses -> {} new unique sources persisted (total swarm: {} sources)",
+            file_hash_hex,
+            discovered_sources.len(),
+            upserted,
+            total_swarm
+        );
     } else {
         tracing::info!(
-            "Kad search_sources for {} finished: 0 sources found from queried contacts",
+            "[KAD_SEARCH] SearchSources for file {} finished: 0 sources found from queried contacts",
             file_hash_hex
         );
     }

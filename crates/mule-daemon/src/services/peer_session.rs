@@ -306,8 +306,14 @@ impl PeerSessionManager {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
                         _ => {
-                            let cd = calculate_backoff_cooldown_ms(1);
-                            (PeerSourceStatus::Failed, Some(now_ms + cd))
+                            if err_msg.as_deref() == Some("Disconnected in queue") {
+                                // Standard eMule queue behavior: remote peer returned queue rank and closed TCP socket.
+                                // Keep status as Allowed (not Failed) with a 10-minute re-ask cooldown.
+                                (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
+                            } else {
+                                let cd = calculate_backoff_cooldown_ms(1);
+                                (PeerSourceStatus::Failed, Some(now_ms + cd))
+                            }
                         }
                     }
                 } else {

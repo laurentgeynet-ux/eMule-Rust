@@ -138,7 +138,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit awaiting file status"));
                         }
                         while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
-                            if packet.protocol == PR_ED2K || packet.protocol == PR_EMULE {
+                            if packet.protocol == PR_ED2K || packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED {
                                 if packet.opcode == OP_FILESTATUS {
                                     let status_res = decoder.decode_file_status(packet.protocol, packet.opcode, &packet.payload, 0);
                                     match status_res {
@@ -200,7 +200,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                 } else if packet.protocol == PR_EMULE
                                     && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                                 {
-                                    handle_sx_request(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, downloads, stream).await;
+                                    handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
                                 }
                             }
                         }
@@ -318,7 +318,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                             } else if packet.protocol == PR_EMULE
                                 && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                             {
-                                handle_sx_request(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, downloads, stream).await;
+                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
                             }
                         }
                     }

@@ -30,6 +30,7 @@ use super::storage::Ed2kBlockWriter;
 use super::tags::{Ed2kTag, TagName, TagValue, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION};
 use crate::framing::{PacketCodec, RawPacket};
 
+/// Decodes a test file status request with automatic profile detection based on opcode.
 pub fn decode_test_file_status_req(
     decoder: &Ed2kDecoder,
     protocol: u8,
@@ -44,6 +45,7 @@ pub fn decode_test_file_status_req(
     decoder.decode_file_status_req_with_profile(profile, protocol, opcode, payload, 0)
 }
 
+/// Decodes test request parts with automatic profile detection based on opcode.
 pub fn decode_test_request_parts(
     decoder: &Ed2kDecoder,
     protocol: u8,

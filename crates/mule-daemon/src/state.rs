@@ -37,14 +37,35 @@ pub struct AppState {
 impl AppState {
     pub fn new(config: DaemonConfig, downloads: DownloadService) -> Self {
         let (event_tx, _) = broadcast::channel(1024);
+        let (max_per_dl, max_global) = {
+            let max_g = downloads
+                .get_setting("max_global_download_peers")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(config.max_global_download_peers);
+            let max_f = downloads
+                .get_setting("max_peers_per_download")
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(config.max_peers_per_download);
+            (max_f, max_g)
+        };
+
+        let mut budgets = ResourceBudgets::default();
+        if budgets.max_active_peer_connections < max_global {
+            budgets.max_active_peer_connections = max_global.min(1500);
+        }
+
         let network_policy = NetworkPolicyManager::new(
             config.network_profile,
-            ResourceBudgets::default(),
+            budgets,
         );
         let sequence = Arc::new(AtomicU64::new(1));
         let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
         let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence))
-            .with_limits(config.max_peers_per_download, config.max_global_download_peers);
+            .with_limits(max_per_dl, max_global);
         let dl_arc = Arc::new(Mutex::new(downloads));
         server_session.set_downloads(Arc::clone(&dl_arc));
         let identity_service = crate::services::IdentityService::load_or_generate(&config.data_dir);

@@ -312,7 +312,7 @@ pub(crate) async fn perform_peer_handshake(
                                             file_hash: file_hash_str.to_string(),
                                             address: address_str.to_string(),
                                             ip: match target_addr {
-                                                SocketAddr::V4(v4) => u32::from_be_bytes(v4.ip().octets()),
+                                                SocketAddr::V4(v4) => u32::from_le_bytes(v4.ip().octets()),
                                                 _ => 0,
                                              },
                                             port: target_addr.port(),

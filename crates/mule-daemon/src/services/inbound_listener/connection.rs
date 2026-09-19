@@ -27,7 +27,10 @@ impl InboundListenerService {
 
         // 1. IP Filter check
         if let Some(rule) = self.network_policy.ip_filter().check_ip(remote_addr.ip()) {
-            warn!("Rejected inbound peer {} by IP filter rule: {}", remote_str, rule.description);
+            tracing::info!(
+                "[IP_FILTER] Dropped inbound TCP connection from {} (rule: '{}', level: {})",
+                remote_str, rule.description, rule.level
+            );
             return;
         }
 

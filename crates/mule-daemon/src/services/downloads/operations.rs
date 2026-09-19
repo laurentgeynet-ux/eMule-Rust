@@ -426,9 +426,31 @@ pub fn inject_range(
     let was_complete = act.download.total_size > 0
         && act.ranges.covered_len() == act.download.total_size;
 
+    const ED2K_PART_SIZE: u64 = 9_728_000;
+    let part_idx = offset / ED2K_PART_SIZE;
+    let part_start = part_idx * ED2K_PART_SIZE;
+    let part_end = ((part_idx + 1) * ED2K_PART_SIZE).min(act.download.total_size);
+    let part_was_complete = part_end > part_start && act.ranges.contains(part_start..part_end);
+
     act.ranges
         .insert(offset..end)
         .map_err(|e| DaemonError::Business(format!("Range error: {e}")))?;
+
+    let part_is_complete = part_end > part_start && act.ranges.contains(part_start..part_end);
+    if part_is_complete && !part_was_complete {
+        let total_parts = ((act.download.total_size + ED2K_PART_SIZE - 1) / ED2K_PART_SIZE).max(1);
+        let progress = (act.ranges.covered_len() as f64 / act.download.total_size.max(1) as f64) * 100.0;
+        tracing::info!(
+            "[PART_COMPLETED] File '{}' (hash: {}): Part {}/{} (offset {}..{}) downloaded & written to disk. Progress: {:.1}%",
+            act.download.display_name,
+            act.download.ed2k_hash.to_hex(),
+            part_idx + 1,
+            total_parts,
+            part_start,
+            part_end,
+            progress
+        );
+    }
 
     db.sync_received_ranges(id, &act.ranges)
         .map_err(|e| DaemonError::Business(format!("DB sync error: {e}")))?;
@@ -567,6 +589,14 @@ pub fn finalize_download(
         "verified_ok",
         None,
     );
+
+    let shared = mule_core::model::SharedFile::new(
+        &finalized_dl.ed2k_hash.to_hex(),
+        &finalized_dl.display_name,
+        finalized_dl.total_size,
+        target_path.to_string_lossy().as_ref(),
+    );
+    let _ = db.upsert_shared_file(&shared);
 
     let act = active.get(id).unwrap();
     Ok(act.snapshot())

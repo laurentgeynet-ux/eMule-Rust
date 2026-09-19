@@ -30,6 +30,42 @@ use super::types::{
 pub const OP_COMPRESSEDPART_I64: u8 = 0xA1;
 pub const OP_SENDINGPART_I64: u8 = 0xA2;
 
+async fn sync_transfer_rates(
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    downloads: &Arc<Mutex<DownloadService>>,
+    event_tx: &broadcast::Sender<String>,
+    sequence: &Arc<AtomicU64>,
+    address_str: &str,
+    file_hash_str: &str,
+    peer_bps: u64,
+    total_received: u64,
+) {
+    let (progress_snapshot, total_file_rate_bps) = {
+        let mut g = inner.lock().await;
+        let snap = if let Some(session) = g.sessions.get_mut(address_str) {
+            session.snapshot.transferred_bytes = total_received;
+            session.snapshot.transfer_rate_bps = peer_bps;
+            Some(session.snapshot.clone())
+        } else {
+            None
+        };
+        let total_rate: u64 = g.sessions.values()
+            .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash_str))
+            .map(|s| s.snapshot.transfer_rate_bps)
+            .sum();
+        (snap, total_rate)
+    };
+
+    if let Some(snap) = progress_snapshot {
+        emit_event(event_tx, sequence, &snap);
+    }
+
+    let mut dl_svc = downloads.lock().await;
+    if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_file_rate_bps) {
+        emit_download_update(event_tx, sequence, &snap);
+    }
+}
+
 pub(crate) async fn run_transfer_loop(
     stream: &mut ObfuscatedStream<TcpStream>,
     target_addr: SocketAddr,
@@ -150,10 +186,13 @@ pub(crate) async fn run_transfer_loop(
     let mut decompressed_offset = req_range.start as u64;
     let mut current_part_idx = part_idx;
     let mut current_req_range = req_range;
+    let mut last_dl_progress_log = std::time::Instant::now();
 
     struct RateResetGuard<'a> {
         downloads: &'a Arc<Mutex<DownloadService>>,
+        inner: &'a Arc<Mutex<SwarmInnerState>>,
         file_hash_str: &'a str,
+        address_str: &'a str,
         event_tx: &'a broadcast::Sender<String>,
         sequence: &'a Arc<AtomicU64>,
     }
@@ -161,12 +200,24 @@ pub(crate) async fn run_transfer_loop(
     impl<'a> Drop for RateResetGuard<'a> {
         fn drop(&mut self) {
             let downloads = Arc::clone(self.downloads);
+            let inner = Arc::clone(self.inner);
             let file_hash_str = self.file_hash_str.to_string();
+            let address_str = self.address_str.to_string();
             let event_tx = self.event_tx.clone();
             let sequence = Arc::clone(self.sequence);
             tokio::spawn(async move {
+                let total_remaining_bps: u64 = {
+                    let mut g = inner.lock().await;
+                    if let Some(session) = g.sessions.get_mut(&address_str) {
+                        session.snapshot.transfer_rate_bps = 0;
+                    }
+                    g.sessions.values()
+                        .filter(|s| s.snapshot.file_hash.as_deref() == Some(&file_hash_str))
+                        .map(|s| s.snapshot.transfer_rate_bps)
+                        .sum()
+                };
                 let mut dl_svc = downloads.lock().await;
-                if let Some(snap) = dl_svc.set_download_rate_by_hash(&file_hash_str, 0) {
+                if let Some(snap) = dl_svc.set_download_rate_by_hash(&file_hash_str, total_remaining_bps) {
                     emit_download_update(&event_tx, &sequence, &snap);
                 }
             });
@@ -175,7 +226,9 @@ pub(crate) async fn run_transfer_loop(
 
     let _rate_guard = RateResetGuard {
         downloads,
+        inner,
         file_hash_str,
+        address_str,
         event_tx,
         sequence,
     };
@@ -252,33 +305,43 @@ pub(crate) async fn run_transfer_loop(
                                 };
 
                                 let elapsed = last_rate_check.elapsed();
-                                let bps = if elapsed >= Duration::from_millis(500) {
-                                    let rate = (bytes_since_rate_check as f64 / elapsed.as_secs_f64()) as u64;
-                                    bytes_since_rate_check = 0;
-                                    last_rate_check = std::time::Instant::now();
-                                    rate
-                                } else {
-                                    inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0)
-                                };
-
-                                let progress_snapshot = {
-                                    let mut g = inner.lock().await;
-                                    if let Some(session) = g.sessions.get_mut(address_str) {
-                                        session.snapshot.transferred_bytes = total_received;
-                                        session.snapshot.transfer_rate_bps = bps;
-                                        Some(session.snapshot.clone())
+                                if elapsed >= Duration::from_millis(500) || is_complete {
+                                    let bps = if elapsed >= Duration::from_millis(500) {
+                                        let rate = (bytes_since_rate_check as f64 / elapsed.as_secs_f64()) as u64;
+                                        bytes_since_rate_check = 0;
+                                        last_rate_check = std::time::Instant::now();
+                                        rate
                                     } else {
-                                        None
-                                    }
-                                };
-                                if let Some(snap) = progress_snapshot {
-                                    emit_event(event_tx, sequence, &snap);
+                                        inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0)
+                                    };
+
+                                    sync_transfer_rates(
+                                        inner,
+                                        downloads,
+                                        event_tx,
+                                        sequence,
+                                        address_str,
+                                        file_hash_str,
+                                        bps,
+                                        total_received,
+                                    ).await;
                                 }
 
-                                if elapsed >= Duration::from_millis(500) || is_complete {
-                                    let mut dl_svc = downloads.lock().await;
-                                    if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, bps) {
-                                        emit_download_update(event_tx, sequence, &snap);
+                                if last_dl_progress_log.elapsed() >= Duration::from_secs(10) {
+                                    last_dl_progress_log = std::time::Instant::now();
+                                    let dl_svc = downloads.lock().await;
+                                    if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
+                                        let peer_bps = inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0);
+                                        tracing::info!(
+                                            "[DL_PROGRESS] File '{}' ({:.1}% - {:.1}/{:.1} MB) | Total Rate: {:.1} KB/s (Peer: {:.1} KB/s) | Active peer: {}",
+                                            dl.file_name,
+                                            dl.progress * 100.0,
+                                            dl.received_bytes as f64 / (1024.0 * 1024.0),
+                                            dl.total_bytes as f64 / (1024.0 * 1024.0),
+                                            dl.download_rate_bps as f64 / 1024.0,
+                                            peer_bps as f64 / 1024.0,
+                                            target_addr
+                                        );
                                     }
                                 }
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED || packet.protocol == PR_ED2K)
@@ -355,10 +418,16 @@ pub(crate) async fn run_transfer_loop(
                                             } else {
                                                 inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0)
                                             };
-                                            let mut dl_svc = downloads.lock().await;
-                                            if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, bps) {
-                                                emit_download_update(event_tx, sequence, &snap);
-                                            }
+                                            sync_transfer_rates(
+                                                inner,
+                                                downloads,
+                                                event_tx,
+                                                sequence,
+                                                address_str,
+                                                file_hash_str,
+                                                bps,
+                                                total_received,
+                                            ).await;
                                         }
                                     }
 
@@ -371,7 +440,7 @@ pub(crate) async fn run_transfer_loop(
                                                     current_req_range.end
                                                 );
                                             } else {
-                                                tracing::info!(
+                                                tracing::debug!(
                                                     "Peer {target_addr}: completed decompression of block at offset {}",
                                                     decompressed_offset
                                                 );
@@ -382,7 +451,7 @@ pub(crate) async fn run_transfer_loop(
                                         }
                                         Ok(Status::Ok) => {
                                             if decompressed_offset >= current_req_range.end as u64 {
-                                                tracing::info!(
+                                                tracing::debug!(
                                                     "Peer {target_addr}: sub-block reached requested boundary {}",
                                                     decompressed_offset
                                                 );
@@ -403,33 +472,37 @@ pub(crate) async fn run_transfer_loop(
                                 }
 
                                 let elapsed = last_rate_check.elapsed();
-                                let bps = if elapsed >= Duration::from_millis(500) {
-                                    let rate = (bytes_since_rate_check as f64 / elapsed.as_secs_f64()) as u64;
+                                if elapsed >= Duration::from_millis(500) {
+                                    let bps = (bytes_since_rate_check as f64 / elapsed.as_secs_f64()) as u64;
                                     bytes_since_rate_check = 0;
                                     last_rate_check = std::time::Instant::now();
-                                    rate
-                                } else {
-                                    inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0)
-                                };
-
-                                let progress_snapshot = {
-                                    let mut g = inner.lock().await;
-                                    if let Some(session) = g.sessions.get_mut(address_str) {
-                                        session.snapshot.transferred_bytes = total_received;
-                                        session.snapshot.transfer_rate_bps = bps;
-                                        Some(session.snapshot.clone())
-                                    } else {
-                                        None
-                                    }
-                                };
-                                if let Some(snap) = progress_snapshot {
-                                    emit_event(event_tx, sequence, &snap);
+                                    sync_transfer_rates(
+                                        inner,
+                                        downloads,
+                                        event_tx,
+                                        sequence,
+                                        address_str,
+                                        file_hash_str,
+                                        bps,
+                                        total_received,
+                                    ).await;
                                 }
 
-                                if elapsed >= Duration::from_millis(500) {
-                                    let mut dl_svc = downloads.lock().await;
-                                    if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, bps) {
-                                        emit_download_update(event_tx, sequence, &snap);
+                                if last_dl_progress_log.elapsed() >= Duration::from_secs(10) {
+                                    last_dl_progress_log = std::time::Instant::now();
+                                    let dl_svc = downloads.lock().await;
+                                    if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
+                                        let peer_bps = inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0);
+                                        tracing::info!(
+                                            "[DL_PROGRESS] File '{}' ({:.1}% - {:.1}/{:.1} MB) | Total Rate: {:.1} KB/s (Peer: {:.1} KB/s) | Active peer: {}",
+                                            dl.file_name,
+                                            dl.progress * 100.0,
+                                            dl.received_bytes as f64 / (1024.0 * 1024.0),
+                                            dl.total_bytes as f64 / (1024.0 * 1024.0),
+                                            dl.download_rate_bps as f64 / 1024.0,
+                                            peer_bps as f64 / 1024.0,
+                                            target_addr
+                                        );
                                     }
                                 }
                             } else if (packet.protocol == PR_ED2K || packet.protocol == PR_EMULE) && packet.opcode == OP_END_OF_DOWNLOAD {
@@ -442,7 +515,7 @@ pub(crate) async fn run_transfer_loop(
                             } else if packet.protocol == PR_EMULE
                                 && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                             {
-                                handle_sx_request(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, downloads, stream).await;
+                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
                             }
 
                             // Pipeline next block
@@ -525,10 +598,20 @@ pub(crate) async fn run_transfer_loop(
         }
     }
 
-    // Reset rate
+    // Reset rate for this peer session and update aggregate file rate
     {
+        let total_remaining_bps: u64 = {
+            let mut g = inner.lock().await;
+            if let Some(session) = g.sessions.get_mut(address_str) {
+                session.snapshot.transfer_rate_bps = 0;
+            }
+            g.sessions.values()
+                .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash_str))
+                .map(|s| s.snapshot.transfer_rate_bps)
+                .sum()
+        };
         let mut dl_svc = downloads.lock().await;
-        if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, 0) {
+        if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_remaining_bps) {
             emit_download_update(event_tx, sequence, &snap);
         }
     }

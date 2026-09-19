@@ -20,9 +20,9 @@ pub struct SwarmAllocationConfig {
 impl Default for SwarmAllocationConfig {
     fn default() -> Self {
         Self {
-            max_global_peers: 50,
-            max_peers_per_file: 40,
-            min_peers_per_file: 2,
+            max_global_peers: 500,
+            max_peers_per_file: 400,
+            min_peers_per_file: 5,
         }
     }
 }
@@ -100,17 +100,8 @@ impl SwarmAllocator {
         }
 
         // 1. Calculate each file's demand ceiling.
-        // If there is only 1 active demand with viable sources, it can absorb up to max_global_peers!
-        let active_files_with_sources = demands
-            .iter()
-            .filter(|d| d.viable_sources_count > 0 && d.remaining_parts > 0)
-            .count();
-
-        let effective_max_per_file = if active_files_with_sources <= 1 {
-            config.max_global_peers
-        } else {
-            config.max_peers_per_file.min(config.max_global_peers)
-        };
+        // Capped by max_peers_per_file and max_global_peers.
+        let effective_max_per_file = config.max_peers_per_file.min(config.max_global_peers);
 
         let file_demands: Vec<(&FileDemand, usize)> = demands
             .iter()
@@ -244,13 +235,27 @@ mod tests {
         let demands = vec![FileDemand::new("hash_solo", "normal", 80, 50, 0)];
         let config = SwarmAllocationConfig {
             max_global_peers: 50,
+            max_peers_per_file: 50,
+            min_peers_per_file: 2,
+        };
+
+        let quotas = SwarmAllocator::compute_quotas(&demands, &config);
+        // When max_peers_per_file is at or above global, file absorbs all 50 slots!
+        assert_eq!(quotas.get("hash_solo"), Some(&50));
+    }
+
+    #[test]
+    fn test_single_file_capped_at_max_per_file() {
+        let demands = vec![FileDemand::new("hash_solo", "normal", 80, 50, 0)];
+        let config = SwarmAllocationConfig {
+            max_global_peers: 50,
             max_peers_per_file: 40,
             min_peers_per_file: 2,
         };
 
         let quotas = SwarmAllocator::compute_quotas(&demands, &config);
-        // Since it's the only file with sources, it absorbs all 50 slots!
-        assert_eq!(quotas.get("hash_solo"), Some(&50));
+        // Even solo file respects the hard max_peers_per_file ceiling!
+        assert_eq!(quotas.get("hash_solo"), Some(&40));
     }
 
     #[test]

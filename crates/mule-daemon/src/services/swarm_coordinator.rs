@@ -10,8 +10,9 @@ pub mod strategy;
 pub mod types;
 
 use std::collections::HashMap;
+use std::time::Instant;
 pub use types::{
-    SwarmCoordinator, COORDINATOR_TICK_INTERVAL, MAX_CONNECT_PER_TICK,
+    SwarmCoordinator, COORDINATOR_TICK_INTERVAL, HEARTBEAT_INTERVAL, MAX_CONNECT_PER_TICK,
     SOURCE_REQUERY_INTERVAL,
 };
 
@@ -24,6 +25,7 @@ impl SwarmCoordinator {
             let mut coordinator = Self {
                 state,
                 last_source_query: HashMap::new(),
+                last_heartbeat: Instant::now(),
             };
             coordinator.run_loop().await;
         })
