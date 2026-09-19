@@ -220,7 +220,11 @@ fn test_database_delete_download_persists_across_reopen() {
     {
         let db = Database::open(&db_path).unwrap();
         let all = db.get_all_downloads().unwrap();
-        assert_eq!(all.len(), 0, "Deleted download must not exist after restart");
+        assert_eq!(
+            all.len(),
+            0,
+            "Deleted download must not exist after restart"
+        );
 
         let ranges = db.load_received_ranges(&dl_id).unwrap();
         assert!(ranges.is_empty(), "Ranges must be purged on delete");
@@ -229,4 +233,3 @@ fn test_database_delete_download_persists_across_reopen() {
         assert!(parts.is_empty(), "Verified parts must be purged on delete");
     }
 }
-

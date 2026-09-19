@@ -1,8 +1,8 @@
 //! Gateway discovery and SSDP searching logic.
 
+use igd_next::{search_gateway, Gateway, SearchOptions};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
-use igd_next::{search_gateway, Gateway, SearchOptions};
 use tracing::debug;
 
 use super::types::detect_primary_local_ipv4;
@@ -29,8 +29,9 @@ pub fn discover_gateway_with_fallback() -> Result<Gateway, String> {
                 timeout: Some(Duration::from_secs(4)),
                 ..Default::default()
             };
-            search_gateway(fallback_options)
-                .map_err(|fallback_err| format!("UPnP discovery failed (primary: {primary_err}, fallback: {fallback_err})"))
+            search_gateway(fallback_options).map_err(|fallback_err| {
+                format!("UPnP discovery failed (primary: {primary_err}, fallback: {fallback_err})")
+            })
         }
     }
 }

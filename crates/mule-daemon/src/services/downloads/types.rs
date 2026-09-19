@@ -1,6 +1,6 @@
 use mule_core::{Download, DownloadStatus, PartFile, RangeSet};
 use mule_protocol::ed2k::PartAvailabilityMask;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -126,6 +126,16 @@ pub struct ActiveDownload {
     pub last_rate_update: Option<Instant>,
     pub source_count: u32,
     pub verification_in_progress: bool,
+    /// Parts that failed MD4 verification and await AICH recovery data
+    /// (only populated when a trusted AICH root is known):
+    /// `(part_index, enqueued_at)`.
+    pub aich_pending: VecDeque<(u32, Instant)>,
+    /// Parts for which an AICH recovery request was already sent:
+    /// `part -> (sent_at, attempts)`.
+    pub aich_requested: HashMap<u32, (Instant, u32)>,
+    /// Untrusted AICH master-hash votes: root hash -> masked source IPs
+    /// (eMule `CAICHUntrustedHash`; IP masked with `0x00F0FFFF`).
+    pub aich_votes: HashMap<[u8; 20], HashSet<u32>>,
 }
 
 impl ActiveDownload {

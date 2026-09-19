@@ -147,7 +147,9 @@ pub struct SwarmStatusSnapshot {
 pub(crate) struct PeerSessionHandle {
     pub snapshot: PeerSessionSnapshot,
     pub abort_handle: tokio::task::AbortHandle,
-    pub _permit: SocketPermit,
+    /// Outbound-connect permit; `None` for sessions adopted from the inbound
+    /// listener (LowID callback), which are accounted by the listener itself.
+    pub _permit: Option<SocketPermit>,
 }
 
 pub(crate) struct SwarmInnerState {
@@ -161,6 +163,9 @@ pub(crate) struct SwarmInnerState {
     pub max_peers_per_download: usize,
     /// Maximum active peer connections across the entire daemon.
     pub max_global_peers: usize,
+    /// Peer UDP endpoints learned from handshakes:
+    /// `"ip:tcp_port"` → `(eMule UDP port, client UDP version)`.
+    pub peer_udp: HashMap<String, (u16, u8)>,
 }
 
 #[derive(Debug)]

@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -27,8 +27,8 @@ pub struct RateLimitsConfig {
 impl Default for RateLimitsConfig {
     fn default() -> Self {
         Self {
-            download_bytes_per_sec: 0, // unlimited
-            upload_bytes_per_sec: 0,   // unlimited
+            download_bytes_per_sec: 0,   // unlimited
+            upload_bytes_per_sec: 0,     // unlimited
             connections_per_minute: 120, // 2 per second max by default
             server_requests_per_sec: 10,
             kad_packets_per_sec: 50,
@@ -106,7 +106,11 @@ impl TokenBucket {
 
     /// Asynchronously acquires `count` tokens, sleeping if necessary.
     /// If the `cancel` callback or cancellation token fires, returns `Err(TokenBucketError::Cancelled)`.
-    pub async fn acquire_tokens<F>(&self, count: u64, is_cancelled: F) -> Result<(), TokenBucketError>
+    pub async fn acquire_tokens<F>(
+        &self,
+        count: u64,
+        is_cancelled: F,
+    ) -> Result<(), TokenBucketError>
     where
         F: Fn() -> bool,
     {

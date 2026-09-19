@@ -73,53 +73,123 @@ impl SwarmCoordinator {
                                 }
                                 Err(e) => {
                                     tracing::error!("Failed to finalize download {id}: {e}");
-                                    if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
+                                    if let Ok(snap) = dl_guard.update_status(
+                                        &id,
+                                        mule_core::model::DownloadStatus::Failed,
+                                    ) {
                                         state_clone.broadcast_download_update(snap);
                                     }
                                 }
                             }
                         } else {
-                            let (covered_bytes, missing_ranges) = {
+                            // Global MD4 mismatch: if the per-part hashset is known,
+                            // identify corrupted parts and evict only those ranges
+                            // for re-download (eMule CPartFile corrupted-part recovery)
+                            // instead of failing the whole file.
+                            let expected_part_hashes = {
                                 let dl_guard = state_clone.downloads.lock().await;
-                                (
-                                    dl_guard.get_covered_len(&id).unwrap_or(0),
-                                    dl_guard.get_missing_ranges(&id).unwrap_or_default(),
-                                )
+                                dl_guard.get_part_hashes_for_download(&id)
                             };
-                            let disk_len = std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
-                            tracing::error!(
-                                "Download {id} hash mismatch: expected {}, got {}. File size: expected={} bytes, on-disk={} bytes, covered_in_ranges={} bytes. Missing ranges: {:?}",
-                                hex::encode(expected_hash),
-                                hex::encode(computed.root_hash.0),
-                                total_size,
-                                disk_len,
-                                covered_bytes,
-                                missing_ranges
-                            );
-                            let mut dl_guard = state_clone.downloads.lock().await;
-                            if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
-                                state_clone.broadcast_download_update(snap);
+
+                            let mut corrupted: Vec<u32> = Vec::new();
+                            let mut verified_ok: Vec<u32> = Vec::new();
+                            if !expected_part_hashes.is_empty() {
+                                for (i, expected_ph) in expected_part_hashes.iter().enumerate() {
+                                    match computed.part_hashes.get(i) {
+                                        Some(actual) if actual == expected_ph => {
+                                            verified_ok.push(i as u32)
+                                        }
+                                        _ => corrupted.push(i as u32),
+                                    }
+                                }
+                            }
+
+                            if corrupted.is_empty() {
+                                let (covered_bytes, missing_ranges) = {
+                                    let dl_guard = state_clone.downloads.lock().await;
+                                    (
+                                        dl_guard.get_covered_len(&id).unwrap_or(0),
+                                        dl_guard.get_missing_ranges(&id).unwrap_or_default(),
+                                    )
+                                };
+                                let disk_len =
+                                    std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
+                                tracing::error!(
+                                    "Download {id} hash mismatch: expected {}, got {}. File size: expected={} bytes, on-disk={} bytes, covered_in_ranges={} bytes. Missing ranges: {:?}",
+                                    hex::encode(expected_hash),
+                                    hex::encode(computed.root_hash.0),
+                                    total_size,
+                                    disk_len,
+                                    covered_bytes,
+                                    missing_ranges
+                                );
+                                let mut dl_guard = state_clone.downloads.lock().await;
+                                if let Ok(snap) = dl_guard
+                                    .update_status(&id, mule_core::model::DownloadStatus::Failed)
+                                {
+                                    state_clone.broadcast_download_update(snap);
+                                }
+                            } else {
+                                tracing::warn!(
+                                    "Download {id} root hash mismatch: {} corrupted part(s) {:?} out of {} — evicting for re-download",
+                                    corrupted.len(),
+                                    corrupted,
+                                    expected_part_hashes.len()
+                                );
+                                let mut dl_guard = state_clone.downloads.lock().await;
+                                for part_idx in verified_ok {
+                                    let _ = dl_guard.db_mut().mark_part_verified(&id, part_idx);
+                                }
+                                match dl_guard.evict_corrupted_parts(&id, &corrupted) {
+                                    Ok(snap) => {
+                                        state_clone.broadcast_download_update(snap);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to evict corrupted parts for download {id}: {e}");
+                                        if let Ok(snap) = dl_guard.update_status(
+                                            &id,
+                                            mule_core::model::DownloadStatus::Failed,
+                                        ) {
+                                            state_clone.broadcast_download_update(snap);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                     Ok(Err(e)) => {
-                        tracing::error!("Download {id} hash reader failed for {}: {e}", temp_path.display());
+                        tracing::error!(
+                            "Download {id} hash reader failed for {}: {e}",
+                            temp_path.display()
+                        );
                         let mut dl_guard = state_clone.downloads.lock().await;
                         let already_finalized = target_path.exists()
-                            && std::fs::metadata(&target_path).map(|m| m.len()).unwrap_or(0) == total_size;
+                            && std::fs::metadata(&target_path)
+                                .map(|m| m.len())
+                                .unwrap_or(0)
+                                == total_size;
                         if already_finalized {
-                            tracing::info!("Download {id} target file already exists in {}; marking Completed", target_path.display());
-                            if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Completed) {
+                            tracing::info!(
+                                "Download {id} target file already exists in {}; marking Completed",
+                                target_path.display()
+                            );
+                            if let Ok(snap) = dl_guard
+                                .update_status(&id, mule_core::model::DownloadStatus::Completed)
+                            {
                                 state_clone.broadcast_download_update(snap);
                             }
-                        } else if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
+                        } else if let Ok(snap) =
+                            dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed)
+                        {
                             state_clone.broadcast_download_update(snap);
                         }
                     }
                     Err(e) => {
                         tracing::error!("Download {id} spawn_blocking failed: {e}");
                         let mut dl_guard = state_clone.downloads.lock().await;
-                        if let Ok(snap) = dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed) {
+                        if let Ok(snap) =
+                            dl_guard.update_status(&id, mule_core::model::DownloadStatus::Failed)
+                        {
                             state_clone.broadcast_download_update(snap);
                         }
                     }
@@ -131,6 +201,11 @@ impl SwarmCoordinator {
         if self.state.network_policy.state() == mule_network_policy::NetworkState::Disabled {
             return;
         }
+
+        // 1b. Automatic server failover: if the eD2K server connection dropped,
+        // pick another enabled known server after a backoff (eMule DeadServer
+        // retry semantics, bounded so a dead server list cannot spin).
+        self.maybe_reconnect_server().await;
 
         // 2. Fetch list of active/queued downloads
         let active_downloads: Vec<DownloadSnapshot> = {
@@ -235,6 +310,13 @@ impl SwarmCoordinator {
         };
         let quotas = SwarmAllocator::compute_quotas(&demands, &alloc_config);
 
+        // Client-UDP keep-alives: OP_REASKFILEPING toward sources queued on
+        // a remote peer that announced an eMule UDP port — deduplicated at
+        // ~21 min cadence (CUpDownClient::UDPReaskForDownload).
+        for target in self.state.peer_session.queued_udp_targets().await {
+            self.state.client_udp.send_reask_file_ping(&target, 0).await;
+        }
+
         for dl in active_downloads {
             let file_info = {
                 let dl_guard = self.state.downloads.lock().await;
@@ -295,6 +377,19 @@ impl SwarmCoordinator {
                     }
                 }
 
+                // UDP source query (OP_GLOBGETSOURCES2) toward the connected
+                // server — its UDP port is TCP+4 (eMule convention).
+                // Fire-and-forget; answers arrive as OP_GLOBFOUNDSOURCES.
+                if let Some(addr_str) = self.state.server_session.snapshot().await.server_address {
+                    if let Ok(mut udp_addr) = addr_str.parse::<SocketAddr>() {
+                        udp_addr.set_port(udp_addr.port().saturating_add(4));
+                        self.state
+                            .server_udp
+                            .send_glob_get_sources(udp_addr, &hash.0, size as u64)
+                            .await;
+                    }
+                }
+
                 if self.state.network_policy.profile().allows_udp_kad() {
                     let kad = Arc::clone(&self.state.kad);
                     let h = hash_hex.clone();
@@ -308,7 +403,7 @@ impl SwarmCoordinator {
                 }
             }
 
-            let (client_id, server_ip, server_port) = {
+            let (client_id, server_ip, server_port, server_is_high_id) = {
                 let s_snap = self.state.server_session.snapshot().await;
                 if s_snap.status == ServerConnectionStatus::Connected {
                     let cid = s_snap.client_id.unwrap_or(0);
@@ -332,7 +427,7 @@ impl SwarmCoordinator {
                     } else {
                         (0u32, 0u16)
                     };
-                    (cid, s_ip, s_port)
+                    (cid, s_ip, s_port, s_snap.is_high_id)
                 } else {
                     tracing::debug!(
                         "Skipping peer connections for {hash_hex}: no eD2K server connection (client_id would be 0)"
@@ -383,6 +478,50 @@ impl SwarmCoordinator {
                     .iter()
                     .any(|p| p.peer_address.as_deref() == Some(&src.address));
                 if already_connected {
+                    continue;
+                }
+
+                // LowID source: unreachable directly — ask the connected
+                // server to relay a callback (eMule `OP_CALLBACKREQUEST`).
+                // The target then connects inbound; the inbound listener
+                // matches it by client_id and adopts it as a download session.
+                if let Some(lowid_str) = src.address.strip_prefix("lowid:") {
+                    if !server_is_high_id {
+                        // Callbacks are useless while we are LowID ourselves:
+                        // the target cannot connect back to us.
+                        continue;
+                    }
+                    let Ok(lowid) = lowid_str.parse::<u32>() else {
+                        continue;
+                    };
+                    if self.state.peer_session.has_pending_callback(lowid) {
+                        continue;
+                    }
+                    match self.state.server_session.request_callback(lowid).await {
+                        Ok(()) => {
+                            tracing::info!(
+                                "Requested server callback to LowID source {lowid} for {file_hash}",
+                                file_hash = hash_hex
+                            );
+                            self.state.peer_session.register_pending_callback(
+                                lowid,
+                                hash_hex.clone(),
+                                5 * 60 * 1000,
+                            );
+                            let mut dl_guard = self.state.downloads.lock().await;
+                            let _ = dl_guard.update_peer_source_status(
+                                &hash_hex,
+                                &src.address,
+                                PeerSourceStatus::Tried,
+                                None,
+                                Some(now_ms + 5 * 60 * 1000),
+                            );
+                            connected_this_tick += 1;
+                        }
+                        Err(e) => {
+                            tracing::debug!("Callback request for LowID {lowid} failed: {e}");
+                        }
+                    }
                     continue;
                 }
 
@@ -449,8 +588,7 @@ impl SwarmCoordinator {
                 connected_this_tick += 1;
             }
 
-            if (active_count > 0 || connected_this_tick > 0)
-                && dl.status.to_lowercase() == "queued"
+            if (active_count > 0 || connected_this_tick > 0) && dl.status.to_lowercase() == "queued"
             {
                 let mut dl_guard = self.state.downloads.lock().await;
                 if let Ok(updated_snap) =
@@ -462,6 +600,100 @@ impl SwarmCoordinator {
         }
     }
 
+    /// Automatic server failover. While disconnected, periodically picks an
+    /// enabled known server (excluding the one that just dropped and any
+    /// address attempted within `SERVER_FAIL_COOLDOWN`) and reconnects.
+    /// Bounded by `SERVER_RECONNECT_INTERVAL` between attempts.
+    async fn maybe_reconnect_server(&mut self) {
+        use super::types::{SERVER_FAIL_COOLDOWN, SERVER_RECONNECT_INTERVAL};
+
+        let snap = self.state.server_session.snapshot().await;
+        match snap.status {
+            ServerConnectionStatus::Connected => {
+                self.last_connected_server = snap.server_address;
+                return;
+            }
+            ServerConnectionStatus::Connecting | ServerConnectionStatus::Disconnecting => {
+                return;
+            }
+            ServerConnectionStatus::Disconnected => {}
+        }
+
+        if let Some(last) = self.last_server_reconnect {
+            if last.elapsed() < SERVER_RECONNECT_INTERVAL {
+                return;
+            }
+        }
+
+        // Pick an enabled, non-blocked server not attempted recently; prefer
+        // a different server than the one that just dropped.
+        let candidates = {
+            let dl_guard = self.state.downloads.lock().await;
+            dl_guard
+                .list_servers()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|s| {
+                    s.filter_status == mule_core::model::ServerFilterStatus::Allowed
+                        && s.address.parse::<SocketAddr>().is_ok()
+                        && self
+                            .server_attempts
+                            .get(&s.address)
+                            .is_none_or(|t| t.elapsed() >= SERVER_FAIL_COOLDOWN)
+                })
+                .map(|s| (s.address, s.name, s.preference))
+                .collect::<Vec<_>>()
+        };
+        if candidates.is_empty() {
+            return;
+        }
+
+        let pick = candidates
+            .iter()
+            .filter(|(addr, _, _)| Some(addr) != self.last_connected_server.as_ref())
+            .max_by_key(|(_, _, pref)| *pref)
+            .or_else(|| candidates.iter().max_by_key(|(_, _, pref)| *pref));
+        let Some((address, name, _)) = pick else {
+            return;
+        };
+
+        let addr: SocketAddr = match address.parse() {
+            Ok(a) => a,
+            Err(_) => return,
+        };
+        let permit = match self
+            .state
+            .network_policy
+            .request_tcp_connect(addr, mule_network_policy::ConnectionPurpose::Ed2kServer)
+        {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::debug!("Server failover: permit denied for {addr}: {e}");
+                return;
+            }
+        };
+
+        let user_hash = self.state.identity.lock().await.user_hash();
+        let ed2k_port = self.state.config.ed2k_port;
+        tracing::info!("Server failover: connecting to {name} ({addr})");
+        self.last_server_reconnect = Some(Instant::now());
+        self.server_attempts.insert(address.clone(), Instant::now());
+        let _ = self
+            .state
+            .server_session
+            .connect(
+                addr,
+                Some(name.clone()),
+                permit,
+                10000,
+                15000,
+                ed2k_port,
+                "http://emule-project.net".to_string(),
+                user_hash,
+            )
+            .await;
+    }
+
     /// Emits a consolidated periodic system heartbeat summarizing the entire daemon status.
     pub(crate) async fn emit_heartbeat(&self) {
         // 1. Server info
@@ -470,7 +702,10 @@ impl SwarmCoordinator {
             ServerConnectionStatus::Connected => {
                 let name = srv_snap.server_name.as_deref().unwrap_or("Server");
                 let addr = srv_snap.server_address.as_deref().unwrap_or("");
-                let client_id = srv_snap.client_id.map(|id| format!("{id}")).unwrap_or_else(|| "N/A".into());
+                let client_id = srv_snap
+                    .client_id
+                    .map(|id| format!("{id}"))
+                    .unwrap_or_else(|| "N/A".into());
                 format!("Connected to {name} ({addr}, ID: {client_id})")
             }
             ServerConnectionStatus::Connecting => "Connecting...".to_string(),
@@ -481,7 +716,10 @@ impl SwarmCoordinator {
         // 2. Kad info
         let kad_snap = self.state.kad.get_status().await;
         let kad_str = if kad_snap.is_udp_active {
-            format!("Running ({} contacts, {}/{} pkts)", kad_snap.total_contacts, kad_snap.packets_sent, kad_snap.packets_received)
+            format!(
+                "Running ({} contacts, {}/{} pkts)",
+                kad_snap.total_contacts, kad_snap.packets_sent, kad_snap.packets_received
+            )
         } else {
             "Inactive".to_string()
         };
@@ -526,7 +764,10 @@ impl SwarmCoordinator {
 
         tracing::info!(
             "[SYSTEM_HEARTBEAT] Server: {} | Kad: {} | DL: {} | UL: {}",
-            srv_str, kad_str, dl_str, ul_str
+            srv_str,
+            kad_str,
+            dl_str,
+            ul_str
         );
     }
 }

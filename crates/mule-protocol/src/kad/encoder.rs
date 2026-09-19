@@ -28,8 +28,25 @@ impl KadEncoder {
         buf.freeze()
     }
 
+    /// Encodes a KADEMLIA2_FIREWALLUDP (0x62) test packet:
+    /// [u8 error_code][u16 tested_udp_port] — official eMule format
+    /// (`ProcessFirewallCheckUDPRequest` in BaseClient.cpp).
+    pub fn encode_firewall_udp(error_code: u8, udp_port: u16) -> Bytes {
+        let mut buf = BytesMut::with_capacity(5);
+        buf.put_u8(PR_KADEMLIA);
+        buf.put_u8(KADEMLIA2_FIREWALLUDP);
+        buf.put_u8(error_code);
+        buf.put_u16_le(udp_port);
+        buf.freeze()
+    }
+
     /// Encodes a Kad2 Hello request packet.
-    pub fn encode_hello_req(kad_id: &KadIdBytes, udp_port: u16, version: u8, tcp_port: u16) -> Bytes {
+    pub fn encode_hello_req(
+        kad_id: &KadIdBytes,
+        udp_port: u16,
+        version: u8,
+        tcp_port: u16,
+    ) -> Bytes {
         let mut buf = BytesMut::with_capacity(23);
         buf.put_u8(PR_KADEMLIA);
         buf.put_u8(KADEMLIA2_HELLO_REQ);
@@ -41,7 +58,12 @@ impl KadEncoder {
     }
 
     /// Encodes a Kad2 Hello response packet.
-    pub fn encode_hello_res(kad_id: &KadIdBytes, udp_port: u16, version: u8, tcp_port: u16) -> Bytes {
+    pub fn encode_hello_res(
+        kad_id: &KadIdBytes,
+        udp_port: u16,
+        version: u8,
+        tcp_port: u16,
+    ) -> Bytes {
         let mut buf = BytesMut::with_capacity(23);
         buf.put_u8(PR_KADEMLIA);
         buf.put_u8(KADEMLIA2_HELLO_RES);
@@ -90,10 +112,7 @@ impl KadEncoder {
 
     /// Encodes a Kad2 Find Node response packet (0x29, KADEMLIA2_RES).
     /// Official format: [target_id: 16] [count: u8] followed by count * 25-byte contact records.
-    pub fn encode_find_node_res(
-        target_id: &KadIdBytes,
-        contacts: &[KadContactWire],
-    ) -> Bytes {
+    pub fn encode_find_node_res(target_id: &KadIdBytes, contacts: &[KadContactWire]) -> Bytes {
         let count = contacts.len().min(MAX_KAD_RES_CONTACTS);
         let mut buf = BytesMut::with_capacity(2 + 16 + 1 + count * 25);
         buf.put_u8(PR_KADEMLIA);

@@ -10,14 +10,22 @@ pub mod types;
 use bytes::Bytes;
 
 pub use search::{SearchQuery, SearchResult, SearchResultFile};
-pub use sources::{FoundSourcePeer, FoundSourcePeerObfu, FoundSources, FoundSourcesObfu, GetSourcesRequest};
-pub use types::{ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus};
+pub use sources::{
+    FoundSourcePeer, FoundSourcePeerObfu, FoundSources, FoundSourcesObfu, GetSourcesRequest,
+};
+pub use types::{
+    ed2k_file_type_term, CallbackRequest, CallbackRequested, OfferFiles, OfferedFile,
+    ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus,
+    OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT, SRV_TCPFLG_COMPRESSION,
+    SRV_TCPFLG_LARGEFILES,
+};
 
 use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
-    OP_FOUNDSOURCES, OP_FOUNDSOURCES_OBFU, OP_IDCHANGE, OP_SEARCH_RESULT, OP_SERVERIDENT,
-    OP_SERVERMESSAGE, OP_SERVERSTATUS, OP_SERVERSTATUS_LEGACY,
+    OP_CALLBACKREQUESTED, OP_CALLBACK_FAIL, OP_FOUNDSOURCES, OP_FOUNDSOURCES_OBFU, OP_IDCHANGE,
+    OP_SEARCH_RESULT, OP_SERVERIDENT, OP_SERVERLIST, OP_SERVERMESSAGE, OP_SERVERSTATUS,
+    OP_SERVERSTATUS_LEGACY,
 };
 use super::protocol::PR_ED2K;
 use super::tags::TagReader;
@@ -65,6 +73,18 @@ pub fn decode_server_response(
                 current_users,
                 current_files,
             }))
+        }
+
+        OP_SERVERLIST => {
+            let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
+            let count = reader.read_u8("server_list_count")? as usize;
+            let mut servers = Vec::with_capacity(count.min(256));
+            for _ in 0..count {
+                let ip = reader.read_u32_le("server_list_ip")?;
+                let port = reader.read_u16_le("server_list_port")?;
+                servers.push((ip, port));
+            }
+            Ok(ServerResponse::ServerList { servers })
         }
 
         OP_SERVERIDENT => {
@@ -181,6 +201,45 @@ pub fn decode_server_response(
                 file_hash,
                 sources,
             }))
+        }
+
+        OP_CALLBACKREQUESTED => {
+            if payload.len() < 6 {
+                return Err(Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    0,
+                    "callback_requested",
+                    Ed2kErrorKind::UnexpectedEof {
+                        needed: 6,
+                        available: payload.len(),
+                    },
+                ));
+            }
+            let ip = u32::from_le_bytes(payload[0..4].try_into().unwrap());
+            let port = u16::from_le_bytes(payload[4..6].try_into().unwrap());
+            let (crypt_options, user_hash) = if payload.len() >= 23 {
+                let mut h = [0u8; 16];
+                h.copy_from_slice(&payload[7..23]);
+                (Some(payload[6]), Some(h))
+            } else {
+                (None, None)
+            };
+            Ok(ServerResponse::CallbackRequested(CallbackRequested {
+                ip,
+                port,
+                crypt_options,
+                user_hash,
+            }))
+        }
+
+        OP_CALLBACK_FAIL => {
+            let client_id = if payload.len() >= 4 {
+                Some(u32::from_le_bytes(payload[0..4].try_into().unwrap()))
+            } else {
+                None
+            };
+            Ok(ServerResponse::CallbackFail { client_id })
         }
 
         OP_FOUNDSOURCES_OBFU => {

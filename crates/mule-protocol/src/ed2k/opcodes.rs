@@ -49,6 +49,15 @@ pub const OP_HELLOANSWER: u8 = 0x4C;
 /// Announce shared files to server (`0x15`).
 pub const OP_OFFERFILES: u8 = 0x15;
 
+/// Ask the server to relay a connection request to a LowID client (`0x1C`).
+pub const OP_CALLBACKREQUEST: u8 = 0x1C;
+
+/// Server-relayed callback notification to the LowID target (`0x35`).
+pub const OP_CALLBACKREQUESTED: u8 = 0x35;
+
+/// Server failed to relay a callback request (`0x36`).
+pub const OP_CALLBACK_FAIL: u8 = 0x36;
+
 /// Data block transfer packet (`0x46`).
 pub const OP_SENDINGPART: u8 = 0x46;
 
@@ -103,6 +112,55 @@ pub const OP_REQFILENAME_ANSWER: u8 = 0x59;
 /// Queue ranking response in upload queue (`0x60`).
 pub const OP_QUEUERANKING: u8 = 0x60;
 
+/// Server list pushed by the connected server (`0x32`).
+/// Payload: `u8 count` + `count` × (`u32 ip` + `u16 port`).
+pub const OP_SERVERLIST: u8 = 0x32;
+
+// ---------------------------------------------------------------------------
+// Server UDP Opcodes (Protocol 0xE3 over UDP, eMule UDPSocket)
+// ---------------------------------------------------------------------------
+
+/// Global search request, extended tag form (`0x90`):
+/// `<u32 tag_count><CTag CT_SERVER_UDPSEARCH_FLAGS>` + search expression.
+pub const OP_GLOBSEARCHREQ3: u8 = 0x90;
+/// Global search request (`0x92`): raw search expression, same payload as
+/// `OP_SEARCHREQUEST` (eMule reuses the search packet verbatim).
+pub const OP_GLOBSEARCHREQ2: u8 = 0x92;
+/// Global sources request with file size (`0x94`): `hash16 + u32 size`.
+pub const OP_GLOBGETSOURCES2: u8 = 0x94;
+/// Global search request, legacy form (`0x98`): raw search expression.
+pub const OP_GLOBSEARCHREQ: u8 = 0x98;
+/// Server statistics request (`0x96`, empty payload).
+pub const OP_GLOBSERVSTATREQ: u8 = 0x96;
+/// Server statistics response (`0x97`): `u32 users + u32 files`.
+pub const OP_GLOBSERVSTATRES: u8 = 0x97;
+/// Global search result (`0x99`): search result file entries.
+pub const OP_GLOBSEARCHRES: u8 = 0x99;
+/// Global found sources response (`0x9B`): repeated
+/// `hash16 + u8 count + count` × (`u32 ip` + `u16 port`).
+pub const OP_GLOBFOUNDSOURCES: u8 = 0x9B;
+
+// ---------------------------------------------------------------------------
+// Client-to-Client UDP Opcodes (Protocol 0xC5, eMule ClientUDPSocket)
+// ---------------------------------------------------------------------------
+
+/// Keep-alive / re-request sent over UDP to a queued source (`0x90`).
+/// Payload: `<HASH 16>` (+ optional extended info for UDP version > 2).
+pub const OP_REASKFILEPING: u8 = 0x90;
+
+/// UDP answer carrying the queue rank (`0x91`).
+/// Payload: `[u16 part_status_count + bitfield]` (UDP ver > 3) + `u16 rank`.
+pub const OP_REASKACK: u8 = 0x91;
+
+/// UDP answer: the requested file is not shared (`0x92`, empty payload).
+pub const OP_FILENOTFOUND: u8 = 0x92;
+
+/// UDP answer: the remote upload queue is full (`0x93`, empty payload).
+pub const OP_QUEUEFULL: u8 = 0x93;
+
+/// UDP callback re-request relayed through a Kad buddy (`0x94`).
+pub const OP_REASKCALLBACKUDP: u8 = 0x94;
+
 // ---------------------------------------------------------------------------
 // Extended eMule Opcodes (Protocol 0xC5)
 // ---------------------------------------------------------------------------
@@ -144,11 +202,19 @@ pub const OP_ANSWERSOURCES2: u8 = 0x84;
 /// Public Key exchange for Secure User Identification (`0x85`).
 pub const OP_PUBLICKEY: u8 = 0x85;
 
-/// Signature exchange for Secure User Identification (`0x87`).
-pub const OP_SIGNATURE: u8 = 0x87;
+/// Signature exchange for Secure User Identification (`0x86`).
+pub const OP_SIGNATURE: u8 = 0x86;
 
-/// Secure User Identification State (`0x86`).
-pub const OP_SECIDENTSTATE: u8 = 0x86;
+/// Secure User Identification State (`0x87`).
+pub const OP_SECIDENTSTATE: u8 = 0x87;
+
+/// Kad UDP firewall check request (`0xA7`, sent over PR_EMULE after the TCP
+/// hello). Payload: `u16 intern_kad_port` + `u16 extern_kad_port` +
+/// `u32 udp_verify_key` (eMule `SendFirewallCheckUDPRequest`).
+pub const OP_FWCHECKUDPREQ: u8 = 0xA7;
+
+/// Kad firewall TCP-check acknowledgement (`0xA8`, eMule `OP_KAD_FWTCPCHECK_ACK`).
+pub const OP_KAD_FWTCPCHECK_ACK: u8 = 0xA8;
 
 // ---------------------------------------------------------------------------
 // Compressed Protocol Opcodes (Protocol 0xD4)
@@ -174,6 +240,9 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_FOUNDSOURCES => "OP_FOUNDSOURCES",
             OP_FOUNDSOURCES_OBFU => "OP_FOUNDSOURCES_OBFU",
             OP_OFFERFILES => "OP_OFFERFILES",
+            OP_CALLBACKREQUEST => "OP_CALLBACKREQUEST",
+            OP_CALLBACKREQUESTED => "OP_CALLBACKREQUESTED",
+            OP_CALLBACK_FAIL => "OP_CALLBACK_FAIL",
             OP_SENDINGPART => "OP_SENDINGPART",
             OP_SETREQFILEID => "OP_SETREQFILEID",
             OP_FILEREQANSNOFILE => "OP_FILEREQANSNOFILE",
@@ -202,6 +271,8 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_ANSWERSOURCES => "OP_ANSWERSOURCES",
             OP_REQUESTSOURCES2 => "OP_REQUESTSOURCES2",
             OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
+            OP_FWCHECKUDPREQ => "OP_FWCHECKUDPREQ",
+            OP_KAD_FWTCPCHECK_ACK => "OP_KAD_FWTCPCHECK_ACK",
             _ => "OP_UNKNOWN_EMULE",
         },
         super::protocol::PR_EMULE_COMPRESSED => match opcode {

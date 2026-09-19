@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/mule-crypto",
     "crates/mule-format",
     "crates/mule-core",
     "crates/mule-daemon",

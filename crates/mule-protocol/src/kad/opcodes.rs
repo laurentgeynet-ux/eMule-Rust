@@ -93,5 +93,8 @@ pub const MAX_KAD_UDP_PACKET_SIZE: usize = 65507;
 /// Checks if the protocol byte is a recognized Kademlia UDP protocol magic.
 #[inline]
 pub fn is_valid_kad_protocol(protocol: u8) -> bool {
-    matches!(protocol, PR_KADEMLIA | PR_KADEMLIA_PACKED | PR_KADEMLIA_RESERVED)
+    matches!(
+        protocol,
+        PR_KADEMLIA | PR_KADEMLIA_PACKED | PR_KADEMLIA_RESERVED
+    )
 }

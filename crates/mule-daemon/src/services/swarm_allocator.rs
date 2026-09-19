@@ -78,9 +78,7 @@ impl FileDemand {
             (self.remaining_parts * 3).max(2)
         };
 
-        self.viable_sources_count
-            .min(max_per_file)
-            .min(part_demand)
+        self.viable_sources_count.min(max_per_file).min(part_demand)
     }
 }
 
@@ -324,7 +322,10 @@ mod tests {
         let high = *quotas.get("hash_high").unwrap();
         let low = *quotas.get("hash_low").unwrap();
 
-        assert!(high > low, "High priority ({high}) should get more than low ({low})");
+        assert!(
+            high > low,
+            "High priority ({high}) should get more than low ({low})"
+        );
         assert_eq!(high + low, 10);
     }
 

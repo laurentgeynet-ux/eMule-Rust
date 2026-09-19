@@ -144,10 +144,7 @@ pub fn decode_file_status(
             base_offset + 16,
             "filestatus_part_count",
             Ed2kErrorKind::MalformedField {
-                message: format!(
-                    "part_count {part_count} exceeds limit {}",
-                    limits.max_parts
-                ),
+                message: format!("part_count {part_count} exceeds limit {}", limits.max_parts),
             },
         ));
     }
@@ -179,19 +176,17 @@ pub fn decode_file_status(
         ));
     }
 
-    let availability_mask = PartAvailabilityMask::from_bytes(
-        Bytes::copy_from_slice(bitfield_bytes),
-        part_count,
-    )
-    .map_err(|k| {
-        Ed2kParseError::new(
-            protocol,
-            Some(opcode),
-            base_offset + 18,
-            "filestatus_bitfield",
-            k,
-        )
-    })?;
+    let availability_mask =
+        PartAvailabilityMask::from_bytes(Bytes::copy_from_slice(bitfield_bytes), part_count)
+            .map_err(|k| {
+                Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    base_offset + 18,
+                    "filestatus_bitfield",
+                    k,
+                )
+            })?;
 
     Ok(Ed2kFileStatus {
         file_hash,

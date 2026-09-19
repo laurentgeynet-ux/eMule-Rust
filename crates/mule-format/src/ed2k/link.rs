@@ -161,7 +161,9 @@ impl Ed2kFileLink {
     ) -> Result<Self, FormatError> {
         let raw_name = file_name.into();
         if raw_name.trim().is_empty() {
-            return Err(FormatError::InvalidLink("File name cannot be empty".to_string()));
+            return Err(FormatError::InvalidLink(
+                "File name cannot be empty".to_string(),
+            ));
         }
         if size == 0 {
             return Err(FormatError::EmptyInput);

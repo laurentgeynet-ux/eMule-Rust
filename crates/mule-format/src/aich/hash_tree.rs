@@ -103,14 +103,17 @@ impl AichNode {
             let left_size = left_blocks * base_size;
             let right_size = data_size - left_size;
 
-            let next_base = if left_size <= ED2K_PART_SIZE as u64 {
-                AICH_BLOCK_SIZE as u64
-            } else {
-                ED2K_PART_SIZE as u64
+            // eMule: each child's base size depends on its own coverage
+            // (part granularity above one part, block granularity below).
+            let child_base = |size: u64| {
+                if size <= ED2K_PART_SIZE as u64 {
+                    AICH_BLOCK_SIZE as u64
+                } else {
+                    ED2K_PART_SIZE as u64
+                }
             };
-
-            let left = Box::new(Self::build_node(left_size, true, next_base));
-            let right = Box::new(Self::build_node(right_size, false, next_base));
+            let left = Box::new(Self::build_node(left_size, true, child_base(left_size)));
+            let right = Box::new(Self::build_node(right_size, false, child_base(right_size)));
 
             Self {
                 data_size,
@@ -120,6 +123,19 @@ impl AichNode {
                 left: Some(left),
                 right: Some(right),
             }
+        }
+    }
+
+    /// Iterates the AICH leaf blocks of a `file_size`-byte file.
+    /// Blocks are aligned to eD2K part boundaries (eMule semantics): each
+    /// part holds 52 full 180 KiB blocks plus a 143,360-byte final block.
+    pub fn for_each_block_range(file_size: u64, mut f: impl FnMut(u64, u64)) {
+        let mut pos = 0u64;
+        while pos < file_size {
+            let part_end = ((pos / ED2K_PART_SIZE as u64) + 1) * ED2K_PART_SIZE as u64;
+            let end = (pos + AICH_BLOCK_SIZE as u64).min(part_end).min(file_size);
+            f(pos, end - pos);
+            pos = end;
         }
     }
 
@@ -188,17 +204,20 @@ pub fn calculate_aich_root(data: &[u8]) -> Result<AichHash, FormatError> {
         return Err(FormatError::EmptyInput);
     }
     let mut tree = AichNode::new_tree(data.len() as u64)?;
-    let mut offset = 0;
-    while offset < data.len() {
-        let chunk_len = (data.len() - offset).min(AICH_BLOCK_SIZE);
-        let block_bytes = &data[offset..offset + chunk_len];
-
+    let mut ok = true;
+    AichNode::for_each_block_range(data.len() as u64, |start, len| {
+        let block_bytes = &data[start as usize..(start + len) as usize];
         let mut hasher = Sha1::new();
         hasher.update(block_bytes);
         let digest: [u8; 20] = hasher.finalize().into();
-
-        tree.set_leaf_hash(offset as u64, chunk_len as u64, AichHash(digest));
-        offset += chunk_len;
+        if !tree.set_leaf_hash(start, len, AichHash(digest)) {
+            ok = false;
+        }
+    });
+    if !ok {
+        return Err(FormatError::AichVerificationFailed(
+            "failed to set leaf hash".to_string(),
+        ));
     }
     tree.recalculate_hash()
 }

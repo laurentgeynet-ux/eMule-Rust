@@ -89,7 +89,9 @@ pub async fn handle_request(
         "sources.connect" => handle_sources_connect(state, req.params).await,
         "sources.disconnect" => handle_sources_disconnect(state, req.params).await,
         "sources.clear" => handle_sources_clear(state, req.params).await,
-        "sources.status" | "sources.swarmStatus" | "swarm.status" => handle_sources_status(state, req.params).await,
+        "sources.status" | "sources.swarmStatus" | "swarm.status" => {
+            handle_sources_status(state, req.params).await
+        }
         "shares.list" => handle_shares_list(state).await,
         "shares.add" => handle_shares_add(state, req.params).await,
         "shares.remove" => handle_shares_remove(state, req.params).await,
@@ -126,9 +128,7 @@ pub async fn handle_request(
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
-        "downloads.getSources" | "ed2k.getSources" => {
-            handle_get_sources(state, req.params).await
-        }
+        "downloads.getSources" | "ed2k.getSources" => handle_get_sources(state, req.params).await,
         #[cfg(feature = "lab-loopback")]
         "lab.addPeerSource" | "downloads.addSource" => {
             handle_lab_add_peer_source(state, req.params).await

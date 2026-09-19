@@ -35,21 +35,23 @@ impl DaemonClient {
         explicit_workdir: Option<PathBuf>,
         explicit_app: Option<PathBuf>,
     ) -> Result<Self, String> {
-        let (endpoint, token) = Self::resolve_connection(
-            explicit_url,
-            explicit_token,
-            explicit_workdir,
-            explicit_app,
-        ).await?;
+        let (endpoint, token) =
+            Self::resolve_connection(explicit_url, explicit_token, explicit_workdir, explicit_app)
+                .await?;
         info!("Connecting to Emule-Sion daemon at {}", endpoint);
 
         let (ws_stream, _) = tokio_tungstenite::connect_async(&endpoint)
             .await
-            .map_err(|e| format!("Failed to connect to daemon at {endpoint}: {e}. Is Emule-Sion running?"))?;
+            .map_err(|e| {
+                format!("Failed to connect to daemon at {endpoint}: {e}. Is Emule-Sion running?")
+            })?;
 
         let (mut ws_write, mut ws_read) = ws_stream.split();
         let (write_tx, mut write_rx) = mpsc::channel::<Message>(64);
-        let pending = Arc::new(Mutex::new(HashMap::<u64, oneshot::Sender<Result<Value, String>>>::new()));
+        let pending = Arc::new(Mutex::new(HashMap::<
+            u64,
+            oneshot::Sender<Result<Value, String>>,
+        >::new()));
         let (search_events_tx, _) = broadcast::channel::<Value>(128);
 
         // Background task to send messages to WebSocket
@@ -74,7 +76,8 @@ impl DaemonClient {
                                 let mut map = pending_clone.lock().await;
                                 if let Some(sender) = map.remove(&id_u64) {
                                     if let Some(err) = val.get("error") {
-                                        let err_msg = err.get("message")
+                                        let err_msg = err
+                                            .get("message")
                                             .and_then(|m| m.as_str())
                                             .unwrap_or("RPC error");
                                         let _ = sender.send(Err(err_msg.to_string()));
@@ -83,7 +86,8 @@ impl DaemonClient {
                                         let _ = sender.send(Ok(res));
                                     }
                                 }
-                            } else if let Some(method) = val.get("method").and_then(|m| m.as_str()) {
+                            } else if let Some(method) = val.get("method").and_then(|m| m.as_str())
+                            {
                                 debug!("Received daemon notification: {method}");
                                 if method == "server.searchResult" || method == "kad.searchResult" {
                                     if let Some(params) = val.get("params") {
@@ -120,9 +124,10 @@ impl DaemonClient {
             "protocolVersion": 1,
             "token": token
         });
-        client.call("system.hello", hello_params).await.map_err(|e| {
-            format!("Handshake with Emule-Sion daemon failed: {e}")
-        })?;
+        client
+            .call("system.hello", hello_params)
+            .await
+            .map_err(|e| format!("Handshake with Emule-Sion daemon failed: {e}"))?;
 
         info!("Successfully connected and authenticated with Emule-Sion daemon");
         Ok(client)
@@ -147,9 +152,7 @@ impl DaemonClient {
                 app_path
             };
 
-            if bundle_root.join("portable.flag").exists()
-                || bundle_root.join("data").is_dir()
-            {
+            if bundle_root.join("portable.flag").exists() || bundle_root.join("data").is_dir() {
                 bundle_root.join("data")
             } else {
                 bundle_root
@@ -244,18 +247,28 @@ impl DaemonClient {
                         for item in results {
                             let mut file_obj = item.clone();
                             file_obj["network"] = json!("kad");
-                            let name_opt = file_obj.get("fileName").and_then(|n| n.as_str()).map(String::from);
+                            let name_opt = file_obj
+                                .get("fileName")
+                                .and_then(|n| n.as_str())
+                                .map(String::from);
                             let size_opt = file_obj.get("fileSize").and_then(|s| s.as_u64());
-                            let hash_opt = file_obj.get("fileHash").and_then(|h| h.as_str()).map(String::from);
+                            let hash_opt = file_obj
+                                .get("fileHash")
+                                .and_then(|h| h.as_str())
+                                .map(String::from);
 
-                            if let (Some(name), Some(size), Some(hash)) = (name_opt, size_opt, hash_opt) {
+                            if let (Some(name), Some(size), Some(hash)) =
+                                (name_opt, size_opt, hash_opt)
+                            {
                                 if let Some(ext) = extension {
-                                    let ext_with_dot = format!(".{}", ext.trim_start_matches('.').to_lowercase());
+                                    let ext_with_dot =
+                                        format!(".{}", ext.trim_start_matches('.').to_lowercase());
                                     if !name.to_lowercase().ends_with(&ext_with_dot) {
                                         continue;
                                     }
                                 }
-                                file_obj["ed2kLink"] = json!(format!("ed2k://|file|{name}|{size}|{hash}|/"));
+                                file_obj["ed2kLink"] =
+                                    json!(format!("ed2k://|file|{name}|{size}|{hash}|/"));
                                 if seen_hashes.insert(hash.to_lowercase()) {
                                     collected_files.push(file_obj);
                                 }
@@ -286,7 +299,8 @@ impl DaemonClient {
 
             let _ = self.call("servers.search", params).await;
 
-            let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(wait_seconds);
+            let deadline =
+                tokio::time::Instant::now() + tokio::time::Duration::from_secs(wait_seconds);
             while tokio::time::Instant::now() < deadline {
                 let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
                 if let Ok(Ok(event_params)) = tokio::time::timeout(remaining, rx.recv()).await {
@@ -294,12 +308,21 @@ impl DaemonClient {
                         for f in files {
                             let mut file_obj = f.clone();
                             file_obj["network"] = json!("server");
-                            let name_opt = file_obj.get("fileName").and_then(|n| n.as_str()).map(String::from);
+                            let name_opt = file_obj
+                                .get("fileName")
+                                .and_then(|n| n.as_str())
+                                .map(String::from);
                             let size_opt = file_obj.get("fileSize").and_then(|s| s.as_u64());
-                            let hash_opt = file_obj.get("fileHash").and_then(|h| h.as_str()).map(String::from);
+                            let hash_opt = file_obj
+                                .get("fileHash")
+                                .and_then(|h| h.as_str())
+                                .map(String::from);
 
-                            if let (Some(name), Some(size), Some(hash)) = (name_opt, size_opt, hash_opt) {
-                                file_obj["ed2kLink"] = json!(format!("ed2k://|file|{name}|{size}|{hash}|/"));
+                            if let (Some(name), Some(size), Some(hash)) =
+                                (name_opt, size_opt, hash_opt)
+                            {
+                                file_obj["ed2kLink"] =
+                                    json!(format!("ed2k://|file|{name}|{size}|{hash}|/"));
                                 if seen_hashes.insert(hash.to_lowercase()) {
                                     collected_files.push(file_obj);
                                 }

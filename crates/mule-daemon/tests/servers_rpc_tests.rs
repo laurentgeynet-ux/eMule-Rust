@@ -1,12 +1,12 @@
-use tempfile::tempdir;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::net::Ipv4Addr;
+use tempfile::tempdir;
 
-use mule_format::{ServerEntry, ServerMetFile, Tag};
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_daemon::rpc::methods::handle_request;
 use mule_daemon::rpc::types::JsonRpcRequest;
+use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
+use mule_format::{ServerEntry, ServerMetFile, Tag};
 
 fn setup_test_state() -> (AppState, tempfile::TempDir) {
     let dir = tempdir().unwrap();
@@ -46,21 +46,32 @@ async fn test_servers_rpc_workflow() {
             "token": "servers_test_token_123"
         })),
     );
-    let resp = handle_request(&state, hello_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, hello_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
-    let caps = resp.result.unwrap()["capabilities"].as_array().unwrap().clone();
+    let caps = resp.result.unwrap()["capabilities"]
+        .as_array()
+        .unwrap()
+        .clone();
     assert!(caps.iter().any(|c| c.as_str() == Some("servers")));
 
     // 2. Load an ipfilter rule into the daemon to verify cross-check
     // Block 10.0.0.0 - 10.255.255.255
     let ipfilter_path = dir.path().join("ipfilter.dat");
-    std::fs::write(&ipfilter_path, "010.000.000.000 - 010.255.255.255 , 100 , Malicious Range\n").unwrap();
+    std::fs::write(
+        &ipfilter_path,
+        "010.000.000.000 - 010.255.255.255 , 100 , Malicious Range\n",
+    )
+    .unwrap();
     let import_filter_req = make_req(
         2,
         "filter.importFile",
         Some(json!({ "filePath": ipfilter_path.to_str().unwrap() })),
     );
-    let resp = handle_request(&state, import_filter_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, import_filter_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     // 3. Create a test server.met with 2 servers:
@@ -77,8 +88,14 @@ async fn test_servers_rpc_workflow() {
         dyn_ip: None,
         version: Some("17.15".to_string()),
         tags: vec![
-            Tag::new_id(mule_format::SN_NAME, mule_format::TagValue::String("Allowed Donkey".to_string())),
-            Tag::new_id(mule_format::SN_DESCRIPTION, mule_format::TagValue::String("Fast server".to_string())),
+            Tag::new_id(
+                mule_format::SN_NAME,
+                mule_format::TagValue::String("Allowed Donkey".to_string()),
+            ),
+            Tag::new_id(
+                mule_format::SN_DESCRIPTION,
+                mule_format::TagValue::String("Fast server".to_string()),
+            ),
         ],
     };
     let s2 = ServerEntry {
@@ -91,9 +108,10 @@ async fn test_servers_rpc_workflow() {
         failed_count: 5,
         dyn_ip: None,
         version: None,
-        tags: vec![
-            Tag::new_id(mule_format::SN_NAME, mule_format::TagValue::String("Rogue Donkey".to_string())),
-        ],
+        tags: vec![Tag::new_id(
+            mule_format::SN_NAME,
+            mule_format::TagValue::String("Rogue Donkey".to_string()),
+        )],
     };
 
     let met_file = ServerMetFile {
@@ -113,7 +131,9 @@ async fn test_servers_rpc_workflow() {
         "servers.inspectMet",
         Some(json!({ "filePath": server_met_path.to_str().unwrap() })),
     );
-    let resp = handle_request(&state, inspect_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, inspect_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let inspect_res = resp.result.unwrap();
     assert_eq!(inspect_res["totalCount"], 2);
@@ -122,7 +142,9 @@ async fn test_servers_rpc_workflow() {
 
     // Verify servers in SQLite is still 0
     let list_req = make_req(4, "servers.list", None);
-    let resp = handle_request(&state, list_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, list_req, &mut authenticated)
+        .await
+        .unwrap();
     assert_eq!(resp.result.unwrap()["total"], 0);
 
     // 5. Test servers.importMet (Persist)
@@ -131,7 +153,9 @@ async fn test_servers_rpc_workflow() {
         "servers.importMet",
         Some(json!({ "filePath": server_met_path.to_str().unwrap() })),
     );
-    let resp = handle_request(&state, import_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, import_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let import_res = resp.result.unwrap();
     assert_eq!(import_res["imported"], 2);
@@ -140,14 +164,22 @@ async fn test_servers_rpc_workflow() {
 
     // 6. Test servers.list (Should return 2 servers with correct filter_status)
     let list_req = make_req(6, "servers.list", None);
-    let resp = handle_request(&state, list_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, list_req, &mut authenticated)
+        .await
+        .unwrap();
     let list_res = resp.result.unwrap();
     assert_eq!(list_res["total"], 2);
     let servers = list_res["servers"].as_array().unwrap();
 
-    let s_allowed = servers.iter().find(|s| s["address"] == "192.168.1.50:4661").unwrap();
+    let s_allowed = servers
+        .iter()
+        .find(|s| s["address"] == "192.168.1.50:4661")
+        .unwrap();
     assert_eq!(s_allowed["filterStatus"], "allowed");
-    let s_blocked = servers.iter().find(|s| s["address"] == "10.1.2.3:4242").unwrap();
+    let s_blocked = servers
+        .iter()
+        .find(|s| s["address"] == "10.1.2.3:4242")
+        .unwrap();
     assert_eq!(s_blocked["filterStatus"], "blocked_by_filter");
 
     // 7. Test servers.setEnabled (toggle disabled)
@@ -159,13 +191,22 @@ async fn test_servers_rpc_workflow() {
             "enabled": false,
         })),
     );
-    let resp = handle_request(&state, disable_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, disable_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     let list_req = make_req(8, "servers.list", None);
-    let resp = handle_request(&state, list_req, &mut authenticated).await.unwrap();
-    let s_disabled = resp.result.unwrap()["servers"].as_array().unwrap()
-        .iter().find(|s| s["address"] == "192.168.1.50:4661").unwrap().clone();
+    let resp = handle_request(&state, list_req, &mut authenticated)
+        .await
+        .unwrap();
+    let s_disabled = resp.result.unwrap()["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["address"] == "192.168.1.50:4661")
+        .unwrap()
+        .clone();
     assert_eq!(s_disabled["filterStatus"], "disabled");
 
     // 8. Test servers.delete
@@ -174,19 +215,27 @@ async fn test_servers_rpc_workflow() {
         "servers.delete",
         Some(json!({ "address": "10.1.2.3:4242" })),
     );
-    let resp = handle_request(&state, del_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, del_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     let list_req = make_req(10, "servers.list", None);
-    let resp = handle_request(&state, list_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, list_req, &mut authenticated)
+        .await
+        .unwrap();
     assert_eq!(resp.result.unwrap()["total"], 1);
 
     // 9. Test servers.clear
     let clear_req = make_req(11, "servers.clear", None);
-    let resp = handle_request(&state, clear_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, clear_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     let list_req = make_req(12, "servers.list", None);
-    let resp = handle_request(&state, list_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, list_req, &mut authenticated)
+        .await
+        .unwrap();
     assert_eq!(resp.result.unwrap()["total"], 0);
 }

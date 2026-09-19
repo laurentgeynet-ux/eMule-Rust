@@ -172,7 +172,10 @@ async fn test_lab_rpc_full_lifecycle() {
     assert_eq!(resp["result"]["success"], true);
     assert_eq!(resp["result"]["deletedFilesCount"], 1);
     assert!(resp["result"]["freedBytes"].as_u64().unwrap() > 0);
-    assert!(resp["result"]["cleanedFolders"].as_array().unwrap().contains(&json!("fixtures")));
+    assert!(resp["result"]["cleanedFolders"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("fixtures")));
     assert!(!fixture_path.exists());
 }
 
@@ -272,4 +275,3 @@ async fn test_lab_create_fixture_pattern_9728001() {
     assert!(file_path.exists());
     assert_eq!(std::fs::metadata(&file_path).unwrap().len(), 9_728_001);
 }
-

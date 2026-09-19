@@ -63,7 +63,9 @@ pub fn list_servers(conn: &Connection) -> Result<Vec<Ed2kServer>, CoreError> {
 
     let rows = stmt.query_map([], |row| {
         let filter_status_str: String = row.get(10)?;
-        let filter_status: ServerFilterStatus = filter_status_str.parse().unwrap_or(ServerFilterStatus::Allowed);
+        let filter_status: ServerFilterStatus = filter_status_str
+            .parse()
+            .unwrap_or(ServerFilterStatus::Allowed);
 
         Ok(Ed2kServer {
             address: row.get(0)?,
@@ -90,7 +92,11 @@ pub fn list_servers(conn: &Connection) -> Result<Vec<Ed2kServer>, CoreError> {
     Ok(list)
 }
 
-pub fn set_server_enabled(conn: &mut Connection, address: &str, enabled: bool) -> Result<bool, CoreError> {
+pub fn set_server_enabled(
+    conn: &mut Connection,
+    address: &str,
+    enabled: bool,
+) -> Result<bool, CoreError> {
     let new_status = if enabled {
         ServerFilterStatus::Allowed.as_str()
     } else {

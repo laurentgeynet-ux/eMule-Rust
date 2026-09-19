@@ -44,7 +44,9 @@ fn test_ed2k_servers_crud_operations() {
         updated_at_unix_ms: 1000,
     };
 
-    let inserted = db.upsert_servers(&[s1.clone(), s2.clone()]).expect("upsert servers");
+    let inserted = db
+        .upsert_servers(&[s1.clone(), s2.clone()])
+        .expect("upsert servers");
     assert_eq!(inserted, 2);
 
     let list = db.list_servers().expect("list servers");
@@ -56,7 +58,9 @@ fn test_ed2k_servers_crud_operations() {
     assert_eq!(list[1].filter_status, ServerFilterStatus::BlockedByFilter);
 
     // Toggle enabled -> disabled on s1
-    let updated = db.set_server_enabled("192.168.1.10:4661", false).expect("disable server");
+    let updated = db
+        .set_server_enabled("192.168.1.10:4661", false)
+        .expect("disable server");
     assert!(updated);
 
     let list = db.list_servers().expect("list servers");
@@ -72,10 +76,15 @@ fn test_ed2k_servers_crud_operations() {
 
     let list = db.list_servers().expect("list servers");
     assert_eq!(list[0].name, "Test Server 1 Renamed");
-    assert_eq!(list[0].filter_status, ServerFilterStatus::Disabled, "Should preserve manually disabled status");
+    assert_eq!(
+        list[0].filter_status,
+        ServerFilterStatus::Disabled,
+        "Should preserve manually disabled status"
+    );
 
     // Toggle back to enabled
-    db.set_server_enabled("192.168.1.10:4661", true).expect("enable server");
+    db.set_server_enabled("192.168.1.10:4661", true)
+        .expect("enable server");
     let list = db.list_servers().expect("list servers");
     assert_eq!(list[0].filter_status, ServerFilterStatus::Allowed);
 

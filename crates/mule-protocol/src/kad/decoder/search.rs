@@ -1,6 +1,5 @@
 //! Decoders for Kad sources and search responses.
 
-use bytes::Buf;
 use crate::ed2k::limits::Ed2kLimits;
 use crate::ed2k::tags::{
     TagName, TagReader, TagValue, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME, TAG_SPECIAL_PORT,
@@ -8,10 +7,15 @@ use crate::ed2k::tags::{
 use crate::ed2k::{Ed2kErrorKind, Ed2kParseError};
 use crate::kad::opcodes::*;
 use crate::kad::types::*;
+use bytes::Buf;
 
 /// Decodes an `OP_KADEMLIA2_SEARCH_SOURCE_REQ` payload.
 /// Official eMule format: [target_hash 16] [start_pos u16] [file_size u64] (26 bytes).
-pub fn decode_search_source_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_search_source_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 18 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -45,7 +49,11 @@ pub fn decode_search_source_req(protocol: u8, opcode: u8, mut payload: &[u8]) ->
 }
 
 /// Decodes an `OP_KADEMLIA2_SEARCH_RES` payload.
-pub fn decode_search_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_search_res(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     let raw_bytes = payload;
     let limits = Ed2kLimits::default();
 
@@ -94,15 +102,13 @@ pub fn decode_search_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result
                                         file_name = s.chars().filter(|c| !c.is_control()).collect();
                                     }
                                 }
-                                TagName::Id(TAG_SPECIAL_FILESIZE) => {
-                                    match tag.value {
-                                        TagValue::UInt32(v) => file_size = v as u64,
-                                        TagValue::UInt64(v) => file_size = v,
-                                        TagValue::UInt16(v) => file_size = v as u64,
-                                        TagValue::UInt8(v) => file_size = v as u64,
-                                        _ => {}
-                                    }
-                                }
+                                TagName::Id(TAG_SPECIAL_FILESIZE) => match tag.value {
+                                    TagValue::UInt32(v) => file_size = v as u64,
+                                    TagValue::UInt64(v) => file_size = v,
+                                    TagValue::UInt16(v) => file_size = v as u64,
+                                    TagValue::UInt8(v) => file_size = v as u64,
+                                    _ => {}
+                                },
                                 TagName::Id(0x15) => {
                                     // FT_SOURCES (0x15)
                                     match tag.value {
@@ -191,7 +197,8 @@ pub fn decode_search_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result
                                     let lower = name.to_lowercase();
                                     if lower == "name" || lower == "filename" {
                                         if let TagValue::String(s) = tag.value {
-                                            file_name = s.chars().filter(|c| !c.is_control()).collect();
+                                            file_name =
+                                                s.chars().filter(|c| !c.is_control()).collect();
                                         }
                                     } else if lower == "size" || lower == "filesize" {
                                         match tag.value {
@@ -272,7 +279,9 @@ pub fn decode_search_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result
                 }
             }
 
-            if (parse_ok || !source_entries.is_empty() || !keyword_entries.is_empty()) && cursor <= raw_bytes.len() {
+            if (parse_ok || !source_entries.is_empty() || !keyword_entries.is_empty())
+                && cursor <= raw_bytes.len()
+            {
                 if is_source_res || !source_entries.is_empty() {
                     taglist_result = Some(KadMessage::SearchSourceRes(KadSearchSourceRes {
                         target_file_hash: target_hash,
@@ -374,7 +383,11 @@ pub fn decode_search_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result
 }
 
 /// Decodes an `OP_KADEMLIA2_PUBLISH_SOURCE_REQ` payload.
-pub fn decode_publish_source_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_publish_source_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 33 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -406,65 +419,57 @@ pub fn decode_publish_source_req(protocol: u8, opcode: u8, mut payload: &[u8]) -
 
         for _ in 0..tag_count {
             match reader.read_tag(&limits) {
-                Ok((Some(tag), _)) => {
-                    match &tag.name {
-                        TagName::Id(0xFD) | TagName::Id(TAG_SPECIAL_PORT) => {
+                Ok((Some(tag), _)) => match &tag.name {
+                    TagName::Id(0xFD) | TagName::Id(TAG_SPECIAL_PORT) => match tag.value {
+                        TagValue::UInt16(p) => tcp_port = p,
+                        TagValue::UInt32(p) => tcp_port = p as u16,
+                        _ => {}
+                    },
+                    TagName::Id(0xFC) => match tag.value {
+                        TagValue::UInt16(p) => udp_port = p,
+                        TagValue::UInt32(p) => udp_port = p as u16,
+                        _ => {}
+                    },
+                    TagName::Id(TAG_SPECIAL_FILESIZE) => match tag.value {
+                        TagValue::UInt32(v) => file_size = v as u64,
+                        TagValue::UInt64(v) => file_size = v,
+                        TagValue::UInt16(v) => file_size = v as u64,
+                        TagValue::UInt8(v) => file_size = v as u64,
+                        _ => {}
+                    },
+                    TagName::Id(0xFE) => {
+                        if let TagValue::UInt32(ip_val) = tag.value {
+                            ip = ip_val.to_be_bytes();
+                        }
+                    }
+                    TagName::Text(name) => {
+                        let lower = name.to_lowercase();
+                        if lower == "port" || lower == "sourceport" {
                             match tag.value {
                                 TagValue::UInt16(p) => tcp_port = p,
                                 TagValue::UInt32(p) => tcp_port = p as u16,
                                 _ => {}
                             }
-                        }
-                        TagName::Id(0xFC) => {
+                        } else if lower == "sourceuport" || lower == "udpport" {
                             match tag.value {
                                 TagValue::UInt16(p) => udp_port = p,
                                 TagValue::UInt32(p) => udp_port = p as u16,
                                 _ => {}
                             }
-                        }
-                        TagName::Id(TAG_SPECIAL_FILESIZE) => {
+                        } else if lower == "size" || lower == "filesize" {
                             match tag.value {
                                 TagValue::UInt32(v) => file_size = v as u64,
                                 TagValue::UInt64(v) => file_size = v,
-                                TagValue::UInt16(v) => file_size = v as u64,
-                                TagValue::UInt8(v) => file_size = v as u64,
                                 _ => {}
                             }
-                        }
-                        TagName::Id(0xFE) => {
+                        } else if lower == "ip" || lower == "sourceip" {
                             if let TagValue::UInt32(ip_val) = tag.value {
                                 ip = ip_val.to_be_bytes();
                             }
                         }
-                        TagName::Text(name) => {
-                            let lower = name.to_lowercase();
-                            if lower == "port" || lower == "sourceport" {
-                                match tag.value {
-                                    TagValue::UInt16(p) => tcp_port = p,
-                                    TagValue::UInt32(p) => tcp_port = p as u16,
-                                    _ => {}
-                                }
-                            } else if lower == "sourceuport" || lower == "udpport" {
-                                match tag.value {
-                                    TagValue::UInt16(p) => udp_port = p,
-                                    TagValue::UInt32(p) => udp_port = p as u16,
-                                    _ => {}
-                                }
-                            } else if lower == "size" || lower == "filesize" {
-                                match tag.value {
-                                    TagValue::UInt32(v) => file_size = v as u64,
-                                    TagValue::UInt64(v) => file_size = v,
-                                    _ => {}
-                                }
-                            } else if lower == "ip" || lower == "sourceip" {
-                                if let TagValue::UInt32(ip_val) = tag.value {
-                                    ip = ip_val.to_be_bytes();
-                                }
-                            }
-                        }
-                        _ => {}
                     }
-                }
+                    _ => {}
+                },
                 Ok((None, _)) => {}
                 Err(_) => {
                     parse_ok = false;
@@ -531,7 +536,11 @@ pub fn decode_publish_source_req(protocol: u8, opcode: u8, mut payload: &[u8]) -
 }
 
 /// Decodes an `OP_KADEMLIA2_PUBLISH_SOURCE_RES` payload.
-pub fn decode_publish_source_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_publish_source_res(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 17 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -554,7 +563,11 @@ pub fn decode_publish_source_res(protocol: u8, opcode: u8, mut payload: &[u8]) -
 }
 
 /// Decodes an `OP_KADEMLIA2_SEARCH_KEYWORD_REQ` payload.
-pub fn decode_search_keyword_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_search_keyword_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 18 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -582,7 +595,11 @@ pub fn decode_search_keyword_req(protocol: u8, opcode: u8, mut payload: &[u8]) -
 }
 
 /// Decodes an `OP_KADEMLIA2_SEARCH_KEYWORD_RES_LEGACY` payload.
-pub fn decode_search_keyword_res_legacy(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_search_keyword_res_legacy(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 18 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -633,7 +650,11 @@ pub fn decode_search_keyword_res_legacy(protocol: u8, opcode: u8, mut payload: &
 }
 
 /// Decodes an `OP_KADEMLIA2_PUBLISH_KEYWORD_REQ` payload.
-pub fn decode_publish_keyword_req(protocol: u8, opcode: u8, payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_publish_keyword_req(
+    protocol: u8,
+    opcode: u8,
+    payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 18 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -648,7 +669,8 @@ pub fn decode_publish_keyword_req(protocol: u8, opcode: u8, payload: &[u8]) -> R
     }
     let mut keyword_hash = [0u8; 16];
     keyword_hash.copy_from_slice(&payload[..16]);
-    let count = (u16::from_le_bytes([payload[16], payload[17]]) as usize).min(MAX_KAD_SEARCH_KEYWORDS);
+    let count =
+        (u16::from_le_bytes([payload[16], payload[17]]) as usize).min(MAX_KAD_SEARCH_KEYWORDS);
     let mut cursor = 18;
 
     let mut entries = Vec::with_capacity(count);
@@ -678,52 +700,46 @@ pub fn decode_publish_keyword_req(protocol: u8, opcode: u8, payload: &[u8]) -> R
 
             for _ in 0..tag_count {
                 match reader.read_tag(&limits) {
-                    Ok((Some(tag), _)) => {
-                        match &tag.name {
-                            TagName::Id(TAG_SPECIAL_NAME) => {
+                    Ok((Some(tag), _)) => match &tag.name {
+                        TagName::Id(TAG_SPECIAL_NAME) => {
+                            if let TagValue::String(s) = tag.value {
+                                file_name = s.chars().filter(|c| !c.is_control()).collect();
+                            }
+                        }
+                        TagName::Id(TAG_SPECIAL_FILESIZE) => match tag.value {
+                            TagValue::UInt32(v) => file_size = v as u64,
+                            TagValue::UInt64(v) => file_size = v,
+                            TagValue::UInt16(v) => file_size = v as u64,
+                            TagValue::UInt8(v) => file_size = v as u64,
+                            _ => {}
+                        },
+                        TagName::Id(0x15) => match tag.value {
+                            TagValue::UInt32(v) => source_count = v,
+                            TagValue::UInt16(v) => source_count = v as u32,
+                            TagValue::UInt8(v) => source_count = v as u32,
+                            _ => {}
+                        },
+                        TagName::Text(name) => {
+                            let lower = name.to_lowercase();
+                            if lower == "name" || lower == "filename" {
                                 if let TagValue::String(s) = tag.value {
                                     file_name = s.chars().filter(|c| !c.is_control()).collect();
                                 }
-                            }
-                            TagName::Id(TAG_SPECIAL_FILESIZE) => {
+                            } else if lower == "size" || lower == "filesize" {
                                 match tag.value {
                                     TagValue::UInt32(v) => file_size = v as u64,
                                     TagValue::UInt64(v) => file_size = v,
-                                    TagValue::UInt16(v) => file_size = v as u64,
-                                    TagValue::UInt8(v) => file_size = v as u64,
                                     _ => {}
                                 }
-                            }
-                            TagName::Id(0x15) => {
+                            } else if lower == "sources" {
                                 match tag.value {
                                     TagValue::UInt32(v) => source_count = v,
-                                    TagValue::UInt16(v) => source_count = v as u32,
-                                    TagValue::UInt8(v) => source_count = v as u32,
                                     _ => {}
                                 }
                             }
-                            TagName::Text(name) => {
-                                let lower = name.to_lowercase();
-                                if lower == "name" || lower == "filename" {
-                                    if let TagValue::String(s) = tag.value {
-                                        file_name = s.chars().filter(|c| !c.is_control()).collect();
-                                    }
-                                } else if lower == "size" || lower == "filesize" {
-                                    match tag.value {
-                                        TagValue::UInt32(v) => file_size = v as u64,
-                                        TagValue::UInt64(v) => file_size = v,
-                                        _ => {}
-                                    }
-                                } else if lower == "sources" {
-                                    match tag.value {
-                                        TagValue::UInt32(v) => source_count = v,
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            _ => {}
                         }
-                    }
+                        _ => {}
+                    },
                     Ok((None, _)) => {}
                     Err(_) => {
                         parse_ok = false;
@@ -784,7 +800,11 @@ pub fn decode_publish_keyword_req(protocol: u8, opcode: u8, payload: &[u8]) -> R
 }
 
 /// Decodes an `OP_KADEMLIA2_PUBLISH_KEYWORD_RES` payload.
-pub fn decode_publish_keyword_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_publish_keyword_res(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 17 {
         return Err(Ed2kParseError::new(
             protocol,

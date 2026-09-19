@@ -78,7 +78,9 @@ pub async fn handle_add_ed2k_link(
     };
 
     let fallback_bundle_dir = state.config.default_download_dir.clone();
-    let effective_base_dir = global_db_dir.clone().unwrap_or_else(|| fallback_bundle_dir.clone());
+    let effective_base_dir = global_db_dir
+        .clone()
+        .unwrap_or_else(|| fallback_bundle_dir.clone());
 
     // 4-Tier Resolution:
     // Tier 1: Explicit targetDirectory
@@ -112,22 +114,32 @@ pub async fn handle_add_ed2k_link(
         _ => AllocationPolicy::SparseIfSupported,
     };
 
-    let snapshot = state
-        .downloads
-        .lock()
-        .await
-        .add_ed2k_link(link, &target_dir, policy, category_id_opt)?;
+    let snapshot =
+        state
+            .downloads
+            .lock()
+            .await
+            .add_ed2k_link(link, &target_dir, policy, category_id_opt)?;
 
     state.broadcast_download_update(snapshot.clone());
 
     // Trigger immediate source query from server and Kad
     let file_info = {
-        state.downloads.lock().await.get_download_file_info(&snapshot.id)
+        state
+            .downloads
+            .lock()
+            .await
+            .get_download_file_info(&snapshot.id)
     };
     if let Some((_, _, hash, size)) = file_info {
         let hash_hex = hex::encode(hash.0);
-        tracing::info!("Download added: requesting immediate sources from server and Kad for file {}", hash_hex);
-        if state.server_session.snapshot().await.status == crate::services::server_session::ServerConnectionStatus::Connected {
+        tracing::info!(
+            "Download added: requesting immediate sources from server and Kad for file {}",
+            hash_hex
+        );
+        if state.server_session.snapshot().await.status
+            == crate::services::server_session::ServerConnectionStatus::Connected
+        {
             let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
                 hash.0,
                 size,
@@ -174,11 +186,17 @@ pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Va
 
     // Trigger immediate source query on resume
     let file_info = {
-        state.downloads.lock().await.get_download_file_info(&snapshot.id)
+        state
+            .downloads
+            .lock()
+            .await
+            .get_download_file_info(&snapshot.id)
     };
     if let Some((_, _, hash, size)) = file_info {
         let hash_hex = hex::encode(hash.0);
-        if state.server_session.snapshot().await.status == crate::services::server_session::ServerConnectionStatus::Connected {
+        if state.server_session.snapshot().await.status
+            == crate::services::server_session::ServerConnectionStatus::Connected
+        {
             let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
                 hash.0,
                 size,
@@ -307,7 +325,9 @@ pub async fn handle_import_part_met(
     };
 
     let fallback_bundle_dir = state.config.default_download_dir.clone();
-    let effective_base_dir = global_db_dir.clone().unwrap_or_else(|| fallback_bundle_dir.clone());
+    let effective_base_dir = global_db_dir
+        .clone()
+        .unwrap_or_else(|| fallback_bundle_dir.clone());
 
     let target_dir = if let Some(p) = target_dir_opt {
         let path = std::path::PathBuf::from(p);
@@ -333,11 +353,12 @@ pub async fn handle_import_part_met(
     let met_path = std::path::Path::new(met_path_str);
     let part_path = part_path_str.map(std::path::Path::new);
 
-    let result = state
-        .downloads
-        .lock()
-        .await
-        .import_part_met(met_path, part_path, &target_dir, category_id_opt)?;
+    let result = state.downloads.lock().await.import_part_met(
+        met_path,
+        part_path,
+        &target_dir,
+        category_id_opt,
+    )?;
 
     state.broadcast_download_update(result.download.clone());
 
@@ -354,11 +375,7 @@ pub async fn handle_retry_connection(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
 
-    let detail = state
-        .downloads
-        .lock()
-        .await
-        .retry_connection(&id)?;
+    let detail = state.downloads.lock().await.retry_connection(&id)?;
 
     state.broadcast_download_update(detail.snapshot.clone());
 

@@ -19,6 +19,7 @@ Ce document constitue la table d'orientation générale et l'index chronologique
 | **Phase 13** | `v0.1.6` | [walkthrough_Phase_13.md](walkthrough_Phase_13.md) | **Source Exchange v4 (SX1 & SX2)** décentralisé, transfert de blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif **MCP (83 outils)**. | ✅ Validé & Mergé |
 | **Phase 14** | `v0.1.7` | [walkthrough_Phase_14.md](walkthrough_Phase_14.md) | **Convergence de la recherche Kad DHT** : métrique DWORDs `CUInt128`, correction opcode universel `0x3B`, élimination du stall decay, et **Clean Architecture** complète. | ✅ Validé & Mergé |
 | **Phase 15** | `v0.1.8` | [walkthrough_Phase_15.md](walkthrough_Phase_15.md) | **Téléchargement multi-pairs réel** : agrégation de vitesse en direct (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue` cooldown 10-15m), upload queue, logs stratégiques, `INDEX.md`. | ✅ Validé en Conditions Réelles |
+| **Phase 16** | Unreleased | [CHANGELOG](../CHANGELOG.md) + [rapport §10](../architecture/rapport_architecture_et_avancement.md) | **Interopérabilité eMule 0.72a** : hashset par part, AICH réseau complet, `OP_OFFERFILES`, callback LowID, écriture `.part.met`, nœud de stockage Kad + republication, `OP_CANCELTRANSFER`/`OP_OUTOFPARTS`, upload compressé `OP_COMPRESSEDPART`, multi-slots upload. | ✅ Tests unitaires/intégration verts (loopback/lab) |
 
 ---
 

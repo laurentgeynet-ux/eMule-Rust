@@ -1,8 +1,6 @@
 //! Hermetic unit and integration tests for eD2K Part 0 storage persistence,
 //! crash-resilient `.resume.json` state journaling, gap calculation, and MD4 verification.
 
-use std::fs;
-use std::time::Duration;
 use bytes::Bytes;
 use md4::{Digest, Md4};
 use mule_protocol::ed2k::{
@@ -10,12 +8,14 @@ use mule_protocol::ed2k::{
     Ed2kPartFileSink, Ed2kSendingPart, Ed2kSequencerError, Ed2kTestPeer, PartAvailabilityMask,
     TestPeerMode, ED2K_BLOCK_SIZE, ED2K_PART_SIZE,
 };
+use std::fs;
+use std::time::Duration;
 use tempfile::tempdir;
 
 fn test_file_hash() -> [u8; 16] {
     [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
-        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
+        0x3c,
     ]
 }
 
@@ -66,8 +66,8 @@ fn test_part_sink_incremental_writes_and_interval_merging() {
     let sequencer = make_sequencer();
     let hash = test_file_hash();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE)
-        .expect("create new sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE).expect("create new sink");
 
     // Write chunk 0: [0, 10240)
     let chunk0 = Ed2kSendingPart {
@@ -76,7 +76,8 @@ fn test_part_sink_incremental_writes_and_interval_merging() {
         end_offset: 10240,
         data: Bytes::from(vec![0xAA; 10240]),
     };
-    sink.write_block(&sequencer, &chunk0).expect("write chunk 0");
+    sink.write_block(&sequencer, &chunk0)
+        .expect("write chunk 0");
     assert_eq!(sink.completed_ranges(), &[(0, 10240)]);
     assert_eq!(sink.total_bytes_received(), 10240);
 
@@ -87,7 +88,8 @@ fn test_part_sink_incremental_writes_and_interval_merging() {
         end_offset: 20480,
         data: Bytes::from(vec![0xBB; 10240]),
     };
-    sink.write_block(&sequencer, &chunk1).expect("write chunk 1");
+    sink.write_block(&sequencer, &chunk1)
+        .expect("write chunk 1");
     assert_eq!(sink.completed_ranges(), &[(0, 20480)]);
     assert_eq!(sink.total_bytes_received(), 20480);
 
@@ -98,7 +100,8 @@ fn test_part_sink_incremental_writes_and_interval_merging() {
         end_offset: 60000,
         data: Bytes::from(vec![0xCC; 10000]),
     };
-    sink.write_block(&sequencer, &chunk_disjoint).expect("write disjoint chunk");
+    sink.write_block(&sequencer, &chunk_disjoint)
+        .expect("write disjoint chunk");
     assert_eq!(sink.completed_ranges(), &[(0, 20480), (50000, 60000)]);
     assert_eq!(sink.total_bytes_received(), 30480);
 
@@ -124,8 +127,8 @@ fn test_part_sink_duplicate_and_overlapping_chunk_rejection() {
     let sequencer = make_sequencer();
     let hash = test_file_hash();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE)
-        .expect("create new sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE).expect("create new sink");
 
     let chunk = Ed2kSendingPart {
         file_hash: hash,
@@ -137,7 +140,13 @@ fn test_part_sink_duplicate_and_overlapping_chunk_rejection() {
 
     // Exact duplicate
     let err_exact = sink.write_block(&sequencer, &chunk).unwrap_err();
-    assert!(matches!(err_exact, Ed2kSequencerError::DuplicateBlock { start: 10000, end: 20000 }));
+    assert!(matches!(
+        err_exact,
+        Ed2kSequencerError::DuplicateBlock {
+            start: 10000,
+            end: 20000
+        }
+    ));
 
     // Overlapping at head
     let overlap_head = Ed2kSendingPart {
@@ -147,7 +156,13 @@ fn test_part_sink_duplicate_and_overlapping_chunk_rejection() {
         data: Bytes::from(vec![0x22; 10000]),
     };
     let err_head = sink.write_block(&sequencer, &overlap_head).unwrap_err();
-    assert!(matches!(err_head, Ed2kSequencerError::DuplicateBlock { start: 5000, end: 15000 }));
+    assert!(matches!(
+        err_head,
+        Ed2kSequencerError::DuplicateBlock {
+            start: 5000,
+            end: 15000
+        }
+    ));
 
     // Overlapping at tail
     let overlap_tail = Ed2kSendingPart {
@@ -157,7 +172,13 @@ fn test_part_sink_duplicate_and_overlapping_chunk_rejection() {
         data: Bytes::from(vec![0x33; 10000]),
     };
     let err_tail = sink.write_block(&sequencer, &overlap_tail).unwrap_err();
-    assert!(matches!(err_tail, Ed2kSequencerError::DuplicateBlock { start: 15000, end: 25000 }));
+    assert!(matches!(
+        err_tail,
+        Ed2kSequencerError::DuplicateBlock {
+            start: 15000,
+            end: 25000
+        }
+    ));
 }
 
 #[test]
@@ -167,8 +188,8 @@ fn test_part_sink_cross_part_boundary_rejection() {
     let sequencer = make_sequencer();
     let hash = test_file_hash();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE)
-        .expect("create new sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE).expect("create new sink");
 
     // Part 0 ends at 9,728,000. Try writing a chunk that crosses this boundary.
     let cross_chunk = Ed2kSendingPart {
@@ -178,7 +199,13 @@ fn test_part_sink_cross_part_boundary_rejection() {
         data: Bytes::from(vec![0xFF; 1001]),
     };
     let err = sink.write_block(&sequencer, &cross_chunk).unwrap_err();
-    assert!(matches!(err, Ed2kSequencerError::CrossPartBoundary { part_boundary: 9_728_000, .. }));
+    assert!(matches!(
+        err,
+        Ed2kSequencerError::CrossPartBoundary {
+            part_boundary: 9_728_000,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -216,8 +243,9 @@ fn test_part_sink_atomic_journal_survives_reopen() {
 
     // 2. Re-open / resume session
     {
-        let resumed_sink = Ed2kPartFileSink::open_or_resume(part_path.clone(), hash, TEST_FILE_SIZE)
-            .expect("resume sink");
+        let resumed_sink =
+            Ed2kPartFileSink::open_or_resume(part_path.clone(), hash, TEST_FILE_SIZE)
+                .expect("resume sink");
 
         assert_eq!(resumed_sink.total_bytes_received(), blocks_20_len);
         assert_eq!(resumed_sink.completed_ranges(), &[(0, blocks_20_len)]);
@@ -257,7 +285,10 @@ fn test_sequencer_plan_missing_blocks_computes_exact_gaps() {
     let missing_empty = sequencer
         .plan_missing_blocks(0, &all_completed)
         .expect("plan missing blocks when complete");
-    assert!(missing_empty.is_empty(), "all blocks complete means 0 missing blocks");
+    assert!(
+        missing_empty.is_empty(),
+        "all blocks complete means 0 missing blocks"
+    );
 }
 
 #[test]
@@ -267,8 +298,8 @@ fn test_part_sink_hash_and_size_mismatch_rejection_on_resume() {
     let hash = test_file_hash();
 
     // Create valid sink
-    let sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
-        .expect("create sink");
+    let sink =
+        Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE).expect("create sink");
     drop(sink);
 
     // Attempt to open with different hash
@@ -279,8 +310,7 @@ fn test_part_sink_hash_and_size_mismatch_rejection_on_resume() {
 
     // Attempt to open with different size
     let wrong_size = TEST_FILE_SIZE + 1000;
-    let err_size = Ed2kPartFileSink::open_or_resume(part_path, hash, wrong_size)
-        .unwrap_err();
+    let err_size = Ed2kPartFileSink::open_or_resume(part_path, hash, wrong_size).unwrap_err();
     assert!(matches!(err_size, Ed2kSequencerError::Storage(_)));
 }
 
@@ -291,8 +321,8 @@ fn test_part_sink_compute_part_md4_streams_from_disk_matching_oracle() {
     let sequencer = make_sequencer();
     let hash = test_file_hash();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE)
-        .expect("create new sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE).expect("create new sink");
 
     // Part 0 is 9,728,000 bytes. Generate deterministic synthetic pattern.
     let mut part0_bytes = vec![0u8; ED2K_PART_SIZE];
@@ -308,7 +338,9 @@ fn test_part_sink_compute_part_md4_streams_from_disk_matching_oracle() {
     // Incomplete part check: before writing, computing MD4 must fail
     let incomplete_err = sink.compute_part_md4(0, &sequencer).unwrap_err();
     assert!(matches!(incomplete_err, Ed2kSequencerError::Storage(_)));
-    assert!(!sink.is_part_complete(0, &sequencer).expect("part complete check"));
+    assert!(!sink
+        .is_part_complete(0, &sequencer)
+        .expect("part complete check"));
 
     // Write all 53 blocks of Part 0 into sink
     let part0_blocks = sequencer.plan_part_blocks(0).expect("plan part 0");
@@ -324,12 +356,19 @@ fn test_part_sink_compute_part_md4_streams_from_disk_matching_oracle() {
         sink.write_block(&sequencer, &chunk).expect("write block");
     }
 
-    assert!(sink.is_part_complete(0, &sequencer).expect("part complete check"));
+    assert!(sink
+        .is_part_complete(0, &sequencer)
+        .expect("part complete check"));
     assert_eq!(sink.total_bytes_received(), ED2K_PART_SIZE as u64);
 
     // Compute MD4 via streaming from disk in 64 KiB buffers
-    let disk_md4 = sink.compute_part_md4(0, &sequencer).expect("compute part md4");
-    assert_eq!(disk_md4, expected_md4, "in-disk streamed MD4 must match oracle byte-for-byte");
+    let disk_md4 = sink
+        .compute_part_md4(0, &sequencer)
+        .expect("compute part md4");
+    assert_eq!(
+        disk_md4, expected_md4,
+        "in-disk streamed MD4 must match oracle byte-for-byte"
+    );
 }
 
 #[tokio::test]
@@ -389,7 +428,10 @@ async fn test_download_blocks_pipelined_with_resume_and_interruption() {
             .await
             .expect("pipelined download session 1");
 
-        assert_eq!(completed, 2, "session 1 must stop after completing exactly 2 blocks");
+        assert_eq!(
+            completed, 2,
+            "session 1 must stop after completing exactly 2 blocks"
+        );
         assert_eq!(sink.total_bytes_received(), 2 * ED2K_BLOCK_SIZE as u64);
         assert_eq!(sink.completed_ranges(), &[(0, 2 * ED2K_BLOCK_SIZE as u64)]);
 
@@ -399,10 +441,17 @@ async fn test_download_blocks_pipelined_with_resume_and_interruption() {
     }
 
     // Verify on-disk intermediate state
-    let intermediate_sink = Ed2kPartFileSink::open_or_resume(part_path.clone(), hash, TEST_FILE_SIZE)
-        .expect("open intermediate sink");
-    assert_eq!(intermediate_sink.total_bytes_received(), 2 * ED2K_BLOCK_SIZE as u64);
-    assert_eq!(intermediate_sink.completed_ranges(), &[(0, 2 * ED2K_BLOCK_SIZE as u64)]);
+    let intermediate_sink =
+        Ed2kPartFileSink::open_or_resume(part_path.clone(), hash, TEST_FILE_SIZE)
+            .expect("open intermediate sink");
+    assert_eq!(
+        intermediate_sink.total_bytes_received(),
+        2 * ED2K_BLOCK_SIZE as u64
+    );
+    assert_eq!(
+        intermediate_sink.completed_ranges(),
+        &[(0, 2 * ED2K_BLOCK_SIZE as u64)]
+    );
     drop(intermediate_sink);
 
     // Session 2: Resume download, compute missing blocks (blocks 2..5)
@@ -420,7 +469,11 @@ async fn test_download_blocks_pipelined_with_resume_and_interruption() {
             .into_iter()
             .filter(|b| b.end <= 5 * ED2K_BLOCK_SIZE as u32)
             .collect();
-        assert_eq!(missing_for_target.len(), 3, "must have 3 missing blocks remaining");
+        assert_eq!(
+            missing_for_target.len(),
+            3,
+            "must have 3 missing blocks remaining"
+        );
         assert_eq!(missing_for_target[0].start, 2 * ED2K_BLOCK_SIZE as u32);
 
         let (mut client2, _info2) = Ed2kLoopbackClient::connect_and_handshake(
@@ -448,9 +501,15 @@ async fn test_download_blocks_pipelined_with_resume_and_interruption() {
             .await
             .expect("pipelined download session 2");
 
-        assert_eq!(completed2, 3, "session 2 must complete all remaining 3 blocks");
+        assert_eq!(
+            completed2, 3,
+            "session 2 must complete all remaining 3 blocks"
+        );
         assert_eq!(resumed_sink.total_bytes_received(), total_test_bytes as u64);
-        assert_eq!(resumed_sink.completed_ranges(), &[(0, total_test_bytes as u64)]);
+        assert_eq!(
+            resumed_sink.completed_ranges(),
+            &[(0, total_test_bytes as u64)]
+        );
 
         client2.close().await;
     }
@@ -483,8 +542,8 @@ fn test_part1_residual_byte_write_and_full_file_completion() {
     let hash = test_file_hash();
     let fixture = generate_test_fixture_bytes();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
-        .expect("create sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE).expect("create sink");
 
     // Write all of Part 0 (9,728,000 bytes) in standard 180 KiB blocks
     let part0_blocks = sequencer.plan_part_blocks(0).expect("plan part 0");
@@ -499,8 +558,12 @@ fn test_part1_residual_byte_write_and_full_file_completion() {
     }
 
     assert_eq!(sink.total_bytes_received(), 9_728_000);
-    assert!(sink.is_part_complete(0, &sequencer).expect("part 0 complete"));
-    assert!(!sink.is_part_complete(1, &sequencer).expect("part 1 complete"));
+    assert!(sink
+        .is_part_complete(0, &sequencer)
+        .expect("part 0 complete"));
+    assert!(!sink
+        .is_part_complete(1, &sequencer)
+        .expect("part 1 complete"));
     assert!(!sink.is_file_complete(&sequencer));
 
     // Plan and write Part 1: exactly 1 residual block [9,728,000, 9,728,001)
@@ -515,7 +578,8 @@ fn test_part1_residual_byte_write_and_full_file_completion() {
         end_offset: 9_728_001,
         data: Bytes::from_static(&[0x00]),
     };
-    sink.write_block(&sequencer, &residual_chunk).expect("write residual block");
+    sink.write_block(&sequencer, &residual_chunk)
+        .expect("write residual block");
 
     assert_eq!(sink.total_bytes_received(), TEST_FILE_SIZE);
     assert_eq!(sink.completed_ranges(), &[(0, TEST_FILE_SIZE)]);
@@ -532,8 +596,8 @@ fn test_multipart_root_ed2k_hash_computation() {
     let hash = test_file_hash();
     let fixture = generate_test_fixture_bytes();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE)
-        .expect("create sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path, hash, TEST_FILE_SIZE).expect("create sink");
 
     // Write Part 0 blocks
     for block in sequencer.plan_part_blocks(0).expect("plan part 0") {
@@ -553,7 +617,8 @@ fn test_multipart_root_ed2k_hash_computation() {
         end_offset: 9_728_001,
         data: Bytes::from_static(&[0x00]),
     };
-    sink.write_block(&sequencer, &part1_chunk).expect("write part 1");
+    sink.write_block(&sequencer, &part1_chunk)
+        .expect("write part 1");
 
     // Verify individual part MD4 digests
     let part0_md4 = sink.compute_part_md4(0, &sequencer).expect("part 0 MD4");
@@ -571,7 +636,9 @@ fn test_multipart_root_ed2k_hash_computation() {
     );
 
     // Verify root multi-part eD2K hash
-    let root_hash = sink.compute_file_ed2k_hash(&sequencer).expect("root eD2K hash");
+    let root_hash = sink
+        .compute_file_ed2k_hash(&sequencer)
+        .expect("root eD2K hash");
     assert_eq!(
         root_hash, hash,
         "Root multi-part hash must match sealed file hash"
@@ -587,8 +654,8 @@ fn test_two_phase_promotion_crash_recovery_and_cleanup() {
     let hash = test_file_hash();
     let fixture = generate_test_fixture_bytes();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
-        .expect("create sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE).expect("create sink");
 
     // Fill entire file
     for p in 0..sequencer.total_parts() {
@@ -610,21 +677,28 @@ fn test_two_phase_promotion_crash_recovery_and_cleanup() {
         .mark_verified_pending_promotion(&sequencer)
         .expect("mark verified pending promotion");
     assert_eq!(verified_hash, hash);
-    assert_eq!(sink.status(), Ed2kPartDownloadStatus::VerifiedPendingPromotion);
+    assert_eq!(
+        sink.status(),
+        Ed2kPartDownloadStatus::VerifiedPendingPromotion
+    );
 
     // Verify durable state on disk
     let resume_path = sink.resume_file_path().to_path_buf();
     assert!(resume_path.exists());
     let journal = mule_protocol::ed2k::Ed2kPartResumeState::load_from_file(&resume_path)
         .expect("load journal");
-    assert_eq!(journal.status, Ed2kPartDownloadStatus::VerifiedPendingPromotion);
+    assert_eq!(
+        journal.status,
+        Ed2kPartDownloadStatus::VerifiedPendingPromotion
+    );
 
     // Simulate abrupt crash: drop sink
     drop(sink);
 
     // Recovery on reboot: open_or_resume reloads in VerifiedPendingPromotion state
-    let mut resumed_sink = Ed2kPartFileSink::open_or_resume(part_path.clone(), hash, TEST_FILE_SIZE)
-        .expect("reopen sink after crash");
+    let mut resumed_sink =
+        Ed2kPartFileSink::open_or_resume(part_path.clone(), hash, TEST_FILE_SIZE)
+            .expect("reopen sink after crash");
     assert_eq!(
         resumed_sink.status(),
         Ed2kPartDownloadStatus::VerifiedPendingPromotion,
@@ -646,11 +720,20 @@ fn test_two_phase_promotion_crash_recovery_and_cleanup() {
 
     // Verify payload on disk byte-for-byte
     let disk_bytes = fs::read(&promoted_path).expect("read promoted file");
-    assert_eq!(&disk_bytes, &fixture, "promoted content must match fixture byte-for-byte");
+    assert_eq!(
+        &disk_bytes, &fixture,
+        "promoted content must match fixture byte-for-byte"
+    );
 
     // Verify cleanup
-    assert!(!part_path.exists(), ".part file must be removed after promotion");
-    assert!(!resume_path.exists(), ".resume.json journal must be deleted after promotion");
+    assert!(
+        !part_path.exists(),
+        ".part file must be removed after promotion"
+    );
+    assert!(
+        !resume_path.exists(),
+        ".resume.json journal must be deleted after promotion"
+    );
     assert_eq!(resumed_sink.status(), Ed2kPartDownloadStatus::Promoted);
 }
 
@@ -662,8 +745,8 @@ fn test_promotion_collision_protection() {
     let hash = test_file_hash();
     let fixture = generate_test_fixture_bytes();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
-        .expect("create sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE).expect("create sink");
 
     for p in 0..sequencer.total_parts() {
         for block in sequencer.plan_part_blocks(p).expect("plan part") {
@@ -677,7 +760,8 @@ fn test_promotion_collision_protection() {
         }
     }
 
-    sink.mark_verified_pending_promotion(&sequencer).expect("verify");
+    sink.mark_verified_pending_promotion(&sequencer)
+        .expect("verify");
 
     let dest_dir = dir.path().join("downloads");
     fs::create_dir_all(&dest_dir).expect("create dest dir");
@@ -714,8 +798,8 @@ fn test_promotion_refusal_when_incomplete() {
     let sequencer = make_sequencer();
     let hash = test_file_hash();
 
-    let mut sink = Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE)
-        .expect("create sink");
+    let mut sink =
+        Ed2kPartFileSink::create_new(part_path.clone(), hash, TEST_FILE_SIZE).expect("create sink");
 
     // Sink has 0 bytes downloaded
     let dest_dir = dir.path().join("downloads");
@@ -747,4 +831,3 @@ fn test_promotion_refusal_when_incomplete() {
         other => panic!("unexpected error: {other:?}"),
     }
 }
-

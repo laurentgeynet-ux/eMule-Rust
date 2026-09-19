@@ -5,8 +5,8 @@ pub use super::encoder::KadEncoder;
 pub use super::opcodes::*;
 pub use super::types::*;
 
-use bytes::Bytes;
 use crate::ed2k::Ed2kParseError;
+use bytes::Bytes;
 
 /// Unified codec facade maintaining full backward compatibility.
 pub struct KadCodec;
@@ -32,13 +32,23 @@ impl KadCodec {
 
     /// Encodes a Kad2 Hello request packet.
     #[inline]
-    pub fn encode_hello_req(kad_id: &KadIdBytes, udp_port: u16, version: u8, tcp_port: u16) -> Bytes {
+    pub fn encode_hello_req(
+        kad_id: &KadIdBytes,
+        udp_port: u16,
+        version: u8,
+        tcp_port: u16,
+    ) -> Bytes {
         KadEncoder::encode_hello_req(kad_id, udp_port, version, tcp_port)
     }
 
     /// Encodes a Kad2 Hello response packet.
     #[inline]
-    pub fn encode_hello_res(kad_id: &KadIdBytes, udp_port: u16, version: u8, tcp_port: u16) -> Bytes {
+    pub fn encode_hello_res(
+        kad_id: &KadIdBytes,
+        udp_port: u16,
+        version: u8,
+        tcp_port: u16,
+    ) -> Bytes {
         KadEncoder::encode_hello_res(kad_id, udp_port, version, tcp_port)
     }
 
@@ -50,7 +60,12 @@ impl KadCodec {
 
     /// Encodes a Kad2 Bootstrap response packet (0x09) with a list of contacts.
     #[inline]
-    pub fn encode_bootstrap_res(bootstrap_id: &KadIdBytes, port: u16, version: u8, contacts: &[KadContactWire]) -> Bytes {
+    pub fn encode_bootstrap_res(
+        bootstrap_id: &KadIdBytes,
+        port: u16,
+        version: u8,
+        contacts: &[KadContactWire],
+    ) -> Bytes {
         KadEncoder::encode_bootstrap_res(bootstrap_id, port, version, contacts)
     }
 
@@ -79,7 +94,10 @@ impl KadCodec {
 
     /// Encodes a Kad2 Search Source response packet (0x3B, unified search response).
     #[inline]
-    pub fn encode_search_source_res(target_file_hash: &KadIdBytes, sources: &[KadSourceWire]) -> Bytes {
+    pub fn encode_search_source_res(
+        target_file_hash: &KadIdBytes,
+        sources: &[KadSourceWire],
+    ) -> Bytes {
         KadEncoder::encode_search_source_res(target_file_hash, sources)
     }
 
@@ -111,7 +129,10 @@ impl KadCodec {
 
     /// Encodes a Kad2 Search Keyword response packet (0x3B, unified search response).
     #[inline]
-    pub fn encode_search_keyword_res(keyword_hash: &KadIdBytes, entries: &[KadKeywordEntryWire]) -> Bytes {
+    pub fn encode_search_keyword_res(
+        keyword_hash: &KadIdBytes,
+        entries: &[KadKeywordEntryWire],
+    ) -> Bytes {
         KadEncoder::encode_search_keyword_res(keyword_hash, entries)
     }
 
@@ -128,5 +149,11 @@ impl KadCodec {
     #[inline]
     pub fn encode_publish_keyword_res(keyword_hash: &KadIdBytes, status: u8) -> Bytes {
         KadEncoder::encode_publish_keyword_res(keyword_hash, status)
+    }
+
+    /// Encodes a KADEMLIA2_FIREWALLUDP (0x62) test packet.
+    #[inline]
+    pub fn encode_firewall_udp(error_code: u8, udp_port: u16) -> Bytes {
+        KadEncoder::encode_firewall_udp(error_code, udp_port)
     }
 }

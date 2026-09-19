@@ -1,12 +1,12 @@
-use std::io;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use mule_protocol::ed2k::obfuscation::{
     derive_initiator_peer_ciphers, derive_responder_peer_ciphers, generate_semi_random_marker,
     Rc4Cipher, ENM_OBFUSCATION, MAGICVALUE_SYNC,
 };
 use rand::Rng;
+use std::io;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 /// A bi-directional stream wrapper that transparently handles eMule protocol obfuscation
 /// via RC4 stream cipher, or passes data through unmodified when in plaintext mode.
@@ -262,7 +262,9 @@ impl<S: AsyncRead + Unpin> AsyncRead for ObfuscatedStream<S> {
         if self.read_prefix_offset < self.read_prefix.len() {
             let available = self.read_prefix.len() - self.read_prefix_offset;
             let to_copy = available.min(buf.remaining());
-            buf.put_slice(&self.read_prefix[self.read_prefix_offset..self.read_prefix_offset + to_copy]);
+            buf.put_slice(
+                &self.read_prefix[self.read_prefix_offset..self.read_prefix_offset + to_copy],
+            );
             self.read_prefix_offset += to_copy;
             return Poll::Ready(Ok(()));
         }
@@ -403,9 +405,10 @@ mod tests {
         let server_user_hash = [0x55u8; 16];
 
         let client_task = tokio::spawn(async move {
-            let mut stream = ObfuscatedStream::connect_peer_outgoing(client_io, &server_user_hash, 8)
-                .await
-                .expect("client connect_peer_outgoing failed");
+            let mut stream =
+                ObfuscatedStream::connect_peer_outgoing(client_io, &server_user_hash, 8)
+                    .await
+                    .expect("client connect_peer_outgoing failed");
             assert!(stream.is_obfuscated());
 
             // Write test message to server
@@ -423,9 +426,14 @@ mod tests {
             let mut first_byte = [0u8; 1];
             server_io.read_exact(&mut first_byte).await.unwrap();
 
-            let mut stream = ObfuscatedStream::accept_peer_incoming(server_io, first_byte[0], &server_user_hash, 8)
-                .await
-                .expect("server accept_peer_incoming failed");
+            let mut stream = ObfuscatedStream::accept_peer_incoming(
+                server_io,
+                first_byte[0],
+                &server_user_hash,
+                8,
+            )
+            .await
+            .expect("server accept_peer_incoming failed");
             assert!(stream.is_obfuscated());
 
             // Read message from client

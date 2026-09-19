@@ -21,11 +21,12 @@ pub async fn handle_categories_create(
     let default_dest = params["defaultDestination"].as_str().map(String::from);
     let default_prio = params["defaultPriority"].as_str().map(String::from);
 
-    let created = state
-        .downloads
-        .lock()
-        .await
-        .create_category(name, color, default_dest, default_prio)?;
+    let created =
+        state
+            .downloads
+            .lock()
+            .await
+            .create_category(name, color, default_dest, default_prio)?;
 
     serde_json::to_value(created)
         .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))

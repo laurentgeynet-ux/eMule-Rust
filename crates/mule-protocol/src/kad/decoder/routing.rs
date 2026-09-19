@@ -1,11 +1,15 @@
 //! Decoders for Kad bootstrap and find node messages.
 
-use bytes::Buf;
 use crate::ed2k::{Ed2kErrorKind, Ed2kParseError};
 use crate::kad::types::*;
+use bytes::Buf;
 
 /// Decodes an `OP_KADEMLIA2_PING` payload.
-pub fn decode_ping(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_ping(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 18 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -25,7 +29,11 @@ pub fn decode_ping(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMe
 }
 
 /// Decodes an `OP_KADEMLIA2_PONG` payload.
-pub fn decode_pong(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_pong(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 2 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -43,7 +51,11 @@ pub fn decode_pong(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMe
 }
 
 /// Decodes an `OP_KADEMLIA2_HELLO_REQ` payload.
-pub fn decode_hello_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_hello_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 19 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -74,7 +86,11 @@ pub fn decode_hello_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<
 }
 
 /// Decodes an `OP_KADEMLIA2_HELLO_RES` payload.
-pub fn decode_hello_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_hello_res(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 19 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -105,7 +121,11 @@ pub fn decode_hello_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<
 }
 
 /// Decodes an `OP_KADEMLIA2_BOOTSTRAP_REQ` payload.
-pub fn decode_bootstrap_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_bootstrap_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.is_empty() {
         Ok(KadMessage::BootstrapReq(KadBootstrapReq {
             kad_id: [0u8; 16],
@@ -115,7 +135,10 @@ pub fn decode_bootstrap_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Res
         let mut kad_id = [0u8; 16];
         payload.copy_to_slice(&mut kad_id);
         let udp_port = payload.get_u16_le();
-        Ok(KadMessage::BootstrapReq(KadBootstrapReq { kad_id, udp_port }))
+        Ok(KadMessage::BootstrapReq(KadBootstrapReq {
+            kad_id,
+            udp_port,
+        }))
     } else {
         Err(Ed2kParseError::new(
             protocol,
@@ -131,7 +154,11 @@ pub fn decode_bootstrap_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Res
 }
 
 /// Decodes an `OP_KADEMLIA2_BOOTSTRAP_RES` payload.
-pub fn decode_bootstrap_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_bootstrap_res(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 21 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -194,7 +221,11 @@ pub fn decode_bootstrap_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Res
 }
 
 /// Decodes an `OP_KADEMLIA2_REQ` payload.
-pub fn decode_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 33 {
         return Err(Ed2kParseError::new(
             protocol,
@@ -222,7 +253,11 @@ pub fn decode_req(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMes
 /// Decodes an `OP_KADEMLIA2_RES` payload (0x29, Find Node response).
 /// Official format: [target_id: 16] [count: u8] then count * 25-byte contact records:
 /// [kad_id: 16] [ip: 4] [udp_port: 2] [tcp_port: 2] [version: 1].
-pub fn decode_res(protocol: u8, opcode: u8, mut payload: &[u8]) -> Result<KadMessage, Ed2kParseError> {
+pub fn decode_res(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
     if payload.len() < 17 {
         return Err(Ed2kParseError::new(
             protocol,

@@ -1,8 +1,8 @@
+use bytes::BytesMut;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
-use bytes::BytesMut;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, Mutex};
@@ -10,21 +10,301 @@ use tracing::info;
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus, Ed2kFileStatusReq,
-    OP_ACCEPTUPLOADREQ, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_FILEREQANSNOFILE,
-    OP_FILESTATUS, OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTSOURCES,
-    OP_REQUESTSOURCES2, OP_SETREQFILEID_EMULE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
-    PR_EMULE_COMPRESSED,
+    Ed2kAichFileHashReq, Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus,
+    Ed2kFileStatusReq, Ed2kHashSetReq, OP_ACCEPTUPLOADREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER,
+    OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER,
+    OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
+    OP_SETREQFILEID_EMULE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
 };
-use mule_protocol::framing::PacketCodec;
+use mule_protocol::framing::{PacketCodec, RawPacket};
 
-use crate::services::downloads::DownloadService;
-use crate::services::obfuscation_stream::ObfuscatedStream;
 use super::events::emit_event;
 use super::source_exchange::{handle_sx_answer, handle_sx_request};
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
 };
+use crate::services::downloads::DownloadService;
+use crate::services::obfuscation_stream::ObfuscatedStream;
+
+/// Handles an `OP_HASHSETANSWER` packet arriving in any peer session loop:
+/// validates the file hash and persists the per-part MD4 hashset.
+/// Returns true if the packet was a hashset answer and has been consumed.
+pub(crate) async fn handle_hashset_answer(
+    packet: &RawPacket,
+    dl_hash_bytes: [u8; 16],
+    file_hash_str: &str,
+    target_addr: SocketAddr,
+    decoder: &Ed2kDecoder,
+    downloads: &Arc<Mutex<DownloadService>>,
+) -> bool {
+    if packet.protocol != PR_ED2K || packet.opcode != OP_HASHSETANSWER {
+        return false;
+    }
+
+    match decoder.decode_hashset_answer(packet.protocol, packet.opcode, &packet.payload, 0) {
+        Ok(ans) => {
+            if ans.file_hash != dl_hash_bytes {
+                tracing::warn!(
+                    "Peer {target_addr} sent OP_HASHSETANSWER for a different file hash, ignoring"
+                );
+                return true;
+            }
+            let mut dl_svc = downloads.lock().await;
+            if let Err(e) = dl_svc.store_part_hashes_by_hash(file_hash_str, &ans.part_hashes) {
+                tracing::warn!(
+                    "Failed to persist hashset from {target_addr} for {file_hash_str}: {e}"
+                );
+            } else {
+                info!(
+                    "Stored hashset ({} part hashes) for {} from peer {}",
+                    ans.part_hashes.len(),
+                    file_hash_str,
+                    target_addr
+                );
+            }
+            true
+        }
+        Err(e) => {
+            tracing::warn!("Malformed OP_HASHSETANSWER from {target_addr}: {e}");
+            true
+        }
+    }
+}
+
+/// Masks a peer IP like eMule `CAICHUntrustedHash` (`dwIP &= 0x00F0FFFF`),
+/// so multiple clients behind the same address range count as one vote.
+fn mask_peer_ip(addr: SocketAddr) -> u32 {
+    match addr.ip() {
+        std::net::IpAddr::V4(v4) => u32::from_le_bytes(v4.octets()) & 0x00F0FFFF,
+        std::net::IpAddr::V6(v6) => {
+            u32::from_le_bytes(v6.octets()[..4].try_into().unwrap_or_default()) & 0x00F0FFFF
+        }
+    }
+}
+
+/// Writes a framed eMule packet onto the peer stream.
+async fn write_packet(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    pkt: &RawPacket,
+) -> std::io::Result<()> {
+    let mut out_wire = Vec::with_capacity(pkt.payload.len() + 6);
+    out_wire.push(pkt.protocol);
+    out_wire.extend_from_slice(&(pkt.frame_len() as u32).to_le_bytes());
+    out_wire.push(pkt.opcode);
+    out_wire.extend_from_slice(&pkt.payload);
+    stream.write_all(&out_wire).await
+}
+
+/// Sends `OP_AICHREQUEST` for every corrupted part awaiting AICH recovery on
+/// this file (eMule `CDownloadClient::SendAICHRequest`). No-op when the peer
+/// does not advertise AICH or no root is trusted yet.
+pub(crate) async fn send_pending_aich_requests(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    encoder: &Ed2kEncoder,
+    target_addr: SocketAddr,
+    file_hash_str: &str,
+    dl_hash_bytes: [u8; 16],
+    peer_supports_aich: bool,
+    downloads: &Arc<Mutex<DownloadService>>,
+) {
+    if !peer_supports_aich {
+        return;
+    }
+    loop {
+        let next = {
+            let mut dl_svc = downloads.lock().await;
+            dl_svc.next_aich_recovery_by_hash(file_hash_str)
+        };
+        let Some((part, master)) = next else { break };
+        let req = Ed2kAichRequest {
+            file_hash: dl_hash_bytes,
+            part: part as u16,
+            master_hash: master,
+        };
+        match encoder.encode_aich_request(&req) {
+            Ok(pkt) => {
+                if let Err(e) = write_packet(stream, &pkt).await {
+                    tracing::warn!("Failed to send OP_AICHREQUEST to {target_addr}: {e}");
+                    let mut dl_svc = downloads.lock().await;
+                    if let Some(snap) = dl_svc.find_by_ed2k_hash(file_hash_str) {
+                        dl_svc.fail_aich_recovery(&snap.id, part);
+                    }
+                    break;
+                }
+                tracing::info!(
+                    "Sent OP_AICHREQUEST for part {part} of {file_hash_str} to {target_addr}"
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Failed to encode OP_AICHREQUEST: {e}");
+                break;
+            }
+        }
+    }
+}
+
+/// Handles `OP_AICHFILEHASHANS` (0x15): records a master-hash vote. Once the
+/// root reaches consensus, pending recovery requests are sent to this peer.
+/// Returns true if the packet was consumed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn handle_aich_file_hash_res(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    packet: &RawPacket,
+    dl_hash_bytes: [u8; 16],
+    file_hash_str: &str,
+    target_addr: SocketAddr,
+    decoder: &Ed2kDecoder,
+    encoder: &Ed2kEncoder,
+    peer_supports_aich: bool,
+    downloads: &Arc<Mutex<DownloadService>>,
+) -> bool {
+    if packet.protocol != PR_EMULE || packet.opcode != OP_AICHFILEHASHRES {
+        return false;
+    }
+    match decoder.decode_aich_file_hash_res(packet.protocol, packet.opcode, &packet.payload, 0) {
+        Ok(res) => {
+            if res.file_hash != dl_hash_bytes {
+                tracing::warn!(
+                    "Peer {target_addr} sent OP_AICHFILEHASHANS for a different file hash, ignoring"
+                );
+                return true;
+            }
+            let outcome = {
+                let mut dl_svc = downloads.lock().await;
+                dl_svc.find_by_ed2k_hash(file_hash_str).map(|snap| {
+                    dl_svc.record_aich_root_vote(&snap.id, res.aich_hash, mask_peer_ip(target_addr))
+                })
+            };
+            match outcome {
+                Some(crate::services::downloads::operations::AichVoteOutcome::Trusted) => {
+                    tracing::info!(
+                        "AICH master hash for {file_hash_str} confirmed by {target_addr}"
+                    );
+                    send_pending_aich_requests(
+                        stream,
+                        encoder,
+                        target_addr,
+                        file_hash_str,
+                        dl_hash_bytes,
+                        peer_supports_aich,
+                        downloads,
+                    )
+                    .await;
+                }
+                Some(crate::services::downloads::operations::AichVoteOutcome::Mismatch) => {
+                    tracing::warn!(
+                        "Peer {target_addr} reported a different AICH master hash for {file_hash_str}"
+                    );
+                }
+                Some(crate::services::downloads::operations::AichVoteOutcome::Untrusted) => {
+                    tracing::debug!(
+                        "AICH root vote from {target_addr} recorded for {file_hash_str} (no consensus yet)"
+                    );
+                }
+                None => {}
+            }
+            true
+        }
+        Err(e) => {
+            tracing::warn!("Malformed OP_AICHFILEHASHANS from {target_addr}: {e}");
+            true
+        }
+    }
+}
+
+/// Handles `OP_AICHANSWER` (0x13): applies recovery data to the corrupted
+/// part (block-level eviction) or requeues the part on a failed answer.
+/// Returns true if the packet was consumed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn handle_aich_answer(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    packet: &RawPacket,
+    dl_hash_bytes: [u8; 16],
+    file_hash_str: &str,
+    target_addr: SocketAddr,
+    decoder: &Ed2kDecoder,
+    encoder: &Ed2kEncoder,
+    peer_supports_aich: bool,
+    downloads: &Arc<Mutex<DownloadService>>,
+) -> bool {
+    if packet.protocol != PR_EMULE || packet.opcode != OP_AICH_ANSWER {
+        return false;
+    }
+    match decoder.decode_aich_answer(packet.protocol, packet.opcode, &packet.payload, 0) {
+        Ok(ans) => {
+            if ans.file_hash != dl_hash_bytes {
+                tracing::warn!(
+                    "Peer {target_addr} sent OP_AICHANSWER for a different file hash, ignoring"
+                );
+                return true;
+            }
+            let mut dl_svc = downloads.lock().await;
+            let dl_id = dl_svc.find_by_ed2k_hash(file_hash_str).map(|s| s.id);
+            match (dl_id, ans.recovery) {
+                (Some(id), Some(rec)) => {
+                    let entries: Vec<mule_format::AichRecoveryEntry> = rec
+                        .entries16
+                        .iter()
+                        .map(|&(ident, hash)| mule_format::AichRecoveryEntry {
+                            ident: ident as u32,
+                            hash: mule_format::AichHash(hash),
+                        })
+                        .chain(rec.entries32.iter().map(|&(ident, hash)| {
+                            mule_format::AichRecoveryEntry {
+                                ident,
+                                hash: mule_format::AichHash(hash),
+                            }
+                        }))
+                        .collect();
+                    match dl_svc.apply_aich_recovery(&id, rec.part as u32, rec.master_hash, entries)
+                    {
+                        Ok(report) => {
+                            if report.corrupted_blocks == 0 {
+                                info!(
+                                    "AICH recovery from {target_addr}: part {} of {file_hash_str} fully verified",
+                                    report.part
+                                );
+                            } else {
+                                info!(
+                                    "AICH recovery from {target_addr}: part {} of {file_hash_str}, {} corrupted block(s) evicted",
+                                    report.part, report.corrupted_blocks
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("AICH recovery from {target_addr} rejected: {e}");
+                        }
+                    }
+                }
+                (Some(id), None) => {
+                    tracing::warn!(
+                        "Peer {target_addr} could not serve AICH recovery for {file_hash_str}"
+                    );
+                    // The part index is not echoed in a failed answer; fail the
+                    // most recently sent request.
+                    dl_svc.fail_last_aich_request(&id);
+                }
+                (None, _) => {}
+            }
+            drop(dl_svc);
+            send_pending_aich_requests(
+                stream,
+                encoder,
+                target_addr,
+                file_hash_str,
+                dl_hash_bytes,
+                peer_supports_aich,
+                downloads,
+            )
+            .await;
+            true
+        }
+        Err(e) => {
+            tracing::warn!("Malformed OP_AICHANSWER from {target_addr}: {e}");
+            true
+        }
+    }
+}
 
 pub(crate) async fn query_file_status_and_enter_queue(
     stream: &mut ObfuscatedStream<TcpStream>,
@@ -34,12 +314,14 @@ pub(crate) async fn query_file_status_and_enter_queue(
     address_str: &str,
     peer_supports_sx: bool,
     peer_supports_sx2: bool,
+    peer_supports_aich: bool,
     timeouts: &PeerTimeouts,
     cancel_token: &mule_network_policy::CancellationToken,
     inner: &Arc<Mutex<SwarmInnerState>>,
     event_tx: &broadcast::Sender<String>,
     sequence: &Arc<AtomicU64>,
     downloads: &Arc<Mutex<DownloadService>>,
+    sui: &mut super::sui::OutboundSui,
 ) -> Result<Ed2kFileStatus, PeerError> {
     let encoder = Ed2kEncoder::default();
     let decoder = Ed2kDecoder::default();
@@ -48,15 +330,23 @@ pub(crate) async fn query_file_status_and_enter_queue(
     let mut read_buf = BytesMut::with_capacity(65536);
     let mut raw_buf = [0u8; 8192];
 
-    info!("Peer {} handshake completed. Requesting file status...", target_addr);
+    info!(
+        "Peer {} handshake completed. Requesting file status...",
+        target_addr
+    );
 
     // 4a. Send OP_REQFILENAME
     let file_status_req = Ed2kFileStatusReq {
         file_hash: dl_hash_bytes,
     };
-    let req_filename_pkt = encoder.encode_file_status_req_with_opcode(&file_status_req, OP_REQFILENAME).map_err(|e| {
-        PeerError::new(PeerFailureReason::InvalidHandshake, format!("Failed to encode OP_REQFILENAME: {e}"))
-    })?;
+    let req_filename_pkt = encoder
+        .encode_file_status_req_with_opcode(&file_status_req, OP_REQFILENAME)
+        .map_err(|e| {
+            PeerError::new(
+                PeerFailureReason::InvalidHandshake,
+                format!("Failed to encode OP_REQFILENAME: {e}"),
+            )
+        })?;
 
     out_wire.clear();
     out_wire.push(req_filename_pkt.protocol);
@@ -65,13 +355,21 @@ pub(crate) async fn query_file_status_and_enter_queue(
     out_wire.extend_from_slice(&req_filename_pkt.payload);
 
     if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send OP_REQFILENAME: {e}")));
+        return Err(PeerError::new(
+            PeerFailureReason::ConnectRefused,
+            format!("Failed to send OP_REQFILENAME: {e}"),
+        ));
     }
 
     // 4b. Send OP_SETREQFILEID_EMULE
-    let status_pkt = encoder.encode_file_status_req_with_opcode(&file_status_req, OP_SETREQFILEID_EMULE).map_err(|e| {
-        PeerError::new(PeerFailureReason::InvalidHandshake, format!("Failed to encode OP_SETREQFILEID_EMULE: {e}"))
-    })?;
+    let status_pkt = encoder
+        .encode_file_status_req_with_opcode(&file_status_req, OP_SETREQFILEID_EMULE)
+        .map_err(|e| {
+            PeerError::new(
+                PeerFailureReason::InvalidHandshake,
+                format!("Failed to encode OP_SETREQFILEID_EMULE: {e}"),
+            )
+        })?;
 
     out_wire.clear();
     out_wire.push(status_pkt.protocol);
@@ -80,7 +378,82 @@ pub(crate) async fn query_file_status_and_enter_queue(
     out_wire.extend_from_slice(&status_pkt.payload);
 
     if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send OP_SETREQFILEID_EMULE: {e}")));
+        return Err(PeerError::new(
+            PeerFailureReason::ConnectRefused,
+            format!("Failed to send OP_SETREQFILEID_EMULE: {e}"),
+        ));
+    }
+
+    // 4b'. Request the per-part MD4 hashset (OP_HASHSETREQUEST) when unknown,
+    // so completed parts can be verified incrementally (eMule PartFile hashset).
+    let hashset_known = {
+        let dl_svc = downloads.lock().await;
+        !dl_svc.get_part_hashes_by_hash(file_hash_str).is_empty()
+    };
+    if !hashset_known {
+        let hs_req = Ed2kHashSetReq {
+            file_hash: dl_hash_bytes,
+        };
+        match encoder.encode_hashset_request(&hs_req) {
+            Ok(hs_pkt) => {
+                out_wire.clear();
+                out_wire.push(hs_pkt.protocol);
+                out_wire.extend_from_slice(&(hs_pkt.frame_len() as u32).to_le_bytes());
+                out_wire.push(hs_pkt.opcode);
+                out_wire.extend_from_slice(&hs_pkt.payload);
+                if let Err(e) = stream.write_all(&out_wire).await {
+                    tracing::warn!("Failed to send OP_HASHSETREQUEST to {target_addr}: {e}");
+                } else {
+                    tracing::info!(
+                        "Sent OP_HASHSETREQUEST to peer {target_addr} for {file_hash_str}"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to encode OP_HASHSETREQUEST: {e}");
+            }
+        }
+    }
+
+    // 4b''. Request the AICH master hash (OP_AICHFILEHASHREQ, eMule protocol)
+    // when the peer advertises AICH support and no trusted root is known yet.
+    if peer_supports_aich {
+        let aich_needed = {
+            let dl_svc = downloads.lock().await;
+            dl_svc
+                .find_by_ed2k_hash(file_hash_str)
+                .and_then(|snap| dl_svc.trusted_aich_root(&snap.id))
+                .is_none()
+        };
+        if aich_needed {
+            let req = Ed2kAichFileHashReq {
+                file_hash: dl_hash_bytes,
+            };
+            match encoder.encode_aich_file_hash_req(&req) {
+                Ok(pkt) => {
+                    if let Err(e) = write_packet(stream, &pkt).await {
+                        tracing::warn!("Failed to send OP_AICHFILEHASHREQ to {target_addr}: {e}");
+                    } else {
+                        tracing::info!(
+                            "Sent OP_AICHFILEHASHREQ to peer {target_addr} for {file_hash_str}"
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!("Failed to encode OP_AICHFILEHASHREQ: {e}"),
+            }
+        }
+        // A trusted root may already exist while corrupted parts wait for
+        // recovery data — send the pending OP_AICHREQUESTs now.
+        send_pending_aich_requests(
+            stream,
+            &encoder,
+            target_addr,
+            file_hash_str,
+            dl_hash_bytes,
+            peer_supports_aich,
+            downloads,
+        )
+        .await;
     }
 
     // 4c. Send OP_REQUESTSOURCES / OP_REQUESTSOURCES2 if supported
@@ -99,7 +472,10 @@ pub(crate) async fn query_file_status_and_enter_queue(
             if let Err(e) = stream.write_all(&out_wire).await {
                 tracing::warn!("Failed to send SX request to {target_addr}: {e}");
             } else {
-                tracing::info!("Sent OP_REQUESTSOURCES (version {}) to peer {target_addr}", sx_req.version);
+                tracing::info!(
+                    "Sent OP_REQUESTSOURCES (version {}) to peer {target_addr}",
+                    sx_req.version
+                );
             }
         }
     }
@@ -138,6 +514,18 @@ pub(crate) async fn query_file_status_and_enter_queue(
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit awaiting file status"));
                         }
                         while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
+                            if sui.handle(&packet, target_addr, &decoder, &encoder, stream).await {
+                                continue;
+                            }
+                            if handle_hashset_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await {
+                                continue;
+                            }
+                            if handle_aich_file_hash_res(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
+                                continue;
+                            }
+                            if handle_aich_answer(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
+                                continue;
+                            }
                             if packet.protocol == PR_ED2K || packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED {
                                 if packet.opcode == OP_FILESTATUS {
                                     let status_res = decoder.decode_file_status(packet.protocol, packet.opcode, &packet.payload, 0);
@@ -226,7 +614,10 @@ pub(crate) async fn query_file_status_and_enter_queue(
     }
 
     // 6. Send OP_STARTUPLOADREQ
-    info!("Requesting upload slot via OP_STARTUPLOADREQ for file {} from peer {}", file_hash_str, target_addr);
+    info!(
+        "Requesting upload slot via OP_STARTUPLOADREQ for file {} from peer {}",
+        file_hash_str, target_addr
+    );
     out_wire.clear();
     out_wire.push(PR_ED2K);
     out_wire.extend_from_slice(&(17u32).to_le_bytes());
@@ -234,7 +625,10 @@ pub(crate) async fn query_file_status_and_enter_queue(
     out_wire.extend_from_slice(&dl_hash_bytes);
 
     if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send OP_STARTUPLOADREQ: {e}")));
+        return Err(PeerError::new(
+            PeerFailureReason::ConnectRefused,
+            format!("Failed to send OP_STARTUPLOADREQ: {e}"),
+        ));
     }
 
     // 7. Wait in upload queue
@@ -283,6 +677,18 @@ pub(crate) async fn query_file_status_and_enter_queue(
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit while in queue"));
                         }
                         while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
+                            if sui.handle(&packet, target_addr, &decoder, &encoder, stream).await {
+                                continue;
+                            }
+                            if handle_hashset_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await {
+                                continue;
+                            }
+                            if handle_aich_file_hash_res(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
+                                continue;
+                            }
+                            if handle_aich_answer(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
+                                continue;
+                            }
                             if packet.protocol == PR_ED2K && packet.opcode == OP_ACCEPTUPLOADREQ {
                                 info!("Upload slot accepted (OP_ACCEPTUPLOADREQ) by peer {}", target_addr);
                                 break 'queue_loop;

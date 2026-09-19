@@ -1,8 +1,8 @@
 //! In-memory block sink for assembling downloaded eD2K blocks.
 
-use crate::ed2k::packet::{Ed2kBlockRange, Ed2kSendingPart};
 use super::types::Ed2kSequencerError;
 use super::Ed2kDownloadSequencer;
+use crate::ed2k::packet::{Ed2kBlockRange, Ed2kSendingPart};
 
 /// Maximum allowable in-memory sink allocation (512 MiB) to prevent OOM denial-of-service.
 pub const MAX_MEMORY_SINK_SIZE: u64 = 512 * 1024 * 1024;
@@ -77,7 +77,11 @@ impl Ed2kBlockSink {
 
     /// Returns true if a block range `[start, end)` has already been received or is fully covered.
     pub fn has_range(&self, start: u64, end: u64) -> bool {
-        if self.received_ranges.iter().any(|&(s, e)| s == start && e == end) {
+        if self
+            .received_ranges
+            .iter()
+            .any(|&(s, e)| s == start && e == end)
+        {
             return true;
         }
         self.is_range_covered(start, end)
@@ -85,12 +89,17 @@ impl Ed2kBlockSink {
 
     /// Returns true if any byte in `[start, end)` overlaps already received ranges.
     pub fn has_overlap(&self, start: u64, end: u64) -> bool {
-        self.received_ranges.iter().any(|&(s, e)| s < end && start < e)
+        self.received_ranges
+            .iter()
+            .any(|&(s, e)| s < end && start < e)
     }
 
     /// Returns the total number of bytes received and written so far.
     pub fn received_bytes_count(&self) -> usize {
-        self.received_ranges.iter().map(|&(s, e)| (e - s) as usize).sum()
+        self.received_ranges
+            .iter()
+            .map(|&(s, e)| (e - s) as usize)
+            .sum()
     }
 
     /// Validates and writes an incoming `Ed2kSendingPart` into the sink.

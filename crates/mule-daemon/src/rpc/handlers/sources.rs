@@ -27,9 +27,9 @@ pub async fn handle_sources_add_manual(
         .as_str()
         .or_else(|| params["hash"].as_str())
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
-    let address = params["address"]
-        .as_str()
-        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')"))?;
+    let address = params["address"].as_str().ok_or_else(|| {
+        JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')")
+    })?;
 
     let addr: std::net::SocketAddr = address.parse().map_err(|e| {
         JsonRpcError::invalid_params(&format!("Invalid socket address format '{address}': {e}"))
@@ -87,7 +87,11 @@ pub async fn handle_sources_add_manual(
         crypt_options: crypt_options_param,
     };
 
-    state.downloads.lock().await.upsert_peer_sources(hash_str, std::slice::from_ref(&source))?;
+    state
+        .downloads
+        .lock()
+        .await
+        .upsert_peer_sources(hash_str, std::slice::from_ref(&source))?;
     serde_json::to_value(source)
         .map_err(|e| JsonRpcError::business(format!("Serialization error: {e}")))
 }
@@ -101,9 +105,9 @@ pub async fn handle_sources_connect(
         .as_str()
         .or_else(|| params["hash"].as_str())
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
-    let address = params["address"]
-        .as_str()
-        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')"))?;
+    let address = params["address"].as_str().ok_or_else(|| {
+        JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')")
+    })?;
 
     let addr: std::net::SocketAddr = address.parse().map_err(|e| {
         JsonRpcError::invalid_params(&format!("Invalid socket address format '{address}': {e}"))
@@ -230,7 +234,9 @@ pub async fn handle_sources_connect(
     let permit = state
         .network_policy
         .request_tcp_connect(addr, mule_network_policy::ConnectionPurpose::Ed2kPeer)
-        .map_err(|e| JsonRpcError::business(format!("Connection rejected by network policy: {e}")))?;
+        .map_err(|e| {
+            JsonRpcError::business(format!("Connection rejected by network policy: {e}"))
+        })?;
 
     let client_port = state.config.ed2k_port;
     let user_hash = state.identity.lock().await.user_hash();
@@ -313,19 +319,31 @@ pub async fn handle_sources_status(
     state: &AppState,
     params: Option<Value>,
 ) -> Result<Value, JsonRpcError> {
-    let file_hash = params.as_ref().and_then(|p| p["fileHash"].as_str().or_else(|| p["hash"].as_str()));
+    let file_hash = params
+        .as_ref()
+        .and_then(|p| p["fileHash"].as_str().or_else(|| p["hash"].as_str()));
     let swarm_snap = state.peer_session.swarm_snapshot(file_hash).await;
-    
+
     // If specific file or swarm is requested, return full swarm object
-    if params.as_ref().map(|p| p.get("fileHash").is_some() || p.get("swarm").is_some()).unwrap_or(false) {
+    if params
+        .as_ref()
+        .map(|p| p.get("fileHash").is_some() || p.get("swarm").is_some())
+        .unwrap_or(false)
+    {
         Ok(serde_json::to_value(swarm_snap).unwrap_or_default())
     } else {
         // Return first active peer snapshot or disconnected for legacy single peer callers, but augmented with swarm fields
         let mut val = serde_json::to_value(state.peer_session.snapshot().await).unwrap_or_default();
         if let Value::Object(ref mut map) = val {
-            map.insert("activePeerCount".to_string(), json!(swarm_snap.active_peer_count));
+            map.insert(
+                "activePeerCount".to_string(),
+                json!(swarm_snap.active_peer_count),
+            );
             map.insert("peers".to_string(), json!(swarm_snap.peers));
-            map.insert("inFlightBlocks".to_string(), json!(swarm_snap.in_flight_blocks));
+            map.insert(
+                "inFlightBlocks".to_string(),
+                json!(swarm_snap.in_flight_blocks),
+            );
         }
         Ok(val)
     }

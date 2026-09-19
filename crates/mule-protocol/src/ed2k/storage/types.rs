@@ -1,10 +1,10 @@
 //! Storage types, status enums, and resume state tracking for eD2K.
 
+use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 
 use crate::ed2k::packet::{Ed2kBlockRange, Ed2kSendingPart};
 use crate::ed2k::sequencer::{Ed2kBlockSink, Ed2kDownloadSequencer, Ed2kSequencerError};

@@ -113,12 +113,12 @@ pub async fn handle_listener_status(state: &AppState) -> Result<Value, JsonRpcEr
 }
 
 pub async fn handle_uploads_list(state: &AppState) -> Result<Value, JsonRpcError> {
-    let active = state.inbound_listener.upload_manager().active_snapshot().await;
+    let active_list = state
+        .inbound_listener
+        .upload_manager()
+        .active_snapshots()
+        .await;
     let queue = state.inbound_listener.upload_manager().list_queue().await;
-    let active_list = match active {
-        Some(a) => vec![a],
-        None => vec![],
-    };
     Ok(json!({
         "active": active_list,
         "queued": queue,
@@ -126,7 +126,11 @@ pub async fn handle_uploads_list(state: &AppState) -> Result<Value, JsonRpcError
 }
 
 pub async fn handle_uploads_status(state: &AppState) -> Result<Value, JsonRpcError> {
-    let active = state.inbound_listener.upload_manager().active_snapshot().await;
+    let active = state
+        .inbound_listener
+        .upload_manager()
+        .active_snapshot()
+        .await;
     Ok(serde_json::to_value(active).unwrap_or(Value::Null))
 }
 
@@ -151,8 +155,15 @@ pub async fn handle_uploads_cancel(
 
 pub async fn handle_identity_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let id_guard = state.identity.lock().await;
-    let status = id_guard.status();
-    Ok(serde_json::to_value(status).unwrap_or_default())
+    let status = serde_json::to_value(id_guard.status()).unwrap_or_default();
+    let sui = serde_json::to_value(state.sui_stats.snapshot()).unwrap_or_default();
+    match status {
+        Value::Object(mut m) => {
+            m.insert("sui".to_string(), sui);
+            Ok(Value::Object(m))
+        }
+        other => Ok(json!({ "identity": other, "sui": sui })),
+    }
 }
 
 pub async fn handle_identity_rotate(state: &AppState) -> Result<Value, JsonRpcError> {

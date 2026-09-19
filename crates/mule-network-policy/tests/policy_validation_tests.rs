@@ -1,17 +1,13 @@
+use mule_network_policy::{
+    redact_socket_addr, AuditDecision, AuditEventType, ConnectionPurpose, NetworkPolicyManager,
+    NetworkProfile, NetworkState, PolicyError, PolicyViolation, ResourceBudgets,
+};
 use std::net::SocketAddr;
 use std::time::Duration;
-use mule_network_policy::{
-    redact_socket_addr, AuditDecision, AuditEventType, ConnectionPurpose,
-    NetworkPolicyManager, NetworkProfile, NetworkState, PolicyError, PolicyViolation,
-    ResourceBudgets,
-};
 
 #[test]
 fn test_local_lab_profile_confinement() {
-    let manager = NetworkPolicyManager::new(
-        NetworkProfile::LocalLab,
-        ResourceBudgets::default(),
-    );
+    let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, ResourceBudgets::default());
 
     // Loopback IPv4 and IPv6 allowed
     let loopback_v4: SocketAddr = "127.0.0.1:39735".parse().unwrap();
@@ -24,13 +20,23 @@ fn test_local_lab_profile_confinement() {
 
     // Non-loopback public rejected
     let public_ip: SocketAddr = "91.121.162.140:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(public_ip, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::NonLoopbackDisallowedInLab(_))));
+    let err = manager
+        .request_tcp_connect(public_ip, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::NonLoopbackDisallowedInLab(_))
+    ));
 
     // Non-loopback LAN rejected
     let lan_ip: SocketAddr = "192.168.1.1:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(lan_ip, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::NonLoopbackDisallowedInLab(_))));
+    let err = manager
+        .request_tcp_connect(lan_ip, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::NonLoopbackDisallowedInLab(_))
+    ));
 }
 
 #[test]
@@ -42,55 +48,107 @@ fn test_public_preview_anti_ssrf_and_filtering() {
 
     // Public routable IP allowed
     let public_ip: SocketAddr = "91.121.162.140:39735".parse().unwrap();
-    assert!(manager.request_tcp_connect(public_ip, ConnectionPurpose::Ed2kPeer).is_ok());
+    assert!(manager
+        .request_tcp_connect(public_ip, ConnectionPurpose::Ed2kPeer)
+        .is_ok());
 
     // Private RFC 1918 rejected
     let lan_10: SocketAddr = "10.0.0.1:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(lan_10, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(lan_10, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))
+    ));
 
     let lan_172: SocketAddr = "172.20.0.1:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(lan_172, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(lan_172, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))
+    ));
 
     let lan_192: SocketAddr = "192.168.1.100:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(lan_192, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(lan_192, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))
+    ));
 
     // IPv4-mapped IPv6 private LAN rejected
     let mapped_lan: SocketAddr = "[::ffff:192.168.1.1]:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(mapped_lan, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(mapped_lan, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::PrivateLanDisallowed(_))
+    ));
 
     // Loopback in public profile rejected
     let loopback: SocketAddr = "127.0.0.1:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(loopback, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::LoopbackDisallowedInPublicProfile(_))));
+    let err = manager
+        .request_tcp_connect(loopback, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::LoopbackDisallowedInPublicProfile(_))
+    ));
 
     // Link-local rejected
     let link_local: SocketAddr = "169.254.10.20:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(link_local, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::LinkLocalDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(link_local, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::LinkLocalDisallowed(_))
+    ));
 
     // Multicast rejected
     let multicast: SocketAddr = "224.0.0.1:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(multicast, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::MulticastDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(multicast, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::MulticastDisallowed(_))
+    ));
 
     // Broadcast rejected
     let broadcast: SocketAddr = "255.255.255.255:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(broadcast, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::BroadcastDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(broadcast, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::BroadcastDisallowed(_))
+    ));
 
     // Carrier-Grade NAT rejected
     let cgnat: SocketAddr = "100.64.1.1:39735".parse().unwrap();
-    let err = manager.request_tcp_connect(cgnat, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::CarrierGradeNatDisallowed(_))));
+    let err = manager
+        .request_tcp_connect(cgnat, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::CarrierGradeNatDisallowed(_))
+    ));
 
     // Port 0 rejected
     let port_zero: SocketAddr = "91.121.162.140:0".parse().unwrap();
-    let err = manager.request_tcp_connect(port_zero, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::InvalidPort(_))));
+    let err = manager
+        .request_tcp_connect(port_zero, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::InvalidPort(_))
+    ));
 }
 
 #[test]
@@ -102,7 +160,9 @@ fn test_kad_udp_profile_enforcement() {
         NetworkProfile::PublicEd2kPreview,
         ResourceBudgets::default(),
     );
-    let err = manager.request_tcp_connect(public_ip, ConnectionPurpose::KadNode).unwrap_err();
+    let err = manager
+        .request_tcp_connect(public_ip, ConnectionPurpose::KadNode)
+        .unwrap_err();
     assert!(matches!(err, PolicyError::KadNotAllowedInProfile(_)));
 
     // In PublicEd2kKadPreview: KadNode is allowed
@@ -126,22 +186,38 @@ fn test_resource_budgets_exhaustion_and_drop() {
     let target3: SocketAddr = "127.0.0.1:4664".parse().unwrap();
 
     // Acquire 2 peer permits
-    let permit1 = manager.request_tcp_connect(target1, ConnectionPurpose::Ed2kPeer).unwrap();
-    let permit2 = manager.request_tcp_connect(target2, ConnectionPurpose::Ed2kPeer).unwrap();
+    let permit1 = manager
+        .request_tcp_connect(target1, ConnectionPurpose::Ed2kPeer)
+        .unwrap();
+    let permit2 = manager
+        .request_tcp_connect(target2, ConnectionPurpose::Ed2kPeer)
+        .unwrap();
     assert_eq!(manager.active_peer_connections_count(), 2);
     assert_eq!(manager.state(), NetworkState::Connected);
 
     // 3rd attempt exceeds budget
-    let err = manager.request_tcp_connect(target3, ConnectionPurpose::Ed2kPeer).unwrap_err();
-    assert_eq!(err, PolicyError::BudgetExhausted("max_active_peer_connections"));
+    let err = manager
+        .request_tcp_connect(target3, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
+    assert_eq!(
+        err,
+        PolicyError::BudgetExhausted("max_active_peer_connections")
+    );
 
     // Server connection budget is separate
-    let server_permit = manager.request_tcp_connect(target1, ConnectionPurpose::Ed2kServer).unwrap();
+    let server_permit = manager
+        .request_tcp_connect(target1, ConnectionPurpose::Ed2kServer)
+        .unwrap();
     assert_eq!(manager.active_server_connections_count(), 1);
 
     // 2nd server attempt exceeds budget
-    let err_server = manager.request_tcp_connect(target2, ConnectionPurpose::Ed2kServer).unwrap_err();
-    assert_eq!(err_server, PolicyError::BudgetExhausted("max_active_server_connections"));
+    let err_server = manager
+        .request_tcp_connect(target2, ConnectionPurpose::Ed2kServer)
+        .unwrap_err();
+    assert_eq!(
+        err_server,
+        PolicyError::BudgetExhausted("max_active_server_connections")
+    );
 
     // Drop permit1 -> allows new peer connection
     drop(permit1);
@@ -161,13 +237,12 @@ fn test_resource_budgets_exhaustion_and_drop() {
 
 #[tokio::test]
 async fn test_kill_switch_atomic_cancellation_and_reenable() {
-    let manager = NetworkPolicyManager::new(
-        NetworkProfile::LocalLab,
-        ResourceBudgets::default(),
-    );
+    let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, ResourceBudgets::default());
 
     let target: SocketAddr = "127.0.0.1:39735".parse().unwrap();
-    let permit = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap();
+    let permit = manager
+        .request_tcp_connect(target, ConnectionPurpose::Ed2kPeer)
+        .unwrap();
     assert!(!permit.is_cancelled());
 
     // Spawn a task waiting on permit cancellation
@@ -185,10 +260,15 @@ async fn test_kill_switch_atomic_cancellation_and_reenable() {
     assert!(permit.is_cancelled());
 
     let was_cancelled = task.await.unwrap();
-    assert!(was_cancelled, "Active socket task should be woken up by cancellation token");
+    assert!(
+        was_cancelled,
+        "Active socket task should be woken up by cancellation token"
+    );
 
     // Any new request must fail immediately with NetworkDisabled
-    let err = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap_err();
+    let err = manager
+        .request_tcp_connect(target, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
     assert_eq!(err, PolicyError::NetworkDisabled);
 
     // Dropping permit simulates the socket task exiting and releasing its permit
@@ -252,7 +332,9 @@ fn test_listener_policy_and_budget() {
 
     // Exceeding listener budget
     let loopback_bind2: SocketAddr = "127.0.0.1:4663".parse().unwrap();
-    let err = manager.request_tcp_listen(loopback_bind2, ConnectionPurpose::Listener).unwrap_err();
+    let err = manager
+        .request_tcp_listen(loopback_bind2, ConnectionPurpose::Listener)
+        .unwrap_err();
     assert_eq!(err, PolicyError::BudgetExhausted("max_active_listeners"));
 
     // Drop permit releases budget
@@ -261,16 +343,18 @@ fn test_listener_policy_and_budget() {
 
     // Non-loopback bind rejected in Lab profile
     let lan_bind: SocketAddr = "192.168.1.1:39735".parse().unwrap();
-    let err = manager.request_tcp_listen(lan_bind, ConnectionPurpose::Listener).unwrap_err();
-    assert!(matches!(err, PolicyError::AddressViolation(PolicyViolation::ListenOnNonLoopbackDisallowed(_))));
+    let err = manager
+        .request_tcp_listen(lan_bind, ConnectionPurpose::Listener)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        PolicyError::AddressViolation(PolicyViolation::ListenOnNonLoopbackDisallowed(_))
+    ));
 }
 
 #[test]
 fn test_budget_mutation_and_validation() {
-    let manager = NetworkPolicyManager::new(
-        NetworkProfile::LocalLab,
-        ResourceBudgets::default(),
-    );
+    let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, ResourceBudgets::default());
 
     // Valid budget update
     let new_budgets = ResourceBudgets {
@@ -308,9 +392,18 @@ fn test_ipv6_redaction_and_profile_parsing() {
     assert_eq!(redact_socket_addr(&ipv6_loopback), "[::1]:39735");
 
     // Profile from_str and display
-    assert_eq!("local-lab".parse::<NetworkProfile>().unwrap(), NetworkProfile::LocalLab);
-    assert_eq!("public-ed2k-preview".parse::<NetworkProfile>().unwrap(), NetworkProfile::PublicEd2kPreview);
-    assert_eq!("public-ed2k-kad-preview".parse::<NetworkProfile>().unwrap(), NetworkProfile::PublicEd2kKadPreview);
+    assert_eq!(
+        "local-lab".parse::<NetworkProfile>().unwrap(),
+        NetworkProfile::LocalLab
+    );
+    assert_eq!(
+        "public-ed2k-preview".parse::<NetworkProfile>().unwrap(),
+        NetworkProfile::PublicEd2kPreview
+    );
+    assert_eq!(
+        "public-ed2k-kad-preview".parse::<NetworkProfile>().unwrap(),
+        NetworkProfile::PublicEd2kKadPreview
+    );
     assert!("invalid-profile".parse::<NetworkProfile>().is_err());
     assert_eq!(NetworkProfile::LocalLab.to_string(), "local-lab");
 }
@@ -330,7 +423,9 @@ fn test_policy_ip_filter_blocking_and_pseudonyms() {
     let allowed_target: SocketAddr = "198.51.101.10:39735".parse().unwrap();
 
     // Blocked target returns PolicyError::IpFiltered
-    let err = manager.request_tcp_connect(blocked_target, ConnectionPurpose::Ed2kPeer).unwrap_err();
+    let err = manager
+        .request_tcp_connect(blocked_target, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
     match err {
         PolicyError::IpFiltered(ip, level, desc) => {
             assert_eq!(ip, "198.51.100.10");
@@ -346,10 +441,22 @@ fn test_policy_ip_filter_blocking_and_pseudonyms() {
 
     // Check audit entries for filter block and pseudonymization
     let entries = manager.audit_entries(10);
-    let filter_entry = entries.iter().find(|e| e.event_type == mule_network_policy::audit::AuditEventType::FilterBlocked).unwrap();
-    assert_eq!(filter_entry.decision, mule_network_policy::audit::AuditDecision::Denied);
-    assert_eq!(filter_entry.pseudonymized_target, Some("peer-01:39735".to_string()));
-    assert_eq!(filter_entry.redacted_target, Some("198.51.*.*:39735".to_string()));
+    let filter_entry = entries
+        .iter()
+        .find(|e| e.event_type == mule_network_policy::audit::AuditEventType::FilterBlocked)
+        .unwrap();
+    assert_eq!(
+        filter_entry.decision,
+        mule_network_policy::audit::AuditDecision::Denied
+    );
+    assert_eq!(
+        filter_entry.pseudonymized_target,
+        Some("peer-01:39735".to_string())
+    );
+    assert_eq!(
+        filter_entry.redacted_target,
+        Some("198.51.*.*:39735".to_string())
+    );
 }
 
 #[test]
@@ -360,7 +467,9 @@ fn test_policy_profile_atomic_transition_disconnects_sockets() {
     );
 
     let target: SocketAddr = "198.51.101.10:39735".parse().unwrap();
-    let permit = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap();
+    let permit = manager
+        .request_tcp_connect(target, ConnectionPurpose::Ed2kPeer)
+        .unwrap();
     assert!(!permit.is_cancelled());
 
     // Switching back to local-lab must trigger cancellation of existing permits
@@ -369,7 +478,8 @@ fn test_policy_profile_atomic_transition_disconnects_sockets() {
     assert_eq!(manager.profile(), NetworkProfile::LocalLab);
 
     // New permits under local-lab for external addresses are rejected by anti-SSRF
-    let err = manager.request_tcp_connect(target, ConnectionPurpose::Ed2kPeer).unwrap_err();
+    let err = manager
+        .request_tcp_connect(target, ConnectionPurpose::Ed2kPeer)
+        .unwrap_err();
     assert!(matches!(err, PolicyError::AddressViolation(_)));
 }
-

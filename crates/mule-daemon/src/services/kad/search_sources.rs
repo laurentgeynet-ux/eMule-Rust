@@ -68,7 +68,8 @@ pub async fn search_sources_iterative(
         return Ok(Vec::new());
     }
 
-    let mut candidates: std::collections::BTreeMap<KadId, KadContact> = std::collections::BTreeMap::new();
+    let mut candidates: std::collections::BTreeMap<KadId, KadContact> =
+        std::collections::BTreeMap::new();
     for c in initial_closest {
         let dist = c.kad_id.xor_distance(&target_kad_id);
         candidates.insert(dist, c);
@@ -124,7 +125,9 @@ pub async fn search_sources_iterative(
                 match tokio::time::timeout(
                     std::time::Duration::from_millis(2500),
                     udp_c.send_find_node(addr, &target_id, &receiver_id),
-                ).await {
+                )
+                .await
+                {
                     Ok(res) => res,
                     Err(_) => Err("FindNode round timeout (2.5s)".to_string()),
                 }
@@ -140,9 +143,8 @@ pub async fn search_sources_iterative(
                     let cat = classify_ip(IpAddr::V4(c.ip));
                     let policy_allowed = match profile {
                         NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                        NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                            cat == IpCategory::PublicRoutable
-                        }
+                        NetworkProfile::PublicEd2kPreview
+                        | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
                     };
                     if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
                         c.verified = true;
@@ -197,8 +199,14 @@ pub async fn search_sources_iterative(
         let target_hash = target_kad_id.0;
         let f_hex = file_hash_hex.to_string();
         futs.push(async move {
-            tracing::debug!("Kad sending SearchSources request for {} to {}", f_hex, addr);
-            let res = udp_c.send_search_sources(addr, &target_hash, file_size).await;
+            tracing::debug!(
+                "Kad sending SearchSources request for {} to {}",
+                f_hex,
+                addr
+            );
+            let res = udp_c
+                .send_search_sources(addr, &target_hash, file_size)
+                .await;
             (addr, res)
         });
     }
@@ -207,7 +215,11 @@ pub async fn search_sources_iterative(
     for (addr, res) in results {
         match res {
             Ok(wires) => {
-                tracing::info!("Kad received {} source candidates from node {}", wires.len(), addr);
+                tracing::info!(
+                    "Kad received {} source candidates from node {}",
+                    wires.len(),
+                    addr
+                );
                 for w in wires {
                     let ip = Ipv4Addr::from(w.ip);
                     let ip_addr = IpAddr::V4(ip);
@@ -215,16 +227,20 @@ pub async fn search_sources_iterative(
                     let cat = classify_ip(ip_addr);
                     let policy_allowed = match profile {
                         NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                        NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                            cat == IpCategory::PublicRoutable
-                        }
+                        NetworkProfile::PublicEd2kPreview
+                        | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
                     };
 
                     if !policy_allowed {
                         continue;
                     }
                     if let Some(rule) = ip_filter.check_ip(ip_addr) {
-                        tracing::debug!("[IP_FILTER] Discarded Kad source candidate {} for {} (rule: {})", ip_addr, file_hash_hex, rule.description);
+                        tracing::debug!(
+                            "[IP_FILTER] Discarded Kad source candidate {} for {} (rule: {})",
+                            ip_addr,
+                            file_hash_hex,
+                            rule.description
+                        );
                         continue;
                     }
 
@@ -253,15 +269,24 @@ pub async fn search_sources_iterative(
                 }
             }
             Err(e) => {
-                tracing::debug!("Kad search_sources to {} timed out or node does not index file: {}", addr, e);
+                tracing::debug!(
+                    "Kad search_sources to {} timed out or node does not index file: {}",
+                    addr,
+                    e
+                );
             }
         }
     }
 
     if !discovered_sources.is_empty() {
         let mut dl = downloads.lock().await;
-        let upserted = dl.upsert_peer_sources(file_hash_hex, &discovered_sources).unwrap_or(0);
-        let total_swarm = dl.find_by_ed2k_hash(file_hash_hex).map(|d| d.source_count).unwrap_or(0);
+        let upserted = dl
+            .upsert_peer_sources(file_hash_hex, &discovered_sources)
+            .unwrap_or(0);
+        let total_swarm = dl
+            .find_by_ed2k_hash(file_hash_hex)
+            .map(|d| d.source_count)
+            .unwrap_or(0);
         tracing::info!(
             "[KAD_SEARCH] SearchSources for file {} finished: {} candidate responses -> {} new unique sources persisted (total swarm: {} sources)",
             file_hash_hex,

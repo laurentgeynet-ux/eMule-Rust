@@ -1,5 +1,5 @@
-use std::time::Duration;
 use serde_json::{json, Value};
+use std::time::Duration;
 use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -45,7 +45,9 @@ async fn setup_obfu_test_state(
     let link = format!("ed2k://|file|test_obfu_file.iso|9728001|{file_hash_hex}|/");
     let req = make_req(1, "downloads.addEd2kLink", Some(json!({ "link": link })));
     let mut authenticated = true;
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     (state, dir, file_hash_hex)
@@ -143,7 +145,11 @@ async fn test_outgoing_connection_to_strict_obfuscated_peer_succeeds() {
     let resp = handle_request(&state, connect_req, &mut authenticated)
         .await
         .unwrap();
-    assert!(resp.error.is_none(), "RPC sources.connect failed: {:?}", resp.error);
+    assert!(
+        resp.error.is_none(),
+        "RPC sources.connect failed: {:?}",
+        resp.error
+    );
 
     let _ = mock_peer_task.await;
 
@@ -182,7 +188,10 @@ async fn test_outgoing_connection_to_strict_peer_fails_when_user_hash_missing() 
     let resp = handle_request(&state, connect_req, &mut authenticated)
         .await
         .unwrap();
-    assert!(resp.error.is_some(), "Expected connection failure due to missing user hash");
+    assert!(
+        resp.error.is_some(),
+        "Expected connection failure due to missing user hash"
+    );
     let err = resp.error.unwrap();
     assert!(
         err.message.contains("requires protocol obfuscation") || err.message.contains("user hash"),
@@ -199,9 +208,14 @@ async fn test_inbound_listener_strict_obfuscation_rejects_plaintext() {
 
     // Start listener on ephemeral port
     let start_req = make_req(20, "listener.start", Some(json!({ "port": 0 })));
-    let start_resp = handle_request(&state, start_req, &mut authenticated).await.unwrap();
+    let start_resp = handle_request(&state, start_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(start_resp.error.is_none());
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Connect remote peer sending standard unencrypted 0xE3
     let mut socket = TcpStream::connect(&listen_addr_str).await.unwrap();
@@ -211,7 +225,10 @@ async fn test_inbound_listener_strict_obfuscation_rejects_plaintext() {
     // Daemon should immediately drop/close the unencrypted connection
     let mut buf = [0u8; 16];
     let n = socket.read(&mut buf).await.unwrap();
-    assert_eq!(n, 0, "Daemon must close unencrypted connection when obfuscation is required");
+    assert_eq!(
+        n, 0,
+        "Daemon must close unencrypted connection when obfuscation is required"
+    );
 }
 
 #[tokio::test]
@@ -222,9 +239,14 @@ async fn test_inbound_listener_strict_obfuscation_accepts_encrypted_handshake() 
 
     // Start listener on ephemeral port
     let start_req = make_req(30, "listener.start", Some(json!({ "port": 0 })));
-    let start_resp = handle_request(&state, start_req, &mut authenticated).await.unwrap();
+    let start_resp = handle_request(&state, start_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(start_resp.error.is_none());
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let daemon_user_hash = state.identity.lock().await.user_hash();
 
@@ -283,7 +305,10 @@ async fn test_inbound_listener_strict_obfuscation_accepts_encrypted_handshake() 
             }
         }
     }
-    assert!(received_ans, "Client did not receive OP_HELLO_ANSWER over obfuscated connection");
+    assert!(
+        received_ans,
+        "Client did not receive OP_HELLO_ANSWER over obfuscated connection"
+    );
 }
 
 #[tokio::test]
@@ -293,9 +318,14 @@ async fn test_inbound_listener_opportunistic_accepts_both_plaintext_and_encrypte
     let mut authenticated = true;
 
     let start_req = make_req(40, "listener.start", Some(json!({ "port": 0 })));
-    let start_resp = handle_request(&state, start_req, &mut authenticated).await.unwrap();
+    let start_resp = handle_request(&state, start_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(start_resp.error.is_none());
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let daemon_user_hash = state.identity.lock().await.user_hash();
     let encoder = Ed2kEncoder::default();
@@ -337,15 +367,18 @@ async fn test_inbound_listener_opportunistic_accepts_both_plaintext_and_encrypte
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
                 if pkt.protocol == PR_ED2K && pkt.opcode == OP_HELLOANSWER {
                     let ans = decoder
-                    .decode_hello_answer(pkt.protocol, pkt.opcode, &pkt.payload, 0)
-                    .unwrap();
+                        .decode_hello_answer(pkt.protocol, pkt.opcode, &pkt.payload, 0)
+                        .unwrap();
                     assert_eq!(ans.user_hash, daemon_user_hash);
                     received_ans = true;
                     break;
                 }
             }
         }
-        assert!(received_ans, "Plaintext connection must be accepted in opportunistic mode");
+        assert!(
+            received_ans,
+            "Plaintext connection must be accepted in opportunistic mode"
+        );
     }
 
     // 2. Test encrypted inbound connection
@@ -387,14 +420,17 @@ async fn test_inbound_listener_opportunistic_accepts_both_plaintext_and_encrypte
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
                 if pkt.protocol == PR_ED2K && pkt.opcode == OP_HELLOANSWER {
                     let ans = decoder
-                    .decode_hello_answer(pkt.protocol, pkt.opcode, &pkt.payload, 0)
-                    .unwrap();
+                        .decode_hello_answer(pkt.protocol, pkt.opcode, &pkt.payload, 0)
+                        .unwrap();
                     assert_eq!(ans.user_hash, daemon_user_hash);
                     received_ans = true;
                     break;
                 }
             }
         }
-        assert!(received_ans, "Encrypted connection must be accepted in opportunistic mode");
+        assert!(
+            received_ans,
+            "Encrypted connection must be accepted in opportunistic mode"
+        );
     }
 }

@@ -1,14 +1,12 @@
 //! Binary codecs and packet encoders/decoders for eMule Source Exchange (SX/SX2).
 
-use std::io::Read;
 use bytes::Bytes;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use std::io::Read;
 
-use super::types::{
-    Ed2kAnswerSources, Ed2kRequestSources, SxSource, MAX_SX_SOURCES_PER_PACKET,
-};
+use super::types::{Ed2kAnswerSources, Ed2kRequestSources, SxSource, MAX_SX_SOURCES_PER_PACKET};
 use crate::ed2k::error::{Ed2kEncodeError, Ed2kErrorKind, Ed2kParseError};
 use crate::ed2k::opcodes::{
     OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,

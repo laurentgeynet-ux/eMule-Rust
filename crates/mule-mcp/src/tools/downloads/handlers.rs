@@ -5,7 +5,10 @@ use crate::protocol::ToolCallResult;
 use serde_json::{json, Value};
 
 /// Resolves a download UUID or file hash to an active download instance ID.
-pub async fn resolve_download_id(client: &DaemonClient, id_or_hash: &str) -> Result<String, String> {
+pub async fn resolve_download_id(
+    client: &DaemonClient,
+    id_or_hash: &str,
+) -> Result<String, String> {
     if id_or_hash.contains('-') && uuid::Uuid::parse_str(id_or_hash).is_ok() {
         return Ok(id_or_hash.to_string());
     }
@@ -37,7 +40,9 @@ pub async fn resolve_download_id(client: &DaemonClient, id_or_hash: &str) -> Res
         return Ok(id_or_hash.to_string());
     }
 
-    Err(format!("No download found matching ID, filename, or file hash '{id_or_hash}'"))
+    Err(format!(
+        "No download found matching ID, filename, or file hash '{id_or_hash}'"
+    ))
 }
 
 /// Dispatches download and category tool invocations over JSON-RPC.
@@ -47,39 +52,52 @@ pub async fn execute(
     args: &Value,
 ) -> Option<ToolCallResult> {
     match tool_name {
-        "emule_list_downloads" => {
-            match client.call("downloads.list", json!({})).await {
-                Ok(mut res) => {
-                    let filter = args.get("state_filter")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("all");
+        "emule_list_downloads" => match client.call("downloads.list", json!({})).await {
+            Ok(mut res) => {
+                let filter = args
+                    .get("state_filter")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("all");
 
-                    if filter != "all" {
-                        if let Some(downloads) = res.get("downloads").and_then(|d| d.as_array()) {
-                            let filtered: Vec<Value> = downloads.iter().filter(|d| {
+                if filter != "all" {
+                    if let Some(downloads) = res.get("downloads").and_then(|d| d.as_array()) {
+                        let filtered: Vec<Value> = downloads
+                            .iter()
+                            .filter(|d| {
                                 let status = d.get("status").and_then(|s| s.as_str()).unwrap_or("");
                                 match filter {
-                                    "active" => status == "Downloading" || status == "Connecting" || status == "Pending",
+                                    "active" => {
+                                        status == "Downloading"
+                                            || status == "Connecting"
+                                            || status == "Pending"
+                                    }
                                     "paused" => status == "Paused" || status == "Stopped",
                                     "completed" => status == "Completed" || status == "Complete",
                                     "error" => status == "Error" || status.contains("Error"),
                                     _ => true,
                                 }
-                            }).cloned().collect();
-                            res["downloads"] = json!(filtered);
-                            res["filteredBy"] = json!(filter);
-                        }
+                            })
+                            .cloned()
+                            .collect();
+                        res["downloads"] = json!(filtered);
+                        res["filteredBy"] = json!(filter);
                     }
-                    Some(ToolCallResult::json(&res))
                 }
-                Err(e) => Some(ToolCallResult::error(format!("Failed to list downloads: {e}"))),
+                Some(ToolCallResult::json(&res))
             }
-        }
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to list downloads: {e}"
+            ))),
+        },
 
         "emule_get_download_details" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'id_or_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
             };
 
             let id = match resolve_download_id(client, id_or_hash).await {
@@ -89,7 +107,9 @@ pub async fn execute(
 
             match client.call("downloads.get", json!({ "id": id })).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to get download details: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to get download details: {e}"
+                ))),
             }
         }
 
@@ -109,14 +129,20 @@ pub async fn execute(
 
             match client.call("downloads.addEd2kLink", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to add ed2k link: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to add ed2k link: {e}"
+                ))),
             }
         }
 
         "emule_pause_download" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'id_or_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
             };
 
             let id = match resolve_download_id(client, id_or_hash).await {
@@ -126,14 +152,20 @@ pub async fn execute(
 
             match client.call("downloads.pause", json!({ "id": id })).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to pause download: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to pause download: {e}"
+                ))),
             }
         }
 
         "emule_resume_download" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'id_or_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
             };
 
             let id = match resolve_download_id(client, id_or_hash).await {
@@ -143,36 +175,61 @@ pub async fn execute(
 
             match client.call("downloads.resume", json!({ "id": id })).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to resume download: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to resume download: {e}"
+                ))),
             }
         }
 
         "emule_remove_download" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'id_or_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
             };
-            let delete_files = args.get("delete_files").and_then(|d| d.as_bool()).unwrap_or(false);
+            let delete_files = args
+                .get("delete_files")
+                .and_then(|d| d.as_bool())
+                .unwrap_or(false);
 
             let id = match resolve_download_id(client, id_or_hash).await {
                 Ok(id) => id,
                 Err(e) => return Some(ToolCallResult::error(e)),
             };
 
-            match client.call("downloads.remove", json!({ "id": id, "deleteFiles": delete_files })).await {
+            match client
+                .call(
+                    "downloads.remove",
+                    json!({ "id": id, "deleteFiles": delete_files }),
+                )
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to remove download: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to remove download: {e}"
+                ))),
             }
         }
 
         "emule_set_destination" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'id_or_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
             };
             let destination_dir = match args.get("destination_dir").and_then(|d| d.as_str()) {
                 Some(d) => d,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'destination_dir'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'destination_dir'",
+                    ))
+                }
             };
 
             let id = match resolve_download_id(client, id_or_hash).await {
@@ -180,16 +237,28 @@ pub async fn execute(
                 Err(e) => return Some(ToolCallResult::error(e)),
             };
 
-            match client.call("downloads.setDestination", json!({ "id": id, "targetDirectory": destination_dir })).await {
+            match client
+                .call(
+                    "downloads.setDestination",
+                    json!({ "id": id, "targetDirectory": destination_dir }),
+                )
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to set destination directory: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to set destination directory: {e}"
+                ))),
             }
         }
 
         "emule_download_set_category" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'id_or_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
             };
             let category_id = args.get("category_id").and_then(|c| c.as_str());
 
@@ -207,14 +276,20 @@ pub async fn execute(
 
             match client.call("downloads.setCategory", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to set download category: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to set download category: {e}"
+                ))),
             }
         }
 
         "emule_retry_download" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'id_or_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
             };
 
             let id = match resolve_download_id(client, id_or_hash).await {
@@ -222,16 +297,25 @@ pub async fn execute(
                 Err(e) => return Some(ToolCallResult::error(e)),
             };
 
-            match client.call("downloads.retryConnection", json!({ "id": id })).await {
+            match client
+                .call("downloads.retryConnection", json!({ "id": id }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to retry download connection: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to retry download connection: {e}"
+                ))),
             }
         }
 
         "emule_inspect_part_met" => {
             let met_path = match args.get("met_path").and_then(|p| p.as_str()) {
                 Some(p) => p,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'met_path'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'met_path'",
+                    ))
+                }
             };
 
             let mut params = json!({ "metPath": met_path });
@@ -241,14 +325,20 @@ pub async fn execute(
 
             match client.call("downloads.inspectPartMet", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to inspect .part.met: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to inspect .part.met: {e}"
+                ))),
             }
         }
 
         "emule_import_part_met" => {
             let met_path = match args.get("met_path").and_then(|p| p.as_str()) {
                 Some(p) => p,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'met_path'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'met_path'",
+                    ))
+                }
             };
 
             let mut params = json!({ "metPath": met_path });
@@ -264,16 +354,18 @@ pub async fn execute(
 
             match client.call("downloads.importPartMet", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to import .part.met: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to import .part.met: {e}"
+                ))),
             }
         }
 
-        "emule_list_categories" => {
-            match client.call("categories.list", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to list categories: {e}"))),
-            }
-        }
+        "emule_list_categories" => match client.call("categories.list", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to list categories: {e}"
+            ))),
+        },
 
         "emule_create_category" => {
             let name = match args.get("name").and_then(|n| n.as_str()) {
@@ -294,7 +386,9 @@ pub async fn execute(
 
             match client.call("categories.create", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to create category: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to create category: {e}"
+                ))),
             }
         }
 
@@ -323,7 +417,9 @@ pub async fn execute(
 
             match client.call("categories.update", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to update category: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to update category: {e}"
+                ))),
             }
         }
 
@@ -335,19 +431,30 @@ pub async fn execute(
 
             match client.call("categories.delete", json!({ "id": id })).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to delete category: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to delete category: {e}"
+                ))),
             }
         }
 
         "emule_reorder_categories" => {
             let ids = match args.get("category_ids").and_then(|a| a.as_array()) {
                 Some(a) => a,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'category_ids'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'category_ids'",
+                    ))
+                }
             };
 
-            match client.call("categories.reorder", json!({ "categoryIds": ids })).await {
+            match client
+                .call("categories.reorder", json!({ "categoryIds": ids }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to reorder categories: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to reorder categories: {e}"
+                ))),
             }
         }
 

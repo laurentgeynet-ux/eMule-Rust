@@ -1,10 +1,10 @@
 //! Source querying and response structures for eD2K servers.
 
-use crate::framing::RawPacket;
 use crate::ed2k::error::{Ed2kEncodeError, Ed2kErrorKind};
 use crate::ed2k::limits::Ed2kLimits;
 use crate::ed2k::opcodes::{OP_GETSOURCES, OP_GETSOURCES_OBFU};
 use crate::ed2k::protocol::PR_ED2K;
+use crate::framing::RawPacket;
 
 /// Request to find sources for a specific file (`OP_GETSOURCES` = `0x19` or `OP_GETSOURCES_OBFU` = `0x23`).
 #[derive(Debug, Clone, PartialEq)]

@@ -197,12 +197,14 @@ pub async fn handle_servers_connect(
     params: Option<Value>,
 ) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
-    let address_str = params["address"]
-        .as_str()
-        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')"))?;
+    let address_str = params["address"].as_str().ok_or_else(|| {
+        JsonRpcError::invalid_params("Missing 'address' parameter (expected 'ip:port')")
+    })?;
 
     let addr: std::net::SocketAddr = address_str.parse().map_err(|e| {
-        JsonRpcError::invalid_params(&format!("Invalid socket address format '{address_str}': {e}"))
+        JsonRpcError::invalid_params(&format!(
+            "Invalid socket address format '{address_str}': {e}"
+        ))
     })?;
 
     // Check if server is in local database and whether it is disabled
@@ -231,7 +233,9 @@ pub async fn handle_servers_connect(
     let permit = state
         .network_policy
         .request_tcp_connect(addr, mule_network_policy::ConnectionPurpose::Ed2kServer)
-        .map_err(|e| JsonRpcError::business(format!("Connection rejected by network policy: {e}")))?;
+        .map_err(|e| {
+            JsonRpcError::business(format!("Connection rejected by network policy: {e}"))
+        })?;
 
     let user_hash = state.identity.lock().await.user_hash();
     let ed2k_port = state.config.ed2k_port;
@@ -288,7 +292,49 @@ pub async fn handle_servers_search(
         query.extension
     );
 
+    let payload = {
+        let limits = mule_protocol::ed2k::Ed2kLimits::default();
+        query
+            .encode(&limits)
+            .map(|p| p.payload.to_vec())
+            .unwrap_or_default()
+    };
+
     state.server_session.search(query).await?;
+
+    // Global UDP search (OP_GLOBSEARCHREQ2): eMule also queries servers over
+    // UDP — the connected server plus other enabled known servers, on their
+    // UDP port (TCP+4). Fire-and-forget; answers arrive as OP_GLOBSEARCHRES.
+    if !payload.is_empty() {
+        let mut targets: Vec<std::net::SocketAddr> = Vec::new();
+        if let Some(addr_str) = state.server_session.snapshot().await.server_address {
+            if let Ok(mut a) = addr_str.parse::<std::net::SocketAddr>() {
+                a.set_port(a.port().saturating_add(4));
+                targets.push(a);
+            }
+        }
+        let extra: Vec<std::net::SocketAddr> = {
+            let dl_guard = state.downloads.lock().await;
+            dl_guard
+                .list_servers()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|s| s.filter_status == mule_core::model::ServerFilterStatus::Allowed)
+                .filter_map(|s| s.address.parse::<std::net::SocketAddr>().ok())
+                .map(|mut a| {
+                    a.set_port(a.port().saturating_add(4));
+                    a
+                })
+                .filter(|a| !targets.contains(a))
+                .take(9)
+                .collect()
+        };
+        targets.extend(extra);
+        for target in targets {
+            state.server_udp.send_glob_search(target, &payload).await;
+        }
+    }
+
     Ok(json!({ "sent": true }))
 }
 
@@ -310,7 +356,9 @@ pub async fn handle_servers_query_sources(
     let raw_bytes = hex::decode(hash_str)
         .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid file hash hex: {e}")))?;
     if raw_bytes.len() != 16 {
-        return Err(JsonRpcError::invalid_params("File hash must be exactly 16 bytes (32 hex characters)"));
+        return Err(JsonRpcError::invalid_params(
+            "File hash must be exactly 16 bytes (32 hex characters)",
+        ));
     }
     let mut file_hash = [0u8; 16];
     file_hash.copy_from_slice(&raw_bytes);
@@ -338,11 +386,9 @@ pub async fn handle_servers_update_from_url(
         .build()
         .map_err(|e| JsonRpcError::business(format!("HTTP client build error: {e}")))?;
 
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| JsonRpcError::business(format!("Failed to fetch server.met from {url}: {e}")))?;
+    let response = client.get(url).send().await.map_err(|e| {
+        JsonRpcError::business(format!("Failed to fetch server.met from {url}: {e}"))
+    })?;
 
     if !response.status().is_success() {
         return Err(JsonRpcError::business(format!(

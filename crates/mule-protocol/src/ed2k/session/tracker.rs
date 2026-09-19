@@ -43,7 +43,9 @@ impl FileStatusTracker {
         now: Instant,
     ) -> Result<(), Ed2kSessionError> {
         if self.pending.contains_key(&file_hash) {
-            return Err(Ed2kSessionError::DuplicateFileStatusRequest(hex::encode(file_hash)));
+            return Err(Ed2kSessionError::DuplicateFileStatusRequest(hex::encode(
+                file_hash,
+            )));
         }
         if self.pending.len() >= self.max_pending {
             return Err(Ed2kSessionError::TooManyPendingRequests(self.max_pending));
@@ -195,9 +197,9 @@ impl BlockRequestTracker {
 
     /// Checks if any pending request for the given file hash overlaps [start..end].
     pub fn has_overlap(&self, file_hash: &[u8; 16], start: u64, end: u64) -> bool {
-        self.pending.keys().any(|k| {
-            &k.file_hash == file_hash && k.start < end && start < k.end
-        })
+        self.pending
+            .keys()
+            .any(|k| &k.file_hash == file_hash && k.start < end && start < k.end)
     }
 
     /// Registers a newly sent block request.
@@ -214,7 +216,9 @@ impl BlockRequestTracker {
         }
 
         if self.pending.len() >= self.max_pending {
-            return Err(Ed2kSessionError::TooManyPendingBlockRequests(self.max_pending));
+            return Err(Ed2kSessionError::TooManyPendingBlockRequests(
+                self.max_pending,
+            ));
         }
 
         if self.has_overlap(&key.file_hash, key.start, key.end) {
@@ -258,9 +262,7 @@ impl BlockRequestTracker {
         let matching_key = self
             .pending
             .keys()
-            .find(|k| {
-                &k.file_hash == file_hash && start >= k.start && end <= k.end
-            })
+            .find(|k| &k.file_hash == file_hash && start >= k.start && end <= k.end)
             .cloned();
 
         let key = matching_key.ok_or_else(|| {
@@ -285,7 +287,11 @@ impl BlockRequestTracker {
                 }
             };
 
-            if req.received_ranges.iter().any(|&(s, e)| s == start && e == end) {
+            if req
+                .received_ranges
+                .iter()
+                .any(|&(s, e)| s == start && e == end)
+            {
                 return Err(Ed2kSessionError::DuplicateBlock(format!(
                     "{}:{}-{}",
                     hex::encode(file_hash),

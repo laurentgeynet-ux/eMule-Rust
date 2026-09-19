@@ -162,11 +162,11 @@ pub async fn handle_ed2k_probe_source(
 
     client.close().await;
 
-    let snapshot = state
-        .downloads
-        .lock()
-        .await
-        .record_source_availability(&id, peer_addr, status.availability_mask.clone())?;
+    let snapshot = state.downloads.lock().await.record_source_availability(
+        &id,
+        peer_addr,
+        status.availability_mask.clone(),
+    )?;
 
     let size_after = std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
     if size_after != size_before {
@@ -315,7 +315,10 @@ pub async fn handle_lab_create_fixture(
             }
             ("fixture_part_9728001.bin".to_string(), v)
         }
-        "text" => ("hello-loopback.txt".to_string(), b"Emule-Sion local test\n".to_vec()),
+        "text" => (
+            "hello-loopback.txt".to_string(),
+            b"Emule-Sion local test\n".to_vec(),
+        ),
         _ => {
             let size = 1_048_576usize;
             let mut v = Vec::with_capacity(size);
@@ -334,12 +337,9 @@ pub async fn handle_lab_create_fixture(
     let hash_res = mule_format::hash_reader(&mut cursor)
         .map_err(|e| JsonRpcError::internal(format!("Failed to hash fixture: {e}")))?;
 
-    let link = mule_format::ed2k::Ed2kFileLink::create(
-        &file_name,
-        data.len() as u64,
-        hash_res.root_hash,
-    )
-    .map_err(|e| JsonRpcError::internal(format!("Failed to format ed2k link: {e}")))?;
+    let link =
+        mule_format::ed2k::Ed2kFileLink::create(&file_name, data.len() as u64, hash_res.root_hash)
+            .map_err(|e| JsonRpcError::internal(format!("Failed to format ed2k link: {e}")))?;
 
     Ok(json!({
         "fileName": file_name,
@@ -359,7 +359,9 @@ pub async fn handle_lab_start_loopback_peer(
     let test_peer =
         mule_protocol::ed2k::Ed2kTestPeer::bind(mule_protocol::ed2k::TestPeerMode::Nominal)
             .await
-            .map_err(|e| JsonRpcError::internal(format!("Failed to bind loopback test peer: {e}")))?;
+            .map_err(|e| {
+                JsonRpcError::internal(format!("Failed to bind loopback test peer: {e}"))
+            })?;
     let peer_addr = test_peer.local_addr();
 
     let fixtures_dir = state.config.data_dir.join("fixtures");
@@ -374,8 +376,7 @@ pub async fn handle_lab_start_loopback_peer(
                         if !file_data.is_empty() {
                             let mut reader = std::io::Cursor::new(&file_data);
                             if let Ok(hash_res) = mule_format::hash_reader(&mut reader) {
-                                let part_count =
-                                    file_data.len().div_ceil(9_728_000).max(1) as u16;
+                                let part_count = file_data.len().div_ceil(9_728_000).max(1) as u16;
                                 let available_parts: Vec<u16> = (0..part_count).collect();
                                 let mask = mule_protocol::ed2k::PartAvailabilityMask::from_parts(
                                     &available_parts,

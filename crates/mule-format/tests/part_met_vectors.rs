@@ -208,3 +208,101 @@ fn test_compute_completed_ranges_invalid_gap_boundary() {
     assert!(met.compute_completed_ranges().is_err());
 }
 
+#[test]
+fn test_part_met_write_read_roundtrip() {
+    use mule_format::{AichHash, Ed2kHash};
+
+    let met = PartMetFile {
+        version: PARTFILE_VERSION,
+        mod_date: 1_700_000_123,
+        file_hash: Ed2kHash([0xaa; 16]),
+        part_hashes: vec![[0x11; 16], [0x22; 16]],
+        file_name: Some("movie.mkv".into()),
+        file_size: Some(19_000_000),
+        transferred: 5_000_000,
+        aich_hash: Some(AichHash([0x55; 20])),
+        gaps: vec![(5_000_000, 10_000_000), (15_000_000, 19_000_000)],
+        tags: vec![],
+    };
+
+    let mut buf = Vec::new();
+    met.write_to(&mut buf).unwrap();
+
+    let mut cursor = Cursor::new(&buf);
+    let parsed = PartMetFile::read_from(&mut cursor).unwrap();
+
+    assert_eq!(parsed.version, PARTFILE_VERSION);
+    assert_eq!(parsed.mod_date, 1_700_000_123);
+    assert_eq!(parsed.file_hash, Ed2kHash([0xaa; 16]));
+    assert_eq!(parsed.part_hashes, vec![[0x11; 16], [0x22; 16]]);
+    assert_eq!(parsed.file_name.as_deref(), Some("movie.mkv"));
+    assert_eq!(parsed.file_size, Some(19_000_000));
+    assert_eq!(parsed.transferred, 5_000_000);
+    assert_eq!(parsed.aich_hash, Some(AichHash([0x55; 20])));
+    assert_eq!(
+        parsed.gaps,
+        vec![(5_000_000, 10_000_000), (15_000_000, 19_000_000)]
+    );
+    // Inverted gaps must reconstruct the completed range.
+    let done = parsed.compute_completed_ranges().unwrap();
+    assert_eq!(done, vec![(0, 5_000_000), (10_000_000, 15_000_000)]);
+}
+
+#[test]
+fn test_part_met_write_large_file_uses_0xe2_and_int64() {
+    use mule_format::{Ed2kHash, PARTFILE_VERSION_LARGEFILE};
+
+    let met = PartMetFile {
+        version: PARTFILE_VERSION,
+        mod_date: 1,
+        file_hash: Ed2kHash([0xaa; 16]),
+        part_hashes: vec![],
+        file_name: Some("huge.iso".into()),
+        file_size: Some(5_000_000_000),
+        transferred: 0,
+        aich_hash: None,
+        gaps: vec![],
+        tags: vec![],
+    };
+
+    let mut buf = Vec::new();
+    met.write_to(&mut buf).unwrap();
+    assert_eq!(buf[0], PARTFILE_VERSION_LARGEFILE);
+
+    let mut cursor = Cursor::new(&buf);
+    let parsed = PartMetFile::read_from(&mut cursor).unwrap();
+    assert_eq!(parsed.version, PARTFILE_VERSION_LARGEFILE);
+    assert_eq!(parsed.file_size, Some(5_000_000_000));
+}
+
+#[test]
+fn test_part_met_save_and_open_via_filesystem() {
+    use mule_format::Ed2kHash;
+
+    let dir = std::env::temp_dir().join(format!("mule_partmet_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let met_path = dir.join("001.part.met");
+
+    let met = PartMetFile {
+        version: PARTFILE_VERSION,
+        mod_date: 42,
+        file_hash: Ed2kHash([0xcc; 16]),
+        part_hashes: vec![],
+        file_name: Some("x.bin".into()),
+        file_size: Some(1024),
+        transferred: 1024,
+        aich_hash: None,
+        gaps: vec![],
+        tags: vec![],
+    };
+    met.save(&met_path).unwrap();
+
+    let parsed = PartMetFile::open(&met_path).unwrap();
+    assert_eq!(parsed.file_hash, Ed2kHash([0xcc; 16]));
+    assert_eq!(parsed.file_name.as_deref(), Some("x.bin"));
+    assert_eq!(parsed.transferred, 1024);
+    // tmp file cleaned up
+    assert!(!dir.join("001.part.met.tmp").exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

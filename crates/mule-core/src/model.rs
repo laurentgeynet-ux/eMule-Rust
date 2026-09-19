@@ -425,6 +425,10 @@ pub struct SharedFile {
     pub file_name: String,
     pub file_size: u64,
     pub file_path: String,
+    /// Cached AICH root hash (SHA-1) of the file content, computed on first
+    /// `OP_AICHFILEHASHREQ` so it can be served to peers without rehashing.
+    #[serde(default)]
+    pub aich_root: Option<[u8; 20]>,
     pub shared_at_unix_ms: i64,
     pub enabled: bool,
 }
@@ -445,6 +449,7 @@ impl SharedFile {
             file_name: file_name.into(),
             file_size,
             file_path: file_path.into(),
+            aich_root: None,
             shared_at_unix_ms: now,
             enabled: true,
         }
@@ -512,19 +517,31 @@ mod tests {
         let mut credit = PeerCredit::new("hash1", "pub1");
         credit.downloaded_bytes = 0;
         credit.uploaded_bytes = 0;
-        assert_eq!(credit.credit_multiplier(), 1.0, "Expected floor 1.0 for 0/0");
+        assert_eq!(
+            credit.credit_multiplier(),
+            1.0,
+            "Expected floor 1.0 for 0/0"
+        );
 
         // Vector 2: Received 5,000, Sent 0 => 10.0 (capped at 10.0)
         // 2 * 5000 / (0 + 1) = 10000 -> clamped to 10.0
         credit.downloaded_bytes = 5000;
         credit.uploaded_bytes = 0;
-        assert_eq!(credit.credit_multiplier(), 10.0, "Expected cap 10.0 for 5000/0");
+        assert_eq!(
+            credit.credit_multiplier(),
+            10.0,
+            "Expected cap 10.0 for 5000/0"
+        );
 
         // Vector 3: Received 1,000, Sent 2,000 => 1.0 (floor)
         // 2 * 1000 / (2000 + 1) = 2000 / 2001 < 1.0 -> clamped to 1.0
         credit.downloaded_bytes = 1000;
         credit.uploaded_bytes = 2000;
-        assert_eq!(credit.credit_multiplier(), 1.0, "Expected floor 1.0 for 1000/2000");
+        assert_eq!(
+            credit.credit_multiplier(),
+            1.0,
+            "Expected floor 1.0 for 1000/2000"
+        );
 
         // Vector 4: Intermediate ratio (e.g. Received 3,000, Sent 1,000 => ~5.99)
         // 2 * 3000 / (1000 + 1) = 6000 / 1001 = 5.994...
@@ -543,5 +560,3 @@ pub enum SecureIdentState {
     Verified,
     Failed,
 }
-
-

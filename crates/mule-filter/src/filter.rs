@@ -1,10 +1,10 @@
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
-use serde::{Deserialize, Serialize};
 
 use crate::interval::FilterRange;
 use crate::parser::{parse_ipfilter, ParseError, ParseReport, MAX_FILE_SIZE};

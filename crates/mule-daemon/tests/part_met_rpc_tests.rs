@@ -1,6 +1,6 @@
 use mule_core::Database;
 use mule_daemon::services::downloads::DownloadService;
-use mule_format::{PARTFILE_VERSION, met::tags::*};
+use mule_format::{met::tags::*, PARTFILE_VERSION};
 use std::fs::File;
 use std::io::Write;
 use tempfile::tempdir;
@@ -126,7 +126,10 @@ fn test_part_met_inspection_and_import_nominal() {
     assert_eq!(result.transferred_bytes, 1000);
 
     // Verify temp file exists in internal temp directory
-    let internal_part = temp_dir.path().join("temp").join(format!("{}.part", result.download.id));
+    let internal_part = temp_dir
+        .path()
+        .join("temp")
+        .join(format!("{}.part", result.download.id));
     assert!(internal_part.exists());
 
     // Verify external file is still intact
@@ -267,7 +270,9 @@ fn test_part_met_import_persists_across_daemon_restart() {
         assert_eq!(result.download.status, "paused");
         assert_eq!(result.download.category_id.as_deref(), Some("cat-archives"));
 
-        let report = result.report.expect("Sanitized audit report must be present");
+        let report = result
+            .report
+            .expect("Sanitized audit report must be present");
         assert!(report.contains("Format Version: 0xE0 (Standard eMule)"));
         assert!(report.contains("reboot_preserved.bin"));
         assert!(report.contains("STRICTLY PAUSED"));
@@ -344,4 +349,3 @@ fn test_part_met_import_safety_limits_enforced() {
 
     assert!(err.to_string().contains("maximum import safety limit"));
 }
-

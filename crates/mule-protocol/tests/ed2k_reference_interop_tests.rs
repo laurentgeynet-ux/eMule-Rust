@@ -104,10 +104,13 @@ async fn test_reference_interop_file_status_exchange_and_bitmask() {
 
     let config = ReferencePeerConfig::new(peer_addr).expect("valid config");
     let local_hash = [0x22; 16];
-    let (mut interop_client, _peer_info) =
-        ReferenceInteropClient::connect_and_handshake(config, local_hash, "EmuleSionFileStatusTest")
-            .await
-            .expect("handshake succeeds");
+    let (mut interop_client, _peer_info) = ReferenceInteropClient::connect_and_handshake(
+        config,
+        local_hash,
+        "EmuleSionFileStatusTest",
+    )
+    .await
+    .expect("handshake succeeds");
 
     let status = interop_client
         .request_file_status(file_hash)
@@ -159,11 +162,7 @@ async fn test_reference_interop_block_transfer_canonical_opcodes() {
     let fixture_bytes = Bytes::from(file_data);
 
     test_peer
-        .add_shared_file(
-            file_hash,
-            1,
-            PartAvailabilityMask::from_parts(&[0], 1),
-        )
+        .add_shared_file(file_hash, 1, PartAvailabilityMask::from_parts(&[0], 1))
         .await;
     test_peer
         .add_shared_file_data(file_hash, fixture_bytes.clone())
@@ -236,7 +235,10 @@ fn test_reference_interop_trace_anonymity_enforcement() {
         opcode: OP_HELLO,
         opcode_name: opcode_to_str(OP_HELLO),
         payload_len: 20,
-        tags_summary: vec!["TAG_NAME:Anonymous".to_string(), "TAG_VERSION:60".to_string()],
+        tags_summary: vec![
+            "TAG_NAME:Anonymous".to_string(),
+            "TAG_VERSION:60".to_string(),
+        ],
         file_hash_hex: None,
         range_summary: None,
     };
@@ -463,7 +465,10 @@ fn test_reference_interop_anonymization_adversarial_patterns() {
         file_hash_hex: None,
         range_summary: None,
     };
-    assert!(unicode_clean_record.is_clean(), "valid international Unicode without paths must be allowed");
+    assert!(
+        unicode_clean_record.is_clean(),
+        "valid international Unicode without paths must be allowed"
+    );
 
     // 2. Adversarial leak patterns must all be rejected by is_clean()
     let leak_samples = [
@@ -595,13 +600,19 @@ fn test_safe_ci_artifact_writer_in_tempdir() {
 
     let dirty_temp_dir = tempfile::tempdir().expect("dirty tempdir created");
     let write_res = dirty_report.write_ci_report_secure(dirty_temp_dir.path());
-    assert!(write_res.is_err(), "writing dirty report must fail immediately");
+    assert!(
+        write_res.is_err(),
+        "writing dirty report must fail immediately"
+    );
 
     // Guarantee zero files written
     let file_count = std::fs::read_dir(dirty_temp_dir.path())
         .expect("read_dir")
         .count();
-    assert_eq!(file_count, 0, "no files must ever be written when anonymity validation fails");
+    assert_eq!(
+        file_count, 0,
+        "no files must ever be written when anonymity validation fails"
+    );
 }
 
 #[test]
@@ -620,7 +631,10 @@ fn test_unicode_nfc_and_visual_sanitization_for_ci_reports() {
 
     for sample in valid_samples {
         let sanitized = sanitize_unicode_for_display(sample);
-        assert_eq!(sanitized, sample, "standard international Unicode must not be altered");
+        assert_eq!(
+            sanitized, sample,
+            "standard international Unicode must not be altered"
+        );
 
         let rec = TraceRecord {
             seq: 0,
@@ -636,7 +650,10 @@ fn test_unicode_nfc_and_visual_sanitization_for_ci_reports() {
             file_hash_hex: None,
             range_summary: None,
         };
-        assert!(rec.is_clean(), "valid international sample must be recognized as clean");
+        assert!(
+            rec.is_clean(),
+            "valid international sample must be recognized as clean"
+        );
     }
 
     // 2. Bidi overrides and isolates must be escaped to prevent terminal/CI spoofing
@@ -660,13 +677,22 @@ fn test_unicode_nfc_and_visual_sanitization_for_ci_reports() {
         file_hash_hex: None,
         range_summary: None,
     };
-    assert!(!bidi_rec.is_clean(), "bidi override must be flagged as dirty");
-    assert_eq!(bidi_rec.sanitized_tags_summary(), vec!["innocent_document\\u{202E}fdp.exe"]);
+    assert!(
+        !bidi_rec.is_clean(),
+        "bidi override must be flagged as dirty"
+    );
+    assert_eq!(
+        bidi_rec.sanitized_tags_summary(),
+        vec!["innocent_document\\u{202E}fdp.exe"]
+    );
 
     // 3. Invisible / zero-width formatting characters must be escaped
     let zero_width_sample = "stealth\u{200B}secret\u{FEFF}file\u{00AD}test";
     let sanitized_zero = sanitize_unicode_for_display(zero_width_sample);
-    assert_eq!(sanitized_zero, "stealth\\u{200B}secret\\u{FEFF}file\\u{00AD}test");
+    assert_eq!(
+        sanitized_zero,
+        "stealth\\u{200B}secret\\u{FEFF}file\\u{00AD}test"
+    );
 
     let zero_rec = TraceRecord {
         seq: 2,
@@ -682,7 +708,10 @@ fn test_unicode_nfc_and_visual_sanitization_for_ci_reports() {
         file_hash_hex: None,
         range_summary: None,
     };
-    assert!(!zero_rec.is_clean(), "invisible characters must be flagged as dirty");
+    assert!(
+        !zero_rec.is_clean(),
+        "invisible characters must be flagged as dirty"
+    );
 
     // 4. Control characters must be escaped
     let ctrl_sample = "payload\u{0000}with\u{001B}[31mred";

@@ -78,7 +78,10 @@ mod tests {
         let mut plaintext = vec![0u8; 16];
         cipher.process(&mut plaintext);
         // RFC 6229 first 16 bytes: B2 39 63 05 F0 3D C0 27 CC C3 52 4A 0A 11 18 A8
-        assert_eq!(hex::encode(&plaintext).to_uppercase(), "B2396305F03DC027CCC3524A0A1118A8");
+        assert_eq!(
+            hex::encode(&plaintext).to_uppercase(),
+            "B2396305F03DC027CCC3524A0A1118A8"
+        );
     }
 
     #[test]
@@ -91,7 +94,10 @@ mod tests {
         let mut buffer = original.to_vec();
 
         enc.process(&mut buffer);
-        assert_ne!(&buffer, original, "Encrypted data must differ from plaintext");
+        assert_ne!(
+            &buffer, original,
+            "Encrypted data must differ from plaintext"
+        );
         assert_ne!(buffer[0], 0xE3, "First byte must not be 0xE3");
 
         dec.process(&mut buffer);

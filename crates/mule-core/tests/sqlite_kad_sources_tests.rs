@@ -35,7 +35,9 @@ fn test_kad_sources_indexing_and_ttl_purging() {
     };
 
     // 2. Insert batch
-    let inserted = db.insert_kad_indexed_sources(&[src1.clone(), src2.clone()]).unwrap();
+    let inserted = db
+        .insert_kad_indexed_sources(&[src1.clone(), src2.clone()])
+        .unwrap();
     assert_eq!(inserted, 2);
     assert_eq!(db.count_kad_indexed_sources().unwrap(), 2);
 

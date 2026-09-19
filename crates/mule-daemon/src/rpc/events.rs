@@ -10,5 +10,3 @@ pub struct DownloadUpdatedEvent {
     pub sequence: u64,
     pub download: DownloadSnapshot,
 }
-
-

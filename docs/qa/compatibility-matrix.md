@@ -24,7 +24,7 @@ Ce document formalise les choix d'interopérabilité et les garanties du moteur 
 | Format | Statut de lecture | Statut d'écriture | Rôle dans l'architecture |
 | :--- | :--- | :--- | :--- |
 | **Liens `ed2k://`** | Complet (strict + tags inconnus) | Canonical (`to_link_string`) | Saisie utilisateur, imports, partages. |
-| **Fichiers `.part.met`** | Supporté (`0xe0`, `0xe1`, `0xe2`) | Prévu pour migration ultérieure | Import direct de téléchargements existants. |
+| **Fichiers `.part.met`** | Supporté (`0xe0`, `0xe1`, `0xe2`, gaps nommés eMule) | **Supporté** (`write_to`/`save`, atomique `.tmp`+rename) | Import direct de téléchargements existants ; écriture compatible `CPartFile::SavePartFile`. |
 | **Arbre AICH (`.aich`)** | Prévu | Prévu | Cache local des arbres Merkle. |
 | **État interne `mule-core`** | Versionné (SQLite transactionnel) | Versionné (SQLite transactionnel) | Persistance moderne découplée des formats legacy. |
 

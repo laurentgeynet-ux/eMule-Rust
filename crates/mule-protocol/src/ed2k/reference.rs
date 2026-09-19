@@ -92,7 +92,9 @@ pub fn sanitize_unicode_for_display(raw: &str) -> String {
     let nfc: String = raw.nfc().collect();
     let mut out = String::with_capacity(nfc.len());
     for c in nfc.chars() {
-        if is_bidi_or_formatting_control(c) || (c.is_control() && c != '\t' && c != '\n' && c != '\r') {
+        if is_bidi_or_formatting_control(c)
+            || (c.is_control() && c != '\t' && c != '\n' && c != '\r')
+        {
             use std::fmt::Write;
             let _ = write!(out, "\\u{{{:04X}}}", c as u32);
         } else {
@@ -132,7 +134,10 @@ impl TraceRecord {
 
     /// Returns the sanitized list of tag summaries with NFC normalization and escaped formatting/bidi controls.
     pub fn sanitized_tags_summary(&self) -> Vec<String> {
-        self.tags_summary.iter().map(|s| sanitize_unicode_for_display(s)).collect()
+        self.tags_summary
+            .iter()
+            .map(|s| sanitize_unicode_for_display(s))
+            .collect()
     }
 
     /// Produces a normalized, anonymized JSON representation conforming to test harness expectations.
@@ -271,10 +276,22 @@ impl DivergenceReport {
         out.push_str(&format!("Reference Kind: {}\n", self.reference_kind));
         out.push_str(&format!("Compatibility Profile: {}\n", self.profile));
         out.push_str(&format!("Total Traces: {}\n", self.traces.len()));
-        out.push_str(&format!("Observed Opcodes: {:02X?}\n", self.opcodes_observed));
-        out.push_str(&format!("Canonical 0x47 Detected: {}\n", self.canonical_request_parts_detected));
-        out.push_str(&format!("Canonical 0x4F Detected: {}\n", self.canonical_file_status_req_detected));
-        out.push_str(&format!("Anonymity Validated: {}\n", self.validate_anonymity().is_ok()));
+        out.push_str(&format!(
+            "Observed Opcodes: {:02X?}\n",
+            self.opcodes_observed
+        ));
+        out.push_str(&format!(
+            "Canonical 0x47 Detected: {}\n",
+            self.canonical_request_parts_detected
+        ));
+        out.push_str(&format!(
+            "Canonical 0x4F Detected: {}\n",
+            self.canonical_file_status_req_detected
+        ));
+        out.push_str(&format!(
+            "Anonymity Validated: {}\n",
+            self.validate_anonymity().is_ok()
+        ));
         if !self.notes.is_empty() {
             out.push_str("Notes:\n");
             for note in &self.notes {
@@ -380,7 +397,10 @@ impl ReferenceInteropClient {
             opcode: OP_HELLO,
             opcode_name: opcode_to_str(OP_HELLO),
             payload_len: 30,
-            tags_summary: vec!["TAG_NAME:EmuleSion".to_string(), "TAG_VERSION:60".to_string()],
+            tags_summary: vec![
+                "TAG_NAME:EmuleSion".to_string(),
+                "TAG_VERSION:60".to_string(),
+            ],
             file_hash_hex: None,
             range_summary: None,
         });

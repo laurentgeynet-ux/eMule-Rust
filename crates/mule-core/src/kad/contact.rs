@@ -1,6 +1,6 @@
-use std::net::Ipv4Addr;
-use serde::{Deserialize, Serialize};
 use super::kad_id::KadId;
+use serde::{Deserialize, Serialize};
+use std::net::Ipv4Addr;
 
 /// Represents a known Kad contact/node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

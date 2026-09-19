@@ -235,6 +235,10 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `src/services/kad_udp/handlers.rs` | Handlers des paquets Kad UDP |
 | `src/services/kad_udp/routing_client.rs` | Client de routage Kad |
 | `src/services/kad_udp/search_client.rs` | Client de recherche Kad |
+| `src/services/client_udp.rs` | Socket client-UDP eD2K (reasks/keep-alive 0x90-0x93) |
+| `src/services/server_udp.rs` | Socket UDP serveur (GLOBGETSOURCES2/GLOBFOUNDSOURCES) + failover dans `swarm_coordinator/strategy.rs` |
+| `src/services/uss.rs` | USS — limite upload dynamique par latence (loi `LastCommonRouteFinder`, gate `accept_new_client` sur la file) |
+| `src/services/kad_udp/storage.rs` | Nœud de stockage Kad (TTL, bornes anti-flood) |
 | `src/services/kad_udp/types.rs` | Types Kad UDP |
 | `src/services/obfuscation_stream.rs` | Flux réseau obfusqué (protocol obfuscation) |
 | `src/services/peer_session.rs` | Session avec un pair eD2k |
@@ -273,6 +277,8 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `tests/filter_rpc_tests.rs` | Tests RPC de filtrage |
 | `tests/history_rpc_tests.rs` | Tests RPC historique |
 | `tests/inter_daemon_transfer.rs` | Tests de transfert entre daemons |
+| `tests/aich_tests.rs` | Tests AICH daemon (consensus, recovery) |
+| `tests/hashset_tests.rs` | Tests vérification hashset par part |
 | `tests/kad_bootstrap_tests.rs` | Tests de bootstrap Kad |
 | `tests/kad_keywords_tests.rs` | Tests mots-clés Kad |
 | `tests/kad_rpc_tests.rs` | Tests RPC Kad |
@@ -282,6 +288,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `tests/lifecycle_and_locking.rs` | Tests cycle de vie et verrouillage |
 | `tests/network_policy_rpc_tests.rs` | Tests RPC politique réseau |
 | `tests/part_met_rpc_tests.rs` | Tests RPC part.met |
+| `tests/part_met_write_tests.rs` | Tests écriture .part.met |
 | `tests/peer_adversarial_tests.rs` | Tests adversariaux de pairs |
 | `tests/peer_connection_tests.rs` | Tests de connexion aux pairs |
 | `tests/rpc_contract.rs` | Tests de contrat RPC |
@@ -316,6 +323,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `src/aich/mod.rs` | Module AICH |
 | `src/aich/hash_tree.rs` | Arbre de hachage AICH |
 | `src/aich/proof.rs` | Preuves AICH |
+| `src/aich/recovery.rs` | Données de récupération AICH (ident+hash) |
 | `src/ed2k/mod.rs` | Module formats eD2k |
 | `src/ed2k/hash.rs` | Calcul du hash eD2k (MD4 par chunks) |
 | `src/ed2k/link.rs` | Parsing/génération de liens ed2k:// |
@@ -333,6 +341,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `tests/link_vectors.rs` | Vecteurs de test liens ed2k |
 | `tests/nodes_dat_tests.rs` | Tests nodes.dat |
 | `tests/official_file_hash.rs` | Test de hash sur fichier officiel |
+| `tests/part_met_vectors.rs` | Vecteurs de test .part.met (lecture/écriture) |
 | `tests/part_met_vectors.rs` | Vecteurs de test .part.met |
 | `tests/server_met_vectors.rs` | Vecteurs de test server.met |
 
@@ -391,6 +400,8 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | Fichier | Fonction |
 |---|---|
 | `src/ed2k/mod.rs` | Module protocole eD2k |
+| `src/ed2k/client_udp.rs` | Codec client-UDP (reasks 0x90-0x93) |
+| `src/ed2k/server_udp.rs` | Codec UDP serveur (GLOBGETSOURCES2, GLOBFOUNDSOURCES, GLOBSERVSTATRES) |
 | `src/ed2k/opcodes.rs` | Opcodes des messages eD2k |
 | `src/ed2k/packet.rs` | Paquet eD2k |
 | `src/ed2k/tags.rs` | Tags eD2k (métadonnées typées) |
@@ -472,9 +483,11 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 |---|---|
 | `tests/common/mod.rs` | Utilitaires de test partagés |
 | `tests/common/sha256.rs` | SHA-256 pour les tests |
+| `tests/ed2k_aich_tests.rs` | Tests codec AICH (opcodes 0x12-0x15) |
 | `tests/ed2k_block_transfer_tests.rs` | Tests de transfert de blocs eD2k |
 | `tests/ed2k_corpus_tests.rs` | Tests sur corpus de paquets |
 | `tests/ed2k_file_status_tests.rs` | Tests des statuts de fichier |
+| `tests/ed2k_hashset_tests.rs` | Tests codec hashset (0x51/0x52) |
 | `tests/ed2k_isolation_guard.rs` | Garde d'isolation des tests eD2k |
 | `tests/ed2k_part_resume_tests.rs` | Tests de reprise de parties |
 | `tests/ed2k_reference_interop_tests.rs` | Tests d'interop avec la référence |

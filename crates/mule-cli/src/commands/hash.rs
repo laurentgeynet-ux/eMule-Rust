@@ -35,7 +35,10 @@ pub fn make_link(file: &Path, detailed: bool) -> Result<(), Box<dyn std::error::
         std::process::exit(1);
     }
     if file.is_dir() {
-        eprintln!("Error: Path is a directory, not a regular file: {}", file.display());
+        eprintln!(
+            "Error: Path is a directory, not a regular file: {}",
+            file.display()
+        );
         std::process::exit(1);
     }
 
@@ -56,7 +59,8 @@ pub fn make_link(file: &Path, detailed: bool) -> Result<(), Box<dyn std::error::
         }
     };
 
-    let mut link = match Ed2kFileLink::create(&file_name, ed2k_res.total_bytes, ed2k_res.root_hash) {
+    let mut link = match Ed2kFileLink::create(&file_name, ed2k_res.total_bytes, ed2k_res.root_hash)
+    {
         Ok(l) => l,
         Err(err) => {
             eprintln!("Error creating eD2K link: {err}");

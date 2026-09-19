@@ -210,29 +210,41 @@ pub async fn handle_tool(
     args: &Value,
 ) -> Option<ToolCallResult> {
     match tool_name {
-        "emule_kad_status" => {
-            match client.call("kad.status", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to get Kad status: {e}"))),
-            }
-        }
+        "emule_kad_status" => match client.call("kad.status", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to get Kad status: {e}"
+            ))),
+        },
 
         "emule_kad_bootstrap" => {
             if let Some(url) = args.get("url").and_then(|u| u.as_str()) {
-                match client.call("kad.bootstrapFromUrl", json!({ "url": url })).await {
+                match client
+                    .call("kad.bootstrapFromUrl", json!({ "url": url }))
+                    .await
+                {
                     Ok(res) => Some(ToolCallResult::json(&res)),
-                    Err(e) => Some(ToolCallResult::error(format!("Failed to bootstrap Kad from URL: {e}"))),
+                    Err(e) => Some(ToolCallResult::error(format!(
+                        "Failed to bootstrap Kad from URL: {e}"
+                    ))),
                 }
             } else if let (Some(ip), Some(port)) = (
                 args.get("ip").and_then(|i| i.as_str()),
                 args.get("port").and_then(|p| p.as_u64()),
             ) {
-                match client.call("kad.bootstrap", json!({ "ip": ip, "port": port })).await {
+                match client
+                    .call("kad.bootstrap", json!({ "ip": ip, "port": port }))
+                    .await
+                {
                     Ok(res) => Some(ToolCallResult::json(&res)),
-                    Err(e) => Some(ToolCallResult::error(format!("Failed to bootstrap Kad node: {e}"))),
+                    Err(e) => Some(ToolCallResult::error(format!(
+                        "Failed to bootstrap Kad node: {e}"
+                    ))),
                 }
             } else {
-                Some(ToolCallResult::error("Provide either 'url' or both 'ip' and 'port' to bootstrap Kad"))
+                Some(ToolCallResult::error(
+                    "Provide either 'url' or both 'ip' and 'port' to bootstrap Kad",
+                ))
             }
         }
 
@@ -244,16 +256,18 @@ pub async fn handle_tool(
 
             match client.call("kad.startUdp", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to start Kad UDP socket: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to start Kad UDP socket: {e}"
+                ))),
             }
         }
 
-        "emule_kad_stop_udp" => {
-            match client.call("kad.stopUdp", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to stop Kad UDP socket: {e}"))),
-            }
-        }
+        "emule_kad_stop_udp" => match client.call("kad.stopUdp", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to stop Kad UDP socket: {e}"
+            ))),
+        },
 
         "emule_kad_ping" => {
             let ip = match args.get("ip").and_then(|i| i.as_str()) {
@@ -272,19 +286,30 @@ pub async fn handle_tool(
 
             match client.call("kad.ping", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to ping Kad contact: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to ping Kad contact: {e}"
+                ))),
             }
         }
 
         "emule_kad_find_node" => {
             let target_id = match args.get("target_id").and_then(|t| t.as_str()) {
                 Some(t) => t,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'target_id'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'target_id'",
+                    ))
+                }
             };
 
-            match client.call("kad.findNode", json!({ "targetId": target_id })).await {
+            match client
+                .call("kad.findNode", json!({ "targetId": target_id }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to find node in Kad: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to find node in Kad: {e}"
+                ))),
             }
         }
 
@@ -296,38 +321,60 @@ pub async fn handle_tool(
 
             match client.call("kad.listContacts", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to list Kad contacts: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to list Kad contacts: {e}"
+                ))),
             }
         }
 
-        "emule_kad_clear_contacts" => {
-            match client.call("kad.clearContacts", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to clear Kad contacts: {e}"))),
-            }
-        }
+        "emule_kad_clear_contacts" => match client.call("kad.clearContacts", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to clear Kad contacts: {e}"
+            ))),
+        },
 
         "emule_kad_search_sources" => {
             let hash = match args.get("file_hash").and_then(|h| h.as_str()) {
                 Some(h) => h,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_hash'",
+                    ))
+                }
             };
             let size = args.get("file_size").and_then(|s| s.as_u64()).unwrap_or(0);
 
-            match client.call("kad.searchSources", json!({ "fileHash": hash, "fileSize": size })).await {
+            match client
+                .call(
+                    "kad.searchSources",
+                    json!({ "fileHash": hash, "fileSize": size }),
+                )
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to search Kad sources: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to search Kad sources: {e}"
+                ))),
             }
         }
 
         "emule_kad_publish_source" => {
             let hash = match args.get("file_hash").and_then(|h| h.as_str()) {
                 Some(h) => h,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_hash'",
+                    ))
+                }
             };
             let size = match args.get("file_size").and_then(|s| s.as_u64()) {
                 Some(s) => s,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_size'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_size'",
+                    ))
+                }
             };
 
             let mut params = json!({ "fileHash": hash, "fileSize": size });
@@ -337,31 +384,53 @@ pub async fn handle_tool(
 
             match client.call("kad.publishSource", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to publish source to Kad: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to publish source to Kad: {e}"
+                ))),
             }
         }
 
         "emule_kad_publish_keywords" => {
             let hash = match args.get("file_hash").and_then(|h| h.as_str()) {
                 Some(h) => h,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_hash'",
+                    ))
+                }
             };
             let name = match args.get("file_name").and_then(|n| n.as_str()) {
                 Some(n) => n,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_name'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_name'",
+                    ))
+                }
             };
             let size = match args.get("file_size").and_then(|s| s.as_u64()) {
                 Some(s) => s,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_size'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_size'",
+                    ))
+                }
             };
 
-            match client.call("kad.publishKeywords", json!({
-                "fileHash": hash,
-                "fileName": name,
-                "fileSize": size
-            })).await {
+            match client
+                .call(
+                    "kad.publishKeywords",
+                    json!({
+                        "fileHash": hash,
+                        "fileName": name,
+                        "fileSize": size
+                    }),
+                )
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to publish keywords to Kad: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to publish keywords to Kad: {e}"
+                ))),
             }
         }
 
@@ -371,9 +440,14 @@ pub async fn handle_tool(
                 None => return Some(ToolCallResult::error("Missing required parameter: 'path'")),
             };
 
-            match client.call("kad.inspectNodesDat", json!({ "path": path })).await {
+            match client
+                .call("kad.inspectNodesDat", json!({ "path": path }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to inspect nodes.dat: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to inspect nodes.dat: {e}"
+                ))),
             }
         }
 
@@ -383,9 +457,14 @@ pub async fn handle_tool(
                 None => return Some(ToolCallResult::error("Missing required parameter: 'path'")),
             };
 
-            match client.call("kad.importNodesDat", json!({ "path": path })).await {
+            match client
+                .call("kad.importNodesDat", json!({ "path": path }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to import nodes.dat: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to import nodes.dat: {e}"
+                ))),
             }
         }
 

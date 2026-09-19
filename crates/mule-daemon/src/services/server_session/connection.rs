@@ -55,7 +55,10 @@ pub fn spawn_connection_task(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let start_connect = std::time::Instant::now();
-        info!("Attempting TCP connection to eD2K server {} (timeout: {} ms)...", target_addr, connect_timeout_ms);
+        info!(
+            "Attempting TCP connection to eD2K server {} (timeout: {} ms)...",
+            target_addr, connect_timeout_ms
+        );
 
         // 1. TCP Connect with connect_timeout
         let stream_res = tokio::select! {
@@ -84,7 +87,10 @@ pub fn spawn_connection_task(
         let mut stream = match stream_res {
             Ok(s) => s,
             Err(e) => {
-                warn!("Failed to establish TCP connection to eD2K server {}: {}", target_addr, e);
+                warn!(
+                    "Failed to establish TCP connection to eD2K server {}: {}",
+                    target_addr, e
+                );
                 let mut g = inner_clone.lock().await;
                 g.snapshot = ServerSessionSnapshot::default();
                 g.permit = None;
@@ -100,11 +106,20 @@ pub fn spawn_connection_task(
         // 2. Send OP_LOGINREQUEST
         let limits = Ed2kLimits::for_server();
         let login_req = ServerLoginRequest::new(user_hash, client_port, &nickname, 0x3c);
-        info!("Sending OP_LOGINREQUEST to eD2K server {} (nick='{}', port={}, hash={:?})", target_addr, nickname, client_port, hex::encode(user_hash));
+        info!(
+            "Sending OP_LOGINREQUEST to eD2K server {} (nick='{}', port={}, hash={:?})",
+            target_addr,
+            nickname,
+            client_port,
+            hex::encode(user_hash)
+        );
         let packet = match login_req.encode(&limits) {
             Ok(p) => p,
             Err(e) => {
-                error!("Failed to encode ServerLoginRequest for {}: {}", target_addr, e);
+                error!(
+                    "Failed to encode ServerLoginRequest for {}: {}",
+                    target_addr, e
+                );
                 let mut g = inner_clone.lock().await;
                 g.snapshot = ServerSessionSnapshot::default();
                 g.permit = None;
@@ -122,7 +137,10 @@ pub fn spawn_connection_task(
         wire_buf.extend_from_slice(&packet.payload);
 
         if let Err(e) = stream.write_all(&wire_buf).await {
-            warn!("Failed to write OP_LOGINREQUEST bytes to eD2K server {}: {}", target_addr, e);
+            warn!(
+                "Failed to write OP_LOGINREQUEST bytes to eD2K server {}: {}",
+                target_addr, e
+            );
             let mut g = inner_clone.lock().await;
             g.snapshot = ServerSessionSnapshot::default();
             g.permit = None;
@@ -131,14 +149,29 @@ pub fn spawn_connection_task(
             emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
             return;
         }
-        info!("Sent OP_LOGINREQUEST ({} wire bytes) to {}. Awaiting server response...", wire_buf.len(), target_addr);
+        info!(
+            "Sent OP_LOGINREQUEST ({} wire bytes) to {}. Awaiting server response...",
+            wire_buf.len(),
+            target_addr
+        );
 
         // 3. Read loop with handshake timeout & PacketCodec
         let mut read_buf = BytesMut::with_capacity(8192);
         let codec = PacketCodec::new();
         let mut temp_buf = [0u8; 4096];
-        let handshake_deadline = tokio::time::Instant::now() + Duration::from_millis(handshake_timeout_ms);
+        let handshake_deadline =
+            tokio::time::Instant::now() + Duration::from_millis(handshake_timeout_ms);
         let mut is_connecting = true;
+        let mut publish_login: Option<mule_protocol::ed2k::ServerIdChange> = None;
+        // Credentials from the last OP_IDCHANGE, kept for periodic
+        // OP_OFFERFILES re-publication (eMule keeps the shared file list
+        // fresh on the server and uses an empty offer packet as keep-alive).
+        let mut last_idc: Option<mule_protocol::ed2k::ServerIdChange> = None;
+        let republish_period = Duration::from_secs(30 * 60);
+        let mut republish_timer = tokio::time::interval_at(
+            tokio::time::Instant::now() + republish_period,
+            republish_period,
+        );
 
         loop {
             tokio::select! {
@@ -214,6 +247,7 @@ pub fn spawn_connection_task(
                                                             g.snapshot.ping_ms = Some(ping_ms);
                                                         }
                                                         updated = true;
+                                                        publish_login = Some(idc);
                                                     }
                                                     ServerResponse::Status(status) => {
                                                         info!("Server status: {} users, {} files", status.current_users, status.current_files);
@@ -248,25 +282,28 @@ pub fn spawn_connection_task(
                                                             let mut rejected_invalid = 0;
 
                                                             for src in &fs.sources {
-                                                                if src.port == 0 || src.ip == 0 {
+                                                                if src.ip == 0 {
                                                                     rejected_invalid += 1;
                                                                     continue;
                                                                 }
 
-                                                                if src.ip < 16_777_216 {
+                                                                // LowID source: keep it — reachable only via
+                                                                // server callback (OP_CALLBACKREQUEST).
+                                                                let addr_str = if src.ip < 16_777_216 {
                                                                     low_id_ignored += 1;
-                                                                    continue;
-                                                                }
-
-                                                                let octets = src.ip.to_le_bytes();
-                                                                let ip_addr = std::net::Ipv4Addr::from(octets);
-
-                                                                if ip_addr.is_broadcast() || ip_addr.is_multicast() {
-                                                                    rejected_invalid += 1;
-                                                                    continue;
-                                                                }
-
-                                                                let addr_str = src.to_address_string();
+                                                                    format!("lowid:{}", src.ip)
+                                                                } else {
+                                                                    if src.port == 0 {
+                                                                        rejected_invalid += 1;
+                                                                        continue;
+                                                                    }
+                                                                    let ip_addr = std::net::Ipv4Addr::from(src.ip.to_le_bytes());
+                                                                    if ip_addr.is_broadcast() || ip_addr.is_multicast() {
+                                                                        rejected_invalid += 1;
+                                                                        continue;
+                                                                    }
+                                                                    src.to_address_string()
+                                                                };
                                                                 if !seen_addrs.insert(addr_str.clone()) {
                                                                     continue;
                                                                 }
@@ -319,25 +356,28 @@ pub fn spawn_connection_task(
                                                             let mut rejected_invalid = 0;
 
                                                             for src in &fs.sources {
-                                                                if src.port == 0 || src.ip == 0 {
+                                                                if src.ip == 0 {
                                                                     rejected_invalid += 1;
                                                                     continue;
                                                                 }
 
-                                                                if src.ip < 16_777_216 {
+                                                                // LowID source: keep it — reachable only via
+                                                                // server callback (OP_CALLBACKREQUEST).
+                                                                let addr_str = if src.ip < 16_777_216 {
                                                                     low_id_ignored += 1;
-                                                                    continue;
-                                                                }
-
-                                                                let octets = src.ip.to_le_bytes();
-                                                                let ip_addr = std::net::Ipv4Addr::from(octets);
-
-                                                                if ip_addr.is_broadcast() || ip_addr.is_multicast() {
-                                                                    rejected_invalid += 1;
-                                                                    continue;
-                                                                }
-
-                                                                let addr_str = src.to_address_string();
+                                                                    format!("lowid:{}", src.ip)
+                                                                } else {
+                                                                    if src.port == 0 {
+                                                                        rejected_invalid += 1;
+                                                                        continue;
+                                                                    }
+                                                                    let ip_addr = std::net::Ipv4Addr::from(src.ip.to_le_bytes());
+                                                                    if ip_addr.is_broadcast() || ip_addr.is_multicast() {
+                                                                        rejected_invalid += 1;
+                                                                        continue;
+                                                                    }
+                                                                    src.to_address_string()
+                                                                };
                                                                 if !seen_addrs.insert(addr_str.clone()) {
                                                                     continue;
                                                                 }
@@ -375,6 +415,72 @@ pub fn spawn_connection_task(
                                                             }
                                                         }
                                                     }
+                                                    ServerResponse::CallbackRequested(cb) => {
+                                                        // A client asked the server to relay a callback
+                                                        // to us (we are the LowID target, or the server
+                                                        // forwarded anyway). eMule connects back to the
+                                                        // requester; we only log — the requester will
+                                                        // contact us for its transfer once connected.
+                                                        let ip_addr = std::net::Ipv4Addr::from(cb.ip.to_le_bytes());
+                                                        info!(
+                                                            "OP_CALLBACKREQUESTED: peer {}:{} wants us to connect back (crypt_opts={:?}, user_hash={})",
+                                                            ip_addr,
+                                                            cb.port,
+                                                            cb.crypt_options,
+                                                            cb.user_hash.map(hex::encode).as_deref().unwrap_or("<none>")
+                                                        );
+                                                    }
+                                                    ServerResponse::ServerList { servers } => {
+                // OP_SERVERLIST: merge advertised servers into the local DB
+                // with low preference (eMule adds them as regular server.met
+                // entries; IP-filtered addresses are skipped).
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                let entries: Vec<mule_core::model::Ed2kServer> = servers
+                    .iter()
+                    .filter(|(ip, port)| *port != 0 && *ip != 0)
+                    .map(|&(ip, port)| {
+                        let ip_be = std::net::Ipv4Addr::from(ip.to_be_bytes());
+                        mule_core::model::Ed2kServer {
+                            address: format!("{ip_be}:{port}"),
+                            ip: ip_be.to_string(),
+                            port,
+                            name: String::new(),
+                            description: "via OP_SERVERLIST".to_string(),
+                            ping: 0,
+                            preference: 0,
+                            failed_count: 0,
+                            dyn_ip: None,
+                            version: None,
+                            filter_status: mule_core::model::ServerFilterStatus::Allowed,
+                            last_seen_unix_ms: Some(now_ms),
+                            created_at_unix_ms: now_ms,
+                            updated_at_unix_ms: now_ms,
+                        }
+                    })
+                    .collect();
+                if !entries.is_empty() {
+                    if let Some(ref dl_service) = downloads_clone {
+                        let mut dl_guard = dl_service.lock().await;
+                        match dl_guard.upsert_servers(&entries) {
+                            Ok(n) => tracing::info!(
+                                "Merged {n} server(s) advertised by OP_SERVERLIST into server list"
+                            ),
+                            Err(e) => {
+                                tracing::warn!("Failed to persist OP_SERVERLIST servers: {e}")
+                            }
+                        }
+                    }
+                }
+            }
+            ServerResponse::CallbackFail { client_id } => {
+                                                        warn!(
+                                                            "OP_CALLBACK_FAIL: server could not relay callback to client {:?}",
+                                                            client_id
+                                                        );
+                                                    }
                                                     ServerResponse::Other { opcode, .. } => {
                                                         info!("Received other server opcode: 0x{:02x}", opcode);
                                                     }
@@ -382,6 +488,24 @@ pub fn spawn_connection_task(
 
                                                 if updated {
                                                     emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
+                                                }
+                                                drop(g);
+
+                                                // eMule `CSharedFileList::SendListToServer`:
+                                                // once the server assigned our ID, publish
+                                                // the shared file list via OP_OFFERFILES.
+                                                if let Some(idc) = publish_login.take() {
+                                                    last_idc = Some(idc.clone());
+                                                    publish_shared_files(
+                                                        &mut stream,
+                                                        target_addr,
+                                                        idc.client_id,
+                                                        idc.tcp_flags,
+                                                        client_port,
+                                                        &limits,
+                                                        &downloads_clone,
+                                                    )
+                                                    .await;
                                                 }
                                             }
                                             Err(e) => {
@@ -407,6 +531,20 @@ pub fn spawn_connection_task(
                         }
                     }
                 }
+                _ = republish_timer.tick(), if !is_connecting && last_idc.is_some() => {
+                    if let Some(ref idc) = last_idc {
+                        publish_shared_files(
+                            &mut stream,
+                            target_addr,
+                            idc.client_id,
+                            idc.tcp_flags,
+                            client_port,
+                            &limits,
+                            &downloads_clone,
+                        )
+                        .await;
+                    }
+                }
                 _ = tokio::time::sleep_until(handshake_deadline), if is_connecting => {
                     warn!("Server handshake timed out after {} ms", handshake_timeout_ms);
                     break;
@@ -422,4 +560,70 @@ pub fn spawn_connection_task(
         g.outgoing_tx = None;
         emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
     })
+}
+
+/// Publishes the shared file list to the connected server via `OP_OFFERFILES`
+/// (eMule `CSharedFileList::SendListToServer`, capped at 200 files).
+async fn publish_shared_files(
+    stream: &mut TcpStream,
+    target_addr: SocketAddr,
+    client_id: u32,
+    tcp_flags: u32,
+    client_port: u16,
+    limits: &Ed2kLimits,
+    downloads: &Option<Arc<Mutex<DownloadService>>>,
+) {
+    const MAX_OFFER_FILES: usize = 200;
+
+    let Some(dl_service) = downloads else { return };
+    let shared = {
+        let dl_svc = dl_service.lock().await;
+        dl_svc.list_shared_files().unwrap_or_default()
+    };
+
+    let mut files = Vec::with_capacity(shared.len().min(MAX_OFFER_FILES));
+    for sf in shared.iter().filter(|sf| sf.enabled) {
+        if files.len() >= MAX_OFFER_FILES {
+            break;
+        }
+        let Ok(hash_bytes) = <[u8; 16]>::try_from(
+            hex::decode(sf.file_hash.trim())
+                .unwrap_or_default()
+                .as_slice(),
+        ) else {
+            continue;
+        };
+        if let Some(of) = mule_protocol::ed2k::OfferedFile::for_server(
+            hash_bytes,
+            &sf.file_name,
+            sf.file_size,
+            client_id,
+            client_port,
+            tcp_flags,
+        ) {
+            files.push(of);
+        }
+    }
+
+    // Empty OP_OFFERFILES doubles as the server keep-alive packet
+    // (eMule `KeepConnectionAlive` semantics).
+    let count = files.len();
+    let offer = mule_protocol::ed2k::OfferFiles { files };
+    match offer.encode(limits) {
+        Ok(pkt) => {
+            let mut out = Vec::with_capacity(6 + pkt.payload.len());
+            out.push(pkt.protocol);
+            out.extend_from_slice(&(pkt.frame_len() as u32).to_le_bytes());
+            out.push(pkt.opcode);
+            out.extend_from_slice(&pkt.payload);
+            match stream.write_all(&out).await {
+                Ok(()) => info!(
+                    "Published {} shared file(s) to server {} via OP_OFFERFILES",
+                    count, target_addr
+                ),
+                Err(e) => warn!("Failed to send OP_OFFERFILES to {}: {}", target_addr, e),
+            }
+        }
+        Err(e) => warn!("Failed to encode OP_OFFERFILES for {}: {}", target_addr, e),
+    }
 }

@@ -198,6 +198,19 @@ pub struct KadPublishKeywordReq {
     pub entries: Vec<KadKeywordEntryWire>,
 }
 
+/// Kad2 Firewall UDP test packet (0x62).
+/// Sent by a Kad contact in response to a TCP `OP_FWCHECKUDPREQ`, to probe
+/// whether the requester's Kad UDP port is reachable (eMule
+/// `Process_KADEMLIA2_FIREWALLUDP` / `ProcessFirewallCheckUDPRequest`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadFirewallUdp {
+    /// Error/already-known flag (0 = clean result, non-zero = remote reported
+    /// that the result may be biased and the test should be discarded).
+    pub error_code: u8,
+    /// UDP port that was probed (intern or extern Kad port of the requester).
+    pub udp_port: u16,
+}
+
 /// Kad2 Publish Keyword Response (0x4B, unified publish response).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KadPublishKeywordRes {
@@ -240,4 +253,6 @@ pub enum KadMessage {
     PublishKeywordReq(KadPublishKeywordReq),
     /// Kad2 Publish Keyword response.
     PublishKeywordRes(KadPublishKeywordRes),
+    /// Kad2 Firewall UDP test packet.
+    FirewallUdp(KadFirewallUdp),
 }

@@ -37,7 +37,9 @@ async fn test_upnp_status_and_rpc() {
 
     // 1. upnp.status initially disabled
     let req = make_req(1, "upnp.status", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["enabled"], false);
@@ -46,14 +48,18 @@ async fn test_upnp_status_and_rpc() {
 
     // 2. upnp.setEnabled true
     let req = make_req(2, "upnp.setEnabled", Some(json!({ "enabled": true })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["enabled"], true);
 
     // 3. upnp.unmapPorts
     let req = make_req(3, "upnp.unmapPorts", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 }
 
@@ -63,9 +69,19 @@ async fn test_inbound_listener_0_0_0_0_in_preview_mode() {
     let mut authenticated = true;
 
     // Start inbound listener on ephemeral port (port 0)
-    let req = make_req(10, "listener.start", Some(json!({ "port": 0, "bindIp": "0.0.0.0" })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_none(), "Expected success, got: {:?}", resp.error);
+    let req = make_req(
+        10,
+        "listener.start",
+        Some(json!({ "port": 0, "bindIp": "0.0.0.0" })),
+    );
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_none(),
+        "Expected success, got: {:?}",
+        resp.error
+    );
     let res = resp.result.unwrap();
     assert_eq!(res["started"], true);
     let listen_addr = res["listenAddress"].as_str().unwrap();
@@ -73,14 +89,18 @@ async fn test_inbound_listener_0_0_0_0_in_preview_mode() {
 
     // Check listener status
     let req = make_req(11, "listener.status", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["isListening"], true);
 
     // Stop listener
     let req = make_req(12, "listener.stop", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 }
 
@@ -90,20 +110,36 @@ async fn test_inbound_listener_confined_to_loopback_in_local_lab() {
     let mut authenticated = true;
 
     // In LocalLab, explicit binding to 0.0.0.0 must be rejected by network policy
-    let req = make_req(20, "listener.start", Some(json!({ "port": 0, "bindIp": "0.0.0.0" })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_some(), "Expected rejection of 0.0.0.0 in LocalLab");
+    let req = make_req(
+        20,
+        "listener.start",
+        Some(json!({ "port": 0, "bindIp": "0.0.0.0" })),
+    );
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_some(),
+        "Expected rejection of 0.0.0.0 in LocalLab"
+    );
 
     // Default binding without bindIp succeeds on loopback 127.0.0.1
     let req_default = make_req(21, "listener.start", Some(json!({ "port": 0 })));
-    let resp_default = handle_request(&state, req_default, &mut authenticated).await.unwrap();
+    let resp_default = handle_request(&state, req_default, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp_default.error.is_none());
     let res = resp_default.result.unwrap();
     assert_eq!(res["started"], true);
     let listen_addr = res["listenAddress"].as_str().unwrap();
     assert!(listen_addr.starts_with("127.0.0.1:"));
 
-    let _ = handle_request(&state, make_req(22, "listener.stop", None), &mut authenticated).await;
+    let _ = handle_request(
+        &state,
+        make_req(22, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -112,16 +148,28 @@ async fn test_kad_udp_start_on_0_0_0_0_in_preview_mode() {
     let mut authenticated = true;
 
     // Start Kad UDP on 0.0.0.0 with ephemeral port 0
-    let req = make_req(30, "kad.startUdp", Some(json!({ "bindAddress": "0.0.0.0:0" })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_none(), "Expected success, got: {:?}", resp.error);
+    let req = make_req(
+        30,
+        "kad.startUdp",
+        Some(json!({ "bindAddress": "0.0.0.0:0" })),
+    );
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_none(),
+        "Expected success, got: {:?}",
+        resp.error
+    );
     let res = resp.result.unwrap();
     let bound = res["boundAddress"].as_str().unwrap();
     assert!(bound.starts_with("0.0.0.0:"));
 
     // Stop Kad UDP
     let req = make_req(31, "kad.stopUdp", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 }
 
@@ -131,24 +179,45 @@ async fn test_upnp_privileged_ports_rejected() {
     let mut authenticated = true;
 
     // Port 80 (< 1024) must be rejected
-    let req = make_req(40, "upnp.mapPorts", Some(json!({ "tcpPort": 80, "udpPort": 39737 })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_some(), "Privileged TCP port 80 must be rejected");
+    let req = make_req(
+        40,
+        "upnp.mapPorts",
+        Some(json!({ "tcpPort": 80, "udpPort": 39737 })),
+    );
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_some(),
+        "Privileged TCP port 80 must be rejected"
+    );
 
     // Port 53 (< 1024) must be rejected
-    let req = make_req(41, "upnp.mapPorts", Some(json!({ "tcpPort": 39735, "udpPort": 53 })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_some(), "Privileged UDP port 53 must be rejected");
+    let req = make_req(
+        41,
+        "upnp.mapPorts",
+        Some(json!({ "tcpPort": 39735, "udpPort": 53 })),
+    );
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_some(),
+        "Privileged UDP port 53 must be rejected"
+    );
 }
 
 #[test]
 fn test_upnp_wan_ip_and_gateway_validation() {
-    use std::net::{IpAddr, SocketAddr};
     use mule_daemon::services::upnp::{is_cgnat_ip, is_valid_gateway_addr, is_valid_wan_ip};
+    use std::net::{IpAddr, SocketAddr};
 
     // Valid public routable WAN IPs
     assert!(is_valid_wan_ip("8.8.8.8".parse().unwrap()));
-    assert!(is_valid_wan_ip("198.51.100.1".parse().unwrap()) || is_valid_wan_ip("93.184.216.34".parse().unwrap()));
+    assert!(
+        is_valid_wan_ip("198.51.100.1".parse().unwrap())
+            || is_valid_wan_ip("93.184.216.34".parse().unwrap())
+    );
 
     // Invalid WAN IPs (private, loopback, CGNAT, link-local)
     assert!(!is_valid_wan_ip("192.168.1.1".parse::<IpAddr>().unwrap()));
@@ -160,20 +229,28 @@ fn test_upnp_wan_ip_and_gateway_validation() {
     assert!(!is_valid_wan_ip("0.0.0.0".parse::<IpAddr>().unwrap()));
 
     // Valid gateway addresses (private LAN or loopback for testing)
-    assert!(is_valid_gateway_addr("192.168.1.1:1900".parse::<SocketAddr>().unwrap()));
-    assert!(is_valid_gateway_addr("10.0.0.1:1900".parse::<SocketAddr>().unwrap()));
-    assert!(is_valid_gateway_addr("127.0.0.1:1900".parse::<SocketAddr>().unwrap()));
+    assert!(is_valid_gateway_addr(
+        "192.168.1.1:1900".parse::<SocketAddr>().unwrap()
+    ));
+    assert!(is_valid_gateway_addr(
+        "10.0.0.1:1900".parse::<SocketAddr>().unwrap()
+    ));
+    assert!(is_valid_gateway_addr(
+        "127.0.0.1:1900".parse::<SocketAddr>().unwrap()
+    ));
 
     // Invalid gateway addresses (public IPs trying to act as local gateway)
-    assert!(!is_valid_gateway_addr("8.8.8.8:1900".parse::<SocketAddr>().unwrap()));
+    assert!(!is_valid_gateway_addr(
+        "8.8.8.8:1900".parse::<SocketAddr>().unwrap()
+    ));
 
     // CGNAT range (RFC 6598 — 100.64.0.0/10): boundaries and interior
     // is_cgnat_ip must return true for the entire 100.64.0.0–100.127.255.255 range.
-    assert!(is_cgnat_ip("100.64.0.0".parse::<IpAddr>().unwrap()));   // first address
+    assert!(is_cgnat_ip("100.64.0.0".parse::<IpAddr>().unwrap())); // first address
     assert!(is_cgnat_ip("100.64.0.1".parse::<IpAddr>().unwrap()));
     assert!(is_cgnat_ip("100.100.10.5".parse::<IpAddr>().unwrap()));
     assert!(is_cgnat_ip("100.127.255.255".parse::<IpAddr>().unwrap())); // last address
-    // Just outside the /10 block
+                                                                        // Just outside the /10 block
     assert!(!is_cgnat_ip("100.128.0.0".parse::<IpAddr>().unwrap()));
     assert!(!is_cgnat_ip("100.63.255.255".parse::<IpAddr>().unwrap()));
     // Unrelated addresses are not CGNAT
@@ -185,9 +262,9 @@ fn test_upnp_wan_ip_and_gateway_validation() {
 
 #[test]
 fn test_upnp_mapping_ownership_inspection() {
-    use std::net::{Ipv4Addr, SocketAddrV4};
     use igd_next::PortMappingProtocol;
     use mule_daemon::services::upnp::{inspect_mapping_entry, MappingOwnership};
+    use std::net::{Ipv4Addr, SocketAddrV4};
 
     let our_endpoint = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 31), 39735);
 
@@ -303,4 +380,3 @@ fn test_upnp_mapping_ownership_inspection() {
         None
     );
 }
-

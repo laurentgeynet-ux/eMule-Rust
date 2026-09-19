@@ -15,6 +15,14 @@ pub struct KadStatusSnapshot {
     pub packets_sent: u64,
     pub packets_received: u64,
     pub active_transactions: usize,
+    /// UDP firewall reachability: "unverified" | "testing" | "open" | "firewalled".
+    pub udp_firewall_status: String,
+    /// True once a KADEMLIA2_FIREWALLUDP check produced a conclusive result.
+    pub udp_firewall_verified: bool,
+    /// NAT-mapped extern Kad UDP port learned from a probe, if any.
+    pub extern_udp_port: Option<u16>,
+    /// UDP port peers should use to reach us on Kad (intern or extern).
+    pub effective_udp_port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

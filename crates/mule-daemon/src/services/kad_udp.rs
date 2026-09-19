@@ -1,6 +1,7 @@
 pub mod handlers;
 pub mod routing_client;
 pub mod search_client;
+pub mod storage;
 pub mod types;
 
 use std::collections::HashMap;
@@ -14,12 +15,17 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
 use mule_core::kad::KadId;
-use mule_network_policy::{classify_ip, ConnectionPurpose, IpCategory, ListenPermit, NetworkPolicyManager, NetworkProfile};
+use mule_network_policy::{
+    classify_ip, ConnectionPurpose, IpCategory, ListenPermit, NetworkPolicyManager, NetworkProfile,
+};
 use mule_protocol::kad::*;
 
+use crate::services::client_udp::ClientUdpService;
+
 pub use types::{
-    InFlightTransaction, IpRateLimiter, KadUdpSnapshot, KAD_TRANSACTION_TIMEOUT_SECS,
-    MAX_IN_FLIGHT_TRANSACTIONS, MAX_KAD_REQUESTS_PER_SEC_PER_IP,
+    FirewallTestTracker, FirewallUdpResult, InFlightTransaction, IpRateLimiter, KadUdpSnapshot,
+    UdpFirewallStatus, KAD_TRANSACTION_TIMEOUT_SECS, MAX_IN_FLIGHT_TRANSACTIONS,
+    MAX_KAD_REQUESTS_PER_SEC_PER_IP,
 };
 
 /// Inner state of the Kad UDP service.
@@ -29,6 +35,8 @@ pub struct KadUdpInner {
     pub bind_addr: Option<SocketAddr>,
     pub listen_task: Option<JoinHandle<()>>,
     pub in_flight: Arc<Mutex<HashMap<u32, InFlightTransaction>>>,
+    /// Indexed-entry store (DHT storage node role).
+    pub storage: Arc<Mutex<storage::KadStorage>>,
 }
 
 impl KadUdpInner {
@@ -56,6 +64,14 @@ pub struct KadUdpService {
     pub(crate) next_tx_id: AtomicU32,
     pub(crate) packets_sent: AtomicU64,
     pub(crate) packets_received: AtomicU64,
+    /// Client-to-client UDP service sharing this socket (eMule multiplexes
+    /// eD2K UDP and Kademlia on the same UDP port).
+    client_udp: Arc<RwLock<Option<ClientUdpService>>>,
+    /// Download service handle — persists indexed entries (storage node
+    /// role) and rehydrates the in-memory store at startup.
+    downloads: Arc<RwLock<Option<Arc<Mutex<crate::services::downloads::DownloadService>>>>>,
+    /// UDP firewall/reachability test state (KADEMLIA2_FIREWALLUDP).
+    firewall: Arc<Mutex<FirewallTestTracker>>,
 }
 
 impl KadUdpService {
@@ -70,11 +86,62 @@ impl KadUdpService {
                 bind_addr: None,
                 listen_task: None,
                 in_flight: Arc::new(Mutex::new(HashMap::new())),
+                storage: Arc::new(Mutex::new(storage::KadStorage::default())),
             })),
             next_tx_id: AtomicU32::new(1),
             packets_sent: AtomicU64::new(0),
             packets_received: AtomicU64::new(0),
+            client_udp: Arc::new(RwLock::new(None)),
+            downloads: Arc::new(RwLock::new(None)),
+            firewall: Arc::new(Mutex::new(FirewallTestTracker::default())),
         }
+    }
+
+    /// Shared firewall test tracker (pending candidates + last known state).
+    pub fn firewall_tracker(&self) -> Arc<Mutex<FirewallTestTracker>> {
+        Arc::clone(&self.firewall)
+    }
+
+    /// Sends a KADEMLIA2_FIREWALLUDP probe packet to `target` (server side of
+    /// the test, answering a TCP `OP_FWCHECKUDPREQ`).
+    pub async fn send_firewall_udp(
+        &self,
+        target: SocketAddr,
+        error_code: u8,
+        tested_port: u16,
+    ) -> Result<(), String> {
+        let socket = { self.inner.read().await.socket.clone() };
+        let socket = socket.ok_or_else(|| "Kad UDP socket not bound".to_string())?;
+        let pkt = KadCodec::encode_firewall_udp(error_code, tested_port);
+        socket
+            .send_to(&pkt, target)
+            .await
+            .map_err(|e| format!("Failed to send FIREWALLUDP to {target}: {e}"))?;
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// Local bound UDP port, if the socket is up.
+    pub async fn local_udp_port(&self) -> Option<u16> {
+        self.inner.read().await.bind_addr.map(|a| a.port())
+    }
+
+    /// Injects the download service for index persistence.
+    pub async fn set_downloads(
+        &self,
+        downloads: Arc<Mutex<crate::services::downloads::DownloadService>>,
+    ) {
+        *self.downloads.write().await = Some(downloads);
+    }
+
+    /// Injects the shared client UDP service; also hands it the bound
+    /// socket so it can emit `OP_REASKFILEPING` keep-alives.
+    pub async fn set_client_udp(&self, svc: ClientUdpService) {
+        let socket = { self.inner.read().await.socket.clone() };
+        if let Some(socket) = socket {
+            svc.set_socket(socket).await;
+        }
+        *self.client_udp.write().await = Some(svc);
     }
 
     /// Starts the UDP listener on specified bind address under network policy compliance.
@@ -109,6 +176,44 @@ impl KadUdpService {
         let local_kad_id_bytes = self.local_id.0;
         let policy_mgr_clone = self.policy_mgr.clone();
         let rate_limiter_arc = Arc::new(Mutex::new(IpRateLimiter::new()));
+        let storage_arc = inner.storage.clone();
+        let client_udp_arc = Arc::clone(&self.client_udp);
+        let downloads_arc = Arc::clone(&self.downloads);
+        let firewall_arc = Arc::clone(&self.firewall);
+        if let Some(svc) = self.client_udp.read().await.as_ref() {
+            svc.set_socket(socket_arc.clone()).await;
+        }
+
+        // Rehydrate the indexed-entry store from SQLite (storage node role
+        // survives restarts); expired rows are purged first.
+        if let Some(dl) = downloads_arc.read().await.as_ref() {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let (sources, keywords) = {
+                let mut dl_guard = dl.lock().await;
+                let _ = dl_guard.db_mut().purge_expired_kad_sources(now_ms);
+                let _ = dl_guard.db_mut().purge_expired_kad_keywords(now_ms);
+                (
+                    dl_guard
+                        .db_mut()
+                        .list_all_kad_indexed_sources(now_ms, storage::MAX_TOTAL_ENTRIES)
+                        .unwrap_or_default(),
+                    dl_guard
+                        .db_mut()
+                        .list_all_kad_keyword_entries(now_ms, storage::MAX_TOTAL_ENTRIES)
+                        .unwrap_or_default(),
+                )
+            };
+            if !sources.is_empty() || !keywords.is_empty() {
+                let n_s = sources.len();
+                let n_k = keywords.len();
+                let mut store = storage_arc.lock().await;
+                store.hydrate(sources, keywords, now_ms);
+                tracing::info!("Kad storage rehydrated: {n_s} sources, {n_k} keyword entries");
+            }
+        }
 
         let task = tokio::spawn(async move {
             // Official eMule allocates a 64KB receive buffer to guarantee that incoming UDP datagrams
@@ -125,13 +230,73 @@ impl KadUdpService {
                                 let proto_byte = buf[0];
                                 let opcode_byte = buf[1];
 
-                                // 1. Check protocol identifier
+                                // 1. Check protocol identifier — non-Kad
+                                //    datagrams (PR_EMULE/PR_ED2K) belong to
+                                //    the client UDP channel (eMule shares
+                                //    one UDP socket for both).
                                 if !is_valid_kad_protocol(proto_byte) {
-                                    tracing::warn!(
-                                        "Kad UDP: dropped invalid protocol byte 0x{:02X} from {}",
-                                        proto_byte,
-                                        peer_addr
-                                    );
+                                    if ClientUdpService::is_client_udp_protocol(proto_byte) {
+                                        let cat = classify_ip(peer_addr.ip());
+                                        let policy_allowed = match policy_mgr_clone.profile() {
+                                            NetworkProfile::LocalLab => cat == IpCategory::Loopback,
+                                            NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
+                                                cat == IpCategory::PublicRoutable
+                                            }
+                                        };
+                                        if policy_allowed {
+                                            if let Some(svc) = client_udp_arc.read().await.as_ref() {
+                                                svc.handle_datagram(peer_addr, &buf[..len]).await;
+                                            }
+                                        }
+                                    } else {
+                                        // Possibly an obfuscated Kad datagram —
+                                        // eMule encrypts KADEMLIA2_FIREWALLUDP
+                                        // answers with the UDP verify key we
+                                        // sent in OP_FWCHECKUDPREQ.
+                                        let keys = {
+                                            let fw = firewall_arc.lock().await;
+                                            fw.pending_verify_keys(&peer_addr.ip())
+                                        };
+                                        let mut decrypted = false;
+                                        for key in keys {
+                                            if let Some(dec) = decrypt_kad_udp_packet(&buf[..len], key) {
+                                                match KadCodec::decode(&dec.payload) {
+                                                    Ok(msg) => {
+                                                        tracing::info!(
+                                                            "Kad UDP: decrypted obfuscated packet from {} (recvKey=0x{:08X})",
+                                                            peer_addr, dec.receiver_key
+                                                        );
+                                                        handlers::handle_incoming_message(
+                                                            &socket_for_task,
+                                                            peer_addr,
+                                                            msg,
+                                                            &in_flight_arc,
+                                                            &local_kad_id_bytes,
+                                                            local_addr.port(),
+                                                            &storage_arc,
+                                                            &downloads_arc,
+                                                            &firewall_arc,
+                                                        ).await;
+                                                        decrypted = true;
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::debug!(
+                                                            "Kad UDP: decrypted datagram from {} failed decode: {}",
+                                                            peer_addr, e
+                                                        );
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                        }
+                                        if !decrypted {
+                                            tracing::warn!(
+                                                "Kad UDP: dropped invalid protocol byte 0x{:02X} from {}",
+                                                proto_byte,
+                                                peer_addr
+                                            );
+                                        }
+                                    }
                                     continue;
                                 }
 
@@ -175,6 +340,9 @@ impl KadUdpService {
                                             &in_flight_arc,
                                             &local_kad_id_bytes,
                                             local_addr.port(),
+                                            &storage_arc,
+                                            &downloads_arc,
+                                            &firewall_arc,
                                         ).await;
                                     }
                                     Err(err) => {

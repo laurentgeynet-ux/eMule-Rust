@@ -123,7 +123,6 @@ impl Ed2kPeerInfo {
                     }
                 }
                 _ => {}
-
             }
         }
 
@@ -147,7 +146,9 @@ impl Ed2kPeerInfo {
 
     /// Finds a tag by its display name.
     pub fn find_tag(&self, display_name: &str) -> Option<&Ed2kTag> {
-        self.tags.iter().find(|t| t.name.display_name() == display_name)
+        self.tags
+            .iter()
+            .find(|t| t.name.display_name() == display_name)
     }
 
     /// Returns true if this peer identified itself as an eMule client.
@@ -155,11 +156,18 @@ impl Ed2kPeerInfo {
         self.emule_version.is_some()
     }
 
-    /// Returns true if compression capability was announced in OP_EMULEINFO.
+    /// Returns true if compression capability was announced in OP_EMULEINFO
+    /// or via `CT_EMULE_MISCOPTIONS1` bits 20-23 (`nDataCompVer`, eMule
+    /// `ProcessHelloTypePacket`). Peers advertising it accept
+    /// `OP_COMPRESSEDPART` zlib blocks on uploads.
     pub fn has_compression_capability(&self) -> bool {
         self.emule_info
             .as_ref()
             .is_some_and(|info| info.has_compression_capability())
+            || self
+                .misc_options1
+                .map(|m| ((m >> 20) & 0x0F) > 0)
+                .unwrap_or(false)
     }
 
     /// Returns true if source exchange capability was announced in OP_EMULEINFO or CT_EMULE_MISCOPTIONS1.
@@ -175,7 +183,9 @@ impl Ed2kPeerInfo {
 
     /// Returns true if this peer supports Source Exchange 2 (bit 10 of misc_options2).
     pub fn supports_source_exchange2(&self) -> bool {
-        self.misc_options2.map(|m| (m & (1 << 10)) != 0).unwrap_or(false)
+        self.misc_options2
+            .map(|m| (m & (1 << 10)) != 0)
+            .unwrap_or(false)
     }
 
     /// Returns true if this peer supports either SX1 (via OP_EMULEINFO) or SX2 (via misc_options2).
@@ -183,19 +193,49 @@ impl Ed2kPeerInfo {
         self.supports_source_exchange2() || self.has_source_exchange_capability()
     }
 
+    /// Returns true if this peer supports AICH (bit 29 of misc_options1,
+    /// eMule `m_bySupportAICH` in CT_EMULE_MISCOPTIONS1).
+    pub fn supports_aich(&self) -> bool {
+        self.misc_options1
+            .map(|m| ((m >> 29) & 0x07) > 0)
+            .unwrap_or(false)
+    }
+
+    /// eMule `m_byUDPVer` — client UDP protocol version announced in
+    /// CT_EMULE_MISCOPTIONS1 bits 24-27 (0 = no UDP support).
+    pub fn udp_version(&self) -> u8 {
+        self.misc_options1
+            .map(|m| ((m >> 24) & 0x0F) as u8)
+            .unwrap_or(0)
+    }
+
+    /// eMule `m_bySupportSecIdent` — Secure Ident support level announced in
+    /// CT_EMULE_MISCOPTIONS1 bits 16-19 (0 = none, bit0 = v1, bit1 = v2).
+    pub fn secure_ident_support(&self) -> u8 {
+        self.misc_options1
+            .map(|m| ((m >> 16) & 0x0F) as u8)
+            .unwrap_or(0)
+    }
+
     /// Returns true if this peer supports protocol obfuscation (bit 7 of misc_options2).
     pub fn supports_crypt_layer(&self) -> bool {
-        self.misc_options2.map(|m| (m & (1 << 7)) != 0).unwrap_or(false)
+        self.misc_options2
+            .map(|m| (m & (1 << 7)) != 0)
+            .unwrap_or(false)
     }
 
     /// Returns true if this peer requests protocol obfuscation (bit 8 of misc_options2).
     pub fn requests_crypt_layer(&self) -> bool {
-        self.misc_options2.map(|m| (m & (1 << 8)) != 0).unwrap_or(false)
+        self.misc_options2
+            .map(|m| (m & (1 << 8)) != 0)
+            .unwrap_or(false)
     }
 
     /// Returns true if this peer strictly requires protocol obfuscation (bit 9 of misc_options2).
     pub fn requires_crypt_layer(&self) -> bool {
-        self.misc_options2.map(|m| (m & (1 << 9)) != 0).unwrap_or(false)
+        self.misc_options2
+            .map(|m| (m & (1 << 9)) != 0)
+            .unwrap_or(false)
     }
 }
 

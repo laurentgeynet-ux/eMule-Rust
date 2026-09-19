@@ -36,7 +36,8 @@ pub async fn search_keywords_iterative(
         return Ok(Vec::new());
     }
 
-    let mut candidates: std::collections::BTreeMap<KadId, KadContact> = std::collections::BTreeMap::new();
+    let mut candidates: std::collections::BTreeMap<KadId, KadContact> =
+        std::collections::BTreeMap::new();
     for c in initial_closest {
         let dist = c.kad_id.xor_distance(&keyword_kad_id);
         candidates.insert(dist, c);
@@ -57,7 +58,9 @@ pub async fn search_keywords_iterative(
     for iter in 0..MAX_CONVERGENCE_ROUNDS {
         let unqueried: Vec<_> = candidates
             .values()
-            .filter(|c| !queried_find_nodes.contains(&SocketAddr::new(IpAddr::V4(c.ip), c.udp_port)))
+            .filter(|c| {
+                !queried_find_nodes.contains(&SocketAddr::new(IpAddr::V4(c.ip), c.udp_port))
+            })
             .take(ALPHA)
             .cloned()
             .collect();
@@ -94,7 +97,9 @@ pub async fn search_keywords_iterative(
                 match tokio::time::timeout(
                     std::time::Duration::from_millis(2500),
                     udp_c.send_find_node(addr, &target_id, &receiver_id),
-                ).await {
+                )
+                .await
+                {
                     Ok(res) => res,
                     Err(_) => Err("FindNode round timeout (2.5s)".to_string()),
                 }
@@ -110,9 +115,8 @@ pub async fn search_keywords_iterative(
                     let cat = classify_ip(IpAddr::V4(c.ip));
                     let policy_allowed = match profile {
                         NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                        NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                            cat == IpCategory::PublicRoutable
-                        }
+                        NetworkProfile::PublicEd2kPreview
+                        | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
                     };
                     if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
                         c.verified = true;
@@ -212,7 +216,11 @@ pub async fn search_keywords_iterative(
                 }
             }
             Err(e) => {
-                tracing::debug!("Kad search_keyword to {} timed out or node does not index keyword: {}", addr, e);
+                tracing::debug!(
+                    "Kad search_keyword to {} timed out or node does not index keyword: {}",
+                    addr,
+                    e
+                );
             }
         }
     }
@@ -267,4 +275,3 @@ pub async fn publish_keyword(
 
     Ok(total_published)
 }
-

@@ -61,7 +61,13 @@ fn test_nominal_server_met_roundtrip() {
 fn test_unsupported_server_met_header() {
     let buf = vec![0x11, 0x00, 0x00, 0x00, 0x00];
     let err = ServerMetFile::read_from(&mut Cursor::new(&buf)).unwrap_err();
-    assert!(matches!(err, MetError::UnsupportedHeader { offset: 0, value: 0x11 }));
+    assert!(matches!(
+        err,
+        MetError::UnsupportedHeader {
+            offset: 0,
+            value: 0x11
+        }
+    ));
 }
 
 #[test]
@@ -70,7 +76,14 @@ fn test_server_met_oversized_count_rejected() {
     let mut buf = vec![0xE0];
     buf.extend_from_slice(&20_000u32.to_le_bytes());
     let err = ServerMetFile::read_from(&mut Cursor::new(&buf)).unwrap_err();
-    assert!(matches!(err, MetError::InvalidLength { declared: 20_000, maximum: 10_000, .. }));
+    assert!(matches!(
+        err,
+        MetError::InvalidLength {
+            declared: 20_000,
+            maximum: 10_000,
+            ..
+        }
+    ));
 }
 
 #[test]

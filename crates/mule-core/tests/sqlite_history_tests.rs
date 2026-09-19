@@ -65,7 +65,9 @@ fn test_history_insert_and_query_filtering() {
     assert!(id3 > id2);
 
     // Query all (sorted desc by timestamp)
-    let all = db.query_history(&HistoryFilter::default()).expect("query all");
+    let all = db
+        .query_history(&HistoryFilter::default())
+        .expect("query all");
     assert_eq!(all.len(), 3);
     assert_eq!(all[0].event_type, "failed"); // newest timestamp
     assert_eq!(all[1].event_type, "completed");
@@ -117,7 +119,8 @@ fn test_history_stats_aggregation() {
         verification_result: "verified_ok".to_string(),
         error_message: None,
         timestamp_unix_ms: now_ms - 10_000,
-    }).expect("insert completed");
+    })
+    .expect("insert completed");
 
     // Insert failure
     db.insert_history_entry(&HistoryEntry {
@@ -135,7 +138,8 @@ fn test_history_stats_aggregation() {
         verification_result: "hash_mismatch".to_string(),
         error_message: Some("Corrupted".to_string()),
         timestamp_unix_ms: now_ms - 5_000,
-    }).expect("insert failed");
+    })
+    .expect("insert failed");
 
     // Insert resume
     db.insert_history_entry(&HistoryEntry {
@@ -153,7 +157,8 @@ fn test_history_stats_aggregation() {
         verification_result: "unverified".to_string(),
         error_message: None,
         timestamp_unix_ms: now_ms - 30_000,
-    }).expect("insert resume");
+    })
+    .expect("insert resume");
 
     let stats = db.get_history_stats(session_start).expect("get stats");
     assert_eq!(stats.total_completed_count, 1);
@@ -196,7 +201,8 @@ fn test_history_retention_and_clear() {
         verification_result: "verified_ok".to_string(),
         error_message: None,
         timestamp_unix_ms: old_ts,
-    }).expect("insert old");
+    })
+    .expect("insert old");
 
     db.insert_history_entry(&HistoryEntry {
         id: 0,
@@ -213,9 +219,13 @@ fn test_history_retention_and_clear() {
         verification_result: "verified_ok".to_string(),
         error_message: None,
         timestamp_unix_ms: fresh_ts,
-    }).expect("insert fresh");
+    })
+    .expect("insert fresh");
 
-    assert_eq!(db.query_history(&HistoryFilter::default()).unwrap().len(), 2);
+    assert_eq!(
+        db.query_history(&HistoryFilter::default()).unwrap().len(),
+        2
+    );
 
     // Apply retention of 30 days: old entry (40 days ago) should be pruned
     let pruned = db.apply_retention_policy(30).expect("apply retention");
@@ -228,5 +238,8 @@ fn test_history_retention_and_clear() {
     // Clear history
     let cleared = db.clear_history().expect("clear history");
     assert_eq!(cleared, 1);
-    assert_eq!(db.query_history(&HistoryFilter::default()).unwrap().len(), 0);
+    assert_eq!(
+        db.query_history(&HistoryFilter::default()).unwrap().len(),
+        0
+    );
 }

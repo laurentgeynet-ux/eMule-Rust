@@ -10,9 +10,10 @@ pub use kad::{
 };
 
 pub use aich::{
-    calculate_aich_root, compute_expected_path, verify_aich_proof, AichHash, AichNode, AichProof,
-    AichProofError, AichSibling, SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART,
-    LAST_BLOCK_SIZE_FULL_PART,
+    aich_block_hash, build_aich_tree, build_aich_tree_from_reader, calculate_aich_root,
+    compute_expected_path, create_part_recovery_data, read_recovery_data, set_hash_by_ident,
+    verify_aich_proof, AichHash, AichNode, AichProof, AichProofError, AichRecoveryEntry,
+    AichSibling, SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART, LAST_BLOCK_SIZE_FULL_PART,
 };
 pub use ed2k::{
     hash_reader, Ed2kFileLink, Ed2kHash, Ed2kHashResult, Ed2kHasher, PeerSource, ED2K_PART_SIZE,

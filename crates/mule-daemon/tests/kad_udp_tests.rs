@@ -2,9 +2,9 @@ use tempfile::tempdir;
 use tokio::net::UdpSocket;
 
 use mule_core::kad::KadId;
-use mule_daemon::{DaemonConfig, WorkDirMode};
 use mule_daemon::services::downloads::DownloadService;
 use mule_daemon::state::AppState;
+use mule_daemon::{DaemonConfig, WorkDirMode};
 use mule_protocol::kad::*;
 
 fn setup_test_state(tmp: &tempfile::TempDir) -> AppState {
@@ -42,7 +42,9 @@ async fn test_kad_udp_nominal_ping_pong_and_contact_verification() {
     assert!(bound_addr.port() > 0);
 
     // 2. Start a mock Kad peer socket on loopback
-    let mock_peer_socket = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock peer");
+    let mock_peer_socket = UdpSocket::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock peer");
     let mock_peer_addr = mock_peer_socket.local_addr().expect("mock addr");
 
     // Spawn mock peer answering with Pong
@@ -53,7 +55,10 @@ async fn test_kad_udp_nominal_ping_pong_and_contact_verification() {
         match decoded {
             KadMessage::Ping(_) => {
                 let pong = KadCodec::encode_pong(from_addr.port());
-                mock_peer_socket.send_to(&pong, from_addr).await.expect("send pong");
+                mock_peer_socket
+                    .send_to(&pong, from_addr)
+                    .await
+                    .expect("send pong");
             }
             _ => panic!("Expected Ping"),
         }
@@ -103,13 +108,19 @@ async fn test_kad_udp_timeout_and_transaction_cleanup() {
         .expect("start kad udp");
 
     // Bind mock peer that ignores incoming packets
-    let mock_peer_socket = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock peer");
+    let mock_peer_socket = UdpSocket::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock peer");
     let mock_peer_addr = mock_peer_socket.local_addr().expect("mock addr");
 
     // Ping non-responding peer
     let err = state
         .kad
-        .ping_contact(&mock_peer_addr.ip().to_string(), mock_peer_addr.port(), None)
+        .ping_contact(
+            &mock_peer_addr.ip().to_string(),
+            mock_peer_addr.port(),
+            None,
+        )
         .await
         .unwrap_err();
 
@@ -148,4 +159,178 @@ async fn test_kad_udp_kill_switch_teardown() {
 
     let snap = state.kad.udp().get_snapshot().await;
     assert_eq!(snap.active_transactions, 0);
+}
+
+/// End-to-end UDP firewall check: a mock eD2K peer answers our OP_HELLO,
+/// receives OP_FWCHECKUDPREQ, and sends KADEMLIA2_FIREWALLUDP to our bound
+/// Kad UDP port — the check must conclude Open.
+#[tokio::test]
+async fn test_udp_firewall_check_succeeds_via_mock_peer() {
+    use bytes::BytesMut;
+    use mule_daemon::services::UdpFirewallStatus;
+    use mule_format::kad::{KadContactEntry, NodesDatFile};
+    use mule_protocol::ed2k::obfuscation::Rc4Cipher;
+    use mule_protocol::ed2k::{
+        Ed2kEncoder, Ed2kHelloAnswer, OP_FWCHECKUDPREQ, OP_HELLO, PR_ED2K, PR_EMULE,
+    };
+    use mule_protocol::framing::PacketCodec;
+    use mule_protocol::kad::MAGICVALUE_UDP_SYNC_CLIENT;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// Reproduces eMule `EncryptSendClient` (Kad reckey path, no padding):
+    /// RC4 stream keyed by MD5(receiverKey:u16 rand) over everything after
+    /// byte 3.
+    fn encrypt_kad_udp(plain: &[u8], receiver_key: u32, sender_key: u32) -> Vec<u8> {
+        use md5::{Digest, Md5};
+        let rand_part: u16 = 0xBEEF;
+        let mut key_data = [0u8; 6];
+        key_data[..4].copy_from_slice(&receiver_key.to_le_bytes());
+        key_data[4..6].copy_from_slice(&rand_part.to_le_bytes());
+        let md5_key: [u8; 16] = Md5::digest(&key_data).into();
+        let mut cipher = Rc4Cipher::new(&md5_key, true);
+        let mut out = vec![0x46u8]; // random proto byte (not a valid Kad proto)
+        out.extend_from_slice(&rand_part.to_le_bytes());
+        let mut tail = Vec::new();
+        tail.extend_from_slice(&MAGICVALUE_UDP_SYNC_CLIENT.to_le_bytes());
+        tail.push(0u8);
+        tail.extend_from_slice(&receiver_key.to_le_bytes());
+        tail.extend_from_slice(&sender_key.to_le_bytes());
+        tail.extend_from_slice(plain);
+        cipher.process(&mut tail);
+        out.extend_from_slice(&tail);
+        out
+    }
+
+    let tmp = tempdir().expect("create tempdir");
+    let state = setup_test_state(&tmp);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
+
+    // Daemon Kad UDP socket = intern port under test.
+    let bound = state
+        .kad
+        .udp()
+        .start("127.0.0.1:0".parse().unwrap())
+        .await
+        .expect("start kad udp");
+    let intern_port = bound.port();
+
+    // Mock peer: TCP listener + UDP socket.
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind tcp");
+    let mock_tcp_port = listener.local_addr().unwrap().port();
+    let mock_udp = UdpSocket::bind("127.0.0.1:0").await.expect("bind udp");
+    let mock_udp_port = mock_udp.local_addr().unwrap().port();
+
+    let mock = tokio::spawn(async move {
+        let (mut s, _) = listener.accept().await.expect("accept");
+        let codec = PacketCodec::new();
+        let encoder = Ed2kEncoder::default();
+        let mut buf = BytesMut::new();
+        let mut raw = [0u8; 4096];
+        let mut pending_fw: Option<u32> = None;
+        let mut hello_sent = false;
+        loop {
+            let n = tokio::time::timeout(std::time::Duration::from_secs(10), s.read(&mut raw))
+                .await
+                .expect("mock read timeout")
+                .expect("read");
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&raw[..n]);
+            while let Ok(Some(pkt)) = codec.decode(&mut buf) {
+                if pkt.protocol == PR_ED2K && pkt.opcode == OP_HELLO && !hello_sent {
+                    hello_sent = true;
+                    let ans = Ed2kHelloAnswer {
+                        user_hash: [9u8; 16],
+                        client_id: 0x0E00_0001,
+                        tcp_port: mock_tcp_port,
+                        tags: vec![],
+                        unknown_tags: vec![],
+                        server_ip: 0,
+                        server_port: 0,
+                    };
+                    let p = encoder.encode_hello_answer(&ans).expect("encode answer");
+                    let mut out = vec![p.protocol];
+                    out.extend_from_slice(&(p.frame_len() as u32).to_le_bytes());
+                    out.push(p.opcode);
+                    out.extend_from_slice(&p.payload);
+                    s.write_all(&out).await.expect("write answer");
+                } else if pkt.protocol == PR_EMULE && pkt.opcode == OP_FWCHECKUDPREQ {
+                    assert!(pkt.payload.len() >= 8, "fwcheck payload too short");
+                    let intern = u16::from_le_bytes([pkt.payload[0], pkt.payload[1]]);
+                    let extern_p = u16::from_le_bytes([pkt.payload[2], pkt.payload[3]]);
+                    assert_eq!(intern, intern_port);
+                    assert_eq!(extern_p, 0);
+                    let sender_key = u32::from_le_bytes(pkt.payload[4..8].try_into().unwrap());
+                    assert_ne!(sender_key, 0);
+                    pending_fw = Some(sender_key);
+                }
+            }
+            if let Some(sender_key) = pending_fw.take() {
+                // Real eMule peers reply with the FIREWALLUDP datagram
+                // RC4-encrypted under our sender key.
+                let probe = KadCodec::encode_firewall_udp(0, intern_port);
+                let enc = encrypt_kad_udp(&probe, sender_key, sender_key);
+                mock_udp
+                    .send_to(&enc, ("127.0.0.1", intern_port))
+                    .await
+                    .expect("send encrypted firewall udp");
+            }
+        }
+    });
+
+    // Register the mock as a verified Kad v8 contact via nodes.dat import.
+    let contact = KadContactEntry::new(
+        [7u8; 16],
+        std::net::Ipv4Addr::LOCALHOST,
+        mock_udp_port,
+        mock_tcp_port,
+        8,
+    )
+    .with_verified(true);
+    let nodes = NodesDatFile::new(2, vec![contact]);
+    let mut bytes = Vec::new();
+    nodes.write(&mut bytes).unwrap();
+    state
+        .kad
+        .import_nodes_dat(&bytes)
+        .await
+        .expect("import contact");
+
+    let status = state.kad.run_udp_firewall_check().await;
+    assert_eq!(status, UdpFirewallStatus::Open);
+
+    // Status snapshot exposes the verified state.
+    let snap = state.kad.get_status().await;
+    assert_eq!(snap.udp_firewall_status, "open");
+    assert!(snap.udp_firewall_verified);
+    assert_eq!(snap.effective_udp_port, intern_port);
+
+    mock.abort();
+}
+
+/// A candidate that connects but never sends FIREWALLUDP must not resolve a
+/// pending entry for a different IP (unsolicited datagrams are ignored).
+#[tokio::test]
+async fn test_udp_firewall_check_no_candidates_stays_unverified() {
+    use mule_daemon::services::UdpFirewallStatus;
+
+    let tmp = tempdir().expect("create tempdir");
+    let state = setup_test_state(&tmp);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
+    state
+        .kad
+        .udp()
+        .start("127.0.0.1:0".parse().unwrap())
+        .await
+        .expect("start kad udp");
+
+    // Empty routing table → no candidates → back to Unverified.
+    let status = state.kad.run_udp_firewall_check().await;
+    assert_eq!(status, UdpFirewallStatus::Unverified);
 }

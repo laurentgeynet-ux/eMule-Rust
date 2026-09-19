@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::net::{IpAddr, SocketAddr};
 use std::time::SystemTime;
-use serde::{Deserialize, Serialize};
 
 use crate::profile::NetworkProfile;
 

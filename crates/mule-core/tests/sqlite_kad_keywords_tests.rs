@@ -36,7 +36,9 @@ fn test_kad_keywords_indexing_and_ttl_purging() {
     assert_eq!(count, 2);
 
     // Get active entries (only unexpired should be returned)
-    let active = db.get_kad_keyword_entries(&keyword_hash, now_ms).expect("get active");
+    let active = db
+        .get_kad_keyword_entries(&keyword_hash, now_ms)
+        .expect("get active");
     assert_eq!(active.len(), 1);
     assert_eq!(active[0].file_name, "debian-12.0.0-amd64-netinst.iso");
     assert_eq!(active[0].source_count, 25);

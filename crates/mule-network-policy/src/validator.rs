@@ -165,7 +165,10 @@ fn classify_ipv6(v6: Ipv6Addr) -> IpCategory {
 }
 
 /// Validates whether an address is authorized for outbound connection under the given profile.
-pub fn validate_connect_address(addr: &SocketAddr, profile: NetworkProfile) -> Result<(), PolicyViolation> {
+pub fn validate_connect_address(
+    addr: &SocketAddr,
+    profile: NetworkProfile,
+) -> Result<(), PolicyViolation> {
     if addr.port() == 0 {
         return Err(PolicyViolation::InvalidPort(*addr));
     }
@@ -179,24 +182,25 @@ pub fn validate_connect_address(addr: &SocketAddr, profile: NetworkProfile) -> R
             }
             Ok(())
         }
-        NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-            match cat {
-                IpCategory::Loopback => Err(PolicyViolation::LoopbackDisallowedInPublicProfile(*addr)),
-                IpCategory::PrivateLan => Err(PolicyViolation::PrivateLanDisallowed(*addr)),
-                IpCategory::LinkLocal => Err(PolicyViolation::LinkLocalDisallowed(*addr)),
-                IpCategory::Multicast => Err(PolicyViolation::MulticastDisallowed(*addr)),
-                IpCategory::Broadcast => Err(PolicyViolation::BroadcastDisallowed(*addr)),
-                IpCategory::Unspecified => Err(PolicyViolation::UnspecifiedDisallowed(*addr)),
-                IpCategory::CarrierGradeNat => Err(PolicyViolation::CarrierGradeNatDisallowed(*addr)),
-                IpCategory::SpecialPurpose => Err(PolicyViolation::SpecialPurposeDisallowed(*addr)),
-                IpCategory::PublicRoutable => Ok(()),
-            }
-        }
+        NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => match cat {
+            IpCategory::Loopback => Err(PolicyViolation::LoopbackDisallowedInPublicProfile(*addr)),
+            IpCategory::PrivateLan => Err(PolicyViolation::PrivateLanDisallowed(*addr)),
+            IpCategory::LinkLocal => Err(PolicyViolation::LinkLocalDisallowed(*addr)),
+            IpCategory::Multicast => Err(PolicyViolation::MulticastDisallowed(*addr)),
+            IpCategory::Broadcast => Err(PolicyViolation::BroadcastDisallowed(*addr)),
+            IpCategory::Unspecified => Err(PolicyViolation::UnspecifiedDisallowed(*addr)),
+            IpCategory::CarrierGradeNat => Err(PolicyViolation::CarrierGradeNatDisallowed(*addr)),
+            IpCategory::SpecialPurpose => Err(PolicyViolation::SpecialPurposeDisallowed(*addr)),
+            IpCategory::PublicRoutable => Ok(()),
+        },
     }
 }
 
 /// Validates whether an address is authorized for binding/listening under the given profile.
-pub fn validate_listen_address(addr: &SocketAddr, profile: NetworkProfile) -> Result<(), PolicyViolation> {
+pub fn validate_listen_address(
+    addr: &SocketAddr,
+    profile: NetworkProfile,
+) -> Result<(), PolicyViolation> {
     let cat = classify_ip(addr.ip());
 
     match profile {

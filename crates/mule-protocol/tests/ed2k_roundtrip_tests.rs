@@ -11,7 +11,6 @@ use mule_protocol::ed2k::{
     TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
 
-
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -91,8 +90,8 @@ fn test_fixture_roundtrip_hello_answer() {
 
 #[test]
 fn test_fixture_roundtrip_file_status() {
-    let raw_bytes = fs::read(fixtures_root().join("file_status.bin"))
-        .expect("failed to read file_status.bin");
+    let raw_bytes =
+        fs::read(fixtures_root().join("file_status.bin")).expect("failed to read file_status.bin");
 
     let decoder = Ed2kDecoder::new();
     let msg = decoder
@@ -214,7 +213,6 @@ fn test_synthetic_roundtrip_hello_all_tag_types() {
                 name: TagName::Text("ratio".to_string()),
                 value: TagValue::Float32(2.75),
             },
-
             Ed2kTag {
                 name: TagName::Text("active".to_string()),
                 value: TagValue::Bool(true),
@@ -253,9 +251,7 @@ fn test_synthetic_roundtrip_hello_all_tag_types() {
         .expect("encoding failed");
 
     let decoder = Ed2kDecoder::new();
-    let decoded = decoder
-        .decode_packet(&encoded)
-        .expect("decoding failed");
+    let decoded = decoder.decode_packet(&encoded).expect("decoding failed");
 
     assert_eq!(
         decoded, original_msg,
@@ -285,11 +281,8 @@ fn test_synthetic_roundtrip_hello_minimal_no_server_info() {
     // 5-byte header + 1 opcode + 1 hash len (0x10) + 16 user hash + 4 client id + 2 port + 4 tag count + 4 server ip + 2 server port = 39 bytes
     assert_eq!(encoded.len(), 39);
 
-
     let decoder = Ed2kDecoder::new();
-    let decoded = decoder
-        .decode_packet(&encoded)
-        .expect("decoding failed");
+    let decoded = decoder.decode_packet(&encoded).expect("decoding failed");
 
     assert_eq!(
         decoded, original_msg,
@@ -320,9 +313,7 @@ fn test_synthetic_roundtrip_hello_answer() {
         .expect("encoding failed");
 
     let decoder = Ed2kDecoder::new();
-    let decoded = decoder
-        .decode_packet(&encoded)
-        .expect("decoding failed");
+    let decoded = decoder.decode_packet(&encoded).expect("decoding failed");
 
     assert_eq!(decoded, original_msg, "roundtrip mismatch for hello answer");
 }
@@ -357,9 +348,7 @@ fn test_synthetic_roundtrip_unknown_raw_tags_preservation() {
         .expect("to_bytes failed");
 
     let decoder = Ed2kDecoder::new();
-    let decoded = decoder
-        .decode_packet(&raw_wire)
-        .expect("decoding failed");
+    let decoded = decoder.decode_packet(&raw_wire).expect("decoding failed");
 
     match decoded {
         Ed2kMessage::Hello(decoded_hello) => {
@@ -367,9 +356,15 @@ fn test_synthetic_roundtrip_unknown_raw_tags_preservation() {
             assert_eq!(decoded_hello.client_id, hello.client_id);
             assert_eq!(decoded_hello.tcp_port, hello.tcp_port);
             // The recognized tag is decoded as String
-            assert_eq!(decoded_hello.tags[0].value, TagValue::String("TestPeer".to_string()));
+            assert_eq!(
+                decoded_hello.tags[0].value,
+                TagValue::String("TestPeer".to_string())
+            );
             // The raw tag was encoded with tag_type 0x03, which the decoder recognizes as UInt32!
-            assert_eq!(decoded_hello.tags[1].name, TagName::Text("raw_val".to_string()));
+            assert_eq!(
+                decoded_hello.tags[1].name,
+                TagName::Text("raw_val".to_string())
+            );
             assert_eq!(decoded_hello.tags[1].value, TagValue::UInt32(0x40302010));
         }
         _ => panic!("expected Hello"),
@@ -384,7 +379,13 @@ fn test_synthetic_roundtrip_file_status_various_part_counts() {
         (7, vec![0b01111111]),
         (8, vec![0b11111111]),
         (9, vec![0b11111111, 0b00000001]),
-        (53, vec![0xFF; 6].into_iter().chain(std::iter::once(0x1F)).collect()),
+        (
+            53,
+            vec![0xFF; 6]
+                .into_iter()
+                .chain(std::iter::once(0x1F))
+                .collect(),
+        ),
     ];
 
     let encoder = Ed2kEncoder::new();
@@ -404,9 +405,7 @@ fn test_synthetic_roundtrip_file_status_various_part_counts() {
             .encode_to_bytes(&original_msg)
             .expect("encoding failed");
 
-        let decoded = decoder
-            .decode_packet(&encoded)
-            .expect("decoding failed");
+        let decoded = decoder.decode_packet(&encoded).expect("decoding failed");
 
         assert_eq!(
             decoded, original_msg,
@@ -465,7 +464,13 @@ fn test_encode_rejects_too_many_tags() {
     let err = result.unwrap_err();
     assert_eq!(err.opcode, 0x01);
     assert_eq!(err.field, "hello_tag_count");
-    assert!(matches!(err.kind, Ed2kErrorKind::TooManyTags { count: 11, limit: 10 }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::TooManyTags {
+            count: 11,
+            limit: 10
+        }
+    ));
 }
 
 #[test]
@@ -493,7 +498,13 @@ fn test_encode_rejects_oversized_string_name() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.field, "tag_name");
-    assert!(matches!(err.kind, Ed2kErrorKind::OversizedString { size: 33, limit: 32 }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::OversizedString {
+            size: 33,
+            limit: 32
+        }
+    ));
 }
 
 #[test]
@@ -521,7 +532,13 @@ fn test_encode_rejects_oversized_string_value() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.field, "tag_value_string");
-    assert!(matches!(err.kind, Ed2kErrorKind::OversizedString { size: 51, limit: 50 }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::OversizedString {
+            size: 51,
+            limit: 50
+        }
+    ));
 }
 
 #[test]
@@ -549,7 +566,13 @@ fn test_encode_rejects_oversized_blob() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.field, "tag_value_blob");
-    assert!(matches!(err.kind, Ed2kErrorKind::FrameTooLarge { size: 65, limit: 64 }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::FrameTooLarge {
+            size: 65,
+            limit: 64
+        }
+    ));
 }
 
 #[test]
@@ -579,7 +602,10 @@ fn test_encode_rejects_oversized_frame() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.field, "frame_len");
-    assert!(matches!(err.kind, Ed2kErrorKind::FrameTooLarge { limit: 40, .. }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::FrameTooLarge { limit: 40, .. }
+    ));
 }
 
 #[test]
@@ -589,7 +615,10 @@ fn test_encode_rejects_invalid_file_status_bitfield_length() {
     // 1. Mask constructor rejects mismatch
     let mask_err = PartAvailabilityMask::from_bytes(bytes::Bytes::from_static(&[0xFF]), 10);
     assert!(mask_err.is_err());
-    assert!(matches!(mask_err.unwrap_err(), Ed2kErrorKind::MalformedField { .. }));
+    assert!(matches!(
+        mask_err.unwrap_err(),
+        Ed2kErrorKind::MalformedField { .. }
+    ));
 
     // 2. Encoder rejects mismatched mask length if raw buffer was altered
     let raw_mask = PartAvailabilityMask::from_parts(&[0, 1], 2); // 1 byte
@@ -674,7 +703,13 @@ fn test_encode_rejects_sending_part_start_ge_end() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.field, "sending_part_offsets");
-    assert!(matches!(err.kind, Ed2kErrorKind::InvalidBlockOffsets { start: 5000, end: 5000 }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::InvalidBlockOffsets {
+            start: 5000,
+            end: 5000
+        }
+    ));
 }
 
 #[test]
@@ -683,14 +718,20 @@ fn test_encode_rejects_sending_part_payload_mismatch() {
     let part = Ed2kSendingPart::new(
         [0x11; 16],
         0,
-        1000, // expected 1000 bytes
+        1000,                                    // expected 1000 bytes
         bytes::Bytes::from_static(&[0x42; 500]), // only 500 bytes
     );
     let result = encoder.encode_sending_part(&part);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.field, "sending_part_payload");
-    assert!(matches!(err.kind, Ed2kErrorKind::BlockPayloadMismatch { expected: 1000, actual: 500 }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::BlockPayloadMismatch {
+            expected: 1000,
+            actual: 500
+        }
+    ));
 }
 
 #[test]
@@ -701,7 +742,13 @@ fn test_encode_rejects_request_parts_start_ge_end() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.field, "request_parts_range");
-    assert!(matches!(err.kind, Ed2kErrorKind::InvalidBlockOffsets { start: 2000, end: 1000 }));
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::InvalidBlockOffsets {
+            start: 2000,
+            end: 1000
+        }
+    ));
 }
 
 #[test]
@@ -726,7 +773,8 @@ fn test_encode_rejects_request_parts_more_than_3_ranges() {
 #[test]
 fn test_block_range_wire_boundary_conversions() {
     // 1. Canonical eMule exclusive wire bounds: (0, 184320) direct mapping
-    let canonical = Ed2kBlockRange::from_wire_bounds(0, 184320).expect("valid canonical wire bounds");
+    let canonical =
+        Ed2kBlockRange::from_wire_bounds(0, 184320).expect("valid canonical wire bounds");
     assert_eq!(canonical.start, 0);
     assert_eq!(canonical.end, 184320);
     assert_eq!(canonical.len(), 184320);
@@ -750,19 +798,27 @@ fn test_block_range_wire_boundary_conversions() {
     assert_eq!(legacy_range.len(), 184320);
 
     // Roundtrip back to legacy inclusive
-    let (start_inc, end_inc) = legacy_range.to_legacy_inclusive_wire_bounds().expect("valid conversion");
+    let (start_inc, end_inc) = legacy_range
+        .to_legacy_inclusive_wire_bounds()
+        .expect("valid conversion");
     assert_eq!(start_inc, 0);
     assert_eq!(end_inc, 184319);
 
     // 3. Overflow protection on legacy u32::MAX
     let overflow_res = Ed2kBlockRange::from_legacy_inclusive_wire_bounds(100, u32::MAX);
     assert!(overflow_res.is_err());
-    assert!(matches!(overflow_res.unwrap_err(), Ed2kErrorKind::MalformedField { .. }));
+    assert!(matches!(
+        overflow_res.unwrap_err(),
+        Ed2kErrorKind::MalformedField { .. }
+    ));
 
     // 4. Inverted offsets rejected
     let inverted_res = Ed2kBlockRange::from_legacy_inclusive_wire_bounds(500, 400);
     assert!(inverted_res.is_err());
-    assert!(matches!(inverted_res.unwrap_err(), Ed2kErrorKind::InvalidBlockOffsets { .. }));
+    assert!(matches!(
+        inverted_res.unwrap_err(),
+        Ed2kErrorKind::InvalidBlockOffsets { .. }
+    ));
 }
 
 #[test]
@@ -778,7 +834,7 @@ fn test_decode_request_parts_sentinels_zero_and_u32_max() {
     payload.extend_from_slice(&0u32.to_le_bytes());
     payload.extend_from_slice(&0u32.to_le_bytes()); // slot 1 sentinel
     payload.extend_from_slice(&u32::MAX.to_le_bytes()); // slot 2 sentinel
-    // End offsets
+                                                        // End offsets
     payload.extend_from_slice(&184320u32.to_le_bytes());
     payload.extend_from_slice(&0u32.to_le_bytes()); // slot 1 sentinel
     payload.extend_from_slice(&u32::MAX.to_le_bytes()); // slot 2 sentinel
@@ -813,7 +869,9 @@ fn test_canonical_emule_opcodes_roundtrip() {
         .encode_file_status_req_with_opcode(&status_req, mule_protocol::ed2k::OP_SETREQFILEID_EMULE)
         .expect("encodes 0x4F");
     assert_eq!(raw_status_pkt.opcode, 0x4F);
-    let decoded_status_msg = decoder.decode_raw_packet(&raw_status_pkt).expect("decodes 0x4F");
+    let decoded_status_msg = decoder
+        .decode_raw_packet(&raw_status_pkt)
+        .expect("decodes 0x4F");
     assert_eq!(decoded_status_msg, Ed2kMessage::FileStatusReq(status_req));
 }
 
@@ -965,8 +1023,13 @@ fn test_profile_filestatus_disambiguation_0x4f_vs_0x49() {
         .expect("encodes 0x4F");
     assert_eq!(pkt_4f.opcode, 0x4F);
 
-    let emule_decoded = emule_dec.decode_raw_packet(&pkt_4f).expect("emule decodes 0x4F");
-    assert_eq!(emule_decoded, Ed2kMessage::FileStatusReq(status_req.clone()));
+    let emule_decoded = emule_dec
+        .decode_raw_packet(&pkt_4f)
+        .expect("emule decodes 0x4F");
+    assert_eq!(
+        emule_decoded,
+        Ed2kMessage::FileStatusReq(status_req.clone())
+    );
 
     let legacy_on_4f = legacy_dec
         .decode_raw_packet(&pkt_4f)
@@ -980,8 +1043,13 @@ fn test_profile_filestatus_disambiguation_0x4f_vs_0x49() {
         .expect("encodes 0x49");
     assert_eq!(pkt_49.opcode, 0x49);
 
-    let legacy_decoded = legacy_dec.decode_raw_packet(&pkt_49).expect("legacy decodes 0x49");
-    assert_eq!(legacy_decoded, Ed2kMessage::FileStatusReq(status_req.clone()));
+    let legacy_decoded = legacy_dec
+        .decode_raw_packet(&pkt_49)
+        .expect("legacy decodes 0x49");
+    assert_eq!(
+        legacy_decoded,
+        Ed2kMessage::FileStatusReq(status_req.clone())
+    );
 
     let emule_on_49 = emule_dec
         .decode_raw_packet(&pkt_49)
@@ -1065,7 +1133,12 @@ fn test_multi_profile_invariance_matrix() {
             }
             Ed2kCompatibilityProfile::UnknownStrict => {
                 // All 4 ambiguous opcodes rejected with AmbiguousOpcodeForProfile
-                for (pkt, expected_op) in [(&pkt_47, 0x47), (&pkt_4b, 0x4B), (&pkt_4f, 0x4F), (&pkt_49, 0x49)] {
+                for (pkt, expected_op) in [
+                    (&pkt_47, 0x47),
+                    (&pkt_4b, 0x4B),
+                    (&pkt_4f, 0x4F),
+                    (&pkt_49, 0x49),
+                ] {
                     let err = dec.decode_raw_packet(pkt).unwrap_err();
                     assert!(matches!(
                         err.kind,
@@ -1090,7 +1163,9 @@ fn test_multi_profile_invariance_matrix() {
             server_port: 0,
         };
         let hello_pkt = emule_enc.encode_hello(&hello).expect("encodes hello");
-        let decoded_hello = dec.decode_raw_packet(&hello_pkt).expect("decodes hello under all profiles");
+        let decoded_hello = dec
+            .decode_raw_packet(&hello_pkt)
+            .expect("decodes hello under all profiles");
         assert_eq!(decoded_hello, Ed2kMessage::Hello(hello));
 
         let file_status = Ed2kFileStatus {
@@ -1098,13 +1173,22 @@ fn test_multi_profile_invariance_matrix() {
             part_count: 2,
             availability_mask: PartAvailabilityMask::from_parts(&[0], 2),
         };
-        let status_pkt = emule_enc.encode_file_status(&file_status).expect("encodes status");
-        let decoded_status = dec.decode_raw_packet(&status_pkt).expect("decodes file status under all profiles");
+        let status_pkt = emule_enc
+            .encode_file_status(&file_status)
+            .expect("encodes status");
+        let decoded_status = dec
+            .decode_raw_packet(&status_pkt)
+            .expect("decodes file status under all profiles");
         assert_eq!(decoded_status, Ed2kMessage::FileStatus(file_status));
 
-        let sending_part = Ed2kSendingPart::new(hash, 0, 10, bytes::Bytes::from_static(b"0123456789"));
-        let sending_pkt = emule_enc.encode_sending_part(&sending_part).expect("encodes sending part");
-        let decoded_sending = dec.decode_raw_packet(&sending_pkt).expect("decodes sending part under all profiles");
+        let sending_part =
+            Ed2kSendingPart::new(hash, 0, 10, bytes::Bytes::from_static(b"0123456789"));
+        let sending_pkt = emule_enc
+            .encode_sending_part(&sending_part)
+            .expect("encodes sending part");
+        let decoded_sending = dec
+            .decode_raw_packet(&sending_pkt)
+            .expect("decodes sending part under all profiles");
         assert_eq!(decoded_sending, Ed2kMessage::SendingPart(sending_part));
     }
 }
@@ -1122,7 +1206,10 @@ fn test_boundary_cases_1_byte_residual_and_u32_sentinels() {
     assert_eq!(residual_range.len(), 1);
     assert_eq!(residual_range.start, residual_start);
     assert_eq!(residual_range.end, residual_end);
-    assert_eq!(residual_range.to_wire_bounds(), (residual_start, residual_end));
+    assert_eq!(
+        residual_range.to_wire_bounds(),
+        (residual_start, residual_end)
+    );
 
     // Verify it fits precisely at file boundary
     assert_eq!(residual_range.end as u64, file_size);
@@ -1132,7 +1219,9 @@ fn test_boundary_cases_1_byte_residual_and_u32_sentinels() {
     let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
     let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
 
-    let pkt_single = encoder.encode_request_parts(&req_single).expect("encodes 1-byte request");
+    let pkt_single = encoder
+        .encode_request_parts(&req_single)
+        .expect("encodes 1-byte request");
     assert_eq!(pkt_single.opcode, 0x47);
     assert_eq!(pkt_single.payload.len(), 40);
 
@@ -1150,7 +1239,9 @@ fn test_boundary_cases_1_byte_residual_and_u32_sentinels() {
 
     let legacy_dec = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
     let pkt_24_legacy = mule_protocol::RawPacket::with_vec(0xE3, 0x4B, raw_24);
-    let decoded_24 = legacy_dec.decode_raw_packet(&pkt_24_legacy).expect("decodes 24-byte single range under legacy");
+    let decoded_24 = legacy_dec
+        .decode_raw_packet(&pkt_24_legacy)
+        .expect("decodes 24-byte single range under legacy");
     assert_eq!(decoded_24, Ed2kMessage::RequestParts(req_single));
 
     // 3. Multi-range RequestParts with slot sentinels: [residual, (0, 0), (u32::MAX, u32::MAX)]
@@ -1167,9 +1258,15 @@ fn test_boundary_cases_1_byte_residual_and_u32_sentinels() {
     assert_eq!(raw_40.len(), 40);
 
     let pkt_40 = mule_protocol::RawPacket::with_vec(0xE3, 0x47, raw_40);
-    let decoded_40 = decoder.decode_raw_packet(&pkt_40).expect("decodes sentinels");
+    let decoded_40 = decoder
+        .decode_raw_packet(&pkt_40)
+        .expect("decodes sentinels");
     if let Ed2kMessage::RequestParts(rp) = decoded_40 {
-        assert_eq!(rp.ranges.len(), 1, "sentinel slots (0,0) and (MAX,MAX) must be ignored");
+        assert_eq!(
+            rp.ranges.len(),
+            1,
+            "sentinel slots (0,0) and (MAX,MAX) must be ignored"
+        );
         assert_eq!(rp.ranges[0], residual_range);
     } else {
         panic!("expected RequestParts");
@@ -1181,14 +1278,20 @@ fn test_boundary_cases_1_byte_residual_and_u32_sentinels() {
     all_sentinels_zero.extend_from_slice(&[0u8; 24]);
     let pkt_all_zero = mule_protocol::RawPacket::with_vec(0xE3, 0x47, all_sentinels_zero);
     let err_all_zero = decoder.decode_raw_packet(&pkt_all_zero).unwrap_err();
-    assert!(matches!(err_all_zero.kind, Ed2kErrorKind::MalformedField { .. }));
+    assert!(matches!(
+        err_all_zero.kind,
+        Ed2kErrorKind::MalformedField { .. }
+    ));
 
     let mut all_sentinels_max = Vec::with_capacity(40);
     all_sentinels_max.extend_from_slice(&hash);
     all_sentinels_max.extend_from_slice(&[0xFF; 24]);
     let pkt_all_max = mule_protocol::RawPacket::with_vec(0xE3, 0x47, all_sentinels_max);
     let err_all_max = decoder.decode_raw_packet(&pkt_all_max).unwrap_err();
-    assert!(matches!(err_all_max.kind, Ed2kErrorKind::MalformedField { .. }));
+    assert!(matches!(
+        err_all_max.kind,
+        Ed2kErrorKind::MalformedField { .. }
+    ));
 
     // 5. SendingPart 1-byte residual delivery
     let sending_part = Ed2kSendingPart::new(
@@ -1197,17 +1300,18 @@ fn test_boundary_cases_1_byte_residual_and_u32_sentinels() {
         residual_end,
         bytes::Bytes::from_static(b"Z"),
     );
-    let pkt_sending = encoder.encode_sending_part(&sending_part).expect("encodes sending part");
+    let pkt_sending = encoder
+        .encode_sending_part(&sending_part)
+        .expect("encodes sending part");
     assert_eq!(pkt_sending.payload.len(), 25); // 16 hash + 4 start + 4 end + 1 byte data
-    let decoded_sending = decoder.decode_raw_packet(&pkt_sending).expect("decodes 1-byte sending part");
+    let decoded_sending = decoder
+        .decode_raw_packet(&pkt_sending)
+        .expect("decodes 1-byte sending part");
     assert_eq!(decoded_sending, Ed2kMessage::SendingPart(sending_part));
 
     // 6. SendingPart payload mismatch checks (expected 1 byte, got 0)
-    let sending_empty = mule_protocol::RawPacket::with_vec(
-        0xE3,
-        0x46,
-        pkt_sending.payload[..24].to_vec(),
-    );
+    let sending_empty =
+        mule_protocol::RawPacket::with_vec(0xE3, 0x46, pkt_sending.payload[..24].to_vec());
     let err_mismatch = decoder.decode_raw_packet(&sending_empty).unwrap_err();
     assert!(matches!(
         err_mismatch.kind,
@@ -1219,10 +1323,22 @@ fn test_boundary_cases_1_byte_residual_and_u32_sentinels() {
 
     // 7. Offset invalidity: start >= end
     let err_equal = Ed2kBlockRange::from_wire_bounds(500, 500).unwrap_err();
-    assert!(matches!(err_equal, Ed2kErrorKind::InvalidBlockOffsets { start: 500, end: 500 }));
+    assert!(matches!(
+        err_equal,
+        Ed2kErrorKind::InvalidBlockOffsets {
+            start: 500,
+            end: 500
+        }
+    ));
 
     let err_inverted = Ed2kBlockRange::from_wire_bounds(501, 500).unwrap_err();
-    assert!(matches!(err_inverted, Ed2kErrorKind::InvalidBlockOffsets { start: 501, end: 500 }));
+    assert!(matches!(
+        err_inverted,
+        Ed2kErrorKind::InvalidBlockOffsets {
+            start: 501,
+            end: 500
+        }
+    ));
 
     // 8. Overflow in legacy inclusive bound (u32::MAX + 1 overflows)
     let err_overflow = Ed2kBlockRange::from_legacy_inclusive_wire_bounds(0, u32::MAX).unwrap_err();
@@ -1257,7 +1373,9 @@ fn test_illegal_protocol_opcode_combinations() {
     // Must be preserved as Raw packet without parsing as standard session messages
     for opcode in [0x46, 0x47, 0x4F, 0x50] {
         let pkt = mule_protocol::RawPacket::with_vec(0xC5, opcode, vec![0xAA; 20]);
-        let msg = decoder.decode_raw_packet(&pkt).expect("0xC5 preserved as Raw");
+        let msg = decoder
+            .decode_raw_packet(&pkt)
+            .expect("0xC5 preserved as Raw");
         assert_eq!(msg, Ed2kMessage::Raw(pkt));
     }
 }
@@ -1345,15 +1463,36 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
         server_ip: 0,
         server_port: 0,
     };
-    let pkt_mutated = encoder.encode_hello(&hello_mutated).expect("encodes mutated");
-    let dec_mutated = match decoder.decode_raw_packet(&pkt_mutated).expect("decodes mutated") {
+    let pkt_mutated = encoder
+        .encode_hello(&hello_mutated)
+        .expect("encodes mutated");
+    let dec_mutated = match decoder
+        .decode_raw_packet(&pkt_mutated)
+        .expect("decodes mutated")
+    {
         Ed2kMessage::Hello(h) => h,
         _ => panic!("expected Hello"),
     };
-    assert_eq!(dec_mutated.find_tag("Name"), dec1.find_tag("Name"), "known tag Name must be completely unaffected");
-    assert_eq!(dec_mutated.find_tag("Version"), dec1.find_tag("Version"), "known tag Version must be completely unaffected");
-    assert_eq!(dec_mutated.find_tag("MiscOptions1"), dec1.find_tag("MiscOptions1"), "known tag MiscOptions1 must be completely unaffected");
-    assert_ne!(dec_mutated.find_tag("custom_tag_1"), dec1.find_tag("custom_tag_1"), "custom_tag_1 must reflect mutation");
+    assert_eq!(
+        dec_mutated.find_tag("Name"),
+        dec1.find_tag("Name"),
+        "known tag Name must be completely unaffected"
+    );
+    assert_eq!(
+        dec_mutated.find_tag("Version"),
+        dec1.find_tag("Version"),
+        "known tag Version must be completely unaffected"
+    );
+    assert_eq!(
+        dec_mutated.find_tag("MiscOptions1"),
+        dec1.find_tag("MiscOptions1"),
+        "known tag MiscOptions1 must be completely unaffected"
+    );
+    assert_ne!(
+        dec_mutated.find_tag("custom_tag_1"),
+        dec1.find_tag("custom_tag_1"),
+        "custom_tag_1 must reflect mutation"
+    );
 
     // 3. Inserting unknown tags under limits: declared length and physical buffer remain strictly synchronized
     let mut large_unknown_tags = Vec::new();
@@ -1373,10 +1512,15 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
         server_ip: 0,
         server_port: 0,
     };
-    let pkt_many = encoder.encode_hello(&hello_many).expect("encodes 51 tags under limit");
+    let pkt_many = encoder
+        .encode_hello(&hello_many)
+        .expect("encodes 51 tags under limit");
     // Verify physical payload length matches total encoded frame
     assert_eq!(pkt_many.frame_len(), 1 + pkt_many.payload.len());
-    let dec_many = match decoder.decode_raw_packet(&pkt_many).expect("decodes 51 tags") {
+    let dec_many = match decoder
+        .decode_raw_packet(&pkt_many)
+        .expect("decodes 51 tags")
+    {
         Ed2kMessage::Hello(h) => h,
         _ => panic!("expected Hello"),
     };
@@ -1385,12 +1529,14 @@ fn test_metamorphic_tag_permutations_and_unknown_tags() {
 
 #[test]
 fn test_tier3_op_hello_wire_framing_emule050a_compliance() {
-    let encoder = Ed2kEncoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
-    let decoder = Ed2kDecoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
+    let encoder =
+        Ed2kEncoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
+    let decoder =
+        Ed2kDecoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
 
     let user_hash = [
-        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
-        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97, 0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F,
+        0x83,
     ];
     let hello = Ed2kHello {
         user_hash,
@@ -1413,15 +1559,42 @@ fn test_tier3_op_hello_wire_framing_emule050a_compliance() {
 
     // 2. Exact wire byte assertions:
     assert_eq!(wire[0], 0xE3, "byte 0: PR_ED2K");
-    assert_eq!(&wire[1..5], &34u32.to_le_bytes(), "bytes 1..5: payload length 34 LE (0x22, 0x00, 0x00, 0x00)");
+    assert_eq!(
+        &wire[1..5],
+        &34u32.to_le_bytes(),
+        "bytes 1..5: payload length 34 LE (0x22, 0x00, 0x00, 0x00)"
+    );
     assert_eq!(wire[5], 0x01, "byte 5: OP_HELLO");
-    assert_eq!(wire[6], 0x10, "byte 6: mandatory hash length prefix 0x10 for eMule/eDonkey");
+    assert_eq!(
+        wire[6], 0x10,
+        "byte 6: mandatory hash length prefix 0x10 for eMule/eDonkey"
+    );
     assert_eq!(&wire[7..23], &user_hash, "bytes 7..23: 16-byte user hash");
-    assert_eq!(&wire[23..27], &0u32.to_le_bytes(), "bytes 23..27: client_id = 0");
-    assert_eq!(&wire[27..29], &54321u16.to_le_bytes(), "bytes 27..29: tcp_port LE");
-    assert_eq!(&wire[29..33], &0u32.to_le_bytes(), "bytes 29..33: tag_count = 0");
-    assert_eq!(&wire[33..37], &0u32.to_le_bytes(), "bytes 33..37: server_ip = 0");
-    assert_eq!(&wire[37..39], &0u16.to_le_bytes(), "bytes 37..39: server_port = 0");
+    assert_eq!(
+        &wire[23..27],
+        &0u32.to_le_bytes(),
+        "bytes 23..27: client_id = 0"
+    );
+    assert_eq!(
+        &wire[27..29],
+        &54321u16.to_le_bytes(),
+        "bytes 27..29: tcp_port LE"
+    );
+    assert_eq!(
+        &wire[29..33],
+        &0u32.to_le_bytes(),
+        "bytes 29..33: tag_count = 0"
+    );
+    assert_eq!(
+        &wire[33..37],
+        &0u32.to_le_bytes(),
+        "bytes 33..37: server_ip = 0"
+    );
+    assert_eq!(
+        &wire[37..39],
+        &0u16.to_le_bytes(),
+        "bytes 37..39: server_port = 0"
+    );
 
     // 3. Decoding must roundtrip cleanly
     let decoded = decoder.decode_raw_packet(&raw).expect("decode wire hello");
@@ -1438,13 +1611,14 @@ fn test_tier3_op_hello_wire_framing_emule050a_compliance() {
 
 #[test]
 fn test_tier3_op_hello_answer_wire_framing_emule050a_compliance() {
-    let decoder = Ed2kDecoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
+    let decoder =
+        Ed2kDecoder::with_profile(mule_protocol::ed2k::Ed2kCompatibilityProfile::Emule050a);
 
     // Build raw OP_HELLO_ANSWER payload mimicking official eMule 0.50a response:
     // No 0x10 prefix! Starts directly with 16-byte hash.
     let peer_hash = [
-        0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x0E, 0x22, 0x33,
-        0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x6F, 0xEE,
+        0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x0E, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x6F,
+        0xEE,
     ];
     let client_id: u32 = 0;
     let tcp_port: u16 = 50000;
@@ -1483,7 +1657,9 @@ fn test_tier3_op_hello_answer_wire_framing_emule050a_compliance() {
     payload.extend_from_slice(&873677342u32.to_le_bytes());
 
     let raw = mule_protocol::RawPacket::with_vec(0xE3, 0x4C, payload);
-    let msg = decoder.decode_raw_packet(&raw).expect("decode hello answer");
+    let msg = decoder
+        .decode_raw_packet(&raw)
+        .expect("decode hello answer");
 
     match msg {
         Ed2kMessage::HelloAnswer(answer) => {
@@ -1523,11 +1699,15 @@ fn test_tier3_op_emule_info_roundtrip_nominal() {
         unknown_tags: vec![raw_tag],
     };
 
-    let encoded_pkt = encoder.encode_emule_info(&original).expect("encode emule info");
+    let encoded_pkt = encoder
+        .encode_emule_info(&original)
+        .expect("encode emule info");
     assert_eq!(encoded_pkt.protocol, mule_protocol::types::PR_EMULE);
     assert_eq!(encoded_pkt.opcode, mule_protocol::ed2k::OP_EMULE_INFO);
 
-    let decoded_msg = decoder.decode_raw_packet(&encoded_pkt).expect("decode emule info");
+    let decoded_msg = decoder
+        .decode_raw_packet(&encoded_pkt)
+        .expect("decode emule info");
     match decoded_msg {
         Ed2kMessage::EmuleInfo(info) => {
             assert_eq!(info.client_version, 60);
@@ -1580,8 +1760,8 @@ fn test_tier3_op_emule_info_oversized_tag_count_fails() {
 #[test]
 fn test_tier3_op_file_status_req_wire_framing_emule050a() {
     let hash = [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
-        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
+        0x3c,
     ];
     let req = Ed2kFileStatusReq { file_hash: hash };
     let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
@@ -1603,8 +1783,8 @@ fn test_tier3_op_file_status_req_wire_framing_emule050a() {
 #[test]
 fn test_tier3_op_file_status_bitfield_two_parts_emule050a() {
     let hash = [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
-        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
+        0x3c,
     ];
     let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::Emule050a);
 
@@ -1619,7 +1799,9 @@ fn test_tier3_op_file_status_bitfield_two_parts_emule050a() {
         mule_protocol::ed2k::OP_FILESTATUS,
         payload,
     );
-    let msg = decoder.decode_raw_packet(&raw).expect("decode valid 2-parts file status");
+    let msg = decoder
+        .decode_raw_packet(&raw)
+        .expect("decode valid 2-parts file status");
     match msg {
         Ed2kMessage::FileStatus(status) => {
             assert_eq!(status.file_hash, hash);
@@ -1657,7 +1839,9 @@ fn test_tier3_op_file_req_ans_no_file_wire_framing() {
     let encoder = Ed2kEncoder::new();
     let decoder = Ed2kDecoder::new();
 
-    let pkt = encoder.encode_file_req_ans_no_file(&no_file).expect("encode 0x48");
+    let pkt = encoder
+        .encode_file_req_ans_no_file(&no_file)
+        .expect("encode 0x48");
     assert_eq!(pkt.protocol, mule_protocol::types::PR_ED2K);
     assert_eq!(pkt.opcode, mule_protocol::ed2k::OP_FILEREQANSNOFILE); // 0x48
     assert_eq!(pkt.payload.len(), 16);
@@ -1693,22 +1877,46 @@ fn test_tier3_op_file_status_complete_file_zero_parts_emule050a() {
     let encoder = Ed2kEncoder::new();
     let decoder = Ed2kDecoder::new();
 
-    let pkt = encoder.encode_file_status(&status).expect("encode complete file 0x50");
+    let pkt = encoder
+        .encode_file_status(&status)
+        .expect("encode complete file 0x50");
     assert_eq!(pkt.protocol, mule_protocol::types::PR_ED2K);
     assert_eq!(pkt.opcode, mule_protocol::ed2k::OP_FILESTATUS); // 0x50
-    assert_eq!(pkt.payload.len(), 18, "wire length must be exactly 18 bytes (16 hash + 2 part_count)");
+    assert_eq!(
+        pkt.payload.len(),
+        18,
+        "wire length must be exactly 18 bytes (16 hash + 2 part_count)"
+    );
     assert_eq!(&pkt.payload[0..16], &hash);
-    assert_eq!(&pkt.payload[16..18], &[0x00, 0x00], "part_count 0 encoded as 2 zero bytes LE");
+    assert_eq!(
+        &pkt.payload[16..18],
+        &[0x00, 0x00],
+        "part_count 0 encoded as 2 zero bytes LE"
+    );
 
-    let decoded = decoder.decode_raw_packet(&pkt).expect("decode complete file 0x50");
+    let decoded = decoder
+        .decode_raw_packet(&pkt)
+        .expect("decode complete file 0x50");
     match decoded {
         Ed2kMessage::FileStatus(dec_status) => {
             assert_eq!(dec_status.file_hash, hash);
             assert_eq!(dec_status.part_count, 0);
-            assert!(dec_status.is_complete(), "part_count 0 must report complete file");
-            assert!(dec_status.raw_bytes().is_empty(), "0 parts must have 0 bitfield bytes");
-            assert!(dec_status.has_part(0), "part 0 must be reported available on complete file");
-            assert!(dec_status.has_part(42), "any part must be reported available on complete file");
+            assert!(
+                dec_status.is_complete(),
+                "part_count 0 must report complete file"
+            );
+            assert!(
+                dec_status.raw_bytes().is_empty(),
+                "0 parts must have 0 bitfield bytes"
+            );
+            assert!(
+                dec_status.has_part(0),
+                "part 0 must be reported available on complete file"
+            );
+            assert!(
+                dec_status.has_part(42),
+                "any part must be reported available on complete file"
+            );
         }
         other => panic!("expected FileStatus, got: {other:?}"),
     }
@@ -1737,25 +1945,32 @@ fn test_secure_ident_messages_roundtrip() {
 
     // 1. OP_PUBLICKEY (0x85)
     let pub_key = mule_protocol::ed2k::Ed2kPublicKey {
-        key_bytes: bytes::Bytes::from_static(&[0x30, 0x5c, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48]),
+        key_bytes: bytes::Bytes::from_static(&[
+            0x30, 0x5c, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48,
+        ]),
     };
     let pkt = encoder.encode_public_key(&pub_key).unwrap();
     assert_eq!(pkt.protocol, mule_protocol::ed2k::PR_EMULE);
     assert_eq!(pkt.opcode, mule_protocol::ed2k::OP_PUBLICKEY);
-    let decoded = decoder.decode_public_key(pkt.protocol, pkt.opcode, &pkt.payload, 0).unwrap();
+    let decoded = decoder
+        .decode_public_key(pkt.protocol, pkt.opcode, &pkt.payload, 0)
+        .unwrap();
     assert_eq!(decoded.key_bytes, pub_key.key_bytes);
 
-    // 2. OP_SIGNATURE (0x87)
+    // 2. OP_SIGNATURE (0x86) — 48-byte RSA-384 signature (eMule requires
+    //    payload nSize >= 10, so a 6-byte signature would now be rejected).
     let signature = mule_protocol::ed2k::Ed2kSignature {
-        signature_bytes: bytes::Bytes::from_static(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]),
+        signature_bytes: bytes::Bytes::from_static(&[0xAA; 48]),
     };
     let sig_pkt = encoder.encode_signature(&signature).unwrap();
     assert_eq!(sig_pkt.protocol, mule_protocol::ed2k::PR_EMULE);
     assert_eq!(sig_pkt.opcode, mule_protocol::ed2k::OP_SIGNATURE);
-    let dec_sig = decoder.decode_signature(sig_pkt.protocol, sig_pkt.opcode, &sig_pkt.payload, 0).unwrap();
+    let dec_sig = decoder
+        .decode_signature(sig_pkt.protocol, sig_pkt.opcode, &sig_pkt.payload, 0)
+        .unwrap();
     assert_eq!(dec_sig.signature_bytes, signature.signature_bytes);
 
-    // 3. OP_SECIDENTSTATE (0x86)
+    // 3. OP_SECIDENTSTATE (0x87)
     let sec_state = mule_protocol::ed2k::Ed2kSecIdentState {
         state: 1,
         challenge: 0x12345678,
@@ -1763,17 +1978,89 @@ fn test_secure_ident_messages_roundtrip() {
     let state_pkt = encoder.encode_secident_state(&sec_state).unwrap();
     assert_eq!(state_pkt.protocol, mule_protocol::ed2k::PR_EMULE);
     assert_eq!(state_pkt.opcode, mule_protocol::ed2k::OP_SECIDENTSTATE);
-    let dec_state = decoder.decode_secident_state(state_pkt.protocol, state_pkt.opcode, &state_pkt.payload, 0).unwrap();
+    let dec_state = decoder
+        .decode_secident_state(state_pkt.protocol, state_pkt.opcode, &state_pkt.payload, 0)
+        .unwrap();
     assert_eq!(dec_state.state, 1);
     assert_eq!(dec_state.challenge, 0x12345678);
 
     // High level decode_raw_packet tests
     let dec_msg_key = decoder.decode_raw_packet(&pkt).unwrap();
-    assert_eq!(dec_msg_key, mule_protocol::ed2k::Ed2kMessage::PublicKey(pub_key));
+    assert_eq!(
+        dec_msg_key,
+        mule_protocol::ed2k::Ed2kMessage::PublicKey(pub_key)
+    );
 
     let dec_msg_sig = decoder.decode_raw_packet(&sig_pkt).unwrap();
-    assert_eq!(dec_msg_sig, mule_protocol::ed2k::Ed2kMessage::Signature(signature));
+    assert_eq!(
+        dec_msg_sig,
+        mule_protocol::ed2k::Ed2kMessage::Signature(signature)
+    );
 
     let dec_msg_state = decoder.decode_raw_packet(&state_pkt).unwrap();
-    assert_eq!(dec_msg_state, mule_protocol::ed2k::Ed2kMessage::SecIdentState(sec_state));
+    assert_eq!(
+        dec_msg_state,
+        mule_protocol::ed2k::Ed2kMessage::SecIdentState(sec_state)
+    );
+}
+
+/// Tier-1 malformed-input corpus for the SUI decoders (eMule-strict lengths).
+#[test]
+fn test_secure_ident_decoders_reject_malformed() {
+    let decoder = Ed2kDecoder::default();
+    let p = mule_protocol::ed2k::PR_EMULE;
+    let op_pk = mule_protocol::ed2k::OP_PUBLICKEY;
+    let op_sig = mule_protocol::ed2k::OP_SIGNATURE;
+    let op_st = mule_protocol::ed2k::OP_SECIDENTSTATE;
+
+    // OP_SECIDENTSTATE: must be exactly 5 bytes.
+    for len in [0usize, 1, 4, 6, 255] {
+        let payload = vec![0u8; len];
+        assert!(
+            decoder
+                .decode_secident_state(p, op_st, &payload, 0)
+                .is_err(),
+            "secident len {len} must be rejected"
+        );
+    }
+    assert!(decoder
+        .decode_secident_state(p, op_st, &[1, 0x78, 0x56, 0x34, 0x12], 0)
+        .is_ok());
+
+    // OP_PUBLICKEY: nSize must be in [10..250] and exactly 1+keylen.
+    assert!(decoder.decode_public_key(p, op_pk, &[], 0).is_err());
+    assert!(decoder
+        .decode_public_key(p, op_pk, &[200, 1, 2, 3], 0)
+        .is_err()); // nSize < 10
+    let mut nine = vec![9u8];
+    nine.extend(std::iter::repeat(0xAB).take(9));
+    assert!(decoder.decode_public_key(p, op_pk, &nine, 0).is_ok()); // nSize = 10, minimum
+    let mut oversized = vec![249u8];
+    oversized.extend(std::iter::repeat(0xAB).take(249));
+    assert!(decoder.decode_public_key(p, op_pk, &oversized, 0).is_ok()); // nSize = 250, maximum
+    let mut over_limit = vec![250u8];
+    over_limit.extend(std::iter::repeat(0xAB).take(250));
+    assert!(decoder.decode_public_key(p, op_pk, &over_limit, 0).is_err()); // nSize = 251
+    let mut trailing = vec![48u8];
+    trailing.extend(std::iter::repeat(0xAB).take(49)); // declared 48, present 49
+    assert!(decoder.decode_public_key(p, op_pk, &trailing, 0).is_err()); // exact length required
+
+    // OP_SIGNATURE: nSize in [10..250], V1 = 1+len, V2 = 2+len.
+    assert!(decoder.decode_signature(p, op_sig, &[], 0).is_err());
+    let mut too_small = vec![6u8];
+    too_small.extend(std::iter::repeat(0x11).take(6));
+    assert!(decoder.decode_signature(p, op_sig, &too_small, 0).is_err()); // nSize = 7 < 10
+    assert!(decoder.decode_signature(p, op_sig, &[48], 0).is_err()); // declared, no bytes
+    let mut v1 = vec![48u8];
+    v1.extend(std::iter::repeat(0x11).take(48));
+    assert!(decoder.decode_signature(p, op_sig, &v1, 0).is_ok());
+    let mut v2 = v1.clone();
+    v2.push(20u8); // kind byte
+    assert!(decoder.decode_signature(p, op_sig, &v2, 0).is_ok());
+    let mut trailing = v2.clone();
+    trailing.push(0xFF); // 3 extra bytes → malformed
+    assert!(decoder.decode_signature(p, op_sig, &trailing, 0).is_err());
+    let mut truncated = vec![64u8];
+    truncated.extend(std::iter::repeat(0x11).take(48)); // claims 64, has 48
+    assert!(decoder.decode_signature(p, op_sig, &truncated, 0).is_err());
 }

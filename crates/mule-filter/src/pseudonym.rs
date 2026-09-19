@@ -29,7 +29,9 @@ impl SessionPseudonymizer {
         let ip_str = addr.ip().to_string();
         let mut map = self.peer_map.write().unwrap();
         let next_id = map.len() + 1;
-        let prefix = map.entry(ip_str).or_insert_with(|| format!("peer-{:02}", next_id));
+        let prefix = map
+            .entry(ip_str)
+            .or_insert_with(|| format!("peer-{:02}", next_id));
         format!("{}:{}", prefix, addr.port())
     }
 
@@ -39,7 +41,9 @@ impl SessionPseudonymizer {
         let ip_str = addr.ip().to_string();
         let mut map = self.server_map.write().unwrap();
         let next_id = map.len() + 1;
-        let prefix = map.entry(ip_str).or_insert_with(|| format!("server-{:02}", next_id));
+        let prefix = map
+            .entry(ip_str)
+            .or_insert_with(|| format!("server-{:02}", next_id));
         format!("{}:{}", prefix, addr.port())
     }
 

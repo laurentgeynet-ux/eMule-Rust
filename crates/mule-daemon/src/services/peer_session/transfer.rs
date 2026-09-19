@@ -1,9 +1,9 @@
+use bytes::BytesMut;
+use flate2::{Decompress, FlushDecompress, Status};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
-use bytes::BytesMut;
-use flate2::{Decompress, FlushDecompress, Status};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, Mutex};
@@ -11,21 +11,20 @@ use tracing::info;
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatus,
-    Ed2kRequestParts, InFlightBlock,
-    OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD,
-    OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SENDINGPART, PR_ED2K, PR_EMULE,
-    PR_EMULE_COMPRESSED,
+    Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatus, Ed2kRequestParts,
+    InFlightBlock, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CANCELTRANSFER, OP_COMPRESSEDPART,
+    OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SENDINGPART,
+    PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
 };
 use mule_protocol::framing::PacketCodec;
 
-use crate::services::downloads::DownloadService;
-use crate::services::obfuscation_stream::ObfuscatedStream;
 use super::events::{emit_download_update, emit_event};
 use super::source_exchange::{handle_sx_answer, handle_sx_request};
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
 };
+use crate::services::downloads::DownloadService;
+use crate::services::obfuscation_stream::ObfuscatedStream;
 
 pub const OP_COMPRESSEDPART_I64: u8 = 0xA1;
 pub const OP_SENDINGPART_I64: u8 = 0xA2;
@@ -49,7 +48,9 @@ async fn sync_transfer_rates(
         } else {
             None
         };
-        let total_rate: u64 = g.sessions.values()
+        let total_rate: u64 = g
+            .sessions
+            .values()
             .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash_str))
             .map(|s| s.snapshot.transfer_rate_bps)
             .sum();
@@ -73,12 +74,15 @@ pub(crate) async fn run_transfer_loop(
     dl_hash_bytes: [u8; 16],
     address_str: &str,
     file_status: Ed2kFileStatus,
+    peer_supports_aich: bool,
     timeouts: &PeerTimeouts,
     cancel_token: &mule_network_policy::CancellationToken,
     inner: &Arc<Mutex<SwarmInnerState>>,
     event_tx: &broadcast::Sender<String>,
     sequence: &Arc<AtomicU64>,
     downloads: &Arc<Mutex<DownloadService>>,
+    sui: &mut super::sui::OutboundSui,
+    rate_limiters: Option<&mule_network_policy::PolicyRateLimiters>,
 ) -> Result<u64, PeerError> {
     let encoder = Ed2kEncoder::default();
     let decoder = Ed2kDecoder::default();
@@ -87,19 +91,39 @@ pub(crate) async fn run_transfer_loop(
     let mut read_buf = BytesMut::with_capacity(65536);
     let mut raw_buf = [0u8; 8192];
 
+    // Flush any pending AICH recovery requests accumulated before this session
+    // (eMule SendAICHRequest for corrupted parts).
+    super::status_query::send_pending_aich_requests(
+        stream,
+        &encoder,
+        target_addr,
+        file_hash_str,
+        dl_hash_bytes,
+        peer_supports_aich,
+        downloads,
+    )
+    .await;
+
     // Multi-source block planner setup
     let (file_size, completed_ranges) = {
         let dl_svc = downloads.lock().await;
         let dl = dl_svc.find_by_ed2k_hash(file_hash_str).ok_or_else(|| {
-            PeerError::new(PeerFailureReason::FileNotFound, "Download not found in local service")
+            PeerError::new(
+                PeerFailureReason::FileNotFound,
+                "Download not found in local service",
+            )
         })?;
         let ranges = dl_svc.get_completed_ranges_by_hash(file_hash_str);
         (dl.total_bytes, ranges)
     };
 
-    let sequencer = Ed2kDownloadSequencer::new(dl_hash_bytes, file_size, file_status).map_err(|e| {
-        PeerError::new(PeerFailureReason::CorruptedData, format!("Sequencer init error: {e}"))
-    })?;
+    let sequencer =
+        Ed2kDownloadSequencer::new(dl_hash_bytes, file_size, file_status).map_err(|e| {
+            PeerError::new(
+                PeerFailureReason::CorruptedData,
+                format!("Sequencer init error: {e}"),
+            )
+        })?;
 
     // Plan disjoint block
     let now_ms = std::time::SystemTime::now()
@@ -109,12 +133,14 @@ pub(crate) async fn run_transfer_loop(
 
     let planned_block_opt = {
         let mut g = inner.lock().await;
-        let block_opt = sequencer.plan_next_block_for_peer(
-            address_str,
-            &completed_ranges,
-            &g.in_flight_blocks,
-            now_ms,
-        ).map_err(|e| PeerError::new(PeerFailureReason::InvalidRange, format!("Planning error: {e}")))?;
+        let block_opt = sequencer
+            .plan_next_block_for_peer(address_str, &completed_ranges, &g.in_flight_blocks, now_ms)
+            .map_err(|e| {
+                PeerError::new(
+                    PeerFailureReason::InvalidRange,
+                    format!("Planning error: {e}"),
+                )
+            })?;
 
         if let Some((part_idx, block)) = block_opt {
             let ifb = InFlightBlock::new(
@@ -135,7 +161,18 @@ pub(crate) async fn run_transfer_loop(
     let (part_idx, req_range) = match planned_block_opt {
         Some(b) => b,
         None => {
-            info!("No unassigned/missing blocks available for peer {}", target_addr);
+            info!(
+                "No unassigned/missing blocks available for peer {}",
+                target_addr
+            );
+            // eMule CUpDownClient::SendOutOfPartReqsAndPacket: notify the
+            // uploader that we currently have no pending block requests
+            // (OP_OUTOFPARTS, empty payload) before leaving the session.
+            let mut out_wire = Vec::with_capacity(6);
+            out_wire.push(PR_ED2K);
+            out_wire.extend_from_slice(&1u32.to_le_bytes());
+            out_wire.push(OP_OUTOFPARTS);
+            let _ = stream.write_all(&out_wire).await;
             return Ok(0);
         }
     };
@@ -147,7 +184,10 @@ pub(crate) async fn run_transfer_loop(
     };
 
     let req_pkt = encoder.encode_request_parts(&req_parts).map_err(|e| {
-        PeerError::new(PeerFailureReason::CorruptedData, format!("Failed to encode OP_REQUESTPARTS: {e}"))
+        PeerError::new(
+            PeerFailureReason::CorruptedData,
+            format!("Failed to encode OP_REQUESTPARTS: {e}"),
+        )
     })?;
 
     out_wire.clear();
@@ -157,7 +197,10 @@ pub(crate) async fn run_transfer_loop(
     out_wire.extend_from_slice(&req_pkt.payload);
 
     if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send OP_REQUESTPARTS: {e}")));
+        return Err(PeerError::new(
+            PeerFailureReason::ConnectRefused,
+            format!("Failed to send OP_REQUESTPARTS: {e}"),
+        ));
     }
 
     let transferring_snapshot = {
@@ -174,7 +217,10 @@ pub(crate) async fn run_transfer_loop(
         emit_event(event_tx, sequence, &snap);
     }
 
-    info!("Requested sub-block [{}, {}) from peer {}", req_range.start, req_range.end, target_addr);
+    info!(
+        "Requested sub-block [{}, {}) from peer {}",
+        req_range.start, req_range.end, target_addr
+    );
 
     // Receive chunks loop
     let mut total_received = 0u64;
@@ -211,13 +257,16 @@ pub(crate) async fn run_transfer_loop(
                     if let Some(session) = g.sessions.get_mut(&address_str) {
                         session.snapshot.transfer_rate_bps = 0;
                     }
-                    g.sessions.values()
+                    g.sessions
+                        .values()
                         .filter(|s| s.snapshot.file_hash.as_deref() == Some(&file_hash_str))
                         .map(|s| s.snapshot.transfer_rate_bps)
                         .sum()
                 };
                 let mut dl_svc = downloads.lock().await;
-                if let Some(snap) = dl_svc.set_download_rate_by_hash(&file_hash_str, total_remaining_bps) {
+                if let Some(snap) =
+                    dl_svc.set_download_rate_by_hash(&file_hash_str, total_remaining_bps)
+                {
                     emit_download_update(&event_tx, &sequence, &snap);
                 }
             });
@@ -242,6 +291,12 @@ pub(crate) async fn run_transfer_loop(
 
         tokio::select! {
             _ = cancel_token.cancelled() => {
+                // eMule sends OP_CANCELTRANSFER (empty payload) when an
+                // ongoing transfer is cancelled, so the uploader frees the
+                // slot immediately instead of relying on TCP teardown.
+                let _ = stream
+                    .write_all(&[PR_ED2K, 1, 0, 0, 0, OP_CANCELTRANSFER])
+                    .await;
                 return Err(PeerError::new(PeerFailureReason::KillSwitchAborted, "Transfer aborted by kill switch"));
             }
             _ = tokio::time::sleep_until(last_activity + timeout_duration) => {
@@ -264,6 +319,18 @@ pub(crate) async fn run_transfer_loop(
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit during transfer"));
                         }
                         while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
+                            if sui.handle(&packet, target_addr, &decoder, &encoder, stream).await {
+                                continue;
+                            }
+                            if super::status_query::handle_hashset_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await {
+                                continue;
+                            }
+                            if super::status_query::handle_aich_file_hash_res(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
+                                continue;
+                            }
+                            if super::status_query::handle_aich_answer(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
+                                continue;
+                            }
                             let mut block_finished = false;
                             if packet.protocol == PR_ED2K && packet.opcode == OP_SENDINGPART {
                                 first_data_received = true;
@@ -283,6 +350,20 @@ pub(crate) async fn run_transfer_loop(
                                 }
 
                                 let data_len = part.data.len() as u64;
+                                // Global download bandwidth scheduler: pace
+                                // received data through the shared token bucket.
+                                if let Some(rl) = rate_limiters {
+                                    if rl
+                                        .download_bucket
+                                        .acquire_tokens(data_len, || {
+                                            cancel_token.is_cancelled()
+                                        })
+                                        .await
+                                        .is_err()
+                                    {
+                                        break 'transfer_loop;
+                                    }
+                                }
                                 total_received += data_len;
                                 bytes_since_rate_check += data_len;
 
@@ -385,6 +466,23 @@ pub(crate) async fn run_transfer_loop(
                                     let produced = (decomp.total_out() - before_out) as usize;
                                     let consumed = (decomp.total_in() - before_in) as usize;
                                     input_slice = &input_slice[consumed..];
+
+                                    // Pace received wire bytes through the
+                                    // global download token bucket.
+                                    if consumed > 0 {
+                                        if let Some(rl) = rate_limiters {
+                                            if rl
+                                                .download_bucket
+                                                .acquire_tokens(consumed as u64, || {
+                                                    cancel_token.is_cancelled()
+                                                })
+                                                .await
+                                                .is_err()
+                                            {
+                                                break 'transfer_loop;
+                                            }
+                                        }
+                                    }
 
                                     if produced > 0 {
                                         total_received += produced as u64;
@@ -508,6 +606,15 @@ pub(crate) async fn run_transfer_loop(
                             } else if (packet.protocol == PR_ED2K || packet.protocol == PR_EMULE) && packet.opcode == OP_END_OF_DOWNLOAD {
                                 info!("Peer {} sent OP_END_OF_DOWNLOAD", target_addr);
                                 break;
+                            } else if packet.protocol == PR_ED2K && packet.opcode == OP_OUTOFPARTS {
+                                // The uploader tells us it currently has no
+                                // requested parts left for us — end the session
+                                // gracefully so the swarm can rotate sources.
+                                info!("Peer {target_addr} sent OP_OUTOFPARTS, ending transfer session");
+                                break 'transfer_loop;
+                            } else if packet.protocol == PR_ED2K && packet.opcode == OP_CANCELTRANSFER {
+                                info!("Peer {target_addr} cancelled the transfer (OP_CANCELTRANSFER)");
+                                break 'transfer_loop;
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {
@@ -605,7 +712,8 @@ pub(crate) async fn run_transfer_loop(
             if let Some(session) = g.sessions.get_mut(address_str) {
                 session.snapshot.transfer_rate_bps = 0;
             }
-            g.sessions.values()
+            g.sessions
+                .values()
                 .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash_str))
                 .map(|s| s.snapshot.transfer_rate_bps)
                 .sum()

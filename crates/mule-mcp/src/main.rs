@@ -9,8 +9,8 @@ use tracing::{error, info, warn};
 use mule_mcp::{
     client::DaemonClient,
     protocol::{
-        make_error, make_response, JsonRpcError, JsonRpcMessage, MCP_PROTOCOL_VERSION, SERVER_NAME,
-        SERVER_VERSION, ToolCallResult,
+        make_error, make_response, JsonRpcError, JsonRpcMessage, ToolCallResult,
+        MCP_PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION,
     },
     tools::{execute_tool, list_tools},
 };
@@ -187,7 +187,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )),
                 };
 
-                let resp = make_response(req_id, serde_json::to_value(tool_result).unwrap_or_default());
+                let resp = make_response(
+                    req_id,
+                    serde_json::to_value(tool_result).unwrap_or_default(),
+                );
                 send_json(&mut stdout, &resp).await?;
             }
 

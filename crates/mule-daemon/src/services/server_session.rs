@@ -12,7 +12,7 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 use tracing::info;
 
 use mule_network_policy::SocketPermit;
-use mule_protocol::ed2k::{Ed2kLimits, GetSourcesRequest, SearchQuery};
+use mule_protocol::ed2k::{CallbackRequest, Ed2kLimits, GetSourcesRequest, SearchQuery};
 use mule_protocol::framing::RawPacket;
 
 use crate::error::DaemonError;
@@ -22,9 +22,9 @@ pub mod connection;
 pub mod events;
 pub mod types;
 
-pub use types::{ServerConnectionStatus, ServerSessionSnapshot};
 use connection::{spawn_connection_task, ActiveSession};
 use events::emit_event;
+pub use types::{ServerConnectionStatus, ServerSessionSnapshot};
 
 /// Thread-safe manager for the single eD2K server connection.
 #[derive(Clone)]
@@ -72,7 +72,9 @@ impl ServerSessionManager {
     pub async fn search(&self, query: SearchQuery) -> Result<(), DaemonError> {
         let guard = self.inner.lock().await;
         if guard.snapshot.status != ServerConnectionStatus::Connected {
-            return Err(DaemonError::Business("Cannot search: server is not connected".into()));
+            return Err(DaemonError::Business(
+                "Cannot search: server is not connected".into(),
+            ));
         }
         let tx = guard.outgoing_tx.as_ref().ok_or_else(|| {
             DaemonError::Business("Cannot search: outgoing channel closed".into())
@@ -91,9 +93,9 @@ impl ServerSessionManager {
             packet.payload.len()
         );
 
-        tx.send(packet).await.map_err(|_| {
-            DaemonError::Business("Failed to send search request to server".into())
-        })?;
+        tx.send(packet)
+            .await
+            .map_err(|_| DaemonError::Business("Failed to send search request to server".into()))?;
         Ok(())
     }
 
@@ -101,15 +103,17 @@ impl ServerSessionManager {
     pub async fn get_sources(&self, request: GetSourcesRequest) -> Result<(), DaemonError> {
         let guard = self.inner.lock().await;
         if guard.snapshot.status != ServerConnectionStatus::Connected {
-            return Err(DaemonError::Business("Cannot query sources: server is not connected".into()));
+            return Err(DaemonError::Business(
+                "Cannot query sources: server is not connected".into(),
+            ));
         }
         let tx = guard.outgoing_tx.as_ref().ok_or_else(|| {
             DaemonError::Business("Cannot query sources: outgoing channel closed".into())
         })?;
         let limits = Ed2kLimits::for_server();
-        let packet = request
-            .encode(&limits)
-            .map_err(|e| DaemonError::Business(format!("Failed to encode get sources request: {e}")))?;
+        let packet = request.encode(&limits).map_err(|e| {
+            DaemonError::Business(format!("Failed to encode get sources request: {e}"))
+        })?;
         info!(
             "Sending eD2K OP_GETSOURCES (obfuscation={}) to server for file hash: {}",
             request.obfuscation,
@@ -117,6 +121,27 @@ impl ServerSessionManager {
         );
         tx.send(packet).await.map_err(|_| {
             DaemonError::Business("Failed to send get sources request to server".into())
+        })?;
+        Ok(())
+    }
+
+    /// Sends an `OP_CALLBACKREQUEST` to the connected server, asking it to
+    /// relay a connection request to a LowID client (`client_id < 0x01000000`).
+    /// The target then opens a TCP connection back to us.
+    pub async fn request_callback(&self, client_id: u32) -> Result<(), DaemonError> {
+        let guard = self.inner.lock().await;
+        if guard.snapshot.status != ServerConnectionStatus::Connected {
+            return Err(DaemonError::Business(
+                "Cannot request callback: server is not connected".into(),
+            ));
+        }
+        let tx = guard.outgoing_tx.as_ref().ok_or_else(|| {
+            DaemonError::Business("Cannot request callback: outgoing channel closed".into())
+        })?;
+        let packet = CallbackRequest { client_id }.encode();
+        info!("Sending eD2K OP_CALLBACKREQUEST to server for LowID client {client_id}");
+        tx.send(packet).await.map_err(|_| {
+            DaemonError::Business("Failed to send callback request to server".into())
         })?;
         Ok(())
     }

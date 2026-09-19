@@ -8,4 +8,3 @@ pub use events::{DownloadSnapshot, DownloadUpdatedEvent};
 pub use methods::{DAEMON_VERSION, PROTOCOL_VERSION};
 pub use server::create_router;
 pub use types::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
-

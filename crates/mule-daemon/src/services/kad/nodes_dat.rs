@@ -1,8 +1,8 @@
-use std::net::IpAddr;
 use mule_core::kad::{KadContact, KadId};
 use mule_filter::IpFilter;
 use mule_format::kad::{NodesDatFile, MAX_NODES_DAT_SIZE};
 use mule_network_policy::{classify_ip, IpCategory, NetworkPolicyManager, NetworkProfile};
+use std::net::IpAddr;
 
 use super::types::{KadContactEntryDto, NodesDatInspectReport};
 

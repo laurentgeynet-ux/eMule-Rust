@@ -1,5 +1,6 @@
 pub mod hash_tree;
 pub mod proof;
+pub mod recovery;
 
 pub use hash_tree::{
     calculate_aich_root, AichHash, AichNode, AICH_BLOCK_SIZE, BLOCKS_PER_PART,
@@ -8,4 +9,8 @@ pub use hash_tree::{
 pub use proof::{
     compute_expected_path, verify_aich_proof, AichProof, AichProofError, AichSibling,
     SiblingPosition,
+};
+pub use recovery::{
+    aich_block_hash, build_aich_tree, build_aich_tree_from_reader, create_part_recovery_data,
+    read_recovery_data, set_hash_by_ident, AichRecoveryEntry,
 };

@@ -1,11 +1,11 @@
-use tempfile::tempdir;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::Write;
+use tempfile::tempdir;
 
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_daemon::rpc::methods::handle_request;
 use mule_daemon::rpc::types::JsonRpcRequest;
+use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 
 fn setup_test_state() -> (AppState, tempfile::TempDir) {
     let dir = tempdir().unwrap();
@@ -45,15 +45,22 @@ async fn test_filter_import_status_and_clear_rpc() {
             "token": "filter_test_token_123"
         })),
     );
-    let resp = handle_request(&state, hello_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, hello_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
-    let caps = resp.result.unwrap()["capabilities"].as_array().unwrap().clone();
+    let caps = resp.result.unwrap()["capabilities"]
+        .as_array()
+        .unwrap()
+        .clone();
     assert!(caps.iter().any(|c| c.as_str() == Some("ip-filter")));
     assert!(caps.iter().any(|c| c.as_str() == Some("rate-limits")));
 
     // 2. Initial filter status -> empty
     let status_req = make_req(2, "filter.getStatus", None);
-    let resp = handle_request(&state, status_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, status_req, &mut authenticated)
+        .await
+        .unwrap();
     let res = resp.result.unwrap();
     assert_eq!(res["range_count"], 0);
     assert_eq!(res["enabled"], true);
@@ -65,7 +72,11 @@ async fn test_filter_import_status_and_clear_rpc() {
         writeln!(file, "# Test Header").unwrap();
         writeln!(file, "001.000.000.000 - 001.000.000.255 , 100 , Bad Host A").unwrap();
         writeln!(file, "001.000.001.000 - 001.000.001.255 , 100 , Bad Host B").unwrap();
-        writeln!(file, "040.000.000.000 - 040.255.255.255 , 080 , Blocked ISP").unwrap();
+        writeln!(
+            file,
+            "040.000.000.000 - 040.255.255.255 , 080 , Blocked ISP"
+        )
+        .unwrap();
     }
 
     // 4. Import file via filter.importFile
@@ -74,7 +85,9 @@ async fn test_filter_import_status_and_clear_rpc() {
         "filter.importFile",
         Some(json!({ "filePath": filter_path.to_str().unwrap() })),
     );
-    let resp = handle_request(&state, import_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, import_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["success"], true);
@@ -84,18 +97,24 @@ async fn test_filter_import_status_and_clear_rpc() {
 
     // 5. Check filter stats
     let stats_req = make_req(4, "filter.getStats", None);
-    let resp = handle_request(&state, stats_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, stats_req, &mut authenticated)
+        .await
+        .unwrap();
     let res = resp.result.unwrap();
     assert_eq!(res["range_count"], 2);
 
     // 6. Disable filter
     let set_enabled_req = make_req(5, "filter.setEnabled", Some(json!({ "enabled": false })));
-    let resp = handle_request(&state, set_enabled_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, set_enabled_req, &mut authenticated)
+        .await
+        .unwrap();
     assert_eq!(resp.result.unwrap()["enabled"], false);
 
     // 7. Clear filter
     let clear_req = make_req(6, "filter.clear", None);
-    let resp = handle_request(&state, clear_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, clear_req, &mut authenticated)
+        .await
+        .unwrap();
     assert_eq!(resp.result.unwrap()["range_count"], 0);
 }
 
@@ -106,7 +125,9 @@ async fn test_rate_limits_get_and_set_rpc() {
 
     // 1. Get initial limits
     let get_req = make_req(1, "limits.get", None);
-    let resp = handle_request(&state, get_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, get_req, &mut authenticated)
+        .await
+        .unwrap();
     let res = resp.result.unwrap();
     assert_eq!(res["downloadBytesPerSec"], 0);
     assert_eq!(res["uploadBytesPerSec"], 0);
@@ -124,7 +145,9 @@ async fn test_rate_limits_get_and_set_rpc() {
             "kadPacketsPerSec": 20
         })),
     );
-    let resp = handle_request(&state, set_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, set_req, &mut authenticated)
+        .await
+        .unwrap();
     let res = resp.result.unwrap();
     assert_eq!(res["downloadBytesPerSec"], 1024000);
     assert_eq!(res["uploadBytesPerSec"], 512000);

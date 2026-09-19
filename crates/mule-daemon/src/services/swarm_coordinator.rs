@@ -26,6 +26,9 @@ impl SwarmCoordinator {
                 state,
                 last_source_query: HashMap::new(),
                 last_heartbeat: Instant::now(),
+                server_attempts: HashMap::new(),
+                last_server_reconnect: None,
+                last_connected_server: None,
             };
             coordinator.run_loop().await;
         })

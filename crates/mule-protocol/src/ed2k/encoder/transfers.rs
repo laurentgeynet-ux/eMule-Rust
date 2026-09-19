@@ -4,10 +4,12 @@ use bytes::Bytes;
 
 use super::super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::super::limits::Ed2kLimits;
-use super::super::opcodes::{OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_SENDINGPART};
+use super::super::opcodes::{
+    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_HASHSETREQUEST, OP_SENDINGPART,
+};
 use super::super::packet::{
-    expected_mask_bytes, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kRequestParts,
-    Ed2kSendingPart,
+    expected_mask_bytes, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq,
+    Ed2kHashSetAnswer, Ed2kHashSetReq, Ed2kRequestParts, Ed2kSendingPart,
 };
 use super::super::profile::Ed2kCompatibilityProfile;
 use super::super::protocol::PR_ED2K;
@@ -128,6 +130,73 @@ pub fn encode_file_req_ans_no_file(
     let opcode = OP_FILEREQANSNOFILE;
     let mut payload = Vec::with_capacity(16);
     payload.extend_from_slice(&ans.file_hash);
+
+    let frame_len = 1 + payload.len();
+    let max_frame = limits.max_frame_for_opcode(opcode);
+    if frame_len > max_frame {
+        return Err(Ed2kEncodeError::new(
+            opcode,
+            "frame_len",
+            Ed2kErrorKind::FrameTooLarge {
+                size: frame_len,
+                limit: max_frame,
+            },
+        ));
+    }
+
+    Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+}
+
+/// Encodes an `Ed2kHashSetReq` message (`0x51`): 16-byte file hash payload.
+pub fn encode_hashset_request(
+    limits: &Ed2kLimits,
+    req: &Ed2kHashSetReq,
+) -> Result<RawPacket, Ed2kEncodeError> {
+    let opcode = OP_HASHSETREQUEST;
+    let payload = req.file_hash.to_vec();
+
+    let frame_len = 1 + payload.len();
+    let max_frame = limits.max_frame_for_opcode(opcode);
+    if frame_len > max_frame {
+        return Err(Ed2kEncodeError::new(
+            opcode,
+            "frame_len",
+            Ed2kErrorKind::FrameTooLarge {
+                size: frame_len,
+                limit: max_frame,
+            },
+        ));
+    }
+
+    Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+}
+
+/// Encodes an `Ed2kHashSetAnswer` message (`0x52`): `file_hash || u16 count || count*16 hashes`.
+pub fn encode_hashset_answer(
+    limits: &Ed2kLimits,
+    ans: &Ed2kHashSetAnswer,
+) -> Result<RawPacket, Ed2kEncodeError> {
+    let opcode = OP_HASHSETANSWER;
+    if ans.part_hashes.len() > limits.max_parts {
+        return Err(Ed2kEncodeError::new(
+            opcode,
+            "hashset_part_count",
+            Ed2kErrorKind::MalformedField {
+                message: format!(
+                    "part hash count {} exceeds limit {}",
+                    ans.part_hashes.len(),
+                    limits.max_parts
+                ),
+            },
+        ));
+    }
+
+    let mut payload = Vec::with_capacity(18 + ans.part_hashes.len() * 16);
+    payload.extend_from_slice(&ans.file_hash);
+    payload.extend_from_slice(&(ans.part_hashes.len() as u16).to_le_bytes());
+    for h in &ans.part_hashes {
+        payload.extend_from_slice(h);
+    }
 
     let frame_len = 1 + payload.len();
     let max_frame = limits.max_frame_for_opcode(opcode);

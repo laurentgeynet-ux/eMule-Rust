@@ -50,7 +50,7 @@ flowchart TB
 
     subgraph AGENTS ["Écosystème Agents IA (crates/mule-mcp)"]
         MCPServer["Serveur MCP (Stdio JSON-RPC)"]
-        MCPTools["60+ Outils MCP (Downloads, Swarm, Kad, Servers, Shares, System)"]
+        MCPTools["83 Outils MCP (Downloads, Swarm, Kad, Servers, Shares, System)"]
     end
 
     subgraph IPC ["Liaison Locale IPC (127.0.0.1:4660)"]
@@ -198,7 +198,7 @@ Refactorisé selon une architecture modulaire propre :
 
 ### 3.7 `crates/mule-mcp` — Serveur Model Context Protocol (MCP)
 * Serveur dédié pour interfaces agents IA (Claude Desktop, Cursor, Antigravity, etc.) communiquant via stdio en JSON-RPC.
-* Plus de 60 outils exposés couvrant :
+* 83 outils exposés couvrant :
   * Téléchargements : `emule_list_downloads`, `emule_add_link`, `emule_pause_download`, `emule_resume_download`, `emule_remove_download`, `emule_set_destination`, `emule_download_set_category`, `emule_retry_download`, `emule_inspect_part_met`, `emule_import_part_met`.
   * Swarm & Sources : `emule_list_sources`, `emule_add_manual_source`, `emule_connect_source`, `emule_disconnect_source`, `emule_clear_sources`, `emule_swarm_status`.
   * Serveurs : `emule_list_servers`, `emule_connect_server`, `emule_disconnect_server`, `emule_update_servers_from_url`, `emule_inspect_server_met`, `emule_import_server_met`, `emule_search`, `emule_query_server_sources`.
@@ -207,7 +207,7 @@ Refactorisé selon une architecture modulaire propre :
   * Sécurité & Réseau : `emule_get_network_policy`, `emule_set_network_profile`, `emule_network_disconnect_all`, `emule_import_ip_filter`, `emule_set_network_budgets`, `emule_upnp_status`, `emule_upnp_map_ports`, `emule_get_identity`, `emule_rotate_identity`, `emule_list_credits`.
 
 ### 3.8 `apps/desktop` — Interface Utilisateur Flutter Desktop Windows
-Développée en Clean Architecture et MVVM (`v0.1.7+1`) :
+Développée en Clean Architecture et MVVM (`v0.1.8+1`) :
 * **Téléchargements** : Part Map interactive bloc par bloc (9,28 Mo) avec tooltips d'offset, métriques de vitesse en direct (calculée et synchronisée avec le débit agrégé du swarm), glisser-déposer de `.part.met`, gestion de catégories.
 * **Recherche Unifiée** : sélecteur bi-moteur (*Serveurs eD2K* / *Réseau Kad DHT*), filtres de taille et ajout direct aux téléchargements.
 * **Serveurs** : état de connexion, import de listes `server.met`, ping de latence et interrogation de sources.
@@ -227,7 +227,7 @@ Développée en Clean Architecture et MVVM (`v0.1.7+1`) :
 | **v0.1.3-lab** | 15/09/2026 | **Interopérabilité eMule 0.50a (Tier 3.1 à 3.6)** : handshake complet, file status bitfields, transfert de blocs 9.28 Mo avec résidu, reprise après crash. **Phase 8** : Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`. Packaging Windows standard et qa-loopback. | ✅ Certifié (151 tests Rust, 74 tests Flutter) |
 | **v0.1.4** | 16/09/2026 | Swarm multi-sources initial, fallback d'obfuscation RC4/DH, conformité DLP & audit réseau, expansion des messages Kad DHT. | ✅ Validé & Mergé |
 | **v0.1.5** | 17/09/2026 | Allocateur dynamique de swarm (**Weighted Max-Min Fair-Share**), démarrage basse latence des téléchargements (intervalles d'auto-découverte 30s/60s/300s), interopérabilité Kad legacy (`KADEMLIA_BOOTSTRAP_REQ_OLD`), polling Kad dans l'UI Flutter. | ✅ Validé & Mergé |
-| **v0.1.6** | 18/09/2026 | **Source Exchange v4 (SX1 & SX2)** : échange de sources pair-à-pair complet. **Gestion des blocs compressés** : décompression zlib en continu (`OP_COMPRESSEDPART`). **Intégration MCP (`mule-mcp`)** : crate dédié avec 60+ outils MCP pour assistants IA. | ✅ Validé & Mergé |
+| **v0.1.6** | 18/09/2026 | **Source Exchange v4 (SX1 & SX2)** : échange de sources pair-à-pair complet. **Gestion des blocs compressés** : décompression zlib en continu (`OP_COMPRESSEDPART`). **Intégration MCP (`mule-mcp`)** : crate dédié avec 83 outils MCP pour assistants IA. | ✅ Validé & Mergé |
 | **v0.1.7** | 19/09/2026 | **Convergence Recherche Kad DHT** : métrique de distance numérique DWORDs (CUInt128), endianness IP wire corrigée, convergence itérative vers `SEARCHTOLERANCE` (0x01000000), résolution collision d'opcodes sur 0x3B, timeout UDP optimisé (3s). **Refactorisation Clean Architecture** : éclatement modulaire de `mule-daemon`, `mule-protocol`, `mule-core`, `mule-mcp`. | ✅ Validé & Mergé |
 | **v0.1.8** *(Actuel)* | 19/09/2026 | **Téléchargement Multi-Pairs & Swarm eMule** : agrégation des débits en direct (`sync_transfer_rates`), gestion conforme des files d'attente distantes (`Disconnected in queue` avec re-ask à 10–15m), protection du plafond de quota water-filling, dispatcher de téléversement (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`). **Cartographie** : inventaire exhaustif `INDEX.md`. | ✅ Compilé, testé et validé en conditions réelles |
 
@@ -279,7 +279,7 @@ Toutes les exigences issues de l'audit de sécurité des connexions réseau ont 
 
 ## 7. Inventaire des Outils & Intégration IA (MCP)
 
-Le projet dispose d'une suite complète de plus de 60 outils MCP intégrés (`crates/mule-mcp`), permettant à des agents autonomes d'administrer, surveiller et interagir avec l'application :
+Le projet dispose d'une suite complète de 83 outils MCP intégrés (`crates/mule-mcp`), permettant à des agents autonomes d'administrer, surveiller et interagir avec l'application :
 
 | Domaine MCP | Outils Principaux | Description |
 | :--- | :--- | :--- |
@@ -319,29 +319,64 @@ flutter test
 
 ## 9. Inventaire Exhaustif des Guides Techniques & Walkthroughs (`docs/`)
 
-Chaque phase et sous-système d'Emule-Sion dispose d'un guide technique d'exécution et de validation détaillé, accessible via l'index maître [`docs/WALKTHROUGHS_INDEX.md`](file:///d:/Projet/Emule-Sion/docs/WALKTHROUGHS_INDEX.md) :
+Chaque phase et sous-système d'Emule-Sion dispose d'un guide technique d'exécution et de validation détaillé, accessible via l'index maître [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/INDEX.md) :
 
 | Document | Phase Couverte | Contenu Clé |
 | :--- | :--- | :--- |
-| [`docs/WALKTHROUGHS_INDEX.md`](file:///d:/Projet/Emule-Sion/docs/WALKTHROUGHS_INDEX.md) | **Toutes (1 à 15)** | Index maître, orientation thématique et commandes de validation globales. |
-| [`docs/walkthrough.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough.md) | **Phase 1 à 3C** | Fondations Rust, démon Tokio, UI initiale, durcissement produit, verrous `fs4`, tokens CSPRNG, packaging. |
-| [`docs/walkthroughTier3.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughTier3.md) | **Tier 3.1 à 3.6** | Interopérabilité loopback eMule 0.50a officiel, handshake, bitfields, blocs 9.28 Mo, résidu 1 octet, crash recovery. |
-| [`docs/walkthrough_v0.1.2-lab.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_v0.1.2-lab.md) | **Phase 7.2** | Mode portable hybride, étanchéité `data/` vs `downloads/`, persistance de suppression SQLite, pipeline QA E2E. |
-| [`docs/walkthrough_Phase_8.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_8.md) | **Phase 8.1 à 8.5** | Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`, packaging multi-saveurs. |
-| [`docs/walkthrough_Phase_9.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_9.md) | **Phase 9.0 & 9.1** | Politique réseau défensive (7 couches, permis RAII, Kill Switch), IP Filter (`ipfilter.dat`), Token Bucket, pseudonymisation salée. |
-| [`docs/walkthrough_Phase_10.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_10.md) | **Phase 10.0 à 10.2** | Local `server.met` parsing, session TCP serveur eD2K réelle (Lugdunum), HighID/LowID, recherche et sources serveur. |
-| [`docs/walkthrough_Phase_11.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_11.md) | **Phase 11** | Swarm multi-sources, allocateur dynamique Water-Filling Max-Min, démarrage basse latence (30s/60s/300s), tags fixes eD2K. |
-| [`docs/walkthrough_Phase_12.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_12.md) | **Phase 12** | Fondations Kad DHT, KadId 128-bit, K-Buckets LRU, transport UDP, bootstrap local et écran Kad UI. |
-| [`docs/walkthrough_Phase_13.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_13.md) | **Phase 13** | Source Exchange v4 (SX1/SX2), blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif MCP (83 outils). |
-| [`docs/walkthrough_Phase_14.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_14.md) | **Phase 14** | Convergence recherche Kad DHT (CUInt128 DWORDs, opcode 0x3B, anti-stall decay) et refactorisation Clean Architecture. |
-| [`docs/walkthrough_Phase_15.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_15.md) | **Phase 15** | Téléchargement multi-pairs réel (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue`), logs stratégiques, `INDEX.md`. |
+| [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/INDEX.md) | **Toutes (1 à 15)** | Index maître, orientation thématique et commandes de validation globales. |
+| [`docs/walkthroughs/walkthrough_Phase_01_a_03c.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_01_a_03c.md) | **Phase 1 à 3C** | Fondations Rust, démon Tokio, UI initiale, durcissement produit, verrous `fs4`, tokens CSPRNG, packaging. |
+| [`docs/walkthroughs/walkthrough_Tier3_eMule050a.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Tier3_eMule050a.md) | **Tier 3.1 à 3.6** | Interopérabilité loopback eMule 0.50a officiel, handshake, bitfields, blocs 9.28 Mo, résidu 1 octet, crash recovery. |
+| [`docs/walkthroughs/walkthrough_Phase_07.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_07.md) | **Phase 7.2** | Mode portable hybride, étanchéité `data/` vs `downloads/`, persistance de suppression SQLite, pipeline QA E2E. |
+| [`docs/walkthroughs/walkthrough_Phase_08.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_08.md) | **Phase 8.1 à 8.5** | Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`, packaging multi-saveurs. |
+| [`docs/walkthroughs/walkthrough_Phase_09.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_09.md) | **Phase 9.0 & 9.1** | Politique réseau défensive (7 couches, permis RAII, Kill Switch), IP Filter (`ipfilter.dat`), Token Bucket, pseudonymisation salée. |
+| [`docs/walkthroughs/walkthrough_Phase_10.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_10.md) | **Phase 10.0 à 10.2** | Local `server.met` parsing, session TCP serveur eD2K réelle (Lugdunum), HighID/LowID, recherche et sources serveur. |
+| [`docs/walkthroughs/walkthrough_Phase_11.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_11.md) | **Phase 11** | Swarm multi-sources, allocateur dynamique Water-Filling Max-Min, démarrage basse latence (30s/60s/300s), tags fixes eD2K. |
+| [`docs/walkthroughs/walkthrough_Phase_12.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_12.md) | **Phase 12** | Fondations Kad DHT, KadId 128-bit, K-Buckets LRU, transport UDP, bootstrap local et écran Kad UI. |
+| [`docs/walkthroughs/walkthrough_Phase_13.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_13.md) | **Phase 13** | Source Exchange v4 (SX1/SX2), blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif MCP (83 outils). |
+| [`docs/walkthroughs/walkthrough_Phase_14.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_14.md) | **Phase 14** | Convergence recherche Kad DHT (CUInt128 DWORDs, opcode 0x3B, anti-stall decay) et refactorisation Clean Architecture. |
+| [`docs/walkthroughs/walkthrough_Phase_15.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_15.md) | **Phase 15** | Téléchargement multi-pairs réel (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue`), logs stratégiques, `INDEX.md`. |
 
 ---
 
-## 10. Conclusion
+## 10. Phase 16 — Fonctions Essentielles eMule 0.72a (Interopérabilité Réseau)
+
+Audit comparatif du daemon contre les sources officielles **eMule 0.72a** (`D:\eMule0.72a-Sources`), puis implémentation des fonctions bloquantes pour des transferts eD2K/Kad réels :
+
+### Implémenté et testé localement
+
+| Fonction | Détail |
+| :--- | :--- |
+| **Hashset par part** (`0x51`/`0x52`) | Vérification MD4 incrémentale à la complétion de chaque part de 9 728 000 octets ; éviction ciblée des parts corrompues (`CPartFile::IsCorruptedPart`) ; table SQLite `file_part_hashes` ; service `OP_HASHSETANSWER` en upload. |
+| **AICH réseau complet** (`0x12`/`0x13`/`0x14`/`0x15`) | Arbre de Merkle SHA-1 à double granularité (`mule-format/src/aich/recovery.rs`) ; consensus de confiance `CAICHUntrustedHash` (≥10 IP uniques masquées `0x00F0FFFF`, ≥92 %) ; récupération au niveau bloc 180 Ko ; service des deux opcodes en upload. |
+| **`OP_OFFERFILES`** (`0x15`) | Publication des partages au serveur après `OP_IDCHANGE`, sémantique `CreateOfferedFilePacket` (marqueurs compression, HighID/LowID, `FT_FILESIZE_HI` > 4 Gio, keep-alive vide, plafond 200). |
+| **Callback LowID** (`0x1C`/`0x35`/`0x36`) | Sources LowID `lowid:<id>` rappelées via relai serveur ; adoption des connexions entrantes correspondantes comme sessions de téléchargement ; garde : pas de callback si nous sommes LowID. |
+| **Écriture `.part.met`** | Format exact `CPartFile::SavePartFile` (`0xE0`/`0xE2`, tags nommés `\x09<i>`/`\x0A<i>`, `FT_AICH_HASH` base32) ; écriture atomique `.tmp`+rename ; sauvegarde à l'ajout, à chaque part et à la pause ; fix reader pour les gap-tags nommés. |
+| **Kad — nœud de stockage** | `kad_udp/storage.rs` : store borné (TTL 5 h, 5 000 clés, 50 entrées/clé, 20 000 entrées) ; `PublishSourceReq`/`PublishKeywordReq` validés et persistés, `SearchSourceReq`/`SearchKeywordReq` paginés ; republication périodique ~5 h (`KADEMLIAREPUBLISHTIMES`) ; **persistance SQLite** (`kad_sources_index`/`kad_keywords_index`, purge + réhydratation au démarrage). |
+| **Fin de transfert propre** (`0x56`/`0x57`) | `OP_CANCELTRANSFER` libère le slot upload immédiatement ; `OP_OUTOFPARTS` émis quand plus aucun bloc n'est à demander (`SendOutOfPartReqsAndPacket`) ; émis sur annulation. |
+| **Upload compressé** (`0x40`) | Service `OP_COMPRESSEDPART` zlib `Z_BEST_SPEED` (chunks ≤ 10 240 o) si `nDataCompVer` (MiscOptions1 bits 20-23) ; repli `SENDINGPART` ; exclusions `zip/rar/7z/cbz/cbr/ogm/ace`. |
+| **Multi-slots upload** | `UploadManager` : `HashMap` de sessions actives, jusqu'à `MAX_ACTIVE_UPLOADS` (10), promotion de la file pondérée par crédits ; `uploads.list` retourne tous les slots. |
+| **Socket client-UDP** (`0x90`–`0x93`) | Canal `PR_EMULE` multiplexé avec la socket Kad ; `OP_REASKFILEPING`/`REASKACK`/`FILENOTFOUND`/`QUEUEFULL` servis et émis ; keep-alive ~21 min vers sources `Queued` avec port UDP annoncé ; rang UDP validé contre reasks en attente et appliqué à la session. |
+| **Scheduler global de bande passante** | `download_bucket` appliqué dans les boucles de transfert (brut + compressé, sessions sortantes et callback) ; upload : bucket global par quanta ≤10 240 o (fairness `UploadBandwidthThrottler`) ; limites via API `network`. |
+| **Serveur — `OP_SERVERLIST`, UDP et failover** (`0x32`/`0x94`/`0x9B`) | `OP_SERVERLIST` décodé et fusionné dans `ed2k_servers` ; `ServerUdpService` sur socket UDP dédiée — `OP_GLOBGETSOURCES2` vers le serveur connecté (UDP = TCP+4), `OP_GLOBFOUNDSOURCES`/`GLOBSERVSTATRES` décodés et sources persistées ; failover automatique dans le `SwarmCoordinator` (autre serveur `allowed`, backoff 60 s global + 5 min/adresse) ; **republication `OP_OFFERFILES` toutes les 30 min** + keep-alive vide (`KeepConnectionAlive`). |
+| **USS (Upload Speed Sense)** | `uss.rs` : loi `hping` de `LastCommonRouteFinder` (tolérance %×4 / 200 ms, médiane glissante, dividers rampés, cadence 125 ms–1 s) appliquée à `upload_bucket` ; sonde RTT TCP connect vers le serveur connecté ou hôte configuré (pas de raw ICMP) ; `accept_new_client` gate la file upload ; config persistée + RPC `limits`. |
+| **Identité upload par userhash** | File et slots upload clés par `uh:<userhash>` (annonce `OP_HELLO`) avec repli `ip:port` — rang conservé après reconnexion sous une autre IP, identités distinctes derrière NAT ; `release_slot` accepte clé ou adresse (compat RPC), réponses `OP_REASKACK` par IP inchangées ; crédits indexés par pubkey SUI. |
+| **SUI durci** | Migration `cryptkey.dat` legacy, ordre de challenge différé inbound/outbound, rôle de signataire inbound, métriques SUI. |
+| **Test de joignabilité UDP Kad** (`0x62`/`0xA7`) | Sémantique `CUDPFirewallTester` : `OP_FWCHECKUDPREQ` (PR_EMULE) envoyé à ≤2 contacts vérifiés Kad≥6 via connexion TCP dédiée (hello `KadVersion=6`), corrélation des datagrammes `KADEMLIA2_FIREWALLUDP` par IP candidate, états `unverified/testing/open/firewalled` + détection du port externe NAT (`use_extern`), budget ~6 min ; datagrammes non sollicités ignorés ; **déchiffrement des réponses** : les pairs eMule chiffrent `FIREWALLUDP` (`EncryptSendClient` : RC4/MD5(receiverKey‖rand), magic `0x395F2EC1`) — validé sur WAN réel — la boucle UDP déchiffre via la clé `GetUDPVerifyKey` conservée par le tracker avant de rejeter un premier octet inconnu ; côté serveur : réponse aux `OP_FWCHECKUDPREQ` entrants (sondes vers port interne puis externe) ; état exposé dans `kad.status`. |
+
+### Restant (roadmap par priorité)
+
+1. **Kad restant** : notes (`SEARCH_NOTES` — nécessite un index de notes `CEntry` + tags), callback buddy (`KADEMLIA_CALLBACK_REQ`, `OP_REASKCALLBACKUDP`).
+2. **Recherche UDP** : `OP_GLOBSEARCHREQ3` (forme étendue avec tag `CT_SERVER_UDPSEARCH_FLAGS`) non émis — REQ2 seulement.
+
+Limites connues du callback LowID livré : pas de connexion sortante en réponse à `OP_CALLBACKREQUESTED`, pas de callback Kad via buddy. Limites connues du test UDP livré : le drapeau « résultat biaisé » (demandeur déjà connu) côté serveur n'est pas calculé (toujours 0), la clé de vérification UDP est acceptée mais non utilisée (pas de chiffrement Kad UDP), et l'état du pare-feu n'influence pas encore les décisions de publication ni le callback direct (MiscOptions2 `DirectUDPCallback` reste à 0).
+
+---
+
+## 11. Conclusion
 
 Le projet **Emule-Sion** a franchi avec succès les jalons de conception les plus exigeants :
 * L'architecture a atteint le stade **v0.1.8** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
 * Les fonctionnalités de transfert multi-sources, de décompression continue zlib, de Source Exchange v1/v2, et de convergence Kad DHT avec calcul métrique 128 bits eMule sont pleinement opérationnelles.
+* La Phase 16 a ajouté l'interopérabilité réseau essentielle : vérification par hashset, AICH réseau, publication serveur (`OP_OFFERFILES`), callback LowID, écriture `.part.met`, nœud de stockage Kad, upload compressé et multi-slots.
 * L'intégration d'un serveur **MCP natif** confère au projet une dimension d'observabilité et d'automatisation par intelligence artificielle unique dans le paysage des clients P2P.
 * Les garanties de sécurité défensive (anti-SSRF, isolation loopback par défaut, validation d'IP WAN, kill switch atomique) assurent une robustesse de niveau industriel.

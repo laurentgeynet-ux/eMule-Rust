@@ -23,13 +23,16 @@ pub struct IpRateLimiter {
 
 impl IpRateLimiter {
     pub fn new() -> Self {
-        Self { counts: HashMap::new() }
+        Self {
+            counts: HashMap::new(),
+        }
     }
 
     pub fn check_and_record(&mut self, ip: IpAddr) -> bool {
         let now = Instant::now();
         if self.counts.len() > 1000 {
-            self.counts.retain(|_, (_, ts)| now.duration_since(*ts) < Duration::from_secs(10));
+            self.counts
+                .retain(|_, (_, ts)| now.duration_since(*ts) < Duration::from_secs(10));
         }
 
         let entry = self.counts.entry(ip).or_insert((0, now));
@@ -79,3 +82,190 @@ pub struct KadUdpSnapshot {
 }
 
 pub type InFlightMap = Arc<Mutex<HashMap<u32, InFlightTransaction>>>;
+
+/// UDP firewall/reachability state for the local Kad port
+/// (mirrors eMule `CUDPFirewallTester`: `m_bFirewalledUDP` + verified flag).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UdpFirewallStatus {
+    /// No conclusive test has run yet (eMule `!m_bIsFWVerifiedUDP`).
+    #[default]
+    Unverified,
+    /// A check is in progress.
+    Testing,
+    /// At least one `KADEMLIA2_FIREWALLUDP` packet was received → port open.
+    Open,
+    /// All candidates answered/failed without a positive packet → firewalled.
+    Firewalled,
+}
+
+impl UdpFirewallStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unverified => "unverified",
+            Self::Testing => "testing",
+            Self::Open => "open",
+            Self::Firewalled => "firewalled",
+        }
+    }
+}
+
+/// Result delivered to a pending firewall test when a
+/// `KADEMLIA2_FIREWALLUDP` datagram arrives from a candidate IP.
+#[derive(Debug, Clone, Copy)]
+pub struct FirewallUdpResult {
+    pub error_code: u8,
+    /// UDP port the remote peer probed (its view of our intern/extern port).
+    pub port_tested: u16,
+}
+
+/// Tracks pending outbound UDP firewall checks and the last known state.
+/// Pending candidates are keyed by IPv4 so unsolicited or stray
+/// `KADEMLIA2_FIREWALLUDP` datagrams are ignored (eMule `bRequested` check).
+#[derive(Debug, Default)]
+pub struct FirewallTestTracker {
+    pub status: UdpFirewallStatus,
+    /// True once a check produced a conclusive result (open or firewalled).
+    pub verified: bool,
+    /// Extern Kad UDP port learned from a probe that reached a port different
+    /// from the bound one (NAT-mapped). `use_extern` mirrors eMule's
+    /// `GetUseExternKadPort` preference.
+    pub extern_port: Option<u16>,
+    pub use_extern: bool,
+    /// Last completed check time (for cooldowns / re-verification).
+    pub last_check: Option<Instant>,
+    /// Pending tests per candidate IP: `(verify_key, result_sender)`. The
+    /// verify key is the `sender_key` we sent in `OP_FWCHECKUDPREQ` — remote
+    /// peers encrypt their `FIREWALLUDP` reply with it.
+    pending: HashMap<IpAddr, Vec<(u32, oneshot::Sender<FirewallUdpResult>)>>,
+}
+
+impl FirewallTestTracker {
+    /// Registers a pending test for `candidate_ip`. Returns a receiver that
+    /// resolves on the first matching `KADEMLIA2_FIREWALLUDP` datagram.
+    pub fn register_candidate(
+        &mut self,
+        candidate_ip: IpAddr,
+        verify_key: u32,
+    ) -> oneshot::Receiver<FirewallUdpResult> {
+        let (tx, rx) = oneshot::channel();
+        self.pending
+            .entry(candidate_ip)
+            .or_default()
+            .push((verify_key, tx));
+        rx
+    }
+
+    /// Removes all pending tests for an IP (timeout/cancel path).
+    pub fn unregister_candidate(&mut self, candidate_ip: &IpAddr) {
+        self.pending.remove(candidate_ip);
+    }
+
+    /// UDP verify keys of pending tests for `ip` — used to try decrypting
+    /// obfuscated Kad datagrams from that peer.
+    pub fn pending_verify_keys(&self, ip: &IpAddr) -> Vec<u32> {
+        self.pending
+            .get(ip)
+            .map(|v| v.iter().map(|(k, _)| *k).collect())
+            .unwrap_or_default()
+    }
+
+    /// Routes an incoming FIREWALLUDP datagram to the matching pending test.
+    /// Returns false when the source IP was never asked (unsolicited packet).
+    pub fn notify_packet(&mut self, from_ip: IpAddr, result: FirewallUdpResult) -> bool {
+        match self.pending.get_mut(&from_ip) {
+            Some(v) if !v.is_empty() => {
+                // One successful datagram resolves the test; extra datagrams
+                // (intern+extern pair) are delivered to any remaining waiters.
+                let (_, tx) = v.remove(0);
+                if v.is_empty() {
+                    self.pending.remove(&from_ip);
+                }
+                tx.send(result).is_ok()
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether any firewall check is currently waiting on datagrams.
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
+    /// Effective UDP port other peers should use to reach us on Kad.
+    pub fn effective_port(&self, intern_port: u16) -> u16 {
+        if self.use_extern {
+            self.extern_port.unwrap_or(intern_port)
+        } else {
+            intern_port
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn pending_candidate_receives_result() {
+        let mut t = FirewallTestTracker::default();
+        let ip = IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4));
+        let mut rx = t.register_candidate(ip, 0xABCD);
+        assert!(t.has_pending());
+        assert_eq!(t.pending_verify_keys(&ip), vec![0xABCD]);
+        assert!(t.notify_packet(
+            ip,
+            FirewallUdpResult {
+                error_code: 0,
+                port_tested: 4672
+            }
+        ));
+        let res = rx.try_recv().expect("result delivered");
+        assert_eq!(res.error_code, 0);
+        assert_eq!(res.port_tested, 4672);
+        assert!(!t.has_pending());
+    }
+
+    #[test]
+    fn unsolicited_packet_is_ignored() {
+        let mut t = FirewallTestTracker::default();
+        let stranger = IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9));
+        assert!(!t.notify_packet(
+            stranger,
+            FirewallUdpResult {
+                error_code: 0,
+                port_tested: 4672
+            }
+        ));
+    }
+
+    #[test]
+    fn packet_from_wrong_ip_does_not_resolve() {
+        let mut t = FirewallTestTracker::default();
+        let asked = IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4));
+        let other = IpAddr::V4(Ipv4Addr::new(5, 6, 7, 8));
+        let mut rx = t.register_candidate(asked, 1);
+        assert!(!t.notify_packet(
+            other,
+            FirewallUdpResult {
+                error_code: 0,
+                port_tested: 4672
+            }
+        ));
+        assert!(rx.try_recv().is_err());
+        assert!(t.has_pending());
+        t.unregister_candidate(&asked);
+        assert!(!t.has_pending());
+    }
+
+    #[test]
+    fn effective_port_prefers_intern_unless_extern_verified() {
+        let mut t = FirewallTestTracker::default();
+        assert_eq!(t.effective_port(4672), 4672);
+        t.extern_port = Some(13370);
+        assert_eq!(t.effective_port(4672), 4672);
+        t.use_extern = true;
+        assert_eq!(t.effective_port(4672), 13370);
+    }
+}

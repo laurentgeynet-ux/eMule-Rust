@@ -111,13 +111,21 @@ mod tests {
         let user_hash_b = [0x55u8; 16];
         let random_key_part_a = 0x12345678u32;
 
-        let (a_send_key, a_recv_key) = derive_initiator_peer_raw_keys(&user_hash_b, random_key_part_a);
-        let (b_send_key, b_recv_key) = derive_responder_peer_raw_keys(&user_hash_b, random_key_part_a);
+        let (a_send_key, a_recv_key) =
+            derive_initiator_peer_raw_keys(&user_hash_b, random_key_part_a);
+        let (b_send_key, b_recv_key) =
+            derive_responder_peer_raw_keys(&user_hash_b, random_key_part_a);
 
         // Client A's SendKey must match Client B's RecvKey!
-        assert_eq!(a_send_key, b_recv_key, "Client A SendKey must equal Client B RecvKey");
+        assert_eq!(
+            a_send_key, b_recv_key,
+            "Client A SendKey must equal Client B RecvKey"
+        );
         // Client B's SendKey must match Client A's RecvKey!
-        assert_eq!(b_send_key, a_recv_key, "Client B SendKey must equal Client A RecvKey");
+        assert_eq!(
+            b_send_key, a_recv_key,
+            "Client B SendKey must equal Client A RecvKey"
+        );
         // Send and Receive keys must differ
         assert_ne!(a_send_key, a_recv_key);
     }

@@ -8,8 +8,7 @@ pub async fn handle_history_list(
     params: Option<Value>,
 ) -> Result<Value, JsonRpcError> {
     let filter = if let Some(p) = params {
-        serde_json::from_value::<mule_core::HistoryFilter>(p)
-            .unwrap_or_default()
+        serde_json::from_value::<mule_core::HistoryFilter>(p).unwrap_or_default()
     } else {
         mule_core::HistoryFilter::default()
     };
@@ -36,12 +35,10 @@ pub async fn handle_history_export(
     params: Option<Value>,
 ) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
-    let format = params["format"]
-        .as_str()
-        .unwrap_or("json");
+    let format = params["format"].as_str().unwrap_or("json");
 
-    let filter = serde_json::from_value::<mule_core::HistoryFilter>(params.clone())
-        .unwrap_or_default();
+    let filter =
+        serde_json::from_value::<mule_core::HistoryFilter>(params.clone()).unwrap_or_default();
 
     let dls = state.downloads.lock().await;
     let content = dls.export_history(format, &filter)?;

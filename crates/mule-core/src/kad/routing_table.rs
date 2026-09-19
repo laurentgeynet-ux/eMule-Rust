@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
 use super::contact::KadContact;
 use super::kad_id::KadId;
+use std::collections::VecDeque;
 
 /// Bucket capacity (standard Kademlia K = 20).
 pub const K_BUCKET_SIZE: usize = 20;
@@ -40,7 +40,11 @@ impl KBucket {
     }
 
     pub fn insert_or_update(&mut self, contact: KadContact) -> Option<KadContact> {
-        if let Some(pos) = self.contacts.iter().position(|c| c.kad_id == contact.kad_id) {
+        if let Some(pos) = self
+            .contacts
+            .iter()
+            .position(|c| c.kad_id == contact.kad_id)
+        {
             // Already present: move to tail (most recently seen) and update
             let mut existing = self.contacts.remove(pos).unwrap();
             existing.ip = contact.ip;
@@ -56,9 +60,11 @@ impl KBucket {
         } else if self.contacts.len() < K_BUCKET_SIZE {
             // Anti-Sybil protection: limit maximum number of contacts from the same /24 subnet in one bucket
             if !contact.ip.is_loopback() {
-                let subnet_count = self.contacts.iter().filter(|c| {
-                    c.ip.octets()[..3] == contact.ip.octets()[..3]
-                }).count();
+                let subnet_count = self
+                    .contacts
+                    .iter()
+                    .filter(|c| c.ip.octets()[..3] == contact.ip.octets()[..3])
+                    .count();
                 if subnet_count >= MAX_CONTACTS_PER_SUBNET_24 {
                     // Do not admit more from the same /24 subnet into the active bucket
                     return None;
@@ -69,7 +75,11 @@ impl KBucket {
             None
         } else {
             // Full: add to replacement cache if not already present
-            if let Some(pos) = self.replacements.iter().position(|c| c.kad_id == contact.kad_id) {
+            if let Some(pos) = self
+                .replacements
+                .iter()
+                .position(|c| c.kad_id == contact.kad_id)
+            {
                 self.replacements.remove(pos);
             } else if self.replacements.len() >= REPLACEMENT_CACHE_SIZE {
                 self.replacements.pop_front();
@@ -190,15 +200,13 @@ impl KBucketTable {
             }
         }
 
-        all_contacts.sort_by(|a, b| {
-            match (a.verified, b.verified) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => {
-                    let dist_a = a.kad_id.xor_distance(target);
-                    let dist_b = b.kad_id.xor_distance(target);
-                    dist_a.cmp(&dist_b)
-                }
+        all_contacts.sort_by(|a, b| match (a.verified, b.verified) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => {
+                let dist_a = a.kad_id.xor_distance(target);
+                let dist_b = b.kad_id.xor_distance(target);
+                dist_a.cmp(&dist_b)
             }
         });
 

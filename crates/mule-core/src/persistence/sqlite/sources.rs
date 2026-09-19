@@ -140,7 +140,11 @@ pub fn reset_peer_source_cooldown(
     Ok(rows > 0)
 }
 
-pub fn delete_peer_source(conn: &mut Connection, file_hash: &str, address: &str) -> Result<bool, CoreError> {
+pub fn delete_peer_source(
+    conn: &mut Connection,
+    file_hash: &str,
+    address: &str,
+) -> Result<bool, CoreError> {
     let rows = conn.execute(
         "DELETE FROM peer_sources WHERE file_hash = ?1 AND address = ?2",
         params![file_hash, address],

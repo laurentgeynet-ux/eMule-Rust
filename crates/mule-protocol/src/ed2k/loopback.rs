@@ -156,7 +156,8 @@ impl Ed2kLoopbackClient {
             .map_err(|_| Ed2kSessionError::Timeout(Duration::from_millis(500)))?
             .map_err(|e| Ed2kSessionError::Io(format!("TCP connect to loopback failed: {e}")))?;
 
-        let mut session = Ed2kSession::new_initiator(local_user_hash, local_client_id, local_tcp_port);
+        let mut session =
+            Ed2kSession::new_initiator(local_user_hash, local_client_id, local_tcp_port);
         let hello = session.create_hello(tags, server_ip, server_port)?;
 
         let encoder = Ed2kEncoder::new();
@@ -241,7 +242,9 @@ impl Ed2kLoopbackClient {
 
             if n == 0 {
                 self.session.on_remote_closed();
-                return Err(Ed2kSessionError::Io("Connection closed by peer before HelloAnswer".to_string()));
+                return Err(Ed2kSessionError::Io(
+                    "Connection closed by peer before HelloAnswer".to_string(),
+                ));
             }
 
             self.read_buf.extend_from_slice(&tmp[..n]);
@@ -272,9 +275,11 @@ impl Ed2kLoopbackClient {
             {
                 return Ok(packet);
             }
-            let n = self.stream.read(&mut tmp).await.map_err(|e| {
-                Ed2kSessionError::Io(format!("Read failed: {e}"))
-            })?;
+            let n = self
+                .stream
+                .read(&mut tmp)
+                .await
+                .map_err(|e| Ed2kSessionError::Io(format!("Read failed: {e}")))?;
             if n == 0 {
                 return Err(Ed2kSessionError::Io("EOF reached".to_string()));
             }
@@ -413,10 +418,9 @@ impl Ed2kLoopbackClient {
             .codec
             .encode_to_bytes(&packet)
             .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-        self.stream
-            .write_all(&wire_bytes)
-            .await
-            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send start upload request: {e}")))?;
+        self.stream.write_all(&wire_bytes).await.map_err(|e| {
+            Ed2kSessionError::Io(format!("Failed to send start upload request: {e}"))
+        })?;
         Ok(())
     }
 
@@ -449,7 +453,9 @@ impl Ed2kLoopbackClient {
             };
 
             if n == 0 {
-                return Err(Ed2kSessionError::Io("Connection closed by peer".to_string()));
+                return Err(Ed2kSessionError::Io(
+                    "Connection closed by peer".to_string(),
+                ));
             }
 
             self.read_buf.extend_from_slice(&tmp[..n]);
@@ -646,9 +652,9 @@ pub struct Ed2kTestPeer {
 impl Ed2kTestPeer {
     /// Binds a new test peer on a free ephemeral port on 127.0.0.1.
     pub async fn bind(mode: TestPeerMode) -> Result<Self, Ed2kSessionError> {
-        let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| {
-            Ed2kSessionError::Io(format!("Failed to bind loopback test peer: {e}"))
-        })?;
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Failed to bind loopback test peer: {e}")))?;
         let local_addr = listener.local_addr().map_err(|e| {
             Ed2kSessionError::Io(format!("Failed to retrieve test peer local address: {e}"))
         })?;
@@ -752,7 +758,9 @@ impl Ed2kTestPeer {
                             Err(_) => break,
                         };
 
-                        if packet.opcode == OP_FILESTATUSREQ || packet.opcode == OP_SETREQFILEID_EMULE {
+                        if packet.opcode == OP_FILESTATUSREQ
+                            || packet.opcode == OP_SETREQFILEID_EMULE
+                        {
                             let req = match decode_test_file_status_req(
                                 &decoder,
                                 packet.protocol,
@@ -781,7 +789,9 @@ impl Ed2kTestPeer {
                                     break;
                                 }
                             }
-                        } else if packet.opcode == OP_REQUESTPARTS || packet.opcode == OP_REQUESTPARTS_EMULE {
+                        } else if packet.opcode == OP_REQUESTPARTS
+                            || packet.opcode == OP_REQUESTPARTS_EMULE
+                        {
                             let req = match decode_test_request_parts(
                                 &decoder,
                                 packet.protocol,
@@ -1027,7 +1037,9 @@ impl Ed2kTestPeer {
                             Err(e) => return Err(e),
                         };
 
-                        if packet.opcode == OP_FILESTATUSREQ || packet.opcode == OP_SETREQFILEID_EMULE {
+                        if packet.opcode == OP_FILESTATUSREQ
+                            || packet.opcode == OP_SETREQFILEID_EMULE
+                        {
                             let req = decode_test_file_status_req(
                                 &decoder,
                                 packet.protocol,
@@ -1052,7 +1064,9 @@ impl Ed2kTestPeer {
                             stream.write_all(&resp_bytes).await.map_err(|e| {
                                 Ed2kSessionError::Io(format!("Failed to write file status: {e}"))
                             })?;
-                        } else if packet.opcode == OP_REQUESTPARTS || packet.opcode == OP_REQUESTPARTS_EMULE {
+                        } else if packet.opcode == OP_REQUESTPARTS
+                            || packet.opcode == OP_REQUESTPARTS_EMULE
+                        {
                             let req = decode_test_request_parts(
                                 &decoder,
                                 packet.protocol,
@@ -1091,7 +1105,9 @@ impl Ed2kTestPeer {
                                     .encode_to_bytes(&Ed2kMessage::SendingPart(sending_part))
                                     .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
                                 stream.write_all(&resp_bytes).await.map_err(|e| {
-                                    Ed2kSessionError::Io(format!("Failed to write sending part: {e}"))
+                                    Ed2kSessionError::Io(format!(
+                                        "Failed to write sending part: {e}"
+                                    ))
                                 })?;
                             }
                         }
@@ -1362,7 +1378,9 @@ impl Ed2kTestPeer {
                         .encode_to_bytes(&Ed2kMessage::FileStatus(status))
                         .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
                     stream.write_all(&bytes).await.map_err(|e| {
-                        Ed2kSessionError::Io(format!("Failed to write unsolicited file status: {e}"))
+                        Ed2kSessionError::Io(format!(
+                            "Failed to write unsolicited file status: {e}"
+                        ))
                     })?;
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     Ok(())
@@ -1751,9 +1769,10 @@ pub async fn do_peer_handshake(
         .encode_to_bytes(&Ed2kMessage::HelloAnswer(answer))
         .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
 
-    stream.write_all(&bytes).await.map_err(|e| {
-        Ed2kSessionError::Io(format!("Failed to write hello answer: {e}"))
-    })?;
+    stream
+        .write_all(&bytes)
+        .await
+        .map_err(|e| Ed2kSessionError::Io(format!("Failed to write hello answer: {e}")))?;
     handshake_success.store(true, Ordering::SeqCst);
     Ok(())
 }
@@ -1772,11 +1791,14 @@ pub async fn read_packet(
         {
             return Ok(packet);
         }
-        let n = stream.read(&mut tmp).await.map_err(|e| {
-            Ed2kSessionError::Io(format!("Read failed waiting for packet: {e}"))
-        })?;
+        let n = stream
+            .read(&mut tmp)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Read failed waiting for packet: {e}")))?;
         if n == 0 {
-            return Err(Ed2kSessionError::Io("EOF reached before packet completion".to_string()));
+            return Err(Ed2kSessionError::Io(
+                "EOF reached before packet completion".to_string(),
+            ));
         }
         buf.extend_from_slice(&tmp[..n]);
     }

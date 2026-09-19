@@ -1,5 +1,5 @@
-use rusqlite::Connection;
 use crate::error::CoreError;
+use rusqlite::Connection;
 
 pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     conn.execute_batch(
@@ -29,6 +29,13 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
             part_index INTEGER NOT NULL,
             verified_at INTEGER NOT NULL,
             PRIMARY KEY(download_id, part_index)
+        );
+
+        CREATE TABLE IF NOT EXISTS file_part_hashes (
+            file_hash TEXT NOT NULL,
+            part_index INTEGER NOT NULL,
+            hash BLOB NOT NULL,
+            PRIMARY KEY(file_hash, part_index)
         );
 
         CREATE TABLE IF NOT EXISTS settings (
@@ -219,6 +226,20 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     }
     if !has_crypt_options {
         conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN crypt_options INTEGER DEFAULT 0;")?;
+    }
+
+    let mut stmt_sf = conn.prepare("PRAGMA table_info(shared_files)")?;
+    let mut rows_sf = stmt_sf.query([])?;
+    let mut has_aich_root = false;
+    while let Some(row) = rows_sf.next()? {
+        let col_name: String = row.get(1)?;
+        if col_name == "aich_root" {
+            has_aich_root = true;
+            break;
+        }
+    }
+    if !has_aich_root {
+        conn.execute_batch("ALTER TABLE shared_files ADD COLUMN aich_root BLOB;")?;
     }
 
     Ok(())

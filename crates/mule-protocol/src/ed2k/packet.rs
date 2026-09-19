@@ -89,7 +89,8 @@ impl Ed2kEmuleInfo {
             super::tags::TagName::Id(super::tags::TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE)
             | super::tags::TagName::Id(0x04) => true,
             super::tags::TagName::Text(s) => {
-                s.eq_ignore_ascii_case("sourceexchange") || s.eq_ignore_ascii_case("source_exchange")
+                s.eq_ignore_ascii_case("sourceexchange")
+                    || s.eq_ignore_ascii_case("source_exchange")
             }
             _ => false,
         })
@@ -111,7 +112,10 @@ pub struct PartAvailabilityMask {
 
 impl PartAvailabilityMask {
     /// Creates a mask from raw bytes, verifying exact length and zero trailing unused bits.
-    pub fn from_bytes(raw: bytes::Bytes, part_count: u16) -> Result<Self, super::error::Ed2kErrorKind> {
+    pub fn from_bytes(
+        raw: bytes::Bytes,
+        part_count: u16,
+    ) -> Result<Self, super::error::Ed2kErrorKind> {
         let expected = expected_mask_bytes(part_count);
         if raw.len() != expected {
             return Err(super::error::Ed2kErrorKind::MalformedField {
@@ -332,7 +336,9 @@ impl Ed2kBlockRange {
     }
 
     /// Converts a half-open `[start, end)` range to a legacy inclusive wire representation `(start, end_inclusive)`.
-    pub fn to_legacy_inclusive_wire_bounds(&self) -> Result<(u32, u32), super::error::Ed2kErrorKind> {
+    pub fn to_legacy_inclusive_wire_bounds(
+        &self,
+    ) -> Result<(u32, u32), super::error::Ed2kErrorKind> {
         if self.is_empty() {
             return Err(super::error::Ed2kErrorKind::InvalidBlockOffsets {
                 start: self.start as u64,
@@ -388,7 +394,12 @@ pub struct Ed2kSendingPart {
 
 impl Ed2kSendingPart {
     /// Creates a new `Ed2kSendingPart`.
-    pub fn new(file_hash: [u8; 16], start_offset: u32, end_offset: u32, data: bytes::Bytes) -> Self {
+    pub fn new(
+        file_hash: [u8; 16],
+        start_offset: u32,
+        end_offset: u32,
+        data: bytes::Bytes,
+    ) -> Self {
         Self {
             file_hash,
             start_offset,
@@ -417,6 +428,81 @@ pub struct Ed2kFileReqAnsNoFile {
     pub file_hash: [u8; 16],
 }
 
+/// Request for the full per-part MD4 hashset of a file (`0x51`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kHashSetReq {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+}
+
+/// Per-part MD4 hashset answer (`0x52`): `file_hash` + `u16 count` + `count * 16` bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kHashSetAnswer {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// MD4 hash of each 9,728,000-byte part, in part order.
+    pub part_hashes: Vec<[u8; 16]>,
+}
+
+/// Request for the AICH master (root) hash of a file — `OP_AICHFILEHASHREQ`
+/// (eMule protocol `0x14`): bare 16-byte file hash payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kAichFileHashReq {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+}
+
+/// AICH master hash answer — `OP_AICHFILEHASHANS` (eMule protocol `0x15`):
+/// `file_hash` + 20-byte SHA-1 AICH root hash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kAichFileHashRes {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// 20-byte SHA-1 AICH master (root) hash.
+    pub aich_hash: [u8; 20],
+}
+
+/// Request for AICH part recovery data — `OP_AICHREQUEST` (eMule protocol
+/// `0x12`): `file_hash` + `u16 part` + 20-byte master hash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kAichRequest {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// Requested part index (9,728,000-byte parts).
+    pub part: u16,
+    /// 20-byte SHA-1 AICH master hash the requester trusts.
+    pub master_hash: [u8; 20],
+}
+
+/// AICH recovery data — `OP_AICHANSWER` (eMule protocol `0x13`).
+///
+/// The wire payload is `file_hash` + `u16 part` + `master_hash` + recovery data.
+/// A failed answer carries only the bare 16-byte `file_hash`
+/// (`recovery == None`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kAichAnswer {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// Recovery data, absent when the peer could not serve it.
+    pub recovery: Option<Ed2kAichRecovery>,
+}
+
+/// Recovery hash entries of an `OP_AICHANSWER`, split by identifier width as
+/// on the wire: `u16 count` + `count * (u16 ident + hash[20])` for 16-bit
+/// identifiers, then `u16 count` + `count * (u32 ident + hash[20])` for 32-bit
+/// identifiers (large files). eMule populates only one of the two lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kAichRecovery {
+    /// Part index this recovery data covers.
+    pub part: u16,
+    /// 20-byte SHA-1 AICH master hash echoed from the request.
+    pub master_hash: [u8; 20],
+    /// `(ident, hash)` entries with 16-bit identifiers.
+    pub entries16: Vec<(u16, [u8; 20])>,
+    /// `(ident, hash)` entries with 32-bit identifiers.
+    pub entries32: Vec<(u32, [u8; 20])>,
+}
+
 /// Public Key message for Secure User Identification (`0x85`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ed2kPublicKey {
@@ -424,14 +510,14 @@ pub struct Ed2kPublicKey {
     pub key_bytes: bytes::Bytes,
 }
 
-/// Cryptographic Signature message for Secure User Identification (`0x87`).
+/// Cryptographic Signature message for Secure User Identification (`0x86`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ed2kSignature {
     /// Signature byte vector.
     pub signature_bytes: bytes::Bytes,
 }
 
-/// Secure Identification State message (`0x86`).
+/// Secure Identification State message (`0x87`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ed2kSecIdentState {
     /// State flag (0 = not supported, 1 = supported/requested, 2 = authenticated).
@@ -459,6 +545,18 @@ pub enum Ed2kMessage {
     RequestParts(Ed2kRequestParts),
     /// Delivery of block data.
     SendingPart(Ed2kSendingPart),
+    /// Request for the per-part hashset.
+    HashSetReq(Ed2kHashSetReq),
+    /// Per-part hashset answer.
+    HashSetAnswer(Ed2kHashSetAnswer),
+    /// AICH master hash request (eMule `0x14`).
+    AichFileHashReq(Ed2kAichFileHashReq),
+    /// AICH master hash answer (eMule `0x15`).
+    AichFileHashRes(Ed2kAichFileHashRes),
+    /// AICH part recovery data request (eMule `0x12`).
+    AichRequest(Ed2kAichRequest),
+    /// AICH part recovery data answer (eMule `0x13`).
+    AichAnswer(Ed2kAichAnswer),
     /// Secure User Identification Public Key.
     PublicKey(Ed2kPublicKey),
     /// Secure User Identification Signature.

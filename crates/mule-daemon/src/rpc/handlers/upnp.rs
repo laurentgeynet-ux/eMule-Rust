@@ -26,7 +26,9 @@ pub async fn handle_upnp_map_ports(
         .unwrap_or(snap.udp_port);
 
     if tcp_port < 1024 || udp_port < 1024 {
-        return Err(JsonRpcError::invalid_params("Privileged ports (< 1024) are not allowed for UPnP mapping"));
+        return Err(JsonRpcError::invalid_params(
+            "Privileged ports (< 1024) are not allowed for UPnP mapping",
+        ));
     }
 
     let _ = state.upnp.map_ports(tcp_port, udp_port).await;

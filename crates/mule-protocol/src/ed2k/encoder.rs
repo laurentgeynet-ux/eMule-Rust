@@ -5,8 +5,9 @@ use bytes::Bytes;
 use super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::limits::Ed2kLimits;
 use super::packet::{
-    Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
-    Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
+    Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
+    Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq,
+    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
     Ed2kSendingPart, Ed2kSignature,
 };
 use super::profile::Ed2kCompatibilityProfile;
@@ -14,6 +15,8 @@ use super::tags::{Ed2kTag, RawTag, TagName};
 use crate::framing::RawPacket;
 use crate::limits::HEADER_SIZE;
 
+/// AICH message encoders (AichFileHashReq/Res, AichRequest/Answer).
+pub mod aich;
 /// Handshake message encoders (Hello, HelloAnswer, EmuleInfo).
 pub mod handshake;
 /// Security message encoders (PublicKey, Signature, SecIdentState).
@@ -23,13 +26,16 @@ pub mod tags;
 /// Transfer message encoders (FileStatus, RequestParts, SendingPart, FileReqAnsNoFile).
 pub mod transfers;
 
+pub use aich::{
+    encode_aich_answer, encode_aich_file_hash_req, encode_aich_file_hash_res, encode_aich_request,
+};
 pub use handshake::{encode_emule_info, encode_hello, encode_hello_answer};
 pub use security::{encode_public_key, encode_secident_state, encode_signature};
 pub use tags::{encode_raw_tag, encode_tag, encode_tag_name};
 pub use transfers::{
     encode_file_req_ans_no_file, encode_file_status, encode_file_status_req,
-    encode_file_status_req_with_opcode, encode_request_parts, encode_request_parts_with_opcode,
-    encode_sending_part,
+    encode_file_status_req_with_opcode, encode_hashset_answer, encode_hashset_request,
+    encode_request_parts, encode_request_parts_with_opcode, encode_sending_part,
 };
 
 /// Deterministic wire encoder for historical eD2K protocol messages.
@@ -169,6 +175,48 @@ impl Ed2kEncoder {
         encode_sending_part(&self.limits, part)
     }
 
+    /// Encodes an `Ed2kHashSetReq` message (`0x51`).
+    pub fn encode_hashset_request(
+        &self,
+        req: &Ed2kHashSetReq,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_hashset_request(&self.limits, req)
+    }
+
+    /// Encodes an `Ed2kHashSetAnswer` message (`0x52`).
+    pub fn encode_hashset_answer(
+        &self,
+        ans: &Ed2kHashSetAnswer,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_hashset_answer(&self.limits, ans)
+    }
+
+    /// Encodes an `OP_AICHFILEHASHREQ` (eMule `0x14`) message.
+    pub fn encode_aich_file_hash_req(
+        &self,
+        req: &Ed2kAichFileHashReq,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_aich_file_hash_req(&self.limits, req)
+    }
+
+    /// Encodes an `OP_AICHFILEHASHANS` (eMule `0x15`) message.
+    pub fn encode_aich_file_hash_res(
+        &self,
+        res: &Ed2kAichFileHashRes,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_aich_file_hash_res(&self.limits, res)
+    }
+
+    /// Encodes an `OP_AICHREQUEST` (eMule `0x12`) message.
+    pub fn encode_aich_request(&self, req: &Ed2kAichRequest) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_aich_request(&self.limits, req)
+    }
+
+    /// Encodes an `OP_AICHANSWER` (eMule `0x13`) message.
+    pub fn encode_aich_answer(&self, ans: &Ed2kAichAnswer) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_aich_answer(&self.limits, ans)
+    }
+
     /// Encodes an `OP_EMULE_INFO` (`0xC5 0x01`) payload.
     pub fn encode_emule_info(&self, info: &Ed2kEmuleInfo) -> Result<RawPacket, Ed2kEncodeError> {
         encode_emule_info(&self.limits, info)
@@ -179,13 +227,16 @@ impl Ed2kEncoder {
         encode_public_key(&self.limits, key)
     }
 
-    /// Encodes an `OP_SIGNATURE` (`0x87`) message into a `RawPacket`.
+    /// Encodes an `OP_SIGNATURE` (`0x86`) message into a `RawPacket`.
     pub fn encode_signature(&self, sig: &Ed2kSignature) -> Result<RawPacket, Ed2kEncodeError> {
         encode_signature(&self.limits, sig)
     }
 
-    /// Encodes an `OP_SECIDENTSTATE` (`0x86`) message into a `RawPacket`.
-    pub fn encode_secident_state(&self, state: &Ed2kSecIdentState) -> Result<RawPacket, Ed2kEncodeError> {
+    /// Encodes an `OP_SECIDENTSTATE` (`0x87`) message into a `RawPacket`.
+    pub fn encode_secident_state(
+        &self,
+        state: &Ed2kSecIdentState,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
         encode_secident_state(&self.limits, state)
     }
 
@@ -200,6 +251,12 @@ impl Ed2kEncoder {
             Ed2kMessage::FileReqAnsNoFile(ans) => self.encode_file_req_ans_no_file(ans),
             Ed2kMessage::RequestParts(req) => self.encode_request_parts(req),
             Ed2kMessage::SendingPart(part) => self.encode_sending_part(part),
+            Ed2kMessage::HashSetReq(req) => self.encode_hashset_request(req),
+            Ed2kMessage::HashSetAnswer(ans) => self.encode_hashset_answer(ans),
+            Ed2kMessage::AichFileHashReq(req) => self.encode_aich_file_hash_req(req),
+            Ed2kMessage::AichFileHashRes(res) => self.encode_aich_file_hash_res(res),
+            Ed2kMessage::AichRequest(req) => self.encode_aich_request(req),
+            Ed2kMessage::AichAnswer(ans) => self.encode_aich_answer(ans),
             Ed2kMessage::PublicKey(key) => self.encode_public_key(key),
             Ed2kMessage::Signature(sig) => self.encode_signature(sig),
             Ed2kMessage::SecIdentState(state) => self.encode_secident_state(state),

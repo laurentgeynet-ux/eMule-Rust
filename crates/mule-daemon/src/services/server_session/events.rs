@@ -2,9 +2,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
+use super::types::ServerSessionSnapshot;
 use mule_protocol::ed2k::{FoundSources, FoundSourcesObfu, SearchResult};
 use serde_json::json;
-use super::types::ServerSessionSnapshot;
 
 pub fn emit_event(
     event_tx: &broadcast::Sender<String>,

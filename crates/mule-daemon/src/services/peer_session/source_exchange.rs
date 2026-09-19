@@ -56,8 +56,13 @@ pub async fn handle_sx_answer(
                     }
                     if !discovered_sources.is_empty() {
                         let mut dl_svc = downloads.lock().await;
-                        let inserted = dl_svc.upsert_peer_sources(file_hash_str, &discovered_sources).unwrap_or(0);
-                        let total_swarm = dl_svc.find_by_ed2k_hash(file_hash_str).map(|d| d.source_count).unwrap_or(0);
+                        let inserted = dl_svc
+                            .upsert_peer_sources(file_hash_str, &discovered_sources)
+                            .unwrap_or(0);
+                        let total_swarm = dl_svc
+                            .find_by_ed2k_hash(file_hash_str)
+                            .map(|d| d.source_count)
+                            .unwrap_or(0);
                         tracing::info!(
                             "[SOURCE_EXCHANGE] Received {} sources via SX from peer {} for file {} -> {} new unique sources persisted (total swarm: {} sources)",
                             discovered_sources.len(),

@@ -12,21 +12,23 @@ pub fn decode_public_key(
     payload: &[u8],
     base_offset: usize,
 ) -> Result<Ed2kPublicKey, Ed2kParseError> {
-    if payload.is_empty() {
+    // eMule ProcessPublicKeyPacket: `pachPacket[0] == nSize-1` (exact length)
+    // and `10 <= nSize <= 250`.
+    if payload.is_empty() || payload.len() < 10 || payload.len() > 250 {
         return Err(Ed2kParseError::new(
             protocol,
             Some(opcode),
             base_offset,
             "public_key_len",
             Ed2kErrorKind::UnexpectedEof {
-                needed: 1,
-                available: 0,
+                needed: 10,
+                available: payload.len(),
             },
         ));
     }
 
     let key_len = payload[0] as usize;
-    if payload.len() < 1 + key_len {
+    if payload.len() != 1 + key_len {
         return Err(Ed2kParseError::new(
             protocol,
             Some(opcode),
@@ -43,28 +45,31 @@ pub fn decode_public_key(
     Ok(Ed2kPublicKey { key_bytes })
 }
 
-/// Decodes an `OP_SIGNATURE` (`0x87`) payload.
+/// Decodes an `OP_SIGNATURE` (`0x86`) payload.
 pub fn decode_signature(
     protocol: u8,
     opcode: u8,
     payload: &[u8],
     base_offset: usize,
 ) -> Result<Ed2kSignature, Ed2kParseError> {
-    if payload.is_empty() {
+    // eMule ProcessSignaturePacket: `10 <= nSize <= 250`.
+    if payload.is_empty() || payload.len() < 10 || payload.len() > 250 {
         return Err(Ed2kParseError::new(
             protocol,
             Some(opcode),
             base_offset,
             "signature_len",
             Ed2kErrorKind::UnexpectedEof {
-                needed: 1,
-                available: 0,
+                needed: 10,
+                available: payload.len(),
             },
         ));
     }
 
     let sig_len = payload[0] as usize;
-    if payload.len() < 1 + sig_len {
+    // eMule accepts exactly `1 + sig_len` (V1) or `2 + sig_len` (V2: trailing
+    // byChaIPKind byte); anything else is malformed.
+    if payload.len() != 1 + sig_len && payload.len() != 2 + sig_len {
         return Err(Ed2kParseError::new(
             protocol,
             Some(opcode),
@@ -81,14 +86,15 @@ pub fn decode_signature(
     Ok(Ed2kSignature { signature_bytes })
 }
 
-/// Decodes an `OP_SECIDENTSTATE` (`0x86`) payload.
+/// Decodes an `OP_SECIDENTSTATE` (`0x87`) payload.
 pub fn decode_secident_state(
     protocol: u8,
     opcode: u8,
     payload: &[u8],
     base_offset: usize,
 ) -> Result<Ed2kSecIdentState, Ed2kParseError> {
-    if payload.len() < 5 {
+    // eMule rejects any nSize != 5.
+    if payload.len() != 5 {
         return Err(Ed2kParseError::new(
             protocol,
             Some(opcode),

@@ -1,7 +1,6 @@
+use mule_format::kad::{KadContactEntry, NodesDatFile, MAX_NODES_COUNT};
 use std::io::Cursor;
 use std::net::Ipv4Addr;
-use mule_format::kad::{KadContactEntry, NodesDatFile, MAX_NODES_COUNT};
-
 
 #[test]
 fn test_nodes_dat_v0_roundtrip() {
@@ -47,7 +46,10 @@ fn test_nodes_dat_v2_roundtrip() {
     assert_eq!(parsed.contacts[0].udp_port, 4000);
     assert_eq!(parsed.contacts[0].tcp_port, 4001);
     assert_eq!(parsed.contacts[0].version, 2);
-    assert_eq!(parsed.contacts[0].kad_udp_key, Some((0x12345678, 0x9ABCDEF0)));
+    assert_eq!(
+        parsed.contacts[0].kad_udp_key,
+        Some((0x12345678, 0x9ABCDEF0))
+    );
     assert!(parsed.contacts[0].verified);
 }
 

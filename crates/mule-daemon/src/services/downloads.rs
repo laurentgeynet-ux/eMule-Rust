@@ -1,6 +1,4 @@
-use mule_core::{
-    AllocationPolicy, Database, DownloadCategory, DownloadStatus, PartFile,
-};
+use mule_core::{AllocationPolicy, Database, DownloadCategory, DownloadStatus, PartFile};
 use mule_protocol::ed2k::PartAvailabilityMask;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -9,7 +7,6 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::error::DaemonError;
-
 
 pub mod history_categories;
 pub mod operations;
@@ -45,7 +42,10 @@ impl DownloadService {
 
             // Self-healing
             let is_finalized_on_disk = dl.target_path.exists()
-                && std::fs::metadata(&dl.target_path).map(|m| m.len()).unwrap_or(0) == dl.total_size;
+                && std::fs::metadata(&dl.target_path)
+                    .map(|m| m.len())
+                    .unwrap_or(0)
+                    == dl.total_size;
 
             if (dl.status == DownloadStatus::Verifying || dl.status == DownloadStatus::Downloading)
                 && is_finalized_on_disk
@@ -87,6 +87,9 @@ impl DownloadService {
                     last_rate_update: None,
                     source_count,
                     verification_in_progress: false,
+                    aich_pending: Default::default(),
+                    aich_requested: Default::default(),
+                    aich_votes: Default::default(),
                 },
             );
         }
@@ -187,16 +190,11 @@ impl DownloadService {
     }
 
     pub fn list_downloads(&self) -> Vec<DownloadSnapshot> {
-        self.active
-            .values()
-            .map(|a| a.snapshot())
-            .collect()
+        self.active.values().map(|a| a.snapshot()).collect()
     }
 
     pub fn get_download(&self, id: &Uuid) -> Option<DownloadSnapshot> {
-        self.active
-            .get(id)
-            .map(|a| a.snapshot())
+        self.active.get(id).map(|a| a.snapshot())
     }
 
     pub fn get_download_detail(&self, id: &Uuid) -> Option<DownloadDetail> {
@@ -409,10 +407,14 @@ impl DownloadService {
         category_id: Option<String>,
     ) -> Result<DownloadDetail, DaemonError> {
         if !self.active.contains_key(download_id) {
-            return Err(DaemonError::Business(format!("Download {download_id} not found")));
+            return Err(DaemonError::Business(format!(
+                "Download {download_id} not found"
+            )));
         }
 
-        let cat_opt = category_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let cat_opt = category_id
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         if let Some(ref cid) = cat_opt {
             let cat_exists = self.get_category(cid)?.is_some();
@@ -423,18 +425,24 @@ impl DownloadService {
 
         self.db
             .set_download_category(download_id, cat_opt.as_deref())
-            .map_err(|e| DaemonError::Business(format!("DB error setting download category: {e}")))?;
+            .map_err(|e| {
+                DaemonError::Business(format!("DB error setting download category: {e}"))
+            })?;
 
         let now = now_ms();
         let active = self.active.get_mut(download_id).unwrap();
         active.download.category_id = cat_opt;
         active.download.updated_at = now;
 
-        self.get_download_detail(download_id)
-            .ok_or_else(|| DaemonError::Business(format!("Download {download_id} detail not found")))
+        self.get_download_detail(download_id).ok_or_else(|| {
+            DaemonError::Business(format!("Download {download_id} detail not found"))
+        })
     }
 
-    pub fn upsert_servers(&mut self, servers: &[mule_core::model::Ed2kServer]) -> Result<usize, DaemonError> {
+    pub fn upsert_servers(
+        &mut self,
+        servers: &[mule_core::model::Ed2kServer],
+    ) -> Result<usize, DaemonError> {
         peers_servers::upsert_servers(&mut self.db, servers)
     }
 
@@ -442,7 +450,11 @@ impl DownloadService {
         peers_servers::list_servers(&self.db)
     }
 
-    pub fn set_server_enabled(&mut self, address: &str, enabled: bool) -> Result<bool, DaemonError> {
+    pub fn set_server_enabled(
+        &mut self,
+        address: &str,
+        enabled: bool,
+    ) -> Result<bool, DaemonError> {
         peers_servers::set_server_enabled(&mut self.db, address, enabled)
     }
 
@@ -465,19 +477,31 @@ impl DownloadService {
     pub fn set_download_rate(&mut self, id: &Uuid, rate_bps: u64) -> Option<DownloadSnapshot> {
         if let Some(active) = self.active.get_mut(id) {
             active.current_rate_bps = rate_bps;
-            active.last_rate_update = if rate_bps > 0 { Some(Instant::now()) } else { None };
+            active.last_rate_update = if rate_bps > 0 {
+                Some(Instant::now())
+            } else {
+                None
+            };
             Some(active.snapshot())
         } else {
             None
         }
     }
 
-    pub fn set_download_rate_by_hash(&mut self, hex_hash: &str, rate_bps: u64) -> Option<DownloadSnapshot> {
+    pub fn set_download_rate_by_hash(
+        &mut self,
+        hex_hash: &str,
+        rate_bps: u64,
+    ) -> Option<DownloadSnapshot> {
         let clean_hex = hex_hash.trim().to_lowercase();
         for active in self.active.values_mut() {
             if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
                 active.current_rate_bps = rate_bps;
-                active.last_rate_update = if rate_bps > 0 { Some(Instant::now()) } else { None };
+                active.last_rate_update = if rate_bps > 0 {
+                    Some(Instant::now())
+                } else {
+                    None
+                };
                 return Some(active.snapshot());
             }
         }
@@ -513,6 +537,11 @@ impl DownloadService {
                 continue;
             }
             if active.verification_in_progress {
+                continue;
+            }
+            // Do not enter final verification while AICH block recovery is
+            // pending — corrupted parts are still covered by the RangeSet.
+            if !active.aich_pending.is_empty() {
                 continue;
             }
             let total_size = active.download.total_size;
@@ -596,11 +625,145 @@ impl DownloadService {
         None
     }
 
+    /// Stores the per-part MD4 hashset for a file hash (learned from peer, link, or .part.met).
+    pub fn store_part_hashes_by_hash(
+        &mut self,
+        hex_hash: &str,
+        part_hashes: &[[u8; 16]],
+    ) -> Result<(), DaemonError> {
+        self.db
+            .store_part_hashes(&hex_hash.trim().to_lowercase(), part_hashes)
+            .map_err(|e| DaemonError::Business(format!("DB error storing part hashes: {e}")))
+    }
+
+    /// Loads the per-part MD4 hashset for a file hash, if known.
+    pub fn get_part_hashes_by_hash(&self, hex_hash: &str) -> Vec<[u8; 16]> {
+        self.db
+            .get_part_hashes(&hex_hash.trim().to_lowercase())
+            .unwrap_or_default()
+    }
+
+    /// Loads the per-part MD4 hashset for a download, if known.
+    pub fn get_part_hashes_for_download(&self, id: &Uuid) -> Vec<[u8; 16]> {
+        self.active
+            .get(id)
+            .map(|a| self.get_part_hashes_by_hash(&a.download.ed2k_hash.to_hex()))
+            .unwrap_or_default()
+    }
+
+    /// Evicts corrupted parts from the received ranges so they get re-downloaded,
+    /// and marks cleanly verified parts. Returns the indices actually evicted.
+    pub fn evict_corrupted_parts(
+        &mut self,
+        id: &Uuid,
+        corrupted: &[u32],
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        operations::evict_corrupted_parts(&mut self.db, &mut self.active, id, corrupted)
+    }
+
+    // ── AICH recovery ───────────────────────────────────────────────────────
+
+    /// Records an AICH master hash received from a peer (vote tracking,
+    /// eMule `CAICHUntrustedHash` semantics). `masked_ip` = `ip & 0x00F0FFFF`.
+    pub fn record_aich_root_vote(
+        &mut self,
+        id: &Uuid,
+        root: [u8; 20],
+        masked_ip: u32,
+    ) -> operations::AichVoteOutcome {
+        operations::record_aich_root_vote(&mut self.db, &mut self.active, id, root, masked_ip)
+    }
+
+    /// Returns the trusted AICH root hash for a download, if any.
+    pub fn trusted_aich_root(&self, id: &Uuid) -> Option<[u8; 20]> {
+        operations::trusted_aich_root(&self.active, id)
+    }
+
+    /// Trusted AICH root for a file hash, if any.
+    pub fn trusted_aich_root_by_hash(&self, hex_hash: &str) -> Option<[u8; 20]> {
+        let clean_hex = hex_hash.trim().to_lowercase();
+        self.active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex)
+            .and_then(|a| a.download.aich_root.map(|r| r.0))
+    }
+
+    /// Next corrupted part awaiting an `OP_AICHREQUEST` for this download.
+    /// Returns `(part_index, master_hash)`.
+    pub fn next_aich_recovery(&mut self, id: &Uuid) -> Option<(u32, [u8; 20])> {
+        operations::next_aich_recovery(&mut self.db, &mut self.active, id)
+    }
+
+    /// Same, resolved by ed2k file hash.
+    pub fn next_aich_recovery_by_hash(&mut self, hex_hash: &str) -> Option<(u32, [u8; 20])> {
+        let clean_hex = hex_hash.trim().to_lowercase();
+        let id = self
+            .active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex)
+            .map(|a| a.download.id)?;
+        self.next_aich_recovery(&id)
+    }
+
+    /// Requeues or evicts a part whose AICH recovery request failed.
+    pub fn fail_aich_recovery(&mut self, id: &Uuid, part: u32) {
+        operations::fail_aich_recovery(&mut self.db, &mut self.active, id, part)
+    }
+
+    /// Fails the most recently sent AICH recovery request for this download
+    /// (used when the peer answers with a bare file hash — the part index is
+    /// not echoed in failed `OP_AICHANSWER` packets).
+    pub fn fail_last_aich_request(&mut self, id: &Uuid) {
+        let part = self.active.get(id).and_then(|a| {
+            a.aich_requested
+                .iter()
+                .max_by_key(|(_, (ts, _))| *ts)
+                .map(|(&p, _)| p)
+        });
+        if let Some(part) = part {
+            self.fail_aich_recovery(id, part);
+        }
+    }
+
+    /// Applies received AICH recovery data for a corrupted part.
+    pub fn apply_aich_recovery(
+        &mut self,
+        id: &Uuid,
+        part: u32,
+        master_hash: [u8; 20],
+        entries: Vec<mule_format::AichRecoveryEntry>,
+    ) -> Result<operations::AichRecoveryReport, DaemonError> {
+        operations::apply_aich_recovery(
+            &mut self.db,
+            &mut self.active,
+            id,
+            part,
+            master_hash,
+            entries,
+        )
+    }
+
+    /// Caches the computed AICH root of a shared file.
+    pub fn set_shared_aich_root(
+        &mut self,
+        file_hash: &str,
+        aich_root: &[u8; 20],
+    ) -> Result<bool, DaemonError> {
+        self.db
+            .set_shared_aich_root(file_hash, aich_root)
+            .map_err(|e| DaemonError::Business(format!("DB error: {e}")))
+    }
+
     pub fn get_completed_ranges_by_hash(&self, hex_hash: &str) -> Vec<(u64, u64)> {
         let clean_hex = hex_hash.trim().to_lowercase();
         for active in self.active.values() {
             if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
-                return active.ranges.ranges().iter().map(|r| (r.start, r.end)).collect();
+                return active
+                    .ranges
+                    .ranges()
+                    .iter()
+                    .map(|r| (r.start, r.end))
+                    .collect();
             }
         }
         Vec::new()
@@ -610,7 +773,10 @@ impl DownloadService {
         peers_servers::list_shared_files(&self.db)
     }
 
-    pub fn add_shared_file(&mut self, file: &mule_core::model::SharedFile) -> Result<(), DaemonError> {
+    pub fn add_shared_file(
+        &mut self,
+        file: &mule_core::model::SharedFile,
+    ) -> Result<(), DaemonError> {
         peers_servers::add_shared_file(&mut self.db, file)
     }
 
@@ -618,38 +784,63 @@ impl DownloadService {
         peers_servers::remove_shared_file(&mut self.db, file_hash)
     }
 
-    pub fn get_shared_file(&self, file_hash: &str) -> Result<Option<mule_core::model::SharedFile>, DaemonError> {
+    pub fn get_shared_file(
+        &self,
+        file_hash: &str,
+    ) -> Result<Option<mule_core::model::SharedFile>, DaemonError> {
         if let Some(sf) = peers_servers::get_shared_file(&self.db, file_hash)? {
             return Ok(Some(sf));
         }
         for act in self.active.values() {
-            if act.download.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
+            if act
+                .download
+                .ed2k_hash
+                .to_hex()
+                .eq_ignore_ascii_case(file_hash)
                 && act.download.status == mule_core::DownloadStatus::Completed
             {
-                return Ok(Some(mule_core::model::SharedFile::new(
+                let mut sf = mule_core::model::SharedFile::new(
                     &act.download.ed2k_hash.to_hex(),
                     &act.download.display_name,
                     act.download.total_size,
                     act.download.target_path.to_string_lossy().as_ref(),
-                )));
+                );
+                sf.aich_root = act.download.aich_root.map(|a| a.0);
+                return Ok(Some(sf));
             }
         }
         Ok(None)
     }
 
-    pub fn get_peer_credit(&self, pubkey_hash: &str) -> Result<Option<mule_core::model::PeerCredit>, DaemonError> {
+    pub fn get_peer_credit(
+        &self,
+        pubkey_hash: &str,
+    ) -> Result<Option<mule_core::model::PeerCredit>, DaemonError> {
         peers_servers::get_peer_credit(&self.db, pubkey_hash)
     }
 
-    pub fn record_credit_upload(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), DaemonError> {
+    pub fn record_credit_upload(
+        &mut self,
+        pubkey_hash: &str,
+        pubkey_hex: &str,
+        bytes: u64,
+    ) -> Result<(), DaemonError> {
         peers_servers::record_credit_upload(&mut self.db, pubkey_hash, pubkey_hex, bytes)
     }
 
-    pub fn record_credit_download(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), DaemonError> {
+    pub fn record_credit_download(
+        &mut self,
+        pubkey_hash: &str,
+        pubkey_hex: &str,
+        bytes: u64,
+    ) -> Result<(), DaemonError> {
         peers_servers::record_credit_download(&mut self.db, pubkey_hash, pubkey_hex, bytes)
     }
 
-    pub fn list_peer_credits(&self, limit: usize) -> Result<Vec<mule_core::model::PeerCredit>, DaemonError> {
+    pub fn list_peer_credits(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<mule_core::model::PeerCredit>, DaemonError> {
         peers_servers::list_peer_credits(&self.db, limit)
     }
 

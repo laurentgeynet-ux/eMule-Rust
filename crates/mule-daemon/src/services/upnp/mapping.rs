@@ -1,7 +1,7 @@
 //! UPnP port mapping and unmapping lease operations.
 
-use std::net::SocketAddrV4;
 use igd_next::{AddPortError, Gateway, PortMappingProtocol};
+use std::net::SocketAddrV4;
 use tracing::{debug, info, warn};
 
 use super::types::{inspect_mapping_entry, MappingOwnership};
@@ -87,7 +87,9 @@ pub fn add_port_safe(
                         description,
                     ) {
                         Ok(_) => {
-                            info!("UPnP re-mapped {proto_name} port {port} after stale lease cleanup");
+                            info!(
+                                "UPnP re-mapped {proto_name} port {port} after stale lease cleanup"
+                            );
                             true
                         }
                         Err(retry_err) => {

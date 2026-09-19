@@ -1,6 +1,6 @@
-use std::time::Duration;
 use bytes::Bytes;
 use serde_json::{json, Value};
+use std::time::Duration;
 use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -9,10 +9,9 @@ use mule_daemon::rpc::methods::handle_request;
 use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
-    Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart,
-    PartAvailabilityMask, OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ,
-    OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_STARTUPLOADREQ,
-    PR_ED2K,
+    Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart, PartAvailabilityMask,
+    OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ, OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    OP_STARTUPLOADREQ, PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
 
@@ -21,8 +20,8 @@ async fn setup_test_state() -> (AppState, tempfile::TempDir, String) {
     let temp_dir = dir.path().join("temp");
     let token = "test_token_adversarial".to_string();
 
-    let config =
-        DaemonConfig::new(dir.path().to_path_buf(), &token).with_workdir_mode(WorkDirMode::Portable);
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable);
     let downloads = DownloadService::in_memory(temp_dir).unwrap();
     let state = AppState::new(config, downloads);
     state
@@ -35,7 +34,9 @@ async fn setup_test_state() -> (AppState, tempfile::TempDir, String) {
     let link = format!("ed2k://|file|test_payload.iso|9728001|{file_hash_hex}|/");
     let req = make_req(1, "downloads.addEd2kLink", Some(json!({ "link": link })));
     let mut authenticated = true;
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     (state, dir, file_hash_hex)
@@ -72,21 +73,27 @@ async fn test_adversarial_socket_open_then_complete_silence_times_out() {
         "sources.connect",
         Some(json!({ "fileHash": hash, "address": peer_addr.to_string() })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     // Wait until handshake timeout occurs (8s) + a small margin
     tokio::time::sleep(Duration::from_millis(8500)).await;
 
     let req = make_req(2, "sources.status", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     let status_obj: Value = resp.result.unwrap();
     assert_eq!(status_obj["status"], "disconnected");
     assert_eq!(status_obj["failureReason"], "timeout_handshake");
 
     // Check that source in registry is marked Failed with fail_count = 1 and cooldown set
     let req = make_req(3, "sources.list", Some(json!({ "fileHash": hash })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     let list: Vec<Value> = serde_json::from_value(resp.result.unwrap()).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0]["status"], "failed");
@@ -134,7 +141,9 @@ async fn test_adversarial_cooldown_rejection_and_force_bypass() {
         "sources.connect",
         Some(json!({ "fileHash": hash, "address": peer_addr.to_string() })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_some());
     let err = resp.error.unwrap();
     assert!(err.message.contains("Source is in cooldown"));
@@ -145,8 +154,13 @@ async fn test_adversarial_cooldown_rejection_and_force_bypass() {
         "sources.connect",
         Some(json!({ "fileHash": hash, "address": peer_addr.to_string(), "force": true })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_none(), "Forced reconnect must bypass cooldown");
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_none(),
+        "Forced reconnect must bypass cooldown"
+    );
 
     let _ = state.peer_session.disconnect().await;
 }
@@ -181,13 +195,17 @@ async fn test_adversarial_malformed_hello_answer_fails_handshake() {
         "sources.connect",
         Some(json!({ "fileHash": hash, "address": peer_addr.to_string() })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let req = make_req(2, "sources.status", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     let status_obj: Value = resp.result.unwrap();
     assert_eq!(status_obj["status"], "disconnected");
     assert_eq!(status_obj["failureReason"], "invalid_handshake");
@@ -245,7 +263,8 @@ async fn test_adversarial_file_status_hash_mismatch() {
             let n = socket.read(&mut raw_buf).await.unwrap();
             read_buf.extend_from_slice(&raw_buf[..n]);
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
-                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_FILESTATUSREQ || pkt.opcode == 0x4F) {
+                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_FILESTATUSREQ || pkt.opcode == 0x4F)
+                {
                     received_status_req = true;
                     break;
                 }
@@ -275,13 +294,17 @@ async fn test_adversarial_file_status_hash_mismatch() {
         "sources.connect",
         Some(json!({ "fileHash": hash, "address": peer_addr.to_string() })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let req = make_req(2, "sources.status", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     let status_obj: Value = resp.result.unwrap();
     assert_eq!(status_obj["status"], "disconnected");
     assert_eq!(status_obj["failureReason"], "hash_mismatch");
@@ -340,7 +363,8 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
             let n = socket.read(&mut raw_buf).await.unwrap();
             read_buf.extend_from_slice(&raw_buf[..n]);
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
-                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_FILESTATUSREQ || pkt.opcode == 0x4F) {
+                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_FILESTATUSREQ || pkt.opcode == 0x4F)
+                {
                     received_status_req = true;
                     break;
                 }
@@ -376,7 +400,8 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
             }
         }
 
-        let accept_pkt = mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
+        let accept_pkt =
+            mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
         out.clear();
         out.push(accept_pkt.protocol);
         out.extend_from_slice(&(accept_pkt.frame_len() as u32).to_le_bytes());
@@ -389,7 +414,9 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
             let n = socket.read(&mut raw_buf).await.unwrap();
             read_buf.extend_from_slice(&raw_buf[..n]);
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
-                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_REQUESTPARTS || pkt.opcode == OP_REQUESTPARTS_EMULE) {
+                if pkt.protocol == PR_ED2K
+                    && (pkt.opcode == OP_REQUESTPARTS || pkt.opcode == OP_REQUESTPARTS_EMULE)
+                {
                     received_req_parts = true;
                     break;
                 }
@@ -398,12 +425,8 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
 
         // Send OP_SENDINGPART with OUT OF BOUNDS offset (e.g. 500_000 > 184320)
         let dummy_chunk = vec![0xABu8; 1024];
-        let sending_part = Ed2kSendingPart::new(
-            hash_bytes,
-            500_000,
-            501_024,
-            Bytes::from(dummy_chunk),
-        );
+        let sending_part =
+            Ed2kSendingPart::new(hash_bytes, 500_000, 501_024, Bytes::from(dummy_chunk));
         let send_pkt = encoder.encode_sending_part(&sending_part).unwrap();
         out.clear();
         out.push(send_pkt.protocol);
@@ -420,13 +443,17 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
         "sources.connect",
         Some(json!({ "fileHash": hash, "address": peer_addr.to_string() })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let req = make_req(2, "sources.status", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     let status_obj: Value = resp.result.unwrap();
     assert_eq!(status_obj["status"], "disconnected");
     assert_eq!(status_obj["failureReason"], "invalid_range");
@@ -484,7 +511,8 @@ async fn test_adversarial_unexpected_disconnect_during_transfer() {
             let n = socket.read(&mut raw_buf).await.unwrap();
             read_buf.extend_from_slice(&raw_buf[..n]);
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
-                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_FILESTATUSREQ || pkt.opcode == 0x4F) {
+                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_FILESTATUSREQ || pkt.opcode == 0x4F)
+                {
                     received_status_req = true;
                     break;
                 }
@@ -519,7 +547,8 @@ async fn test_adversarial_unexpected_disconnect_during_transfer() {
             }
         }
 
-        let accept_pkt = mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
+        let accept_pkt =
+            mule_protocol::framing::RawPacket::new(PR_ED2K, OP_ACCEPTUPLOADREQ, Bytes::new());
         out.clear();
         out.push(accept_pkt.protocol);
         out.extend_from_slice(&(accept_pkt.frame_len() as u32).to_le_bytes());
@@ -532,7 +561,9 @@ async fn test_adversarial_unexpected_disconnect_during_transfer() {
             let n = socket.read(&mut raw_buf).await.unwrap();
             read_buf.extend_from_slice(&raw_buf[..n]);
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
-                if pkt.protocol == PR_ED2K && (pkt.opcode == OP_REQUESTPARTS || pkt.opcode == OP_REQUESTPARTS_EMULE) {
+                if pkt.protocol == PR_ED2K
+                    && (pkt.opcode == OP_REQUESTPARTS || pkt.opcode == OP_REQUESTPARTS_EMULE)
+                {
                     received_req_parts = true;
                     break;
                 }
@@ -541,12 +572,7 @@ async fn test_adversarial_unexpected_disconnect_during_transfer() {
 
         // Send 1st valid chunk then abruptly drop socket (EOF)
         let dummy_chunk = vec![0xABu8; 512];
-        let sending_part = Ed2kSendingPart::new(
-            hash_bytes,
-            0,
-            512,
-            Bytes::from(dummy_chunk),
-        );
+        let sending_part = Ed2kSendingPart::new(hash_bytes, 0, 512, Bytes::from(dummy_chunk));
         let send_pkt = encoder.encode_sending_part(&sending_part).unwrap();
         out.clear();
         out.push(send_pkt.protocol);
@@ -564,13 +590,17 @@ async fn test_adversarial_unexpected_disconnect_during_transfer() {
         "sources.connect",
         Some(json!({ "fileHash": hash, "address": peer_addr.to_string() })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let req = make_req(2, "sources.status", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     let status_obj: Value = resp.result.unwrap();
     assert_eq!(status_obj["status"], "disconnected");
 

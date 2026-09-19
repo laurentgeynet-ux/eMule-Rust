@@ -24,7 +24,10 @@ pub fn upsert_peer_credit(conn: &mut Connection, credit: &PeerCredit) -> Result<
     Ok(())
 }
 
-pub fn get_peer_credit(conn: &Connection, pubkey_hash: &str) -> Result<Option<PeerCredit>, CoreError> {
+pub fn get_peer_credit(
+    conn: &Connection,
+    pubkey_hash: &str,
+) -> Result<Option<PeerCredit>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms
          FROM peer_credits

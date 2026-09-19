@@ -6,15 +6,14 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use mule_protocol::ed2k::{
-    Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEncoder, Ed2kErrorKind, Ed2kFileStatus,
-    Ed2kFileStatusReq, Ed2kHelloAnswer, Ed2kLoopbackClient, Ed2kMessage, Ed2kPeerInfo,
-    Ed2kSession, Ed2kSessionError, Ed2kSessionState, Ed2kTag, Ed2kTestPeer,
-    FileStatusTracker, PartAvailabilityMask, TagName, TagValue, TestPeerMode,
-    TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
-};
 use mule_protocol::ed2k::opcodes::{OP_FILESTATUS, OP_FILESTATUSREQ};
 use mule_protocol::ed2k::PR_ED2K;
+use mule_protocol::ed2k::{
+    Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEncoder, Ed2kErrorKind, Ed2kFileStatus,
+    Ed2kFileStatusReq, Ed2kHelloAnswer, Ed2kLoopbackClient, Ed2kMessage, Ed2kPeerInfo, Ed2kSession,
+    Ed2kSessionError, Ed2kSessionState, Ed2kTag, Ed2kTestPeer, FileStatusTracker,
+    PartAvailabilityMask, TagName, TagValue, TestPeerMode, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+};
 
 fn sample_user_hash() -> [u8; 16] {
     let mut h = [0x11; 16];
@@ -57,8 +56,8 @@ async fn setup_nominal_client(peer_addr: SocketAddr) -> Ed2kLoopbackClient {
 
 #[test]
 fn test_file_status_req_wire_layout_byte_by_byte_matches_fixture() {
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/ed2k/file_status_req.bin");
+    let fixture_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ed2k/file_status_req.bin");
     let fixture_bytes = fs::read(&fixture_path).expect("failed to read file_status_req.bin");
 
     // Header: 1 byte protocol (0xE3) + 4 bytes LE length (17 = 0x11, 0x00, 0x00, 0x00)
@@ -114,11 +113,7 @@ async fn test_nominal_file_status_single_part() {
         .await
         .expect("bind test peer");
     test_peer
-        .add_shared_file(
-            file_hash,
-            1,
-            PartAvailabilityMask::from_parts(&[0], 1),
-        )
+        .add_shared_file(file_hash, 1, PartAvailabilityMask::from_parts(&[0], 1))
         .await;
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
@@ -134,7 +129,10 @@ async fn test_nominal_file_status_single_part() {
     assert!(status.availability_mask.has_part(0));
     assert!(!status.availability_mask.has_part(1));
     assert_eq!(
-        status.availability_mask.available_parts().collect::<Vec<_>>(),
+        status
+            .availability_mask
+            .available_parts()
+            .collect::<Vec<_>>(),
         vec![0]
     );
     assert_eq!(status.availability_mask.raw_bytes(), &[0x01]);
@@ -182,7 +180,10 @@ async fn test_file_status_multi_parts_bits_0_1_7_8_9() {
     assert!(status.availability_mask.has_part(9));
     assert!(!status.availability_mask.has_part(10));
     assert_eq!(
-        status.availability_mask.available_parts().collect::<Vec<_>>(),
+        status
+            .availability_mask
+            .available_parts()
+            .collect::<Vec<_>>(),
         vec![0, 1, 7, 8, 9]
     );
 }
@@ -206,7 +207,10 @@ async fn test_file_status_short_mask_rejected() {
         .await;
 
     assert!(res.is_err());
-    assert!(matches!(client.session().state, Ed2kSessionState::Failed { .. }));
+    assert!(matches!(
+        client.session().state,
+        Ed2kSessionState::Failed { .. }
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +232,10 @@ async fn test_file_status_long_mask_rejected() {
         .await;
 
     assert!(res.is_err());
-    assert!(matches!(client.session().state, Ed2kSessionState::Failed { .. }));
+    assert!(matches!(
+        client.session().state,
+        Ed2kSessionState::Failed { .. }
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +257,10 @@ async fn test_file_status_excessive_parts_rejected() {
         .await;
 
     assert!(res.is_err());
-    assert!(matches!(client.session().state, Ed2kSessionState::Failed { .. }));
+    assert!(matches!(
+        client.session().state,
+        Ed2kSessionState::Failed { .. }
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -273,11 +283,17 @@ async fn test_file_status_trailing_bits_non_zero_strictly_rejected() {
 
     match res {
         Err(Ed2kSessionError::Parse(ref msg)) => {
-            assert!(msg.contains("trailing bits"), "expected trailing bits in error: {msg}");
+            assert!(
+                msg.contains("trailing bits"),
+                "expected trailing bits in error: {msg}"
+            );
         }
         other => panic!("expected Parse trailing bits error, got: {other:?}"),
     }
-    assert!(matches!(client.session().state, Ed2kSessionState::Failed { .. }));
+    assert!(matches!(
+        client.session().state,
+        Ed2kSessionState::Failed { .. }
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -302,7 +318,10 @@ async fn test_file_status_mismatched_hash_rejected() {
         Err(Ed2kSessionError::UnsolicitedFileStatus(_)) => {}
         other => panic!("expected UnsolicitedFileStatus, got: {other:?}"),
     }
-    assert!(matches!(client.session().state, Ed2kSessionState::Failed { .. }));
+    assert!(matches!(
+        client.session().state,
+        Ed2kSessionState::Failed { .. }
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +339,10 @@ async fn test_file_status_unsolicited_rejected() {
     let mut client = setup_nominal_client(peer_addr).await;
 
     // Receive unsolicited packet from remote peer
-    let pkt = client.recv_packet().await.expect("failed to receive packet");
+    let pkt = client
+        .recv_packet()
+        .await
+        .expect("failed to receive packet");
     assert_eq!(pkt.opcode, OP_FILESTATUS);
 
     let res = client.session_mut().on_packet_received(&pkt);
@@ -328,7 +350,10 @@ async fn test_file_status_unsolicited_rejected() {
         Err(Ed2kSessionError::UnsolicitedFileStatus(_)) => {}
         other => panic!("expected UnsolicitedFileStatus error, got: {other:?}"),
     }
-    assert!(matches!(client.session().state, Ed2kSessionState::Failed { .. }));
+    assert!(matches!(
+        client.session().state,
+        Ed2kSessionState::Failed { .. }
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +379,10 @@ async fn test_file_status_double_response_rejected() {
     assert_eq!(status.file_hash, file_hash);
 
     // Second duplicated response arrives
-    let pkt = client.recv_packet().await.expect("failed to receive second packet");
+    let pkt = client
+        .recv_packet()
+        .await
+        .expect("failed to receive second packet");
     assert_eq!(pkt.opcode, OP_FILESTATUS);
 
     let res = client.session_mut().on_packet_received(&pkt);
@@ -438,7 +466,10 @@ async fn test_file_status_compressed_protocol_0xd4_rejected() {
         Err(Ed2kSessionError::CompressedProtocolUnsupported) => {}
         other => panic!("expected CompressedProtocolUnsupported, got: {other:?}"),
     }
-    assert!(matches!(client.session().state, Ed2kSessionState::Failed { .. }));
+    assert!(matches!(
+        client.session().state,
+        Ed2kSessionState::Failed { .. }
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -545,7 +576,10 @@ async fn test_multiple_distinct_file_requests_no_crosstalk() {
     assert_eq!(status_a.file_hash, hash_a);
     assert_eq!(status_a.part_count, 3);
     assert_eq!(
-        status_a.availability_mask.available_parts().collect::<Vec<_>>(),
+        status_a
+            .availability_mask
+            .available_parts()
+            .collect::<Vec<_>>(),
         vec![0, 2]
     );
 
@@ -556,7 +590,10 @@ async fn test_multiple_distinct_file_requests_no_crosstalk() {
     assert_eq!(status_b.file_hash, hash_b);
     assert_eq!(status_b.part_count, 5);
     assert_eq!(
-        status_b.availability_mask.available_parts().collect::<Vec<_>>(),
+        status_b
+            .availability_mask
+            .available_parts()
+            .collect::<Vec<_>>(),
         vec![1, 3, 4]
     );
 
@@ -602,7 +639,9 @@ fn test_tracker_bounds_and_duplicate_rejection() {
     }
 
     // 5. Validate and remove
-    let removed = tracker.validate_and_remove(&hash_1).expect("validate failed");
+    let removed = tracker
+        .validate_and_remove(&hash_1)
+        .expect("validate failed");
     assert_eq!(removed.file_hash, hash_1);
     assert_eq!(tracker.pending_count(), 15);
 

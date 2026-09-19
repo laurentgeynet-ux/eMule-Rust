@@ -1,14 +1,14 @@
+use serde::{Deserialize, Serialize};
 use std::io::BufRead;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::interval::{coalesce_ranges, FilterRange};
 
 pub const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024; // 50 MB limit
-pub const MAX_LINE_LEN: usize = 1024;             // 1024 bytes per line max
-pub const MAX_ENTRIES: usize = 500_000;           // 500,000 rules max
+pub const MAX_LINE_LEN: usize = 1024; // 1024 bytes per line max
+pub const MAX_ENTRIES: usize = 500_000; // 500,000 rules max
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -44,7 +44,9 @@ pub struct ParseReport {
 ///    `1.2.3.4 - 1.2.3.4 , 100 , Spam`
 ///
 /// Lines starting with `#`, `//`, `;` are treated as comments.
-pub fn parse_ipfilter<R: BufRead>(reader: R) -> Result<(Vec<FilterRange>, ParseReport), ParseError> {
+pub fn parse_ipfilter<R: BufRead>(
+    reader: R,
+) -> Result<(Vec<FilterRange>, ParseReport), ParseError> {
     let mut report = ParseReport::default();
     let mut raw_ranges = Vec::new();
 
@@ -55,7 +57,10 @@ pub fn parse_ipfilter<R: BufRead>(reader: R) -> Result<(Vec<FilterRange>, ParseR
         if line.len() > MAX_LINE_LEN {
             report.invalid_lines += 1;
             if report.warnings.len() < 50 {
-                report.warnings.push(format!("Line {}: exceeded length limit of {} bytes", line_num, MAX_LINE_LEN));
+                report.warnings.push(format!(
+                    "Line {}: exceeded length limit of {} bytes",
+                    line_num, MAX_LINE_LEN
+                ));
             }
             continue;
         }
@@ -64,7 +69,11 @@ pub fn parse_ipfilter<R: BufRead>(reader: R) -> Result<(Vec<FilterRange>, ParseR
         let trimmed = line.trim();
 
         // Comments or empty line
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("//") || trimmed.starts_with(';') {
+        if trimmed.is_empty()
+            || trimmed.starts_with('#')
+            || trimmed.starts_with("//")
+            || trimmed.starts_with(';')
+        {
             report.comment_or_empty_lines += 1;
             continue;
         }
@@ -80,7 +89,10 @@ pub fn parse_ipfilter<R: BufRead>(reader: R) -> Result<(Vec<FilterRange>, ParseR
             None => {
                 report.invalid_lines += 1;
                 if report.warnings.len() < 50 {
-                    report.warnings.push(format!("Line {}: invalid ipfilter format: '{}'", line_num, trimmed));
+                    report.warnings.push(format!(
+                        "Line {}: invalid ipfilter format: '{}'",
+                        line_num, trimmed
+                    ));
                 }
             }
         }

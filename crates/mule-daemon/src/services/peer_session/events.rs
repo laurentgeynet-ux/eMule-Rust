@@ -1,10 +1,10 @@
+use serde_json::json;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use serde_json::json;
 use tokio::sync::broadcast;
 
-use crate::services::downloads::types::DownloadSnapshot;
 use super::types::PeerSessionSnapshot;
+use crate::services::downloads::types::DownloadSnapshot;
 
 pub fn emit_event(
     event_tx: &broadcast::Sender<String>,

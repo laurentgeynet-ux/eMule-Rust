@@ -1,9 +1,9 @@
-use tempfile::tempdir;
 use serde_json::{json, Value};
+use tempfile::tempdir;
 
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_daemon::rpc::methods::handle_request;
 use mule_daemon::rpc::types::JsonRpcRequest;
+use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 
 fn setup_test_state() -> (AppState, tempfile::TempDir) {
     let dir = tempdir().unwrap();
@@ -43,7 +43,9 @@ async fn test_network_policy_capabilities_in_hello_and_status() {
             "token": "policy_test_token_123"
         })),
     );
-    let resp = handle_request(&state, hello_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, hello_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     let caps = res["capabilities"].as_array().unwrap();
@@ -51,7 +53,9 @@ async fn test_network_policy_capabilities_in_hello_and_status() {
 
     // 2. system.status
     let status_req = make_req(2, "system.status", None);
-    let resp = handle_request(&state, status_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, status_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["networkState"], "preview-active");
@@ -67,7 +71,9 @@ async fn test_network_get_and_set_policy_rpc() {
 
     // 1. network.getPolicy initial
     let req = make_req(10, "network.getPolicy", None);
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["profile"], "public-ed2k-kad-preview");
@@ -83,7 +89,9 @@ async fn test_network_get_and_set_policy_rpc() {
         "network.setProfile",
         Some(json!({ "profile": "public-ed2k-preview" })),
     );
-    let resp = handle_request(&state, set_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, set_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["profile"], "public-ed2k-preview");
@@ -94,7 +102,9 @@ async fn test_network_get_and_set_policy_rpc() {
         "network.setProfile",
         Some(json!({ "profile": "unknown-profile" })),
     );
-    let resp = handle_request(&state, invalid_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, invalid_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_some());
 
     // 4. network.setBudgets
@@ -105,7 +115,9 @@ async fn test_network_get_and_set_policy_rpc() {
         "network.setBudgets",
         Some(json!({ "budgets": new_budgets })),
     );
-    let resp = handle_request(&state, set_budgets_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, set_budgets_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["budgets"]["max_active_peer_connections"], 35);
@@ -118,7 +130,9 @@ async fn test_network_kill_switch_and_audit_log_rpc() {
 
     // 1. network.disconnectAll
     let kill_req = make_req(20, "network.disconnectAll", None);
-    let resp = handle_request(&state, kill_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, kill_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["success"], true);
@@ -126,24 +140,35 @@ async fn test_network_kill_switch_and_audit_log_rpc() {
 
     // Verify policy query reflects disabled
     let get_req = make_req(21, "network.getPolicy", None);
-    let resp = handle_request(&state, get_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, get_req, &mut authenticated)
+        .await
+        .unwrap();
     let res = resp.result.unwrap();
     assert_eq!(res["state"], "disabled");
 
     // 2. network.enable
     let enable_req = make_req(22, "network.enable", None);
-    let resp = handle_request(&state, enable_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, enable_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     assert_eq!(res["state"], "preview-active");
 
     // 3. network.getAuditLog
     let audit_req = make_req(23, "network.getAuditLog", Some(json!({ "limit": 10 })));
-    let resp = handle_request(&state, audit_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, audit_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
     let entries = res["entries"].as_array().unwrap();
-    assert!(!entries.is_empty(), "Audit log should have entries from kill switch and enable");
-    assert!(entries.iter().any(|e| e["event_type"] == "kill-switch-triggered"));
+    assert!(
+        !entries.is_empty(),
+        "Audit log should have entries from kill switch and enable"
+    );
+    assert!(entries
+        .iter()
+        .any(|e| e["event_type"] == "kill-switch-triggered"));
     assert!(entries.iter().any(|e| e["event_type"] == "network-enabled"));
 }

@@ -15,12 +15,13 @@ use igd_next::{Gateway, PortMappingProtocol};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-pub use types::{
-    current_unix_ms, detect_local_ipv4_for_gateway, detect_primary_local_ipv4, inspect_mapping_entry,
-    is_cgnat_ip, is_valid_gateway_addr, is_valid_wan_ip, MappingOwnership, UpnpStatusSnapshot,
-};
 use discovery::discover_gateway_with_fallback;
 use mapping::{add_port_safe, check_existing_mapping};
+pub use types::{
+    current_unix_ms, detect_local_ipv4_for_gateway, detect_primary_local_ipv4,
+    inspect_mapping_entry, is_cgnat_ip, is_valid_gateway_addr, is_valid_wan_ip, MappingOwnership,
+    UpnpStatusSnapshot,
+};
 
 /// Service managing UPnP IGD lifecycle.
 #[derive(Debug, Clone)]
@@ -94,7 +95,11 @@ impl UpnpService {
     }
 
     /// Discovers gateway and maps the ports.
-    pub async fn map_ports(&self, tcp_port: u16, udp_port: u16) -> Result<UpnpStatusSnapshot, String> {
+    pub async fn map_ports(
+        &self,
+        tcp_port: u16,
+        udp_port: u16,
+    ) -> Result<UpnpStatusSnapshot, String> {
         {
             let mut snap = self.snapshot.write().await;
             snap.tcp_port = tcp_port;
@@ -150,8 +155,10 @@ impl UpnpService {
                         );
                     }
 
-                    let local_ip = detect_local_ipv4_for_gateway(gateway.addr)
-                        .ok_or_else(|| "Failed to detect local IPv4 address for gateway".to_string())?;
+                    let local_ip =
+                        detect_local_ipv4_for_gateway(gateway.addr).ok_or_else(|| {
+                            "Failed to detect local IPv4 address for gateway".to_string()
+                        })?;
 
                     let local_tcp_addr = SocketAddrV4::new(local_ip, tcp_port);
                     let local_udp_addr = SocketAddrV4::new(local_ip, udp_port);

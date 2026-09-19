@@ -1,9 +1,9 @@
 use mule_protocol::ed2k::{
     decode_server_response, Ed2kLimits, GetSourcesRequest, SearchQuery, SearchResult,
     ServerIdChange, ServerLoginRequest, ServerResponse, ServerStatus, OP_FOUNDSOURCES,
-    OP_FOUNDSOURCES_OBFU, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST, OP_SEARCH_RESULT,
-    OP_SERVERMESSAGE, OP_SERVERSTATUS, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME,
-    TAG_SPECIAL_VERSION,
+    OP_FOUNDSOURCES_OBFU, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST,
+    OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SERVERMESSAGE, OP_SERVERSTATUS, TAG_SPECIAL_FILESIZE,
+    TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
 use mule_protocol::PR_ED2K;
 
@@ -66,8 +66,8 @@ fn test_decode_server_id_change() {
     payload_low.extend_from_slice(&500_000u32.to_le_bytes());
     payload_low.extend_from_slice(&0u32.to_le_bytes());
 
-    let resp_low = decode_server_response(PR_ED2K, OP_IDCHANGE, &payload_low, &limits)
-        .expect("decode LowID");
+    let resp_low =
+        decode_server_response(PR_ED2K, OP_IDCHANGE, &payload_low, &limits).expect("decode LowID");
     if let ServerResponse::IdChange(ServerIdChange { client_id, .. }) = resp_low {
         assert_eq!(client_id, 500_000);
         assert!(!resp_is_high_id(client_id));
@@ -107,11 +107,14 @@ fn test_encode_search_query() {
 
     // Simple search (no filters): starts with 0x01 (NAME), u16 len, then term
     let simple_query = SearchQuery::new("windows");
-    let packet_simple = simple_query.encode(&limits).expect("encode simple search query");
+    let packet_simple = simple_query
+        .encode(&limits)
+        .expect("encode simple search query");
     assert_eq!(packet_simple.protocol, PR_ED2K);
     assert_eq!(packet_simple.opcode, OP_SEARCHREQUEST);
     assert_eq!(packet_simple.payload[0], 0x01);
-    let term_len = u16::from_le_bytes([packet_simple.payload[1], packet_simple.payload[2]]) as usize;
+    let term_len =
+        u16::from_le_bytes([packet_simple.payload[1], packet_simple.payload[2]]) as usize;
     assert_eq!(term_len, 7);
     assert_eq!(&packet_simple.payload[3..3 + term_len], b"windows");
 
@@ -301,8 +304,13 @@ fn test_decode_server_ident_with_compact_tags() {
     payload.push(TAG_SPECIAL_VERSION);
     payload.extend_from_slice(&1740u32.to_le_bytes());
 
-    let resp = decode_server_response(PR_ED2K, mule_protocol::ed2k::OP_SERVERIDENT, &payload, &limits)
-        .expect("decode server ident with compact tags");
+    let resp = decode_server_response(
+        PR_ED2K,
+        mule_protocol::ed2k::OP_SERVERIDENT,
+        &payload,
+        &limits,
+    )
+    .expect("decode server ident with compact tags");
 
     match resp {
         ServerResponse::Ident(ident) => {
@@ -333,8 +341,13 @@ fn test_decode_server_ident_with_str_fixed_tags() {
     payload.push(TAG_SPECIAL_NAME); // special ID 0x01
     payload.extend_from_slice(b"Lugdunum9"); // exactly 9 bytes
 
-    let resp = decode_server_response(PR_ED2K, mule_protocol::ed2k::OP_SERVERIDENT, &payload, &limits)
-        .expect("decode server ident with fixed str tag 0x19");
+    let resp = decode_server_response(
+        PR_ED2K,
+        mule_protocol::ed2k::OP_SERVERIDENT,
+        &payload,
+        &limits,
+    )
+    .expect("decode server ident with fixed str tag 0x19");
 
     match resp {
         ServerResponse::Ident(ident) => {
@@ -343,4 +356,169 @@ fn test_decode_server_ident_with_str_fixed_tags() {
         }
         _ => panic!("unexpected response type"),
     }
+}
+
+// ── OP_OFFERFILES ────────────────────────────────────────────────────────────
+
+#[test]
+fn test_offer_files_wire_layout() {
+    use mule_protocol::ed2k::{
+        ed2k_file_type_term, OfferFiles, OfferedFile, TagName, TagValue, OP_OFFERFILES,
+        SRV_TCPFLG_COMPRESSION, TAG_SPECIAL_FILETYPE,
+    };
+    let limits = Ed2kLimits::default();
+
+    let hash = [0xABu8; 16];
+    let of = OfferedFile::for_server(
+        hash,
+        "movie.avi",
+        1_500_000,
+        0,
+        4662,
+        SRV_TCPFLG_COMPRESSION,
+    )
+    .unwrap();
+    // Compression-capable server: markers instead of real ID/port.
+    assert_eq!(of.client_id, 0xFBFBFBFB);
+    assert_eq!(of.client_port, 0xFBFB);
+    assert_eq!(of.tags.len(), 3); // name + size + type
+
+    let pkt = OfferFiles { files: vec![of] }.encode(&limits).unwrap();
+    assert_eq!(pkt.protocol, PR_ED2K);
+    assert_eq!(pkt.opcode, OP_OFFERFILES);
+    let p = &pkt.payload;
+    assert_eq!(&p[0..4], &1u32.to_le_bytes());
+    assert_eq!(&p[4..20], &hash);
+    assert_eq!(&p[20..24], &0xFBFBFBFBu32.to_le_bytes());
+    assert_eq!(&p[24..26], &0xFBFBu16.to_le_bytes());
+    assert_eq!(&p[26..30], &3u32.to_le_bytes()); // 3 tags
+
+    assert_eq!(ed2k_file_type_term("movie.avi"), "Video");
+    assert_eq!(ed2k_file_type_term("song.mp3"), "Audio");
+    assert_eq!(ed2k_file_type_term("archive.rar"), "Pro");
+    assert_eq!(ed2k_file_type_term("noext"), "");
+    let _ = (TagName::Id(TAG_SPECIAL_FILETYPE), TagValue::UInt32(0));
+}
+
+#[test]
+fn test_offer_files_highid_vs_lowid_and_large_file() {
+    use mule_protocol::ed2k::{OfferedFile, SRV_TCPFLG_LARGEFILES};
+
+    // HighID on a legacy server: real id+port published.
+    let of = OfferedFile::for_server([1u8; 16], "a.bin", 100, 20_000_000, 4662, 0).unwrap();
+    assert_eq!(of.client_id, 20_000_000);
+    assert_eq!(of.client_port, 4662);
+
+    // LowID on a legacy server: zeros.
+    let of = OfferedFile::for_server([1u8; 16], "a.bin", 100, 5, 4662, 0).unwrap();
+    assert_eq!((of.client_id, of.client_port), (0, 0));
+
+    // Large file skipped without LARGEFILES flag, sent with split size tags else.
+    let big = 5_000_000_000u64;
+    assert!(OfferedFile::for_server([1u8; 16], "big.iso", big, 0, 0, 0).is_none());
+    let of =
+        OfferedFile::for_server([1u8; 16], "big.iso", big, 0, 0, SRV_TCPFLG_LARGEFILES).unwrap();
+    assert_eq!(of.tags.len(), 4); // name + size lo + size hi + type
+}
+
+#[test]
+fn test_offer_files_empty_is_keepalive() {
+    use mule_protocol::ed2k::{OfferFiles, OP_OFFERFILES};
+    let pkt = OfferFiles { files: vec![] }
+        .encode(&Ed2kLimits::default())
+        .unwrap();
+    assert_eq!(pkt.opcode, OP_OFFERFILES);
+    assert_eq!(&pkt.payload[..], &0u32.to_le_bytes());
+}
+
+#[test]
+fn test_callback_request_encodes_bare_client_id() {
+    use mule_protocol::ed2k::{CallbackRequest, OP_CALLBACKREQUEST};
+    let pkt = CallbackRequest {
+        client_id: 0x00AB_CD12,
+    }
+    .encode();
+    assert_eq!(pkt.protocol, PR_ED2K);
+    assert_eq!(pkt.opcode, OP_CALLBACKREQUEST);
+    assert_eq!(&pkt.payload[..], &0x00AB_CD12u32.to_le_bytes());
+}
+
+#[test]
+fn test_decode_callback_requested_short_and_extended() {
+    use mule_protocol::ed2k::{OP_CALLBACKREQUESTED, OP_CALLBACK_FAIL};
+    let limits = Ed2kLimits::default();
+
+    // Short form: <IP 4><PORT 2>
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&0x0A0B0C0Du32.to_le_bytes());
+    payload.extend_from_slice(&4662u16.to_le_bytes());
+    let resp = decode_server_response(PR_ED2K, OP_CALLBACKREQUESTED, &payload, &limits).unwrap();
+    match resp {
+        ServerResponse::CallbackRequested(cb) => {
+            assert_eq!(cb.ip, 0x0A0B0C0D);
+            assert_eq!(cb.port, 4662);
+            assert_eq!(cb.crypt_options, None);
+            assert_eq!(cb.user_hash, None);
+        }
+        _ => panic!("unexpected response"),
+    }
+
+    // Extended form: + crypt_options u8 + user_hash[16]
+    let hash = [0x42u8; 16];
+    payload.push(0x03);
+    payload.extend_from_slice(&hash);
+    let resp = decode_server_response(PR_ED2K, OP_CALLBACKREQUESTED, &payload, &limits).unwrap();
+    match resp {
+        ServerResponse::CallbackRequested(cb) => {
+            assert_eq!(cb.crypt_options, Some(0x03));
+            assert_eq!(cb.user_hash, Some(hash));
+        }
+        _ => panic!("unexpected response"),
+    }
+
+    // Truncated
+    assert!(decode_server_response(PR_ED2K, OP_CALLBACKREQUESTED, &[0u8; 5], &limits).is_err());
+
+    // OP_CALLBACK_FAIL: empty and echoed-id forms
+    let resp = decode_server_response(PR_ED2K, OP_CALLBACK_FAIL, &[], &limits).unwrap();
+    assert!(matches!(
+        resp,
+        ServerResponse::CallbackFail { client_id: None }
+    ));
+    let resp =
+        decode_server_response(PR_ED2K, OP_CALLBACK_FAIL, &1234u32.to_le_bytes(), &limits).unwrap();
+    assert!(matches!(
+        resp,
+        ServerResponse::CallbackFail {
+            client_id: Some(1234)
+        }
+    ));
+}
+
+#[test]
+fn test_decode_server_list() {
+    use mule_protocol::ed2k::OP_SERVERLIST;
+    let limits = Ed2kLimits::default();
+    let mut payload = Vec::new();
+    payload.push(2u8); // count
+    payload.extend_from_slice(&0x0102_0304u32.to_le_bytes());
+    payload.extend_from_slice(&4661u16.to_le_bytes());
+    payload.extend_from_slice(&0x7F00_0001u32.to_le_bytes());
+    payload.extend_from_slice(&4665u16.to_le_bytes());
+
+    let resp = decode_server_response(PR_ED2K, OP_SERVERLIST, &payload, &limits)
+        .expect("decode OP_SERVERLIST");
+    match resp {
+        ServerResponse::ServerList { servers } => {
+            assert_eq!(servers.len(), 2);
+            assert_eq!(servers[0], (0x0102_0304, 4661));
+            assert_eq!(servers[1], (0x7F00_0001, 4665));
+        }
+        _ => panic!("unexpected response type"),
+    }
+
+    // Empty list is valid; truncated entry is rejected.
+    let resp = decode_server_response(PR_ED2K, OP_SERVERLIST, &[0u8], &limits).unwrap();
+    assert!(matches!(resp, ServerResponse::ServerList { ref servers } if servers.is_empty()));
+    assert!(decode_server_response(PR_ED2K, OP_SERVERLIST, &[1u8, 0, 0, 0], &limits).is_err());
 }

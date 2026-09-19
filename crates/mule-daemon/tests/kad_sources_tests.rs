@@ -40,7 +40,9 @@ async fn test_kad_source_publish_and_search_flow() {
         .expect("start kad udp");
 
     // 2. Start mock Kad peer
-    let mock_socket = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock peer");
+    let mock_socket = UdpSocket::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock peer");
     let mock_addr = mock_socket.local_addr().expect("mock addr");
     let target_hash = [0x55u8; 16];
     let target_hash_hex = hex::encode(target_hash);
@@ -60,18 +62,20 @@ async fn test_kad_source_publish_and_search_flow() {
                         tcp_port: 39735,
                         version: 2,
                     }];
-                    let res = KadCodec::encode_bootstrap_res(
-                        &b.kad_id,
-                        mock_addr.port(),
-                        2,
-                        &contacts,
-                    );
-                    mock_socket.send_to(&res, from_addr).await.expect("send boot res");
+                    let res =
+                        KadCodec::encode_bootstrap_res(&b.kad_id, mock_addr.port(), 2, &contacts);
+                    mock_socket
+                        .send_to(&res, from_addr)
+                        .await
+                        .expect("send boot res");
                     loop_count += 1;
                 }
                 KadMessage::PublishSourceReq(p) => {
                     let res = KadCodec::encode_publish_source_res(&p.target_file_hash, 0);
-                    mock_socket.send_to(&res, from_addr).await.expect("send pub res");
+                    mock_socket
+                        .send_to(&res, from_addr)
+                        .await
+                        .expect("send pub res");
                     loop_count += 1;
                 }
                 KadMessage::SearchSourceReq(s) => {
@@ -83,7 +87,10 @@ async fn test_kad_source_publish_and_search_flow() {
                         encryption: 0,
                     }];
                     let res = KadCodec::encode_search_source_res(&s.target_file_hash, &sources);
-                    mock_socket.send_to(&res, from_addr).await.expect("send search res");
+                    mock_socket
+                        .send_to(&res, from_addr)
+                        .await
+                        .expect("send search res");
                     loop_count += 1;
                 }
                 _ => {}
@@ -121,7 +128,9 @@ async fn test_kad_source_publish_and_search_flow() {
 
     // 6. Verify peer sources in DownloadService
     let dl = state.downloads.lock().await;
-    let list = dl.list_peer_sources(&target_hash_hex).expect("list peer sources");
+    let list = dl
+        .list_peer_sources(&target_hash_hex)
+        .expect("list peer sources");
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].origin, PeerSourceOrigin::Kad);
 

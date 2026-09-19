@@ -21,6 +21,7 @@ mule-format = { path = "../mule-format" }
 mule-protocol = { path = "../mule-protocol" }
 mule-network-policy = { path = "../mule-network-policy" }
 mule-filter = { path = "../mule-filter" }
+mule-crypto = { path = "../mule-crypto" }
 tokio.workspace = true
 axum.workspace = true
 serde.workspace = true
@@ -36,6 +37,7 @@ fs4 = "1.1.0"
 bytes.workspace = true
 md4.workspace = true
 data-encoding.workspace = true
+rsa = "0.9"
 igd-next.workspace = true
 reqwest.workspace = true
 flate2.workspace = true
@@ -44,6 +46,7 @@ time.workspace = true
 [dev-dependencies]
 tokio-tungstenite.workspace = true
 tempfile.workspace = true
+md-5.workspace = true
 
 [[test]]
 name = "inter_daemon_transfer"

@@ -1,12 +1,12 @@
-use std::net::Ipv4Addr;
 use serde_json::json;
+use std::net::Ipv4Addr;
 use tempfile::tempdir;
 
-use mule_daemon::{DaemonConfig, WorkDirMode};
 use mule_daemon::rpc::methods::handle_request;
 use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::services::downloads::DownloadService;
 use mule_daemon::state::AppState;
+use mule_daemon::{DaemonConfig, WorkDirMode};
 use mule_format::kad::{KadContactEntry, NodesDatFile};
 
 #[tokio::test]
@@ -40,7 +40,9 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
             "token": "test-token",
         })),
     };
-    let resp = handle_request(&state, hello_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, hello_req, &mut authenticated)
+        .await
+        .unwrap();
     let res = resp.result.unwrap();
     let caps = res["capabilities"].as_array().unwrap();
     assert!(caps.iter().any(|c| c.as_str() == Some("kad-contacts")));
@@ -53,7 +55,9 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
         method: "kad.status".into(),
         params: None,
     };
-    let resp = handle_request(&state, status_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, status_req, &mut authenticated)
+        .await
+        .unwrap();
     let status = resp.result.unwrap();
     assert_eq!(status["totalContacts"], 0);
 
@@ -77,7 +81,9 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
             "path": nodes_dat_path.to_str().unwrap(),
         })),
     };
-    let resp = handle_request(&state, inspect_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, inspect_req, &mut authenticated)
+        .await
+        .unwrap();
     let inspect = resp.result.unwrap();
     assert_eq!(inspect["declaredCount"], 2);
     // In LocalLab profile, 127.0.0.1 is allowed
@@ -92,7 +98,9 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
             "path": nodes_dat_path.to_str().unwrap(),
         })),
     };
-    let resp = handle_request(&state, import_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, import_req, &mut authenticated)
+        .await
+        .unwrap();
     let import_res = resp.result.unwrap();
     assert_eq!(import_res["importedCount"], 2);
 
@@ -103,7 +111,9 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
         method: "kad.listContacts".into(),
         params: Some(json!({ "limit": 10 })),
     };
-    let resp = handle_request(&state, list_req.clone(), &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, list_req.clone(), &mut authenticated)
+        .await
+        .unwrap();
     let list_res = resp.result.unwrap();
     assert_eq!(list_res["total"], 2);
 
@@ -114,12 +124,16 @@ async fn test_kad_rpc_lifecycle_inspect_import_list_clear() {
         method: "kad.clearContacts".into(),
         params: None,
     };
-    let resp = handle_request(&state, clear_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, clear_req, &mut authenticated)
+        .await
+        .unwrap();
     let clear_res = resp.result.unwrap();
     assert_eq!(clear_res["cleared"], 2);
 
     // 8. Verify list is now empty
-    let resp = handle_request(&state, list_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, list_req, &mut authenticated)
+        .await
+        .unwrap();
     let list_res = resp.result.unwrap();
     assert_eq!(list_res["total"], 0);
 }

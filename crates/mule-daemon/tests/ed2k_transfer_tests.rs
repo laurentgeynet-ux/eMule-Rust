@@ -91,11 +91,7 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
     let peer_addr = test_peer.local_addr();
 
     test_peer
-        .add_shared_file(
-            fixture_hash.0,
-            1,
-            PartAvailabilityMask::from_parts(&[0], 1),
-        )
+        .add_shared_file(fixture_hash.0, 1, PartAvailabilityMask::from_parts(&[0], 1))
         .await;
     test_peer
         .add_shared_file_data(fixture_hash.0, fixture_bytes.clone())
@@ -220,7 +216,10 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
         }
     }
 
-    assert!(saw_waiting_for_sources, "Expected waiting_for_sources state");
+    assert!(
+        saw_waiting_for_sources,
+        "Expected waiting_for_sources state"
+    );
     assert!(saw_downloading, "Expected downloading state");
     assert!(
         (4_500_000..FIXTURE_FILE_SIZE).contains(&received_at_interrupt),
@@ -237,7 +236,10 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // 7. Verify disk and SQLite WAL state at interruption
-    let part_file_path = dir_client.path().join("part").join(format!("{download_id}.part"));
+    let part_file_path = dir_client
+        .path()
+        .join("part")
+        .join(format!("{download_id}.part"));
     assert!(part_file_path.exists(), ".part file must exist on disk");
     let part_size_at_interrupt = std::fs::metadata(&part_file_path).unwrap().len();
     assert!(
@@ -393,14 +395,20 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
             }
         }
     }
-    assert!(sources_val.get("result").is_some(), "Expected result for getSources: {sources_val:?}");
+    assert!(
+        sources_val.get("result").is_some(),
+        "Expected result for getSources: {sources_val:?}"
+    );
     let src_list = sources_val["result"]["sources"].as_array().unwrap();
     assert!(!src_list.is_empty(), "Source availability must be recorded");
     let src_item = &src_list[0];
     assert!(src_item["sourceId"].is_string());
     assert_eq!(src_item["availablePartCount"], 1);
     assert_eq!(src_item["totalPartCount"], 1);
-    assert!(src_item.get("peerAddr").is_none(), "Raw SocketAddr must NEVER be exposed in DTO");
+    assert!(
+        src_item.get("peerAddr").is_none(),
+        "Raw SocketAddr must NEVER be exposed in DTO"
+    );
 
     // 12. Verify finalized file on disk
     let finalized_path = client_target_dir.path().join("fixture_9728000.bin");
@@ -567,7 +575,10 @@ async fn test_ed2k_transfer_residual_part_file_completion() {
 
                 if status == "verifying" {
                     saw_verifying = true;
-                    assert_eq!(received, file_size, "All bytes must be received before verifying");
+                    assert_eq!(
+                        received, file_size,
+                        "All bytes must be received before verifying"
+                    );
                 } else if status == "completed" {
                     saw_completed = true;
                     assert_eq!(received, file_size);
@@ -611,7 +622,10 @@ async fn test_ed2k_transfer_residual_part_file_completion() {
     let src_item = &src_list[0];
     assert_eq!(src_item["availablePartCount"], 2);
     assert_eq!(src_item["totalPartCount"], 2);
-    assert!(src_item.get("peerAddr").is_none(), "Raw SocketAddr must NEVER be exposed");
+    assert!(
+        src_item.get("peerAddr").is_none(),
+        "Raw SocketAddr must NEVER be exposed"
+    );
 
     // 7. Verify finalized file on disk
     let finalized_path = client_target_dir.path().join("fixture_9728001.bin");
@@ -640,4 +654,3 @@ async fn test_ed2k_transfer_residual_part_file_completion() {
     peer_stopped.store(true, Ordering::SeqCst);
     peer_handle.abort();
 }
-

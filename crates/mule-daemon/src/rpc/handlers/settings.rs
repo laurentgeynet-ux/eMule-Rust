@@ -41,7 +41,13 @@ pub async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
             .get_setting("default_download_directory")
             .ok()
             .flatten()
-            .unwrap_or_else(|| state.config.default_download_dir.to_string_lossy().to_string())
+            .unwrap_or_else(|| {
+                state
+                    .config
+                    .default_download_dir
+                    .to_string_lossy()
+                    .to_string()
+            })
     };
 
     Ok(json!({
@@ -132,7 +138,9 @@ pub async fn handle_settings_set(
                 let _ = std::fs::remove_file(&probe);
             }
             Err(e) => {
-                return Err(JsonRpcError::business(format!("Directory is not writable: {e}")));
+                return Err(JsonRpcError::business(format!(
+                    "Directory is not writable: {e}"
+                )));
             }
         }
 
@@ -198,7 +206,10 @@ pub async fn handle_settings_set(
                 .unwrap_or(state.config.max_peers_per_download);
             (g, f)
         };
-        state.peer_session.set_swarm_limits(current_max_f, current_max_g).await;
+        state
+            .peer_session
+            .set_swarm_limits(current_max_f, current_max_g)
+            .await;
 
         let mut b = state.network_policy.budgets();
         if b.max_active_peer_connections < current_max_g {
@@ -224,7 +235,8 @@ pub async fn handle_settings_set_retention_days(
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let retention_days = params["retentionDays"]
         .as_u64()
-        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'retentionDays' parameter"))? as u32;
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'retentionDays' parameter"))?
+        as u32;
 
     let mut dls = state.downloads.lock().await;
     dls.set_setting("history_retention_days", &retention_days.to_string())?;

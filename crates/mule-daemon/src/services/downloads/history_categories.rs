@@ -3,8 +3,8 @@ use mule_core::{Database, Download, DownloadCategory, HistoryFilter, HistoryStat
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::error::DaemonError;
 use super::types::{now_ms, ActiveDownload};
+use crate::error::DaemonError;
 
 pub fn record_history_event(
     db: &mut Database,
@@ -60,7 +60,10 @@ pub fn clear_history(db: &mut Database) -> Result<usize, DaemonError> {
         .map_err(|e| DaemonError::Business(format!("DB error clearing history: {e}")))
 }
 
-pub fn apply_retention_policy(db: &mut Database, retention_days: u32) -> Result<usize, DaemonError> {
+pub fn apply_retention_policy(
+    db: &mut Database,
+    retention_days: u32,
+) -> Result<usize, DaemonError> {
     db.apply_retention_policy(retention_days)
         .map_err(|e| DaemonError::Business(format!("DB error applying retention policy: {e}")))
 }
@@ -78,7 +81,11 @@ pub fn export_history(
             );
             for e in entries {
                 let escaped_name = e.file_name.replace('"', "\"\"");
-                let escaped_err = e.error_message.as_deref().unwrap_or("").replace('"', "\"\"");
+                let escaped_err = e
+                    .error_message
+                    .as_deref()
+                    .unwrap_or("")
+                    .replace('"', "\"\"");
                 out.push_str(&format!(
                     "{},{},\"{}\",{},{},{},{},{},{},{},{},{},\"{}\",{}\n",
                     e.id,
@@ -128,7 +135,9 @@ pub fn create_category(
 ) -> Result<DownloadCategory, DaemonError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(DaemonError::InvalidParams("Category name cannot be empty".into()));
+        return Err(DaemonError::InvalidParams(
+            "Category name cannot be empty".into(),
+        ));
     }
 
     let existing = list_categories(db)?;
@@ -138,8 +147,12 @@ pub fn create_category(
         name,
         color,
         sort_order,
-        default_destination.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-        default_priority.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()),
+        default_destination
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        default_priority
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty()),
     );
 
     db.insert_category(&category)
@@ -163,7 +176,9 @@ pub fn update_category(
     if let Some(n) = name {
         let trimmed = n.trim();
         if trimmed.is_empty() {
-            return Err(DaemonError::InvalidParams("Category name cannot be empty".into()));
+            return Err(DaemonError::InvalidParams(
+                "Category name cannot be empty".into(),
+            ));
         }
         cat.name = trimmed.to_string();
     }
@@ -173,11 +188,15 @@ pub fn update_category(
     }
 
     if let Some(dest_opt) = default_destination {
-        cat.default_destination = dest_opt.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        cat.default_destination = dest_opt
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
     }
 
     if let Some(prio_opt) = default_priority {
-        cat.default_priority = prio_opt.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+        cat.default_priority = prio_opt
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty());
     }
 
     if let Some(order) = sort_order {

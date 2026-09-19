@@ -108,7 +108,10 @@ async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
     }
 
     let add_val = add_resp_opt.expect("add response not received");
-    let download_id = add_val["result"]["downloadId"].as_str().unwrap().to_string();
+    let download_id = add_val["result"]["downloadId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_eq!(add_val["result"]["status"], "queued");
 
     let initial_event = initial_event_opt.expect("initial event not received");
@@ -117,8 +120,13 @@ async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
 
     // 5. Verify the .part file on disk exists and has 0 bytes written (AllocationPolicy::None)
     let part_file_path = temp_dir.path().join(format!("{download_id}.part"));
-    let size_before = std::fs::metadata(&part_file_path).map(|m| m.len()).unwrap_or(0);
-    assert_eq!(size_before, 0, ".part file must have 0 bytes initially with AllocationPolicy::None");
+    let size_before = std::fs::metadata(&part_file_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    assert_eq!(
+        size_before, 0,
+        ".part file must have 0 bytes initially with AllocationPolicy::None"
+    );
 
     // 6. Call ed2k.probeSource to probe peer availability over loopback
     let req_probe = json!({
@@ -164,7 +172,9 @@ async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
     assert_eq!(dl_event["status"], "queued");
 
     // 9. CRITICAL INVARIANCE: Verify strictly ZERO writes to the .part file
-    let size_after = std::fs::metadata(&part_file_path).map(|m| m.len()).unwrap_or(0);
+    let size_after = std::fs::metadata(&part_file_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
     assert_eq!(
         size_after, size_before,
         "CRITICAL: .part file must NOT have any data written during availability probing!"

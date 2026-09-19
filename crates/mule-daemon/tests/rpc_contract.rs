@@ -308,7 +308,10 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             .await
             .unwrap();
         let add_val = wait_for_rpc_response(&mut read, 2).await;
-        download_id = add_val["result"]["downloadId"].as_str().unwrap().to_string();
+        download_id = add_val["result"]["downloadId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // List downloads -> must have 1
         write
@@ -359,7 +362,10 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             .await
             .unwrap();
         let list2_val = wait_for_rpc_response(&mut read, 5).await;
-        assert_eq!(list2_val["result"]["downloads"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            list2_val["result"]["downloads"].as_array().unwrap().len(),
+            0
+        );
 
         server_handle.abort();
     }

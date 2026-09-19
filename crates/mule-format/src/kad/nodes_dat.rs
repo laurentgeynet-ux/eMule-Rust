@@ -1,9 +1,9 @@
-use std::io::{Read, Write};
-use std::net::Ipv4Addr;
 use crate::error::FormatError;
 use crate::met::error::MetError;
 use crate::met::reader::CountingReader;
 use crate::met::tags::Tag;
+use std::io::{Read, Write};
+use std::net::Ipv4Addr;
 
 /// Maximum size allowed for a nodes.dat file to prevent DoS (5 MiB).
 pub const MAX_NODES_DAT_SIZE: usize = 5 * 1024 * 1024;
@@ -183,5 +183,3 @@ impl NodesDatFile {
         Ok(())
     }
 }
-
-

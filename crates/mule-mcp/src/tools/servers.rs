@@ -190,24 +190,46 @@ pub async fn handle_tool(
                 None => return Some(ToolCallResult::error("Missing required parameter: 'query'")),
             };
 
-            let network = args.get("network").and_then(|n| n.as_str()).unwrap_or("kad");
-            let min_size = args.get("min_size_mb").and_then(|m| m.as_f64()).map(|m| (m * 1024.0 * 1024.0) as u64);
-            let max_size = args.get("max_size_mb").and_then(|m| m.as_f64()).map(|m| (m * 1024.0 * 1024.0) as u64);
+            let network = args
+                .get("network")
+                .and_then(|n| n.as_str())
+                .unwrap_or("kad");
+            let min_size = args
+                .get("min_size_mb")
+                .and_then(|m| m.as_f64())
+                .map(|m| (m * 1024.0 * 1024.0) as u64);
+            let max_size = args
+                .get("max_size_mb")
+                .and_then(|m| m.as_f64())
+                .map(|m| (m * 1024.0 * 1024.0) as u64);
             let extension = args.get("extension").and_then(|e| e.as_str());
-            let wait_secs = args.get("wait_seconds").and_then(|w| w.as_u64()).unwrap_or(4);
+            let wait_secs = args
+                .get("wait_seconds")
+                .and_then(|w| w.as_u64())
+                .unwrap_or(4);
 
-            match client.search_and_collect(query, Some(network), min_size, max_size, extension, wait_secs).await {
+            match client
+                .search_and_collect(
+                    query,
+                    Some(network),
+                    min_size,
+                    max_size,
+                    extension,
+                    wait_secs,
+                )
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
                 Err(e) => Some(ToolCallResult::error(format!("Search failed: {e}"))),
             }
         }
 
-        "emule_list_servers" => {
-            match client.call("servers.list", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to list servers: {e}"))),
-            }
-        }
+        "emule_list_servers" => match client.call("servers.list", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to list servers: {e}"
+            ))),
+        },
 
         "emule_connect_server" => {
             let address = if let Some(addr) = args.get("address").and_then(|a| a.as_str()) {
@@ -221,111 +243,184 @@ pub async fn handle_tool(
                 // Auto-pick the first allowed server from servers.list
                 let s_list = client.call("servers.list", json!({})).await.ok();
                 s_list.and_then(|v| {
-                    v.get("servers")
-                        .and_then(|s| s.as_array())
-                        .and_then(|arr| {
-                            arr.iter().find(|s| {
+                    v.get("servers").and_then(|s| s.as_array()).and_then(|arr| {
+                        arr.iter()
+                            .find(|s| {
                                 s.get("filterStatus").and_then(|f| f.as_str()) == Some("allowed")
-                            }).and_then(|s| s.get("address").and_then(|a| a.as_str()).map(String::from))
-                        })
+                            })
+                            .and_then(|s| {
+                                s.get("address").and_then(|a| a.as_str()).map(String::from)
+                            })
+                    })
                 })
             };
 
-            let addr_str = match address {
-                Some(a) => a,
-                None => return Some(ToolCallResult::error("No server address specified and no available server found in server list")),
-            };
+            let addr_str =
+                match address {
+                    Some(a) => a,
+                    None => return Some(ToolCallResult::error(
+                        "No server address specified and no available server found in server list",
+                    )),
+                };
 
-            match client.call("servers.connect", json!({ "address": addr_str })).await {
+            match client
+                .call("servers.connect", json!({ "address": addr_str }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to connect to server '{addr_str}': {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to connect to server '{addr_str}': {e}"
+                ))),
             }
         }
 
-        "emule_disconnect_server" => {
-            match client.call("servers.disconnect", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to disconnect server: {e}"))),
-            }
-        }
+        "emule_disconnect_server" => match client.call("servers.disconnect", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to disconnect server: {e}"
+            ))),
+        },
 
         "emule_update_servers_from_url" => {
-            let url = args.get("url").and_then(|u| u.as_str()).unwrap_or("http://upd.emule-security.org/server.met");
-            match client.call("servers.updateFromUrl", json!({ "url": url })).await {
+            let url = args
+                .get("url")
+                .and_then(|u| u.as_str())
+                .unwrap_or("http://upd.emule-security.org/server.met");
+            match client
+                .call("servers.updateFromUrl", json!({ "url": url }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to update servers from URL: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to update servers from URL: {e}"
+                ))),
             }
         }
 
         "emule_inspect_server_met" => {
             let file_path = match args.get("file_path").and_then(|f| f.as_str()) {
                 Some(f) => f,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_path'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_path'",
+                    ))
+                }
             };
 
-            match client.call("servers.inspectMet", json!({ "filePath": file_path })).await {
+            match client
+                .call("servers.inspectMet", json!({ "filePath": file_path }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to inspect server.met: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to inspect server.met: {e}"
+                ))),
             }
         }
 
         "emule_import_server_met" => {
             let file_path = match args.get("file_path").and_then(|f| f.as_str()) {
                 Some(f) => f,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_path'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_path'",
+                    ))
+                }
             };
 
-            match client.call("servers.importMet", json!({ "filePath": file_path })).await {
+            match client
+                .call("servers.importMet", json!({ "filePath": file_path }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to import server.met: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to import server.met: {e}"
+                ))),
             }
         }
 
         "emule_set_server_enabled" => {
             let address = match args.get("address").and_then(|a| a.as_str()) {
                 Some(a) => a,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'address'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'address'",
+                    ))
+                }
             };
             let enabled = match args.get("enabled").and_then(|e| e.as_bool()) {
                 Some(e) => e,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'enabled'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'enabled'",
+                    ))
+                }
             };
 
-            match client.call("servers.setEnabled", json!({ "address": address, "enabled": enabled })).await {
+            match client
+                .call(
+                    "servers.setEnabled",
+                    json!({ "address": address, "enabled": enabled }),
+                )
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to set server enabled status: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to set server enabled status: {e}"
+                ))),
             }
         }
 
         "emule_delete_server" => {
             let address = match args.get("address").and_then(|a| a.as_str()) {
                 Some(a) => a,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'address'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'address'",
+                    ))
+                }
             };
 
-            match client.call("servers.delete", json!({ "address": address })).await {
+            match client
+                .call("servers.delete", json!({ "address": address }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to delete server: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to delete server: {e}"
+                ))),
             }
         }
 
-        "emule_clear_servers" => {
-            match client.call("servers.clear", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to clear server list: {e}"))),
-            }
-        }
+        "emule_clear_servers" => match client.call("servers.clear", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to clear server list: {e}"
+            ))),
+        },
 
         "emule_query_server_sources" => {
             let hash = match args.get("file_hash").and_then(|h| h.as_str()) {
                 Some(h) => h,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_hash'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_hash'",
+                    ))
+                }
             };
             let size = args.get("file_size").and_then(|s| s.as_u64()).unwrap_or(0);
 
-            match client.call("servers.querySources", json!({ "fileHash": hash, "fileSize": size })).await {
+            match client
+                .call(
+                    "servers.querySources",
+                    json!({ "fileHash": hash, "fileSize": size }),
+                )
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to query server sources: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to query server sources: {e}"
+                ))),
             }
         }
 

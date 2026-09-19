@@ -34,6 +34,8 @@ pub const TAG_SPECIAL_NAME: u8 = 0x01;
 pub const TAG_SPECIAL_FILESIZE: u8 = 0x02;
 /// Standard special file type tag ID.
 pub const TAG_SPECIAL_FILETYPE: u8 = 0x03;
+/// High 32 bits of the file size for large files (`FT_FILESIZE_HI`, `0x3A`).
+pub const TAG_SPECIAL_FILESIZE_HI: u8 = 0x3A;
 /// Standard special port tag ID (`0x0F` = 15).
 pub const TAG_SPECIAL_PORT: u8 = 0x0F;
 /// Standard special version tag ID (`0x11` = 17).
@@ -113,8 +115,12 @@ impl TagName {
                 TAG_SPECIAL_VERSION => "version".to_string(),
                 TAG_SPECIAL_EMULE_VERSION => "emule_version".to_string(),
                 TAG_SPECIAL_EMULE_UDPPORTS => "emule_udp_ports".to_string(),
-                TAG_SPECIAL_MISCOPTIONS1 | TAG_SPECIAL_EMULE_MISCOPTIONS1 => "misc_options_1".to_string(),
-                TAG_SPECIAL_MISCOPTIONS2 | TAG_SPECIAL_EMULE_MISCOPTIONS2 => "misc_options_2".to_string(),
+                TAG_SPECIAL_MISCOPTIONS1 | TAG_SPECIAL_EMULE_MISCOPTIONS1 => {
+                    "misc_options_1".to_string()
+                }
+                TAG_SPECIAL_MISCOPTIONS2 | TAG_SPECIAL_EMULE_MISCOPTIONS2 => {
+                    "misc_options_2".to_string()
+                }
                 TAG_SPECIAL_UDPOPTIONS => "udp_options".to_string(),
                 TAG_SPECIAL_EMULE_EXT_COMPRESSION => "compression".to_string(),
                 TAG_SPECIAL_EMULE_EXT_UDPVER => "emule_udp_ver".to_string(),

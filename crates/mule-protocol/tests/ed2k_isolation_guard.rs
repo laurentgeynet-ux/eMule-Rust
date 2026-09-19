@@ -153,7 +153,6 @@ fn test_ed2k_reference_transport_strictly_confined_and_feature_gated() {
     );
 }
 
-
 #[test]
 fn test_ed2k_module_has_zero_lab_dependencies() {
     let dir = ed2k_src_dir();

@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use crate::aich::hash_tree::AichHash;
@@ -105,7 +105,19 @@ impl PartMetFile {
         for _ in 0..tag_count {
             let tag = cr.read_tag()?;
 
-            match tag.name_id {
+            // eMule writes gap boundaries as *named* integer tags whose name
+            // starts with the FT_GAPSTART/FT_GAPEND byte followed by a decimal
+            // index (PartFile.cpp SavePartFile / load path). Resolve the
+            // effective FT_* id for those named tags.
+            let effective_id = if tag.name_id != 0 {
+                tag.name_id
+            } else {
+                match tag.name.as_bytes().first().copied() {
+                    Some(b @ (FT_GAPSTART | FT_GAPEND)) => b,
+                    _ => 0,
+                }
+            };
+            match effective_id {
                 FT_FILENAME => {
                     if let Some(name) = tag.as_str() {
                         file_name = Some(name.to_string());
@@ -256,5 +268,192 @@ impl PartMetFile {
 
         Ok(completed)
     }
+
+    /// Serializes this `.part.met` to `writer` in eMule `CPartFile::SavePartFile`
+    /// wire format.
+    ///
+    /// Layout: `u8 version`, `u32 mod_date`, `hash16`, `u16 part_count`,
+    /// part hashes, `u32 tag_count`, then tags (filename, size, transferred,
+    /// AICH hash, and named gap tags `\x09<idx>` / `\x0A<idx>`).
+    /// 64-bit integer tags are only emitted for large files (> 4 GiB),
+    /// matching `PARTFILE_VERSION_LARGEFILE` semantics.
+    pub fn write_to<W: Write>(&self, w: &mut W) -> Result<(), MetError> {
+        let large_file = self.file_size.unwrap_or(0) > u32::MAX as u64;
+        let version = if large_file {
+            PARTFILE_VERSION_LARGEFILE
+        } else {
+            PARTFILE_VERSION
+        };
+
+        w.write_all(&[version]).map_err(|e| met_io_err(0, e))?;
+        w.write_all(&self.mod_date.to_le_bytes())
+            .map_err(|e| met_io_err(0, e))?;
+        w.write_all(&self.file_hash.0)
+            .map_err(|e| met_io_err(0, e))?;
+        w.write_all(&(self.part_hashes.len() as u16).to_le_bytes())
+            .map_err(|e| met_io_err(0, e))?;
+        for ph in &self.part_hashes {
+            w.write_all(ph).map_err(|e| met_io_err(0, e))?;
+        }
+
+        // Build the tag list: filename, size, transferred, AICH, gaps.
+        let mut tags: Vec<Tag> = Vec::new();
+        if let Some(name) = &self.file_name {
+            tags.push(Tag::new_id(FT_FILENAME, TagValue::String(name.clone())));
+        }
+        if let Some(size) = self.file_size {
+            tags.push(Tag::new_id(FT_FILESIZE, TagValue::Uint64(size)));
+        }
+        if self.transferred > 0 {
+            tags.push(Tag::new_id(
+                FT_TRANSFERRED,
+                TagValue::Uint64(self.transferred),
+            ));
+        }
+        if let Some(aich) = &self.aich_hash {
+            tags.push(Tag::new_id(
+                FT_AICH_HASH,
+                TagValue::String(aich.to_base32()),
+            ));
+        }
+        // Extra caller-supplied tags (str/int only, mirroring eMule m_taglist).
+        for t in &self.tags {
+            if matches!(t.value, TagValue::String(_) | TagValue::Uint64(_)) {
+                tags.push(t.clone());
+            }
+        }
+        // Gaps are written as named tags "<FT_GAPSTART><idx>" / "<FT_GAPEND><idx>"
+        // (eMule SavePartFile writes `gap.end + 1` — real exclusive limit).
+        for (i, (start, end)) in self.gaps.iter().enumerate() {
+            let mut sname = vec![FT_GAPSTART];
+            sname.extend_from_slice(i.to_string().as_bytes());
+            tags.push(Tag {
+                name_id: 0,
+                name: String::from_utf8_lossy(&sname).into_owned(),
+                value: TagValue::Uint64(*start),
+            });
+            let mut ename = vec![FT_GAPEND];
+            ename.extend_from_slice(i.to_string().as_bytes());
+            tags.push(Tag {
+                name_id: 0,
+                name: String::from_utf8_lossy(&ename).into_owned(),
+                value: TagValue::Uint64(*end),
+            });
+        }
+
+        w.write_all(&(tags.len() as u32).to_le_bytes())
+            .map_err(|e| met_io_err(0, e))?;
+        for tag in &tags {
+            write_tag(w, tag, large_file)?;
+        }
+        Ok(())
+    }
+
+    /// Atomically writes this `.part.met` to `path`: data goes to
+    /// `path.tmp` first and is then renamed over the target
+    /// (mirrors eMule `SavePartFile` tmp+move semantics).
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), MetError> {
+        let path = path.as_ref();
+        let mut tmp_name = path.as_os_str().to_os_string();
+        tmp_name.push(".tmp");
+        let tmp_path = Path::new(&tmp_name);
+
+        let write_res = (|| -> Result<(), MetError> {
+            let mut file = File::create(tmp_path).map_err(|e| MetError::Io {
+                offset: 0,
+                message: e.to_string(),
+            })?;
+            self.write_to(&mut file)?;
+            file.flush().map_err(|e| MetError::Io {
+                offset: 0,
+                message: e.to_string(),
+            })?;
+            Ok(())
+        })();
+
+        if let Err(e) = write_res {
+            let _ = std::fs::remove_file(tmp_path);
+            return Err(e);
+        }
+
+        std::fs::rename(tmp_path, path).map_err(|e| MetError::Io {
+            offset: 0,
+            message: e.to_string(),
+        })
+    }
 }
 
+fn met_io_err(offset: u64, e: std::io::Error) -> MetError {
+    MetError::Io {
+        offset,
+        message: e.to_string(),
+    }
+}
+
+/// Writes a single tag in eMule `.met` binary form:
+/// `u8 type`, then `u16 name_len=1 + u8 name_id` for id-named tags or
+/// `u16 name_len + name bytes` for named tags, then the typed value.
+/// Integer tags are emitted as `TAGTYPE_UINT32`, or `TAGTYPE_UINT64` when
+/// `large_file` is set (eMule `IsLargeFile()` convention).
+fn write_tag<W: Write>(w: &mut W, tag: &Tag, large_file: bool) -> Result<(), MetError> {
+    let tag_type: u8 = match &tag.value {
+        TagValue::String(_) => TAGTYPE_STRING,
+        TagValue::Uint64(v) if large_file || *v > u32::MAX as u64 => TAGTYPE_UINT64,
+        TagValue::Uint64(_) => TAGTYPE_UINT32,
+        TagValue::Float32(_) => TAGTYPE_FLOAT32,
+        TagValue::Hash16(_) => TAGTYPE_HASH16,
+        TagValue::Blob(_) => TAGTYPE_BLOB,
+        TagValue::Bsob(_) => TAGTYPE_BSOB,
+        TagValue::Bool(_) => TAGTYPE_BOOL,
+    };
+    w.write_all(&[tag_type]).map_err(|e| met_io_err(0, e))?;
+
+    if tag.name_id != 0 {
+        w.write_all(&1u16.to_le_bytes())
+            .map_err(|e| met_io_err(0, e))?;
+        w.write_all(&[tag.name_id]).map_err(|e| met_io_err(0, e))?;
+    } else {
+        w.write_all(&(tag.name.len() as u16).to_le_bytes())
+            .map_err(|e| met_io_err(0, e))?;
+        w.write_all(tag.name.as_bytes())
+            .map_err(|e| met_io_err(0, e))?;
+    }
+
+    match &tag.value {
+        TagValue::String(s) => {
+            w.write_all(&(s.len() as u16).to_le_bytes())
+                .map_err(|e| met_io_err(0, e))?;
+            w.write_all(s.as_bytes()).map_err(|e| met_io_err(0, e))?;
+        }
+        TagValue::Uint64(v) => {
+            if tag_type == TAGTYPE_UINT64 {
+                w.write_all(&v.to_le_bytes())
+                    .map_err(|e| met_io_err(0, e))?;
+            } else {
+                w.write_all(&(*v as u32).to_le_bytes())
+                    .map_err(|e| met_io_err(0, e))?;
+            }
+        }
+        TagValue::Float32(f) => {
+            w.write_all(&f.to_le_bytes())
+                .map_err(|e| met_io_err(0, e))?;
+        }
+        TagValue::Hash16(h) => {
+            w.write_all(&h.0).map_err(|e| met_io_err(0, e))?;
+        }
+        TagValue::Blob(b) => {
+            w.write_all(&(b.len() as u32).to_le_bytes())
+                .map_err(|e| met_io_err(0, e))?;
+            w.write_all(b).map_err(|e| met_io_err(0, e))?;
+        }
+        TagValue::Bsob(b) => {
+            w.write_all(&[b.len() as u8])
+                .map_err(|e| met_io_err(0, e))?;
+            w.write_all(b).map_err(|e| met_io_err(0, e))?;
+        }
+        TagValue::Bool(v) => {
+            w.write_all(&[*v as u8]).map_err(|e| met_io_err(0, e))?;
+        }
+    }
+    Ok(())
+}

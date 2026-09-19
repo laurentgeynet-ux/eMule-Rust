@@ -169,11 +169,13 @@ impl Ed2kDownloadSequencer {
         let mut curr = part_start;
         while curr < part_end {
             let block_end = std::cmp::min(curr + ED2K_BLOCK_SIZE as u64, part_end);
-            let range = Ed2kBlockRange::from_wire_bounds(curr as u32, block_end as u32)
-                .map_err(|e| Ed2kSequencerError::InvalidBlockRange {
-                    start: curr,
-                    end: block_end,
-                    reason: e.to_string(),
+            let range =
+                Ed2kBlockRange::from_wire_bounds(curr as u32, block_end as u32).map_err(|e| {
+                    Ed2kSequencerError::InvalidBlockRange {
+                        start: curr,
+                        end: block_end,
+                        reason: e.to_string(),
+                    }
                 })?;
             blocks.push(range);
             curr = block_end;
@@ -253,7 +255,9 @@ impl Ed2kDownloadSequencer {
             return Err(Ed2kSequencerError::InvalidBlockRange {
                 start,
                 end,
-                reason: format!("block length {len} exceeds maximum allowed {ED2K_BLOCK_SIZE} bytes"),
+                reason: format!(
+                    "block length {len} exceeds maximum allowed {ED2K_BLOCK_SIZE} bytes"
+                ),
             });
         }
 
@@ -364,9 +368,9 @@ impl Ed2kDownloadSequencer {
                     continue;
                 }
 
-                let is_in_flight = in_flight_blocks.iter().any(|ifb| {
-                    !ifb.is_expired(now_unix_ms) && ifb.overlaps(b_start, b_end)
-                });
+                let is_in_flight = in_flight_blocks
+                    .iter()
+                    .any(|ifb| !ifb.is_expired(now_unix_ms) && ifb.overlaps(b_start, b_end));
 
                 if !is_in_flight {
                     return Ok(Some((part_idx, block)));

@@ -67,22 +67,46 @@ impl PolicyRateLimiters {
         let conn_burst = (cfg.connections_per_minute as u64 / 10).max(5);
 
         Self {
-            download_bucket: TokenBucket::new(cfg.download_bytes_per_sec, cfg.download_bytes_per_sec.max(65536)),
-            upload_bucket: TokenBucket::new(cfg.upload_bytes_per_sec, cfg.upload_bytes_per_sec.max(65536)),
+            download_bucket: TokenBucket::new(
+                cfg.download_bytes_per_sec,
+                cfg.download_bytes_per_sec.max(65536),
+            ),
+            upload_bucket: TokenBucket::new(
+                cfg.upload_bytes_per_sec,
+                cfg.upload_bytes_per_sec.max(65536),
+            ),
             conn_bucket: TokenBucket::new(conn_per_sec, conn_burst),
-            server_bucket: TokenBucket::new(cfg.server_requests_per_sec as u64, (cfg.server_requests_per_sec * 2).max(10) as u64),
-            kad_bucket: TokenBucket::new(cfg.kad_packets_per_sec as u64, (cfg.kad_packets_per_sec * 2).max(50) as u64),
+            server_bucket: TokenBucket::new(
+                cfg.server_requests_per_sec as u64,
+                (cfg.server_requests_per_sec * 2).max(10) as u64,
+            ),
+            kad_bucket: TokenBucket::new(
+                cfg.kad_packets_per_sec as u64,
+                (cfg.kad_packets_per_sec * 2).max(50) as u64,
+            ),
         }
     }
 
     pub fn apply_config(&self, cfg: &RateLimitsConfig) {
-        self.download_bucket.set_rate(cfg.download_bytes_per_sec, cfg.download_bytes_per_sec.max(65536));
-        self.upload_bucket.set_rate(cfg.upload_bytes_per_sec, cfg.upload_bytes_per_sec.max(65536));
+        self.download_bucket.set_rate(
+            cfg.download_bytes_per_sec,
+            cfg.download_bytes_per_sec.max(65536),
+        );
+        self.upload_bucket.set_rate(
+            cfg.upload_bytes_per_sec,
+            cfg.upload_bytes_per_sec.max(65536),
+        );
         let conn_per_sec = (cfg.connections_per_minute as u64 / 60).max(1);
         let conn_burst = (cfg.connections_per_minute as u64 / 10).max(5);
         self.conn_bucket.set_rate(conn_per_sec, conn_burst);
-        self.server_bucket.set_rate(cfg.server_requests_per_sec as u64, (cfg.server_requests_per_sec * 2).max(10) as u64);
-        self.kad_bucket.set_rate(cfg.kad_packets_per_sec as u64, (cfg.kad_packets_per_sec * 2).max(50) as u64);
+        self.server_bucket.set_rate(
+            cfg.server_requests_per_sec as u64,
+            (cfg.server_requests_per_sec * 2).max(10) as u64,
+        );
+        self.kad_bucket.set_rate(
+            cfg.kad_packets_per_sec as u64,
+            (cfg.kad_packets_per_sec * 2).max(50) as u64,
+        );
     }
 }
 
@@ -210,7 +234,9 @@ impl NetworkPolicyManager {
 
         let pseudo = match purpose {
             ConnectionPurpose::Ed2kServer => self.pseudonymizer.pseudonymize_server(addr),
-            ConnectionPurpose::Ed2kPeer | ConnectionPurpose::KadNode => self.pseudonymizer.pseudonymize_peer(addr),
+            ConnectionPurpose::Ed2kPeer | ConnectionPurpose::KadNode => {
+                self.pseudonymizer.pseudonymize_peer(addr)
+            }
             ConnectionPurpose::Listener => format!("listener:{}", addr.port()),
         };
 
@@ -248,7 +274,10 @@ impl NetworkPolicyManager {
         if let Some(range) = self.filter.check_ip(addr.ip()) {
             let reason = format!(
                 "Blocked by IP filter (level {}: '{}' - [{} - {}])",
-                range.level, range.description, range.start_ip(), range.end_ip()
+                range.level,
+                range.description,
+                range.start_ip(),
+                range.end_ip()
             );
             inner.audit_log.record(
                 AuditEventType::FilterBlocked,
@@ -259,7 +288,11 @@ impl NetworkPolicyManager {
                 Some(reason.clone()),
             );
             tracing::warn!(target = %addr, level = range.level, desc = %range.description, "Connection blocked by IP filter");
-            return Err(PolicyError::IpFiltered(addr.ip().to_string(), range.level, range.description));
+            return Err(PolicyError::IpFiltered(
+                addr.ip().to_string(),
+                range.level,
+                range.description,
+            ));
         }
 
         // 4. Check Connection Rate Limiter (Token Bucket)
@@ -336,7 +369,9 @@ impl NetworkPolicyManager {
                         AuditDecision::Denied,
                         Some(reason),
                     );
-                    return Err(PolicyError::BudgetExhausted("max_active_server_connections"));
+                    return Err(PolicyError::BudgetExhausted(
+                        "max_active_server_connections",
+                    ));
                 }
             }
             ConnectionPurpose::Listener => {
@@ -361,13 +396,8 @@ impl NetworkPolicyManager {
         );
 
         let cancel_token = inner.cancel_token.clone();
-        let permit = SocketPermit::new(
-            permit_id,
-            addr,
-            purpose,
-            cancel_token,
-            self.tracker.clone(),
-        );
+        let permit =
+            SocketPermit::new(permit_id, addr, purpose, cancel_token, self.tracker.clone());
 
         Ok(permit)
     }
@@ -417,16 +447,13 @@ impl NetworkPolicyManager {
             Some(pseudo),
             profile,
             AuditDecision::Allowed,
-            Some(format!("Authorized listener permit #{permit_id} for {purpose:?}")),
+            Some(format!(
+                "Authorized listener permit #{permit_id} for {purpose:?}"
+            )),
         );
 
         let cancel_token = inner.cancel_token.clone();
-        let permit = ListenPermit::new(
-            permit_id,
-            addr,
-            cancel_token,
-            self.tracker.clone(),
-        );
+        let permit = ListenPermit::new(permit_id, addr, cancel_token, self.tracker.clone());
 
         Ok(permit)
     }

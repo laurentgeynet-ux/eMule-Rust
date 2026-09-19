@@ -5,11 +5,11 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
 use bytes::Bytes;
-use mule_protocol::framing::RawPacket;
 use mule_protocol::ed2k::{
     Ed2kLoopbackClient, Ed2kMessage, Ed2kPeerInfo, Ed2kSession, Ed2kSessionError, Ed2kSessionState,
     Ed2kTag, Ed2kTestPeer, TagName, TagValue, TestPeerMode, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
+use mule_protocol::framing::RawPacket;
 
 fn sample_user_hash() -> [u8; 16] {
     let mut h = [0x11; 16];
@@ -61,7 +61,10 @@ async fn test_nominal_ed2k_handshake_on_loopback() {
     assert_eq!(peer_info.server_port, 4661);
 
     client.close().await;
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 #[tokio::test]
@@ -127,7 +130,10 @@ async fn test_hello_encoded_byte_by_byte_received_faithfully() {
     assert_eq!(hello.server_port, 4661);
 
     client.close().await;
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 #[tokio::test]
@@ -156,7 +162,10 @@ async fn test_hello_answer_fragmented_byte_by_byte_reassembled() {
     assert_eq!(peer_info.version, Some(60));
 
     client.close().await;
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +239,10 @@ async fn test_zero_user_hash_rejected() {
         err
     );
 
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 #[tokio::test]
@@ -292,9 +304,11 @@ async fn test_early_hello_answer_rejected() {
         Ed2kSessionError::HelloAnswerBeforeHello
     ));
 
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
-
 
 #[test]
 fn test_double_hello_rejected() {
@@ -320,7 +334,10 @@ fn test_double_hello_rejected() {
     // Second Hello while session is Ready must fail with DoubleHello
     let second = listener_session.on_hello_received(&hello);
     assert!(second.is_err());
-    assert!(matches!(second.err().unwrap(), Ed2kSessionError::DoubleHello));
+    assert!(matches!(
+        second.err().unwrap(),
+        Ed2kSessionError::DoubleHello
+    ));
 }
 
 #[tokio::test]
@@ -346,12 +363,18 @@ async fn test_unexpected_opcode_rejected() {
     assert!(result.is_err());
     let err = result.err().unwrap();
     assert!(
-        matches!(err, Ed2kSessionError::UnexpectedMessageInState { opcode: 0x99, .. }),
+        matches!(
+            err,
+            Ed2kSessionError::UnexpectedMessageInState { opcode: 0x99, .. }
+        ),
         "Expected UnexpectedMessageInState with opcode 0x99, got: {:?}",
         err
     );
 
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 #[tokio::test]
@@ -382,7 +405,10 @@ async fn test_compressed_protocol_0xd4_explicitly_rejected() {
         err
     );
 
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 // ---------------------------------------------------------------------------
@@ -418,7 +444,10 @@ async fn test_handshake_timeout_fails_cleanly() {
         err
     );
 
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 #[tokio::test]
@@ -449,7 +478,10 @@ async fn test_immediate_remote_close_fails_cleanly() {
         err
     );
 
-    peer_handle.await.expect("join failed").expect("peer failed");
+    peer_handle
+        .await
+        .expect("join failed")
+        .expect("peer failed");
 }
 
 // ---------------------------------------------------------------------------
@@ -462,13 +494,19 @@ fn test_session_state_names_and_display() {
     assert_eq!(Ed2kSessionState::Connecting.name(), "Connecting");
     assert_eq!(Ed2kSessionState::AwaitingHello.name(), "AwaitingHello");
     assert_eq!(
-        Ed2kSessionState::AwaitingHelloAnswer { local_handshake_id: [0; 16] }.name(),
+        Ed2kSessionState::AwaitingHelloAnswer {
+            local_handshake_id: [0; 16]
+        }
+        .name(),
         "AwaitingHelloAnswer"
     );
     assert_eq!(Ed2kSessionState::Closing.name(), "Closing");
     assert_eq!(Ed2kSessionState::Closed.name(), "Closed");
     assert_eq!(
-        Ed2kSessionState::Failed { reason: Ed2kSessionError::DoubleHello }.name(),
+        Ed2kSessionState::Failed {
+            reason: Ed2kSessionError::DoubleHello
+        }
+        .name(),
         "Failed"
     );
 }
@@ -480,10 +518,7 @@ fn test_session_state_names_and_display() {
 #[test]
 fn test_non_mutation_property_on_raw_and_unhandled_frames() {
     use bytes::Bytes;
-    use mule_protocol::ed2k::{
-        BlockRequestKey, Ed2kMessage, Ed2kSession,
-        PR_ED2K, PR_EMULE,
-    };
+    use mule_protocol::ed2k::{BlockRequestKey, Ed2kMessage, Ed2kSession, PR_ED2K, PR_EMULE};
     use mule_protocol::framing::RawPacket;
     use std::time::Instant;
 
@@ -531,15 +566,29 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
         opcode: 0x60,
         payload: Bytes::from_static(b"kademlia_non_mutating_packet"),
     };
-    let res1 = session.on_packet_received(&pkt_c5).expect("0xC5 raw processed cleanly");
-    assert!(matches!(res1, Some(Ed2kMessage::Raw(_))), "0xC5 must decode to Raw");
+    let res1 = session
+        .on_packet_received(&pkt_c5)
+        .expect("0xC5 raw processed cleanly");
+    assert!(
+        matches!(res1, Some(Ed2kMessage::Raw(_))),
+        "0xC5 must decode to Raw"
+    );
 
     let snap1 = session.snapshot();
     assert_eq!(snap1.state_name, initial_snapshot.state_name);
     assert_eq!(snap1.is_ready, initial_snapshot.is_ready);
-    assert_eq!(snap1.pending_status_count, initial_snapshot.pending_status_count);
-    assert_eq!(snap1.pending_block_count, initial_snapshot.pending_block_count);
-    assert_eq!(snap1.unhandled_packets_count, 1, "only diagnostic counter increments");
+    assert_eq!(
+        snap1.pending_status_count,
+        initial_snapshot.pending_status_count
+    );
+    assert_eq!(
+        snap1.pending_block_count,
+        initial_snapshot.pending_block_count
+    );
+    assert_eq!(
+        snap1.unhandled_packets_count, 1,
+        "only diagnostic counter increments"
+    );
 
     // 5. Inject Raw frame 2: Ambiguous opcode under active profile (0x4B under Emule050a)
     let pkt_4b = RawPacket {
@@ -547,14 +596,25 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
         opcode: 0x4B,
         payload: Bytes::from_static(b"legacy_0x4b_request_parts"),
     };
-    let res2 = session.on_packet_received(&pkt_4b).expect("0x4B processed as Raw");
-    assert!(matches!(res2, Some(Ed2kMessage::Raw(_))), "0x4B under Emule050a must decode to Raw");
+    let res2 = session
+        .on_packet_received(&pkt_4b)
+        .expect("0x4B processed as Raw");
+    assert!(
+        matches!(res2, Some(Ed2kMessage::Raw(_))),
+        "0x4B under Emule050a must decode to Raw"
+    );
 
     let snap2 = session.snapshot();
     assert_eq!(snap2.state_name, initial_snapshot.state_name);
     assert_eq!(snap2.is_ready, initial_snapshot.is_ready);
-    assert_eq!(snap2.pending_status_count, initial_snapshot.pending_status_count);
-    assert_eq!(snap2.pending_block_count, initial_snapshot.pending_block_count);
+    assert_eq!(
+        snap2.pending_status_count,
+        initial_snapshot.pending_status_count
+    );
+    assert_eq!(
+        snap2.pending_block_count,
+        initial_snapshot.pending_block_count
+    );
     assert_eq!(snap2.unhandled_packets_count, 2);
 
     // 6. Inject Raw frame 3: Unknown opcode 0xFE
@@ -563,28 +623,50 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
         opcode: 0xFE,
         payload: Bytes::from_static(b"future_unknown_opcode"),
     };
-    let res3 = session.on_packet_received(&pkt_fe).expect("0xFE processed as Raw");
-    assert!(matches!(res3, Some(Ed2kMessage::Raw(_))), "0xFE must decode to Raw");
+    let res3 = session
+        .on_packet_received(&pkt_fe)
+        .expect("0xFE processed as Raw");
+    assert!(
+        matches!(res3, Some(Ed2kMessage::Raw(_))),
+        "0xFE must decode to Raw"
+    );
 
     let snap3 = session.snapshot();
     assert_eq!(snap3.state_name, initial_snapshot.state_name);
     assert_eq!(snap3.is_ready, initial_snapshot.is_ready);
-    assert_eq!(snap3.pending_status_count, initial_snapshot.pending_status_count);
-    assert_eq!(snap3.pending_block_count, initial_snapshot.pending_block_count);
+    assert_eq!(
+        snap3.pending_status_count,
+        initial_snapshot.pending_status_count
+    );
+    assert_eq!(
+        snap3.pending_block_count,
+        initial_snapshot.pending_block_count
+    );
     assert_eq!(snap3.unhandled_packets_count, 3);
 
     // 7. Verify that in-flight trackers and keys remain strictly intact
-    assert!(session.status_tracker.is_pending(&file_hash), "status tracker must be unmodified");
+    assert!(
+        session.status_tracker.is_pending(&file_hash),
+        "status tracker must be unmodified"
+    );
     let key = BlockRequestKey::new(file_hash, 0, 184_320);
-    assert!(session.block_tracker.is_pending(&key), "block tracker must be unmodified");
+    assert!(
+        session.block_tracker.is_pending(&key),
+        "block tracker must be unmodified"
+    );
 }
 
 #[test]
 fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_answer() {
     let mut session = Ed2kSession::new_initiator([0x11; 16], 0, 39735);
-    let _hello = session.create_hello(vec![], 0, 0).expect("create_hello succeeds");
+    let _hello = session
+        .create_hello(vec![], 0, 0)
+        .expect("create_hello succeeds");
     // Initiator is now in AwaitingHelloAnswer
-    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer { .. }));
+    assert!(matches!(
+        session.state,
+        Ed2kSessionState::AwaitingHelloAnswer { .. }
+    ));
 
     // 1. Peer delivers PR_EMULE (0xC5) / OP_EMULE_INFO (0x01) first
     let emule_info_pkt = RawPacket {
@@ -593,14 +675,22 @@ fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_an
         payload: Bytes::from_static(b"\x3C\x01\x00\x00\x00\x00"), // version 60, proto 1, 0 tags
     };
 
-    let res1 = session.on_packet_received(&emule_info_pkt).expect("PR_EMULE accepted during handshake");
-    assert!(matches!(res1, Some(Ed2kMessage::EmuleInfo(_))), "PR_EMULE decoded as EmuleInfo");
+    let res1 = session
+        .on_packet_received(&emule_info_pkt)
+        .expect("PR_EMULE accepted during handshake");
+    assert!(
+        matches!(res1, Some(Ed2kMessage::EmuleInfo(_))),
+        "PR_EMULE decoded as EmuleInfo"
+    );
     if let Some(Ed2kMessage::EmuleInfo(ref info)) = res1 {
         assert_eq!(info.client_version, 60);
         assert_eq!(info.protocol_version, 1);
         assert_eq!(info.tags.len(), 0);
     }
-    assert!(matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer { .. }), "state remains AwaitingHelloAnswer");
+    assert!(
+        matches!(session.state, Ed2kSessionState::AwaitingHelloAnswer { .. }),
+        "state remains AwaitingHelloAnswer"
+    );
 
     // 2. Peer subsequently delivers PR_ED2K (0xE3) / OP_HELLOANSWER (0x4C)
     let mut answer_payload = Vec::new();
@@ -614,12 +704,22 @@ fn test_session_awaiting_hello_answer_accepts_pr_emule_extension_before_hello_an
         payload: Bytes::from(answer_payload),
     };
 
-    let res2 = session.on_packet_received(&hello_answer_pkt).expect("OP_HELLOANSWER accepted");
-    assert!(matches!(res2, Some(Ed2kMessage::HelloAnswer(_))), "decoded as HelloAnswer");
-    assert!(session.is_ready(), "session successfully transitioned to Ready state!");
+    let res2 = session
+        .on_packet_received(&hello_answer_pkt)
+        .expect("OP_HELLOANSWER accepted");
+    assert!(
+        matches!(res2, Some(Ed2kMessage::HelloAnswer(_))),
+        "decoded as HelloAnswer"
+    );
+    assert!(
+        session.is_ready(),
+        "session successfully transitioned to Ready state!"
+    );
     let peer = session.peer_info().expect("peer_info");
     assert_eq!(peer.user_hash, [0x22; 16]);
-    assert!(peer.emule_info.is_some(), "emule_info must be attached to peer");
+    assert!(
+        peer.emule_info.is_some(),
+        "emule_info must be attached to peer"
+    );
     assert_eq!(peer.emule_info.as_ref().unwrap().client_version, 60);
 }
-

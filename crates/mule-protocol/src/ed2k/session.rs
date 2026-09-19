@@ -20,8 +20,8 @@ pub mod tracker;
 pub mod types;
 
 pub use tracker::{
-    BlockRequestKey, BlockRequestTracker, FileStatusRequest, FileStatusTracker, PendingBlockRequest,
-    MAX_IN_FLIGHT_BLOCK_REQUESTS,
+    BlockRequestKey, BlockRequestTracker, FileStatusRequest, FileStatusTracker,
+    PendingBlockRequest, MAX_IN_FLIGHT_BLOCK_REQUESTS,
 };
 pub use types::{Ed2kSessionError, Ed2kSessionState, SessionSnapshot};
 
@@ -382,6 +382,12 @@ impl Ed2kSession {
             Ed2kMessage::PublicKey(pk) => Ok(Some(Ed2kMessage::PublicKey(pk))),
             Ed2kMessage::Signature(sig) => Ok(Some(Ed2kMessage::Signature(sig))),
             Ed2kMessage::SecIdentState(state) => Ok(Some(Ed2kMessage::SecIdentState(state))),
+            Ed2kMessage::HashSetReq(req) => Ok(Some(Ed2kMessage::HashSetReq(req))),
+            Ed2kMessage::HashSetAnswer(ans) => Ok(Some(Ed2kMessage::HashSetAnswer(ans))),
+            Ed2kMessage::AichFileHashReq(req) => Ok(Some(Ed2kMessage::AichFileHashReq(req))),
+            Ed2kMessage::AichFileHashRes(res) => Ok(Some(Ed2kMessage::AichFileHashRes(res))),
+            Ed2kMessage::AichRequest(req) => Ok(Some(Ed2kMessage::AichRequest(req))),
+            Ed2kMessage::AichAnswer(ans) => Ok(Some(Ed2kMessage::AichAnswer(ans))),
             Ed2kMessage::Raw(raw) => {
                 if !self.is_ready() && raw.protocol != PR_EMULE {
                     let err = Ed2kSessionError::UnexpectedMessageInState {
@@ -500,8 +506,11 @@ impl Ed2kSession {
             return Err(err);
         }
 
-        self.block_tracker
-            .validate_and_remove(&part.file_hash, part.start_offset as u64, part.end_offset as u64)
+        self.block_tracker.validate_and_remove(
+            &part.file_hash,
+            part.start_offset as u64,
+            part.end_offset as u64,
+        )
     }
 
     /// Purges timed-out block requests and returns them for replanning.
@@ -538,7 +547,9 @@ impl Ed2kSession {
             Ed2kSessionState::Closed => {}
             _ => {
                 self.state = Ed2kSessionState::Failed {
-                    reason: Ed2kSessionError::Io("Connection closed prematurely by remote peer".to_string()),
+                    reason: Ed2kSessionError::Io(
+                        "Connection closed prematurely by remote peer".to_string(),
+                    ),
                 };
             }
         }

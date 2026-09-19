@@ -22,7 +22,18 @@ pub struct AppState {
     pub peer_session: PeerSessionManager,
     pub inbound_listener: crate::services::inbound_listener::InboundListenerService,
     pub identity: Arc<Mutex<crate::services::IdentityService>>,
+    /// Shared SUI anomaly counters (identity.status `sui` object).
+    pub sui_stats: Arc<crate::services::identity::SuiStats>,
     pub kad: Arc<crate::services::KadService>,
+    /// Client-to-client UDP service sharing the Kad UDP socket
+    /// (`OP_REASKFILEPING`/`OP_REASKACK`/`OP_QUEUEFULL`/`OP_FILENOTFOUND`).
+    pub client_udp: crate::services::ClientUdpService,
+    /// Server UDP service (`OP_GLOBGETSOURCES2`/`OP_GLOBFOUNDSOURCES`),
+    /// separate socket like eMule's `UDPSocket`.
+    pub server_udp: crate::services::server_udp::ServerUdpService,
+    /// USS (Upload Speed Sense) — dynamic upload limiter driven by
+    /// measured latency to the connected server or a configured host.
+    pub uss: crate::services::UssService,
     pub upnp: Arc<crate::services::UpnpService>,
     pub sequence: Arc<AtomicU64>,
     pub event_tx: broadcast::Sender<String>,
@@ -58,10 +69,7 @@ impl AppState {
             budgets.max_active_peer_connections = max_global.min(1500);
         }
 
-        let network_policy = NetworkPolicyManager::new(
-            config.network_profile,
-            budgets,
-        );
+        let network_policy = NetworkPolicyManager::new(config.network_profile, budgets);
         let sequence = Arc::new(AtomicU64::new(1));
         let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
         let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence))
@@ -70,15 +78,26 @@ impl AppState {
         server_session.set_downloads(Arc::clone(&dl_arc));
         let identity_service = crate::services::IdentityService::load_or_generate(&config.data_dir);
         let user_hash = identity_service.user_hash();
+        let sui_pubkey_der = if identity_service.has_key() {
+            Some(identity_service.public_key_bytes().to_vec())
+        } else {
+            None
+        };
         let identity = Arc::new(Mutex::new(identity_service));
-        let inbound_listener = crate::services::inbound_listener::InboundListenerService::new(
+        let sui_stats = Arc::new(crate::services::identity::SuiStats::default());
+        let mut inbound_listener = crate::services::inbound_listener::InboundListenerService::new(
             Arc::new(network_policy.clone()),
             Arc::clone(&dl_arc),
             user_hash,
+            sui_pubkey_der,
             config.obfuscation_enabled,
             config.obfuscation_required,
             config.obfuscation_padding_max,
+            Arc::clone(&sui_stats),
         );
+        inbound_listener.set_identity(Arc::clone(&identity));
+        inbound_listener.set_peer_session(peer_session.clone());
+        inbound_listener.set_server_session(server_session.clone());
         let kad_id = mule_core::kad::KadId::random();
         let kad = Arc::new(crate::services::KadService::new(
             kad_id,
@@ -86,7 +105,35 @@ impl AppState {
             network_policy.clone(),
             network_policy.ip_filter(),
         ));
+        kad.set_ed2k_tcp_port(config.ed2k_port);
+        kad.set_fw_check_identity(user_hash);
+        inbound_listener.set_kad_udp(Arc::clone(kad.udp()));
+        let client_udp = crate::services::ClientUdpService::new();
+        client_udp.set_downloads(Arc::clone(&dl_arc));
+        client_udp.set_upload_manager(inbound_listener.upload_manager().clone());
+        client_udp.set_peer_session(peer_session.clone());
+        inbound_listener.set_client_udp(client_udp.clone());
+        let server_udp = crate::services::server_udp::ServerUdpService::new(network_policy.clone());
+        server_udp.set_downloads(Arc::clone(&dl_arc));
+        server_udp.set_event_channel(event_tx.clone(), sequence.clone());
+        let uss = crate::services::UssService::new();
+        uss.set_server_session(server_session.clone());
+        uss.set_upload_manager(inbound_listener.upload_manager().clone());
+        uss.set_downloads(Arc::clone(&dl_arc));
+        inbound_listener
+            .upload_manager()
+            .set_uss_gate(uss.accept_flag());
+        let kad_udp = Arc::clone(kad.udp());
+        let client_udp_for_kad = client_udp.clone();
+        let kad_udp_dl = Arc::clone(&dl_arc);
+        tokio::spawn(async move {
+            kad_udp.set_client_udp(client_udp_for_kad).await;
+            kad_udp.set_downloads(kad_udp_dl).await;
+        });
         peer_session.set_kad(Arc::clone(&kad));
+        peer_session.set_rate_limiters(network_policy.rate_limiters());
+        peer_session.set_identity(Arc::clone(&identity));
+        peer_session.set_sui_stats(Arc::clone(&sui_stats));
         let upnp = Arc::new(crate::services::UpnpService::new(
             config.upnp_enabled,
             config.ed2k_port,
@@ -100,7 +147,11 @@ impl AppState {
             peer_session,
             inbound_listener,
             identity,
+            sui_stats,
             kad,
+            client_udp,
+            server_udp,
+            uss,
             upnp,
             sequence,
             event_tx,

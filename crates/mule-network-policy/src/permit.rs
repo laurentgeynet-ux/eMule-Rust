@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 use crate::cancellation::CancellationToken;
 
@@ -96,11 +96,15 @@ impl Drop for SocketPermit {
     fn drop(&mut self) {
         match self.purpose {
             ConnectionPurpose::Ed2kPeer => {
-                self.tracker.active_peer_conns.fetch_sub(1, Ordering::SeqCst);
+                self.tracker
+                    .active_peer_conns
+                    .fetch_sub(1, Ordering::SeqCst);
             }
             ConnectionPurpose::KadNode => {}
             ConnectionPurpose::Ed2kServer => {
-                self.tracker.active_server_conns.fetch_sub(1, Ordering::SeqCst);
+                self.tracker
+                    .active_server_conns
+                    .fetch_sub(1, Ordering::SeqCst);
             }
             ConnectionPurpose::Listener => {
                 self.tracker.active_listeners.fetch_sub(1, Ordering::SeqCst);

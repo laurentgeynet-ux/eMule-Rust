@@ -2,11 +2,11 @@ use mule_core::{AllocationPolicy, Database, Download, DownloadStatus, PartFile, 
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-use crate::error::DaemonError;
 use super::types::{
-    now_ms, ActiveDownload, ImportPartMetResult, PartMetInspection, make_snapshot,
+    make_snapshot, now_ms, ActiveDownload, ImportPartMetResult, PartMetInspection,
     MAX_IMPORT_PART_COUNT, MAX_IMPORT_TOTAL_SIZE,
 };
+use crate::error::DaemonError;
 
 pub fn inspect_part_met(
     met_path: &Path,
@@ -72,6 +72,63 @@ pub fn inspect_part_met(
         part_file_size,
         estimated_transferred_bytes,
     })
+}
+
+/// Returns the `.part.met` companion path for a given `.part` temp path
+/// (`{id}.part` → `{id}.part.met`).
+pub fn part_met_path_for(temp_path: &Path) -> PathBuf {
+    let mut name = temp_path.as_os_str().to_os_string();
+    name.push(".met");
+    PathBuf::from(name)
+}
+
+/// Writes the `.part.met` companion file for an active download, mirroring
+/// eMule `CPartFile::SavePartFile`: version header, file hash + part hashset,
+/// filename/size/transferred/AICH tags, and missing ranges as gap tags.
+/// Best-effort persistence for crash-resume and eMule import compatibility.
+pub fn save_part_met(db: &Database, act: &ActiveDownload) -> Result<PathBuf, DaemonError> {
+    let temp_path = &act.download.temp_path;
+    let met_path = part_met_path_for(temp_path);
+
+    let mod_date = std::fs::metadata(temp_path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as u32)
+        .unwrap_or(0);
+
+    let hash_hex = act.download.ed2k_hash.to_hex().to_lowercase();
+    let part_hashes = db.get_part_hashes(&hash_hex).unwrap_or_default();
+
+    let gaps: Vec<(u64, u64)> = act
+        .ranges
+        .missing_within(0..act.download.total_size)
+        .into_iter()
+        .map(|r| (r.start, r.end))
+        .collect();
+
+    let met = mule_format::PartMetFile {
+        version: mule_format::PARTFILE_VERSION,
+        mod_date,
+        file_hash: act.download.ed2k_hash,
+        part_hashes,
+        file_name: Some(act.download.display_name.clone()),
+        file_size: Some(act.download.total_size),
+        transferred: act.ranges.covered_len(),
+        aich_hash: act.download.aich_root,
+        gaps,
+        tags: Vec::new(),
+    };
+
+    met.save(&met_path)
+        .map_err(|e| DaemonError::Business(format!("Failed to save .part.met: {e}")))?;
+    Ok(met_path)
+}
+
+/// Removes the `.part.met` companion file for a temp path, if present.
+/// Called after successful finalization (eMule deletes it on completion).
+pub fn delete_part_met(temp_path: &Path) {
+    let _ = std::fs::remove_file(part_met_path_for(temp_path));
 }
 
 pub fn import_part_met(
@@ -232,6 +289,10 @@ pub fn import_part_met(
     db.sync_received_ranges(&id, &range_set)
         .map_err(|e| DaemonError::Business(format!("Failed to sync ranges: {e}")))?;
 
+    if !met.part_hashes.is_empty() {
+        let _ = db.store_part_hashes(&ed2k_hex, &met.part_hashes);
+    }
+
     for idx in verified_indices {
         let _ = db.mark_part_verified(&id, idx);
     }
@@ -253,6 +314,9 @@ pub fn import_part_met(
         last_rate_update: None,
         source_count: 0,
         verification_in_progress: false,
+        aich_pending: Default::default(),
+        aich_requested: Default::default(),
+        aich_votes: Default::default(),
     };
 
     let met_version_str = match met.version {

@@ -4,8 +4,103 @@ use bytes::Bytes;
 
 use crate::ed2k::error::{Ed2kErrorKind, Ed2kParseError};
 use crate::ed2k::opcodes::{OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE};
-use crate::ed2k::packet::{Ed2kBlockRange, Ed2kRequestParts, Ed2kSendingPart};
+use crate::ed2k::packet::{
+    Ed2kBlockRange, Ed2kHashSetAnswer, Ed2kHashSetReq, Ed2kRequestParts, Ed2kSendingPart,
+};
 use crate::ed2k::profile::Ed2kCompatibilityProfile;
+
+/// Decodes an `OP_HASHSETREQUEST` (`0x51`) payload: a bare 16-byte file hash.
+pub fn decode_hashset_request(
+    protocol: u8,
+    opcode: u8,
+    payload: &[u8],
+    base_offset: usize,
+) -> Result<Ed2kHashSetReq, Ed2kParseError> {
+    if payload.len() < 16 {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + payload.len(),
+            "hashset_req_hash",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: 16,
+                available: payload.len(),
+            },
+        ));
+    }
+
+    let mut file_hash = [0u8; 16];
+    file_hash.copy_from_slice(&payload[0..16]);
+
+    if file_hash == [0u8; 16] {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset,
+            "hashset_req_file_hash",
+            Ed2kErrorKind::MalformedField {
+                message: "zero file hash is not permitted in hashset request".to_string(),
+            },
+        ));
+    }
+
+    Ok(Ed2kHashSetReq { file_hash })
+}
+
+/// Decodes an `OP_HASHSETANSWER` (`0x52`) payload: `file_hash || u16 count || count*16 hashes`.
+pub fn decode_hashset_answer(
+    protocol: u8,
+    opcode: u8,
+    payload: &[u8],
+    base_offset: usize,
+) -> Result<Ed2kHashSetAnswer, Ed2kParseError> {
+    if payload.len() < 18 {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + payload.len(),
+            "hashset_answer_header",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: 18,
+                available: payload.len(),
+            },
+        ));
+    }
+
+    let mut file_hash = [0u8; 16];
+    file_hash.copy_from_slice(&payload[0..16]);
+    let part_count = u16::from_le_bytes([payload[16], payload[17]]) as usize;
+
+    let expected_len = 18 + part_count * 16;
+    if payload.len() != expected_len {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + 18,
+            "hashset_answer_payload",
+            Ed2kErrorKind::MalformedField {
+                message: format!(
+                    "hashset payload length {} does not match declared {} part hashes (expected {})",
+                    payload.len(),
+                    part_count,
+                    expected_len
+                ),
+            },
+        ));
+    }
+
+    let mut part_hashes = Vec::with_capacity(part_count);
+    for i in 0..part_count {
+        let mut h = [0u8; 16];
+        h.copy_from_slice(&payload[18 + i * 16..18 + (i + 1) * 16]);
+        part_hashes.push(h);
+    }
+
+    Ok(Ed2kHashSetAnswer {
+        file_hash,
+        part_hashes,
+    })
+}
 
 /// Decodes a request parts payload according to an explicit `Ed2kCompatibilityProfile`.
 pub fn decode_request_parts_with_profile(

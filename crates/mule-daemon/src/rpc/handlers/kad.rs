@@ -24,7 +24,9 @@ pub async fn handle_kad_inspect_nodes_dat(
             .decode(b64.as_bytes())
             .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid base64: {e}")))?
     } else {
-        return Err(JsonRpcError::invalid_params("Missing 'path' or 'dataBase64' parameter"));
+        return Err(JsonRpcError::invalid_params(
+            "Missing 'path' or 'dataBase64' parameter",
+        ));
     };
 
     let report = state
@@ -51,7 +53,9 @@ pub async fn handle_kad_import_nodes_dat(
             .decode(b64.as_bytes())
             .map_err(|e| JsonRpcError::invalid_params(&format!("Invalid base64: {e}")))?
     } else {
-        return Err(JsonRpcError::invalid_params("Missing 'path' or 'dataBase64' parameter"));
+        return Err(JsonRpcError::invalid_params(
+            "Missing 'path' or 'dataBase64' parameter",
+        ));
     };
 
     let imported_count = state
@@ -156,7 +160,8 @@ pub async fn handle_kad_ping(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'ip' parameter"))?;
     let port = params["port"]
         .as_u64()
-        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'port' parameter"))? as u16;
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'port' parameter"))?
+        as u16;
     let target_kad_id = params["kadId"].as_str();
 
     let latency_ms = state
@@ -184,7 +189,8 @@ pub async fn handle_kad_bootstrap(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'ip' parameter"))?;
     let port = params["port"]
         .as_u64()
-        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'port' parameter"))? as u16;
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'port' parameter"))?
+        as u16;
 
     let received_count = state
         .kad
@@ -342,11 +348,9 @@ pub async fn handle_kad_bootstrap_from_url(
         .build()
         .map_err(|e| JsonRpcError::business(format!("HTTP client build error: {e}")))?;
 
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| JsonRpcError::business(format!("Failed to fetch nodes.dat from {url}: {e}")))?;
+    let response = client.get(url).send().await.map_err(|e| {
+        JsonRpcError::business(format!("Failed to fetch nodes.dat from {url}: {e}"))
+    })?;
 
     if !response.status().is_success() {
         return Err(JsonRpcError::business(format!(

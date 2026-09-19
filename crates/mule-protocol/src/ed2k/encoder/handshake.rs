@@ -158,5 +158,9 @@ pub fn encode_emule_info(
         ));
     }
 
-    Ok(RawPacket::new(PR_EMULE, OP_EMULE_INFO, Bytes::from(payload)))
+    Ok(RawPacket::new(
+        PR_EMULE,
+        OP_EMULE_INFO,
+        Bytes::from(payload),
+    ))
 }

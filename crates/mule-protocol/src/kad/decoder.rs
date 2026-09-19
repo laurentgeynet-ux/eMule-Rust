@@ -65,10 +65,15 @@ impl KadDecoder {
         let raw_payload = &raw[2..];
         let decompressed_holder;
         let payload = if protocol == PR_KADEMLIA_PACKED
-            || (raw_payload.len() >= 2 && raw_payload[0] == 0x78 && (raw_payload[1] == 0x9C || raw_payload[1] == 0xDA || raw_payload[1] == 0x01 || raw_payload[1] == 0x5E))
+            || (raw_payload.len() >= 2
+                && raw_payload[0] == 0x78
+                && (raw_payload[1] == 0x9C
+                    || raw_payload[1] == 0xDA
+                    || raw_payload[1] == 0x01
+                    || raw_payload[1] == 0x5E))
         {
-            use std::io::Read;
             use flate2::read::ZlibDecoder;
+            use std::io::Read;
             let mut decoder = ZlibDecoder::new(raw_payload);
             let mut decomp = Vec::new();
             if decoder.read_to_end(&mut decomp).is_ok() && !decomp.is_empty() {
@@ -86,7 +91,9 @@ impl KadDecoder {
             KADEMLIA2_PONG => decode_pong(protocol, opcode, payload),
             KADEMLIA2_HELLO_REQ | KADEMLIA_HELLO_REQ => decode_hello_req(protocol, opcode, payload),
             KADEMLIA2_HELLO_RES | KADEMLIA_HELLO_RES => decode_hello_res(protocol, opcode, payload),
-            KADEMLIA_BOOTSTRAP_REQ_OLD | KADEMLIA2_BOOTSTRAP_REQ => decode_bootstrap_req(protocol, opcode, payload),
+            KADEMLIA_BOOTSTRAP_REQ_OLD | KADEMLIA2_BOOTSTRAP_REQ => {
+                decode_bootstrap_req(protocol, opcode, payload)
+            }
             KADEMLIA2_BOOTSTRAP_RES => decode_bootstrap_res(protocol, opcode, payload),
             KADEMLIA2_REQ => decode_req(protocol, opcode, payload),
             KADEMLIA2_RES => decode_res(protocol, opcode, payload),
@@ -103,7 +110,28 @@ impl KadDecoder {
             // 0x4B = PUBLISH_RES (unified for keyword, source, and notes publish)
             KADEMLIA2_PUBLISH_RES => decode_publish_source_res(protocol, opcode, payload),
             // 0x2C = legacy search keyword response (internal tests)
-            KADEMLIA2_SEARCH_KEYWORD_RES_LEGACY => decode_search_keyword_res_legacy(protocol, opcode, payload),
+            KADEMLIA2_SEARCH_KEYWORD_RES_LEGACY => {
+                decode_search_keyword_res_legacy(protocol, opcode, payload)
+            }
+            // 0x62 = FIREWALLUDP: [u8 error_code][u16 tested_port]
+            KADEMLIA2_FIREWALLUDP => {
+                if payload.len() < 3 {
+                    return Err(Ed2kParseError::new(
+                        protocol,
+                        Some(opcode),
+                        2,
+                        "KadFirewallUdp",
+                        Ed2kErrorKind::UnexpectedEof {
+                            needed: 3,
+                            available: payload.len(),
+                        },
+                    ));
+                }
+                Ok(KadMessage::FirewallUdp(KadFirewallUdp {
+                    error_code: payload[0],
+                    udp_port: u16::from_le_bytes([payload[1], payload[2]]),
+                }))
+            }
             _ => Err(Ed2kParseError::new(
                 protocol,
                 Some(opcode),

@@ -31,7 +31,10 @@ pub fn upsert_kad_contact(conn: &mut Connection, contact: &KadContact) -> Result
     Ok(())
 }
 
-pub fn batch_upsert_kad_contacts(conn: &mut Connection, contacts: &[KadContact]) -> Result<usize, CoreError> {
+pub fn batch_upsert_kad_contacts(
+    conn: &mut Connection,
+    contacts: &[KadContact],
+) -> Result<usize, CoreError> {
     let tx = conn.transaction()?;
     let mut count = 0;
     {
@@ -109,11 +112,7 @@ pub fn list_kad_contacts(conn: &Connection, limit: usize) -> Result<Vec<KadConta
 }
 
 pub fn count_kad_contacts(conn: &Connection) -> Result<usize, CoreError> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM kad_contacts",
-        [],
-        |r| r.get(0),
-    )?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_contacts", [], |r| r.get(0))?;
     Ok(count.max(0) as usize)
 }
 
@@ -180,37 +179,40 @@ pub fn get_kad_indexed_sources(
          LIMIT ?3",
     )?;
 
-    let rows = stmt.query_map(params![file_hash_hex, now_unix_ms as i64, max_results as i64], |row| {
-        let f_hash_str: String = row.get(0)?;
-        let f_hash = KadId::from_hex(&f_hash_str)
-            .map(|k| k.0)
-            .unwrap_or([0u8; 16]);
+    let rows = stmt.query_map(
+        params![file_hash_hex, now_unix_ms as i64, max_results as i64],
+        |row| {
+            let f_hash_str: String = row.get(0)?;
+            let f_hash = KadId::from_hex(&f_hash_str)
+                .map(|k| k.0)
+                .unwrap_or([0u8; 16]);
 
-        let kad_id_str: String = row.get(1)?;
-        let source_kad_id = KadId::from_hex(&kad_id_str).unwrap_or(KadId::ZERO);
+            let kad_id_str: String = row.get(1)?;
+            let source_kad_id = KadId::from_hex(&kad_id_str).unwrap_or(KadId::ZERO);
 
-        let ip_str: String = row.get(2)?;
-        let ip: std::net::Ipv4Addr = ip_str.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+            let ip_str: String = row.get(2)?;
+            let ip: std::net::Ipv4Addr = ip_str.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
 
-        let udp_port: i64 = row.get(3)?;
-        let tcp_port: i64 = row.get(4)?;
-        let file_size: i64 = row.get(5)?;
-        let encryption: i64 = row.get(6)?;
-        let expires_at: i64 = row.get(7)?;
-        let updated_at: i64 = row.get(8)?;
+            let udp_port: i64 = row.get(3)?;
+            let tcp_port: i64 = row.get(4)?;
+            let file_size: i64 = row.get(5)?;
+            let encryption: i64 = row.get(6)?;
+            let expires_at: i64 = row.get(7)?;
+            let updated_at: i64 = row.get(8)?;
 
-        Ok(KadIndexedSource {
-            file_hash: f_hash,
-            source_kad_id,
-            ip,
-            udp_port: udp_port.max(0) as u16,
-            tcp_port: tcp_port.max(0) as u16,
-            file_size: file_size.max(0) as u64,
-            encryption: encryption.max(0) as u8,
-            expires_at_unix_ms: expires_at.max(0) as u64,
-            updated_at_unix_ms: updated_at.max(0) as u64,
-        })
-    })?;
+            Ok(KadIndexedSource {
+                file_hash: f_hash,
+                source_kad_id,
+                ip,
+                udp_port: udp_port.max(0) as u16,
+                tcp_port: tcp_port.max(0) as u16,
+                file_size: file_size.max(0) as u64,
+                encryption: encryption.max(0) as u8,
+                expires_at_unix_ms: expires_at.max(0) as u64,
+                updated_at_unix_ms: updated_at.max(0) as u64,
+            })
+        },
+    )?;
 
     let mut list = Vec::new();
     for r in rows {
@@ -219,7 +221,84 @@ pub fn get_kad_indexed_sources(
     Ok(list)
 }
 
-pub fn purge_expired_kad_sources(conn: &mut Connection, now_unix_ms: u64) -> Result<usize, CoreError> {
+/// Loads every live indexed source (storage-node rehydration at startup).
+/// Bounded by `limit` to stay under the in-memory store cap.
+pub fn list_all_kad_indexed_sources(
+    conn: &Connection,
+    now_unix_ms: u64,
+    limit: usize,
+) -> Result<Vec<KadIndexedSource>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT file_hash, source_kad_id, ip, udp_port, tcp_port, file_size, encryption, expires_at_unix_ms, updated_at_unix_ms
+         FROM kad_sources_index
+         WHERE expires_at_unix_ms > ?1
+         ORDER BY updated_at_unix_ms DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![now_unix_ms as i64, limit as i64], |row| {
+        let f_hash_str: String = row.get(0)?;
+        let f_hash = KadId::from_hex(&f_hash_str)
+            .map(|k| k.0)
+            .unwrap_or([0u8; 16]);
+        let kad_id_str: String = row.get(1)?;
+        let source_kad_id = KadId::from_hex(&kad_id_str).unwrap_or(KadId::ZERO);
+        let ip_str: String = row.get(2)?;
+        let ip: std::net::Ipv4Addr = ip_str.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+        Ok(KadIndexedSource {
+            file_hash: f_hash,
+            source_kad_id,
+            ip,
+            udp_port: (row.get::<_, i64>(3)?).max(0) as u16,
+            tcp_port: (row.get::<_, i64>(4)?).max(0) as u16,
+            file_size: (row.get::<_, i64>(5)?).max(0) as u64,
+            encryption: (row.get::<_, i64>(6)?).max(0) as u8,
+            expires_at_unix_ms: (row.get::<_, i64>(7)?).max(0) as u64,
+            updated_at_unix_ms: (row.get::<_, i64>(8)?).max(0) as u64,
+        })
+    })?;
+    let mut list = Vec::new();
+    for r in rows {
+        list.push(r?);
+    }
+    Ok(list)
+}
+
+/// Loads every live keyword entry (storage-node rehydration at startup).
+pub fn list_all_kad_keyword_entries(
+    conn: &Connection,
+    now_unix_ms: u64,
+    limit: usize,
+) -> Result<Vec<KadKeywordEntry>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT keyword_hash, file_hash, file_name, file_size, source_count,
+                discovered_at_unix_ms, expires_at_unix_ms
+         FROM kad_keywords_index
+         WHERE expires_at_unix_ms > ?1
+         ORDER BY discovered_at_unix_ms DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![now_unix_ms as i64, limit as i64], |row| {
+        Ok(KadKeywordEntry {
+            keyword_hash: row.get(0)?,
+            file_hash: row.get(1)?,
+            file_name: row.get(2)?,
+            file_size: (row.get::<_, i64>(3)?).max(0) as u64,
+            source_count: (row.get::<_, i64>(4)?).max(1) as u32,
+            discovered_at_unix_ms: row.get(5)?,
+            expires_at_unix_ms: row.get(6)?,
+        })
+    })?;
+    let mut list = Vec::new();
+    for r in rows {
+        list.push(r?);
+    }
+    Ok(list)
+}
+
+pub fn purge_expired_kad_sources(
+    conn: &mut Connection,
+    now_unix_ms: u64,
+) -> Result<usize, CoreError> {
     let count = conn.execute(
         "DELETE FROM kad_sources_index WHERE expires_at_unix_ms <= ?1",
         params![now_unix_ms as i64],
@@ -228,11 +307,7 @@ pub fn purge_expired_kad_sources(conn: &mut Connection, now_unix_ms: u64) -> Res
 }
 
 pub fn count_kad_indexed_sources(conn: &Connection) -> Result<usize, CoreError> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM kad_sources_index",
-        [],
-        |r| r.get(0),
-    )?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_sources_index", [], |r| r.get(0))?;
     Ok(count.max(0) as usize)
 }
 
@@ -286,25 +361,28 @@ pub fn get_kad_keyword_entries(
          LIMIT 100",
     )?;
 
-    let rows = stmt.query_map(params![keyword_hash.to_lowercase(), now_unix_ms as i64], |row| {
-        let keyword_hash: String = row.get(0)?;
-        let file_hash: String = row.get(1)?;
-        let file_name: String = row.get(2)?;
-        let file_size: i64 = row.get(3)?;
-        let source_count: i64 = row.get(4)?;
-        let discovered_at: i64 = row.get(5)?;
-        let expires_at: i64 = row.get(6)?;
+    let rows = stmt.query_map(
+        params![keyword_hash.to_lowercase(), now_unix_ms as i64],
+        |row| {
+            let keyword_hash: String = row.get(0)?;
+            let file_hash: String = row.get(1)?;
+            let file_name: String = row.get(2)?;
+            let file_size: i64 = row.get(3)?;
+            let source_count: i64 = row.get(4)?;
+            let discovered_at: i64 = row.get(5)?;
+            let expires_at: i64 = row.get(6)?;
 
-        Ok(KadKeywordEntry {
-            keyword_hash,
-            file_hash,
-            file_name,
-            file_size: file_size.max(0) as u64,
-            source_count: source_count.max(1) as u32,
-            discovered_at_unix_ms: discovered_at,
-            expires_at_unix_ms: expires_at,
-        })
-    })?;
+            Ok(KadKeywordEntry {
+                keyword_hash,
+                file_hash,
+                file_name,
+                file_size: file_size.max(0) as u64,
+                source_count: source_count.max(1) as u32,
+                discovered_at_unix_ms: discovered_at,
+                expires_at_unix_ms: expires_at,
+            })
+        },
+    )?;
 
     let mut list = Vec::new();
     for r in rows {
@@ -313,7 +391,10 @@ pub fn get_kad_keyword_entries(
     Ok(list)
 }
 
-pub fn purge_expired_kad_keywords(conn: &mut Connection, now_unix_ms: u64) -> Result<usize, CoreError> {
+pub fn purge_expired_kad_keywords(
+    conn: &mut Connection,
+    now_unix_ms: u64,
+) -> Result<usize, CoreError> {
     let count = conn.execute(
         "DELETE FROM kad_keywords_index WHERE expires_at_unix_ms <= ?1",
         params![now_unix_ms as i64],
@@ -322,10 +403,6 @@ pub fn purge_expired_kad_keywords(conn: &mut Connection, now_unix_ms: u64) -> Re
 }
 
 pub fn count_kad_keyword_entries(conn: &Connection) -> Result<usize, CoreError> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM kad_keywords_index",
-        [],
-        |r| r.get(0),
-    )?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_keywords_index", [], |r| r.get(0))?;
     Ok(count.max(0) as usize)
 }

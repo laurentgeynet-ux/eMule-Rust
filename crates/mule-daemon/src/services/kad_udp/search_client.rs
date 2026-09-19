@@ -7,7 +7,10 @@ use tokio::sync::oneshot;
 use mule_network_policy::ConnectionPurpose;
 use mule_protocol::kad::*;
 
-use super::types::{InFlightTransaction, KadExpectedResponse, KAD_TRANSACTION_TIMEOUT_SECS, MAX_IN_FLIGHT_TRANSACTIONS};
+use super::types::{
+    InFlightTransaction, KadExpectedResponse, KAD_TRANSACTION_TIMEOUT_SECS,
+    MAX_IN_FLIGHT_TRANSACTIONS,
+};
 use super::KadUdpService;
 
 impl KadUdpService {
@@ -20,7 +23,10 @@ impl KadUdpService {
     ) -> Result<Vec<KadSourceWire>, String> {
         let socket = {
             let inner = self.inner.read().await;
-            inner.socket.clone().ok_or_else(|| "Kad UDP socket is not running".to_string())?
+            inner
+                .socket
+                .clone()
+                .ok_or_else(|| "Kad UDP socket is not running".to_string())?
         };
 
         let _permit = self
@@ -43,11 +49,7 @@ impl KadUdpService {
             inner.insert_in_flight(tx_id, in_flight_entry).await?;
         }
 
-        let search_bytes = KadCodec::encode_search_source_req(
-            target_file_hash,
-            0,
-            file_size,
-        );
+        let search_bytes = KadCodec::encode_search_source_req(target_file_hash, 0, file_size);
 
         tracing::info!(
             "Kad sending SearchSourceReq (0x34) to node {} for file {} (size={}, tx_id={})",
@@ -109,7 +111,10 @@ impl KadUdpService {
     ) -> Result<u8, String> {
         let socket = {
             let inner = self.inner.read().await;
-            inner.socket.clone().ok_or_else(|| "Kad UDP socket is not running".to_string())?
+            inner
+                .socket
+                .clone()
+                .ok_or_else(|| "Kad UDP socket is not running".to_string())?
         };
 
         let _permit = self
@@ -146,11 +151,7 @@ impl KadUdpService {
             version: 2,
         };
 
-        let pub_bytes = KadCodec::encode_publish_source_req(
-            target_file_hash,
-            &contact,
-            file_size,
-        );
+        let pub_bytes = KadCodec::encode_publish_source_req(target_file_hash, &contact, file_size);
 
         tracing::info!(
             "Kad sending PublishSourceReq (0x23) to node {} for file {} (tx_id={})",
@@ -234,7 +235,9 @@ impl KadUdpService {
         {
             let mut inf = in_flight.lock().await;
             if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
-                return Err(format!("Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"));
+                return Err(format!(
+                    "Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"
+                ));
             }
             inf.insert(
                 tx_id,
@@ -248,11 +251,8 @@ impl KadUdpService {
             );
         }
 
-        let search_bytes = KadCodec::encode_search_keyword_req(
-            keyword_hash,
-            start_pos,
-            &self.local_id.0,
-        );
+        let search_bytes =
+            KadCodec::encode_search_keyword_req(keyword_hash, start_pos, &self.local_id.0);
 
         tracing::info!(
             "Kad sending SearchKeywordReq (0x33) to node {} for keyword {} (start_pos={}, tx_id={})",
@@ -323,7 +323,9 @@ impl KadUdpService {
         {
             let mut inf = in_flight.lock().await;
             if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
-                return Err(format!("Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"));
+                return Err(format!(
+                    "Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"
+                ));
             }
             inf.insert(
                 tx_id,

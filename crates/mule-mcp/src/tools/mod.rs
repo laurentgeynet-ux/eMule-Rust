@@ -21,11 +21,7 @@ pub fn list_tools() -> Vec<ToolDefinition> {
     tools
 }
 
-pub async fn execute_tool(
-    client: &DaemonClient,
-    tool_name: &str,
-    args: Value,
-) -> ToolCallResult {
+pub async fn execute_tool(client: &DaemonClient, tool_name: &str, args: Value) -> ToolCallResult {
     info!("Executing MCP tool: {tool_name} with args: {args}");
 
     if let Some(res) = system::handle_tool(client, tool_name, &args).await {

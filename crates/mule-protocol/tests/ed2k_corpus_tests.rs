@@ -44,7 +44,6 @@ fn fixtures_root() -> PathBuf {
 mod common;
 use common::sha256::compute_sha256;
 
-
 #[test]
 fn test_corpus_manifest_and_hash_integrity() {
     let root = fixtures_root();
@@ -96,13 +95,12 @@ fn test_corpus_manifest_and_hash_integrity() {
             entry.name
         );
 
-        let decoder = if entry.opcode.as_deref() == Some("0x49")
-            || entry.opcode.as_deref() == Some("0x4B")
-        {
-            Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey)
-        } else {
-            Ed2kDecoder::new()
-        };
+        let decoder =
+            if entry.opcode.as_deref() == Some("0x49") || entry.opcode.as_deref() == Some("0x4B") {
+                Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey)
+            } else {
+                Ed2kDecoder::new()
+            };
         let decode_result = decoder.decode_packet(&bytes);
 
         if entry.expected == "valid" {
@@ -143,10 +141,16 @@ fn test_corpus_manifest_and_hash_integrity() {
                         ));
                     }
                     "invalid_block_offsets" => {
-                        assert!(matches!(err.kind, Ed2kErrorKind::InvalidBlockOffsets { .. }));
+                        assert!(matches!(
+                            err.kind,
+                            Ed2kErrorKind::InvalidBlockOffsets { .. }
+                        ));
                     }
                     "block_payload_mismatch" => {
-                        assert!(matches!(err.kind, Ed2kErrorKind::BlockPayloadMismatch { .. }));
+                        assert!(matches!(
+                            err.kind,
+                            Ed2kErrorKind::BlockPayloadMismatch { .. }
+                        ));
                     }
                     other => panic!("unknown expected error in manifest: {other}"),
                 }
@@ -317,7 +321,9 @@ fn test_decode_file_status_req() {
 
     // Default Emule050a decoder treats legacy 0x49 as raw packet
     let default_decoder = Ed2kDecoder::new();
-    let default_msg = default_decoder.decode_packet(&bytes).expect("decoding raw failed");
+    let default_msg = default_decoder
+        .decode_packet(&bytes)
+        .expect("decoding raw failed");
     assert!(matches!(default_msg, Ed2kMessage::Raw(_)));
 }
 
@@ -470,7 +476,9 @@ fn test_decode_request_parts_fixture() {
 
     // Default Emule050a decoder treats legacy 0x4B as raw packet
     let default_decoder = Ed2kDecoder::new();
-    let default_msg = default_decoder.decode_packet(&bytes).expect("decoding raw failed");
+    let default_msg = default_decoder
+        .decode_packet(&bytes)
+        .expect("decoding raw failed");
     assert!(matches!(default_msg, Ed2kMessage::Raw(_)));
 }
 

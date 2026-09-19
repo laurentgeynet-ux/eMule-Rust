@@ -64,7 +64,9 @@ impl Database {
 
     /// Gets a setting value by key.
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, CoreError> {
-        let mut stmt = self.conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM settings WHERE key = ?1")?;
         let mut rows = stmt.query(params![key])?;
         if let Some(row) = rows.next()? {
             let val: String = row.get(0)?;
@@ -85,7 +87,9 @@ impl Database {
 
     /// Removes a setting by key.
     pub fn remove_setting(&mut self, key: &str) -> Result<bool, CoreError> {
-        let rows = self.conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+        let rows = self
+            .conn
+            .execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         Ok(rows > 0)
     }
 
@@ -94,6 +98,15 @@ impl Database {
     /// Saves a new download record.
     pub fn insert_download(&mut self, dl: &Download) -> Result<(), CoreError> {
         downloads::insert_download(&mut self.conn, dl)
+    }
+
+    /// Persists the trusted AICH root hash for a download.
+    pub fn update_aich_root(
+        &mut self,
+        download_id: &Uuid,
+        aich_root: &[u8; 20],
+    ) -> Result<(), CoreError> {
+        downloads::update_aich_root(&mut self.conn, download_id, aich_root)
     }
 
     /// Atomically replaces received ranges for a download in a single transaction.
@@ -131,6 +144,25 @@ impl Database {
     /// Retrieves all verified part indexes.
     pub fn get_verified_parts(&self, download_id: &Uuid) -> Result<Vec<u32>, CoreError> {
         downloads::get_verified_parts(&self.conn, download_id)
+    }
+
+    /// Stores the per-part MD4 hashset for a file (keyed by lowercase hex ed2k hash).
+    pub fn store_part_hashes(
+        &mut self,
+        file_hash: &str,
+        part_hashes: &[[u8; 16]],
+    ) -> Result<(), CoreError> {
+        downloads::store_part_hashes(&mut self.conn, file_hash, part_hashes)
+    }
+
+    /// Loads the per-part MD4 hashset for a file, ordered by part index.
+    pub fn get_part_hashes(&self, file_hash: &str) -> Result<Vec<[u8; 16]>, CoreError> {
+        downloads::get_part_hashes(&self.conn, file_hash)
+    }
+
+    /// Deletes the stored per-part hashset for a file.
+    pub fn delete_part_hashes(&mut self, file_hash: &str) -> Result<(), CoreError> {
+        downloads::delete_part_hashes(&mut self.conn, file_hash)
     }
 
     /// Updates status of a download.
@@ -281,7 +313,14 @@ impl Database {
         error: Option<&str>,
         cooldown_until_unix_ms: Option<i64>,
     ) -> Result<bool, CoreError> {
-        sources::update_peer_source_status(&mut self.conn, file_hash, address, status, error, cooldown_until_unix_ms)
+        sources::update_peer_source_status(
+            &mut self.conn,
+            file_hash,
+            address,
+            status,
+            error,
+            cooldown_until_unix_ms,
+        )
     }
 
     /// Resets the cooldown and fail count for a peer source.
@@ -294,7 +333,11 @@ impl Database {
     }
 
     /// Deletes a specific peer source from SQLite.
-    pub fn delete_peer_source(&mut self, file_hash: &str, address: &str) -> Result<bool, CoreError> {
+    pub fn delete_peer_source(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+    ) -> Result<bool, CoreError> {
         sources::delete_peer_source(&mut self.conn, file_hash, address)
     }
 
@@ -326,8 +369,21 @@ impl Database {
     }
 
     /// Toggles the enabled state of a shared file.
-    pub fn set_shared_file_enabled(&mut self, file_hash: &str, enabled: bool) -> Result<bool, CoreError> {
+    pub fn set_shared_file_enabled(
+        &mut self,
+        file_hash: &str,
+        enabled: bool,
+    ) -> Result<bool, CoreError> {
         shares::set_shared_file_enabled(&mut self.conn, file_hash, enabled)
+    }
+
+    /// Caches the computed AICH root hash of a shared file.
+    pub fn set_shared_aich_root(
+        &mut self,
+        file_hash: &str,
+        aich_root: &[u8; 20],
+    ) -> Result<bool, CoreError> {
+        shares::set_shared_aich_root(&mut self.conn, file_hash, aich_root)
     }
 
     // ── Peer Credits ────────────────────────────────────────────────────────
@@ -343,12 +399,22 @@ impl Database {
     }
 
     /// Increments uploaded bytes counter for a peer credit record.
-    pub fn record_credit_upload(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), CoreError> {
+    pub fn record_credit_upload(
+        &mut self,
+        pubkey_hash: &str,
+        pubkey_hex: &str,
+        bytes: u64,
+    ) -> Result<(), CoreError> {
         credits::record_credit_upload(&mut self.conn, pubkey_hash, pubkey_hex, bytes)
     }
 
     /// Increments downloaded bytes counter for a peer credit record.
-    pub fn record_credit_download(&mut self, pubkey_hash: &str, pubkey_hex: &str, bytes: u64) -> Result<(), CoreError> {
+    pub fn record_credit_download(
+        &mut self,
+        pubkey_hash: &str,
+        pubkey_hex: &str,
+        bytes: u64,
+    ) -> Result<(), CoreError> {
         credits::record_credit_download(&mut self.conn, pubkey_hash, pubkey_hex, bytes)
     }
 
@@ -365,7 +431,10 @@ impl Database {
     }
 
     /// Batch upserts Kad contacts in a single transaction.
-    pub fn batch_upsert_kad_contacts(&mut self, contacts: &[KadContact]) -> Result<usize, CoreError> {
+    pub fn batch_upsert_kad_contacts(
+        &mut self,
+        contacts: &[KadContact],
+    ) -> Result<usize, CoreError> {
         kad::batch_upsert_kad_contacts(&mut self.conn, contacts)
     }
 
@@ -404,6 +473,15 @@ impl Database {
         kad::get_kad_indexed_sources(&self.conn, file_hash, max_results, now_unix_ms)
     }
 
+    /// Loads every live indexed Kad source (storage-node rehydration).
+    pub fn list_all_kad_indexed_sources(
+        &self,
+        now_unix_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<KadIndexedSource>, CoreError> {
+        kad::list_all_kad_indexed_sources(&self.conn, now_unix_ms, limit)
+    }
+
     /// Purges expired Kad indexed sources.
     pub fn purge_expired_kad_sources(&mut self, now_unix_ms: u64) -> Result<usize, CoreError> {
         kad::purge_expired_kad_sources(&mut self.conn, now_unix_ms)
@@ -431,6 +509,15 @@ impl Database {
         now_unix_ms: u64,
     ) -> Result<Vec<KadKeywordEntry>, CoreError> {
         kad::get_kad_keyword_entries(&self.conn, keyword_hash, now_unix_ms)
+    }
+
+    /// Loads every live Kad keyword entry (storage-node rehydration).
+    pub fn list_all_kad_keyword_entries(
+        &self,
+        now_unix_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<KadKeywordEntry>, CoreError> {
+        kad::list_all_kad_keyword_entries(&self.conn, now_unix_ms, limit)
     }
 
     /// Purges expired Kad keyword entries.
@@ -475,7 +562,11 @@ impl DownloadRepository for Database {
 }
 
 impl PeerSourceRepository for Database {
-    fn upsert_peer_sources(&mut self, file_hash_hex: &str, sources: &[PeerSource]) -> Result<usize, CoreError> {
+    fn upsert_peer_sources(
+        &mut self,
+        file_hash_hex: &str,
+        sources: &[PeerSource],
+    ) -> Result<usize, CoreError> {
         sources::upsert_peer_sources(&mut self.conn, file_hash_hex, sources)
     }
 
@@ -501,7 +592,11 @@ impl PeerSourceRepository for Database {
         )
     }
 
-    fn delete_peer_source(&mut self, file_hash_hex: &str, address: &str) -> Result<bool, CoreError> {
+    fn delete_peer_source(
+        &mut self,
+        file_hash_hex: &str,
+        address: &str,
+    ) -> Result<bool, CoreError> {
         sources::delete_peer_source(&mut self.conn, file_hash_hex, address)
     }
 }
@@ -537,7 +632,12 @@ impl KadRepository for Database {
         kad::insert_kad_indexed_sources(&mut self.conn, sources)
     }
 
-    fn get_kad_sources(&self, target_kad_id: &[u8; 16], limit: usize, now_ms: u64) -> Result<Vec<KadIndexedSource>, CoreError> {
+    fn get_kad_sources(
+        &self,
+        target_kad_id: &[u8; 16],
+        limit: usize,
+        now_ms: u64,
+    ) -> Result<Vec<KadIndexedSource>, CoreError> {
         kad::get_kad_indexed_sources(&self.conn, target_kad_id, limit, now_ms)
     }
 }

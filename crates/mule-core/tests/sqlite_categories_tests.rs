@@ -42,10 +42,16 @@ fn test_categories_crud_and_reorder() {
     assert_eq!(list[2].id, "cat-archives");
 
     // Single category fetch
-    let fetched = db.get_category("cat-music").expect("get cat-music").expect("exists");
+    let fetched = db
+        .get_category("cat-music")
+        .expect("get cat-music")
+        .expect("exists");
     assert_eq!(fetched.name, "Music");
     assert_eq!(fetched.color, "#2196F3");
-    assert_eq!(fetched.default_destination.as_deref(), Some("D:/Media/Music"));
+    assert_eq!(
+        fetched.default_destination.as_deref(),
+        Some("D:/Media/Music")
+    );
     assert_eq!(fetched.default_priority.as_deref(), Some("normal"));
 
     // Update
@@ -62,8 +68,12 @@ fn test_categories_crud_and_reorder() {
     assert_eq!(fetched_updated.default_priority.as_deref(), Some("low"));
 
     // Reorder
-    db.reorder_categories(&["cat-archives".into(), "cat-movies".into(), "cat-music".into()])
-        .expect("reorder");
+    db.reorder_categories(&[
+        "cat-archives".into(),
+        "cat-movies".into(),
+        "cat-music".into(),
+    ])
+    .expect("reorder");
 
     let reordered = db.get_categories().expect("reordered list");
     assert_eq!(reordered[0].id, "cat-archives");
@@ -150,7 +160,8 @@ fn test_category_deletion_reassigns_downloads_without_deleting_them() {
     assert_eq!(l1_final.category_id.as_deref(), Some("cat-tech"));
 
     // Clear category with set_download_category(..., None)
-    db.set_download_category(&id1, None).expect("clear category");
+    db.set_download_category(&id1, None)
+        .expect("clear category");
     let loaded_cleared = db.get_all_downloads().expect("load downloads cleared");
     let l1_cleared = loaded_cleared.iter().find(|d| d.id == id1).unwrap();
     assert_eq!(l1_cleared.category_id, None);
@@ -230,17 +241,26 @@ fn test_phase7_to_phase8_schema_migration() {
 
     // 4. Verify Phase 8.4 tables are fully functional
     let cat = DownloadCategory::new("ISOs", "#FF9800", 0, Some("downloads/ISOs".into()), None);
-    db.insert_category(&cat).expect("insert category after migration");
+    db.insert_category(&cat)
+        .expect("insert category after migration");
     let cats = db.get_categories().expect("fetch categories");
     assert_eq!(cats.len(), 1);
 
     // Assign category to the legacy download
-    db.set_download_category(&dl.id, Some(&cat.id)).expect("set category on legacy download");
+    db.set_download_category(&dl.id, Some(&cat.id))
+        .expect("set category on legacy download");
     let updated_downloads = db.get_all_downloads().expect("fetch updated");
-    assert_eq!(updated_downloads[0].category_id.as_deref(), Some(cat.id.as_str()));
+    assert_eq!(
+        updated_downloads[0].category_id.as_deref(),
+        Some(cat.id.as_str())
+    );
 
     // Settings table is functional
     db.set_setting("retention_days", "60").expect("set setting");
-    assert_eq!(db.get_setting("retention_days").expect("get setting").as_deref(), Some("60"));
+    assert_eq!(
+        db.get_setting("retention_days")
+            .expect("get setting")
+            .as_deref(),
+        Some("60")
+    );
 }
-

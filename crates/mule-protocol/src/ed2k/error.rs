@@ -91,7 +91,10 @@ pub enum Ed2kErrorKind {
 impl fmt::Display for Ed2kErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidBitfieldTrailingBits { remainder, trailing_bits } => {
+            Self::InvalidBitfieldTrailingBits {
+                remainder,
+                trailing_bits,
+            } => {
                 write!(
                     f,
                     "invalid bitfield trailing bits: remainder {remainder}, trailing bits 0x{trailing_bits:02X} must be zero"
@@ -142,7 +145,11 @@ impl fmt::Display for Ed2kErrorKind {
             Self::MalformedField { message } => {
                 write!(f, "malformed field: {message}")
             }
-            Self::AmbiguousOpcodeForProfile { opcode, profile, reason } => {
+            Self::AmbiguousOpcodeForProfile {
+                opcode,
+                profile,
+                reason,
+            } => {
                 write!(
                     f,
                     "opcode 0x{opcode:02X} is ambiguous or invalid under compatibility profile {profile}: {reason}"
@@ -231,4 +238,3 @@ impl fmt::Display for Ed2kEncodeError {
         )
     }
 }
-

@@ -23,7 +23,9 @@ pub async fn run_ed2k_download(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // 0. Enforce network policy confinement
     if state.network_policy.profile().is_loopback_only() && !peer_addr.ip().is_loopback() {
-        return Err(format!("Non-loopback address {peer_addr} is forbidden in LocalLab profile").into());
+        return Err(
+            format!("Non-loopback address {peer_addr} is forbidden in LocalLab profile").into(),
+        );
     }
 
     // 1. Transition to WaitingForSources
@@ -140,7 +142,10 @@ pub async fn run_ed2k_download(
         }
 
         // Receive block response within timeout
-        match client.receive_sending_part(Duration::from_millis(2000)).await {
+        match client
+            .receive_sending_part(Duration::from_millis(2000))
+            .await
+        {
             Ok(part) => {
                 if part.file_hash != expected_hash.0 {
                     let mut dls = state.downloads.lock().await;

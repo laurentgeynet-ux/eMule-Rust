@@ -30,7 +30,9 @@ pub enum Ed2kSequencerError {
     },
 
     /// Part index is not available from the remote peer.
-    #[error("Part index {part_index} is not available from remote source (total parts: {total_parts})")]
+    #[error(
+        "Part index {part_index} is not available from remote source (total parts: {total_parts})"
+    )]
     PartNotAvailable {
         /// Requested part index.
         part_index: u16,

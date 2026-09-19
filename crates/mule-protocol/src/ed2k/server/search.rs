@@ -1,11 +1,11 @@
 //! Search queries and results for eD2K servers.
 
-use crate::framing::RawPacket;
 use crate::ed2k::error::{Ed2kEncodeError, Ed2kErrorKind};
 use crate::ed2k::limits::Ed2kLimits;
 use crate::ed2k::opcodes::OP_SEARCHREQUEST;
 use crate::ed2k::protocol::PR_ED2K;
 use crate::ed2k::tags::{Ed2kTag, TagName, TagValue, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME};
+use crate::framing::RawPacket;
 
 /// Request to search files on an eD2K server (`OP_SEARCHREQUEST` = `0x16`).
 #[derive(Debug, Clone, PartialEq)]
@@ -153,7 +153,9 @@ impl SearchResultFile {
                 TagName::Id(0x15) | TagName::Id(0x30) => true,
                 TagName::Text(txt) => {
                     let lower = txt.to_lowercase();
-                    lower.contains("source") || lower.contains("availability") || lower.contains("complete")
+                    lower.contains("source")
+                        || lower.contains("availability")
+                        || lower.contains("complete")
                 }
                 _ => false,
             };

@@ -13,13 +13,13 @@ use super::KadUdpService;
 
 impl KadUdpService {
     /// Sends a Kad Ping to target address and awaits Pong response within timeout.
-    pub async fn ping(
-        &self,
-        target: SocketAddr,
-    ) -> Result<(KadPong, Duration), String> {
+    pub async fn ping(&self, target: SocketAddr) -> Result<(KadPong, Duration), String> {
         let socket = {
             let inner = self.inner.read().await;
-            inner.socket.clone().ok_or_else(|| "Kad UDP socket is not running".to_string())?
+            inner
+                .socket
+                .clone()
+                .ok_or_else(|| "Kad UDP socket is not running".to_string())?
         };
 
         let _permit = self
@@ -45,7 +45,11 @@ impl KadUdpService {
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
         let ping_bytes = KadCodec::encode_ping(&self.local_id.0, local_port);
 
-        tracing::info!("Kad sending Ping (0x60) to node {} (tx_id={})", target, tx_id);
+        tracing::info!(
+            "Kad sending Ping (0x60) to node {} (tx_id={})",
+            target,
+            tx_id
+        );
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&ping_bytes, target)
@@ -80,13 +84,13 @@ impl KadUdpService {
     }
 
     /// Sends a Kad2 Bootstrap request to target address and awaits response with contacts.
-    pub async fn send_bootstrap(
-        &self,
-        target: SocketAddr,
-    ) -> Result<Vec<KadContact>, String> {
+    pub async fn send_bootstrap(&self, target: SocketAddr) -> Result<Vec<KadContact>, String> {
         let socket = {
             let inner = self.inner.read().await;
-            inner.socket.clone().ok_or_else(|| "Kad UDP socket is not running".to_string())?
+            inner
+                .socket
+                .clone()
+                .ok_or_else(|| "Kad UDP socket is not running".to_string())?
         };
 
         let _permit = self
@@ -112,7 +116,11 @@ impl KadUdpService {
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
         let boot_bytes = KadCodec::encode_bootstrap_req(&self.local_id.0, local_port);
 
-        tracing::info!("Kad sending BootstrapReq (0x01) to node {} (tx_id={})", target, tx_id);
+        tracing::info!(
+            "Kad sending BootstrapReq (0x01) to node {} (tx_id={})",
+            target,
+            tx_id
+        );
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
             .send_to(&boot_bytes, target)
@@ -173,7 +181,10 @@ impl KadUdpService {
     ) -> Result<Vec<KadContact>, String> {
         let socket = {
             let inner = self.inner.read().await;
-            inner.socket.clone().ok_or_else(|| "Kad UDP socket is not running".to_string())?
+            inner
+                .socket
+                .clone()
+                .ok_or_else(|| "Kad UDP socket is not running".to_string())?
         };
 
         let _permit = self

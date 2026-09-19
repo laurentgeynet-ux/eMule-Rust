@@ -34,7 +34,8 @@ fn allocate_ephemeral_loopback_port() -> u16 {
 fn test_tier3_environment_initialization_and_neutralized_configs() {
     let test_port = allocate_ephemeral_loopback_port();
     let test_udp_port = allocate_ephemeral_loopback_port();
-    let env = Tier3Environment::new(test_port, test_udp_port).expect("failed to initialize Tier3Environment");
+    let env = Tier3Environment::new(test_port, test_udp_port)
+        .expect("failed to initialize Tier3Environment");
 
     // 1. Verify ephemeral work path exists and is distinct from home directory
     assert!(env.work_path().exists());
@@ -64,8 +65,8 @@ fn test_tier3_environment_initialization_and_neutralized_configs() {
 
 #[test]
 fn test_tier3_harness_rejects_non_loopback_address() {
-    let dummy_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/ed2k/hello_v1_minimal.bin");
+    let dummy_bin =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ed2k/hello_v1_minimal.bin");
 
     // Attempting to configure a non-loopback address (e.g. 192.168.1.50) must be rejected
     let non_loopback_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 39735);
@@ -75,9 +76,13 @@ fn test_tier3_harness_rejects_non_loopback_address() {
     let test_udp_port = allocate_ephemeral_loopback_port();
 
     // The harness constructor strictly forces 127.0.0.1:
-    let harness = Tier3Harness::new(dummy_bin, None, test_port, test_udp_port).expect("valid harness");
+    let harness =
+        Tier3Harness::new(dummy_bin, None, test_port, test_udp_port).expect("valid harness");
     assert!(harness.loopback_addr().ip().is_loopback());
-    assert_eq!(harness.loopback_addr().ip(), IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    assert_eq!(
+        harness.loopback_addr().ip(),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+    );
 }
 
 #[test]
@@ -179,8 +184,8 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
 
     // Generate conformant eMule user hash (with 0x0E at index 5 and 0x6F at index 14)
     let user_hash = [
-        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
-        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97, 0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F,
+        0x83,
     ];
     let client_tcp_port = allocate_ephemeral_loopback_port();
     // Minimal Hello: start with tag_count = 0
@@ -188,7 +193,10 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
 
     let pid = harness.child_pid().unwrap_or(0);
     println!("Target loopback addr: {:?}", harness.loopback_addr());
-    println!("Reference binary work path: {:?}", harness.environment().work_path());
+    println!(
+        "Reference binary work path: {:?}",
+        harness.environment().work_path()
+    );
     println!("Child PID: {pid}");
 
     // Wait for the reference process to bind to loopback port and connect (up to 5 seconds)
@@ -204,7 +212,10 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
                 .arg(format!("Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, State | Out-String"))
                 .output();
             if let Ok(o) = out {
-                println!("TCP connections for PID {pid}:\n{}", String::from_utf8_lossy(&o.stdout));
+                println!(
+                    "TCP connections for PID {pid}:\n{}",
+                    String::from_utf8_lossy(&o.stdout)
+                );
             }
         }
         match Ed2kLoopbackClient::connect_and_handshake(
@@ -234,8 +245,11 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
     }
     let connect_res = connect_res.expect("connection attempt completed");
 
-    let mut report =
-        Tier3DivergenceReport::new("live_reference", &harness.binary_sha256_redacted(), "Emule050a");
+    let mut report = Tier3DivergenceReport::new(
+        "live_reference",
+        &harness.binary_sha256_redacted(),
+        "Emule050a",
+    );
 
     match connect_res {
         Ok((client, peer_info)) => {
@@ -257,15 +271,40 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
 
             assert_eq!(peer_info.name.as_deref(), Some("RefPeer050a"));
             assert_eq!(peer_info.version, Some(60));
-            assert!(peer_info.misc_options1.is_some(), "misc_options1 must be parsed");
-            assert!(peer_info.misc_options2.is_some(), "misc_options2 must be parsed");
-            assert_eq!(peer_info.emule_udp_port, Some(test_udp_port), "emule_udp_port must match test_udp_port");
-            assert!(peer_info.emule_info.is_some(), "emule_info must be populated from OP_EMULEINFO");
+            assert!(
+                peer_info.misc_options1.is_some(),
+                "misc_options1 must be parsed"
+            );
+            assert!(
+                peer_info.misc_options2.is_some(),
+                "misc_options2 must be parsed"
+            );
+            assert_eq!(
+                peer_info.emule_udp_port,
+                Some(test_udp_port),
+                "emule_udp_port must match test_udp_port"
+            );
+            assert!(
+                peer_info.emule_info.is_some(),
+                "emule_info must be populated from OP_EMULEINFO"
+            );
             let emule_info = peer_info.emule_info.as_ref().unwrap();
-            assert_eq!(emule_info.client_version, 80, "emule_info client_version must be 0x50 = 80 for eMule 0.50a");
-            assert_eq!(emule_info.protocol_version, 1, "emule_info protocol_version must be 1");
-            assert!(peer_info.has_compression_capability(), "compression capability must be announced");
-            assert!(peer_info.has_source_exchange_capability(), "source exchange capability must be announced");
+            assert_eq!(
+                emule_info.client_version, 80,
+                "emule_info client_version must be 0x50 = 80 for eMule 0.50a"
+            );
+            assert_eq!(
+                emule_info.protocol_version, 1,
+                "emule_info protocol_version must be 1"
+            );
+            assert!(
+                peer_info.has_compression_capability(),
+                "compression capability must be announced"
+            );
+            assert!(
+                peer_info.has_source_exchange_capability(),
+                "source exchange capability must be announced"
+            );
 
             client.close().await;
         }
@@ -352,7 +391,10 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
 
         harness.assert_loopback_confinement();
         println!("Iteration {iteration}: Assigned TCP port {test_port}, UDP port {test_udp_port}");
-        println!("Iteration {iteration}: Work path: {:?}", harness.environment().work_path());
+        println!(
+            "Iteration {iteration}: Work path: {:?}",
+            harness.environment().work_path()
+        );
 
         harness
             .spawn_reference_process(&[])
@@ -364,8 +406,8 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
 
         // Canonical eMule user hash (with 0x0E at index 5 and 0x6F at index 14)
         let user_hash = [
-            0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
-            0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+            0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97, 0x93, 0x23, 0x84, 0x62, 0x64, 0x33,
+            0x6F, 0x83,
         ];
         let client_tcp_port = allocate_ephemeral_loopback_port();
 
@@ -410,12 +452,27 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
         assert!(peer_info.misc_options2.is_some());
 
         // 2. Assert OP_EMULEINFO announcement
-        assert!(peer_info.emule_info.is_some(), "OP_EMULEINFO must be captured and parsed");
+        assert!(
+            peer_info.emule_info.is_some(),
+            "OP_EMULEINFO must be captured and parsed"
+        );
         let emule_info = peer_info.emule_info.as_ref().unwrap();
-        assert_eq!(emule_info.client_version, 80, "eMule 0.50a version must be 0x50 = 80 in OP_EMULEINFO");
-        assert_eq!(emule_info.protocol_version, 1, "eMule compatible protocol version must be 1");
-        assert!(peer_info.has_compression_capability(), "compression capability must be announced");
-        assert!(peer_info.has_source_exchange_capability(), "source exchange capability must be announced");
+        assert_eq!(
+            emule_info.client_version, 80,
+            "eMule 0.50a version must be 0x50 = 80 in OP_EMULEINFO"
+        );
+        assert_eq!(
+            emule_info.protocol_version, 1,
+            "eMule compatible protocol version must be 1"
+        );
+        assert!(
+            peer_info.has_compression_capability(),
+            "compression capability must be announced"
+        );
+        assert!(
+            peer_info.has_source_exchange_capability(),
+            "source exchange capability must be announced"
+        );
         println!(
             "Iteration {iteration}: Decoded OP_EMULEINFO with {} tags, compression={}, source_exchange={}",
             emule_info.tags.len(),
@@ -432,7 +489,10 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
         // 4. Bounded idle watchdog: hold connection passively for 1s
         println!("Iteration {iteration}: Holding passive connection for 1s watchdog...");
         tokio::time::sleep(Duration::from_secs(1)).await;
-        assert!(harness.is_child_running(), "eMule process remains healthy during idle hold");
+        assert!(
+            harness.is_child_running(),
+            "eMule process remains healthy during idle hold"
+        );
 
         // 5. Verify network confinement via PowerShell Get-NetTCPConnection
         let check_conn = std::process::Command::new("powershell")
@@ -443,7 +503,10 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
         if let Ok(out) = check_conn {
             let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
             let non_loopback_count: usize = count_str.parse().unwrap_or(0);
-            assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+            assert_eq!(
+                non_loopback_count, 0,
+                "Non-loopback connections detected for PID {pid}!"
+            );
         }
 
         // 6. Graceful TCP FIN teardown
@@ -451,7 +514,10 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
 
         // 7. Hermetic process teardown
         harness.shutdown();
-        assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+        assert!(
+            !harness.is_child_running(),
+            "Process must be terminated after shutdown"
+        );
 
         println!("=== Iteration {iteration}/2 Completed Successfully ===");
     }
@@ -503,12 +569,15 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
         .create_deterministic_fixture("tier3_status_fixture_9728001.bin", fixture_len)
         .expect("failed to create deterministic fixture");
     assert!(fixture_path.exists());
-    assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len as u64);
+    assert_eq!(
+        std::fs::metadata(&fixture_path).unwrap().len(),
+        fixture_len as u64
+    );
 
     // Sealed reference eD2K hash for 9_728_001 bytes of repeating 0..=255
     let sealed_hash: [u8; 16] = [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
-        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
+        0x3c,
     ];
 
     println!("Tier 3.2: Created fixture at {:?}", fixture_path);
@@ -524,8 +593,8 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
     assert!(harness.is_child_running(), "child process must be active");
 
     let user_hash = [
-        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
-        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97, 0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F,
+        0x83,
     ];
     let client_tcp_port = allocate_ephemeral_loopback_port();
 
@@ -562,7 +631,10 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
 
     let (mut client, peer_info) = connect_res.expect("connected");
     assert!(client.session().is_ready());
-    println!("Tier 3.2: Handshake successful with peer: {:?}", peer_info.name);
+    println!(
+        "Tier 3.2: Handshake successful with peer: {:?}",
+        peer_info.name
+    );
 
     // Give eMule a brief moment to settle background file hashing if needed
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -571,7 +643,10 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
     println!("Tier 3.2: Sending OP_SETREQFILEID_EMULE (0x4F) for fixture...");
     let mut file_status = None;
     for attempt in 1..=5 {
-        match client.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+        match client
+            .request_file_status(sealed_hash, Duration::from_secs(3))
+            .await
+        {
             Ok(status) => {
                 file_status = Some(status);
                 break;
@@ -586,31 +661,55 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
         }
     }
 
-    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    let status =
+        file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
     println!("Tier 3.2: Received OP_FILESTATUS:");
     println!("  File Hash : {}", hex::encode(status.file_hash));
     println!("  Part Count: {}", status.part_count);
     println!("  Bitfield  : {:02X?}", status.raw_bytes());
 
     // 5. Assertions on canonical eD2K completed file status
-    assert_eq!(status.file_hash, sealed_hash, "file hash must match requested hash");
+    assert_eq!(
+        status.file_hash, sealed_hash,
+        "file hash must match requested hash"
+    );
     // In eD2K wire protocol (ClientTCPSocket.cpp), official eMule/aMule write uint16(0)
     // when responding to OP_SETREQFILEID for a completed shared file (CKnownFile).
     // In this canonical case, no bitfield is transmitted, and part_count = 0 signifies
     // that the peer is a complete source (m_bCompleteSource = true) possessing 100% of the parts.
-    assert_eq!(status.part_count, 0, "eMule 0.50a encodes complete file availability as part_count = 0");
-    assert!(status.is_complete(), "file status must report complete source");
-    assert_eq!(status.raw_bytes().len(), 0, "bitfield for complete file has 0 bytes");
-    assert!(status.has_part(0), "part 0 must be reported available on complete file");
-    assert!(status.has_part(1), "part 1 must be reported available on complete file");
+    assert_eq!(
+        status.part_count, 0,
+        "eMule 0.50a encodes complete file availability as part_count = 0"
+    );
+    assert!(
+        status.is_complete(),
+        "file status must report complete source"
+    );
+    assert_eq!(
+        status.raw_bytes().len(),
+        0,
+        "bitfield for complete file has 0 bytes"
+    );
+    assert!(
+        status.has_part(0),
+        "part 0 must be reported available on complete file"
+    );
+    assert!(
+        status.has_part(1),
+        "part 1 must be reported available on complete file"
+    );
 
     // 6. Also verify OP_FILEREQANSNOFILE (0x48) when requesting an unknown file
     let unknown_hash = [0xAA; 16];
-    let no_file_res = client.request_file_status(unknown_hash, Duration::from_secs(3)).await;
+    let no_file_res = client
+        .request_file_status(unknown_hash, Duration::from_secs(3))
+        .await;
     match no_file_res {
         Err(mule_protocol::ed2k::Ed2kSessionError::FileNotFound(h)) => {
             assert_eq!(h, hex::encode(unknown_hash), "eMule must report requested unknown file as not found via OP_FILEREQANSNOFILE (0x48)");
-            println!("Tier 3.2: Successfully received OP_FILEREQANSNOFILE (0x48) for unknown hash!");
+            println!(
+                "Tier 3.2: Successfully received OP_FILEREQANSNOFILE (0x48) for unknown hash!"
+            );
         }
         other => panic!("expected FileNotFound error via OP_FILEREQANSNOFILE, got: {other:?}"),
     }
@@ -629,7 +728,10 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
     if let Ok(out) = check_conn {
         let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         let non_loopback_count: usize = count_str.parse().unwrap_or(0);
-        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+        assert_eq!(
+            non_loopback_count, 0,
+            "Non-loopback connections detected for PID {pid}!"
+        );
     }
 
     // 8. Graceful TCP FIN teardown
@@ -637,9 +739,14 @@ async fn test_tier3_live_file_status_request_and_parts_availability() {
 
     // 9. Hermetic process teardown
     harness.shutdown();
-    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+    assert!(
+        !harness.is_child_running(),
+        "Process must be terminated after shutdown"
+    );
 
-    println!("Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!");
+    println!(
+        "Tier 3.2: File status and parts availability successfully verified against eMule 0.50a!"
+    );
 }
 
 /// Tier 3.3 Live Reference Integration Test:
@@ -705,8 +812,8 @@ async fn test_tier3_live_download_sequencing_without_payload() {
     assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len);
 
     let sealed_hash: [u8; 16] = [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
-        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
+        0x3c,
     ];
 
     // 2. Spawn reference process
@@ -719,8 +826,8 @@ async fn test_tier3_live_download_sequencing_without_payload() {
     assert!(harness.is_child_running());
 
     let user_hash = [
-        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
-        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97, 0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F,
+        0x83,
     ];
     let client_tcp_port = allocate_ephemeral_loopback_port();
 
@@ -764,7 +871,10 @@ async fn test_tier3_live_download_sequencing_without_payload() {
     // 4. Request file status for sealed fixture hash
     let mut file_status = None;
     for attempt in 1..=5 {
-        match client.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+        match client
+            .request_file_status(sealed_hash, Duration::from_secs(3))
+            .await
+        {
             Ok(status) => {
                 file_status = Some(status);
                 break;
@@ -779,16 +889,24 @@ async fn test_tier3_live_download_sequencing_without_payload() {
         }
     }
 
-    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    let status =
+        file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
     assert_eq!(status.file_hash, sealed_hash);
-    assert_eq!(status.part_count, 0, "complete source reports part_count = 0");
+    assert_eq!(
+        status.part_count, 0,
+        "complete source reports part_count = 0"
+    );
     assert!(status.is_complete());
 
     // 5. Tier 3.3 Download Sequencing & Block Request Planning
     let sequencer = Ed2kDownloadSequencer::new(sealed_hash, fixture_len, status)
         .expect("sequencer initialization succeeds");
 
-    assert_eq!(sequencer.total_parts(), 2, "9,728,001 bytes file has exactly 2 parts");
+    assert_eq!(
+        sequencer.total_parts(),
+        2,
+        "9,728,001 bytes file has exactly 2 parts"
+    );
     assert!(sequencer.is_part_available(0), "part 0 must be available");
     assert!(sequencer.is_part_available(1), "part 1 must be available");
     assert_eq!(sequencer.available_parts(), vec![0, 1]);
@@ -800,14 +918,20 @@ async fn test_tier3_live_download_sequencing_without_payload() {
     assert_eq!(part0_blocks[0].start, 0);
     assert_eq!(part0_blocks[0].end, 184_320);
     assert_eq!(part0_blocks[52].start, 9_584_640);
-    assert_eq!(part0_blocks[52].end, 9_728_000, "final block of part 0 aligns exactly to part boundary");
+    assert_eq!(
+        part0_blocks[52].end, 9_728_000,
+        "final block of part 0 aligns exactly to part boundary"
+    );
     assert_eq!(part0_blocks[52].len(), 143_360);
 
     // Plan Part 1 blocks (1 byte remainder -> 1 block)
     let part1_blocks = sequencer.plan_part_blocks(1).expect("plan part 1");
     assert_eq!(part1_blocks.len(), 1);
     assert_eq!(part1_blocks[0].start, 9_728_000);
-    assert_eq!(part1_blocks[0].end, 9_728_001, "residual block covers the last byte of the fixture");
+    assert_eq!(
+        part1_blocks[0].end, 9_728_001,
+        "residual block covers the last byte of the fixture"
+    );
     assert_eq!(part1_blocks[0].len(), 1);
 
     // 6. Build and encode wire request packets locally (Emule050a profile -> opcode 0x47)
@@ -817,7 +941,11 @@ async fn test_tier3_live_download_sequencing_without_payload() {
         .expect("encode part 0 block 0");
     assert_eq!(wire_pkt_part0_block0.protocol, PR_ED2K);
     assert_eq!(wire_pkt_part0_block0.opcode, OP_REQUESTPARTS_EMULE); // 0x47
-    assert_eq!(wire_pkt_part0_block0.payload.len(), 40, "wire payload must be 40 bytes");
+    assert_eq!(
+        wire_pkt_part0_block0.payload.len(),
+        40,
+        "wire payload must be 40 bytes"
+    );
 
     let wire_pkt_part1_block0 = sequencer
         .build_request_packet(&[part1_blocks[0]], &encoder)
@@ -832,9 +960,15 @@ async fn test_tier3_live_download_sequencing_without_payload() {
 
     // 8. Negative response proof: OP_FILEREQANSNOFILE prevents planning
     let unknown_hash = [0xAA; 16];
-    let no_file_res = client.request_file_status(unknown_hash, Duration::from_secs(3)).await;
-    let seq_from_neg = Ed2kDownloadSequencer::from_file_status_result(unknown_hash, fixture_len, no_file_res);
-    assert!(matches!(seq_from_neg, Err(Ed2kSequencerError::FileNotFound(_))));
+    let no_file_res = client
+        .request_file_status(unknown_hash, Duration::from_secs(3))
+        .await;
+    let seq_from_neg =
+        Ed2kDownloadSequencer::from_file_status_result(unknown_hash, fixture_len, no_file_res);
+    assert!(matches!(
+        seq_from_neg,
+        Err(Ed2kSequencerError::FileNotFound(_))
+    ));
 
     // 9. Confinement scan
     let check_conn = std::process::Command::new("powershell")
@@ -845,7 +979,10 @@ async fn test_tier3_live_download_sequencing_without_payload() {
     if let Ok(out) = check_conn {
         let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         let non_loopback_count: usize = count_str.parse().unwrap_or(0);
-        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+        assert_eq!(
+            non_loopback_count, 0,
+            "Non-loopback connections detected for PID {pid}!"
+        );
     }
 
     // 10. Graceful TCP FIN teardown
@@ -853,7 +990,10 @@ async fn test_tier3_live_download_sequencing_without_payload() {
 
     // 11. Hermetic process teardown
     harness.shutdown();
-    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+    assert!(
+        !harness.is_child_running(),
+        "Process must be terminated after shutdown"
+    );
 
     println!("Tier 3.3: Download sequencing and block request planning without payload successfully verified against eMule 0.50a!");
 }
@@ -914,8 +1054,8 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
     assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len);
 
     let sealed_hash: [u8; 16] = [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
-        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
+        0x3c,
     ];
 
     // Read the reference 184,320-byte prefix from the generated fixture
@@ -932,8 +1072,8 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
     assert!(harness.is_child_running());
 
     let user_hash = [
-        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
-        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97, 0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F,
+        0x83,
     ];
     let client_tcp_port = allocate_ephemeral_loopback_port();
 
@@ -977,7 +1117,10 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
     // 4. Request file status for sealed fixture hash
     let mut file_status = None;
     for attempt in 1..=5 {
-        match client.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+        match client
+            .request_file_status(sealed_hash, Duration::from_secs(3))
+            .await
+        {
             Ok(status) => {
                 file_status = Some(status);
                 break;
@@ -992,9 +1135,13 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
         }
     }
 
-    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    let status =
+        file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
     assert_eq!(status.file_hash, sealed_hash);
-    assert_eq!(status.part_count, 0, "complete source reports part_count = 0");
+    assert_eq!(
+        status.part_count, 0,
+        "complete source reports part_count = 0"
+    );
     assert!(status.is_complete());
 
     // 5. Tier 3.4: Request exactly ONE uncompressed block [0, 184_320)
@@ -1037,21 +1184,32 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
             sink.received_bytes_count() + part.data.len()
         );
 
-        assert_eq!(part.file_hash, sealed_hash, "chunk file hash must match fixture");
-        let written_range = sink.write_block(&sequencer, &part).expect("write chunk to sink");
+        assert_eq!(
+            part.file_hash, sealed_hash,
+            "chunk file hash must match fixture"
+        );
+        let written_range = sink
+            .write_block(&sequencer, &part)
+            .expect("write chunk to sink");
         assert_eq!(written_range.start, part.start_offset);
         assert_eq!(written_range.end, part.end_offset);
     }
 
     // 7. Ground-truth assertions on received block
-    assert_eq!(sink.received_bytes_count(), 184_320, "exactly 184,320 bytes assembled");
-    assert!(sink.has_range(0, 184_320), "block sink reports full range [0, 184_320) covered");
+    assert_eq!(
+        sink.received_bytes_count(),
+        184_320,
+        "exactly 184,320 bytes assembled"
+    );
+    assert!(
+        sink.has_range(0, 184_320),
+        "block sink reports full range [0, 184_320) covered"
+    );
     let assembled_block = &sink.buffer()[0..184_320];
 
     // 8. Byte-by-byte comparison against fixture prefix
     assert_eq!(
-        assembled_block,
-        expected_prefix,
+        assembled_block, expected_prefix,
         "transferred payload must match fixture prefix byte-by-byte"
     );
 
@@ -1091,7 +1249,10 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
     if let Ok(out) = check_conn {
         let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         let non_loopback_count: usize = count_str.parse().unwrap_or(0);
-        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+        assert_eq!(
+            non_loopback_count, 0,
+            "Non-loopback connections detected for PID {pid}!"
+        );
     }
 
     // 13. Graceful TCP FIN teardown
@@ -1099,7 +1260,10 @@ async fn test_tier3_live_single_uncompressed_block_transfer_from_emule050a() {
 
     // 14. Hermetic process teardown
     harness.shutdown();
-    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+    assert!(
+        !harness.is_child_running(),
+        "Process must be terminated after shutdown"
+    );
 
     println!("Tier 3.4: Single bounded block transfer successfully verified against eMule 0.50a!");
 }
@@ -1166,8 +1330,8 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
     assert_eq!(std::fs::metadata(&fixture_path).unwrap().len(), fixture_len);
 
     let sealed_hash: [u8; 16] = [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81,
-        0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82, 0x3c,
+        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
+        0x3c,
     ];
 
     // Read ground truth Part 0 (9,728,000 bytes) from fixture file
@@ -1193,8 +1357,8 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
     assert!(harness.is_child_running());
 
     let user_hash = [
-        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97,
-        0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F, 0x83,
+        0x31, 0x41, 0x59, 0x26, 0x53, 0x0E, 0x58, 0x97, 0x93, 0x23, 0x84, 0x62, 0x64, 0x33, 0x6F,
+        0x83,
     ];
     let client1_tcp_port = allocate_ephemeral_loopback_port();
 
@@ -1238,7 +1402,10 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
     // 4. Request file status for sealed fixture hash
     let mut file_status = None;
     for attempt in 1..=5 {
-        match client1.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+        match client1
+            .request_file_status(sealed_hash, Duration::from_secs(3))
+            .await
+        {
             Ok(status) => {
                 file_status = Some(status);
                 break;
@@ -1253,15 +1420,23 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
         }
     }
 
-    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    let status =
+        file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
     assert_eq!(status.file_hash, sealed_hash);
-    assert_eq!(status.part_count, 0, "complete source reports part_count = 0");
+    assert_eq!(
+        status.part_count, 0,
+        "complete source reports part_count = 0"
+    );
     assert!(status.is_complete());
 
     let sequencer = Ed2kDownloadSequencer::new(sealed_hash, fixture_len, status)
         .expect("sequencer initialization succeeds");
     let part0_blocks = sequencer.plan_part_blocks(0).expect("plan part 0");
-    assert_eq!(part0_blocks.len(), 53, "Part 0 must comprise exactly 53 blocks");
+    assert_eq!(
+        part0_blocks.len(),
+        53,
+        "Part 0 must comprise exactly 53 blocks"
+    );
 
     // 5. Initialize on-disk destination .part file and companion .resume.json
     let target_part_path = harness
@@ -1293,7 +1468,10 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
         .await
         .expect("Phase 1 pipelined download succeeds");
 
-    assert_eq!(completed_phase1, 20, "Phase 1 must stop after completing exactly 20 blocks");
+    assert_eq!(
+        completed_phase1, 20,
+        "Phase 1 must stop after completing exactly 20 blocks"
+    );
     let blocks_20_len = 20 * mule_protocol::ed2k::ED2K_BLOCK_SIZE as u64; // 3,686,400 bytes
     assert_eq!(sink.total_bytes_received(), blocks_20_len);
     assert_eq!(sink.completed_ranges(), &[(0, blocks_20_len)]);
@@ -1301,7 +1479,8 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
 
     // Verify intermediate byte-by-byte accuracy against fixture prefix
     sink.flush_and_sync().expect("flush and sync sink");
-    let intermediate_disk_bytes = std::fs::read(&target_part_path).expect("read intermediate part file");
+    let intermediate_disk_bytes =
+        std::fs::read(&target_part_path).expect("read intermediate part file");
     assert_eq!(
         &intermediate_disk_bytes[0..blocks_20_len as usize],
         &fixture_bytes[0..blocks_20_len as usize],
@@ -1310,7 +1489,9 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
     println!("Tier 3.5: Phase 1 verified: exactly 20 blocks (3,686,400 bytes) written and verified on disk.");
 
     // 7. Abrupt Interruption: close Session 1 client and drop sink
-    println!("Tier 3.5: Simulating abrupt network interruption (closing Session 1 TCP connection)...");
+    println!(
+        "Tier 3.5: Simulating abrupt network interruption (closing Session 1 TCP connection)..."
+    );
     client1.close().await;
     drop(sink);
 
@@ -1329,8 +1510,9 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
 
     // 8. Session 2: Resume download from existing .part and .resume.json state
     println!("Tier 3.5: Phase 2: Opening existing .part file and .resume.json journal...");
-    let mut resumed_sink = Ed2kPartFileSink::open_or_resume(target_part_path.clone(), sealed_hash, fixture_len)
-        .expect("resume sink from disk");
+    let mut resumed_sink =
+        Ed2kPartFileSink::open_or_resume(target_part_path.clone(), sealed_hash, fixture_len)
+            .expect("resume sink from disk");
     assert_eq!(resumed_sink.total_bytes_received(), blocks_20_len);
     assert_eq!(resumed_sink.completed_ranges(), &[(0, blocks_20_len)]);
 
@@ -1416,7 +1598,10 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
         .await
         .expect("Phase 2 pipelined download succeeds");
 
-    assert_eq!(completed_phase2, 33, "Phase 2 must complete all remaining 33 blocks");
+    assert_eq!(
+        completed_phase2, 33,
+        "Phase 2 must complete all remaining 33 blocks"
+    );
     assert_eq!(
         resumed_sink.total_bytes_received(),
         9_728_000,
@@ -1428,7 +1613,9 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
         "Part 0 completed ranges must be fully merged into [(0, 9,728,000)]"
     );
     assert!(
-        resumed_sink.is_part_complete(0, &sequencer).expect("part complete check"),
+        resumed_sink
+            .is_part_complete(0, &sequencer)
+            .expect("part complete check"),
         "Part 0 must be reported complete"
     );
     println!("Tier 3.5: Part 0 download 100% completed across 2 sessions!");
@@ -1481,7 +1668,10 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
     if let Ok(out) = check_conn {
         let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         let non_loopback_count: usize = count_str.parse().unwrap_or(0);
-        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+        assert_eq!(
+            non_loopback_count, 0,
+            "Non-loopback connections detected for PID {pid}!"
+        );
     }
 
     // 15. Graceful TCP FIN teardown
@@ -1489,7 +1679,10 @@ async fn test_tier3_live_part0_transfer_with_resume_and_interruption() {
 
     // 16. Hermetic process teardown
     harness.shutdown();
-    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+    assert!(
+        !harness.is_child_running(),
+        "Process must be terminated after shutdown"
+    );
 
     println!("Tier 3.5: Part 0 transfer with resume and interruption successfully verified against eMule 0.50a!");
 }
@@ -1598,7 +1791,10 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
     harness
         .spawn_reference_process(&[])
         .expect("failed to spawn reference process");
-    assert!(harness.is_child_running(), "Reference process must be running");
+    assert!(
+        harness.is_child_running(),
+        "Reference process must be running"
+    );
     let pid = harness.child_pid().expect("child PID");
 
     // 3. Perform eD2K handshake on loopback
@@ -1645,7 +1841,10 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
     // 4. Request file status for sealed fixture hash
     let mut file_status = None;
     for attempt in 1..=5 {
-        match client.request_file_status(sealed_hash, Duration::from_secs(3)).await {
+        match client
+            .request_file_status(sealed_hash, Duration::from_secs(3))
+            .await
+        {
             Ok(status) => {
                 file_status = Some(status);
                 break;
@@ -1660,14 +1859,22 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
         }
     }
 
-    let status = file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
+    let status =
+        file_status.expect("eMule 0.50a must respond with OP_FILESTATUS for shared fixture");
     assert_eq!(status.file_hash, sealed_hash);
-    assert_eq!(status.part_count, 0, "complete source reports part_count = 0");
+    assert_eq!(
+        status.part_count, 0,
+        "complete source reports part_count = 0"
+    );
     assert!(status.is_complete());
 
     let sequencer = Ed2kDownloadSequencer::new(sealed_hash, fixture_len, status)
         .expect("sequencer initialization succeeds");
-    assert_eq!(sequencer.total_parts(), 2, "File size 9,728,001 bytes must have exactly 2 parts");
+    assert_eq!(
+        sequencer.total_parts(),
+        2,
+        "File size 9,728,001 bytes must have exactly 2 parts"
+    );
 
     // 5. Initialize on-disk destination .part file and companion .resume.json
     let target_part_path = harness
@@ -1702,19 +1909,30 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
         .await
         .expect("Part 0 pipelined download succeeds");
 
-    assert_eq!(completed_part0, 53, "All 53 blocks of Part 0 must be completed");
+    assert_eq!(
+        completed_part0, 53,
+        "All 53 blocks of Part 0 must be completed"
+    );
     assert_eq!(sink.total_bytes_received(), 9_728_000);
     assert!(sink.is_part_complete(0, &sequencer).expect("part 0 check"));
     assert!(!sink.is_part_complete(1, &sequencer).expect("part 1 check"));
     assert!(!sink.is_file_complete(&sequencer));
-    println!("Tier 3.6: Phase 1 verified: Part 0 (9,728,000 bytes) downloaded and present on disk.");
+    println!(
+        "Tier 3.6: Phase 1 verified: Part 0 (9,728,000 bytes) downloaded and present on disk."
+    );
 
     // 7. Phase 2: Finalize Part 1 boundary: exactly 1 residual block [9,728,000, 9,728,001)
     println!("Tier 3.6: Phase 2: Planning and requesting Part 1 residual block [9,728,000, 9,728,001)...");
     let part1_blocks = sequencer.plan_part_blocks(1).expect("plan part 1");
     assert_eq!(part1_blocks.len(), 1, "Part 1 must have exactly 1 block");
-    assert_eq!(part1_blocks[0].start, 9_728_000, "Part 1 block must start at part boundary 9,728,000");
-    assert_eq!(part1_blocks[0].end, 9_728_001, "Part 1 block must end at exact file boundary 9,728,001");
+    assert_eq!(
+        part1_blocks[0].start, 9_728_000,
+        "Part 1 block must start at part boundary 9,728,000"
+    );
+    assert_eq!(
+        part1_blocks[0].end, 9_728_001,
+        "Part 1 block must end at exact file boundary 9,728,001"
+    );
 
     let completed_part1 = client
         .download_blocks_pipelined(
@@ -1741,24 +1959,35 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
     );
     assert!(sink.is_part_complete(0, &sequencer).expect("part 0 check"));
     assert!(sink.is_part_complete(1, &sequencer).expect("part 1 check"));
-    assert!(sink.is_file_complete(&sequencer), "File must be 100% complete");
-    println!("Tier 3.6: Phase 2 verified: Part 1 residual block received; 100% file coverage achieved!");
+    assert!(
+        sink.is_file_complete(&sequencer),
+        "File must be 100% complete"
+    );
+    println!(
+        "Tier 3.6: Phase 2 verified: Part 1 residual block received; 100% file coverage achieved!"
+    );
 
     // 8. Phase 3: In-Disk Multi-Part eD2K Root Hash Computation
     println!("Tier 3.6: Phase 3: Verifying in-disk multi-part eD2K root hash computation...");
-    let disk_part0_md4 = sink.compute_part_md4(0, &sequencer).expect("compute part 0 MD4");
+    let disk_part0_md4 = sink
+        .compute_part_md4(0, &sequencer)
+        .expect("compute part 0 MD4");
     assert_eq!(
         disk_part0_md4, expected_part0_md4,
         "Part 0 streamed MD4 must match oracle"
     );
 
-    let disk_part1_md4 = sink.compute_part_md4(1, &sequencer).expect("compute part 1 MD4");
+    let disk_part1_md4 = sink
+        .compute_part_md4(1, &sequencer)
+        .expect("compute part 1 MD4");
     assert_eq!(
         disk_part1_md4, expected_part1_md4,
         "Part 1 streamed MD4 must match oracle"
     );
 
-    let disk_root_hash = sink.compute_file_ed2k_hash(&sequencer).expect("compute root eD2K hash");
+    let disk_root_hash = sink
+        .compute_file_ed2k_hash(&sequencer)
+        .expect("compute root eD2K hash");
     assert_eq!(
         disk_root_hash, sealed_hash,
         "Root multi-part eD2K hash must match sealed file hash"
@@ -1774,13 +2003,19 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
         .mark_verified_pending_promotion(&sequencer)
         .expect("mark verified pending promotion");
     assert_eq!(verified_hash, sealed_hash);
-    assert_eq!(sink.status(), Ed2kPartDownloadStatus::VerifiedPendingPromotion);
+    assert_eq!(
+        sink.status(),
+        Ed2kPartDownloadStatus::VerifiedPendingPromotion
+    );
 
     // Verify companion .resume.json state file on disk before crash
     let resume_path = PathBuf::from(format!("{}.resume.json", target_part_path.display()));
     assert!(resume_path.exists(), "resume journal must exist on disk");
     let journal = Ed2kPartResumeState::load_from_file(&resume_path).expect("load resume journal");
-    assert_eq!(journal.status, Ed2kPartDownloadStatus::VerifiedPendingPromotion);
+    assert_eq!(
+        journal.status,
+        Ed2kPartDownloadStatus::VerifiedPendingPromotion
+    );
     assert_eq!(journal.file_hash, hex::encode(sealed_hash));
     assert_eq!(journal.file_size, fixture_len);
 
@@ -1790,9 +2025,12 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
     drop(sink);
 
     // Local recovery on restart without network access
-    println!("Tier 3.6: Phase 4: Step C - Recovering locally from disk without contacting eMule...");
-    let mut recovered_sink = Ed2kPartFileSink::open_or_resume(target_part_path.clone(), sealed_hash, fixture_len)
-        .expect("resume sink after simulated crash");
+    println!(
+        "Tier 3.6: Phase 4: Step C - Recovering locally from disk without contacting eMule..."
+    );
+    let mut recovered_sink =
+        Ed2kPartFileSink::open_or_resume(target_part_path.clone(), sealed_hash, fixture_len)
+            .expect("resume sink after simulated crash");
     assert_eq!(
         recovered_sink.status(),
         Ed2kPartDownloadStatus::VerifiedPendingPromotion,
@@ -1809,7 +2047,10 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
         .promote_to_destination(&downloads_dir, "tier3_promoted_final.bin")
         .expect("promote file to destination directory");
 
-    assert!(promoted_file.exists(), "promoted final file must exist on disk");
+    assert!(
+        promoted_file.exists(),
+        "promoted final file must exist on disk"
+    );
     assert_eq!(
         std::fs::metadata(&promoted_file).expect("metadata").len(),
         fixture_len,
@@ -1824,8 +2065,14 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
     );
 
     // Verify cleanup
-    assert!(!target_part_path.exists(), ".part file must be removed after promotion");
-    assert!(!resume_path.exists(), ".resume.json journal must be deleted after promotion");
+    assert!(
+        !target_part_path.exists(),
+        ".part file must be removed after promotion"
+    );
+    assert!(
+        !resume_path.exists(),
+        ".resume.json journal must be deleted after promotion"
+    );
     assert_eq!(recovered_sink.status(), Ed2kPartDownloadStatus::Promoted);
     println!("Tier 3.6: Phase 4 verified: Two-phase promotion and cleanup completed successfully!");
 
@@ -1838,13 +2085,18 @@ async fn test_tier3_live_file_boundary_finalization_and_promotion() {
     if let Ok(out) = check_conn {
         let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         let non_loopback_count: usize = count_str.parse().unwrap_or(0);
-        assert_eq!(non_loopback_count, 0, "Non-loopback connections detected for PID {pid}!");
+        assert_eq!(
+            non_loopback_count, 0,
+            "Non-loopback connections detected for PID {pid}!"
+        );
     }
 
     // 11. Graceful process and harness shutdown
     harness.shutdown();
-    assert!(!harness.is_child_running(), "Process must be terminated after shutdown");
+    assert!(
+        !harness.is_child_running(),
+        "Process must be terminated after shutdown"
+    );
 
     println!("Tier 3.6: File boundary finalization, full root eD2K hash, and two-phase promotion successfully verified against eMule 0.50a!");
 }
-

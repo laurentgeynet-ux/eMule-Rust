@@ -18,7 +18,11 @@ pub trait DownloadRepository {
 
 /// Abstraction trait for peer sources persistence operations.
 pub trait PeerSourceRepository {
-    fn upsert_peer_sources(&mut self, file_hash_hex: &str, sources: &[PeerSource]) -> Result<usize, CoreError>;
+    fn upsert_peer_sources(
+        &mut self,
+        file_hash_hex: &str,
+        sources: &[PeerSource],
+    ) -> Result<usize, CoreError>;
     fn list_peer_sources(&self, file_hash_hex: &str) -> Result<Vec<PeerSource>, CoreError>;
     fn update_peer_source_status(
         &mut self,
@@ -28,7 +32,8 @@ pub trait PeerSourceRepository {
         error: Option<&str>,
         cooldown_until_unix_ms: Option<i64>,
     ) -> Result<bool, CoreError>;
-    fn delete_peer_source(&mut self, file_hash_hex: &str, address: &str) -> Result<bool, CoreError>;
+    fn delete_peer_source(&mut self, file_hash_hex: &str, address: &str)
+        -> Result<bool, CoreError>;
 }
 
 /// Abstraction trait for server list persistence.
@@ -44,5 +49,10 @@ pub trait KadRepository {
     fn upsert_kad_contact(&mut self, contact: &KadContact) -> Result<(), CoreError>;
     fn list_kad_contacts(&self, limit: usize) -> Result<Vec<KadContact>, CoreError>;
     fn insert_kad_sources(&mut self, sources: &[KadIndexedSource]) -> Result<usize, CoreError>;
-    fn get_kad_sources(&self, target_kad_id: &[u8; 16], limit: usize, now_ms: u64) -> Result<Vec<KadIndexedSource>, CoreError>;
+    fn get_kad_sources(
+        &self,
+        target_kad_id: &[u8; 16],
+        limit: usize,
+        now_ms: u64,
+    ) -> Result<Vec<KadIndexedSource>, CoreError>;
 }

@@ -81,12 +81,9 @@ fn test_workdir_priority_tier2_env_var_wins_over_portable_and_default() {
     env.insert(ENV_WORKDIR.to_string(), "D:\\Test\\EnvDir".to_string());
     env.insert("LOCALAPPDATA".to_string(), "C:\\AppData\\Local".to_string());
 
-    let resolved = WorkDirectoryResolver::resolve_with_context(
-        None,
-        None,
-        Some(&exe_path),
-        |k| env.get(k).cloned(),
-    );
+    let resolved = WorkDirectoryResolver::resolve_with_context(None, None, Some(&exe_path), |k| {
+        env.get(k).cloned()
+    });
 
     assert_eq!(resolved.mode, WorkDirMode::Environment);
     assert_eq!(resolved.workdir, PathBuf::from("D:\\Test\\EnvDir"));
@@ -111,12 +108,9 @@ fn test_workdir_priority_tier2_legacy_mule_data_dir_fallback() {
     );
     env.insert("LOCALAPPDATA".to_string(), "C:\\AppData\\Local".to_string());
 
-    let resolved = WorkDirectoryResolver::resolve_with_context(
-        None,
-        None,
-        Some(&exe_path),
-        |k| env.get(k).cloned(),
-    );
+    let resolved = WorkDirectoryResolver::resolve_with_context(None, None, Some(&exe_path), |k| {
+        env.get(k).cloned()
+    });
 
     assert_eq!(resolved.mode, WorkDirMode::Environment);
     assert_eq!(resolved.workdir, PathBuf::from("D:\\Test\\LegacyDir"));
@@ -140,12 +134,9 @@ fn test_workdir_priority_tier3_portable_flag_adjacent_to_exe() {
     let mut env = HashMap::new();
     env.insert("LOCALAPPDATA".to_string(), "C:\\AppData\\Local".to_string());
 
-    let resolved = WorkDirectoryResolver::resolve_with_context(
-        None,
-        None,
-        Some(&exe_path),
-        |k| env.get(k).cloned(),
-    );
+    let resolved = WorkDirectoryResolver::resolve_with_context(None, None, Some(&exe_path), |k| {
+        env.get(k).cloned()
+    });
 
     assert_eq!(resolved.mode, WorkDirMode::Portable);
     assert_eq!(resolved.workdir, bundle_dir.join("data"));
@@ -168,12 +159,10 @@ fn test_workdir_priority_tier3_portable_flag_in_bundle_root_parent_of_bin() {
     let mut env = HashMap::new();
     env.insert("LOCALAPPDATA".to_string(), "C:\\AppData\\Local".to_string());
 
-    let resolved = WorkDirectoryResolver::resolve_with_context(
-        None,
-        None,
-        Some(&daemon_exe),
-        |k| env.get(k).cloned(),
-    );
+    let resolved =
+        WorkDirectoryResolver::resolve_with_context(None, None, Some(&daemon_exe), |k| {
+            env.get(k).cloned()
+        });
 
     assert_eq!(resolved.mode, WorkDirMode::Portable);
     assert_eq!(resolved.workdir, bundle_root.join("data"));
@@ -197,12 +186,9 @@ fn test_workdir_priority_tier4_installed_default_when_no_flags_or_overrides() {
     );
     env.insert("USERPROFILE".to_string(), "C:\\Users\\QA".to_string());
 
-    let resolved = WorkDirectoryResolver::resolve_with_context(
-        None,
-        None,
-        Some(&exe_path),
-        |k| env.get(k).cloned(),
-    );
+    let resolved = WorkDirectoryResolver::resolve_with_context(None, None, Some(&exe_path), |k| {
+        env.get(k).cloned()
+    });
 
     assert_eq!(resolved.mode, WorkDirMode::InstalledDefault);
     #[cfg(target_os = "windows")]
@@ -236,12 +222,9 @@ fn test_workdir_non_bin_subfolder_does_not_traverse_parent_for_portable_flag() {
         "C:\\Users\\QA\\AppData\\Local".to_string(),
     );
 
-    let resolved = WorkDirectoryResolver::resolve_with_context(
-        None,
-        None,
-        Some(&exe),
-        |k| env.get(k).cloned(),
-    );
+    let resolved = WorkDirectoryResolver::resolve_with_context(None, None, Some(&exe), |k| {
+        env.get(k).cloned()
+    });
 
     // Because other_folder != "bin", it must NOT pick up parent's portable.flag
     assert_eq!(resolved.mode, WorkDirMode::InstalledDefault);

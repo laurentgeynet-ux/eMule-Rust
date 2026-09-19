@@ -29,7 +29,9 @@ async fn test_token_bucket_cancellation() {
     let c_clone = cancelled.clone();
 
     let task = tokio::spawn(async move {
-        bucket.acquire_tokens(10, || c_clone.load(Ordering::Relaxed)).await
+        bucket
+            .acquire_tokens(10, || c_clone.load(Ordering::Relaxed))
+            .await
     });
 
     // Simulate Kill Switch activation

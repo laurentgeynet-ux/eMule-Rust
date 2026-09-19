@@ -1,5 +1,5 @@
-use std::time::Duration;
 use serde_json::{json, Value};
+use std::time::Duration;
 use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -9,8 +9,8 @@ use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_network_policy::NetworkProfile;
 use mule_protocol::ed2k::{
-    OP_FOUNDSOURCES, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST, OP_SEARCHREQUEST,
-    OP_SEARCH_RESULT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
+    OP_FOUNDSOURCES, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST,
+    OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
 };
 use mule_protocol::PR_ED2K;
 
@@ -19,8 +19,8 @@ fn setup_test_state() -> (AppState, tempfile::TempDir) {
     let temp_dir = dir.path().join("temp");
     let token = "test_token_conn".to_string();
 
-    let config =
-        DaemonConfig::new(dir.path().to_path_buf(), &token).with_workdir_mode(WorkDirMode::Portable);
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable);
     let downloads = DownloadService::in_memory(temp_dir).unwrap();
     let state = AppState::new(config, downloads);
 
@@ -48,8 +48,13 @@ async fn test_server_connect_refused_under_local_lab_profile() {
         "servers.connect",
         Some(json!({ "address": "91.121.162.155:4242" })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_some(), "Must be rejected under LocalLab profile");
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_some(),
+        "Must be rejected under LocalLab profile"
+    );
     let err = resp.error.unwrap();
     assert!(err.message.contains("rejected by network policy"));
 }
@@ -60,7 +65,9 @@ async fn test_server_connect_refused_when_network_disabled() {
     let mut authenticated = true;
 
     // Switch to PublicEd2kPreview
-    state.network_policy.set_profile(NetworkProfile::PublicEd2kPreview);
+    state
+        .network_policy
+        .set_profile(NetworkProfile::PublicEd2kPreview);
     // Disconnect all / network is disabled by default until explicitly enabled
     state.network_policy.disconnect_all();
 
@@ -69,8 +76,13 @@ async fn test_server_connect_refused_when_network_disabled() {
         "servers.connect",
         Some(json!({ "address": "91.121.162.155:4242" })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_some(), "Must be rejected when network is disabled");
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_some(),
+        "Must be rejected when network is disabled"
+    );
     let err = resp.error.unwrap();
     assert!(err.message.contains("rejected by network policy"));
 }
@@ -82,10 +94,20 @@ async fn test_server_connect_refused_when_ip_filtered() {
 
     // Load filter blocking 91.121.0.0 - 91.121.255.255
     let filter_file = dir.path().join("ipfilter.dat");
-    std::fs::write(&filter_file, "091.121.000.000 - 091.121.255.255 , 100 , Blocked Server Range\n").unwrap();
-    state.network_policy.ip_filter().load_from_file(&filter_file).unwrap();
+    std::fs::write(
+        &filter_file,
+        "091.121.000.000 - 091.121.255.255 , 100 , Blocked Server Range\n",
+    )
+    .unwrap();
+    state
+        .network_policy
+        .ip_filter()
+        .load_from_file(&filter_file)
+        .unwrap();
 
-    state.network_policy.set_profile(NetworkProfile::PublicEd2kPreview);
+    state
+        .network_policy
+        .set_profile(NetworkProfile::PublicEd2kPreview);
     state.network_policy.enable();
 
     let req = make_req(
@@ -93,10 +115,15 @@ async fn test_server_connect_refused_when_ip_filtered() {
         "servers.connect",
         Some(json!({ "address": "91.121.162.155:4242" })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_some(), "Must be rejected by IP filter");
     let err = resp.error.unwrap();
-    assert!(err.message.contains("rejected by network policy") || err.message.contains("blocked by IP filter"));
+    assert!(
+        err.message.contains("rejected by network policy")
+            || err.message.contains("blocked by IP filter")
+    );
 }
 
 #[tokio::test]
@@ -121,9 +148,16 @@ async fn test_server_connect_refused_when_disabled_in_db() {
         created_at_unix_ms: 0,
         updated_at_unix_ms: 0,
     };
-    state.downloads.lock().await.upsert_servers(&[server]).unwrap();
+    state
+        .downloads
+        .lock()
+        .await
+        .upsert_servers(&[server])
+        .unwrap();
 
-    state.network_policy.set_profile(NetworkProfile::PublicEd2kPreview);
+    state
+        .network_policy
+        .set_profile(NetworkProfile::PublicEd2kPreview);
     state.network_policy.enable();
 
     let req = make_req(
@@ -131,8 +165,13 @@ async fn test_server_connect_refused_when_disabled_in_db() {
         "servers.connect",
         Some(json!({ "address": "91.121.162.155:4242" })),
     );
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_some(), "Must be rejected when server is disabled in DB");
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_some(),
+        "Must be rejected when server is disabled in DB"
+    );
     let err = resp.error.unwrap();
     assert!(err.message.contains("server is disabled"));
 }
@@ -203,15 +242,23 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
         "servers.connect",
         Some(json!({ "address": mock_addr.to_string() })),
     );
-    let connect_resp = handle_request(&state, connect_req, &mut authenticated).await.unwrap();
-    assert!(connect_resp.error.is_none(), "Connect must succeed: {:?}", connect_resp.error);
+    let connect_resp = handle_request(&state, connect_req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        connect_resp.error.is_none(),
+        "Connect must succeed: {:?}",
+        connect_resp.error
+    );
 
     // 2. Poll servers.status until connected with HighID
     let mut status_ok = false;
     for _ in 0..50 {
         tokio::time::sleep(Duration::from_millis(50)).await;
         let status_req = make_req(2, "servers.status", None);
-        let status_resp = handle_request(&state, status_req, &mut authenticated).await.unwrap();
+        let status_resp = handle_request(&state, status_req, &mut authenticated)
+            .await
+            .unwrap();
         let res = status_resp.result.unwrap();
         if res["status"] == "connected" {
             assert_eq!(res["clientId"], 25_000_000);
@@ -223,7 +270,10 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
             break;
         }
     }
-    assert!(status_ok, "Session must reach connected state with HighID and status");
+    assert!(
+        status_ok,
+        "Session must reach connected state with HighID and status"
+    );
 
     // 3. Test concurrent connection attempt rejected (max 1 connection)
     let concurrent_req = make_req(
@@ -231,18 +281,31 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
         "servers.connect",
         Some(json!({ "address": mock_addr.to_string() })),
     );
-    let concurrent_resp = handle_request(&state, concurrent_req, &mut authenticated).await.unwrap();
-    assert!(concurrent_resp.error.is_some(), "Concurrent connection must be rejected");
-    assert!(concurrent_resp.error.unwrap().message.contains("already in progress"));
+    let concurrent_resp = handle_request(&state, concurrent_req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        concurrent_resp.error.is_some(),
+        "Concurrent connection must be rejected"
+    );
+    assert!(concurrent_resp
+        .error
+        .unwrap()
+        .message
+        .contains("already in progress"));
 
     // 4. Test Kill Switch via network.disconnectAll
     let disc_all_req = make_req(4, "network.disconnectAll", None);
-    let disc_resp = handle_request(&state, disc_all_req, &mut authenticated).await.unwrap();
+    let disc_resp = handle_request(&state, disc_all_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(disc_resp.error.is_none());
 
     // Verify session status is now disconnected
     let check_req = make_req(5, "servers.status", None);
-    let check_resp = handle_request(&state, check_req, &mut authenticated).await.unwrap();
+    let check_resp = handle_request(&state, check_req, &mut authenticated)
+        .await
+        .unwrap();
     assert_eq!(check_resp.result.unwrap()["status"], "disconnected");
 
     mock_task.abort();
@@ -255,19 +318,35 @@ async fn test_server_search_and_query_sources() {
 
     // 1. Unconnected calls must be rejected
     let search_req = make_req(1, "servers.search", Some(json!({ "term": "linux" })));
-    let search_resp = handle_request(&state, search_req, &mut authenticated).await.unwrap();
-    assert!(search_resp.error.is_some(), "Search while disconnected must fail");
+    let search_resp = handle_request(&state, search_req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        search_resp.error.is_some(),
+        "Search while disconnected must fail"
+    );
 
-    let sources_req = make_req(2, "servers.querySources", Some(json!({
-        "fileHash": "0102030405060708090a0b0c0d0e0f10",
-        "fileSize": 5000
-    })));
-    let sources_resp = handle_request(&state, sources_req, &mut authenticated).await.unwrap();
-    assert!(sources_resp.error.is_some(), "Query sources while disconnected must fail");
+    let sources_req = make_req(
+        2,
+        "servers.querySources",
+        Some(json!({
+            "fileHash": "0102030405060708090a0b0c0d0e0f10",
+            "fileSize": 5000
+        })),
+    );
+    let sources_resp = handle_request(&state, sources_req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        sources_resp.error.is_some(),
+        "Query sources while disconnected must fail"
+    );
 
     // 2. Setup mock server on 127.0.0.1
     state.network_policy.enable();
-    state.network_policy.set_profile(mule_network_policy::NetworkProfile::LocalLab);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mock_addr = listener.local_addr().unwrap();
 
@@ -297,7 +376,8 @@ async fn test_server_search_and_query_sources() {
         socket.read_exact(&mut search_hdr).await.unwrap();
         assert_eq!(search_hdr[0], PR_ED2K);
         assert_eq!(search_hdr[5], OP_SEARCHREQUEST);
-        let search_payload_len = u32::from_le_bytes(search_hdr[1..5].try_into().unwrap()) as usize - 1;
+        let search_payload_len =
+            u32::from_le_bytes(search_hdr[1..5].try_into().unwrap()) as usize - 1;
         let mut search_payload = vec![0u8; search_payload_len];
         socket.read_exact(&mut search_payload).await.unwrap();
 
@@ -336,7 +416,8 @@ async fn test_server_search_and_query_sources() {
         socket.read_exact(&mut get_src_hdr).await.unwrap();
         assert_eq!(get_src_hdr[0], PR_ED2K);
         assert!(get_src_hdr[5] == OP_GETSOURCES || get_src_hdr[5] == OP_GETSOURCES_OBFU);
-        let src_payload_len = u32::from_le_bytes(get_src_hdr[1..5].try_into().unwrap()) as usize - 1;
+        let src_payload_len =
+            u32::from_le_bytes(get_src_hdr[1..5].try_into().unwrap()) as usize - 1;
         let mut get_src_payload = vec![0u8; src_payload_len];
         socket.read_exact(&mut get_src_payload).await.unwrap();
 
@@ -359,15 +440,27 @@ async fn test_server_search_and_query_sources() {
     });
 
     // Connect
-    let connect_req = make_req(3, "servers.connect", Some(json!({ "address": mock_addr.to_string() })));
-    let connect_resp = handle_request(&state, connect_req, &mut authenticated).await.unwrap();
+    let connect_req = make_req(
+        3,
+        "servers.connect",
+        Some(json!({ "address": mock_addr.to_string() })),
+    );
+    let connect_resp = handle_request(&state, connect_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(connect_resp.error.is_none());
 
     // Wait for connected
     let mut is_connected = false;
     for _ in 0..30 {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let st_resp = handle_request(&state, make_req(4, "servers.status", None), &mut authenticated).await.unwrap();
+        let st_resp = handle_request(
+            &state,
+            make_req(4, "servers.status", None),
+            &mut authenticated,
+        )
+        .await
+        .unwrap();
         if st_resp.result.unwrap()["status"] == "connected" {
             is_connected = true;
             break;
@@ -377,24 +470,39 @@ async fn test_server_search_and_query_sources() {
 
     // Perform search
     let search_req = make_req(5, "servers.search", Some(json!({ "term": "test" })));
-    let search_resp = handle_request(&state, search_req, &mut authenticated).await.unwrap();
-    assert!(search_resp.error.is_none(), "Search request sent successfully");
+    let search_resp = handle_request(&state, search_req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        search_resp.error.is_none(),
+        "Search request sent successfully"
+    );
     assert_eq!(search_resp.result.unwrap()["sent"], true);
 
     // Perform get sources
-    let qsrc_req = make_req(6, "servers.querySources", Some(json!({
-        "fileHash": "abababababababababababababababab",
-        "fileSize": 123456
-    })));
-    let qsrc_resp = handle_request(&state, qsrc_req, &mut authenticated).await.unwrap();
-    assert!(qsrc_resp.error.is_none(), "Query sources request sent successfully");
+    let qsrc_req = make_req(
+        6,
+        "servers.querySources",
+        Some(json!({
+            "fileHash": "abababababababababababababababab",
+            "fileSize": 123456
+        })),
+    );
+    let qsrc_resp = handle_request(&state, qsrc_req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        qsrc_resp.error.is_none(),
+        "Query sources request sent successfully"
+    );
     assert_eq!(qsrc_resp.result.unwrap()["sent"], true);
 
     // Verify events were emitted
     let mut received_search_result = false;
     let mut received_found_sources = false;
     for _ in 0..20 {
-        if let Ok(evt_str) = tokio::time::timeout(Duration::from_millis(100), event_rx.recv()).await {
+        if let Ok(evt_str) = tokio::time::timeout(Duration::from_millis(100), event_rx.recv()).await
+        {
             if let Ok(val) = serde_json::from_str::<Value>(&evt_str.unwrap_or_default()) {
                 if val["method"] == "server.searchResult" {
                     received_search_result = true;
@@ -405,7 +513,10 @@ async fn test_server_search_and_query_sources() {
                 }
                 if val["method"] == "server.foundSources" {
                     received_found_sources = true;
-                    assert_eq!(val["params"]["fileHash"], "abababababababababababababababab");
+                    assert_eq!(
+                        val["params"]["fileHash"],
+                        "abababababababababababababababab"
+                    );
                     let sources = val["params"]["sources"].as_array().unwrap();
                     assert_eq!(sources.len(), 1);
                     assert_eq!(sources[0]["address"], "127.0.0.1:39735");
@@ -417,8 +528,14 @@ async fn test_server_search_and_query_sources() {
         }
     }
 
-    assert!(received_search_result, "Must receive server.searchResult notification");
-    assert!(received_found_sources, "Must receive server.foundSources notification");
+    assert!(
+        received_search_result,
+        "Must receive server.searchResult notification"
+    );
+    assert!(
+        received_found_sources,
+        "Must receive server.foundSources notification"
+    );
 
     mock_task.abort();
 }

@@ -1,5 +1,5 @@
-use std::net::Ipv4Addr;
 use crate::kad::KadId;
+use std::net::Ipv4Addr;
 
 /// Represents a source indexed for a target file in the Kad network.
 #[derive(Debug, Clone, PartialEq, Eq)]

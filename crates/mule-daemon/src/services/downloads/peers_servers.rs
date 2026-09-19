@@ -1,10 +1,10 @@
-use mule_core::Database;
 use mule_core::model::{Ed2kServer, PeerCredit, PeerSource, PeerSourceStatus, SharedFile};
+use mule_core::Database;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::error::DaemonError;
 use super::types::ActiveDownload;
+use crate::error::DaemonError;
 
 pub fn upsert_servers(db: &mut Database, servers: &[Ed2kServer]) -> Result<usize, DaemonError> {
     db.upsert_servers(servers)
@@ -16,7 +16,11 @@ pub fn list_servers(db: &Database) -> Result<Vec<Ed2kServer>, DaemonError> {
         .map_err(|e| DaemonError::Business(format!("DB error listing servers: {e}")))
 }
 
-pub fn set_server_enabled(db: &mut Database, address: &str, enabled: bool) -> Result<bool, DaemonError> {
+pub fn set_server_enabled(
+    db: &mut Database,
+    address: &str,
+    enabled: bool,
+) -> Result<bool, DaemonError> {
     db.set_server_enabled(address, enabled)
         .map_err(|e| DaemonError::Business(format!("DB error updating server status: {e}")))
 }
@@ -40,7 +44,10 @@ pub fn upsert_peer_sources(
     let res = db
         .upsert_peer_sources(file_hash, sources)
         .map_err(|e| DaemonError::Business(format!("DB error upserting peer sources: {e}")))?;
-    let count = db.list_peer_sources(file_hash).map(|s| s.len() as u32).unwrap_or(0);
+    let count = db
+        .list_peer_sources(file_hash)
+        .map(|s| s.len() as u32)
+        .unwrap_or(0);
     let clean_hex = file_hash.trim().to_lowercase();
     for a in active.values_mut() {
         if a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
@@ -50,10 +57,7 @@ pub fn upsert_peer_sources(
     Ok(res)
 }
 
-pub fn list_peer_sources(
-    db: &Database,
-    file_hash: &str,
-) -> Result<Vec<PeerSource>, DaemonError> {
+pub fn list_peer_sources(db: &Database, file_hash: &str) -> Result<Vec<PeerSource>, DaemonError> {
     db.list_peer_sources(file_hash)
         .map_err(|e| DaemonError::Business(format!("DB error listing peer sources: {e}")))
 }
@@ -113,7 +117,10 @@ pub fn get_shared_file(db: &Database, file_hash: &str) -> Result<Option<SharedFi
         .map_err(|e| DaemonError::Business(format!("DB error getting shared file: {e}")))
 }
 
-pub fn get_peer_credit(db: &Database, pubkey_hash: &str) -> Result<Option<PeerCredit>, DaemonError> {
+pub fn get_peer_credit(
+    db: &Database,
+    pubkey_hash: &str,
+) -> Result<Option<PeerCredit>, DaemonError> {
     db.get_peer_credit(pubkey_hash)
         .map_err(|e| DaemonError::Business(format!("DB error getting peer credit: {e}")))
 }

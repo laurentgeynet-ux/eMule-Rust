@@ -1,10 +1,10 @@
 //! UPnP types, status snapshot, and IP classification utilities.
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
-use std::time::{SystemTime, UNIX_EPOCH};
 use igd_next::PortMappingProtocol;
 use mule_network_policy::validator::{classify_ip, IpCategory};
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Snapshot of UPnP status and active port mappings.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -136,7 +136,9 @@ pub fn inspect_mapping_entry(
     let is_emule_desc = entry_description.starts_with(description_prefix);
 
     if is_emule_desc {
-        if entry_internal_client == expected_client_ip && entry_internal_port == expected_internal_port {
+        if entry_internal_client == expected_client_ip
+            && entry_internal_port == expected_internal_port
+        {
             Some(MappingOwnership::ExactMatch)
         } else {
             Some(MappingOwnership::StaleLease)

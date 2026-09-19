@@ -40,7 +40,9 @@ async fn test_kad_keyword_publish_and_search_flow() {
         .expect("start kad udp");
 
     // 2. Start mock Kad peer
-    let mock_socket = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock peer");
+    let mock_socket = UdpSocket::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock peer");
     let mock_addr = mock_socket.local_addr().expect("mock addr");
     let file_hash = [0xAAu8; 16];
     let file_hash_hex = hex::encode(file_hash);
@@ -65,12 +67,8 @@ async fn test_kad_keyword_publish_and_search_flow() {
                         tcp_port: 39735,
                         version: 2,
                     }];
-                    let res = KadCodec::encode_bootstrap_res(
-                        &b.kad_id,
-                        mock_addr.port(),
-                        2,
-                        &contacts,
-                    );
+                    let res =
+                        KadCodec::encode_bootstrap_res(&b.kad_id, mock_addr.port(), 2, &contacts);
                     let _ = mock_socket.send_to(&res, from_addr).await;
                 }
                 KadMessage::Req(r) => {
@@ -114,7 +112,11 @@ async fn test_kad_keyword_publish_and_search_flow() {
     // 4. Publish keyword for a file
     let published_count = state
         .kad
-        .publish_keyword(&file_hash_hex, "Ubuntu-22.04-live-server.iso", 1_400_000_000)
+        .publish_keyword(
+            &file_hash_hex,
+            "Ubuntu-22.04-live-server.iso",
+            1_400_000_000,
+        )
         .await
         .expect("publish keyword should succeed");
     assert!(published_count >= 1);

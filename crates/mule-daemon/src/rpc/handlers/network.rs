@@ -124,7 +124,9 @@ pub async fn handle_filter_import_file(
         .network_policy
         .ip_filter()
         .load_from_file(path)
-        .map_err(|e| JsonRpcError::invalid_params(&format!("Failed to parse ipfilter file: {e}")))?;
+        .map_err(|e| {
+            JsonRpcError::invalid_params(&format!("Failed to parse ipfilter file: {e}"))
+        })?;
 
     Ok(json!({
         "success": true,
@@ -159,12 +161,25 @@ pub async fn handle_limits_get(state: &AppState) -> Result<Value, JsonRpcError> 
     let server_req_per_sec = limiters.server_bucket.rate_per_sec();
     let kad_pkt_per_sec = limiters.kad_bucket.rate_per_sec();
 
+    let uss = state.uss.snapshot();
+    let uss_cfg = state.uss.config();
+
     Ok(json!({
         "downloadBytesPerSec": download,
         "uploadBytesPerSec": upload,
         "connectionsPerMinute": conn_per_sec * 60,
         "serverRequestsPerSec": server_req_per_sec,
-        "kadPacketsPerSec": kad_pkt_per_sec
+        "kadPacketsPerSec": kad_pkt_per_sec,
+        "uss": {
+            "enabled": uss.enabled,
+            "state": uss.state,
+            "currentLimitBytesPerSec": uss.current_limit_bps,
+            "latencyMs": uss.latency_ms,
+            "lowestPingMs": uss.lowest_ping_ms,
+            "acceptNewClient": uss.accept_new_client,
+            "pingTarget": uss.ping_target,
+            "config": uss_cfg,
+        }
     }))
 }
 
@@ -187,6 +202,7 @@ pub async fn handle_limits_set(
         .or_else(|| params["uploadLimit"].as_u64().map(|kb| kb * 1024));
     if let Some(ul) = ul_bytes {
         cfg.upload_bytes_per_sec = ul;
+        state.uss.note_manual_limit(ul);
     }
     if let Some(cpm) = params["connectionsPerMinute"].as_u64() {
         cfg.connections_per_minute = cpm as u32;
@@ -199,5 +215,55 @@ pub async fn handle_limits_set(
     }
 
     state.network_policy.rate_limiters().apply_config(&cfg);
+
+    // Optional USS (Upload Speed Sense) config update.
+    if let Some(uss_params) = params.get("uss") {
+        let enabled = uss_params["enabled"].as_bool();
+        let ping_host = uss_params["pingHost"].as_str().map(|s| s.to_string());
+        let min_up = uss_params["minUploadBytesPerSec"].as_u64();
+        let max_up = uss_params["maxUploadBytesPerSec"].as_u64();
+        let use_ms = uss_params["useMillisecondTolerance"].as_bool();
+        let tol_pct = uss_params["pingTolerancePercent"].as_u64();
+        let tol_ms = uss_params["pingToleranceMs"].as_u64();
+        let up_div = uss_params["goingUpDivider"].as_u64();
+        let down_div = uss_params["goingDownDivider"].as_u64();
+        let n_pings = uss_params["numberOfPings"].as_u64();
+        state
+            .uss
+            .update_config(|cfg| {
+                if let Some(v) = enabled {
+                    cfg.enabled = v;
+                }
+                if uss_params.get("pingHost").is_some() {
+                    cfg.ping_host = ping_host;
+                }
+                if let Some(v) = min_up {
+                    cfg.min_upload_bps = v;
+                }
+                if let Some(v) = max_up {
+                    cfg.max_upload_bps = v;
+                }
+                if let Some(v) = use_ms {
+                    cfg.use_ms_tolerance = v;
+                }
+                if let Some(v) = tol_pct {
+                    cfg.ping_tolerance_percent = v as u32;
+                }
+                if let Some(v) = tol_ms {
+                    cfg.ping_tolerance_ms = v as u32;
+                }
+                if let Some(v) = up_div {
+                    cfg.going_up_divider = v as u32;
+                }
+                if let Some(v) = down_div {
+                    cfg.going_down_divider = v as u32;
+                }
+                if let Some(v) = n_pings {
+                    cfg.number_of_pings = (v as usize).max(1);
+                }
+            })
+            .await;
+    }
+
     handle_limits_get(state).await
 }

@@ -27,6 +27,19 @@ pub fn insert_download(conn: &mut Connection, dl: &Download) -> Result<(), CoreE
     Ok(())
 }
 
+/// Persists the trusted AICH root hash for a download.
+pub fn update_aich_root(
+    conn: &mut Connection,
+    download_id: &Uuid,
+    aich_root: &[u8; 20],
+) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE downloads SET aich_root = ?1 WHERE id = ?2",
+        params![aich_root.as_slice(), download_id.to_string()],
+    )?;
+    Ok(())
+}
+
 pub fn sync_received_ranges(
     conn: &mut Connection,
     download_id: &Uuid,
@@ -112,6 +125,57 @@ pub fn get_verified_parts(conn: &Connection, download_id: &Uuid) -> Result<Vec<u
         parts.push(p as u32);
     }
     Ok(parts)
+}
+
+/// Stores the full per-part MD4 hashset for a file (keyed by lowercase hex ed2k hash).
+pub fn store_part_hashes(
+    conn: &mut Connection,
+    file_hash: &str,
+    part_hashes: &[[u8; 16]],
+) -> Result<(), CoreError> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "DELETE FROM file_part_hashes WHERE file_hash = ?1",
+        params![file_hash],
+    )?;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO file_part_hashes (file_hash, part_index, hash) VALUES (?1, ?2, ?3)",
+        )?;
+        for (i, h) in part_hashes.iter().enumerate() {
+            stmt.execute(params![file_hash, i as i64, h.as_slice()])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Loads the stored per-part MD4 hashset for a file, ordered by part index.
+pub fn get_part_hashes(conn: &Connection, file_hash: &str) -> Result<Vec<[u8; 16]>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT part_index, hash FROM file_part_hashes WHERE file_hash = ?1 ORDER BY part_index ASC",
+    )?;
+    let mut rows = stmt.query(params![file_hash])?;
+    let mut hashes = Vec::new();
+    while let Some(row) = rows.next()? {
+        let blob: Vec<u8> = row.get(1)?;
+        if blob.len() != 16 {
+            return Err(CoreError::Database("Invalid part hash length in DB".into()));
+        }
+        let mut h = [0u8; 16];
+        h.copy_from_slice(&blob);
+        hashes.push(h);
+    }
+    Ok(hashes)
+}
+
+/// Deletes the stored per-part hashset for a file.
+pub fn delete_part_hashes(conn: &mut Connection, file_hash: &str) -> Result<(), CoreError> {
+    conn.execute(
+        "DELETE FROM file_part_hashes WHERE file_hash = ?1",
+        params![file_hash],
+    )?;
+    Ok(())
 }
 
 pub fn update_status(
@@ -258,10 +322,7 @@ pub fn delete_download(conn: &mut Connection, download_id: &Uuid) -> Result<bool
         "DELETE FROM verified_parts WHERE download_id = ?1",
         params![&id_str],
     )?;
-    let rows_deleted = tx.execute(
-        "DELETE FROM downloads WHERE id = ?1",
-        params![&id_str],
-    )?;
+    let rows_deleted = tx.execute("DELETE FROM downloads WHERE id = ?1", params![&id_str])?;
     tx.commit()?;
     Ok(rows_deleted > 0)
 }

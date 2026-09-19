@@ -84,9 +84,13 @@ async fn test_category_rpc_lifecycle_and_invariants() {
 
     let res = recv_response_by_id(&mut read, 1).await;
     let result = &res["result"];
-    let capabilities = result["capabilities"].as_array().expect("capabilities array");
+    let capabilities = result["capabilities"]
+        .as_array()
+        .expect("capabilities array");
     assert!(
-        capabilities.iter().any(|c| c.as_str() == Some("categories")),
+        capabilities
+            .iter()
+            .any(|c| c.as_str() == Some("categories")),
         "Expected 'categories' capability, got: {capabilities:?}"
     );
 

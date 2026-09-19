@@ -29,7 +29,10 @@ pub fn insert_history_entry(conn: &mut Connection, entry: &HistoryEntry) -> Resu
     Ok(conn.last_insert_rowid())
 }
 
-pub fn query_history(conn: &Connection, filter: &HistoryFilter) -> Result<Vec<HistoryEntry>, CoreError> {
+pub fn query_history(
+    conn: &Connection,
+    filter: &HistoryFilter,
+) -> Result<Vec<HistoryEntry>, CoreError> {
     let mut sql = String::from(
         "SELECT id, download_id, file_name, total_size, transferred_bytes, ed2k_hash,
                 event_type, status, duration_secs, connection_attempts, resume_count,
@@ -97,7 +100,10 @@ pub fn query_history(conn: &Connection, filter: &HistoryFilter) -> Result<Vec<Hi
     Ok(entries)
 }
 
-pub fn get_history_stats(conn: &Connection, session_start_unix_ms: i64) -> Result<HistoryStats, CoreError> {
+pub fn get_history_stats(
+    conn: &Connection,
+    session_start_unix_ms: i64,
+) -> Result<HistoryStats, CoreError> {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -192,7 +198,10 @@ pub fn clear_history(conn: &mut Connection) -> Result<usize, CoreError> {
     Ok(rows)
 }
 
-pub fn apply_retention_policy(conn: &mut Connection, retention_days: u32) -> Result<usize, CoreError> {
+pub fn apply_retention_policy(
+    conn: &mut Connection,
+    retention_days: u32,
+) -> Result<usize, CoreError> {
     if retention_days == 0 {
         return Ok(0);
     }

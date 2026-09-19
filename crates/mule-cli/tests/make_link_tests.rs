@@ -106,7 +106,8 @@ fn test_make_link_delimiters_escaped_safely() {
     let sanitized = Ed2kFileLink::sanitize_filename("dangerous|pipe|name.bin");
     assert_eq!(sanitized, "dangerous%7Cpipe%7Cname.bin");
 
-    let direct_link = Ed2kFileLink::create("dangerous|pipe|name.bin", 50, parsed.ed2k_hash).unwrap();
+    let direct_link =
+        Ed2kFileLink::create("dangerous|pipe|name.bin", 50, parsed.ed2k_hash).unwrap();
     let rendered = direct_link.to_link_string();
     assert!(rendered.contains("dangerous%7Cpipe%7Cname.bin"));
     let parsed_direct = Ed2kFileLink::parse(&rendered).unwrap();
@@ -186,5 +187,7 @@ fn test_make_link_fixture_pattern_9728001() {
     assert!(stdout.contains("File       : pattern_9728001.bin"));
     assert!(stdout.contains("Size       : 9728001 bytes"));
     assert!(stdout.contains("eD2K hash  : 695b81b1727666818988524bd7fc823c"));
-    assert!(stdout.contains("eD2K link  : ed2k://|file|pattern_9728001.bin|9728001|695b81b1727666818988524bd7fc823c|"));
+    assert!(stdout.contains(
+        "eD2K link  : ed2k://|file|pattern_9728001.bin|9728001|695b81b1727666818988524bd7fc823c|"
+    ));
 }

@@ -93,10 +93,7 @@ pub fn delete_category(conn: &mut Connection, id: &str) -> Result<usize, CoreErr
         "UPDATE downloads SET category_id = NULL WHERE category_id = ?1",
         params![id],
     )?;
-    tx.execute(
-        "DELETE FROM download_categories WHERE id = ?1",
-        params![id],
-    )?;
+    tx.execute("DELETE FROM download_categories WHERE id = ?1", params![id])?;
     tx.commit()?;
     Ok(reassigned)
 }
@@ -104,7 +101,8 @@ pub fn delete_category(conn: &mut Connection, id: &str) -> Result<usize, CoreErr
 pub fn reorder_categories(conn: &mut Connection, category_ids: &[String]) -> Result<(), CoreError> {
     let tx = conn.transaction()?;
     {
-        let mut stmt = tx.prepare("UPDATE download_categories SET sort_order = ?1 WHERE id = ?2")?;
+        let mut stmt =
+            tx.prepare("UPDATE download_categories SET sort_order = ?1 WHERE id = ?2")?;
         for (index, id) in category_ids.iter().enumerate() {
             stmt.execute(params![index as i32, id])?;
         }

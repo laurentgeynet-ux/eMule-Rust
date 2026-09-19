@@ -107,7 +107,9 @@ impl Ed2kPartFileSink {
                 .len();
             if disk_len < file_size {
                 file.set_len(file_size).map_err(|e| {
-                    Ed2kSequencerError::Storage(format!("Failed to expand part file to {file_size}: {e}"))
+                    Ed2kSequencerError::Storage(format!(
+                        "Failed to expand part file to {file_size}: {e}"
+                    ))
                 })?;
             }
 
@@ -233,12 +235,11 @@ impl Ed2kPartFileSink {
 
         while remaining > 0 {
             let to_read = std::cmp::min(remaining, buffer.len() as u64) as usize;
-            file.read_exact(&mut buffer[..to_read])
-                .map_err(|e| {
-                    Ed2kSequencerError::Storage(format!(
-                        "Failed reading part {part_index} from disk: {e}"
-                    ))
-                })?;
+            file.read_exact(&mut buffer[..to_read]).map_err(|e| {
+                Ed2kSequencerError::Storage(format!(
+                    "Failed reading part {part_index} from disk: {e}"
+                ))
+            })?;
             hasher.update(&buffer[..to_read]);
             remaining -= to_read as u64;
         }

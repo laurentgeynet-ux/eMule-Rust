@@ -1,6 +1,6 @@
-use std::net::Ipv4Addr;
-use mule_core::kad::{KadContact, KadId, KBucketTable, K_BUCKET_SIZE};
+use mule_core::kad::{KBucketTable, KadContact, KadId, K_BUCKET_SIZE};
 use mule_core::persistence::Database;
+use std::net::Ipv4Addr;
 
 #[test]
 fn test_kad_id_xor_metric_and_distance() {
@@ -32,7 +32,14 @@ fn test_routing_table_insertion_and_capacity() {
         let mut b = [0u8; 16];
         b[3] = 0x80;
         b[12] = (i + 1) as u8;
-        let c = KadContact::new(KadId(b), Ipv4Addr::new(10, 0, (i + 1) as u8, 1), 39737, None, 2, 1000);
+        let c = KadContact::new(
+            KadId(b),
+            Ipv4Addr::new(10, 0, (i + 1) as u8, 1),
+            39737,
+            None,
+            2,
+            1000,
+        );
         let evict_candidate = table.insert_or_update(c);
         assert!(evict_candidate.is_none());
     }
@@ -44,7 +51,14 @@ fn test_routing_table_insertion_and_capacity() {
     let mut b21 = [0u8; 16];
     b21[3] = 0x80;
     b21[12] = 255;
-    let c21 = KadContact::new(KadId(b21), Ipv4Addr::new(10, 0, 21, 1), 39737, None, 2, 1000);
+    let c21 = KadContact::new(
+        KadId(b21),
+        Ipv4Addr::new(10, 0, 21, 1),
+        39737,
+        None,
+        2,
+        1000,
+    );
     let evict_candidate = table.insert_or_update(c21);
     assert!(evict_candidate.is_some());
     assert_eq!(table.total_contacts(), K_BUCKET_SIZE);
@@ -69,7 +83,14 @@ fn test_routing_table_subnet_sybil_protection() {
         let mut b = [0u8; 16];
         b[3] = 0x80;
         b[12] = (i + 1) as u8;
-        let c = KadContact::new(KadId(b), Ipv4Addr::new(192, 168, 1, (i + 1) as u8), 39737, None, 2, 1000);
+        let c = KadContact::new(
+            KadId(b),
+            Ipv4Addr::new(192, 168, 1, (i + 1) as u8),
+            39737,
+            None,
+            2,
+            1000,
+        );
         let evict = table.insert_or_update(c);
         assert!(evict.is_none());
     }
@@ -79,20 +100,46 @@ fn test_routing_table_subnet_sybil_protection() {
     let mut b3 = [0u8; 16];
     b3[3] = 0x80;
     b3[12] = 3;
-    let c3 = KadContact::new(KadId(b3), Ipv4Addr::new(192, 168, 1, 3), 39737, None, 2, 1000);
+    let c3 = KadContact::new(
+        KadId(b3),
+        Ipv4Addr::new(192, 168, 1, 3),
+        39737,
+        None,
+        2,
+        1000,
+    );
     let evict3 = table.insert_or_update(c3);
     assert!(evict3.is_none());
-    assert_eq!(table.total_contacts(), 2, "3rd contact from same /24 subnet must be rejected");
+    assert_eq!(
+        table.total_contacts(),
+        2,
+        "3rd contact from same /24 subnet must be rejected"
+    );
 }
 
 #[test]
 fn test_sqlite_kad_contacts_persistence() {
     let mut db = Database::open_in_memory().unwrap();
 
-    let c1 = KadContact::new(KadId([1u8; 16]), Ipv4Addr::new(1, 2, 3, 4), 39737, Some(39735), 2, 1000);
-    let c2 = KadContact::new(KadId([2u8; 16]), Ipv4Addr::new(5, 6, 7, 8), 1234, None, 1, 2000);
+    let c1 = KadContact::new(
+        KadId([1u8; 16]),
+        Ipv4Addr::new(1, 2, 3, 4),
+        39737,
+        Some(39735),
+        2,
+        1000,
+    );
+    let c2 = KadContact::new(
+        KadId([2u8; 16]),
+        Ipv4Addr::new(5, 6, 7, 8),
+        1234,
+        None,
+        1,
+        2000,
+    );
 
-    db.batch_upsert_kad_contacts(&[c1.clone(), c2.clone()]).unwrap();
+    db.batch_upsert_kad_contacts(&[c1.clone(), c2.clone()])
+        .unwrap();
     assert_eq!(db.count_kad_contacts().unwrap(), 2);
 
     let list = db.list_kad_contacts(10).unwrap();

@@ -185,6 +185,8 @@ async fn test_daemon_parent_watchdog_auto_shutdown() {
     let _ = daemon_proc.wait();
 
     // 5. Verify session file was cleaned up on exit
-    assert!(!path.join("session.json").exists(), "session.json should be removed on exit");
+    assert!(
+        !path.join("session.json").exists(),
+        "session.json should be removed on exit"
+    );
 }
-

@@ -1,7 +1,7 @@
 //! Kad keyword index models and utilities.
 
-use md4::{Digest, Md4};
 use super::KadId;
+use md4::{Digest, Md4};
 
 /// An indexed keyword-file association in Kad DHT.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -39,7 +39,35 @@ pub fn extract_kad_keywords(file_name: &str) -> Vec<(String, KadId)> {
 
     // Split on typical word delimiters
     let words = file_name.split(|c: char| {
-        c.is_whitespace() || matches!(c, '.' | '_' | '-' | '[' | ']' | '(' | ')' | '{' | '}' | '+' | ',' | ';' | '!' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '=' | '~' | '`' | '|' | '/' | '\\')
+        c.is_whitespace()
+            || matches!(
+                c,
+                '.' | '_'
+                    | '-'
+                    | '['
+                    | ']'
+                    | '('
+                    | ')'
+                    | '{'
+                    | '}'
+                    | '+'
+                    | ','
+                    | ';'
+                    | '!'
+                    | '@'
+                    | '#'
+                    | '$'
+                    | '%'
+                    | '^'
+                    | '&'
+                    | '*'
+                    | '='
+                    | '~'
+                    | '`'
+                    | '|'
+                    | '/'
+                    | '\\'
+            )
     });
 
     for word in words {

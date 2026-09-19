@@ -1,5 +1,5 @@
-use std::time::Duration;
 use serde_json::{json, Value};
+use std::time::Duration;
 use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -7,9 +7,7 @@ use tokio::net::TcpStream;
 use mule_daemon::rpc::methods::handle_request;
 use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
-use mule_protocol::ed2k::{
-    Ed2kDecoder, Ed2kEncoder, Ed2kHello, Ed2kRequestParts, PR_ED2K,
-};
+use mule_protocol::ed2k::{Ed2kDecoder, Ed2kEncoder, Ed2kHello, Ed2kRequestParts, PR_ED2K};
 use mule_protocol::framing::PacketCodec;
 
 async fn setup_upload_test_state() -> (AppState, tempfile::TempDir, String) {
@@ -17,8 +15,8 @@ async fn setup_upload_test_state() -> (AppState, tempfile::TempDir, String) {
     let temp_dir = dir.path().join("temp");
     let token = "test_token_upload".to_string();
 
-    let config =
-        DaemonConfig::new(dir.path().to_path_buf(), &token).with_workdir_mode(WorkDirMode::Portable);
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable);
     let downloads = DownloadService::in_memory(temp_dir).unwrap();
     let state = AppState::new(config, downloads);
 
@@ -36,7 +34,9 @@ async fn setup_upload_test_state() -> (AppState, tempfile::TempDir, String) {
             "filePath": "C:\\Shared\\test_shared_archive.iso"
         })),
     );
-    let resp = handle_request(&state, share_req, &mut authenticated).await.unwrap();
+    let resp = handle_request(&state, share_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(resp.error.is_none());
 
     (state, dir, file_hash_hex)
@@ -57,12 +57,23 @@ async fn test_inbound_listener_rejected_under_disabled_network() {
     let mut authenticated = true;
 
     // Disconnect network via kill switch
-    let _ = handle_request(&state, make_req(1, "network.disconnectAll", None), &mut authenticated).await.unwrap();
+    let _ = handle_request(
+        &state,
+        make_req(1, "network.disconnectAll", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
 
     // Attempt to start listener
     let req = make_req(2, "listener.start", Some(json!({ "port": 0 })));
-    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
-    assert!(resp.error.is_some(), "Listener start must fail when network is disabled");
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(
+        resp.error.is_some(),
+        "Listener start must fail when network is disabled"
+    );
     let err = resp.error.unwrap();
     assert!(err.message.contains("Network is disabled"));
 }
@@ -74,9 +85,14 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
 
     // Start listener on ephemeral loopback port
     let start_req = make_req(1, "listener.start", Some(json!({ "port": 0 })));
-    let start_resp = handle_request(&state, start_req, &mut authenticated).await.unwrap();
+    let start_resp = handle_request(&state, start_req, &mut authenticated)
+        .await
+        .unwrap();
     assert!(start_resp.error.is_none());
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Connect remote mock peer client
     let mut client_socket = TcpStream::connect(&listen_addr_str).await.unwrap();
@@ -120,7 +136,9 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
 
     // 3. Send OP_FILESTATUSREQ for shared file
     let hash_bytes: [u8; 16] = hex::decode(&hash).unwrap().try_into().unwrap();
-    let status_req = mule_protocol::ed2k::Ed2kFileStatusReq { file_hash: hash_bytes };
+    let status_req = mule_protocol::ed2k::Ed2kFileStatusReq {
+        file_hash: hash_bytes,
+    };
     let req_pkt = encoder.encode_file_status_req(&status_req).unwrap();
     out.clear();
     out.push(req_pkt.protocol);
@@ -146,7 +164,10 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
     // 4. Send OP_REQUESTPARTS for block 0..184320
     let req_parts = Ed2kRequestParts {
         file_hash: hash_bytes,
-        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange { start: 0, end: 184320 }],
+        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange {
+            start: 0,
+            end: 184320,
+        }],
     };
     let rp_pkt = encoder.encode_request_parts(&req_parts).unwrap();
     out.clear();
@@ -164,7 +185,9 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
         read_buf.extend_from_slice(&raw_buf[..n]);
         while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
             if pkt.protocol == PR_ED2K && pkt.opcode == mule_protocol::ed2k::OP_SENDINGPART {
-                let part = decoder.decode_sending_part(pkt.protocol, pkt.opcode, &pkt.payload, 0).unwrap();
+                let part = decoder
+                    .decode_sending_part(pkt.protocol, pkt.opcode, &pkt.payload, 0)
+                    .unwrap();
                 assert_eq!(part.start_offset, 0);
                 assert_eq!(part.end_offset, 184320);
                 assert_eq!(part.data.len(), 184320);
@@ -176,14 +199,18 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
 
     // Verify upload status via RPC
     let status_req = make_req(2, "uploads.status", None);
-    let status_resp = handle_request(&state, status_req, &mut authenticated).await.unwrap();
+    let status_resp = handle_request(&state, status_req, &mut authenticated)
+        .await
+        .unwrap();
     let upload_snap: Value = status_resp.result.unwrap();
     assert_eq!(upload_snap["state"], "uploading");
     assert!(upload_snap["transferredBytes"].as_u64().unwrap() >= 184320);
 
     // Stop listener
     let stop_req = make_req(3, "listener.stop", None);
-    let _ = handle_request(&state, stop_req, &mut authenticated).await.unwrap();
+    let _ = handle_request(&state, stop_req, &mut authenticated)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -191,8 +218,17 @@ async fn test_inbound_request_unshared_file_does_not_upload() {
     let (state, _dir, _hash) = setup_upload_test_state().await;
     let mut authenticated = true;
 
-    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let mut client_socket = TcpStream::connect(&listen_addr_str).await.unwrap();
     let mut read_buf = bytes::BytesMut::with_capacity(65536);
@@ -235,7 +271,10 @@ async fn test_inbound_request_unshared_file_does_not_upload() {
     let unshared_hash = [0x99u8; 16];
     let req_parts = Ed2kRequestParts {
         file_hash: unshared_hash,
-        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange { start: 0, end: 184320 }],
+        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange {
+            start: 0,
+            end: 184320,
+        }],
     };
     let rp_pkt = encoder.encode_request_parts(&req_parts).unwrap();
     out.clear();
@@ -247,10 +286,25 @@ async fn test_inbound_request_unshared_file_does_not_upload() {
 
     // Check active upload remains empty
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let status_resp = handle_request(&state, make_req(2, "uploads.status", None), &mut authenticated).await.unwrap();
-    assert!(status_resp.result.unwrap().is_null(), "Unshared file request must not allocate upload slot");
+    let status_resp = handle_request(
+        &state,
+        make_req(2, "uploads.status", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(
+        status_resp.result.unwrap().is_null(),
+        "Unshared file request must not allocate upload slot"
+    );
 
-    let _ = handle_request(&state, make_req(3, "listener.stop", None), &mut authenticated).await.unwrap();
+    let _ = handle_request(
+        &state,
+        make_req(3, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -258,9 +312,22 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
     let (state, _dir, hash) = setup_upload_test_state().await;
     let mut authenticated = true;
 
+    // Restrict to a single active upload slot so queueing behavior is
+    // exercised deterministically (production default is MAX_ACTIVE_UPLOADS).
+    state.inbound_listener.upload_manager().set_max_active(1);
+
     // Start listener
-    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let codec = PacketCodec::new();
     let encoder = Ed2kEncoder::default();
@@ -303,7 +370,10 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
     // Request part on client 1
     let req_parts1 = Ed2kRequestParts {
         file_hash: hash_bytes,
-        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange { start: 0, end: 184320 }],
+        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange {
+            start: 0,
+            end: 184320,
+        }],
     };
     let rp_pkt1 = encoder.encode_request_parts(&req_parts1).unwrap();
     out1.clear();
@@ -361,7 +431,10 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
     // Request part on client 2 -> must receive OP_QUEUERANKING with rank 1
     let req_parts2 = Ed2kRequestParts {
         file_hash: hash_bytes,
-        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange { start: 0, end: 184320 }],
+        ranges: vec![mule_protocol::ed2k::Ed2kBlockRange {
+            start: 0,
+            end: 184320,
+        }],
     };
     let rp_pkt2 = encoder.encode_request_parts(&req_parts2).unwrap();
     out2.clear();
@@ -386,12 +459,50 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
     }
 
     // Verify uploads.list RPC returns active upload and queued upload
-    let list_resp = handle_request(&state, make_req(2, "uploads.list", None), &mut authenticated).await.unwrap();
+    let list_resp = handle_request(
+        &state,
+        make_req(2, "uploads.list", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
     let uploads_list: Value = list_resp.result.unwrap();
     assert_eq!(uploads_list["active"].as_array().unwrap().len(), 1);
     assert_eq!(uploads_list["queued"].as_array().unwrap().len(), 1);
 
-    let _ = handle_request(&state, make_req(3, "listener.stop", None), &mut authenticated).await.unwrap();
+    // Multi-slot promotion: raising the limit then releasing client 1's slot
+    // must promote client 2, which then receives data on its next request.
+    state.inbound_listener.upload_manager().set_max_active(2);
+    drop(client1);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let rp_pkt2b = encoder.encode_request_parts(&req_parts2).unwrap();
+    out2.clear();
+    out2.push(rp_pkt2b.protocol);
+    out2.extend_from_slice(&(rp_pkt2b.frame_len() as u32).to_le_bytes());
+    out2.push(rp_pkt2b.opcode);
+    out2.extend_from_slice(&rp_pkt2b.payload);
+    client2.write_all(&out2).await.unwrap();
+
+    let mut c2_got_data = false;
+    while !c2_got_data {
+        let n = client2.read(&mut raw_buf).await.unwrap();
+        read_buf2.extend_from_slice(&raw_buf[..n]);
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf2) {
+            if pkt.protocol == PR_ED2K && pkt.opcode == mule_protocol::ed2k::OP_SENDINGPART {
+                c2_got_data = true;
+                break;
+            }
+        }
+    }
+
+    let _ = handle_request(
+        &state,
+        make_req(3, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -400,8 +511,17 @@ async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
     let mut authenticated = true;
 
     // Start listener
-    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let codec = PacketCodec::new();
     let encoder = Ed2kEncoder::default();
@@ -439,12 +559,24 @@ async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
     }
 
     // Trigger Kill Switch
-    let kill_resp = handle_request(&state, make_req(2, "network.disconnectAll", None), &mut authenticated).await.unwrap();
+    let kill_resp = handle_request(
+        &state,
+        make_req(2, "network.disconnectAll", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
     assert!(kill_resp.error.is_none());
 
     // Verify listener is now stopped
     tokio::time::sleep(Duration::from_millis(50)).await;
-    let status_resp = handle_request(&state, make_req(3, "listener.status", None), &mut authenticated).await.unwrap();
+    let status_resp = handle_request(
+        &state,
+        make_req(3, "listener.status", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
     let status_val: Value = status_resp.result.unwrap();
     assert_eq!(status_val["isListening"], false);
     assert_eq!(status_val["activeUploads"], 0);
@@ -460,9 +592,23 @@ async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
     let mut authenticated = true;
 
     // Start listener
-    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
-    let listen_port: u16 = listen_addr_str.split(':').next_back().unwrap().parse().unwrap();
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let listen_port: u16 = listen_addr_str
+        .split(':')
+        .next_back()
+        .unwrap()
+        .parse()
+        .unwrap();
 
     let expected_hash = state.identity.lock().await.user_hash();
 
@@ -496,7 +642,9 @@ async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
         read_buf.extend_from_slice(&raw_buf[..n]);
         while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
             if pkt.protocol == PR_ED2K && pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
-                let ans = decoder.decode_hello_answer(pkt.protocol, pkt.opcode, &pkt.payload, 0).unwrap();
+                let ans = decoder
+                    .decode_hello_answer(pkt.protocol, pkt.opcode, &pkt.payload, 0)
+                    .unwrap();
                 ans_opt = Some(ans);
                 break;
             }
@@ -504,8 +652,14 @@ async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
     }
 
     let ans = ans_opt.unwrap();
-    assert_eq!(ans.user_hash, expected_hash, "Ed2kHelloAnswer must use real identity user_hash");
-    assert_eq!(ans.tcp_port, listen_port, "Ed2kHelloAnswer must use actual listener port");
+    assert_eq!(
+        ans.user_hash, expected_hash,
+        "Ed2kHelloAnswer must use real identity user_hash"
+    );
+    assert_eq!(
+        ans.tcp_port, listen_port,
+        "Ed2kHelloAnswer must use actual listener port"
+    );
 }
 
 #[tokio::test]
@@ -514,8 +668,17 @@ async fn test_inbound_connection_per_ip_limit() {
     let mut authenticated = true;
 
     // Start listener
-    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Connect 5 sockets (MAX_INBOUND_PER_IP)
     let mut clients = Vec::new();
@@ -564,7 +727,10 @@ async fn test_inbound_connection_per_ip_limit() {
 
     let mut raw_buf = [0u8; 8192];
     let n = new_client.read(&mut raw_buf).await.unwrap();
-    assert!(n > 0, "New connection should be accepted after dropping an existing client");
+    assert!(
+        n > 0,
+        "New connection should be accepted after dropping an existing client"
+    );
 }
 
 #[tokio::test]
@@ -573,8 +739,17 @@ async fn test_inbound_secident_signature_without_challenge_rejected() {
     let mut authenticated = true;
 
     // Start listener
-    let start_resp = handle_request(&state, make_req(1, "listener.start", Some(json!({ "port": 0 }))), &mut authenticated).await.unwrap();
-    let listen_addr_str = start_resp.result.unwrap()["listenAddress"].as_str().unwrap().to_string();
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
     let codec = PacketCodec::new();
@@ -631,8 +806,12 @@ async fn test_inbound_secident_signature_without_challenge_rejected() {
         let n = client.read(&mut raw_buf).await.unwrap();
         read_buf.extend_from_slice(&raw_buf[..n]);
         while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
-            if pkt.protocol == mule_protocol::ed2k::PR_EMULE && pkt.opcode == mule_protocol::ed2k::OP_SECIDENTSTATE {
-                let st = decoder.decode_secident_state(pkt.protocol, pkt.opcode, &pkt.payload, 0).unwrap();
+            if pkt.protocol == mule_protocol::ed2k::PR_EMULE
+                && pkt.opcode == mule_protocol::ed2k::OP_SECIDENTSTATE
+            {
+                let st = decoder
+                    .decode_secident_state(pkt.protocol, pkt.opcode, &pkt.payload, 0)
+                    .unwrap();
                 state_opt = Some(st);
                 break;
             }
@@ -640,5 +819,8 @@ async fn test_inbound_secident_signature_without_challenge_rejected() {
     }
 
     let st = state_opt.unwrap();
-    assert_eq!(st.state, 0, "Unsolicited signature without prior challenge must be rejected with state 0");
+    assert_eq!(
+        st.state, 0,
+        "Unsolicited signature without prior challenge must be rejected with state 0"
+    );
 }

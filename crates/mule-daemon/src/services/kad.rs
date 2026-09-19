@@ -1,3 +1,4 @@
+pub mod firewall;
 pub mod nodes_dat;
 pub mod search_keywords;
 pub mod search_sources;
@@ -10,7 +11,9 @@ use tokio::sync::Mutex;
 use mule_core::kad::{KBucketTable, KadContact, KadId};
 use mule_core::model::PeerSource;
 use mule_filter::IpFilter;
-use mule_network_policy::{classify_ip, CancellationToken, IpCategory, NetworkPolicyManager, NetworkProfile};
+use mule_network_policy::{
+    classify_ip, CancellationToken, IpCategory, NetworkPolicyManager, NetworkProfile,
+};
 
 use crate::services::downloads::DownloadService;
 use crate::services::kad_udp::KadUdpService;
@@ -25,7 +28,15 @@ pub struct KadService {
     ip_filter: Arc<IpFilter>,
     udp: Arc<KadUdpService>,
     in_flight_searches: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Local eD2K TCP port advertised when publishing ourselves as a source.
+    ed2k_tcp_port: std::sync::atomic::AtomicU16,
+    /// Local eD2K user hash used in firewall-test connection hellos.
+    fw_user_hash: std::sync::RwLock<[u8; 16]>,
 }
+
+/// Interval between Kad republication rounds of shared files
+/// (eMule republishes source/keyword entries roughly every 5 hours).
+const KAD_REPUBLISH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5 * 60 * 60);
 
 impl KadService {
     pub fn new(
@@ -44,7 +55,15 @@ impl KadService {
             ip_filter,
             udp,
             in_flight_searches: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            ed2k_tcp_port: std::sync::atomic::AtomicU16::new(0),
+            fw_user_hash: std::sync::RwLock::new([0u8; 16]),
         }
+    }
+
+    /// Sets the local eD2K TCP port used in published source contacts.
+    pub fn set_ed2k_tcp_port(&self, port: u16) {
+        self.ed2k_tcp_port
+            .store(port, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn local_id(&self) -> &KadId {
@@ -63,7 +82,10 @@ impl KadService {
             for c in contacts {
                 table.insert_or_update(c);
             }
-            tracing::info!("Kad routing table initialized with {} contacts from database", count);
+            tracing::info!(
+                "Kad routing table initialized with {} contacts from database",
+                count
+            );
         }
     }
 
@@ -74,6 +96,22 @@ impl KadService {
             dl.db_ref().count_kad_contacts().unwrap_or(0)
         };
         let udp_snap = self.udp.get_snapshot().await;
+        let (fw_status, fw_verified, fw_extern, fw_effective) = {
+            let tracker = self.udp.firewall_tracker();
+            let fw = tracker.lock().await;
+            let intern = udp_snap
+                .bind_address
+                .as_deref()
+                .and_then(|a| a.rsplit(':').next())
+                .and_then(|p| p.parse::<u16>().ok())
+                .unwrap_or(0);
+            (
+                fw.status.as_str().to_string(),
+                fw.verified,
+                fw.extern_port,
+                fw.effective_port(intern),
+            )
+        };
 
         KadStatusSnapshot {
             local_id: self.local_id.to_hex(),
@@ -87,11 +125,22 @@ impl KadService {
             packets_sent: udp_snap.packets_sent,
             packets_received: udp_snap.packets_received,
             active_transactions: udp_snap.active_transactions,
+            udp_firewall_status: fw_status,
+            udp_firewall_verified: fw_verified,
+            extern_udp_port: fw_extern,
+            effective_udp_port: fw_effective,
         }
     }
 
-    pub async fn ping_contact(&self, ip_str: &str, udp_port: u16, target_kad_id_hex: Option<&str>) -> Result<u64, String> {
-        let ip: IpAddr = ip_str.parse().map_err(|e| format!("Invalid IP address: {e}"))?;
+    pub async fn ping_contact(
+        &self,
+        ip_str: &str,
+        udp_port: u16,
+        target_kad_id_hex: Option<&str>,
+    ) -> Result<u64, String> {
+        let ip: IpAddr = ip_str
+            .parse()
+            .map_err(|e| format!("Invalid IP address: {e}"))?;
         let addr = SocketAddr::new(ip, udp_port);
 
         let (_pong, latency) = self.udp.ping(addr).await?;
@@ -138,7 +187,9 @@ impl KadService {
 
     /// Bootstraps Kad DHT from a target node (IP and UDP port).
     pub async fn bootstrap_from_node(&self, ip_str: &str, udp_port: u16) -> Result<usize, String> {
-        let ip: IpAddr = ip_str.parse().map_err(|e| format!("Invalid IP address: {e}"))?;
+        let ip: IpAddr = ip_str
+            .parse()
+            .map_err(|e| format!("Invalid IP address: {e}"))?;
         let addr = SocketAddr::new(ip, udp_port);
 
         let received_contacts = self.udp.send_bootstrap(addr).await?;
@@ -211,9 +262,7 @@ impl KadService {
         for c in sample {
             let addr = SocketAddr::new(IpAddr::V4(c.ip), c.udp_port);
             let udp = Arc::clone(&self.udp);
-            futs.push(async move {
-                (addr, udp.send_bootstrap(addr).await)
-            });
+            futs.push(async move { (addr, udp.send_bootstrap(addr).await) });
         }
 
         let results = futures_util::future::join_all(futs).await;
@@ -232,7 +281,8 @@ impl KadService {
                         let cat = classify_ip(IpAddr::V4(c.ip));
                         let policy_allowed = match profile {
                             NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                            NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
+                            NetworkProfile::PublicEd2kPreview
+                            | NetworkProfile::PublicEd2kKadPreview => {
                                 cat == IpCategory::PublicRoutable
                             }
                         };
@@ -284,6 +334,7 @@ impl KadService {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
             // First tick completes immediately, skip it to let startup bootstrap finish
             interval.tick().await;
+            let mut last_publish: Option<std::time::Instant> = None;
 
             loop {
                 tokio::select! {
@@ -319,6 +370,60 @@ impl KadService {
                             let random_target = KadId::random();
                             let _ = kad.find_node(&random_target).await;
                         }
+
+                        // UDP firewall reachability check (eMule runs it when
+                        // Kad becomes connected and re-checks while unverified).
+                        // Spawned so the maintenance loop is not blocked by
+                        // the up-to-6min test budget.
+                        let needs_fw_check = {
+                            let tracker = kad.udp.firewall_tracker();
+                            let fw = tracker.lock().await;
+                            !fw.verified
+                                && fw.status != crate::services::kad_udp::UdpFirewallStatus::Testing
+                        };
+                        if needs_fw_check && total_contacts > 0 {
+                            let kad_fw = Arc::clone(&kad);
+                            tokio::spawn(async move {
+                                kad_fw.run_udp_firewall_check().await;
+                            });
+                        }
+
+                        // Periodic republication of shared files (eMule
+                        // Kademlia republish cycle ~5h). Also runs a first
+                        // publish as soon as the routing table has contacts.
+                        let publish_due = last_publish
+                            .map(|t| t.elapsed() >= KAD_REPUBLISH_INTERVAL)
+                            .unwrap_or(true);
+                        if publish_due && total_contacts > 0 {
+                            let tcp_port = kad
+                                .ed2k_tcp_port
+                                .load(std::sync::atomic::Ordering::Relaxed);
+                            let shared = {
+                                let dl = kad.downloads.lock().await;
+                                dl.list_shared_files().unwrap_or_default()
+                            };
+                            if tcp_port > 0 {
+                                let mut published = 0usize;
+                                for f in shared.iter().filter(|f| f.enabled).take(200) {
+                                    let hash = f.file_hash.trim().to_string();
+                                    if let Ok(n) = kad
+                                        .publish_source(&hash, f.file_size, tcp_port)
+                                        .await
+                                    {
+                                        published += n;
+                                    }
+                                    let _ = kad
+                                        .publish_keyword(&hash, &f.file_name, f.file_size)
+                                        .await;
+                                }
+                                tracing::info!(
+                                    "[KAD_PUBLISH] Republication round: {} file(s), {} successful source publishes",
+                                    shared.iter().filter(|f| f.enabled).count(),
+                                    published
+                                );
+                                last_publish = Some(std::time::Instant::now());
+                            }
+                        }
                     }
                 }
             }
@@ -326,7 +431,10 @@ impl KadService {
     }
 
     /// Performs iterative Find Node lookup for a target Kad ID with concurrency alpha = 3.
-    pub async fn find_node(&self, target_kad_id: &KadId) -> Result<Vec<KadContactEntryDto>, String> {
+    pub async fn find_node(
+        &self,
+        target_kad_id: &KadId,
+    ) -> Result<Vec<KadContactEntryDto>, String> {
         let mut queried = std::collections::HashSet::new();
         let max_rounds = 3;
 
@@ -350,7 +458,11 @@ impl KadService {
                 queried.insert(contact.kad_id);
                 let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
                 let receiver_id = contact.kad_id;
-                if let Ok(neighbors) = self.udp.send_find_node(addr, target_kad_id, &receiver_id).await {
+                if let Ok(neighbors) = self
+                    .udp
+                    .send_find_node(addr, target_kad_id, &receiver_id)
+                    .await
+                {
                     let mut table = self.routing_table.lock().await;
                     for n in neighbors {
                         if table.insert_or_update(n).is_none() {
@@ -378,7 +490,8 @@ impl KadService {
     }
 
     pub async fn import_nodes_dat(&self, raw_bytes: &[u8]) -> Result<usize, String> {
-        let imported_contacts = nodes_dat::parse_valid_nodes_contacts(raw_bytes, &self.policy_mgr, &self.ip_filter)?;
+        let imported_contacts =
+            nodes_dat::parse_valid_nodes_contacts(raw_bytes, &self.policy_mgr, &self.ip_filter)?;
 
         // Persist to SQLite
         {
@@ -434,7 +547,8 @@ impl KadService {
             &self.ip_filter,
             &self.udp,
             &self.in_flight_searches,
-        ).await
+        )
+        .await
     }
 
     /// Publishes this node as a source for a given file hash to the closest Kad contacts.
@@ -460,7 +574,11 @@ impl KadService {
         let total_queried = closest_contacts.len();
         for contact in closest_contacts {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-            if let Ok(status) = self.udp.send_publish_source(addr, &target_kad_id.0, file_size, tcp_port).await {
+            if let Ok(status) = self
+                .udp
+                .send_publish_source(addr, &target_kad_id.0, file_size, tcp_port)
+                .await
+            {
                 if status == 0 {
                     success_count += 1;
                 }
@@ -494,7 +612,8 @@ impl KadService {
             &self.policy_mgr,
             &self.ip_filter,
             &self.udp,
-        ).await
+        )
+        .await
     }
 
     /// Publishes keyword entries for a file to the closest Kad contacts.
@@ -510,6 +629,7 @@ impl KadService {
             file_size,
             &self.routing_table,
             &self.udp,
-        ).await
+        )
+        .await
     }
 }

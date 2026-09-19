@@ -202,18 +202,18 @@ pub async fn handle_tool(
 ) -> Option<crate::protocol::ToolCallResult> {
     use crate::protocol::ToolCallResult;
     match tool_name {
-        "emule_status" => {
-            match client.call("system.status", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to retrieve status: {e}"))),
-            }
-        }
-        "emule_get_settings" => {
-            match client.call("settings.get", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to get settings: {e}"))),
-            }
-        }
+        "emule_status" => match client.call("system.status", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to retrieve status: {e}"
+            ))),
+        },
+        "emule_get_settings" => match client.call("settings.get", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to get settings: {e}"
+            ))),
+        },
         "emule_update_settings" => {
             let mut params = json!({});
             if let Some(d) = args.get("default_download_dir").and_then(|s| s.as_str()) {
@@ -222,7 +222,10 @@ pub async fn handle_tool(
             if let Some(r) = args.get("history_retention_days").and_then(|s| s.as_u64()) {
                 params["historyRetentionDays"] = json!(r);
             }
-            if let Some(g) = args.get("max_global_download_peers").and_then(|s| s.as_u64()) {
+            if let Some(g) = args
+                .get("max_global_download_peers")
+                .and_then(|s| s.as_u64())
+            {
                 params["maxGlobalDownloadPeers"] = json!(g);
             }
             if let Some(p) = args.get("max_peers_per_download").and_then(|s| s.as_u64()) {
@@ -234,13 +237,17 @@ pub async fn handle_tool(
 
             match client.call("settings.set", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to update settings: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to update settings: {e}"
+                ))),
             }
         }
         "emule_reset_download_dir" => {
             match client.call("settings.resetDownloadDir", json!({})).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to reset download directory: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to reset download directory: {e}"
+                ))),
             }
         }
         "emule_set_limits" => {
@@ -254,44 +261,57 @@ pub async fn handle_tool(
 
             match client.call("limits.set", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to set rate limits: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to set rate limits: {e}"
+                ))),
             }
         }
-        "emule_shutdown" => {
-            match client.call("system.stop", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to shut down daemon: {e}"))),
-            }
-        }
-        "emule_get_network_policy" => {
-            match client.call("network.getPolicy", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to get network policy: {e}"))),
-            }
-        }
+        "emule_shutdown" => match client.call("system.stop", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to shut down daemon: {e}"
+            ))),
+        },
+        "emule_get_network_policy" => match client.call("network.getPolicy", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to get network policy: {e}"
+            ))),
+        },
         "emule_set_network_profile" => {
             let profile = match args.get("profile").and_then(|p| p.as_str()) {
                 Some(p) => p,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'profile'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'profile'",
+                    ))
+                }
             };
 
-            match client.call("network.setProfile", json!({ "profile": profile })).await {
+            match client
+                .call("network.setProfile", json!({ "profile": profile }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to set network profile: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to set network profile: {e}"
+                ))),
             }
         }
         "emule_network_disconnect_all" => {
             match client.call("network.disconnectAll", json!({})).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to trigger network disconnect: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to trigger network disconnect: {e}"
+                ))),
             }
         }
-        "emule_network_enable" => {
-            match client.call("network.enable", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to enable network: {e}"))),
-            }
-        }
+        "emule_network_enable" => match client.call("network.enable", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to enable network: {e}"
+            ))),
+        },
         "emule_get_audit_log" => {
             let mut params = json!({});
             if let Some(l) = args.get("limit").and_then(|s| s.as_u64()) {
@@ -300,54 +320,83 @@ pub async fn handle_tool(
 
             match client.call("network.getAuditLog", params).await {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to get network audit log: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to get network audit log: {e}"
+                ))),
             }
         }
         "emule_set_network_budgets" => {
             let budgets = match args.get("budgets") {
                 Some(b) => b,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'budgets'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'budgets'",
+                    ))
+                }
             };
 
-            match client.call("network.setBudgets", json!({ "budgets": budgets })).await {
+            match client
+                .call("network.setBudgets", json!({ "budgets": budgets }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to set network budgets: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to set network budgets: {e}"
+                ))),
             }
         }
-        "emule_get_filter_status" => {
-            match client.call("filter.getStatus", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to get IP filter status: {e}"))),
-            }
-        }
+        "emule_get_filter_status" => match client.call("filter.getStatus", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to get IP filter status: {e}"
+            ))),
+        },
         "emule_import_ip_filter" => {
             let file_path = match args.get("file_path").and_then(|f| f.as_str()) {
                 Some(f) => f,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'file_path'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_path'",
+                    ))
+                }
             };
 
-            match client.call("filter.importFile", json!({ "filePath": file_path })).await {
+            match client
+                .call("filter.importFile", json!({ "filePath": file_path }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to import IP filter: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to import IP filter: {e}"
+                ))),
             }
         }
         "emule_set_filter_enabled" => {
             let enabled = match args.get("enabled").and_then(|e| e.as_bool()) {
                 Some(e) => e,
-                None => return Some(ToolCallResult::error("Missing required parameter: 'enabled'")),
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'enabled'",
+                    ))
+                }
             };
 
-            match client.call("filter.setEnabled", json!({ "enabled": enabled })).await {
+            match client
+                .call("filter.setEnabled", json!({ "enabled": enabled }))
+                .await
+            {
                 Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to set filter enabled state: {e}"))),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to set filter enabled state: {e}"
+                ))),
             }
         }
-        "emule_clear_ip_filter" => {
-            match client.call("filter.clear", json!({})).await {
-                Ok(res) => Some(ToolCallResult::json(&res)),
-                Err(e) => Some(ToolCallResult::error(format!("Failed to clear IP filter: {e}"))),
-            }
-        }
+        "emule_clear_ip_filter" => match client.call("filter.clear", json!({})).await {
+            Ok(res) => Some(ToolCallResult::json(&res)),
+            Err(e) => Some(ToolCallResult::error(format!(
+                "Failed to clear IP filter: {e}"
+            ))),
+        },
         _ => None,
     }
 }

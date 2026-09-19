@@ -113,7 +113,10 @@ async fn test_download_details_part_map_and_boundaries() {
     assert_eq!(detail["totalBytes"], 9728001);
     assert_eq!(detail["remainingBytes"], 9728001);
     assert_eq!(detail["ed2kHash"], "31d6cfe0d16ae931b73c59d7e0c089c0");
-    assert!(detail["ed2kLink"].as_str().unwrap().contains("ed2k://|file|boundary_test.bin|9728001|31d6cfe0d16ae931b73c59d7e0c089c0|/"));
+    assert!(detail["ed2kLink"]
+        .as_str()
+        .unwrap()
+        .contains("ed2k://|file|boundary_test.bin|9728001|31d6cfe0d16ae931b73c59d7e0c089c0|/"));
 
     // Verify parts map: exactly 2 parts
     let parts = detail["parts"].as_array().expect("parts array");
@@ -372,7 +375,8 @@ fn test_add_duplicate_ed2k_link_rejected() {
     assert!(res2.is_err(), "Duplicate add must be rejected");
     let err = res2.unwrap_err();
     assert!(
-        err.to_string().contains("déjà dans la liste des téléchargements"),
+        err.to_string()
+            .contains("déjà dans la liste des téléchargements"),
         "Error message must indicate duplicate: {}",
         err
     );
@@ -447,7 +451,10 @@ fn test_startup_self_heal_completed() {
         let _ = service.finalize_download(&snap.id).unwrap();
 
         // Force status back to verifying in DB to simulate old bug
-        service.db_mut().update_status(&snap.id, mule_core::model::DownloadStatus::Verifying).unwrap();
+        service
+            .db_mut()
+            .update_status(&snap.id, mule_core::model::DownloadStatus::Verifying)
+            .unwrap();
         snap.id
     };
 
@@ -460,5 +467,3 @@ fn test_startup_self_heal_completed() {
         "Startup self-healing must restore status to Completed"
     );
 }
-
-

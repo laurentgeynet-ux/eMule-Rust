@@ -316,8 +316,8 @@ fn test_kad_search_and_publish_keyword_roundtrip() {
 fn test_legacy_kad_bootstrap_req_opcode_0x00() {
     // Exact 27-byte payload observed from live eMule/aMule client
     let raw = [
-        0xE4, 0x00, 0xD6, 0x24, 0x69, 0xF6, 0x75, 0x20, 0x5B, 0x69, 0xBA, 0xD1, 0x1F, 0xE5,
-        0x0A, 0x43, 0x86, 0x84, 0x24, 0xDA, 0xAA, 0x56, 0x94, 0x1E, 0xBE, 0x25, 0x00,
+        0xE4, 0x00, 0xD6, 0x24, 0x69, 0xF6, 0x75, 0x20, 0x5B, 0x69, 0xBA, 0xD1, 0x1F, 0xE5, 0x0A,
+        0x43, 0x86, 0x84, 0x24, 0xDA, 0xAA, 0x56, 0x94, 0x1E, 0xBE, 0x25, 0x00,
     ];
 
     let decoded = KadCodec::decode(&raw).expect("should decode legacy Kad bootstrap req 0x00");
@@ -326,8 +326,8 @@ fn test_legacy_kad_bootstrap_req_opcode_0x00() {
             assert_eq!(
                 req.kad_id,
                 [
-                    0xD6, 0x24, 0x69, 0xF6, 0x75, 0x20, 0x5B, 0x69, 0xBA, 0xD1, 0x1F, 0xE5,
-                    0x0A, 0x43, 0x86, 0x84
+                    0xD6, 0x24, 0x69, 0xF6, 0x75, 0x20, 0x5B, 0x69, 0xBA, 0xD1, 0x1F, 0xE5, 0x0A,
+                    0x43, 0x86, 0x84
                 ]
             );
         }
@@ -388,4 +388,39 @@ fn test_emule_keyword_response_with_publishinfo_roundtrip() {
         }
         _ => panic!("expected SearchKeywordRes"),
     }
+}
+
+#[test]
+fn test_kad_firewall_udp_roundtrip() {
+    // eMule KADEMLIA2_FIREWALLUDP: [u8 error_code][u16 tested_port]
+    let encoded = KadCodec::encode_firewall_udp(0, 4672);
+    assert_eq!(encoded.len(), 5);
+    assert_eq!(encoded[0], PR_KADEMLIA);
+    assert_eq!(encoded[1], KADEMLIA2_FIREWALLUDP);
+
+    let decoded = KadCodec::decode(&encoded).expect("should decode firewall udp");
+    match decoded {
+        KadMessage::FirewallUdp(fw) => {
+            assert_eq!(fw.error_code, 0);
+            assert_eq!(fw.udp_port, 4672);
+        }
+        _ => panic!("expected FirewallUdp message"),
+    }
+
+    // error_code non-zero (remote reported biased/already-known result)
+    let encoded_err = KadCodec::encode_firewall_udp(1, 13370);
+    match KadCodec::decode(&encoded_err).expect("decode") {
+        KadMessage::FirewallUdp(fw) => {
+            assert_eq!(fw.error_code, 1);
+            assert_eq!(fw.udp_port, 13370);
+        }
+        _ => panic!("expected FirewallUdp message"),
+    }
+}
+
+#[test]
+fn test_kad_firewall_udp_malformed() {
+    // Payload shorter than 3 bytes must be rejected.
+    let raw = [PR_KADEMLIA, KADEMLIA2_FIREWALLUDP, 0x00];
+    assert!(KadCodec::decode(&raw).is_err());
 }

@@ -182,9 +182,7 @@ async fn test_history_rpc_lifecycle_stats_export_and_retention() {
     )
     .await;
     let res_hist_resume = recv_response_by_id(&mut read, 7).await;
-    let list_resume = res_hist_resume["result"]
-        .as_array()
-        .expect("history list");
+    let list_resume = res_hist_resume["result"].as_array().expect("history list");
     assert_eq!(list_resume.len(), 1);
     assert_eq!(list_resume[0]["eventType"], "resumed");
     assert_eq!(list_resume[0]["downloadId"], dl_id);
@@ -219,9 +217,7 @@ async fn test_history_rpc_lifecycle_stats_export_and_retention() {
     )
     .await;
     let res_hist_remove = recv_response_by_id(&mut read, 9).await;
-    let list_remove = res_hist_remove["result"]
-        .as_array()
-        .expect("history list");
+    let list_remove = res_hist_remove["result"].as_array().expect("history list");
     assert_eq!(list_remove.len(), 2);
     assert_eq!(list_remove[0]["eventType"], "removed");
     assert_eq!(list_remove[1]["eventType"], "resumed");

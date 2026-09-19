@@ -1,5 +1,5 @@
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// A 128-bit Kad Node ID or Key ID.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -192,10 +192,8 @@ mod tests {
         // In eMule CUInt128::SetValueBE on little-endian x86/x64:
         // each 32-bit DWORD is stored with bytes reversed:
         let expected_wire = [
-            0x03, 0x02, 0x01, 0x00,
-            0x07, 0x06, 0x05, 0x04,
-            0x0B, 0x0A, 0x09, 0x08,
-            0x0F, 0x0E, 0x0D, 0x0C,
+            0x03, 0x02, 0x01, 0x00, 0x07, 0x06, 0x05, 0x04, 0x0B, 0x0A, 0x09, 0x08, 0x0F, 0x0E,
+            0x0D, 0x0C,
         ];
 
         let kad_id = KadId::from_hash_be(&ed2k_hash);
@@ -244,4 +242,3 @@ mod tests {
         assert!(!id_large.is_within_search_tolerance(&target));
     }
 }
-

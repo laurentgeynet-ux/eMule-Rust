@@ -7,14 +7,14 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use mule_protocol::ed2k::opcodes::{OP_REQUESTPARTS, OP_SENDINGPART};
+use mule_protocol::ed2k::protocol::PR_ED2K;
 use mule_protocol::ed2k::{
     BlockRequestKey, BlockRequestTracker, Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEncoder,
     Ed2kErrorKind, Ed2kLoopbackClient, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart, Ed2kSession,
     Ed2kSessionError, Ed2kSessionState, Ed2kTag, Ed2kTestPeer, TagName, TagValue, TestPeerMode,
     MAX_IN_FLIGHT_BLOCK_REQUESTS, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
-use mule_protocol::ed2k::opcodes::{OP_REQUESTPARTS, OP_SENDINGPART};
-use mule_protocol::ed2k::protocol::PR_ED2K;
 
 fn sample_user_hash() -> [u8; 16] {
     let mut h = [0x11; 16];
@@ -57,8 +57,8 @@ async fn setup_nominal_client(peer_addr: SocketAddr) -> Ed2kLoopbackClient {
 
 #[test]
 fn test_request_parts_wire_layout_byte_by_byte_matches_fixture() {
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/ed2k/request_parts.bin");
+    let fixture_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ed2k/request_parts.bin");
     let fixture_bytes = fs::read(&fixture_path).expect("failed to read request_parts.bin");
 
     // Header: 1 byte protocol (0xE3) + 4 bytes LE length (41) + 1 byte opcode (0x4B)
@@ -105,8 +105,8 @@ fn test_request_parts_wire_layout_byte_by_byte_matches_fixture() {
 
 #[test]
 fn test_sending_part_wire_layout_byte_by_byte_matches_fixture() {
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/ed2k/sending_part.bin");
+    let fixture_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ed2k/sending_part.bin");
     let fixture_bytes = fs::read(&fixture_path).expect("failed to read sending_part.bin");
 
     // Header: 1 byte protocol (0xE3) + 4 bytes LE length (1049) + 1 byte opcode (0x46)
@@ -423,7 +423,9 @@ async fn test_adversarial_unsolicited_block() {
     let mut client = setup_nominal_client(peer_addr).await;
 
     // Client does not send request_block, but listens for incoming packet
-    let res = client.receive_sending_part(Duration::from_millis(500)).await;
+    let res = client
+        .receive_sending_part(Duration::from_millis(500))
+        .await;
 
     assert!(res.is_err());
     match res.unwrap_err() {
@@ -456,7 +458,9 @@ async fn test_adversarial_duplicate_block() {
     assert!(first.is_ok());
 
     // Second receive (duplicate) is rejected as unsolicited!
-    let second = client.receive_sending_part(Duration::from_millis(500)).await;
+    let second = client
+        .receive_sending_part(Duration::from_millis(500))
+        .await;
     assert!(second.is_err());
     match second.unwrap_err() {
         Ed2kSessionError::UnsolicitedBlock(info) => {
@@ -517,7 +521,10 @@ async fn test_adversarial_compressed_0xd4_rejected() {
         .await;
 
     assert!(res.is_err());
-    assert_eq!(res.unwrap_err(), Ed2kSessionError::CompressedProtocolUnsupported);
+    assert_eq!(
+        res.unwrap_err(),
+        Ed2kSessionError::CompressedProtocolUnsupported
+    );
     assert!(client.session().is_failed());
 
     client.close().await;
@@ -542,7 +549,9 @@ async fn test_adversarial_immediate_close() {
     assert!(res.is_err());
     match res.unwrap_err() {
         Ed2kSessionError::Io(msg) => {
-            assert!(msg.contains("Connection closed") || msg.contains("closed") || msg.contains("EOF"));
+            assert!(
+                msg.contains("Connection closed") || msg.contains("closed") || msg.contains("EOF")
+            );
         }
         other => panic!("Unexpected error: {other:?}"),
     }
@@ -594,12 +603,18 @@ fn test_block_tracker_overlap_rejected() {
     // Overlapping [500..1500] must be rejected
     let key_overlap = BlockRequestKey::new(hash, 500, 1500);
     let res = tracker.register_request(key_overlap, now);
-    assert!(matches!(res, Err(Ed2kSessionError::DuplicateBlockRequest(_))));
+    assert!(matches!(
+        res,
+        Err(Ed2kSessionError::DuplicateBlockRequest(_))
+    ));
 
     // Exact duplicate [0..1000] must be rejected
     let key_exact = BlockRequestKey::new(hash, 0, 1000);
     let res2 = tracker.register_request(key_exact, now);
-    assert!(matches!(res2, Err(Ed2kSessionError::DuplicateBlockRequest(_))));
+    assert!(matches!(
+        res2,
+        Err(Ed2kSessionError::DuplicateBlockRequest(_))
+    ));
 
     // Non-overlapping [1000..2000] is accepted
     let key_ok = BlockRequestKey::new(hash, 1000, 2000);
@@ -633,18 +648,30 @@ fn test_request_bounds_and_limits_rejected() {
 
     // 1. start >= end
     let res_inverted = session.send_block_request(hash, 1000, 500, file_size, now);
-    assert!(matches!(res_inverted, Err(Ed2kSessionError::InvalidBlockRequest(_))));
+    assert!(matches!(
+        res_inverted,
+        Err(Ed2kSessionError::InvalidBlockRequest(_))
+    ));
 
     let res_equal = session.send_block_request(hash, 1000, 1000, file_size, now);
-    assert!(matches!(res_equal, Err(Ed2kSessionError::InvalidBlockRequest(_))));
+    assert!(matches!(
+        res_equal,
+        Err(Ed2kSessionError::InvalidBlockRequest(_))
+    ));
 
     // 2. end > file_size
     let res_excess = session.send_block_request(hash, 400_000, 500_001, file_size, now);
-    assert!(matches!(res_excess, Err(Ed2kSessionError::InvalidBlockRequest(_))));
+    assert!(matches!(
+        res_excess,
+        Err(Ed2kSessionError::InvalidBlockRequest(_))
+    ));
 
     // 3. block_len > 184,320
     let res_too_large = session.send_block_request(hash, 0, 184_321, file_size, now);
-    assert!(matches!(res_too_large, Err(Ed2kSessionError::InvalidBlockRequest(_))));
+    assert!(matches!(
+        res_too_large,
+        Err(Ed2kSessionError::InvalidBlockRequest(_))
+    ));
 
     // 4. valid request (184,320 bytes exactly)
     let res_valid = session.send_block_request(hash, 0, 184_320, file_size, now);
@@ -661,8 +688,12 @@ fn test_disconnect_cancels_all_in_flight_requests() {
     let hash = [0x44; 16];
     let now = Instant::now();
 
-    assert!(session.send_block_request(hash, 0, 1000, 10000, now).is_ok());
-    assert!(session.send_block_request(hash, 1000, 2000, 10000, now).is_ok());
+    assert!(session
+        .send_block_request(hash, 0, 1000, 10000, now)
+        .is_ok());
+    assert!(session
+        .send_block_request(hash, 1000, 2000, 10000, now)
+        .is_ok());
     assert_eq!(session.pending_block_request_count(), 2);
 
     let cancelled = session.cancel_all_block_requests();

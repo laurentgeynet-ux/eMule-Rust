@@ -5,13 +5,15 @@ use bytes::Bytes;
 use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
-    OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLO_ANSWER,
-    OP_PUBLICKEY, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SECIDENTSTATE, OP_SENDINGPART,
-    OP_SETREQFILEID_EMULE, OP_SIGNATURE,
+    OP_AICHFILEHASHREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_AICH_REQUEST, OP_EMULE_INFO,
+    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HASHSETANSWER, OP_HASHSETREQUEST,
+    OP_HELLO, OP_HELLO_ANSWER, OP_PUBLICKEY, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    OP_SECIDENTSTATE, OP_SENDINGPART, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
 };
 use super::packet::{
-    Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
-    Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
+    Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
+    Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq,
+    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
     Ed2kSendingPart, Ed2kSignature,
 };
 use super::profile::Ed2kCompatibilityProfile;
@@ -19,18 +21,23 @@ use super::protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRE
 use crate::framing::RawPacket;
 use crate::limits::HEADER_SIZE;
 
+pub mod aich;
 pub mod handshake;
 pub mod security;
 pub mod status;
 pub mod transfers;
 
+pub use aich::{
+    decode_aich_answer, decode_aich_file_hash_req, decode_aich_file_hash_res, decode_aich_request,
+};
 pub use handshake::{decode_emule_info, decode_hello, decode_hello_answer};
 pub use security::{decode_public_key, decode_secident_state, decode_signature};
 pub use status::{
     decode_file_req_ans_no_file, decode_file_status, decode_file_status_req_with_profile,
 };
 pub use transfers::{
-    decode_request_parts_with_profile, decode_sending_part,
+    decode_hashset_answer, decode_hashset_request, decode_request_parts_with_profile,
+    decode_sending_part,
 };
 
 /// Read-only wire decoder for eD2K protocol frames.
@@ -65,10 +72,7 @@ impl Ed2kDecoder {
     }
 
     /// Creates a new decoder with customized limits and an explicit compatibility profile.
-    pub fn with_limits_and_profile(
-        limits: Ed2kLimits,
-        profile: Ed2kCompatibilityProfile,
-    ) -> Self {
+    pub fn with_limits_and_profile(limits: Ed2kLimits, profile: Ed2kCompatibilityProfile) -> Self {
         Self { limits, profile }
     }
 
@@ -275,9 +279,33 @@ impl Ed2kDecoder {
                 let part = self.decode_sending_part(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::SendingPart(part))
             }
+            (PR_ED2K, OP_HASHSETREQUEST) => {
+                let req = self.decode_hashset_request(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::HashSetReq(req))
+            }
+            (PR_ED2K, OP_HASHSETANSWER) => {
+                let ans = self.decode_hashset_answer(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::HashSetAnswer(ans))
+            }
             (PR_EMULE, OP_EMULE_INFO) => {
                 let info = self.decode_emule_info(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::EmuleInfo(info))
+            }
+            (PR_EMULE, OP_AICHFILEHASHREQ) => {
+                let req = self.decode_aich_file_hash_req(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::AichFileHashReq(req))
+            }
+            (PR_EMULE, OP_AICHFILEHASHRES) => {
+                let res = self.decode_aich_file_hash_res(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::AichFileHashRes(res))
+            }
+            (PR_EMULE, OP_AICH_REQUEST) => {
+                let req = self.decode_aich_request(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::AichRequest(req))
+            }
+            (PR_EMULE, OP_AICH_ANSWER) => {
+                let ans = self.decode_aich_answer(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::AichAnswer(ans))
             }
             (PR_EMULE, OP_PUBLICKEY) => {
                 let key = self.decode_public_key(protocol, opcode, payload, HEADER_SIZE + 1)?;
@@ -466,6 +494,24 @@ impl Ed2kDecoder {
                 )?;
                 Ok(Ed2kMessage::SendingPart(part))
             }
+            (PR_ED2K, OP_HASHSETREQUEST) => {
+                let req = self.decode_hashset_request(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::HashSetReq(req))
+            }
+            (PR_ED2K, OP_HASHSETANSWER) => {
+                let ans = self.decode_hashset_answer(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::HashSetAnswer(ans))
+            }
             (PR_EMULE, OP_EMULE_INFO) => {
                 let info = self.decode_emule_info(
                     packet.protocol,
@@ -474,6 +520,42 @@ impl Ed2kDecoder {
                     0,
                 )?;
                 Ok(Ed2kMessage::EmuleInfo(info))
+            }
+            (PR_EMULE, OP_AICHFILEHASHREQ) => {
+                let req = self.decode_aich_file_hash_req(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::AichFileHashReq(req))
+            }
+            (PR_EMULE, OP_AICHFILEHASHRES) => {
+                let res = self.decode_aich_file_hash_res(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::AichFileHashRes(res))
+            }
+            (PR_EMULE, OP_AICH_REQUEST) => {
+                let req = self.decode_aich_request(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::AichRequest(req))
+            }
+            (PR_EMULE, OP_AICH_ANSWER) => {
+                let ans = self.decode_aich_answer(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::AichAnswer(ans))
             }
             (PR_EMULE, OP_PUBLICKEY) => {
                 let key = self.decode_public_key(
@@ -598,13 +680,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kRequestParts, Ed2kParseError> {
-        self.decode_request_parts_with_profile(
-            self.profile,
-            protocol,
-            opcode,
-            payload,
-            base_offset,
-        )
+        self.decode_request_parts_with_profile(self.profile, protocol, opcode, payload, base_offset)
     }
 
     /// Decodes a request parts payload according to an explicit `Ed2kCompatibilityProfile`.
@@ -630,6 +706,72 @@ impl Ed2kDecoder {
         decode_sending_part(protocol, opcode, payload, base_offset)
     }
 
+    /// Decodes an `OP_HASHSETREQUEST` (`0x51`) payload.
+    pub fn decode_hashset_request(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kHashSetReq, Ed2kParseError> {
+        decode_hashset_request(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_HASHSETANSWER` (`0x52`) payload.
+    pub fn decode_hashset_answer(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kHashSetAnswer, Ed2kParseError> {
+        decode_hashset_answer(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_AICHFILEHASHREQ` (eMule `0x14`) payload.
+    pub fn decode_aich_file_hash_req(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kAichFileHashReq, Ed2kParseError> {
+        decode_aich_file_hash_req(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_AICHFILEHASHANS` (eMule `0x15`) payload.
+    pub fn decode_aich_file_hash_res(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kAichFileHashRes, Ed2kParseError> {
+        decode_aich_file_hash_res(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_AICHREQUEST` (eMule `0x12`) payload.
+    pub fn decode_aich_request(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kAichRequest, Ed2kParseError> {
+        decode_aich_request(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_AICHANSWER` (eMule `0x13`) payload.
+    pub fn decode_aich_answer(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kAichAnswer, Ed2kParseError> {
+        decode_aich_answer(protocol, opcode, payload, base_offset)
+    }
+
     /// Decodes an `OP_PUBLICKEY` (`0x85`) payload.
     pub fn decode_public_key(
         &self,
@@ -641,7 +783,7 @@ impl Ed2kDecoder {
         decode_public_key(protocol, opcode, payload, base_offset)
     }
 
-    /// Decodes an `OP_SIGNATURE` (`0x87`) payload.
+    /// Decodes an `OP_SIGNATURE` (`0x86`) payload.
     pub fn decode_signature(
         &self,
         protocol: u8,
@@ -652,7 +794,7 @@ impl Ed2kDecoder {
         decode_signature(protocol, opcode, payload, base_offset)
     }
 
-    /// Decodes an `OP_SECIDENTSTATE` (`0x86`) payload.
+    /// Decodes an `OP_SECIDENTSTATE` (`0x87`) payload.
     pub fn decode_secident_state(
         &self,
         protocol: u8,

@@ -33,7 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--mode" | "--workdir-mode" if i + 1 < args.len() => {
                 mode_override = match args[i + 1].to_lowercase().as_str() {
                     "portable" => Some(mule_daemon::WorkDirMode::Portable),
-                    "installeddefault" | "installed" => Some(mule_daemon::WorkDirMode::InstalledDefault),
+                    "installeddefault" | "installed" => {
+                        Some(mule_daemon::WorkDirMode::InstalledDefault)
+                    }
                     "environment" | "env" => Some(mule_daemon::WorkDirMode::Environment),
                     "explicitcli" | "cli" => Some(mule_daemon::WorkDirMode::ExplicitCli),
                     _ => None,
@@ -92,7 +94,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut resolved_workdir = mule_daemon::WorkDirectoryResolver::resolve(data_dir_arg, downloads_dir_arg);
+    let mut resolved_workdir =
+        mule_daemon::WorkDirectoryResolver::resolve(data_dir_arg, downloads_dir_arg);
     if let Some(mode) = mode_override {
         resolved_workdir.mode = mode;
     } else if resolved_workdir.mode == mule_daemon::WorkDirMode::ExplicitCli {
@@ -106,8 +109,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let data_dir = resolved_workdir.workdir;
     let default_download_dir = resolved_workdir.default_download_dir;
-    println!("==> Workdir mode: {:?} ({})", resolved_workdir.mode, data_dir.display());
-    println!("==> Default download dir: {}", default_download_dir.display());
+    println!(
+        "==> Workdir mode: {:?} ({})",
+        resolved_workdir.mode,
+        data_dir.display()
+    );
+    println!(
+        "==> Default download dir: {}",
+        default_download_dir.display()
+    );
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&default_download_dir)?;
 
@@ -119,11 +129,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .open(data_dir.join("daemon.log"))
         .ok();
 
-    let timer = tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339()
-        .unwrap_or_else(|_| tracing_subscriber::fmt::time::OffsetTime::new(
+    let timer = tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339().unwrap_or_else(|_| {
+        tracing_subscriber::fmt::time::OffsetTime::new(
             time::UtcOffset::UTC,
             time::format_description::well_known::Rfc3339,
-        ));
+        )
+    });
 
     let file_layer = log_file.map(|f| {
         tracing_subscriber::fmt::layer()
@@ -206,7 +217,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ed2k_port = ed2k_port_arg.unwrap_or(39735);
     let kad_port = kad_port_arg.unwrap_or(39737);
     let upnp_enabled = upnp_arg.unwrap_or(true);
-    let network_profile = profile_arg.unwrap_or(mule_network_policy::NetworkProfile::PublicEd2kKadPreview);
+    let network_profile =
+        profile_arg.unwrap_or(mule_network_policy::NetworkProfile::PublicEd2kKadPreview);
 
     let config = DaemonConfig::new(data_dir.clone(), auth_token)
         .with_bind_addr(actual_addr)
@@ -257,10 +269,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         });
-        let refresh_handle = state.upnp.clone().start_periodic_refresh(
-            tokio::time::Duration::from_secs(45 * 60),
-            cancel_token,
-        );
+        let refresh_handle = state
+            .upnp
+            .clone()
+            .start_periodic_refresh(tokio::time::Duration::from_secs(45 * 60), cancel_token);
         state.register_task(refresh_handle.abort_handle()).await;
     }
 
@@ -273,7 +285,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             "0.0.0.0"
         };
-        let kad_bind_addr: std::net::SocketAddr = format!("{kad_bind_ip}:{kad_port}").parse().unwrap();
+        let kad_bind_addr: std::net::SocketAddr =
+            format!("{kad_bind_ip}:{kad_port}").parse().unwrap();
         tokio::spawn(async move {
             kad_svc.init_from_db().await;
             if let Err(e) = kad_svc.udp().start(kad_bind_addr).await {
@@ -282,6 +295,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tracing::info!("Kad UDP socket auto-started on {kad_bind_addr}");
                 kad_svc.bootstrap_active_contacts(15).await;
                 kad_svc.start_background_maintenance(kad_cancel);
+            }
+        });
+
+        // Server UDP socket (OP_GLOBGETSOURCES2 / OP_GLOBFOUNDSOURCES) —
+        // separate ephemeral socket like eMule's `UDPSocket`.
+        let server_udp_svc = state.server_udp.clone();
+        let server_udp_bind_ip: std::net::IpAddr = kad_bind_ip.parse().unwrap();
+        tokio::spawn(async move {
+            match server_udp_svc.start(server_udp_bind_ip).await {
+                Ok(bound) => tracing::info!("Server UDP socket auto-started on {bound}"),
+                Err(e) => tracing::warn!("Failed to auto-start server UDP: {e}"),
             }
         });
     }
@@ -294,7 +318,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             "0.0.0.0"
         };
-        let inbound_bind_addr: std::net::SocketAddr = format!("{inbound_bind_ip}:{ed2k_port}").parse().unwrap();
+        let inbound_bind_addr: std::net::SocketAddr =
+            format!("{inbound_bind_ip}:{ed2k_port}").parse().unwrap();
         tokio::spawn(async move {
             match listener_svc.start(inbound_bind_addr).await {
                 Ok(bound) => {
@@ -306,6 +331,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+
+    // USS (Upload Speed Sense) — dynamic upload limiter driven by latency
+    // probes to the connected server (idles while disabled).
+    state.uss.start(
+        state.network_policy.rate_limiters(),
+        state.network_policy.cancellation_token(),
+    );
 
     // Auto-start autonomous Swarm Coordinator for background source discovery & peer connections
     let coordinator_handle = mule_daemon::services::SwarmCoordinator::start(state.clone());
@@ -366,7 +398,9 @@ fn spawn_parent_watchdog(parent_pid: u32, shutdown_notify: std::sync::Arc<tokio:
         const SYNCHRONIZE: u32 = 0x00100000;
         let handle = unsafe { OpenProcess(SYNCHRONIZE, 0, parent_pid) };
         if handle.is_null() {
-            eprintln!("==> Parent process PID {parent_pid} not running or inaccessible; initiating exit.");
+            eprintln!(
+                "==> Parent process PID {parent_pid} not running or inaccessible; initiating exit."
+            );
             shutdown_notify.notify_waiters();
             return;
         }

@@ -18,8 +18,7 @@ pub use framing::{
 };
 pub use keys::{
     derive_initiator_peer_ciphers, derive_initiator_peer_raw_keys, derive_responder_peer_ciphers,
-    derive_responder_peer_raw_keys, derive_server_ciphers, MAGICVALUE_REQUESTER,
-    MAGICVALUE_SERVER,
+    derive_responder_peer_raw_keys, derive_server_ciphers, MAGICVALUE_REQUESTER, MAGICVALUE_SERVER,
 };
 pub use rc4::Rc4Cipher;
 

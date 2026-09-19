@@ -35,7 +35,7 @@ pub fn encode_public_key(
     Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
 }
 
-/// Encodes an `OP_SIGNATURE` (`0x87`) message into a `RawPacket`.
+/// Encodes an `OP_SIGNATURE` (`0x86`) message into a `RawPacket`.
 pub fn encode_signature(
     limits: &Ed2kLimits,
     sig: &Ed2kSignature,
@@ -61,7 +61,7 @@ pub fn encode_signature(
     Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
 }
 
-/// Encodes an `OP_SECIDENTSTATE` (`0x86`) message into a `RawPacket`.
+/// Encodes an `OP_SECIDENTSTATE` (`0x87`) message into a `RawPacket`.
 pub fn encode_secident_state(
     limits: &Ed2kLimits,
     state: &Ed2kSecIdentState,

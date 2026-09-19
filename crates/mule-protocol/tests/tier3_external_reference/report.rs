@@ -113,7 +113,13 @@ impl Tier3DivergenceReport {
     }
 
     /// Records a protocol divergence.
-    pub fn record_divergence(&mut self, area: &str, expected: &str, observed: &str, severity: &str) {
+    pub fn record_divergence(
+        &mut self,
+        area: &str,
+        expected: &str,
+        observed: &str,
+        severity: &str,
+    ) {
         self.divergences.push(DivergenceEntry {
             area: area.to_string(),
             expected: expected.to_string(),
@@ -152,19 +158,26 @@ impl Tier3DivergenceReport {
 
         // Check for common leaked host artifacts
         if let Ok(username) = std::env::var("USERNAME") {
-            if !username.is_empty() && serialized.to_lowercase().contains(&username.to_lowercase()) {
-                return Err(format!("Anonymity violation: report contains host username '{username}'"));
+            if !username.is_empty() && serialized.to_lowercase().contains(&username.to_lowercase())
+            {
+                return Err(format!(
+                    "Anonymity violation: report contains host username '{username}'"
+                ));
             }
         }
         if let Ok(user) = std::env::var("USER") {
             if !user.is_empty() && serialized.to_lowercase().contains(&user.to_lowercase()) {
-                return Err(format!("Anonymity violation: report contains host USER '{user}'"));
+                return Err(format!(
+                    "Anonymity violation: report contains host USER '{user}'"
+                ));
             }
         }
 
         // Check for typical Windows or Unix absolute home paths
         if serialized.contains(":\\Users\\") || serialized.contains("/home/") {
-            return Err("Anonymity violation: report contains host user home directory path".to_string());
+            return Err(
+                "Anonymity violation: report contains host user home directory path".to_string(),
+            );
         }
 
         Ok(())
