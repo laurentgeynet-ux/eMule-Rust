@@ -515,11 +515,18 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `QA_RECEPTION_PROTOCOL.md` | Protocole de réception QA |
 | `compatibility-matrix.md` | Matrice de compatibilité |
 | `test-vectors.md` | Vecteurs de test documentés |
-| `walkthrough.md` | Guide pas-à-pas général |
-| `walkthroughTier3.md` | Walkthrough tier 3 |
-| `walkthrough_Phase_12.md` | Walkthrough phase 12 |
-| `walkthrough_Phase_8.md` | Walkthrough phase 8 |
-| `walkthrough_v0.1.2-lab.md` | Walkthrough version 0.1.2-lab |
+| `WALKTHROUGHS_INDEX.md` | Répertoire maître et table d'orientation de tous les walkthroughs |
+| `walkthrough.md` | Guide pas-à-pas général (Phases 1 à 3C) |
+| `walkthroughTier3.md` | Walkthrough Tier 3 (Interopérabilité eMule 0.50a officiel) |
+| `walkthrough_v0.1.2-lab.md` | Walkthrough version 0.1.2-lab (Phase 7.2) |
+| `walkthrough_Phase_8.md` | Walkthrough Phase 8 (8.1 à 8.5) |
+| `walkthrough_Phase_9.md` | Walkthrough Phase 9 (9.0 & 9.1 Politique réseau et IP filter) |
+| `walkthrough_Phase_10.md` | Walkthrough Phase 10 (10.0 à 10.2 Infrastructure serveurs eD2K) |
+| `walkthrough_Phase_11.md` | Walkthrough Phase 11 (Swarm multi-sources, allocateur water-filling) |
+| `walkthrough_Phase_12.md` | Walkthrough Phase 12 (Fondations Kad DHT) |
+| `walkthrough_Phase_13.md` | Walkthrough Phase 13 (Source Exchange v4, compression zlib, MCP) |
+| `walkthrough_Phase_14.md` | Walkthrough Phase 14 (Convergence recherche Kad DHT & Clean Architecture) |
+| `walkthrough_Phase_15.md` | Walkthrough Phase 15 (Swarm multi-pairs, eMule queue ranking, logs stratégiques) |
 | `ed2k/compatibility-notes.md` | Notes de compatibilité eD2k |
 | `ed2k/framing.md` | Documentation du cadrage eD2k |
 | `ed2k/limits.md` | Limites du protocole eD2k |

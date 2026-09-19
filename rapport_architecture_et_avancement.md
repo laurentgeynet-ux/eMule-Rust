@@ -298,7 +298,7 @@ Le projet dispose d'une suite complète de plus de 60 outils MCP intégrés (`cr
 Toutes les vérifications s'exécutent de manière reproductible et hors-ligne :
 
 ```powershell
-# 1. Compilation du workspace complet (Rust v0.1.7)
+# 1. Compilation du workspace complet (Rust v0.1.8)
 cargo check --workspace --all-targets --all-features
 
 # 2. Linter Rust
@@ -317,7 +317,28 @@ flutter test
 
 ---
 
-## 9. Conclusion
+## 9. Inventaire Exhaustif des Guides Techniques & Walkthroughs (`docs/`)
+
+Chaque phase et sous-système d'Emule-Sion dispose d'un guide technique d'exécution et de validation détaillé, accessible via l'index maître [`docs/WALKTHROUGHS_INDEX.md`](file:///d:/Projet/Emule-Sion/docs/WALKTHROUGHS_INDEX.md) :
+
+| Document | Phase Couverte | Contenu Clé |
+| :--- | :--- | :--- |
+| [`docs/WALKTHROUGHS_INDEX.md`](file:///d:/Projet/Emule-Sion/docs/WALKTHROUGHS_INDEX.md) | **Toutes (1 à 15)** | Index maître, orientation thématique et commandes de validation globales. |
+| [`docs/walkthrough.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough.md) | **Phase 1 à 3C** | Fondations Rust, démon Tokio, UI initiale, durcissement produit, verrous `fs4`, tokens CSPRNG, packaging. |
+| [`docs/walkthroughTier3.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughTier3.md) | **Tier 3.1 à 3.6** | Interopérabilité loopback eMule 0.50a officiel, handshake, bitfields, blocs 9.28 Mo, résidu 1 octet, crash recovery. |
+| [`docs/walkthrough_v0.1.2-lab.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_v0.1.2-lab.md) | **Phase 7.2** | Mode portable hybride, étanchéité `data/` vs `downloads/`, persistance de suppression SQLite, pipeline QA E2E. |
+| [`docs/walkthrough_Phase_8.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_8.md) | **Phase 8.1 à 8.5** | Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`, packaging multi-saveurs. |
+| [`docs/walkthrough_Phase_9.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_9.md) | **Phase 9.0 & 9.1** | Politique réseau défensive (7 couches, permis RAII, Kill Switch), IP Filter (`ipfilter.dat`), Token Bucket, pseudonymisation salée. |
+| [`docs/walkthrough_Phase_10.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_10.md) | **Phase 10.0 à 10.2** | Local `server.met` parsing, session TCP serveur eD2K réelle (Lugdunum), HighID/LowID, recherche et sources serveur. |
+| [`docs/walkthrough_Phase_11.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_11.md) | **Phase 11** | Swarm multi-sources, allocateur dynamique Water-Filling Max-Min, démarrage basse latence (30s/60s/300s), tags fixes eD2K. |
+| [`docs/walkthrough_Phase_12.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_12.md) | **Phase 12** | Fondations Kad DHT, KadId 128-bit, K-Buckets LRU, transport UDP, bootstrap local et écran Kad UI. |
+| [`docs/walkthrough_Phase_13.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_13.md) | **Phase 13** | Source Exchange v4 (SX1/SX2), blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif MCP (83 outils). |
+| [`docs/walkthrough_Phase_14.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_14.md) | **Phase 14** | Convergence recherche Kad DHT (CUInt128 DWORDs, opcode 0x3B, anti-stall decay) et refactorisation Clean Architecture. |
+| [`docs/walkthrough_Phase_15.md`](file:///d:/Projet/Emule-Sion/docs/walkthrough_Phase_15.md) | **Phase 15** | Téléchargement multi-pairs réel (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue`), logs stratégiques, `INDEX.md`. |
+
+---
+
+## 10. Conclusion
 
 Le projet **Emule-Sion** a franchi avec succès les jalons de conception les plus exigeants :
 * L'architecture a atteint le stade **v0.1.8** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
