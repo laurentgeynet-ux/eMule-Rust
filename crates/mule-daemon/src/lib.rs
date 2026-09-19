@@ -23,7 +23,10 @@ pub use lock::DirectoryLock;
 pub use rpc::{
     create_router, DownloadSnapshot, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
 };
-pub use services::{DownloadService, SourceAvailabilitySummary};
+pub use services::{
+    DaemonEvent, DownloadDetail, DownloadService, ImportPartMetResult,
+    PartMetInspection, PartProgressSummary, SourceAvailabilitySummary,
+};
 pub use session::DaemonSession;
 pub use state::AppState;
 pub use workdir::{

@@ -1,71 +1,21 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+pub mod nodes_dat;
+pub mod search_keywords;
+pub mod search_sources;
+pub mod types;
+
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use mule_core::kad::{extract_kad_keywords, hash_kad_keyword, KBucketTable, KadContact, KadId};
-use mule_core::model::{PeerSource, PeerSourceOrigin, PeerSourceStatus};
+use mule_core::kad::{KBucketTable, KadContact, KadId};
+use mule_core::model::PeerSource;
 use mule_filter::IpFilter;
-use mule_format::kad::{NodesDatFile, MAX_NODES_DAT_SIZE};
 use mule_network_policy::{classify_ip, CancellationToken, IpCategory, NetworkPolicyManager, NetworkProfile};
 
 use crate::services::downloads::DownloadService;
 use crate::services::kad_udp::KadUdpService;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KadStatusSnapshot {
-    pub local_id: String,
-    pub total_contacts: usize,
-    pub total_replacements: usize,
-    pub db_contacts_count: usize,
-    pub active_buckets: usize,
-    pub network_profile: String,
-    pub is_udp_active: bool,
-    pub udp_bind_address: Option<String>,
-    pub packets_sent: u64,
-    pub packets_received: u64,
-    pub active_transactions: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodesDatInspectReport {
-    pub version: u32,
-    pub declared_count: usize,
-    pub valid_contacts_count: usize,
-    pub rejected_by_policy_count: usize,
-    pub rejected_by_filter_count: usize,
-    pub sample_contacts: Vec<KadContactEntryDto>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KadContactEntryDto {
-    pub kad_id: String,
-    pub ip: String,
-    pub udp_port: u16,
-    pub tcp_port: Option<u16>,
-    pub version: u8,
-    pub verified: bool,
-    pub fail_count: u32,
-    pub last_seen_unix_ms: u64,
-}
-
-impl From<&KadContact> for KadContactEntryDto {
-    fn from(c: &KadContact) -> Self {
-        Self {
-            kad_id: c.kad_id.to_hex(),
-            ip: c.ip.to_string(),
-            udp_port: c.udp_port,
-            tcp_port: c.tcp_port,
-            version: c.version,
-            verified: c.verified,
-            fail_count: c.fail_count,
-            last_seen_unix_ms: c.last_seen_unix_ms,
-        }
-    }
-}
+pub use types::{KadContactEntryDto, KadStatusSnapshot, NodesDatInspectReport};
 
 pub struct KadService {
     local_id: KadId,
@@ -419,121 +369,11 @@ impl KadService {
     }
 
     pub fn inspect_nodes_dat(&self, raw_bytes: &[u8]) -> Result<NodesDatInspectReport, String> {
-        if raw_bytes.len() > MAX_NODES_DAT_SIZE {
-            return Err(format!(
-                "File size {} exceeds maximum allowed {}",
-                raw_bytes.len(),
-                MAX_NODES_DAT_SIZE
-            ));
-        }
-
-        let nodes_file = NodesDatFile::parse(std::io::Cursor::new(raw_bytes))
-            .map_err(|e| format!("Failed to parse nodes.dat: {e}"))?;
-
-        let profile = self.policy_mgr.profile();
-        let mut valid_count = 0;
-        let mut policy_rejected = 0;
-        let mut filter_rejected = 0;
-        let mut sample_contacts = Vec::new();
-
-        for entry in &nodes_file.contacts {
-            let ip = IpAddr::V4(entry.ip);
-
-            // Policy check
-            let category = classify_ip(ip);
-            let policy_allowed = match profile {
-                NetworkProfile::LocalLab => category == IpCategory::Loopback,
-                NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                    category == IpCategory::PublicRoutable
-                }
-            };
-
-            if !policy_allowed {
-                policy_rejected += 1;
-                continue;
-            }
-
-            // Filter check
-            if self.ip_filter.check_ip(ip).is_some() {
-                filter_rejected += 1;
-                continue;
-            }
-
-            valid_count += 1;
-            if sample_contacts.len() < 20 {
-                let tcp_port = if entry.tcp_port != 0 {
-                    Some(entry.tcp_port)
-                } else {
-                    None
-                };
-                sample_contacts.push(KadContactEntryDto {
-                    kad_id: KadId(entry.client_id).to_hex(),
-                    ip: entry.ip.to_string(),
-                    udp_port: entry.udp_port,
-                    tcp_port,
-                    version: entry.version,
-                    verified: entry.verified,
-                    fail_count: 0,
-                    last_seen_unix_ms: 0,
-                });
-            }
-        }
-
-        Ok(NodesDatInspectReport {
-            version: nodes_file.version,
-            declared_count: nodes_file.contacts.len(),
-            valid_contacts_count: valid_count,
-            rejected_by_policy_count: policy_rejected,
-            rejected_by_filter_count: filter_rejected,
-            sample_contacts,
-        })
+        nodes_dat::inspect_nodes_dat(raw_bytes, &self.policy_mgr, &self.ip_filter)
     }
 
     pub async fn import_nodes_dat(&self, raw_bytes: &[u8]) -> Result<usize, String> {
-        let _ = self.inspect_nodes_dat(raw_bytes)?;
-        let nodes_file = NodesDatFile::parse(std::io::Cursor::new(raw_bytes))
-            .map_err(|e| format!("Failed to parse nodes.dat: {e}"))?;
-
-        let profile = self.policy_mgr.profile();
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
-        let mut imported_contacts = Vec::new();
-
-        for entry in nodes_file.contacts {
-            let ip = IpAddr::V4(entry.ip);
-            let category = classify_ip(ip);
-            let policy_allowed = match profile {
-                NetworkProfile::LocalLab => category == IpCategory::Loopback,
-                NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                    category == IpCategory::PublicRoutable
-                }
-            };
-
-            if !policy_allowed || self.ip_filter.check_ip(ip).is_some() {
-                continue;
-            }
-
-            let tcp_port = if entry.tcp_port != 0 {
-                Some(entry.tcp_port)
-            } else {
-                None
-            };
-            let contact = KadContact {
-                kad_id: KadId(entry.client_id),
-                ip: entry.ip,
-                udp_port: entry.udp_port,
-                tcp_port,
-                version: entry.version,
-                verified: entry.verified,
-                fail_count: 0,
-                first_seen_unix_ms: now_ms,
-                last_seen_unix_ms: now_ms,
-            };
-            imported_contacts.push(contact);
-        }
+        let imported_contacts = nodes_dat::parse_valid_nodes_contacts(raw_bytes, &self.policy_mgr, &self.ip_filter)?;
 
         // Persist to SQLite
         {
@@ -580,211 +420,16 @@ impl KadService {
         file_hash_hex: &str,
         file_size: u64,
     ) -> Result<Vec<PeerSource>, String> {
-        let f_key = file_hash_hex.to_lowercase();
-        {
-            let mut in_flight = self.in_flight_searches.lock().await;
-            if in_flight.contains(&f_key) {
-                tracing::info!(
-                    "Kad search_sources already in flight for file {}, coalescing duplicate request",
-                    f_key
-                );
-                return Ok(Vec::new());
-            }
-            in_flight.insert(f_key.clone());
-        }
-
-        struct InFlightSearchGuard {
-            set: Arc<Mutex<std::collections::HashSet<String>>>,
-            key: String,
-        }
-        impl Drop for InFlightSearchGuard {
-            fn drop(&mut self) {
-                let s = Arc::clone(&self.set);
-                let k = self.key.clone();
-                tokio::spawn(async move {
-                    let mut guard = s.lock().await;
-                    guard.remove(&k);
-                });
-            }
-        }
-        let _guard = InFlightSearchGuard {
-            set: Arc::clone(&self.in_flight_searches),
-            key: f_key,
-        };
-
-        let target_kad_id = KadId::from_hex(file_hash_hex)
-            .ok_or_else(|| format!("Invalid target file hash hex: {file_hash_hex}"))?;
-
-        let initial_closest = {
-            let table = self.routing_table.lock().await;
-            table.find_closest_verified(&target_kad_id, 10)
-        };
-
-        if initial_closest.is_empty() {
-            tracing::warn!(
-                "Kad search_sources for {}: routing table is empty (0 contacts)! Import nodes.dat or bootstrap to find sources.",
-                file_hash_hex
-            );
-            return Ok(Vec::new());
-        }
-
-        // 1. Iterative find_node step: query closest contacts to discover nodes geographically nearest to the file hash
-        tracing::info!(
-            "Kad search_sources: performing iterative find_node convergence for target hash {}...",
-            file_hash_hex
-        );
-
-        let mut closest_nodes = initial_closest;
-        let mut queried_nodes = std::collections::HashSet::new();
-
-        for iter in 0..2 {
-            let mut find_futs = Vec::new();
-            for contact in closest_nodes.iter().take(5) {
-                let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-                let receiver_id = contact.kad_id;
-                if queried_nodes.insert(addr) {
-                    let udp = Arc::clone(&self.udp);
-                    find_futs.push(async move {
-                        udp.send_find_node(addr, &target_kad_id, &receiver_id).await
-                    });
-                }
-            }
-
-            if find_futs.is_empty() {
-                break;
-            }
-
-            let find_results = futures_util::future::join_all(find_futs).await;
-            let mut new_contacts = Vec::new();
-            let profile = self.policy_mgr.profile();
-            for res in find_results {
-                if let Ok(contacts) = res {
-                    for mut c in contacts {
-                        let cat = classify_ip(IpAddr::V4(c.ip));
-                        let policy_allowed = match profile {
-                            NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                            NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                                cat == IpCategory::PublicRoutable
-                            }
-                        };
-                        if policy_allowed && self.ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                            c.verified = true;
-                            new_contacts.push(c);
-                        }
-                    }
-                }
-            }
-
-            if new_contacts.is_empty() {
-                break;
-            }
-
-            // Insert discovered contacts into routing table
-            {
-                let mut table = self.routing_table.lock().await;
-                for c in &new_contacts {
-                    table.insert_or_update(c.clone());
-                }
-                closest_nodes = table.find_closest(&target_kad_id, 12);
-            }
-            tracing::debug!("Kad search_sources: iteration {} found {} closer contacts", iter + 1, new_contacts.len());
-        }
-
-        tracing::info!(
-            "Kad starting search_sources for file {} (size={}): querying {} closest converged Kad contacts",
+        search_sources::search_sources_iterative(
             file_hash_hex,
             file_size,
-            closest_nodes.len()
-        );
-
-        let mut discovered_sources = Vec::new();
-        let profile = self.policy_mgr.profile();
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
-        let mut futs = Vec::with_capacity(closest_nodes.len());
-        for contact in closest_nodes {
-            let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-            let udp = Arc::clone(&self.udp);
-            let target_hash = target_kad_id.0;
-            let f_hex = file_hash_hex.to_string();
-            futs.push(async move {
-                tracing::debug!("Kad sending SearchSources request for {} to {}", f_hex, addr);
-                let res = udp.send_search_sources(addr, &target_hash, file_size).await;
-                (addr, res)
-            });
-        }
-
-        let results = futures_util::future::join_all(futs).await;
-        for (addr, res) in results {
-            match res {
-                Ok(wires) => {
-                    tracing::info!("Kad received {} source candidates from node {}", wires.len(), addr);
-                    for w in wires {
-                        let ip = Ipv4Addr::from(w.ip);
-                        let ip_addr = IpAddr::V4(ip);
-
-                        let cat = classify_ip(ip_addr);
-                        let policy_allowed = match profile {
-                            NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                            NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                                cat == IpCategory::PublicRoutable
-                            }
-                        };
-
-                        if !policy_allowed || self.ip_filter.check_ip(ip_addr).is_some() {
-                            continue;
-                        }
-
-                        if w.tcp_port == 0 {
-                            continue;
-                        }
-
-                        let peer_addr_str = format!("{}:{}", ip, w.tcp_port);
-                        let ip_u32 = u32::from_le_bytes(w.ip); // Conformed to little-endian eD2K standard
-
-                        discovered_sources.push(PeerSource {
-                            file_hash: file_hash_hex.to_lowercase(),
-                            address: peer_addr_str,
-                            ip: ip_u32,
-                            port: w.tcp_port,
-                            origin: PeerSourceOrigin::Kad,
-                            discovered_at_unix_ms: now_ms as i64,
-                            last_seen_unix_ms: now_ms as i64,
-                            status: PeerSourceStatus::Candidate,
-                            fail_count: 0,
-                            last_error: None,
-                            cooldown_until_unix_ms: None,
-                            user_hash: Some(hex::encode(w.kad_id)),
-                            crypt_options: w.encryption,
-                        });
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Kad search_sources to {} failed/timed out: {}", addr, e);
-                }
-            }
-        }
-
-        // Auto-inject discovered sources into DownloadService swarm
-        if !discovered_sources.is_empty() {
-            tracing::info!(
-                "Kad search_sources for {} finished: discovered {} new peer sources (persisted to download swarm)",
-                file_hash_hex,
-                discovered_sources.len()
-            );
-            let mut dl = self.downloads.lock().await;
-            let _ = dl.upsert_peer_sources(file_hash_hex, &discovered_sources);
-        } else {
-            tracing::info!(
-                "Kad search_sources for {} finished: 0 sources found from queried contacts",
-                file_hash_hex
-            );
-        }
-
-        Ok(discovered_sources)
+            &self.routing_table,
+            &self.downloads,
+            &self.policy_mgr,
+            &self.ip_filter,
+            &self.udp,
+            &self.in_flight_searches,
+        ).await
     }
 
     /// Publishes this node as a source for a given file hash to the closest Kad contacts.
@@ -794,7 +439,7 @@ impl KadService {
         file_size: u64,
         tcp_port: u16,
     ) -> Result<usize, String> {
-        let target_kad_id = KadId::from_hex(file_hash_hex)
+        let target_kad_id = KadId::from_hash_hex(file_hash_hex)
             .ok_or_else(|| format!("Invalid target file hash hex: {file_hash_hex}"))?;
 
         let closest_contacts = {
@@ -826,171 +471,15 @@ impl KadService {
         min_size: Option<u64>,
         max_size: Option<u64>,
     ) -> Result<Vec<serde_json::Value>, String> {
-        let (norm_word, keyword_kad_id) = extract_kad_keywords(term)
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| hash_kad_keyword(term));
-
-        let initial_closest = {
-            let table = self.routing_table.lock().await;
-            table.find_closest_verified(&keyword_kad_id, 10)
-        };
-
-        if initial_closest.is_empty() {
-            tracing::warn!(
-                "Kad search_keywords for '{}' (norm='{}'): routing table is empty (0 contacts)",
-                term,
-                norm_word
-            );
-            return Ok(Vec::new());
-        }
-
-        tracing::info!(
-            "Kad search_keywords: starting search for '{}' (hash={}): performing iterative find_node convergence...",
+        search_keywords::search_keywords_iterative(
             term,
-            keyword_kad_id.to_hex()
-        );
-
-        let mut closest_nodes = initial_closest;
-        let mut queried_find_nodes = std::collections::HashSet::new();
-
-        // 1. Iterative find_node step: query closest contacts to converge towards the keyword ID
-        for iter in 0..3 {
-            let mut find_futs = Vec::new();
-            for contact in closest_nodes.iter().take(8) {
-                let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-                let receiver_id = contact.kad_id;
-                if queried_find_nodes.insert(addr) {
-                    let udp = Arc::clone(&self.udp);
-                    let target_id = keyword_kad_id;
-                    find_futs.push(async move {
-                        udp.send_find_node(addr, &target_id, &receiver_id).await
-                    });
-                }
-            }
-
-            if find_futs.is_empty() {
-                break;
-            }
-
-            let find_results = futures_util::future::join_all(find_futs).await;
-            let mut new_contacts = Vec::new();
-            let profile = self.policy_mgr.profile();
-            for res in find_results {
-                if let Ok(contacts) = res {
-                    for mut c in contacts {
-                        let cat = classify_ip(IpAddr::V4(c.ip));
-                        let policy_allowed = match profile {
-                            NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                            NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                                cat == IpCategory::PublicRoutable
-                            }
-                        };
-                        if policy_allowed && self.ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                            c.verified = true;
-                            new_contacts.push(c);
-                        }
-                    }
-                }
-            }
-
-            if new_contacts.is_empty() {
-                break;
-            }
-
-            {
-                let mut table = self.routing_table.lock().await;
-                for c in &new_contacts {
-                    table.insert_or_update(c.clone());
-                }
-                closest_nodes = table.find_closest(&keyword_kad_id, 16);
-            }
-            tracing::info!(
-                "Kad search_keywords: find_node convergence round {} discovered {} new contacts (closest pool now {})",
-                iter + 1,
-                new_contacts.len(),
-                closest_nodes.len()
-            );
-        }
-
-        tracing::info!(
-            "Kad search_keywords: querying {} converged contacts for keyword '{}'...",
-            closest_nodes.len(),
-            term
-        );
-
-        let mut discovered_entries: Vec<serde_json::Value> = Vec::new();
-        let mut seen_hashes = std::collections::HashSet::new();
-        let profile = self.policy_mgr.profile();
-
-        let mut futs = Vec::with_capacity(closest_nodes.len());
-        for contact in closest_nodes {
-            let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-            let cat = classify_ip(IpAddr::V4(contact.ip));
-            let policy_allowed = match profile {
-                NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
-                    cat == IpCategory::PublicRoutable
-                }
-            };
-
-            if !policy_allowed || self.ip_filter.check_ip(IpAddr::V4(contact.ip)).is_some() {
-                continue;
-            }
-
-            let udp = Arc::clone(&self.udp);
-            let target_kw = keyword_kad_id.0;
-            futs.push(async move {
-                let res = udp.send_search_keyword(addr, &target_kw, 0).await;
-                (addr, res)
-            });
-        }
-
-        let results = futures_util::future::join_all(futs).await;
-        for (addr, res) in results {
-            match res {
-                Ok(wires) => {
-                    tracing::info!(
-                        "Kad received {} keyword search entries from node {}",
-                        wires.len(),
-                        addr
-                    );
-                    for w in wires {
-                        let file_hash_hex = KadId(w.file_hash).to_hex();
-                        if let Some(min) = min_size {
-                            if w.file_size < min {
-                                continue;
-                            }
-                        }
-                        if let Some(max) = max_size {
-                            if w.file_size > max {
-                                continue;
-                            }
-                        }
-
-                        if seen_hashes.insert(file_hash_hex.clone()) {
-                            discovered_entries.push(serde_json::json!({
-                                "fileHash": file_hash_hex,
-                                "fileName": w.file_name,
-                                "fileSize": w.file_size,
-                                "sourceCount": w.source_count,
-                            }));
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Kad search_keyword to {} failed/timed out: {}", addr, e);
-                }
-            }
-        }
-
-        tracing::info!(
-            "Kad search_keywords for '{}' finished: found {} unique file results",
-            term,
-            discovered_entries.len()
-        );
-
-        Ok(discovered_entries)
+            min_size,
+            max_size,
+            &self.routing_table,
+            &self.policy_mgr,
+            &self.ip_filter,
+            &self.udp,
+        ).await
     }
 
     /// Publishes keyword entries for a file to the closest Kad contacts.
@@ -1000,43 +489,12 @@ impl KadService {
         file_name: &str,
         file_size: u64,
     ) -> Result<usize, String> {
-        let file_kad_id = KadId::from_hex(file_hash_hex)
-            .ok_or_else(|| format!("Invalid file hash hex: {file_hash_hex}"))?;
-
-        let keywords = extract_kad_keywords(file_name);
-        if keywords.is_empty() {
-            return Ok(0);
-        }
-
-        let mut total_published = 0;
-
-        for (_word, keyword_kad_id) in keywords {
-            let closest_contacts = {
-                let table = self.routing_table.lock().await;
-                table.find_closest(&keyword_kad_id, 20)
-            };
-
-            if closest_contacts.is_empty() {
-                continue;
-            }
-
-            let entry_wire = mule_protocol::kad::KadKeywordEntryWire {
-                file_hash: file_kad_id.0,
-                file_name: file_name.to_string(),
-                file_size,
-                source_count: 1,
-            };
-
-            for contact in closest_contacts {
-                let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-                if let Ok(status) = self.udp.send_publish_keyword(addr, &keyword_kad_id.0, std::slice::from_ref(&entry_wire)).await {
-                    if status == 0 {
-                        total_published += 1;
-                    }
-                }
-            }
-        }
-
-        Ok(total_published)
+        search_keywords::publish_keyword(
+            file_hash_hex,
+            file_name,
+            file_size,
+            &self.routing_table,
+            &self.udp,
+        ).await
     }
 }

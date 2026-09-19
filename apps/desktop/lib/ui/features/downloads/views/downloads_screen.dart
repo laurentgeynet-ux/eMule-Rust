@@ -586,6 +586,7 @@ class DownloadsScreen extends StatelessWidget {
         final isSelected = viewModel.selectedDownloadId == item.id;
 
         return DownloadRow(
+          key: ValueKey(item.id),
           item: item,
           viewModel: viewModel,
           isSelected: isSelected,

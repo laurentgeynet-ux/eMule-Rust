@@ -100,7 +100,7 @@ impl NodesDatFile {
             client_id.copy_from_slice(&client_id_bytes);
 
             let ip_raw = cr.read_u32_le("node ip")?;
-            let ip = Ipv4Addr::from(ip_raw.to_be());
+            let ip = Ipv4Addr::from(ip_raw);
 
             let udp_port = cr.read_u16_le("node udp_port")?;
             let tcp_port = cr.read_u16_le("node tcp_port")?;
@@ -162,7 +162,7 @@ impl NodesDatFile {
 
         for contact in &self.contacts {
             writer.write_all(&contact.client_id)?;
-            let ip_u32 = u32::from(contact.ip).to_be();
+            let ip_u32 = u32::from(contact.ip);
             writer.write_all(&ip_u32.to_le_bytes())?;
             writer.write_all(&contact.udp_port.to_le_bytes())?;
             writer.write_all(&contact.tcp_port.to_le_bytes())?;

@@ -10,7 +10,13 @@
 //! - Local wire frame generation for `OP_REQUESTPARTS_EMULE` (`0x47`) without transmission.
 //! - Strict rejection of block planning when `OP_FILEREQANSNOFILE` (`0x48`) is received.
 
+pub mod sink;
+pub mod types;
+
 use crate::framing::RawPacket;
+pub use sink::{Ed2kBlockSink, MAX_MEMORY_SINK_SIZE};
+pub use types::{Ed2kSequencerError, InFlightBlock};
+
 use super::encoder::Ed2kEncoder;
 use super::packet::{Ed2kBlockRange, Ed2kFileStatus, Ed2kRequestParts, Ed2kSendingPart};
 use super::session::Ed2kSessionError;
@@ -23,110 +29,6 @@ pub const ED2K_BLOCK_SIZE: usize = crate::limits::ED2K_BLOCK_SIZE;
 
 /// Maximum number of block ranges allowed per standard eD2K request packet (3).
 pub const MAX_REQUEST_RANGES_PER_PACKET: usize = 3;
-
-/// Errors arising during download sequencing and block request planning.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum Ed2kSequencerError {
-    /// Remote peer reported file not shared or unknown via `OP_FILEREQANSNOFILE` (`0x48`).
-    #[error("File is not shared or known by remote peer: {0}")]
-    FileNotFound(String),
-
-    /// File size is zero.
-    #[error("File size is 0 bytes")]
-    EmptyFile,
-
-    /// Requested file hash does not match status hash.
-    #[error("Hash mismatch: expected {expected}, got {actual}")]
-    HashMismatch {
-        /// Expected file hash hex.
-        expected: String,
-        /// Actual status file hash hex.
-        actual: String,
-    },
-
-    /// Part index is out of bounds for the file.
-    #[error("Part index {part_index} is out of bounds (total parts: {total_parts})")]
-    PartIndexOutOfBounds {
-        /// Requested part index.
-        part_index: u16,
-        /// Total number of parts in file.
-        total_parts: u16,
-    },
-
-    /// Part index is not available from the remote peer.
-    #[error("Part index {part_index} is not available from remote source (total parts: {total_parts})")]
-    PartNotAvailable {
-        /// Requested part index.
-        part_index: u16,
-        /// Total number of parts in file.
-        total_parts: u16,
-    },
-
-    /// Invalid block range parameters.
-    #[error("Invalid block range [{start}, {end}): {reason}")]
-    InvalidBlockRange {
-        /// Start byte offset.
-        start: u64,
-        /// End byte offset (exclusive).
-        end: u64,
-        /// Failure explanation.
-        reason: String,
-    },
-
-    /// Block range improperly crosses an eD2K part boundary.
-    #[error("Block range [{start}, {end}) crosses part boundary at {part_boundary}")]
-    CrossPartBoundary {
-        /// Start byte offset.
-        start: u64,
-        /// End byte offset (exclusive).
-        end: u64,
-        /// Byte offset of the crossed part boundary.
-        part_boundary: u64,
-    },
-
-    /// Number of requested ranges exceeds protocol maximum (3).
-    #[error("Requested {count} ranges exceeds maximum allowed {max} ranges per packet")]
-    TooManyRanges {
-        /// Number of ranges specified.
-        count: usize,
-        /// Maximum allowed ranges.
-        max: usize,
-    },
-
-    /// No block ranges specified.
-    #[error("Zero ranges specified for block request")]
-    EmptyRanges,
-
-    /// Wire encoding failure.
-    #[error("Encoding error: {0}")]
-    Encode(String),
-
-    /// Block payload data length does not match specified range bounds.
-    #[error("Block data length mismatch: expected {expected} bytes, got {actual} bytes")]
-    BlockDataMismatch {
-        /// Expected byte count (`end - start`).
-        expected: usize,
-        /// Actual payload byte count.
-        actual: usize,
-    },
-
-    /// Block range was already received and written.
-    #[error("Duplicate block received for range [{start}, {end})")]
-    DuplicateBlock {
-        /// Start byte offset.
-        start: u64,
-        /// End byte offset (exclusive).
-        end: u64,
-    },
-
-    /// Compressed frame received when uncompressed block transfer was expected.
-    #[error("Compressed block transfer is not negotiated or supported in passive profile")]
-    CompressedNotSupported,
-
-    /// Storage, filesystem, or serialization error.
-    #[error("Storage error: {0}")]
-    Storage(String),
-}
 
 /// Deterministic download sequencer and block request planner for an active eD2K peer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,8 +67,6 @@ impl Ed2kDownloadSequencer {
     }
 
     /// Creates a sequencer from the result of a file status request.
-    ///
-    /// If the result was `Ed2kSessionError::FileNotFound`, immediately returns `Ed2kSequencerError::FileNotFound`.
     pub fn from_file_status_result(
         file_hash: [u8; 16],
         file_size: u64,
@@ -204,12 +104,6 @@ impl Ed2kDownloadSequencer {
     }
 
     /// Returns true if the remote peer has the specified part index available.
-    ///
-    /// Respects the eMule protocol specification:
-    /// - If `status.is_complete()` (`part_count == 0` or complete bitmask), all valid file parts
-    ///   are available.
-    /// - If a partial mask is present, checks the specific part bit.
-    /// - Returns false for out-of-bounds parts (`part_index >= total_parts`).
     pub fn is_part_available(&self, part_index: u16) -> bool {
         if part_index >= self.total_parts {
             return false;
@@ -264,11 +158,6 @@ impl Ed2kDownloadSequencer {
     }
 
     /// Plans the sequence of block ranges ($\le 184\,320$ bytes each) for a selected part.
-    ///
-    /// Guarantees:
-    /// - Every block range is within the part's boundaries.
-    /// - No block range crosses the part boundary ($9\,728\,000$ bytes alignment).
-    /// - The final block in the part ends exactly at the part's end offset.
     pub fn plan_part_blocks(
         &self,
         part_index: u16,
@@ -452,183 +341,8 @@ impl Ed2kDownloadSequencer {
 
         self.validate_block_range(part.start_offset as u64, part.end_offset as u64)
     }
-}
 
-/// Safe in-memory byte sink for receiving, validating, and assembling transferred eD2K blocks.
-///
-/// Maximum allowable in-memory sink allocation (512 MiB) to prevent OOM denial-of-service.
-pub const MAX_MEMORY_SINK_SIZE: u64 = 512 * 1024 * 1024;
-
-/// In-memory sink for assembled eD2K block data.
-///
-/// Invariants:
-/// - Exact pre-allocated buffer matching the total file size.
-/// - Validates every incoming block against the active `Ed2kDownloadSequencer`.
-/// - Rejects duplicate receptions of the same block range (`Ed2kSequencerError::DuplicateBlock`).
-/// - Rejects block ranges crossing part boundaries (`Ed2kSequencerError::CrossPartBoundary`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ed2kBlockSink {
-    file_size: u64,
-    buffer: Vec<u8>,
-    received_ranges: Vec<(u64, u64)>,
-}
-
-impl Ed2kBlockSink {
-    /// Creates a new zero-initialized `Ed2kBlockSink` for a given file size.
-    /// Panics if `file_size > MAX_MEMORY_SINK_SIZE`.
-    pub fn new(file_size: u64) -> Self {
-        assert!(
-            file_size <= MAX_MEMORY_SINK_SIZE,
-            "file_size {} exceeds MAX_MEMORY_SINK_SIZE ({})",
-            file_size,
-            MAX_MEMORY_SINK_SIZE
-        );
-        Self {
-            file_size,
-            buffer: vec![0u8; file_size as usize],
-            received_ranges: Vec::new(),
-        }
-    }
-
-    /// Safely attempts to create an `Ed2kBlockSink`, returning an error if `file_size` exceeds limit.
-    pub fn try_new(file_size: u64) -> Result<Self, String> {
-        if file_size > MAX_MEMORY_SINK_SIZE {
-            return Err(format!(
-                "Requested file size {file_size} exceeds in-memory sink maximum of {MAX_MEMORY_SINK_SIZE} bytes"
-            ));
-        }
-        Ok(Self {
-            file_size,
-            buffer: vec![0u8; file_size as usize],
-            received_ranges: Vec::new(),
-        })
-    }
-
-    /// Returns the total file size in bytes.
-    #[inline]
-    pub fn file_size(&self) -> u64 {
-        self.file_size
-    }
-
-    /// Returns the underlying byte buffer.
-    #[inline]
-    pub fn buffer(&self) -> &[u8] {
-        &self.buffer
-    }
-
-    /// Returns the list of successfully written byte ranges `[start, end)`.
-    #[inline]
-    pub fn received_ranges(&self) -> &[(u64, u64)] {
-        &self.received_ranges
-    }
-
-    /// Returns true if the half-open byte range `[start, end)` is completely covered by received slices.
-    pub fn is_range_covered(&self, start: u64, end: u64) -> bool {
-        Ed2kDownloadSequencer::is_range_in_list(start, end, &self.received_ranges)
-    }
-
-    /// Returns true if a block range `[start, end)` has already been received or is fully covered.
-    pub fn has_range(&self, start: u64, end: u64) -> bool {
-        if self.received_ranges.iter().any(|&(s, e)| s == start && e == end) {
-            return true;
-        }
-        self.is_range_covered(start, end)
-    }
-
-    /// Returns true if any byte in `[start, end)` overlaps already received ranges.
-    pub fn has_overlap(&self, start: u64, end: u64) -> bool {
-        self.received_ranges.iter().any(|&(s, e)| s < end && start < e)
-    }
-
-    /// Returns the total number of bytes received and written so far.
-    pub fn received_bytes_count(&self) -> usize {
-        self.received_ranges.iter().map(|&(s, e)| (e - s) as usize).sum()
-    }
-
-    /// Validates and writes an incoming `Ed2kSendingPart` into the sink.
-    ///
-    /// If the block range is valid and not already received, writes `part.data`
-    /// at the specified offset and records the range.
-    ///
-    /// If the range was already written, returns `Err(Ed2kSequencerError::DuplicateBlock)`.
-    pub fn write_block(
-        &mut self,
-        sequencer: &Ed2kDownloadSequencer,
-        part: &Ed2kSendingPart,
-    ) -> Result<Ed2kBlockRange, Ed2kSequencerError> {
-        let range = sequencer.validate_sending_part(part)?;
-        let start = range.start as u64;
-        let end = range.end as u64;
-
-        if self.has_overlap(start, end) {
-            return Err(Ed2kSequencerError::DuplicateBlock { start, end });
-        }
-
-        let start_idx = start as usize;
-        let end_idx = end as usize;
-        self.buffer[start_idx..end_idx].copy_from_slice(&part.data);
-        self.received_ranges.push((start, end));
-
-        Ok(range)
-    }
-}
-
-/// Represents an active in-flight block range assigned to a specific peer.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InFlightBlock {
-    /// Identifier or address of the owning peer.
-    pub peer_id: String,
-    /// Target part index.
-    pub part_index: u16,
-    /// Half-open start byte offset.
-    pub start: u64,
-    /// Half-open end byte offset (exclusive).
-    pub end: u64,
-    /// Timestamp when block was requested (unix ms).
-    pub issued_at_unix_ms: i64,
-    /// Expiration deadline after which block may be reallocated (unix ms).
-    pub deadline_unix_ms: i64,
-}
-
-impl InFlightBlock {
-    /// Creates a new in-flight block tracking entry.
-    pub fn new(
-        peer_id: String,
-        part_index: u16,
-        start: u64,
-        end: u64,
-        issued_at_unix_ms: i64,
-        timeout_ms: i64,
-    ) -> Self {
-        Self {
-            peer_id,
-            part_index,
-            start,
-            end,
-            issued_at_unix_ms,
-            deadline_unix_ms: issued_at_unix_ms + timeout_ms,
-        }
-    }
-
-    /// Returns true if the block range has expired at `now_unix_ms`.
-    pub fn is_expired(&self, now_unix_ms: i64) -> bool {
-        now_unix_ms >= self.deadline_unix_ms
-    }
-
-    /// Checks if this in-flight block overlaps with range `[s, e)`.
-    pub fn overlaps(&self, s: u64, e: u64) -> bool {
-        self.start < e && s < self.end
-    }
-}
-
-impl Ed2kDownloadSequencer {
     /// Plans the next unassigned and uncompleted block range for a specific peer.
-    ///
-    /// Ensures:
-    /// 1. The part is available on this remote peer (`is_part_available`).
-    /// 2. The block is NOT already covered in `completed_ranges`.
-    /// 3. The block does NOT overlap any active (non-expired) in-flight block in `in_flight_blocks`.
     pub fn plan_next_block_for_peer(
         &self,
         _peer_id: &str,
@@ -646,12 +360,10 @@ impl Ed2kDownloadSequencer {
                 let b_start = block.start as u64;
                 let b_end = block.end as u64;
 
-                // Check if completed
                 if Self::is_range_in_list(b_start, b_end, completed_ranges) {
                     continue;
                 }
 
-                // Check if currently assigned to any active in-flight block
                 let is_in_flight = in_flight_blocks.iter().any(|ifb| {
                     !ifb.is_expired(now_unix_ms) && ifb.overlaps(b_start, b_end)
                 });

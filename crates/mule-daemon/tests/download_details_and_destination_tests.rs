@@ -372,9 +372,9 @@ fn test_add_duplicate_ed2k_link_rejected() {
     assert!(res2.is_err(), "Duplicate add must be rejected");
     let err = res2.unwrap_err();
     assert!(
-        err.message.contains("déjà dans la liste des téléchargements"),
+        err.to_string().contains("déjà dans la liste des téléchargements"),
         "Error message must indicate duplicate: {}",
-        err.message
+        err
     );
 }
 

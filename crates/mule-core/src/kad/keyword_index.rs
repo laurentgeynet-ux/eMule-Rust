@@ -29,7 +29,7 @@ pub fn hash_kad_keyword(keyword: &str) -> (String, KadId) {
     let mut hasher = Md4::new();
     hasher.update(normalized.as_bytes());
     let digest: [u8; 16] = hasher.finalize().into();
-    (normalized, KadId::new(digest))
+    (normalized, KadId::from_hash_be(&digest))
 }
 
 /// Extracts search keywords (length >= 3) from a file name and returns pairs of (word, KadId).

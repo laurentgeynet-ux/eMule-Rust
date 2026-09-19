@@ -218,7 +218,7 @@ fn test_part_met_import_oversized_physical_file_rejected() {
         .import_part_met(&met_path, None, download_target_dir.path(), None)
         .unwrap_err();
 
-    assert!(err.message.contains("exceeds declared file size"));
+    assert!(err.to_string().contains("exceeds declared file size"));
 }
 
 #[test]
@@ -342,6 +342,6 @@ fn test_part_met_import_safety_limits_enforced() {
         .import_part_met(&met_path, None, download_target_dir.path(), None)
         .unwrap_err();
 
-    assert!(err.message.contains("maximum import safety limit"));
+    assert!(err.to_string().contains("maximum import safety limit"));
 }
 

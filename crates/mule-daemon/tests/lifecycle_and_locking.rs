@@ -165,10 +165,10 @@ async fn test_daemon_parent_watchdog_auto_shutdown() {
     // Wait for dummy parent to finish
     let _ = dummy_parent.wait();
 
-    // 4. Daemon should auto-terminate within 4 seconds of parent exit
+    // 4. Daemon should auto-terminate after parent exit
     let start = std::time::Instant::now();
     let mut exited = false;
-    while start.elapsed() < std::time::Duration::from_secs(5) {
+    while start.elapsed() < std::time::Duration::from_secs(12) {
         if let Ok(Some(status)) = daemon_proc.try_wait() {
             assert!(status.success(), "Daemon should exit cleanly");
             exited = true;

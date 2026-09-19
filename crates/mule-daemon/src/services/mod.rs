@@ -1,4 +1,5 @@
 pub mod downloads;
+pub mod events;
 pub mod identity;
 pub mod inbound_listener;
 pub mod kad;
@@ -11,13 +12,17 @@ pub mod swarm_coordinator;
 pub mod upload_queue;
 pub mod upnp;
 
+pub use events::DaemonEvent;
 pub use identity::{IdentityService, IdentityStatus};
 pub use kad::{KadContactEntryDto, KadService, KadStatusSnapshot, NodesDatInspectReport};
 pub use kad_udp::{KadUdpService, KadUdpSnapshot};
 pub use obfuscation_stream::ObfuscatedStream;
 pub use upnp::{UpnpService, UpnpStatusSnapshot};
 
-pub use downloads::{DownloadService, SourceAvailabilitySummary};
+pub use downloads::{
+    DownloadDetail, DownloadService, DownloadSnapshot, ImportPartMetResult, PartMetInspection,
+    PartProgressSummary, SourceAvailabilitySummary,
+};
 pub use inbound_listener::{InboundListenerService, InboundListenerSnapshot};
 pub use peer_session::{PeerConnectionStatus, PeerSessionManager, PeerSessionSnapshot};
 pub use server_session::{

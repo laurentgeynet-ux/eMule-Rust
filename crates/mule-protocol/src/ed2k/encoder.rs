@@ -4,23 +4,33 @@ use bytes::Bytes;
 
 use super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::limits::Ed2kLimits;
-use super::opcodes::{
-    OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HELLO, OP_HELLO_ANSWER, OP_PUBLICKEY,
-    OP_SECIDENTSTATE, OP_SENDINGPART, OP_SIGNATURE,
-};
 use super::packet::{
-    expected_mask_bytes, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq,
-    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
+    Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
+    Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
     Ed2kSendingPart, Ed2kSignature,
 };
 use super::profile::Ed2kCompatibilityProfile;
-use super::protocol::{PR_ED2K, PR_EMULE};
-use super::tags::{
-    Ed2kTag, RawTag, TagName, TagValue, TAGTYPE_BLOB, TAGTYPE_BOOL, TAGTYPE_FLOAT32, TAGTYPE_HASH,
-    TAGTYPE_STRING, TAGTYPE_UINT16, TAGTYPE_UINT32, TAGTYPE_UINT64, TAGTYPE_UINT8,
-};
+use super::tags::{Ed2kTag, RawTag, TagName};
 use crate::framing::RawPacket;
 use crate::limits::HEADER_SIZE;
+
+/// Handshake message encoders (Hello, HelloAnswer, EmuleInfo).
+pub mod handshake;
+/// Security message encoders (PublicKey, Signature, SecIdentState).
+pub mod security;
+/// eD2K Tag and tag name encoders.
+pub mod tags;
+/// Transfer message encoders (FileStatus, RequestParts, SendingPart, FileReqAnsNoFile).
+pub mod transfers;
+
+pub use handshake::{encode_emule_info, encode_hello, encode_hello_answer};
+pub use security::{encode_public_key, encode_secident_state, encode_signature};
+pub use tags::{encode_raw_tag, encode_tag, encode_tag_name};
+pub use transfers::{
+    encode_file_req_ans_no_file, encode_file_status, encode_file_status_req,
+    encode_file_status_req_with_opcode, encode_request_parts, encode_request_parts_with_opcode,
+    encode_sending_part,
+};
 
 /// Deterministic wire encoder for historical eD2K protocol messages.
 #[derive(Debug, Clone, Default)]
@@ -65,39 +75,7 @@ impl Ed2kEncoder {
         name: &TagName,
         dst: &mut Vec<u8>,
     ) -> Result<(), Ed2kEncodeError> {
-        match name {
-            TagName::Id(id) => {
-                dst.extend_from_slice(&1u16.to_le_bytes());
-                dst.push(*id);
-                Ok(())
-            }
-            TagName::Text(s) => {
-                let bytes = s.as_bytes();
-                if bytes.len() > self.limits.max_string_bytes {
-                    return Err(Ed2kEncodeError::new(
-                        opcode,
-                        "tag_name",
-                        Ed2kErrorKind::OversizedString {
-                            size: bytes.len(),
-                            limit: self.limits.max_string_bytes,
-                        },
-                    ));
-                }
-                if bytes.len() > u16::MAX as usize {
-                    return Err(Ed2kEncodeError::new(
-                        opcode,
-                        "tag_name",
-                        Ed2kErrorKind::OversizedString {
-                            size: bytes.len(),
-                            limit: u16::MAX as usize,
-                        },
-                    ));
-                }
-                dst.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-                dst.extend_from_slice(bytes);
-                Ok(())
-            }
-        }
+        encode_tag_name(&self.limits, opcode, name, dst)
     }
 
     /// Encodes a single recognized `Ed2kTag` into the destination buffer.
@@ -107,97 +85,7 @@ impl Ed2kEncoder {
         tag: &Ed2kTag,
         dst: &mut Vec<u8>,
     ) -> Result<(), Ed2kEncodeError> {
-        match &tag.value {
-            TagValue::Hash(h) => {
-                dst.push(TAGTYPE_HASH);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.extend_from_slice(h);
-            }
-            TagValue::String(s) => {
-                let bytes = s.as_bytes();
-                if bytes.len() > self.limits.max_string_bytes {
-                    return Err(Ed2kEncodeError::new(
-                        opcode,
-                        "tag_value_string",
-                        Ed2kErrorKind::OversizedString {
-                            size: bytes.len(),
-                            limit: self.limits.max_string_bytes,
-                        },
-                    ));
-                }
-                if bytes.len() > u16::MAX as usize {
-                    return Err(Ed2kEncodeError::new(
-                        opcode,
-                        "tag_value_string",
-                        Ed2kErrorKind::OversizedString {
-                            size: bytes.len(),
-                            limit: u16::MAX as usize,
-                        },
-                    ));
-                }
-                dst.push(TAGTYPE_STRING);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-                dst.extend_from_slice(bytes);
-            }
-            TagValue::UInt32(v) => {
-                dst.push(TAGTYPE_UINT32);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.extend_from_slice(&v.to_le_bytes());
-            }
-            TagValue::Float32(v) => {
-                dst.push(TAGTYPE_FLOAT32);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.extend_from_slice(&v.to_le_bytes());
-            }
-            TagValue::Bool(b) => {
-                dst.push(TAGTYPE_BOOL);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.push(if *b { 1 } else { 0 });
-            }
-            TagValue::Blob(b) => {
-                if b.len() > self.limits.max_blob_bytes {
-                    return Err(Ed2kEncodeError::new(
-                        opcode,
-                        "tag_value_blob",
-                        Ed2kErrorKind::FrameTooLarge {
-                            size: b.len(),
-                            limit: self.limits.max_blob_bytes,
-                        },
-                    ));
-                }
-                if b.len() > u32::MAX as usize {
-                    return Err(Ed2kEncodeError::new(
-                        opcode,
-                        "tag_value_blob",
-                        Ed2kErrorKind::FrameTooLarge {
-                            size: b.len(),
-                            limit: u32::MAX as usize,
-                        },
-                    ));
-                }
-                dst.push(TAGTYPE_BLOB);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.extend_from_slice(&(b.len() as u32).to_le_bytes());
-                dst.extend_from_slice(b);
-            }
-            TagValue::UInt16(v) => {
-                dst.push(TAGTYPE_UINT16);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.extend_from_slice(&v.to_le_bytes());
-            }
-            TagValue::UInt8(v) => {
-                dst.push(TAGTYPE_UINT8);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.push(*v);
-            }
-            TagValue::UInt64(v) => {
-                dst.push(TAGTYPE_UINT64);
-                self.encode_tag_name(opcode, &tag.name, dst)?;
-                dst.extend_from_slice(&v.to_le_bytes());
-            }
-        }
-        Ok(())
+        encode_tag(&self.limits, opcode, tag, dst)
     }
 
     /// Encodes a raw preserved unknown tag into the destination buffer.
@@ -207,71 +95,12 @@ impl Ed2kEncoder {
         tag: &RawTag,
         dst: &mut Vec<u8>,
     ) -> Result<(), Ed2kEncodeError> {
-        if tag.raw_bytes.len() > self.limits.max_blob_bytes {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "raw_tag_bytes",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: tag.raw_bytes.len(),
-                    limit: self.limits.max_blob_bytes,
-                },
-            ));
-        }
-        dst.push(tag.tag_type);
-        self.encode_tag_name(opcode, &tag.name, dst)?;
-        dst.extend_from_slice(&tag.raw_bytes);
-        Ok(())
+        encode_raw_tag(&self.limits, opcode, tag, dst)
     }
 
     /// Encodes an `Ed2kHello` message into a `RawPacket`.
     pub fn encode_hello(&self, hello: &Ed2kHello) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_HELLO;
-        let total_tags = hello.tags.len().saturating_add(hello.unknown_tags.len());
-        if total_tags > self.limits.max_tags {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "hello_tag_count",
-                Ed2kErrorKind::TooManyTags {
-                    count: total_tags,
-                    limit: self.limits.max_tags,
-                },
-            ));
-        }
-
-        let mut payload = Vec::with_capacity(64);
-        if self.profile != Ed2kCompatibilityProfile::LegacyEdonkey {
-            payload.push(0x10); // Standard eD2K OP_HELLO user hash length prefix (16 bytes)
-        }
-        payload.extend_from_slice(&hello.user_hash);
-        payload.extend_from_slice(&hello.client_id.to_le_bytes());
-        payload.extend_from_slice(&hello.tcp_port.to_le_bytes());
-        payload.extend_from_slice(&(total_tags as u32).to_le_bytes());
-
-        for tag in &hello.tags {
-            self.encode_tag(opcode, tag, &mut payload)?;
-        }
-        for raw in &hello.unknown_tags {
-            self.encode_raw_tag(opcode, raw, &mut payload)?;
-        }
-
-        // Standard eD2K handshake always includes server IP (4 bytes LE) and port (2 bytes LE)
-        payload.extend_from_slice(&hello.server_ip.to_le_bytes());
-        payload.extend_from_slice(&hello.server_port.to_le_bytes());
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+        encode_hello(&self.limits, self.profile, hello)
     }
 
     /// Encodes an `Ed2kHelloAnswer` message into a `RawPacket`.
@@ -279,51 +108,7 @@ impl Ed2kEncoder {
         &self,
         answer: &Ed2kHelloAnswer,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_HELLO_ANSWER;
-        let total_tags = answer.tags.len().saturating_add(answer.unknown_tags.len());
-        if total_tags > self.limits.max_tags {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "hello_answer_tag_count",
-                Ed2kErrorKind::TooManyTags {
-                    count: total_tags,
-                    limit: self.limits.max_tags,
-                },
-            ));
-        }
-
-        let mut payload = Vec::with_capacity(64);
-        payload.extend_from_slice(&answer.user_hash);
-        payload.extend_from_slice(&answer.client_id.to_le_bytes());
-        payload.extend_from_slice(&answer.tcp_port.to_le_bytes());
-        payload.extend_from_slice(&(total_tags as u32).to_le_bytes());
-
-        for tag in &answer.tags {
-            self.encode_tag(opcode, tag, &mut payload)?;
-        }
-        for raw in &answer.unknown_tags {
-            self.encode_raw_tag(opcode, raw, &mut payload)?;
-        }
-
-        // Standard eD2K handshake always includes server IP (4 bytes LE) and port (2 bytes LE)
-        payload.extend_from_slice(&answer.server_ip.to_le_bytes());
-        payload.extend_from_slice(&answer.server_port.to_le_bytes());
-
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+        encode_hello_answer(&self.limits, answer)
     }
 
     /// Encodes an `Ed2kFileStatusReq` message using the encoder's active profile opcode.
@@ -331,18 +116,7 @@ impl Ed2kEncoder {
         &self,
         req: &Ed2kFileStatusReq,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = self.profile.file_status_req_opcode().ok_or_else(|| {
-            Ed2kEncodeError::new(
-                0,
-                "file_status_req_profile",
-                Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                    opcode: 0,
-                    profile: self.profile,
-                    reason: "cannot encode file status request under UnknownStrict profile",
-                },
-            )
-        })?;
-        self.encode_file_status_req_with_opcode(req, opcode)
+        encode_file_status_req(&self.limits, self.profile, req)
     }
 
     /// Encodes an `Ed2kFileStatusReq` message into a `RawPacket` with a specified opcode.
@@ -351,23 +125,7 @@ impl Ed2kEncoder {
         req: &Ed2kFileStatusReq,
         opcode: u8,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        let mut payload = Vec::with_capacity(16);
-        payload.extend_from_slice(&req.file_hash);
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+        encode_file_status_req_with_opcode(&self.limits, req, opcode)
     }
 
     /// Encodes an `Ed2kFileStatus` message into a `RawPacket`.
@@ -375,61 +133,7 @@ impl Ed2kEncoder {
         &self,
         status: &Ed2kFileStatus,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_FILESTATUS;
-        if (status.part_count as usize) > self.limits.max_parts {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "filestatus_part_count",
-                Ed2kErrorKind::MalformedField {
-                    message: format!(
-                        "part_count {} exceeds limit {}",
-                        status.part_count, self.limits.max_parts
-                    ),
-                },
-            ));
-        }
-
-        let raw_bytes = status.availability_mask.raw_bytes();
-        let expected_bitfield_bytes = if status.part_count == 0 {
-            0
-        } else {
-            expected_mask_bytes(status.part_count)
-        };
-
-        if raw_bytes.len() != expected_bitfield_bytes {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "filestatus_bitfield",
-                Ed2kErrorKind::MalformedField {
-                    message: format!(
-                        "bitfield length {} does not match required {} for part_count {}",
-                        raw_bytes.len(),
-                        expected_bitfield_bytes,
-                        status.part_count
-                    ),
-                },
-            ));
-        }
-
-        let mut payload = Vec::with_capacity(18 + expected_bitfield_bytes);
-        payload.extend_from_slice(&status.file_hash);
-        payload.extend_from_slice(&status.part_count.to_le_bytes());
-        payload.extend_from_slice(raw_bytes);
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+        encode_file_status(&self.limits, status)
     }
 
     /// Encodes an `Ed2kFileReqAnsNoFile` (`0x48`) message into a `RawPacket`.
@@ -437,24 +141,7 @@ impl Ed2kEncoder {
         &self,
         ans: &Ed2kFileReqAnsNoFile,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_FILEREQANSNOFILE;
-        let mut payload = Vec::with_capacity(16);
-        payload.extend_from_slice(&ans.file_hash);
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+        encode_file_req_ans_no_file(&self.limits, ans)
     }
 
     /// Encodes an `Ed2kRequestParts` message using the encoder's active profile opcode.
@@ -462,18 +149,7 @@ impl Ed2kEncoder {
         &self,
         req: &Ed2kRequestParts,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = self.profile.request_parts_opcode().ok_or_else(|| {
-            Ed2kEncodeError::new(
-                0,
-                "request_parts_profile",
-                Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                    opcode: 0,
-                    profile: self.profile,
-                    reason: "cannot encode request parts under UnknownStrict profile",
-                },
-            )
-        })?;
-        self.encode_request_parts_with_opcode(req, opcode)
+        encode_request_parts(&self.limits, self.profile, req)
     }
 
     /// Encodes an `Ed2kRequestParts` message with a specified opcode.
@@ -482,67 +158,7 @@ impl Ed2kEncoder {
         req: &Ed2kRequestParts,
         opcode: u8,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        if req.ranges.len() > 3 {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "request_parts_ranges",
-                Ed2kErrorKind::MalformedField {
-                    message: format!(
-                        "number of requested ranges {} exceeds standard limit of 3",
-                        req.ranges.len()
-                    ),
-                },
-            ));
-        }
-
-        for range in &req.ranges {
-            if range.start >= range.end {
-                return Err(Ed2kEncodeError::new(
-                    opcode,
-                    "request_parts_range",
-                    Ed2kErrorKind::InvalidBlockOffsets {
-                        start: range.start as u64,
-                        end: range.end as u64,
-                    },
-                ));
-            }
-        }
-
-        let mut payload = Vec::with_capacity(40);
-        payload.extend_from_slice(&req.file_hash);
-
-        // 3 start offsets
-        for i in 0..3 {
-            if let Some(range) = req.ranges.get(i) {
-                payload.extend_from_slice(&range.start.to_le_bytes());
-            } else {
-                payload.extend_from_slice(&0u32.to_le_bytes());
-            }
-        }
-
-        // 3 end offsets
-        for i in 0..3 {
-            if let Some(range) = req.ranges.get(i) {
-                payload.extend_from_slice(&range.end.to_le_bytes());
-            } else {
-                payload.extend_from_slice(&0u32.to_le_bytes());
-            }
-        }
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+        encode_request_parts_with_opcode(&self.limits, req, opcode)
     }
 
     /// Encodes an `Ed2kSendingPart` message (`0x46`).
@@ -550,162 +166,27 @@ impl Ed2kEncoder {
         &self,
         part: &Ed2kSendingPart,
     ) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_SENDINGPART;
-
-        if part.start_offset >= part.end_offset {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "sending_part_offsets",
-                Ed2kErrorKind::InvalidBlockOffsets {
-                    start: part.start_offset as u64,
-                    end: part.end_offset as u64,
-                },
-            ));
-        }
-
-        let expected_len = (part.end_offset - part.start_offset) as usize;
-        if part.data.len() != expected_len {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "sending_part_payload",
-                Ed2kErrorKind::BlockPayloadMismatch {
-                    expected: expected_len,
-                    actual: part.data.len(),
-                },
-            ));
-        }
-
-        let mut payload = Vec::with_capacity(24 + part.data.len());
-        payload.extend_from_slice(&part.file_hash);
-        payload.extend_from_slice(&part.start_offset.to_le_bytes());
-        payload.extend_from_slice(&part.end_offset.to_le_bytes());
-        payload.extend_from_slice(&part.data);
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+        encode_sending_part(&self.limits, part)
     }
 
     /// Encodes an `OP_EMULE_INFO` (`0xC5 0x01`) payload.
     pub fn encode_emule_info(&self, info: &Ed2kEmuleInfo) -> Result<RawPacket, Ed2kEncodeError> {
-        let total_tags = info.tags.len() + info.unknown_tags.len();
-        if total_tags > self.limits.max_tags {
-            return Err(Ed2kEncodeError::new(
-                OP_EMULE_INFO,
-                "emule_info_tag_count",
-                Ed2kErrorKind::TooManyTags {
-                    count: total_tags,
-                    limit: self.limits.max_tags,
-                },
-            ));
-        }
-
-        let mut payload = Vec::with_capacity(64);
-        payload.push(info.client_version);
-        payload.push(info.protocol_version);
-        payload.extend_from_slice(&(total_tags as u32).to_le_bytes());
-
-        for tag in &info.tags {
-            self.encode_tag(OP_EMULE_INFO, tag, &mut payload)?;
-        }
-        for raw in &info.unknown_tags {
-            self.encode_raw_tag(OP_EMULE_INFO, raw, &mut payload)?;
-        }
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(OP_EMULE_INFO);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                OP_EMULE_INFO,
-                "emule_info_frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_EMULE, OP_EMULE_INFO, Bytes::from(payload)))
+        encode_emule_info(&self.limits, info)
     }
 
     /// Encodes an `OP_PUBLICKEY` (`0x85`) message into a `RawPacket`.
     pub fn encode_public_key(&self, key: &Ed2kPublicKey) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_PUBLICKEY;
-        let mut payload = Vec::with_capacity(1 + key.key_bytes.len());
-        payload.push(key.key_bytes.len() as u8);
-        payload.extend_from_slice(&key.key_bytes);
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "public_key_frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
+        encode_public_key(&self.limits, key)
     }
 
     /// Encodes an `OP_SIGNATURE` (`0x87`) message into a `RawPacket`.
     pub fn encode_signature(&self, sig: &Ed2kSignature) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_SIGNATURE;
-        let mut payload = Vec::with_capacity(1 + sig.signature_bytes.len());
-        payload.push(sig.signature_bytes.len() as u8);
-        payload.extend_from_slice(&sig.signature_bytes);
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "signature_frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
+        encode_signature(&self.limits, sig)
     }
 
     /// Encodes an `OP_SECIDENTSTATE` (`0x86`) message into a `RawPacket`.
     pub fn encode_secident_state(&self, state: &Ed2kSecIdentState) -> Result<RawPacket, Ed2kEncodeError> {
-        let opcode = OP_SECIDENTSTATE;
-        let mut payload = Vec::with_capacity(5);
-        payload.push(state.state);
-        payload.extend_from_slice(&state.challenge.to_le_bytes());
-
-        let frame_len = 1 + payload.len();
-        let max_frame = self.limits.max_frame_for_opcode(opcode);
-        if frame_len > max_frame {
-            return Err(Ed2kEncodeError::new(
-                opcode,
-                "secident_state_frame_len",
-                Ed2kErrorKind::FrameTooLarge {
-                    size: frame_len,
-                    limit: max_frame,
-                },
-            ));
-        }
-
-        Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
+        encode_secident_state(&self.limits, state)
     }
 
     /// Encodes any `Ed2kMessage` into its `RawPacket` representation.

@@ -3,22 +3,35 @@
 use bytes::Bytes;
 
 use super::error::{Ed2kErrorKind, Ed2kParseError};
-use super::limits::{Ed2kLimits, ED2K_MAX_PARTS};
+use super::limits::Ed2kLimits;
 use super::opcodes::{
     OP_EMULE_INFO, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLO_ANSWER,
     OP_PUBLICKEY, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SECIDENTSTATE, OP_SENDINGPART,
     OP_SETREQFILEID_EMULE, OP_SIGNATURE,
 };
 use super::packet::{
-    expected_mask_bytes, Ed2kBlockRange, Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
-    Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts,
-    Ed2kSecIdentState, Ed2kSendingPart, Ed2kSignature, PartAvailabilityMask,
+    Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello,
+    Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
+    Ed2kSendingPart, Ed2kSignature,
 };
 use super::profile::Ed2kCompatibilityProfile;
 use super::protocol::{is_valid_ed2k_protocol, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
-use super::tags::TagReader;
 use crate::framing::RawPacket;
 use crate::limits::HEADER_SIZE;
+
+pub mod handshake;
+pub mod security;
+pub mod status;
+pub mod transfers;
+
+pub use handshake::{decode_emule_info, decode_hello, decode_hello_answer};
+pub use security::{decode_public_key, decode_secident_state, decode_signature};
+pub use status::{
+    decode_file_req_ans_no_file, decode_file_status, decode_file_status_req_with_profile,
+};
+pub use transfers::{
+    decode_request_parts_with_profile, decode_sending_part,
+};
 
 /// Read-only wire decoder for eD2K protocol frames.
 #[derive(Debug, Clone, Default)]
@@ -51,23 +64,29 @@ impl Ed2kDecoder {
         }
     }
 
-    /// Creates a new decoder with customized limits and explicit compatibility profile.
-    pub fn with_limits_and_profile(limits: Ed2kLimits, profile: Ed2kCompatibilityProfile) -> Self {
+    /// Creates a new decoder with customized limits and an explicit compatibility profile.
+    pub fn with_limits_and_profile(
+        limits: Ed2kLimits,
+        profile: Ed2kCompatibilityProfile,
+    ) -> Self {
         Self { limits, profile }
     }
 
-    /// Decodes the 5-byte header of an eD2K packet without consuming payload.
-    ///
-    /// Returns `(protocol, packet_len, opcode)`.
-    pub fn decode_header(&self, src: &[u8]) -> Result<(u8, u32, u8), Ed2kParseError> {
-        if src.len() < HEADER_SIZE {
+    /// Decodes a framed byte slice into a typed `Ed2kMessage`.
+    pub fn decode(&self, src: &[u8]) -> Result<Ed2kMessage, Ed2kParseError> {
+        self.decode_packet(src)
+    }
+
+    /// Decodes a framed byte slice into a typed `Ed2kMessage`.
+    pub fn decode_packet(&self, src: &[u8]) -> Result<Ed2kMessage, Ed2kParseError> {
+        if src.len() < HEADER_SIZE + 1 {
             return Err(Ed2kParseError::new(
-                0,
-                None,
+                src.first().copied().unwrap_or(PR_ED2K),
+                src.get(5).copied(),
                 0,
                 "header",
                 Ed2kErrorKind::UnexpectedEof {
-                    needed: HEADER_SIZE,
+                    needed: HEADER_SIZE + 1,
                     available: src.len(),
                 },
             ));
@@ -77,61 +96,34 @@ impl Ed2kDecoder {
         if protocol == PR_EMULE_COMPRESSED {
             return Err(Ed2kParseError::new(
                 protocol,
-                None,
+                Some(src[5]),
                 0,
                 "protocol_byte",
                 Ed2kErrorKind::CompressedProtocolUnsupported,
             ));
         }
-
         if !is_valid_ed2k_protocol(protocol) {
             return Err(Ed2kParseError::new(
                 protocol,
-                None,
+                Some(src[5]),
                 0,
                 "protocol_byte",
                 Ed2kErrorKind::UnsupportedProtocol { byte: protocol },
             ));
         }
 
-        let mut len_bytes = [0u8; 4];
-        len_bytes.copy_from_slice(&src[1..5]);
-        let packet_len = u32::from_le_bytes(len_bytes);
+        let frame_len = u32::from_le_bytes([src[1], src[2], src[3], src[4]]) as usize;
+        let opcode = src[5];
 
-        if packet_len < 1 {
+        if frame_len == 0 {
             return Err(Ed2kParseError::new(
                 protocol,
-                None,
+                Some(opcode),
                 1,
                 "packet_length",
-                Ed2kErrorKind::FrameTooSmall {
-                    size: packet_len as usize,
-                },
+                Ed2kErrorKind::FrameTooSmall { size: 0 },
             ));
         }
-
-        // Check if opcode byte is available
-        if src.len() < HEADER_SIZE + 1 {
-            return Err(Ed2kParseError::new(
-                protocol,
-                None,
-                5,
-                "opcode",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: HEADER_SIZE + 1,
-                    available: src.len(),
-                },
-            ));
-        }
-
-        let opcode = src[5];
-        Ok((protocol, packet_len, opcode))
-    }
-
-    /// Decodes a complete packet from a byte slice into an `Ed2kMessage`.
-    pub fn decode_packet(&self, src: &[u8]) -> Result<Ed2kMessage, Ed2kParseError> {
-        let (protocol, packet_len, opcode) = self.decode_header(src)?;
-        let frame_len = packet_len as usize;
 
         let max_frame = self.limits.max_frame_for_opcode(opcode);
         if frame_len > max_frame {
@@ -161,7 +153,6 @@ impl Ed2kDecoder {
             ));
         }
 
-        // Payload slice excludes header (5 bytes) and opcode (1 byte)
         let payload = &src[HEADER_SIZE + 1..total_required];
 
         match (protocol, opcode) {
@@ -301,7 +292,6 @@ impl Ed2kDecoder {
                 Ok(Ed2kMessage::SecIdentState(state))
             }
             _ => {
-                // Return as unparsed RawPacket for passive observation of other opcodes
                 let raw_packet = RawPacket::new(protocol, opcode, Bytes::copy_from_slice(payload));
                 Ok(Ed2kMessage::Raw(raw_packet))
             }
@@ -518,69 +508,13 @@ impl Ed2kDecoder {
 
     /// Decodes an `OP_HELLO` payload.
     pub fn decode_hello(
-
         &self,
         protocol: u8,
         opcode: u8,
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kHello, Ed2kParseError> {
-        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
-
-        // In standard eD2K client-to-client handshake, OP_HELLO payload begins with hash length (0x10 = 16).
-        // If present, consume it. If absent (e.g. legacy/synthetic fixtures), read hash directly.
-        if reader.remaining() >= 17 && reader.peek_u8() == Some(0x10) {
-            let _ = reader.read_u8("hello_user_hash_len")?;
-        }
-
-        let user_hash = reader.read_hash("hello_user_hash")?;
-        let client_id = reader.read_u32_le("hello_client_id")?;
-        let tcp_port = reader.read_u16_le("hello_tcp_port")?;
-        let tag_count = reader.read_u32_le("hello_tag_count")? as usize;
-
-        if tag_count > self.limits.max_tags {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + reader.pos() - 4,
-                "hello_tag_count",
-                Ed2kErrorKind::TooManyTags {
-                    count: tag_count,
-                    limit: self.limits.max_tags,
-                },
-            ));
-        }
-
-        let mut tags = Vec::with_capacity(tag_count.min(64));
-        let mut unknown_tags = Vec::new();
-
-        for _ in 0..tag_count {
-            let (typed_opt, raw_opt) = reader.read_tag(&self.limits)?;
-            if let Some(tag) = typed_opt {
-                tags.push(tag);
-            }
-            if let Some(raw) = raw_opt {
-                unknown_tags.push(raw);
-            }
-        }
-
-        let (server_ip, server_port) = if reader.remaining() >= 6 {
-            let ip = reader.read_u32_le("hello_server_ip")?;
-            let port = reader.read_u16_le("hello_server_port")?;
-            (ip, port)
-        } else {
-            (0, 0)
-        };
-
-        Ok(Ed2kHello {
-            user_hash,
-            client_id,
-            tcp_port,
-            tags,
-            unknown_tags,
-            server_ip,
-            server_port,
-        })
+        decode_hello(&self.limits, protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_HELLO_ANSWER` payload.
@@ -591,56 +525,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kHelloAnswer, Ed2kParseError> {
-        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
-
-        let user_hash = reader.read_hash("hello_answer_user_hash")?;
-        let client_id = reader.read_u32_le("hello_answer_client_id")?;
-        let tcp_port = reader.read_u16_le("hello_answer_tcp_port")?;
-        let tag_count = reader.read_u32_le("hello_answer_tag_count")? as usize;
-
-        if tag_count > self.limits.max_tags {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + reader.pos() - 4,
-                "hello_answer_tag_count",
-                Ed2kErrorKind::TooManyTags {
-                    count: tag_count,
-                    limit: self.limits.max_tags,
-                },
-            ));
-        }
-
-        let mut tags = Vec::with_capacity(tag_count.min(64));
-        let mut unknown_tags = Vec::new();
-
-        for _ in 0..tag_count {
-            let (typed_opt, raw_opt) = reader.read_tag(&self.limits)?;
-            if let Some(tag) = typed_opt {
-                tags.push(tag);
-            }
-            if let Some(raw) = raw_opt {
-                unknown_tags.push(raw);
-            }
-        }
-
-        let (server_ip, server_port) = if reader.remaining() >= 6 {
-            let ip = reader.read_u32_le("hello_answer_server_ip")?;
-            let port = reader.read_u16_le("hello_answer_server_port")?;
-            (ip, port)
-        } else {
-            (0, 0)
-        };
-
-        Ok(Ed2kHelloAnswer {
-            user_hash,
-            client_id,
-            tcp_port,
-            tags,
-            unknown_tags,
-            server_ip,
-            server_port,
-        })
+        decode_hello_answer(&self.limits, protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_EMULE_INFO` (`0xC5 0x01`) payload.
@@ -651,44 +536,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kEmuleInfo, Ed2kParseError> {
-        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
-
-        let client_version = reader.read_u8("emule_info_client_version")?;
-        let protocol_version = reader.read_u8("emule_info_protocol_version")?;
-        let tag_count = reader.read_u32_le("emule_info_tag_count")? as usize;
-
-        if tag_count > self.limits.max_tags {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + reader.pos() - 4,
-                "emule_info_tag_count",
-                Ed2kErrorKind::TooManyTags {
-                    count: tag_count,
-                    limit: self.limits.max_tags,
-                },
-            ));
-        }
-
-        let mut tags = Vec::with_capacity(tag_count.min(64));
-        let mut unknown_tags = Vec::new();
-
-        for _ in 0..tag_count {
-            let (typed_opt, raw_opt) = reader.read_tag(&self.limits)?;
-            if let Some(tag) = typed_opt {
-                tags.push(tag);
-            }
-            if let Some(raw) = raw_opt {
-                unknown_tags.push(raw);
-            }
-        }
-
-        Ok(Ed2kEmuleInfo {
-            client_version,
-            protocol_version,
-            tags,
-            unknown_tags,
-        })
+        decode_emule_info(&self.limits, protocol, opcode, payload, base_offset)
     }
 
     /// Decodes a file status request payload using the decoder's configured profile.
@@ -717,108 +565,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kFileStatusReq, Ed2kParseError> {
-        match profile {
-            Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
-                if opcode == OP_FILESTATUSREQ {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "file_status_req_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason:
-                                "opcode 0x49 is OP_END_OF_DOWNLOAD in eMule/aMule, not OP_FILESTATUSREQ",
-                        },
-                    ));
-                }
-                if opcode != OP_SETREQFILEID_EMULE {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "file_status_req_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason: "expected OP_SETREQFILEID_EMULE (0x4F)",
-                        },
-                    ));
-                }
-            }
-            Ed2kCompatibilityProfile::LegacyEdonkey => {
-                if opcode == OP_SETREQFILEID_EMULE {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "file_status_req_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason: "opcode 0x4F is not recognized in legacy eDonkey profile",
-                        },
-                    ));
-                }
-                if opcode != OP_FILESTATUSREQ {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "file_status_req_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason: "expected OP_FILESTATUSREQ (0x49)",
-                        },
-                    ));
-                }
-            }
-            Ed2kCompatibilityProfile::UnknownStrict => {
-                return Err(Ed2kParseError::new(
-                    protocol,
-                    Some(opcode),
-                    base_offset,
-                    "file_status_req_profile",
-                    Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                        opcode,
-                        profile,
-                        reason:
-                            "ambiguous file status request opcode cannot be determined under UnknownStrict profile",
-                    },
-                ));
-            }
-        }
-
-        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
-        let file_hash = reader.read_hash("filestatusreq_file_hash")?;
-        if file_hash == [0u8; 16] {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset,
-                "filestatusreq_file_hash",
-                Ed2kErrorKind::MalformedField {
-                    message: "zero file hash is not permitted in file status request".to_string(),
-                },
-            ));
-        }
-        if reader.remaining() > 0 {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + reader.pos(),
-                "filestatusreq_trailing_bytes",
-                Ed2kErrorKind::MalformedField {
-                    message: format!(
-                        "unexpected {} trailing bytes after file hash in file status request",
-                        reader.remaining()
-                    ),
-                },
-            ));
-        }
-        Ok(Ed2kFileStatusReq { file_hash })
+        decode_file_status_req_with_profile(profile, protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_FILESTATUS` payload.
@@ -829,72 +576,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kFileStatus, Ed2kParseError> {
-        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
-
-        let file_hash = reader.read_hash("filestatus_file_hash")?;
-        let part_count = reader.read_u16_le("filestatus_part_count")?;
-
-        if (part_count as usize) > self.limits.max_parts || (part_count as usize) > ED2K_MAX_PARTS {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + 16,
-                "filestatus_part_count",
-                Ed2kErrorKind::MalformedField {
-                    message: format!(
-                        "part_count {part_count} exceeds limit {}",
-                        self.limits.max_parts
-                    ),
-                },
-            ));
-        }
-
-        let bitfield_bytes_needed = if part_count == 0 {
-            0
-        } else {
-            expected_mask_bytes(part_count)
-        };
-
-        let bitfield_bytes = if bitfield_bytes_needed > 0 {
-            reader.read_bytes(bitfield_bytes_needed, "filestatus_bitfield")?
-        } else {
-            &[]
-        };
-
-        if (part_count == 0 && reader.remaining() > 0) || reader.remaining() > 1024 {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + reader.pos(),
-                "filestatus_bitfield_trailing_bytes",
-                Ed2kErrorKind::MalformedField {
-                    message: format!(
-                        "unexpected {} trailing bytes in file_status bitfield",
-                        reader.remaining()
-                    ),
-                },
-            ));
-        }
-
-        let availability_mask = PartAvailabilityMask::from_bytes(
-            Bytes::copy_from_slice(bitfield_bytes),
-            part_count,
-        )
-        .map_err(|k| {
-            Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + 18,
-                "filestatus_bitfield",
-                k,
-            )
-        })?;
-
-        Ok(Ed2kFileStatus {
-            file_hash,
-            part_count,
-            availability_mask,
-        })
+        decode_file_status(&self.limits, protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_FILEREQANSNOFILE` (`0x48`) payload (16 bytes file hash).
@@ -905,23 +587,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kFileReqAnsNoFile, Ed2kParseError> {
-        let mut reader = TagReader::new(payload, 0, protocol, Some(opcode));
-        let file_hash = reader.read_hash("filereqansnofile_file_hash")?;
-        if reader.remaining() > 0 {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + reader.pos(),
-                "filereqansnofile_trailing_bytes",
-                Ed2kErrorKind::MalformedField {
-                    message: format!(
-                        "unexpected {} trailing bytes in filereqansnofile",
-                        reader.remaining()
-                    ),
-                },
-            ));
-        }
-        Ok(Ed2kFileReqAnsNoFile { file_hash })
+        decode_file_req_ans_no_file(protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_REQUESTPARTS` payload using the decoder's configured profile.
@@ -950,218 +616,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kRequestParts, Ed2kParseError> {
-        match profile {
-            Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
-                if opcode == OP_REQUESTPARTS {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "request_parts_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason:
-                                "opcode 0x4B is OP_ASKSHAREDFILESANSWER in eMule/aMule, not OP_REQUESTPARTS",
-                        },
-                    ));
-                }
-                if opcode != OP_REQUESTPARTS_EMULE {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "request_parts_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason: "expected OP_REQUESTPARTS_EMULE (0x47)",
-                        },
-                    ));
-                }
-                if payload.len() == 24 {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset + 16,
-                        "request_parts_layout",
-                        Ed2kErrorKind::MalformedField {
-                            message:
-                                "24-byte single-slot layout is not permitted under eMule/aMule profile (expected 40-byte 3-slot layout)"
-                                    .to_string(),
-                        },
-                    ));
-                }
-            }
-            Ed2kCompatibilityProfile::LegacyEdonkey => {
-                if opcode == OP_REQUESTPARTS_EMULE {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "request_parts_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason:
-                                "opcode 0x47 was OP_SETREQFILEID in legacy eDonkey, not OP_REQUESTPARTS",
-                        },
-                    ));
-                }
-                if opcode != OP_REQUESTPARTS {
-                    return Err(Ed2kParseError::new(
-                        protocol,
-                        Some(opcode),
-                        base_offset,
-                        "request_parts_opcode",
-                        Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                            opcode,
-                            profile,
-                            reason: "expected OP_REQUESTPARTS (0x4B)",
-                        },
-                    ));
-                }
-            }
-            Ed2kCompatibilityProfile::UnknownStrict => {
-                return Err(Ed2kParseError::new(
-                    protocol,
-                    Some(opcode),
-                    base_offset,
-                    "request_parts_profile",
-                    Ed2kErrorKind::AmbiguousOpcodeForProfile {
-                        opcode,
-                        profile,
-                        reason:
-                            "ambiguous request parts opcode cannot be determined under UnknownStrict profile",
-                    },
-                ));
-            }
-        }
-
-        if payload.len() < 24 {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + payload.len(),
-                "request_parts_header",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: 24,
-                    available: payload.len(),
-                },
-            ));
-        }
-
-        let mut file_hash = [0u8; 16];
-        file_hash.copy_from_slice(&payload[0..16]);
-
-        if file_hash == [0u8; 16] {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset,
-                "request_parts_file_hash",
-                Ed2kErrorKind::MalformedField {
-                    message: "zero file hash is not permitted in request parts".to_string(),
-                },
-            ));
-        }
-
-        if payload.len() == 24 {
-            let start = u32::from_le_bytes([payload[16], payload[17], payload[18], payload[19]]);
-            let end = u32::from_le_bytes([payload[20], payload[21], payload[22], payload[23]]);
-
-            if start >= end {
-                return Err(Ed2kParseError::new(
-                    protocol,
-                    Some(opcode),
-                    base_offset + 16,
-                    "request_parts_range",
-                    Ed2kErrorKind::InvalidBlockOffsets {
-                        start: start as u64,
-                        end: end as u64,
-                    },
-                ));
-            }
-
-            return Ok(Ed2kRequestParts::single(file_hash, start, end));
-        }
-
-        if payload.len() != 40 {
-            if payload.len() < 40 {
-                return Err(Ed2kParseError::new(
-                    protocol,
-                    Some(opcode),
-                    base_offset + payload.len(),
-                    "request_parts_payload",
-                    Ed2kErrorKind::UnexpectedEof {
-                        needed: 40,
-                        available: payload.len(),
-                    },
-                ));
-            } else {
-                return Err(Ed2kParseError::new(
-                    protocol,
-                    Some(opcode),
-                    base_offset + 40,
-                    "request_parts_payload",
-                    Ed2kErrorKind::MalformedField {
-                        message: format!(
-                            "unexpected payload length {} for request parts (expected 24 or 40)",
-                            payload.len()
-                        ),
-                    },
-                ));
-            }
-        }
-
-        let mut ranges = Vec::with_capacity(3);
-        for i in 0..3 {
-            let start = u32::from_le_bytes([
-                payload[16 + i * 4],
-                payload[17 + i * 4],
-                payload[18 + i * 4],
-                payload[19 + i * 4],
-            ]);
-            let end = u32::from_le_bytes([
-                payload[28 + i * 4],
-                payload[29 + i * 4],
-                payload[30 + i * 4],
-                payload[31 + i * 4],
-            ]);
-
-            if (start == 0 && end == 0) || (start == u32::MAX && end == u32::MAX) {
-                continue;
-            }
-
-            if start >= end {
-                return Err(Ed2kParseError::new(
-                    protocol,
-                    Some(opcode),
-                    base_offset + 16 + i * 4,
-                    "request_parts_range",
-                    Ed2kErrorKind::InvalidBlockOffsets {
-                        start: start as u64,
-                        end: end as u64,
-                    },
-                ));
-            }
-
-            ranges.push(Ed2kBlockRange::new(start, end));
-        }
-
-        if ranges.is_empty() {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + 16,
-                "request_parts_ranges",
-                Ed2kErrorKind::MalformedField {
-                    message: "no valid non-zero block ranges in request parts".to_string(),
-                },
-            ));
-        }
-
-        Ok(Ed2kRequestParts::multi(file_hash, ranges))
+        decode_request_parts_with_profile(profile, protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_SENDINGPART` (`0x46`) payload.
@@ -1172,62 +627,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kSendingPart, Ed2kParseError> {
-        if payload.len() < 24 {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + payload.len(),
-                "sending_part_header",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: 24,
-                    available: payload.len(),
-                },
-            ));
-        }
-
-        let mut file_hash = [0u8; 16];
-        file_hash.copy_from_slice(&payload[0..16]);
-
-        let start_offset = u32::from_le_bytes([payload[16], payload[17], payload[18], payload[19]]);
-        let end_offset = u32::from_le_bytes([payload[20], payload[21], payload[22], payload[23]]);
-
-        if start_offset >= end_offset {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + 16,
-                "sending_part_offsets",
-                Ed2kErrorKind::InvalidBlockOffsets {
-                    start: start_offset as u64,
-                    end: end_offset as u64,
-                },
-            ));
-        }
-
-        let expected_len = (end_offset - start_offset) as usize;
-        let actual_len = payload.len() - 24;
-
-        if actual_len != expected_len {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + 24,
-                "sending_part_payload",
-                Ed2kErrorKind::BlockPayloadMismatch {
-                    expected: expected_len,
-                    actual: actual_len,
-                },
-            ));
-        }
-
-        let data = Bytes::copy_from_slice(&payload[24..]);
-
-        Ok(Ed2kSendingPart::new(
-            file_hash,
-            start_offset,
-            end_offset,
-            data,
-        ))
+        decode_sending_part(protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_PUBLICKEY` (`0x85`) payload.
@@ -1238,35 +638,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kPublicKey, Ed2kParseError> {
-        if payload.is_empty() {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset,
-                "public_key_len",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: 1,
-                    available: 0,
-                },
-            ));
-        }
-
-        let key_len = payload[0] as usize;
-        if payload.len() < 1 + key_len {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + 1,
-                "public_key_payload",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: 1 + key_len,
-                    available: payload.len(),
-                },
-            ));
-        }
-
-        let key_bytes = Bytes::copy_from_slice(&payload[1..1 + key_len]);
-        Ok(Ed2kPublicKey { key_bytes })
+        decode_public_key(protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_SIGNATURE` (`0x87`) payload.
@@ -1277,35 +649,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kSignature, Ed2kParseError> {
-        if payload.is_empty() {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset,
-                "signature_len",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: 1,
-                    available: 0,
-                },
-            ));
-        }
-
-        let sig_len = payload[0] as usize;
-        if payload.len() < 1 + sig_len {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset + 1,
-                "signature_payload",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: 1 + sig_len,
-                    available: payload.len(),
-                },
-            ));
-        }
-
-        let signature_bytes = Bytes::copy_from_slice(&payload[1..1 + sig_len]);
-        Ok(Ed2kSignature { signature_bytes })
+        decode_signature(protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_SECIDENTSTATE` (`0x86`) payload.
@@ -1316,23 +660,7 @@ impl Ed2kDecoder {
         payload: &[u8],
         base_offset: usize,
     ) -> Result<Ed2kSecIdentState, Ed2kParseError> {
-        if payload.len() < 5 {
-            return Err(Ed2kParseError::new(
-                protocol,
-                Some(opcode),
-                base_offset,
-                "secident_state_payload",
-                Ed2kErrorKind::UnexpectedEof {
-                    needed: 5,
-                    available: payload.len(),
-                },
-            ));
-        }
-
-        let state = payload[0];
-        let challenge = u32::from_le_bytes([payload[1], payload[2], payload[3], payload[4]]);
-
-        Ok(Ed2kSecIdentState { state, challenge })
+        decode_secident_state(protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an incoming Source Exchange request (`OP_REQUESTSOURCES` or `OP_REQUESTSOURCES2`).

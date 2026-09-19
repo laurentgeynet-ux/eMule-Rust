@@ -163,6 +163,9 @@ impl KBucketTable {
             for c in &b.contacts {
                 all_contacts.push(c.clone());
             }
+            for c in &b.replacements {
+                all_contacts.push(c.clone());
+            }
         }
 
         all_contacts.sort_by(|a, b| {
@@ -180,6 +183,9 @@ impl KBucketTable {
         let mut all_contacts = Vec::new();
         for b in &self.buckets {
             for c in &b.contacts {
+                all_contacts.push(c.clone());
+            }
+            for c in &b.replacements {
                 all_contacts.push(c.clone());
             }
         }

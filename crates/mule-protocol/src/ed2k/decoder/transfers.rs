@@ -1,0 +1,295 @@
+//! Transfer and block payload decoders (RequestParts, SendingPart).
+
+use bytes::Bytes;
+
+use crate::ed2k::error::{Ed2kErrorKind, Ed2kParseError};
+use crate::ed2k::opcodes::{OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE};
+use crate::ed2k::packet::{Ed2kBlockRange, Ed2kRequestParts, Ed2kSendingPart};
+use crate::ed2k::profile::Ed2kCompatibilityProfile;
+
+/// Decodes a request parts payload according to an explicit `Ed2kCompatibilityProfile`.
+pub fn decode_request_parts_with_profile(
+    profile: Ed2kCompatibilityProfile,
+    protocol: u8,
+    opcode: u8,
+    payload: &[u8],
+    base_offset: usize,
+) -> Result<Ed2kRequestParts, Ed2kParseError> {
+    match profile {
+        Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
+            if opcode == OP_REQUESTPARTS {
+                return Err(Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    base_offset,
+                    "request_parts_opcode",
+                    Ed2kErrorKind::AmbiguousOpcodeForProfile {
+                        opcode,
+                        profile,
+                        reason:
+                            "opcode 0x4B is OP_ASKSHAREDFILESANSWER in eMule/aMule, not OP_REQUESTPARTS",
+                    },
+                ));
+            }
+            if opcode != OP_REQUESTPARTS_EMULE {
+                return Err(Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    base_offset,
+                    "request_parts_opcode",
+                    Ed2kErrorKind::AmbiguousOpcodeForProfile {
+                        opcode,
+                        profile,
+                        reason: "expected OP_REQUESTPARTS_EMULE (0x47)",
+                    },
+                ));
+            }
+            if payload.len() == 24 {
+                return Err(Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    base_offset + 16,
+                    "request_parts_layout",
+                    Ed2kErrorKind::MalformedField {
+                        message:
+                            "24-byte single-slot layout is not permitted under eMule/aMule profile (expected 40-byte 3-slot layout)"
+                                .to_string(),
+                    },
+                ));
+            }
+        }
+        Ed2kCompatibilityProfile::LegacyEdonkey => {
+            if opcode == OP_REQUESTPARTS_EMULE {
+                return Err(Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    base_offset,
+                    "request_parts_opcode",
+                    Ed2kErrorKind::AmbiguousOpcodeForProfile {
+                        opcode,
+                        profile,
+                        reason:
+                            "opcode 0x47 was OP_SETREQFILEID in legacy eDonkey, not OP_REQUESTPARTS",
+                    },
+                ));
+            }
+            if opcode != OP_REQUESTPARTS {
+                return Err(Ed2kParseError::new(
+                    protocol,
+                    Some(opcode),
+                    base_offset,
+                    "request_parts_opcode",
+                    Ed2kErrorKind::AmbiguousOpcodeForProfile {
+                        opcode,
+                        profile,
+                        reason: "expected OP_REQUESTPARTS (0x4B)",
+                    },
+                ));
+            }
+        }
+        Ed2kCompatibilityProfile::UnknownStrict => {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset,
+                "request_parts_profile",
+                Ed2kErrorKind::AmbiguousOpcodeForProfile {
+                    opcode,
+                    profile,
+                    reason:
+                        "ambiguous request parts opcode cannot be determined under UnknownStrict profile",
+                },
+            ));
+        }
+    }
+
+    if payload.len() < 24 {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + payload.len(),
+            "request_parts_header",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: 24,
+                available: payload.len(),
+            },
+        ));
+    }
+
+    let mut file_hash = [0u8; 16];
+    file_hash.copy_from_slice(&payload[0..16]);
+
+    if file_hash == [0u8; 16] {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset,
+            "request_parts_file_hash",
+            Ed2kErrorKind::MalformedField {
+                message: "zero file hash is not permitted in request parts".to_string(),
+            },
+        ));
+    }
+
+    if payload.len() == 24 {
+        let start = u32::from_le_bytes([payload[16], payload[17], payload[18], payload[19]]);
+        let end = u32::from_le_bytes([payload[20], payload[21], payload[22], payload[23]]);
+
+        if start >= end {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + 16,
+                "request_parts_range",
+                Ed2kErrorKind::InvalidBlockOffsets {
+                    start: start as u64,
+                    end: end as u64,
+                },
+            ));
+        }
+
+        return Ok(Ed2kRequestParts::single(file_hash, start, end));
+    }
+
+    if payload.len() != 40 {
+        if payload.len() < 40 {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + payload.len(),
+                "request_parts_payload",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 40,
+                    available: payload.len(),
+                },
+            ));
+        } else {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + 40,
+                "request_parts_payload",
+                Ed2kErrorKind::MalformedField {
+                    message: format!(
+                        "unexpected payload length {} for request parts (expected 24 or 40)",
+                        payload.len()
+                    ),
+                },
+            ));
+        }
+    }
+
+    let mut ranges = Vec::with_capacity(3);
+    for i in 0..3 {
+        let start = u32::from_le_bytes([
+            payload[16 + i * 4],
+            payload[17 + i * 4],
+            payload[18 + i * 4],
+            payload[19 + i * 4],
+        ]);
+        let end = u32::from_le_bytes([
+            payload[28 + i * 4],
+            payload[29 + i * 4],
+            payload[30 + i * 4],
+            payload[31 + i * 4],
+        ]);
+
+        if (start == 0 && end == 0) || (start == u32::MAX && end == u32::MAX) {
+            continue;
+        }
+
+        if start >= end {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                base_offset + 16 + i * 4,
+                "request_parts_range",
+                Ed2kErrorKind::InvalidBlockOffsets {
+                    start: start as u64,
+                    end: end as u64,
+                },
+            ));
+        }
+
+        ranges.push(Ed2kBlockRange::new(start, end));
+    }
+
+    if ranges.is_empty() {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + 16,
+            "request_parts_ranges",
+            Ed2kErrorKind::MalformedField {
+                message: "no valid non-zero block ranges in request parts".to_string(),
+            },
+        ));
+    }
+
+    Ok(Ed2kRequestParts::multi(file_hash, ranges))
+}
+
+/// Decodes an `OP_SENDINGPART` (`0x46`) payload.
+pub fn decode_sending_part(
+    protocol: u8,
+    opcode: u8,
+    payload: &[u8],
+    base_offset: usize,
+) -> Result<Ed2kSendingPart, Ed2kParseError> {
+    if payload.len() < 24 {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + payload.len(),
+            "sending_part_header",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: 24,
+                available: payload.len(),
+            },
+        ));
+    }
+
+    let mut file_hash = [0u8; 16];
+    file_hash.copy_from_slice(&payload[0..16]);
+
+    let start_offset = u32::from_le_bytes([payload[16], payload[17], payload[18], payload[19]]);
+    let end_offset = u32::from_le_bytes([payload[20], payload[21], payload[22], payload[23]]);
+
+    if start_offset >= end_offset {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + 16,
+            "sending_part_offsets",
+            Ed2kErrorKind::InvalidBlockOffsets {
+                start: start_offset as u64,
+                end: end_offset as u64,
+            },
+        ));
+    }
+
+    let expected_len = (end_offset - start_offset) as usize;
+    let actual_len = payload.len() - 24;
+
+    if actual_len != expected_len {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + 24,
+            "sending_part_payload",
+            Ed2kErrorKind::BlockPayloadMismatch {
+                expected: expected_len,
+                actual: actual_len,
+            },
+        ));
+    }
+
+    let data = Bytes::copy_from_slice(&payload[24..]);
+
+    Ok(Ed2kSendingPart::new(
+        file_hash,
+        start_offset,
+        end_offset,
+        data,
+    ))
+}

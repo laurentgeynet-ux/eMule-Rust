@@ -106,4 +106,28 @@ pub enum DaemonError {
     Core(#[from] mule_core::CoreError),
     #[error("Session file error: {0}")]
     Session(String),
+    #[error("Business error: {0}")]
+    Business(String),
+    #[error("Invalid parameters: {0}")]
+    InvalidParams(String),
+    #[error("Not found: {0}")]
+    NotFound(String),
+    #[error("Internal error: {0}")]
+    Internal(String),
+}
+
+impl From<DaemonError> for JsonRpcError {
+    fn from(err: DaemonError) -> Self {
+        match err {
+            DaemonError::InvalidParams(msg) => JsonRpcError::invalid_params(&msg),
+            DaemonError::NotFound(msg) | DaemonError::Business(msg) => JsonRpcError::business(msg),
+            DaemonError::AlreadyRunning(p) => {
+                JsonRpcError::business(format!("Daemon already running on {}", p.display()))
+            }
+            DaemonError::Io(e) => JsonRpcError::internal(e.to_string()),
+            DaemonError::Core(e) => JsonRpcError::business(e.to_string()),
+            DaemonError::Session(e) => JsonRpcError::business(e),
+            DaemonError::Internal(e) => JsonRpcError::internal(e),
+        }
+    }
 }

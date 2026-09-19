@@ -119,6 +119,21 @@ fn test_kad_bootstrap_and_find_node_roundtrip() {
         }
         _ => panic!("expected Req message"),
     }
+
+    let encoded_find_res = KadCodec::encode_find_node_res(&target_id, &contacts);
+    let decoded_find_res = KadCodec::decode(&encoded_find_res).expect("decode find node res");
+    match decoded_find_res {
+        KadMessage::BootstrapRes(b) => {
+            assert_eq!(b.kad_id, target_id);
+            assert_eq!(b.contacts.len(), 2);
+            assert_eq!(b.contacts[0].kad_id, [0x22u8; 16]);
+            assert_eq!(b.contacts[0].ip, [127, 0, 0, 1]);
+            assert_eq!(b.contacts[1].kad_id, [0x33u8; 16]);
+            assert_eq!(b.contacts[1].ip, [127, 0, 0, 2]);
+            assert_eq!(b.contacts[1].udp_port, 4673);
+        }
+        _ => panic!("expected BootstrapRes message for FindNode response"),
+    }
 }
 
 #[test]
@@ -151,12 +166,12 @@ fn test_kad_search_and_publish_source_roundtrip() {
     let start_pos = 0;
     let file_size = 10_485_760;
 
-    let enc_search_req = KadCodec::encode_search_source_req(&file_hash, start_pos, file_size, &sender_id);
+    // Official format: [target_hash 16] [start_pos u16] [file_size u64] — no sender_id
+    let enc_search_req = KadCodec::encode_search_source_req(&file_hash, start_pos, file_size);
     let dec_search_req = KadCodec::decode(&enc_search_req).expect("decode search source req");
     match dec_search_req {
         KadMessage::SearchSourceReq(r) => {
             assert_eq!(r.target_file_hash, file_hash);
-            assert_eq!(r.sender_id, sender_id);
             assert_eq!(r.start_pos, start_pos);
             assert_eq!(r.file_size, file_size);
         }
@@ -281,15 +296,19 @@ fn test_kad_search_and_publish_keyword_roundtrip() {
         _ => panic!("expected PublishKeywordReq"),
     }
 
-    // 4. Publish Keyword Res
+    // 4. Publish Keyword Res (encodes 0x4B, the unified publish response)
     let enc_pub_res = KadCodec::encode_publish_keyword_res(&keyword_hash, 0);
     let dec_pub_res = KadCodec::decode(&enc_pub_res).expect("decode publish keyword res");
     match dec_pub_res {
+        KadMessage::PublishSourceRes(r) => {
+            assert_eq!(r.target_file_hash, keyword_hash);
+            assert_eq!(r.status, 0);
+        }
         KadMessage::PublishKeywordRes(r) => {
             assert_eq!(r.keyword_hash, keyword_hash);
             assert_eq!(r.status, 0);
         }
-        _ => panic!("expected PublishKeywordRes"),
+        _ => panic!("expected PublishSourceRes or PublishKeywordRes for 0x4B"),
     }
 }
 
@@ -313,5 +332,60 @@ fn test_legacy_kad_bootstrap_req_opcode_0x00() {
             );
         }
         _ => panic!("expected BootstrapReq message"),
+    }
+}
+
+#[test]
+fn test_emule_source_response_with_tags_roundtrip() {
+    let file_hash = [0x5Fu8; 16];
+    let sources = vec![KadSourceWire {
+        kad_id: [0x88u8; 16],
+        ip: [88, 171, 182, 196],
+        udp_port: 50671,
+        tcp_port: 50662,
+        encryption: 3,
+    }];
+
+    let encoded = KadCodec::encode_search_source_res(&file_hash, &sources);
+    let decoded = KadCodec::decode(&encoded).expect("should decode tag-based source response");
+    match decoded {
+        KadMessage::SearchSourceRes(res) => {
+            assert_eq!(res.target_file_hash, file_hash);
+            assert_eq!(res.sources.len(), 1);
+            let s = &res.sources[0];
+            assert_eq!(s.kad_id, [0x88u8; 16]);
+            // Verify IP byte order is NOT inverted!
+            assert_eq!(s.ip, [88, 171, 182, 196]);
+            assert_eq!(s.tcp_port, 50662);
+            assert_eq!(s.udp_port, 50671);
+            assert_eq!(s.encryption, 3);
+        }
+        _ => panic!("expected SearchSourceRes"),
+    }
+}
+
+#[test]
+fn test_emule_keyword_response_with_publishinfo_roundtrip() {
+    let keyword_hash = [0xAAu8; 16];
+    let entries = vec![KadKeywordEntryWire {
+        file_hash: [0x11u8; 16],
+        file_name: "test_archive.zip".to_string(),
+        file_size: 42_000_000,
+        source_count: 7,
+    }];
+
+    let encoded = KadCodec::encode_search_keyword_res(&keyword_hash, &entries);
+    let decoded = KadCodec::decode(&encoded).expect("should decode keyword response");
+    match decoded {
+        KadMessage::SearchKeywordRes(res) => {
+            assert_eq!(res.keyword_hash, keyword_hash);
+            assert_eq!(res.entries.len(), 1);
+            let e = &res.entries[0];
+            assert_eq!(e.file_hash, [0x11u8; 16]);
+            assert_eq!(e.file_name, "test_archive.zip");
+            assert_eq!(e.file_size, 42_000_000);
+            assert_eq!(e.source_count, 7);
+        }
+        _ => panic!("expected SearchKeywordRes"),
     }
 }

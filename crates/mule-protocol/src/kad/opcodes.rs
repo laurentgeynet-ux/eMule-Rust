@@ -32,6 +32,12 @@ pub const KADEMLIA2_HELLO_REQ: u8 = 0x11;
 pub const KADEMLIA2_HELLO_RES: u8 = 0x19;
 /// Kad2 Hello response ACK (0x22).
 pub const KADEMLIA2_HELLO_RES_ACK: u8 = 0x22;
+
+// NOTE on Kad2 search/publish opcodes (official eMule 0.72a reference):
+// Requests:  SEARCH_KEY_REQ=0x33, SEARCH_SOURCE_REQ=0x34, SEARCH_NOTES_REQ=0x35
+// Response:  SEARCH_RES=0x3B (unified for all search types)
+// Requests:  PUBLISH_KEY_REQ=0x43, PUBLISH_SOURCE_REQ=0x44, PUBLISH_NOTES_REQ=0x45
+// Response:  PUBLISH_RES=0x4B (unified for all publish types)
 /// Kad2 Find Node / Value request (0x21).
 pub const KADEMLIA2_REQ: u8 = 0x21;
 /// Kad2 Find Node contact count / subtype (0x0B = 11 contacts requested).
@@ -46,14 +52,14 @@ pub const KADEMLIA2_SEARCH_KEY_REQ: u8 = 0x33;
 pub const KADEMLIA2_SEARCH_SOURCE_REQ: u8 = 0x34;
 /// Kad2 Search Notes request (0x35).
 pub const KADEMLIA2_SEARCH_NOTES_REQ: u8 = 0x35;
-/// Kad2 Search response (0x3B).
+/// Kad2 Search response (0x3B) — unified response for keyword, source, and notes search.
 pub const KADEMLIA2_SEARCH_RES: u8 = 0x3B;
-/// Kad2 Search Source response (0x3B).
-pub const KADEMLIA2_SEARCH_SOURCE_RES: u8 = 0x3B;
-/// Kad2 Search Keyword request (0x33).
-pub const KADEMLIA2_SEARCH_KEYWORD_REQ: u8 = 0x33;
-/// Kad2 Search Keyword response (0x3B, official Kad2 search response).
-pub const KADEMLIA2_SEARCH_KEYWORD_RES: u8 = 0x3B;
+/// Alias: Kad2 Search Source response is the unified KADEMLIA2_SEARCH_RES (0x3B).
+pub const KADEMLIA2_SEARCH_SOURCE_RES: u8 = KADEMLIA2_SEARCH_RES;
+/// Alias: Kad2 Search Keyword request is KADEMLIA2_SEARCH_KEY_REQ (0x33).
+pub const KADEMLIA2_SEARCH_KEYWORD_REQ: u8 = KADEMLIA2_SEARCH_KEY_REQ;
+/// Alias: Kad2 Search Keyword response is the unified KADEMLIA2_SEARCH_RES (0x3B).
+pub const KADEMLIA2_SEARCH_KEYWORD_RES: u8 = KADEMLIA2_SEARCH_RES;
 /// Legacy internal search keyword response opcode (0x2C, preserved for fallback/tests).
 pub const KADEMLIA2_SEARCH_KEYWORD_RES_LEGACY: u8 = 0x2C;
 /// Kad2 Publish Keyword request (0x43).
@@ -62,14 +68,15 @@ pub const KADEMLIA2_PUBLISH_KEY_REQ: u8 = 0x43;
 pub const KADEMLIA2_PUBLISH_SOURCE_REQ: u8 = 0x44;
 /// Kad2 Publish Notes request (0x45).
 pub const KADEMLIA2_PUBLISH_NOTES_REQ: u8 = 0x45;
-/// Kad2 Publish response (0x4B).
+/// Kad2 Publish response (0x4B) — unified response for keyword, source, and notes publish.
 pub const KADEMLIA2_PUBLISH_RES: u8 = 0x4B;
-/// Kad2 Publish Source response (0x4B).
-pub const KADEMLIA2_PUBLISH_SOURCE_RES: u8 = 0x4B;
-/// Kad2 Publish Keyword request (0x43).
-pub const KADEMLIA2_PUBLISH_KEYWORD_REQ: u8 = 0x43;
-/// Kad2 Publish Keyword response (0x2D).
-pub const KADEMLIA2_PUBLISH_KEYWORD_RES: u8 = 0x2D;
+/// Alias: Kad2 Publish Source response is the unified KADEMLIA2_PUBLISH_RES (0x4B).
+pub const KADEMLIA2_PUBLISH_SOURCE_RES: u8 = KADEMLIA2_PUBLISH_RES;
+/// Alias: Kad2 Publish Keyword request is KADEMLIA2_PUBLISH_KEY_REQ (0x43).
+pub const KADEMLIA2_PUBLISH_KEYWORD_REQ: u8 = KADEMLIA2_PUBLISH_KEY_REQ;
+/// Alias: Kad2 Publish Keyword response is the unified KADEMLIA2_PUBLISH_RES (0x4B).
+/// NOTE: Previously was 0x2D which is an invented opcode that doesn't exist in official eMule.
+pub const KADEMLIA2_PUBLISH_KEYWORD_RES: u8 = KADEMLIA2_PUBLISH_RES;
 /// Kad2 Ping request (0x60).
 pub const KADEMLIA2_PING: u8 = 0x60;
 /// Kad2 Pong response (0x61).

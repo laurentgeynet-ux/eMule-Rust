@@ -6,7 +6,7 @@ use mule_core::persistence::Database;
 fn test_kad_id_xor_metric_and_distance() {
     let id_a = KadId([0u8; 16]);
     let mut bytes_b = [0u8; 16];
-    bytes_b[0] = 0x80; // Differ in MSB
+    bytes_b[3] = 0x80; // Differ in MSB (bit 31 of DWORD 0)
     let id_b = KadId(bytes_b);
 
     assert_eq!(id_a.xor_distance(&id_b), id_b);
@@ -14,7 +14,7 @@ fn test_kad_id_xor_metric_and_distance() {
     assert_eq!(id_a.bucket_index_for(&id_b), Some(127));
 
     let mut bytes_c = [0u8; 16];
-    bytes_c[15] = 0x01; // Differ in LSB
+    bytes_c[12] = 0x01; // Differ in LSB (bit 0 of DWORD 3)
     let id_c = KadId(bytes_c);
     assert_eq!(id_c.leading_zeros(), 127);
     assert_eq!(id_a.bucket_index_for(&id_c), Some(0));
@@ -30,8 +30,8 @@ fn test_routing_table_insertion_and_capacity() {
     // Insert 20 contacts into bucket 127 (using distinct /24 subnets)
     for i in 0..K_BUCKET_SIZE {
         let mut b = [0u8; 16];
-        b[0] = 0x80;
-        b[15] = (i + 1) as u8;
+        b[3] = 0x80;
+        b[12] = (i + 1) as u8;
         let c = KadContact::new(KadId(b), Ipv4Addr::new(10, 0, (i + 1) as u8, 1), 39737, None, 2, 1000);
         let evict_candidate = table.insert_or_update(c);
         assert!(evict_candidate.is_none());
@@ -42,8 +42,8 @@ fn test_routing_table_insertion_and_capacity() {
 
     // 21st contact into bucket 127 -> goes to replacement cache, returns head candidate
     let mut b21 = [0u8; 16];
-    b21[0] = 0x80;
-    b21[15] = 255;
+    b21[3] = 0x80;
+    b21[12] = 255;
     let c21 = KadContact::new(KadId(b21), Ipv4Addr::new(10, 0, 21, 1), 39737, None, 2, 1000);
     let evict_candidate = table.insert_or_update(c21);
     assert!(evict_candidate.is_some());
@@ -67,8 +67,8 @@ fn test_routing_table_subnet_sybil_protection() {
     // Insert 2 contacts from same /24 subnet (192.168.1.0/24)
     for i in 0..2 {
         let mut b = [0u8; 16];
-        b[0] = 0x80;
-        b[15] = (i + 1) as u8;
+        b[3] = 0x80;
+        b[12] = (i + 1) as u8;
         let c = KadContact::new(KadId(b), Ipv4Addr::new(192, 168, 1, (i + 1) as u8), 39737, None, 2, 1000);
         let evict = table.insert_or_update(c);
         assert!(evict.is_none());
@@ -77,8 +77,8 @@ fn test_routing_table_subnet_sybil_protection() {
 
     // 3rd contact from same /24 subnet must be rejected by anti-Sybil protection
     let mut b3 = [0u8; 16];
-    b3[0] = 0x80;
-    b3[15] = 3;
+    b3[3] = 0x80;
+    b3[12] = 3;
     let c3 = KadContact::new(KadId(b3), Ipv4Addr::new(192, 168, 1, 3), 39737, None, 2, 1000);
     let evict3 = table.insert_or_update(c3);
     assert!(evict3.is_none());

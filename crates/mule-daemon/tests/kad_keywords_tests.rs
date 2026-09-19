@@ -24,6 +24,7 @@ fn setup_test_state(tmp: &tempfile::TempDir) -> AppState {
 
 #[tokio::test]
 async fn test_kad_keyword_publish_and_search_flow() {
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let tmp = tempdir().expect("create tempdir");
     let state = setup_test_state(&tmp);
     state
@@ -70,6 +71,17 @@ async fn test_kad_keyword_publish_and_search_flow() {
                         2,
                         &contacts,
                     );
+                    let _ = mock_socket.send_to(&res, from_addr).await;
+                }
+                KadMessage::Req(r) => {
+                    let contacts = vec![KadContactWire {
+                        kad_id: [0x77u8; 16],
+                        ip: [127, 0, 0, 1],
+                        udp_port: mock_addr.port(),
+                        tcp_port: 39735,
+                        version: 2,
+                    }];
+                    let res = KadCodec::encode_find_node_res(&r.target_id, &contacts);
                     let _ = mock_socket.send_to(&res, from_addr).await;
                 }
                 KadMessage::PublishKeywordReq(p) => {

@@ -15,28 +15,27 @@ use tokio::time::timeout;
 
 use super::decoder::Ed2kDecoder;
 use super::encoder::Ed2kEncoder;
-use super::opcodes::{
-    OP_ACCEPTUPLOADREQ, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_QUEUERANKING,
-    OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
-    OP_STARTUPLOADREQ,
-};
+use super::error::Ed2kParseError;
+use super::opcodes::*;
 use super::packet::{
-    Ed2kFileStatus, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kSendingPart, PartAvailabilityMask,
+    Ed2kBlockRange, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage,
+    Ed2kRequestParts, Ed2kSendingPart, PartAvailabilityMask,
 };
-
 use super::peer_info::Ed2kPeerInfo;
 use super::profile::Ed2kCompatibilityProfile;
 use super::protocol::{PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED};
+use super::sequencer::{Ed2kDownloadSequencer, MAX_REQUEST_RANGES_PER_PACKET};
 use super::session::{Ed2kSession, Ed2kSessionError, Ed2kSessionState};
+use super::storage::Ed2kBlockWriter;
 use super::tags::{Ed2kTag, TagName, TagValue, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION};
 use crate::framing::{PacketCodec, RawPacket};
 
-fn decode_test_file_status_req(
+pub fn decode_test_file_status_req(
     decoder: &Ed2kDecoder,
     protocol: u8,
     opcode: u8,
     payload: &[u8],
-) -> Result<super::packet::Ed2kFileStatusReq, super::error::Ed2kParseError> {
+) -> Result<Ed2kFileStatusReq, Ed2kParseError> {
     let profile = if opcode == OP_SETREQFILEID_EMULE {
         Ed2kCompatibilityProfile::Emule050a
     } else {
@@ -45,12 +44,12 @@ fn decode_test_file_status_req(
     decoder.decode_file_status_req_with_profile(profile, protocol, opcode, payload, 0)
 }
 
-fn decode_test_request_parts(
+pub fn decode_test_request_parts(
     decoder: &Ed2kDecoder,
     protocol: u8,
     opcode: u8,
     payload: &[u8],
-) -> Result<super::packet::Ed2kRequestParts, super::error::Ed2kParseError> {
+) -> Result<Ed2kRequestParts, Ed2kParseError> {
     let profile = if opcode == OP_REQUESTPARTS_EMULE {
         Ed2kCompatibilityProfile::Emule050a
     } else {
@@ -119,6 +118,513 @@ pub enum TestPeerMode {
     SendingPartCompressed0xD4,
     /// Immediately closes connection upon receiving OP_REQUESTPARTS.
     SendingPartImmediateClose,
+}
+
+/// Active loopback client establishing and driving eD2K sessions.
+pub struct Ed2kLoopbackClient {
+    stream: TcpStream,
+    session: Ed2kSession,
+    codec: PacketCodec,
+    encoder: Ed2kEncoder,
+    read_buf: BytesMut,
+}
+
+impl Ed2kLoopbackClient {
+    /// Connects to a target socket address (enforcing loopback only) and initiates handshake.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn connect_and_handshake(
+        addr: SocketAddr,
+        local_user_hash: [u8; 16],
+        local_client_id: u32,
+        local_tcp_port: u16,
+        tags: Vec<Ed2kTag>,
+        server_ip: u32,
+        server_port: u16,
+        handshake_timeout: Duration,
+    ) -> Result<(Self, Ed2kPeerInfo), Ed2kSessionError> {
+        // Enforce loopback confinement
+        if !addr.ip().is_loopback() {
+            return Err(Ed2kSessionError::Io(format!(
+                "Non-loopback address {addr} is strictly forbidden"
+            )));
+        }
+
+        let stream = timeout(Duration::from_millis(500), TcpStream::connect(addr))
+            .await
+            .map_err(|_| Ed2kSessionError::Timeout(Duration::from_millis(500)))?
+            .map_err(|e| Ed2kSessionError::Io(format!("TCP connect to loopback failed: {e}")))?;
+
+        let mut session = Ed2kSession::new_initiator(local_user_hash, local_client_id, local_tcp_port);
+        let hello = session.create_hello(tags, server_ip, server_port)?;
+
+        let encoder = Ed2kEncoder::new();
+        let wire_bytes = encoder
+            .encode_to_bytes(&Ed2kMessage::Hello(hello))
+            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
+
+        let mut client = Self {
+            stream,
+            session,
+            codec: PacketCodec::new(),
+            encoder,
+            read_buf: BytesMut::with_capacity(2048),
+        };
+
+        // Transmit Hello frame
+        client
+            .stream
+            .write_all(&wire_bytes)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Failed to transmit Hello: {e}")))?;
+
+        // Await HelloAnswer within timeout
+        let peer_info = client.await_handshake_answer(handshake_timeout).await?;
+        Ok((client, peer_info))
+    }
+
+    /// Waits for `OP_HELLO_ANSWER` from the remote loopback peer.
+    async fn await_handshake_answer(
+        &mut self,
+        handshake_timeout: Duration,
+    ) -> Result<Ed2kPeerInfo, Ed2kSessionError> {
+        let deadline = tokio::time::Instant::now() + handshake_timeout;
+
+        loop {
+            // Check if buffer already contains a packet
+            if let Some(raw_packet) = self
+                .codec
+                .decode(&mut self.read_buf)
+                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
+            {
+                let msg_opt = self.session.on_packet_received(&raw_packet)?;
+                if let Some(Ed2kMessage::HelloAnswer(answer)) = msg_opt {
+                    let mut peer = Ed2kPeerInfo::from_hello_answer(&answer);
+                    if let Some(session_peer) = self.session.peer_info() {
+                        if peer.emule_info.is_none() {
+                            peer.emule_info = session_peer.emule_info.clone();
+                        }
+                    }
+                    return Ok(peer);
+                } else if raw_packet.protocol == PR_EMULE {
+                    // Extended eMule packet (e.g. OP_EMULEINFO under PR_EMULE 0xC5) received alongside handshake.
+                    // Continue awaiting OP_HELLOANSWER in the stream.
+                    continue;
+                } else {
+                    return Err(Ed2kSessionError::UnexpectedMessageInState {
+                        state: "AwaitingHelloAnswer",
+                        opcode: raw_packet.opcode,
+                    });
+                }
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                self.session.on_timeout(handshake_timeout);
+                return Err(Ed2kSessionError::Timeout(handshake_timeout));
+            }
+
+            let mut tmp = [0u8; 1024];
+            let read_future = self.stream.read(&mut tmp);
+            let n = match timeout(remaining, read_future).await {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => {
+                    self.session.fail(Ed2kSessionError::Io(e.to_string()));
+                    return Err(Ed2kSessionError::Io(format!("Socket read error: {e}")));
+                }
+                Err(_) => {
+                    self.session.on_timeout(handshake_timeout);
+                    return Err(Ed2kSessionError::Timeout(handshake_timeout));
+                }
+            };
+
+            if n == 0 {
+                self.session.on_remote_closed();
+                return Err(Ed2kSessionError::Io("Connection closed by peer before HelloAnswer".to_string()));
+            }
+
+            self.read_buf.extend_from_slice(&tmp[..n]);
+        }
+    }
+
+    /// Sends any eD2K message to the connected loopback peer.
+    pub async fn send_message(&mut self, msg: &Ed2kMessage) -> Result<(), Ed2kSessionError> {
+        let bytes = self
+            .encoder
+            .encode_to_bytes(msg)
+            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
+        self.stream
+            .write_all(&bytes)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Write failed: {e}")))?;
+        Ok(())
+    }
+
+    /// Reads the next incoming packet from the loopback peer.
+    pub async fn recv_packet(&mut self) -> Result<RawPacket, Ed2kSessionError> {
+        let mut tmp = [0u8; 1024];
+        loop {
+            if let Some(packet) = self
+                .codec
+                .decode(&mut self.read_buf)
+                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
+            {
+                return Ok(packet);
+            }
+            let n = self.stream.read(&mut tmp).await.map_err(|e| {
+                Ed2kSessionError::Io(format!("Read failed: {e}"))
+            })?;
+            if n == 0 {
+                return Err(Ed2kSessionError::Io("EOF reached".to_string()));
+            }
+            self.read_buf.extend_from_slice(&tmp[..n]);
+        }
+    }
+
+    /// Returns a reference to the underlying session state machine.
+    pub fn session(&self) -> &Ed2kSession {
+        &self.session
+    }
+
+    /// Returns a mutable reference to the underlying session state machine.
+    pub fn session_mut(&mut self) -> &mut Ed2kSession {
+        &mut self.session
+    }
+
+    /// Returns a reference to the negotiated remote peer info if available.
+    pub fn peer_info(&self) -> Option<&Ed2kPeerInfo> {
+        self.session.peer_info()
+    }
+
+    /// Sends a raw frame directly over the TCP stream.
+    pub async fn send_raw_packet(&mut self, packet: &RawPacket) -> Result<(), Ed2kSessionError> {
+        let wire_bytes = self
+            .codec
+            .encode_to_bytes(packet)
+            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
+        self.stream
+            .write_all(&wire_bytes)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Failed to write raw packet: {e}")))?;
+        Ok(())
+    }
+
+    /// Sends an `OP_FILESTATUSREQ` and waits for the corresponding `OP_FILESTATUS` response.
+    pub async fn request_file_status(
+        &mut self,
+        file_hash: [u8; 16],
+        timeout_duration: Duration,
+    ) -> Result<Ed2kFileStatus, Ed2kSessionError> {
+        let now = Instant::now();
+        let packet = self.session.send_file_status_request(file_hash, now)?;
+        let wire_bytes = self
+            .codec
+            .encode_to_bytes(&packet)
+            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
+        self.stream
+            .write_all(&wire_bytes)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send file status req: {e}")))?;
+
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        loop {
+            if let Some(raw_packet) = self
+                .codec
+                .decode(&mut self.read_buf)
+                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
+            {
+                let msg_opt = self.session.on_packet_received(&raw_packet)?;
+                if let Some(Ed2kMessage::FileStatus(status)) = msg_opt {
+                    return Ok(status);
+                } else if let Some(Ed2kMessage::FileReqAnsNoFile(ans)) = msg_opt {
+                    return Err(Ed2kSessionError::FileNotFound(hex::encode(ans.file_hash)));
+                } else {
+                    return Err(Ed2kSessionError::UnexpectedMessageInState {
+                        state: self.session.state.name(),
+                        opcode: raw_packet.opcode,
+                    });
+                }
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                self.session
+                    .expire_file_status_requests(timeout_duration, Instant::now());
+                return Err(Ed2kSessionError::Timeout(timeout_duration));
+            }
+
+            let mut tmp = [0u8; 1024];
+            let read_future = self.stream.read(&mut tmp);
+            let n = match timeout(remaining, read_future).await {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => {
+                    self.session.fail(Ed2kSessionError::Io(e.to_string()));
+                    return Err(Ed2kSessionError::Io(format!("Socket read error: {e}")));
+                }
+                Err(_) => {
+                    self.session
+                        .expire_file_status_requests(timeout_duration, Instant::now());
+                    return Err(Ed2kSessionError::Timeout(timeout_duration));
+                }
+            };
+
+            if n == 0 {
+                self.session.on_remote_closed();
+                return Err(Ed2kSessionError::Io(
+                    "Connection closed by peer before file status".to_string(),
+                ));
+            }
+
+            self.read_buf.extend_from_slice(&tmp[..n]);
+        }
+    }
+
+    /// Sends an `OP_REQUESTPARTS` block request.
+    pub async fn send_block_request(
+        &mut self,
+        file_hash: [u8; 16],
+        start: u64,
+        end: u64,
+        file_size: u64,
+    ) -> Result<(), Ed2kSessionError> {
+        let now = Instant::now();
+        let packet = self
+            .session
+            .send_block_request(file_hash, start, end, file_size, now)?;
+        let wire_bytes = self
+            .codec
+            .encode_to_bytes(&packet)
+            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
+        self.stream
+            .write_all(&wire_bytes)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send request parts: {e}")))?;
+        Ok(())
+    }
+
+    /// Sends an `OP_STARTUPLOADREQ` (`0x54`) to enter the upload queue for a file.
+    pub async fn send_start_upload_request(
+        &mut self,
+        file_hash: [u8; 16],
+    ) -> Result<(), Ed2kSessionError> {
+        let packet = RawPacket::with_vec(PR_ED2K, OP_STARTUPLOADREQ, file_hash.to_vec());
+        let wire_bytes = self
+            .codec
+            .encode_to_bytes(&packet)
+            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
+        self.stream
+            .write_all(&wire_bytes)
+            .await
+            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send start upload request: {e}")))?;
+        Ok(())
+    }
+
+    /// Reads the next incoming packet from the stream.
+    pub async fn read_next_packet(
+        &mut self,
+        timeout_duration: Duration,
+    ) -> Result<RawPacket, Ed2kSessionError> {
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        loop {
+            if let Some(packet) = self
+                .codec
+                .decode(&mut self.read_buf)
+                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
+            {
+                return Ok(packet);
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(Ed2kSessionError::Timeout(timeout_duration));
+            }
+
+            let mut tmp = [0u8; 8192];
+            let read_future = self.stream.read(&mut tmp);
+            let n = match timeout(remaining, read_future).await {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => return Err(Ed2kSessionError::Io(format!("Socket read error: {e}"))),
+                Err(_) => return Err(Ed2kSessionError::Timeout(timeout_duration)),
+            };
+
+            if n == 0 {
+                return Err(Ed2kSessionError::Io("Connection closed by peer".to_string()));
+            }
+
+            self.read_buf.extend_from_slice(&tmp[..n]);
+        }
+    }
+
+    /// Requests entry into the remote peer's upload queue and awaits upload slot acceptance (`OP_ACCEPTUPLOADREQ` 0x55).
+    pub async fn request_upload_slot(
+        &mut self,
+        file_hash: [u8; 16],
+        timeout_duration: Duration,
+    ) -> Result<(), Ed2kSessionError> {
+        self.send_start_upload_request(file_hash).await?;
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(Ed2kSessionError::Timeout(timeout_duration));
+            }
+            let pkt = self.read_next_packet(remaining).await?;
+            if pkt.opcode == OP_ACCEPTUPLOADREQ {
+                return Ok(());
+            }
+        }
+    }
+
+    /// Waits for an incoming `OP_SENDINGPART` response within timeout.
+    pub async fn receive_sending_part(
+        &mut self,
+        timeout_duration: Duration,
+    ) -> Result<Ed2kSendingPart, Ed2kSessionError> {
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        loop {
+            if let Some(raw_packet) = self
+                .codec
+                .decode(&mut self.read_buf)
+                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
+            {
+                let msg_opt = self.session.on_packet_received(&raw_packet)?;
+                if let Some(Ed2kMessage::SendingPart(part)) = msg_opt {
+                    return Ok(part);
+                } else if raw_packet.protocol == PR_EMULE || raw_packet.opcode == OP_QUEUERANKING {
+                    continue;
+                } else {
+                    return Err(Ed2kSessionError::UnexpectedMessageInState {
+                        state: self.session.state.name(),
+                        opcode: raw_packet.opcode,
+                    });
+                }
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                self.session
+                    .expire_block_requests(timeout_duration, Instant::now());
+                return Err(Ed2kSessionError::Timeout(timeout_duration));
+            }
+
+            let mut tmp = [0u8; 8192];
+            let read_future = self.stream.read(&mut tmp);
+            let n = match timeout(remaining, read_future).await {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => {
+                    self.session.fail(Ed2kSessionError::Io(e.to_string()));
+                    return Err(Ed2kSessionError::Io(format!("Socket read error: {e}")));
+                }
+                Err(_) => {
+                    self.session
+                        .expire_block_requests(timeout_duration, Instant::now());
+                    return Err(Ed2kSessionError::Timeout(timeout_duration));
+                }
+            };
+
+            if n == 0 {
+                self.session.on_remote_closed();
+                return Err(Ed2kSessionError::Io(
+                    "Connection closed by peer before sending part".to_string(),
+                ));
+            }
+
+            self.read_buf.extend_from_slice(&tmp[..n]);
+        }
+    }
+
+    /// Downloads a sequence of blocks using a bounded sliding window of in-flight requests.
+    pub async fn download_blocks_pipelined<W: Ed2kBlockWriter>(
+        &mut self,
+        sequencer: &Ed2kDownloadSequencer,
+        blocks_to_download: &[Ed2kBlockRange],
+        sink: &mut W,
+        max_in_flight: usize,
+        stop_after_blocks: Option<usize>,
+        chunk_timeout: Duration,
+    ) -> Result<usize, Ed2kSessionError> {
+        let window_size = max_in_flight.clamp(1, MAX_REQUEST_RANGES_PER_PACKET);
+        let target_total = match stop_after_blocks {
+            Some(limit) => limit.min(blocks_to_download.len()),
+            None => blocks_to_download.len(),
+        };
+
+        let mut next_dispatch_idx = 0;
+        let mut dispatched_count = 0;
+        let mut completed_blocks_count = 0;
+        let mut active_indices = std::collections::HashSet::new();
+
+        while completed_blocks_count < target_total {
+            while self.session.snapshot().pending_block_count < window_size
+                && dispatched_count < target_total
+                && next_dispatch_idx < blocks_to_download.len()
+            {
+                let block = &blocks_to_download[next_dispatch_idx];
+                let b_start = block.start as u64;
+                let b_end = block.end as u64;
+
+                if sink.has_range(b_start, b_end) {
+                    next_dispatch_idx += 1;
+                    continue;
+                }
+
+                self.send_block_request(
+                    sequencer.file_hash(),
+                    b_start,
+                    b_end,
+                    sequencer.file_size(),
+                )
+                .await?;
+
+                active_indices.insert(next_dispatch_idx);
+                dispatched_count += 1;
+                next_dispatch_idx += 1;
+            }
+
+            if self.session.snapshot().pending_block_count == 0 {
+                break;
+            }
+
+            let part = self.receive_sending_part(chunk_timeout).await?;
+            let _written_range = sink
+                .write_block(sequencer, &part)
+                .map_err(|e| Ed2kSessionError::Io(e.to_string()))?;
+
+            let mut newly_completed = Vec::new();
+            for &idx in &active_indices {
+                let block = &blocks_to_download[idx];
+                if sink.has_range(block.start as u64, block.end as u64) {
+                    newly_completed.push(idx);
+                }
+            }
+
+            for idx in newly_completed {
+                active_indices.remove(&idx);
+                completed_blocks_count += 1;
+            }
+        }
+
+        Ok(completed_blocks_count)
+    }
+
+    /// High-level helper: requests a block range and awaits the response packet.
+    pub async fn request_block(
+        &mut self,
+        file_hash: [u8; 16],
+        start: u64,
+        end: u64,
+        file_size: u64,
+        timeout_duration: Duration,
+    ) -> Result<Ed2kSendingPart, Ed2kSessionError> {
+        self.send_block_request(file_hash, start, end, file_size)
+            .await?;
+        self.receive_sending_part(timeout_duration).await
+    }
+
+    /// Gracefully shuts down the client connection.
+    pub async fn close(mut self) {
+        let _ = self.stream.shutdown().await;
+        self.session.state = Ed2kSessionState::Closed;
+    }
 }
 
 /// Controlled loopback test peer operating solely on 127.0.0.1.
@@ -352,7 +858,6 @@ impl Ed2kTestPeer {
                     Ok(())
                 }
                 TestPeerMode::HelloAnswerBeforeHello => {
-                    // Send HelloAnswer before client sends Hello
                     let answer = Ed2kHelloAnswer {
                         user_hash: self.local_user_hash,
                         client_id: self.client_id,
@@ -372,12 +877,10 @@ impl Ed2kTestPeer {
                     stream.write_all(&bytes).await.map_err(|e| {
                         Ed2kSessionError::Io(format!("Failed to write early answer: {e}"))
                     })?;
-                    // Keep connection open briefly so client can receive and reject
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     Ok(())
                 }
                 TestPeerMode::DoubleHello => {
-                    // Send two Hello messages
                     let hello = Ed2kHello {
                         user_hash: self.local_user_hash,
                         client_id: self.client_id,
@@ -404,7 +907,6 @@ impl Ed2kTestPeer {
                     Ok(())
                 }
                 TestPeerMode::UnsupportedProtocol0xD4 => {
-                    // Send frame with protocol byte 0xD4
                     let fake_frame = [PR_EMULE_COMPRESSED, 0x01, 0x00, 0x00, 0x00, OP_HELLO];
                     stream.write_all(&fake_frame).await.map_err(|e| {
                         Ed2kSessionError::Io(format!("Failed to write 0xD4 frame: {e}"))
@@ -413,7 +915,6 @@ impl Ed2kTestPeer {
                     Ok(())
                 }
                 TestPeerMode::UnexpectedOpcode => {
-                    // Send frame with unknown opcode 0x99
                     let fake_frame = [PR_ED2K, 0x01, 0x00, 0x00, 0x00, 0x99];
                     stream.write_all(&fake_frame).await.map_err(|e| {
                         Ed2kSessionError::Io(format!("Failed to write unknown opcode frame: {e}"))
@@ -422,7 +923,6 @@ impl Ed2kTestPeer {
                     Ok(())
                 }
                 TestPeerMode::ZeroUserHash => {
-                    // Read client Hello
                     let mut codec = PacketCodec::new();
                     let mut buf = BytesMut::with_capacity(1024);
                     let hello_packet = read_packet(&mut stream, &mut codec, &mut buf).await?;
@@ -435,7 +935,6 @@ impl Ed2kTestPeer {
                     )?;
                     *self.received_hello.lock().await = Some(hello);
 
-                    // Respond with zero user hash
                     let answer = Ed2kHelloAnswer {
                         user_hash: [0u8; 16],
                         client_id: self.client_id,
@@ -456,7 +955,6 @@ impl Ed2kTestPeer {
                     Ok(())
                 }
                 TestPeerMode::FragmentedByteByByte => {
-                    // Read client Hello
                     let mut codec = PacketCodec::new();
                     let mut buf = BytesMut::with_capacity(1024);
                     let hello_packet = read_packet(&mut stream, &mut codec, &mut buf).await?;
@@ -492,7 +990,6 @@ impl Ed2kTestPeer {
                         .encode_to_bytes(&Ed2kMessage::HelloAnswer(answer))
                         .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
 
-                    // Write one byte at a time with 2ms interval
                     for b in bytes.as_ref() {
                         stream.write_all(&[*b]).await.map_err(|e| {
                             Ed2kSessionError::Io(format!("Failed writing fragmented byte: {e}"))
@@ -670,8 +1167,6 @@ impl Ed2kTestPeer {
                         &req_packet.payload,
                     )?;
 
-                    // 10 parts requires 2 mask bytes, but we only send 1 byte.
-                    // Frame len = 1 (opcode) + 16 (hash) + 2 (part_count) + 1 (mask) = 20
                     let mut frame = vec![PR_ED2K, 20, 0, 0, 0, OP_FILESTATUS];
                     frame.extend_from_slice(&req.file_hash);
                     frame.extend_from_slice(&10u16.to_le_bytes());
@@ -706,8 +1201,6 @@ impl Ed2kTestPeer {
                         &req_packet.payload,
                     )?;
 
-                    // 10 parts requires 2 mask bytes, but we send 3 bytes.
-                    // Frame len = 1 (opcode) + 16 (hash) + 2 (part_count) + 3 (mask) = 22
                     let mut frame = vec![PR_ED2K, 22, 0, 0, 0, OP_FILESTATUS];
                     frame.extend_from_slice(&req.file_hash);
                     frame.extend_from_slice(&10u16.to_le_bytes());
@@ -742,9 +1235,6 @@ impl Ed2kTestPeer {
                         &req_packet.payload,
                     )?;
 
-                    // Part count = 65535 exceeds MAX_PARTS_PER_FILE (65530).
-                    // Mask bytes = ceil(65535 / 8) = 8192.
-                    // Frame len = 1 + 16 + 2 + 8192 = 8211
                     let frame_len = 1u32 + 16 + 2 + 8192;
                     let mut frame = vec![PR_ED2K];
                     frame.extend_from_slice(&frame_len.to_le_bytes());
@@ -782,8 +1272,6 @@ impl Ed2kTestPeer {
                         &req_packet.payload,
                     )?;
 
-                    // 10 parts: byte 0 covers parts 0..7, byte 1 covers parts 8..9.
-                    // Remaining bits 2..7 must be 0. Set bit 7 (0x80).
                     let mut frame = vec![PR_ED2K, 21, 0, 0, 0, OP_FILESTATUS];
                     frame.extend_from_slice(&req.file_hash);
                     frame.extend_from_slice(&10u16.to_le_bytes());
@@ -818,7 +1306,6 @@ impl Ed2kTestPeer {
                         &req_packet.payload,
                     )?;
 
-                    // PR_EMULE_COMPRESSED (0xD4)
                     let mut frame = vec![PR_EMULE_COMPRESSED, 20, 0, 0, 0, OP_FILESTATUS];
                     frame.extend_from_slice(&req.file_hash);
                     frame.extend_from_slice(&1u16.to_le_bytes());
@@ -1219,7 +1706,7 @@ impl Ed2kTestPeer {
 
 /// Helper performing standard responder handshake.
 #[allow(clippy::too_many_arguments)]
-async fn do_peer_handshake(
+pub async fn do_peer_handshake(
     stream: &mut TcpStream,
     local_user_hash: [u8; 16],
     client_id: u32,
@@ -1270,7 +1757,7 @@ async fn do_peer_handshake(
 }
 
 /// Helper reading a single framed packet from an async stream.
-async fn read_packet(
+pub async fn read_packet(
     stream: &mut TcpStream,
     codec: &mut PacketCodec,
     buf: &mut BytesMut,
@@ -1290,525 +1777,5 @@ async fn read_packet(
             return Err(Ed2kSessionError::Io("EOF reached before packet completion".to_string()));
         }
         buf.extend_from_slice(&tmp[..n]);
-    }
-}
-
-/// Active loopback client establishing and driving eD2K sessions.
-pub struct Ed2kLoopbackClient {
-    stream: TcpStream,
-    session: Ed2kSession,
-    codec: PacketCodec,
-    encoder: Ed2kEncoder,
-    read_buf: BytesMut,
-}
-
-impl Ed2kLoopbackClient {
-    /// Connects to a target socket address (enforcing loopback only) and initiates handshake.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn connect_and_handshake(
-
-        addr: SocketAddr,
-        local_user_hash: [u8; 16],
-        local_client_id: u32,
-        local_tcp_port: u16,
-        tags: Vec<Ed2kTag>,
-        server_ip: u32,
-        server_port: u16,
-        handshake_timeout: Duration,
-    ) -> Result<(Self, Ed2kPeerInfo), Ed2kSessionError> {
-        // Enforce loopback confinement
-        if !addr.ip().is_loopback() {
-            return Err(Ed2kSessionError::Io(format!(
-                "Non-loopback address {addr} is strictly forbidden"
-            )));
-        }
-
-        let stream = timeout(Duration::from_millis(500), TcpStream::connect(addr))
-            .await
-            .map_err(|_| Ed2kSessionError::Timeout(Duration::from_millis(500)))?
-            .map_err(|e| Ed2kSessionError::Io(format!("TCP connect to loopback failed: {e}")))?;
-
-        let mut session = Ed2kSession::new_initiator(local_user_hash, local_client_id, local_tcp_port);
-        let hello = session.create_hello(tags, server_ip, server_port)?;
-
-        let encoder = Ed2kEncoder::new();
-        let wire_bytes = encoder
-            .encode_to_bytes(&Ed2kMessage::Hello(hello))
-            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-
-        let mut client = Self {
-            stream,
-            session,
-            codec: PacketCodec::new(),
-            encoder,
-            read_buf: BytesMut::with_capacity(2048),
-        };
-
-        // Transmit Hello frame
-        client
-            .stream
-            .write_all(&wire_bytes)
-            .await
-            .map_err(|e| Ed2kSessionError::Io(format!("Failed to transmit Hello: {e}")))?;
-
-        // Await HelloAnswer within timeout
-        let peer_info = client.await_handshake_answer(handshake_timeout).await?;
-        Ok((client, peer_info))
-    }
-
-    /// Waits for `OP_HELLO_ANSWER` from the remote loopback peer.
-    async fn await_handshake_answer(
-        &mut self,
-        handshake_timeout: Duration,
-    ) -> Result<Ed2kPeerInfo, Ed2kSessionError> {
-        let deadline = tokio::time::Instant::now() + handshake_timeout;
-
-        loop {
-            // Check if buffer already contains a packet
-            if let Some(raw_packet) = self
-                .codec
-                .decode(&mut self.read_buf)
-                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
-            {
-                let msg_opt = self.session.on_packet_received(&raw_packet)?;
-                if let Some(Ed2kMessage::HelloAnswer(answer)) = msg_opt {
-                    let mut peer = Ed2kPeerInfo::from_hello_answer(&answer);
-                    if let Some(session_peer) = self.session.peer_info() {
-                        if peer.emule_info.is_none() {
-                            peer.emule_info = session_peer.emule_info.clone();
-                        }
-                    }
-                    return Ok(peer);
-                } else if raw_packet.protocol == PR_EMULE {
-                    // Extended eMule packet (e.g. OP_EMULEINFO under PR_EMULE 0xC5) received alongside handshake.
-                    // Continue awaiting OP_HELLOANSWER in the stream.
-                    continue;
-                } else {
-                    return Err(Ed2kSessionError::UnexpectedMessageInState {
-                        state: "AwaitingHelloAnswer",
-                        opcode: raw_packet.opcode,
-                    });
-                }
-            }
-
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                self.session.on_timeout(handshake_timeout);
-                return Err(Ed2kSessionError::Timeout(handshake_timeout));
-            }
-
-            let mut tmp = [0u8; 1024];
-            let read_future = self.stream.read(&mut tmp);
-            let n = match timeout(remaining, read_future).await {
-                Ok(Ok(n)) => n,
-                Ok(Err(e)) => {
-                    self.session.fail(Ed2kSessionError::Io(e.to_string()));
-                    return Err(Ed2kSessionError::Io(format!("Socket read error: {e}")));
-                }
-                Err(_) => {
-                    self.session.on_timeout(handshake_timeout);
-                    return Err(Ed2kSessionError::Timeout(handshake_timeout));
-                }
-            };
-
-            if n == 0 {
-                self.session.on_remote_closed();
-                return Err(Ed2kSessionError::Io("Connection closed by peer before HelloAnswer".to_string()));
-            }
-
-            self.read_buf.extend_from_slice(&tmp[..n]);
-        }
-    }
-
-    /// Sends any eD2K message to the connected loopback peer.
-    pub async fn send_message(&mut self, msg: &Ed2kMessage) -> Result<(), Ed2kSessionError> {
-        let bytes = self
-            .encoder
-            .encode_to_bytes(msg)
-            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-        self.stream
-            .write_all(&bytes)
-            .await
-            .map_err(|e| Ed2kSessionError::Io(format!("Write failed: {e}")))?;
-        Ok(())
-    }
-
-    /// Reads the next incoming packet from the loopback peer.
-    pub async fn recv_packet(&mut self) -> Result<RawPacket, Ed2kSessionError> {
-        let mut tmp = [0u8; 1024];
-        loop {
-            if let Some(packet) = self
-                .codec
-                .decode(&mut self.read_buf)
-                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
-            {
-                return Ok(packet);
-            }
-            let n = self.stream.read(&mut tmp).await.map_err(|e| {
-                Ed2kSessionError::Io(format!("Read failed: {e}"))
-            })?;
-            if n == 0 {
-                return Err(Ed2kSessionError::Io("EOF reached".to_string()));
-            }
-            self.read_buf.extend_from_slice(&tmp[..n]);
-        }
-    }
-
-    /// Returns a reference to the underlying session state machine.
-    pub fn session(&self) -> &Ed2kSession {
-        &self.session
-    }
-
-    /// Returns a mutable reference to the underlying session state machine.
-    pub fn session_mut(&mut self) -> &mut Ed2kSession {
-        &mut self.session
-    }
-
-    /// Returns a reference to the negotiated remote peer info if available.
-    pub fn peer_info(&self) -> Option<&Ed2kPeerInfo> {
-        self.session.peer_info()
-    }
-
-    /// Sends a raw frame directly over the TCP stream.
-    pub async fn send_raw_packet(&mut self, packet: &RawPacket) -> Result<(), Ed2kSessionError> {
-        let wire_bytes = self
-            .codec
-            .encode_to_bytes(packet)
-            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-        self.stream
-            .write_all(&wire_bytes)
-            .await
-            .map_err(|e| Ed2kSessionError::Io(format!("Failed to write raw packet: {e}")))?;
-        Ok(())
-    }
-
-    /// Sends an `OP_FILESTATUSREQ` and waits for the corresponding `OP_FILESTATUS` response.
-    pub async fn request_file_status(
-        &mut self,
-        file_hash: [u8; 16],
-        timeout_duration: Duration,
-    ) -> Result<Ed2kFileStatus, Ed2kSessionError> {
-        let now = Instant::now();
-        let packet = self.session.send_file_status_request(file_hash, now)?;
-        let wire_bytes = self
-            .codec
-            .encode_to_bytes(&packet)
-            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-        self.stream
-            .write_all(&wire_bytes)
-            .await
-            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send file status req: {e}")))?;
-
-        let deadline = tokio::time::Instant::now() + timeout_duration;
-        loop {
-            if let Some(raw_packet) = self
-                .codec
-                .decode(&mut self.read_buf)
-                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
-            {
-                let msg_opt = self.session.on_packet_received(&raw_packet)?;
-                if let Some(Ed2kMessage::FileStatus(status)) = msg_opt {
-                    return Ok(status);
-                } else if let Some(Ed2kMessage::FileReqAnsNoFile(ans)) = msg_opt {
-                    return Err(Ed2kSessionError::FileNotFound(hex::encode(ans.file_hash)));
-                } else {
-                    return Err(Ed2kSessionError::UnexpectedMessageInState {
-                        state: self.session.state.name(),
-                        opcode: raw_packet.opcode,
-                    });
-                }
-            }
-
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                self.session
-                    .expire_file_status_requests(timeout_duration, Instant::now());
-                return Err(Ed2kSessionError::Timeout(timeout_duration));
-            }
-
-            let mut tmp = [0u8; 1024];
-            let read_future = self.stream.read(&mut tmp);
-            let n = match timeout(remaining, read_future).await {
-                Ok(Ok(n)) => n,
-                Ok(Err(e)) => {
-                    self.session.fail(Ed2kSessionError::Io(e.to_string()));
-                    return Err(Ed2kSessionError::Io(format!("Socket read error: {e}")));
-                }
-                Err(_) => {
-                    self.session
-                        .expire_file_status_requests(timeout_duration, Instant::now());
-                    return Err(Ed2kSessionError::Timeout(timeout_duration));
-                }
-            };
-
-            if n == 0 {
-                self.session.on_remote_closed();
-                return Err(Ed2kSessionError::Io(
-                    "Connection closed by peer before file status".to_string(),
-                ));
-            }
-
-            self.read_buf.extend_from_slice(&tmp[..n]);
-        }
-    }
-
-    /// Sends an `OP_REQUESTPARTS` block request.
-    pub async fn send_block_request(
-        &mut self,
-        file_hash: [u8; 16],
-        start: u64,
-        end: u64,
-        file_size: u64,
-    ) -> Result<(), Ed2kSessionError> {
-        let now = Instant::now();
-        let packet = self
-            .session
-            .send_block_request(file_hash, start, end, file_size, now)?;
-        let wire_bytes = self
-            .codec
-            .encode_to_bytes(&packet)
-            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-        self.stream
-            .write_all(&wire_bytes)
-            .await
-            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send request parts: {e}")))?;
-        Ok(())
-    }
-
-    /// Sends an `OP_STARTUPLOADREQ` (`0x54`) to enter the upload queue for a file.
-    pub async fn send_start_upload_request(
-        &mut self,
-        file_hash: [u8; 16],
-    ) -> Result<(), Ed2kSessionError> {
-        let packet = RawPacket::with_vec(PR_ED2K, OP_STARTUPLOADREQ, file_hash.to_vec());
-        let wire_bytes = self
-            .codec
-            .encode_to_bytes(&packet)
-            .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-        self.stream
-            .write_all(&wire_bytes)
-            .await
-            .map_err(|e| Ed2kSessionError::Io(format!("Failed to send start upload request: {e}")))?;
-        Ok(())
-    }
-
-    /// Reads the next incoming packet from the stream.
-    pub async fn read_next_packet(
-        &mut self,
-        timeout_duration: Duration,
-    ) -> Result<RawPacket, Ed2kSessionError> {
-        let deadline = tokio::time::Instant::now() + timeout_duration;
-        loop {
-            if let Some(packet) = self
-                .codec
-                .decode(&mut self.read_buf)
-                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
-            {
-                return Ok(packet);
-            }
-
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                return Err(Ed2kSessionError::Timeout(timeout_duration));
-            }
-
-            let mut tmp = [0u8; 8192];
-            let read_future = self.stream.read(&mut tmp);
-            let n = match timeout(remaining, read_future).await {
-                Ok(Ok(n)) => n,
-                Ok(Err(e)) => return Err(Ed2kSessionError::Io(format!("Socket read error: {e}"))),
-                Err(_) => return Err(Ed2kSessionError::Timeout(timeout_duration)),
-            };
-
-            if n == 0 {
-                return Err(Ed2kSessionError::Io("Connection closed by peer".to_string()));
-            }
-
-            self.read_buf.extend_from_slice(&tmp[..n]);
-        }
-    }
-
-    /// Requests entry into the remote peer's upload queue and awaits upload slot acceptance (`OP_ACCEPTUPLOADREQ` 0x55).
-    pub async fn request_upload_slot(
-        &mut self,
-        file_hash: [u8; 16],
-        timeout_duration: Duration,
-    ) -> Result<(), Ed2kSessionError> {
-        self.send_start_upload_request(file_hash).await?;
-        let deadline = tokio::time::Instant::now() + timeout_duration;
-        loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                return Err(Ed2kSessionError::Timeout(timeout_duration));
-            }
-            let pkt = self.read_next_packet(remaining).await?;
-            if pkt.opcode == OP_ACCEPTUPLOADREQ {
-                return Ok(());
-            }
-            // Other packets like OP_QUEUERANKING or extended info can be received while waiting in queue.
-        }
-    }
-
-    /// Waits for an incoming `OP_SENDINGPART` response within timeout.
-    pub async fn receive_sending_part(
-        &mut self,
-        timeout_duration: Duration,
-    ) -> Result<Ed2kSendingPart, Ed2kSessionError> {
-        let deadline = tokio::time::Instant::now() + timeout_duration;
-        loop {
-            if let Some(raw_packet) = self
-                .codec
-                .decode(&mut self.read_buf)
-                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
-            {
-                let msg_opt = self.session.on_packet_received(&raw_packet)?;
-                if let Some(Ed2kMessage::SendingPart(part)) = msg_opt {
-                    return Ok(part);
-                } else if raw_packet.protocol == PR_EMULE || raw_packet.opcode == OP_QUEUERANKING {
-                    // Extended eMule packet (ping, queue ranking, etc.) received alongside transfer.
-                    continue;
-                } else {
-                    return Err(Ed2kSessionError::UnexpectedMessageInState {
-                        state: self.session.state.name(),
-                        opcode: raw_packet.opcode,
-                    });
-                }
-            }
-
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                self.session
-                    .expire_block_requests(timeout_duration, Instant::now());
-                return Err(Ed2kSessionError::Timeout(timeout_duration));
-            }
-
-            let mut tmp = [0u8; 8192];
-            let read_future = self.stream.read(&mut tmp);
-            let n = match timeout(remaining, read_future).await {
-                Ok(Ok(n)) => n,
-                Ok(Err(e)) => {
-                    self.session.fail(Ed2kSessionError::Io(e.to_string()));
-                    return Err(Ed2kSessionError::Io(format!("Socket read error: {e}")));
-                }
-                Err(_) => {
-                    self.session
-                        .expire_block_requests(timeout_duration, Instant::now());
-                    return Err(Ed2kSessionError::Timeout(timeout_duration));
-                }
-            };
-
-            if n == 0 {
-                self.session.on_remote_closed();
-                return Err(Ed2kSessionError::Io(
-                    "Connection closed by peer before sending part".to_string(),
-                ));
-            }
-
-            self.read_buf.extend_from_slice(&tmp[..n]);
-        }
-    }
-
-    /// Downloads a sequence of blocks using a bounded sliding window of in-flight requests.
-    ///
-    /// - Caps concurrent in-flight requests at `min(max_in_flight, 3)`.
-    /// - Checks each block against `sink.has_range`: skips already completed blocks.
-    /// - Emits block requests when window capacity is available and blocks remain.
-    /// - Streams received chunks into `sink.write_block`.
-    /// - If `stop_after_blocks` is `Some(limit)`, stops cleanly after completing `limit` blocks.
-    /// - Returns the count of blocks newly completed during this session.
-    pub async fn download_blocks_pipelined<W: super::storage::Ed2kBlockWriter>(
-        &mut self,
-        sequencer: &super::sequencer::Ed2kDownloadSequencer,
-        blocks_to_download: &[super::packet::Ed2kBlockRange],
-        sink: &mut W,
-        max_in_flight: usize,
-        stop_after_blocks: Option<usize>,
-        chunk_timeout: Duration,
-    ) -> Result<usize, Ed2kSessionError> {
-        let window_size = max_in_flight.clamp(1, super::sequencer::MAX_REQUEST_RANGES_PER_PACKET);
-        let target_total = match stop_after_blocks {
-            Some(limit) => limit.min(blocks_to_download.len()),
-            None => blocks_to_download.len(),
-        };
-
-        let mut next_dispatch_idx = 0;
-        let mut dispatched_count = 0;
-        let mut completed_blocks_count = 0;
-        let mut active_indices = std::collections::HashSet::new();
-
-        while completed_blocks_count < target_total {
-            // Refill the sliding window up to window_size
-            while self.session.snapshot().pending_block_count < window_size
-                && dispatched_count < target_total
-                && next_dispatch_idx < blocks_to_download.len()
-            {
-                let block = &blocks_to_download[next_dispatch_idx];
-                let b_start = block.start as u64;
-                let b_end = block.end as u64;
-
-                if sink.has_range(b_start, b_end) {
-                    next_dispatch_idx += 1;
-                    continue;
-                }
-
-                self.send_block_request(
-                    sequencer.file_hash(),
-                    b_start,
-                    b_end,
-                    sequencer.file_size(),
-                )
-                .await?;
-
-                active_indices.insert(next_dispatch_idx);
-                dispatched_count += 1;
-                next_dispatch_idx += 1;
-            }
-
-            if self.session.snapshot().pending_block_count == 0 {
-                break;
-            }
-
-            // Receive next chunk
-            let part = self.receive_sending_part(chunk_timeout).await?;
-            let _written_range = sink
-                .write_block(sequencer, &part)
-                .map_err(|e| Ed2kSessionError::Io(e.to_string()))?;
-
-            // Check if any active block has just completed
-            let mut newly_completed = Vec::new();
-            for &idx in &active_indices {
-                let block = &blocks_to_download[idx];
-                if sink.has_range(block.start as u64, block.end as u64) {
-                    newly_completed.push(idx);
-                }
-            }
-
-            for idx in newly_completed {
-                active_indices.remove(&idx);
-                completed_blocks_count += 1;
-            }
-        }
-
-        Ok(completed_blocks_count)
-    }
-
-    /// High-level helper: requests a block range and awaits the response packet.
-    pub async fn request_block(
-        &mut self,
-        file_hash: [u8; 16],
-        start: u64,
-        end: u64,
-        file_size: u64,
-        timeout_duration: Duration,
-    ) -> Result<Ed2kSendingPart, Ed2kSessionError> {
-        self.send_block_request(file_hash, start, end, file_size)
-            .await?;
-        self.receive_sending_part(timeout_duration).await
-    }
-
-    /// Gracefully shuts down the client connection.
-    pub async fn close(mut self) {
-        let _ = self.stream.shutdown().await;
-        self.session.state = Ed2kSessionState::Closed;
     }
 }

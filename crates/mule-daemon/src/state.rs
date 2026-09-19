@@ -6,8 +6,9 @@ use uuid::Uuid;
 use mule_network_policy::{NetworkPolicyManager, ResourceBudgets};
 
 use crate::config::DaemonConfig;
-use crate::rpc::events::{DownloadSnapshot, DownloadUpdatedEvent};
+use crate::rpc::events::DownloadUpdatedEvent;
 use crate::rpc::types::JsonRpcNotification;
+use crate::services::downloads::types::DownloadSnapshot;
 use crate::services::downloads::DownloadService;
 use crate::services::peer_session::PeerSessionManager;
 use crate::services::server_session::ServerSessionManager;
