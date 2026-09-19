@@ -9,14 +9,9 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | Fichier | Fonction |
 |---|---|
 | `.gitignore` | Exclusions Git (target/, dist/, scratch/, etc.) |
-| `CHANGELOG.md` | Journal des changements du projet |
 | `Cargo.toml` | Manifeste du workspace Rust (membres, dépendances partagées) |
 | `Cargo.lock` | Verrouillage des versions des dépendances Rust |
-| `README.md` | Présentation générale du projet |
-| `RELEASE_NOTES_0.1.0-lab.md` | Notes de version 0.1.0-lab |
-| `RELEASE_NOTES_0.1.1-lab.md` | Notes de version 0.1.1-lab |
-| `RELEASE_NOTES_0.1.2-lab.md` | Notes de version 0.1.2-lab |
-| `RELEASE_NOTES_0.1.3-lab.md` | Notes de version 0.1.3-lab |
+| `README.md` | Présentation générale du projet et portail vers docs/ |
 | `deny.toml` | Configuration cargo-deny (audit des licences/vulnérabilités) |
 | `search_mgr.cpp` | Fichier C++ de référence (code eMule original, gestionnaire de recherche) |
 
@@ -510,23 +505,51 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 
 ## docs/ — Documentation
 
+### Racine de la documentation
 | Fichier | Fonction |
 |---|---|
-| `QA_RECEPTION_PROTOCOL.md` | Protocole de réception QA |
-| `compatibility-matrix.md` | Matrice de compatibilité |
-| `test-vectors.md` | Vecteurs de test documentés |
-| `WALKTHROUGHS_INDEX.md` | Répertoire maître et table d'orientation de tous les walkthroughs |
-| `walkthrough.md` | Guide pas-à-pas général (Phases 1 à 3C) |
-| `walkthroughTier3.md` | Walkthrough Tier 3 (Interopérabilité eMule 0.50a officiel) |
-| `walkthrough_v0.1.2-lab.md` | Walkthrough version 0.1.2-lab (Phase 7.2) |
-| `walkthrough_Phase_8.md` | Walkthrough Phase 8 (8.1 à 8.5) |
-| `walkthrough_Phase_9.md` | Walkthrough Phase 9 (9.0 & 9.1 Politique réseau et IP filter) |
-| `walkthrough_Phase_10.md` | Walkthrough Phase 10 (10.0 à 10.2 Infrastructure serveurs eD2K) |
-| `walkthrough_Phase_11.md` | Walkthrough Phase 11 (Swarm multi-sources, allocateur water-filling) |
-| `walkthrough_Phase_12.md` | Walkthrough Phase 12 (Fondations Kad DHT) |
-| `walkthrough_Phase_13.md` | Walkthrough Phase 13 (Source Exchange v4, compression zlib, MCP) |
-| `walkthrough_Phase_14.md` | Walkthrough Phase 14 (Convergence recherche Kad DHT & Clean Architecture) |
-| `walkthrough_Phase_15.md` | Walkthrough Phase 15 (Swarm multi-pairs, eMule queue ranking, logs stratégiques) |
+| `docs/README.md` | Portail d'orientation de la documentation technique |
+| `docs/INDEX.md` | Index exhaustif des fichiers du dépôt |
+| `docs/CHANGELOG.md` | Journal des modifications (Keep a Changelog) |
+
+### docs/architecture/ — Architecture & Rapports
+| Fichier | Fonction |
+|---|---|
+| `docs/architecture/rapport_architecture_et_avancement.md` | Rapport détaillé d'architecture logicielle, Clean Architecture et état d'avancement |
+
+### docs/walkthroughs/ — Guides d'Exécution & Interopérabilité par Phase
+| Fichier | Fonction |
+|---|---|
+| `docs/walkthroughs/README.md` (ou `INDEX.md`) | Répertoire maître et table d'orientation de tous les walkthroughs |
+| `docs/walkthroughs/walkthrough_Phase_01_a_03c.md` | Guide d'exécution et durcissement produit (Phases 1 à 3C) |
+| `docs/walkthroughs/walkthrough_Tier3_eMule050a.md` | Interopérabilité loopback avec eMule 0.50a officiel (Tier 3.1 à 3.6) |
+| `docs/walkthroughs/walkthrough_Phase_07.md` | Mode portable, isolation `data/` vs `downloads/` et persistance SQLite (Phase 7) |
+| `docs/walkthroughs/walkthrough_Phase_08.md` | Part Map interactive, historique local, catégories et import .part.met (Phase 8) |
+| `docs/walkthroughs/walkthrough_Phase_09.md` | Politique réseau défensive 7 couches, permis RAII, Kill Switch et IP Filter (Phase 9) |
+| `docs/walkthroughs/walkthrough_Phase_10.md` | Infrastructure serveurs eD2K, TCP Lugdunum, HighID/LowID, recherche et sources (Phase 10) |
+| `docs/walkthroughs/walkthrough_Phase_11.md` | Swarm multi-sources, allocateur Water-Filling et démarrage basse latence (Phase 11) |
+| `docs/walkthroughs/walkthrough_Phase_12.md` | Fondations Kad DHT, KadId 128-bit, K-Buckets et transport UDP (Phase 12) |
+| `docs/walkthroughs/walkthrough_Phase_13.md` | Source Exchange v4 (SX1/SX2), compression zlib et serveur MCP 83 outils (Phase 13) |
+| `docs/walkthroughs/walkthrough_Phase_14.md` | Convergence recherche Kad DHT (CUInt128) et Clean Architecture complète (Phase 14) |
+| `docs/walkthroughs/walkthrough_Phase_15.md` | Swarm multi-pairs réel, conformité files d'attente eMule et logs stratégiques (Phase 15) |
+
+### docs/releases/ — Notes de Version Détaillées
+| Fichier | Fonction |
+|---|---|
+| `docs/releases/RELEASE_NOTES_0.1.0-lab.md` | Notes de version 0.1.0-lab |
+| `docs/releases/RELEASE_NOTES_0.1.1-lab.md` | Notes de version 0.1.1-lab |
+| `docs/releases/RELEASE_NOTES_0.1.2-lab.md` | Notes de version 0.1.2-lab |
+| `docs/releases/RELEASE_NOTES_0.1.3-lab.md` | Notes de version 0.1.3-lab |
+| `docs/releases/RELEASE_NOTES_0.1.8.md` | Notes de version 0.1.8 |
+
+### docs/qa/ — Assurance Qualité & Conformité
+| Fichier | Fonction |
+|---|---|
+| `docs/qa/QA_RECEPTION_PROTOCOL.md` | Protocole de réception QA |
+| `docs/qa/compatibility-matrix.md` | Matrice de compatibilité |
+| `docs/qa/test-vectors.md` | Vecteurs de test documentés |
+
+### docs/ed2k/ — Spécifications Filaire eD2K & ADRs
 | `ed2k/compatibility-notes.md` | Notes de compatibilité eD2k |
 | `ed2k/framing.md` | Documentation du cadrage eD2k |
 | `ed2k/limits.md` | Limites du protocole eD2k |
