@@ -8,8 +8,6 @@ import 'shell_controller.dart';
 
 export 'shell_controller.dart';
 import '../core/daemon_lifecycle.dart';
-import '../core/system_actions.dart';
-import '../core/work_dirs.dart';
 
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
@@ -245,7 +243,6 @@ class AppController extends ChangeNotifier {
   DaemonInfo? get daemonInfo => _daemonInfo ?? client.daemonInfo;
   String? get errorMessage => shellCtl.errorMessage;
   bool get isLoading => downloadsCtl.isLoading;
-  DownloadFilter get currentFilter => shellCtl.filter;
   AppNavSection get currentSection => shellCtl.section;
   String get searchQuery => shellCtl.searchQuery;
   String? get selectedDownloadId => downloadsCtl.selectedId;
@@ -259,9 +256,6 @@ class AppController extends ChangeNotifier {
 
   List<CategoryItem> get categories => categoriesCtl.categories;
   String? get selectedCategoryId => categoriesCtl.selectedId;
-  CategoryItem? get selectedCategory => selectedCategoryId != null
-      ? categories.where((c) => c.id == selectedCategoryId).firstOrNull
-      : null;
 
   Map<String, int> get categoryCounts {
     final map = <String, int>{};
@@ -275,45 +269,15 @@ class AppController extends ChangeNotifier {
   int get uncategorizedCount =>
       allDownloads.where((d) => d.categoryId == null).length;
 
-  List<HistoryEntry> get historyEntries => history.entries;
-  HistoryStats get historyStats => history.stats;
-  bool get isHistoryLoading => history.isLoading;
-  String? get historyEventTypeFilter => history.eventTypeFilter;
-  String? get historyStatusFilter => history.statusFilter;
   int get historyRetentionDays => history.retentionDays;
 
   /// Lab and test fixture features are strictly dual-gated:
   /// Requires Portable workdir mode AND the daemon having the 'lab-tools' capability.
-  bool get isLabModeAvailable {
-    if (isDevToolsAvailable) return true;
-    final info = daemonInfo;
-    if (info == null) return false;
-    final isPortable =
-        (info.workdirMode?.toLowerCase() == 'portable') ||
-        (supervisor?.resolveWorkDirInfo().mode == WorkDirMode.portable);
-    return isPortable && info.capabilities.contains('lab-tools');
-  }
 
   Map<String, dynamic> get settings => settingsCtl.settings;
 
   /// Default download directory path (custom setting > daemon > supervisor).
-  String get defaultDownloadDirectoryPath {
-    final customDir = settings['defaultDownloadDir'] as String?;
-    if (customDir != null && customDir.isNotEmpty) {
-      return customDir;
-    }
-    final daemonDir = daemonInfo?.defaultDownloadDir;
-    if (daemonDir != null && daemonDir.isNotEmpty) {
-      return daemonDir;
-    }
-    return supervisor?.resolveWorkDirInfo().defaultDownloadDirPath ?? '';
-  }
 
-  Future<void> openDownloadsFolder() async {
-    final path = defaultDownloadDirectoryPath;
-    if (path.isEmpty) return;
-    await systemActions.openDirectory(path);
-  }
 
   DownloadItem? get selectedDownload => selectedDownloadId != null
       ? downloadsCtl.downloadById(selectedDownloadId!)
@@ -322,7 +286,6 @@ class AppController extends ChangeNotifier {
   int get totalDownloadSpeed => downloadsCtl.totalDownloadSpeed;
 
   /// Always 0 B/s in this offline / loopback lab client without public upload/seeding.
-  int get totalUploadSpeed => uploads.totalUploadRateBps;
 
   int get countAll => downloadsCtl.countAll;
   int get countActive => downloadsCtl.countActive;
@@ -464,11 +427,7 @@ class AppController extends ChangeNotifier {
   Future<void> removeDownload(String id, {bool deleteFiles = false}) =>
       downloadsCtl.remove(id, deleteFiles: deleteFiles);
 
-  Future<DownloadItem?> fetchDownloadDetail(String id) =>
-      downloadsCtl.fetchDetail(id);
 
-  Future<bool> changeDownloadDestination(String id, String newDirectory) =>
-      downloadsCtl.changeDestination(id, newDirectory);
 
   Future<bool> retryDownloadConnection(String id) =>
       downloadsCtl.retryConnection(id);
@@ -476,8 +435,6 @@ class AppController extends ChangeNotifier {
   Future<void> openCompletedFile(DownloadItem item) =>
       downloadsCtl.openCompletedFile(item);
 
-  String getRedactedDownloadDiagnostic(DownloadItem item) =>
-      downloadsCtl.getRedactedDiagnostic(item);
 
   // ── Settings (delegated to SettingsController) ────────────────────────────
 
@@ -491,11 +448,7 @@ class AppController extends ChangeNotifier {
 
   // ── History (delegated to HistoryController) ──────────────────────────────
 
-  void setHistoryEventTypeFilter(String? eventType) =>
-      history.setEventTypeFilter(eventType);
 
-  void setHistoryStatusFilter(String? status) =>
-      history.setStatusFilter(status);
 
   Future<void> fetchHistory() => history.fetch();
 
@@ -531,7 +484,6 @@ class AppController extends ChangeNotifier {
 
   // --- Category Actions (delegated to CategoriesController) ---
 
-  void selectCategory(String? categoryId) => categoriesCtl.select(categoryId);
 
   Future<void> fetchCategories() => categoriesCtl.fetch();
 
@@ -579,10 +531,7 @@ class AppController extends ChangeNotifier {
   // ── Network Policy, IP Filter & Rate Limiter ──────────────────────────────
   // (delegated to NetworkPolicyController)
 
-  NetworkPolicySnapshot? get networkPolicy => networkPolicyCtl.policy;
-  List<NetworkAuditEntryItem> get networkAuditLog => networkPolicyCtl.auditLog;
   NetworkProfile get currentNetworkProfile => networkPolicyCtl.currentProfile;
-  NetworkSubsystemState get currentNetworkState => networkPolicyCtl.currentState;
   bool get isNetworkKillSwitchActive => networkPolicyCtl.isKillSwitchActive;
   FilterStatusModel? get filterStatus => networkPolicyCtl.filterStatus;
   RateLimitsModel? get rateLimits => networkPolicyCtl.rateLimits;
@@ -592,8 +541,6 @@ class AppController extends ChangeNotifier {
       networkPolicyCtl.setProfile(profile);
   Future<void> disconnectAllNetwork() => networkPolicyCtl.disconnectAll();
   Future<void> enableNetwork() => networkPolicyCtl.enableNetwork();
-  Future<void> fetchNetworkAuditLog({int limit = 50}) =>
-      networkPolicyCtl.fetchAuditLog(limit: limit);
   Future<void> setResourceBudgets(ResourceBudgetsModel budgets) =>
       networkPolicyCtl.setResourceBudgets(budgets);
   Future<void> fetchFilterStatus() => networkPolicyCtl.fetchFilterStatus();
@@ -607,11 +554,9 @@ class AppController extends ChangeNotifier {
       networkPolicyCtl.setRateLimits(limits);
 
   List<Ed2kServerModel> get servers => serversController.servers;
-  bool get isServersLoading => serversController.isLoading;
   ServerSessionModel get serverSession => serversController.session;
   bool get isServerConnecting => serversController.isConnecting;
 
-  Future<void> fetchServers() => serversController.fetch();
 
   Future<ServerInspectReport?> inspectServerMet(String filePath) =>
       serversController.inspectServerMet(filePath);
@@ -635,14 +580,11 @@ class AppController extends ChangeNotifier {
 
   Future<void> disconnectServer() => serversController.disconnect();
 
-  Future<void> refreshServerSession() => serversController.refreshSession();
 
   // ── eD2K Server Search & Sources ──────────────────────────────────────────
 
   List<SearchResultFileModel> get searchResults => search.results;
   bool get isSearching => search.isSearching;
-  String? get lastSearchTerm => search.lastTerm;
-  int get searchEpoch => search.epoch;
 
   Future<void> searchServer({
     required String term,
@@ -666,27 +608,13 @@ class AppController extends ChangeNotifier {
   }) =>
       search.searchKadKeywords(term: term, minSize: minSize, maxSize: maxSize);
 
-  void clearSearchResults() => search.clearResults();
 
-  Future<bool> downloadSearchResult(
-    SearchResultFileModel file, {
-    String? categoryId,
-    String? targetDirectory,
-  }) async {
-    return addEd2kLink(
-      file.ed2kLink,
-      categoryId: categoryId,
-      targetDirectory: targetDirectory,
-    );
-  }
 
   Future<void> queryServerSources(String fileHash, {int? fileSize}) =>
       search.querySources(fileHash, fileSize: fileSize);
 
   // --- Peer Sources & Session ---
 
-  bool get isSourcesLoading => peerSources.isLoading;
-  PeerSessionModel get peerSession => peerSources.session;
   bool get isPeerConnecting => peerSources.isConnecting;
 
   List<PeerSourceModel> getSourcesForHash(String fileHash) =>
@@ -715,7 +643,6 @@ class AppController extends ChangeNotifier {
 
   KadStatusModel get kadStatus => kad.status;
   List<KadContactModel> get kadContacts => kad.contacts;
-  bool get isKadLoading => kad.isLoading;
 
   Future<void> fetchKadStatus() => kad.fetchStatus();
   Future<void> fetchKadContacts({int limit = 100}) =>

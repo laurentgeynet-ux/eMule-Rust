@@ -5,6 +5,13 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Façade AppController réduite** : ~31 membres délégués devenus
+  inutilisés supprimés (getters history/kad/servers/search/netpol/
+  settings exposés désormais via leurs providers). Restent : composition
+  root (client, supervisor, sub-contrôleurs), `initialize`/`refresh`/
+  `dispose`, et les membres encore consommés (tests, `DeepLinkHandler`,
+  `filteredDownloads`).
+
 - **Desktop : notifications natives de fin de téléchargement** :
   `DownloadNotifier` (`apps/desktop/lib/core/download_notifier.dart`)
   souscrit à `downloadLifecycleEvents` et affiche un toast OS via
