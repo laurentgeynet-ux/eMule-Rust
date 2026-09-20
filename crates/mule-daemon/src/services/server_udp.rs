@@ -179,15 +179,13 @@ impl ServerUdpService {
                                 }
                             }
                             Ok(ServerUdpMessage::GlobSearchRes(payload)) => {
-                                // Same entry layout as OP_SEARCHRESULT — decode
-                                // through the TCP codec and emit searchResult events.
-                                match mule_protocol::ed2k::decode_server_response(
-                                    mule_protocol::PR_ED2K,
-                                    mule_protocol::ed2k::OP_SEARCH_RESULT,
+                                // UDP 0x99 has NO u32 count prefix — bare
+                                // entry stream until packet end.
+                                match server_udp::decode_glob_search_res(
                                     &payload,
                                     &mule_protocol::ed2k::Ed2kLimits::for_server(),
                                 ) {
-                                    Ok(mule_protocol::ed2k::ServerResponse::SearchResult(sr)) => {
+                                    Ok(sr) => {
                                         tracing::info!(
                                             "Server UDP: {} global search result(s) from {peer_addr}",
                                             sr.files.len()
@@ -199,9 +197,8 @@ impl ServerUdpService {
                                             );
                                         }
                                     }
-                                    Ok(_) => {}
                                     Err(e) => {
-                                        tracing::debug!(
+                                        tracing::info!(
                                             "Server UDP: malformed GlobSearchRes from {peer_addr}: {e}"
                                         );
                                     }

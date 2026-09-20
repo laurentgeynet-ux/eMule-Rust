@@ -23,6 +23,7 @@ pub const CT_SERVER_UDPSEARCH_FLAGS: u8 = 0x0E;
 /// eMule `SRVCAP_UDP_NEWTAGS_LARGEFILES` — value carried by that tag.
 pub const SRVCAP_UDP_NEWTAGS_LARGEFILES: u8 = 0x01;
 use super::protocol::{PR_ED2K, PR_EMULE_COMPRESSED};
+use super::tags::TagReader;
 
 /// zlib-inflates a packed UDP payload with a hard cap (eMule
 /// `Packet::UnPackPacket` — server packets cap at 250 KB).
@@ -145,6 +146,60 @@ pub fn encode_glob_search_req3(search_payload: &[u8]) -> Vec<u8> {
     out.push(SRVCAP_UDP_NEWTAGS_LARGEFILES);
     out.extend_from_slice(search_payload);
     out
+}
+
+/// Decodes an `OP_GLOBSEARCHRES` (`0x99`) payload.
+///
+/// Unlike TCP `OP_SEARCHRESULT` (`[u32 count][entries]`), the UDP answer is
+/// a **bare stream of entries** with no count prefix — eMule reads entries
+/// until the packet is exhausted (`UDPSocket` → `SSearchFile` loop). Each
+/// entry: `[hash:16][client_id:u32][client_port:u16][tag_count:u32][tags]`.
+pub fn decode_glob_search_res(
+    payload: &[u8],
+    limits: &super::limits::Ed2kLimits,
+) -> Result<super::server::SearchResult, super::error::Ed2kParseError> {
+    use super::error::{Ed2kErrorKind, Ed2kParseError};
+    use super::server::{SearchResult, SearchResultFile};
+
+    let mut reader = TagReader::new(payload, 0, PR_ED2K, Some(OP_GLOBSEARCHRES));
+    let mut files = Vec::new();
+    // One entry needs at least 22 bytes (16+4+2); trailing partial bytes are
+    // tolerated like eMule (stops at stream end).
+    while reader.pos() + 22 <= payload.len() {
+        let file_hash = reader.read_hash("file_hash")?;
+        let client_id = reader.read_u32_le("client_id")?;
+        let client_port = reader.read_u16_le("client_port")?;
+        let tag_count = reader.read_u32_le("tag_count")? as usize;
+        if tag_count > limits.max_tags {
+            return Err(Ed2kParseError::new(
+                PR_ED2K,
+                Some(OP_GLOBSEARCHRES),
+                reader.pos() - 4,
+                "file_tag_count",
+                Ed2kErrorKind::TooManyTags {
+                    count: tag_count,
+                    limit: limits.max_tags,
+                },
+            ));
+        }
+        let mut tags = Vec::with_capacity(tag_count.min(32));
+        for _ in 0..tag_count {
+            let (typed_opt, _) = reader.read_tag(limits)?;
+            if let Some(tag) = typed_opt {
+                tags.push(tag);
+            }
+        }
+        files.push(SearchResultFile {
+            file_hash,
+            client_id,
+            client_port,
+            tags,
+        });
+        if files.len() >= limits.max_tags * 4 {
+            break; // bound total entries like OP_SEARCHRESULT's count cap
+        }
+    }
+    Ok(SearchResult { files })
 }
 
 /// Decodes one server UDP datagram (first byte `0xE3`, second opcode).
@@ -334,5 +389,37 @@ mod tests {
         assert_eq!(pkt[8], 0x01);
         // Search tree follows verbatim.
         assert_eq!(&pkt[9..], &expr);
+    }
+
+    #[test]
+    fn globsearchres_decodes_bare_entry_stream() {
+        // Real datagram captured from 85.17.116.222:6086 answering
+        // GLOBSEARCHREQ1 for "ubuntu": E3 99 + a bare entry stream — NO
+        // u32 result-count prefix (unlike TCP OP_SEARCHRESULT).
+        let raw = hex_bytes(
+            "e39900b00ce17050f61206b62c6bdc7ee8104f94d300ff1204000000820137\
+007562756e74752d6d6174652d31362e30342d6465736b746f702d61726d68662d72\
+61737062657272792d70692e696d672e787a2e6d6435830256000000831501000000\
+833001000000",
+        );
+        let msg = decode_server_udp(&raw).unwrap();
+        let ServerUdpMessage::GlobSearchRes(payload) = msg else {
+            panic!("expected GlobSearchRes");
+        };
+        let sr = decode_glob_search_res(&payload, &crate::ed2k::limits::Ed2kLimits::for_server())
+            .expect("glob search res decode");
+        assert_eq!(sr.files.len(), 1);
+        let f = &sr.files[0];
+        assert_eq!(
+            f.name().as_deref(),
+            Some("ubuntu-mate-16.04-desktop-armhf-raspberry-pi.img.xz.md5")
+        );
+    }
+
+    fn hex_bytes(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
     }
 }
