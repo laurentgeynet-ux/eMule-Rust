@@ -6,6 +6,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'package:mule_client/mule_client.dart';
 import 'services/daemon_supervisor.dart';
+import 'core/deep_link_handler.dart';
 import 'core/tray_setup.dart';
 import 'core/window_setup.dart';
 import 'package:ui_kit/ui_kit.dart';
@@ -43,6 +44,8 @@ void main() async {
     supervisor: supervisor,
     isDevToolsAvailable: isDevToolsAvailable,
   );
+
+  DeepLinkHandler(viewModel).init();
 
   if (supervisor != null) {
     supervisor.start();

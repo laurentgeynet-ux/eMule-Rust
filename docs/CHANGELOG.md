@@ -21,6 +21,11 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
     débit agrégé chaque seconde (fenêtre glissante 60 s, timer paresseux
     démarré au premier listener) ; `SpeedSparkline` (CustomPainter, sans
     dépendance chart) affiché dans le badge de vitesse de la top bar.
+  - Liens `ed2k://` : `app_links` + `lib/core/deep_link_handler.dart`
+    (lien initial + stream → `addEd2kLink`) ; enregistrement Windows via
+    `windows/ed2k_protocol.reg` (ou l'installeur), `.desktop`
+    `x-scheme-handler/ed2k` pour Linux, intent-filter/URL types pour
+    Android/iOS.
 
 ### Ajouté — Refonte UI multiplateforme (branche `ui-ux`)
 

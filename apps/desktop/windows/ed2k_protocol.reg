@@ -1,0 +1,14 @@
+Windows Registry Editor Version 5.00
+
+; Registers the ed2k:// URI scheme for Emule-Sion.
+; Replace the path below with the actual install location of the app.
+
+[HKEY_CLASSES_ROOT\ed2k]
+@="URL:eD2K Link"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\ed2k\DefaultIcon]
+@="\"C:\Program Files\Emule-Sion\EmuleSion.exe\",0"
+
+[HKEY_CLASSES_ROOT\ed2k\shell\open\command]
+@="\"C:\Program Files\Emule-Sion\EmuleSion.exe\" \"%1\""
