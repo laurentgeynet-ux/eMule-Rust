@@ -5,6 +5,7 @@ import 'package:mule_client/mule_client.dart';
 import '../services/daemon_supervisor.dart';
 import '../ui/features/downloads/view_models/downloads_view_model.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
+import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
@@ -65,4 +66,11 @@ final peerSourcesControllerProvider =
 final categoriesControllerProvider =
     ChangeNotifierProvider<CategoriesController>(
       (ref) => ref.watch(downloadsViewModelProvider).categoriesCtl,
+    );
+
+/// Network policy / IP filter / rate limiter sub-domain controller.
+/// Provider-owned disposal.
+final networkPolicyControllerProvider =
+    ChangeNotifierProvider<NetworkPolicyController>(
+      (ref) => ref.watch(downloadsViewModelProvider).networkPolicyCtl,
     );

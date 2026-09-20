@@ -12,6 +12,7 @@ import '../../kad/view_models/kad_controller.dart';
 import '../../search/view_models/search_controller.dart';
 import '../../servers/view_models/servers_controller.dart';
 import 'categories_controller.dart';
+import 'network_policy_controller.dart';
 import 'peer_sources_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
@@ -61,6 +62,10 @@ class DownloadsViewModel extends ChangeNotifier {
 
   /// Categories sub-domain (extracted controller).
   late final CategoriesController categoriesCtl;
+
+  /// Network policy / IP filter / rate limiter sub-domain (extracted
+  /// controller).
+  late final NetworkPolicyController networkPolicyCtl;
 
   /// History & Statistics sub-domain (extracted controller, see
   /// `features/history/view_models/history_controller.dart`).
@@ -123,6 +128,12 @@ class DownloadsViewModel extends ChangeNotifier {
       onError: (m) => _errorMessage = m,
       onRefreshDownloads: refresh,
       onDownloadUpdated: (item) => _downloads[item.id] = item,
+    )..addListener(notifyListeners);
+    networkPolicyCtl = NetworkPolicyController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+      onAllDisconnected: serversController.markDisconnected,
     )..addListener(notifyListeners);
 
     _connSub = client.connectionState.listen((state) {
@@ -822,150 +833,35 @@ class DownloadsViewModel extends ChangeNotifier {
   ) =>
       categoriesCtl.assignDownload(downloadId, categoryId);
 
-  // Network Policy & Kill Switch
-  NetworkPolicySnapshot? _networkPolicy;
-  List<NetworkAuditEntryItem> _networkAuditLog = [];
+  // ── Network Policy, IP Filter & Rate Limiter ──────────────────────────────
+  // (delegated to NetworkPolicyController)
 
-  NetworkPolicySnapshot? get networkPolicy => _networkPolicy;
-  List<NetworkAuditEntryItem> get networkAuditLog => _networkAuditLog;
-  NetworkProfile get currentNetworkProfile =>
-      _networkPolicy?.profile ?? NetworkProfile.publicEd2kKadPreview;
-  NetworkSubsystemState get currentNetworkState =>
-      _networkPolicy?.state ?? NetworkSubsystemState.previewActive;
-  bool get isNetworkKillSwitchActive =>
-      currentNetworkState == NetworkSubsystemState.disabled;
+  NetworkPolicySnapshot? get networkPolicy => networkPolicyCtl.policy;
+  List<NetworkAuditEntryItem> get networkAuditLog => networkPolicyCtl.auditLog;
+  NetworkProfile get currentNetworkProfile => networkPolicyCtl.currentProfile;
+  NetworkSubsystemState get currentNetworkState => networkPolicyCtl.currentState;
+  bool get isNetworkKillSwitchActive => networkPolicyCtl.isKillSwitchActive;
+  FilterStatusModel? get filterStatus => networkPolicyCtl.filterStatus;
+  RateLimitsModel? get rateLimits => networkPolicyCtl.rateLimits;
 
-  Future<void> fetchNetworkPolicy() async {
-    try {
-      _networkPolicy = await client.getNetworkPolicy();
-      notifyListeners();
-    } catch (_) {}
-  }
-
-  Future<void> setNetworkProfile(NetworkProfile profile) async {
-    try {
-      _networkPolicy = await client.setNetworkProfile(profile);
-      _statusNotification = 'Switched network profile to ${profile.label}';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to switch network profile: $e';
-      notifyListeners();
-    }
-  }
-
-  Future<void> disconnectAllNetwork() async {
-    try {
-      await client.disconnectAll();
-      await fetchNetworkPolicy();
-      serversController.markDisconnected();
-      _statusNotification =
-          'Kill Switch engaged: All network connections disconnected';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Kill switch failed: $e';
-      notifyListeners();
-    }
-  }
-
-  Future<void> enableNetwork() async {
-    try {
-      await client.enableNetwork();
-      await fetchNetworkPolicy();
-      _statusNotification = 'Network policy re-enabled';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to re-enable network: $e';
-      notifyListeners();
-    }
-  }
-
-  Future<void> fetchNetworkAuditLog({int limit = 50}) async {
-    try {
-      _networkAuditLog = await client.getNetworkAuditLog(limit: limit);
-      notifyListeners();
-    } catch (_) {}
-  }
-
-  Future<void> setResourceBudgets(ResourceBudgetsModel budgets) async {
-    try {
-      _networkPolicy = await client.setResourceBudgets(budgets);
-      _statusNotification = 'Resource budgets updated';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to set resource budgets: $e';
-      notifyListeners();
-    }
-  }
-
-  // IP Filter & Rate Limiter
-  FilterStatusModel? _filterStatus;
-  RateLimitsModel? _rateLimits;
-
-  FilterStatusModel? get filterStatus => _filterStatus;
-  RateLimitsModel? get rateLimits => _rateLimits;
-
-  Future<void> fetchFilterStatus() async {
-    try {
-      _filterStatus = await client.getFilterStatus();
-      notifyListeners();
-    } catch (_) {}
-  }
-
-  Future<bool> importFilterFile(String filePath) async {
-    try {
-      _filterStatus = await client.importFilterFile(filePath);
-      _statusNotification =
-          'Imported ${_filterStatus?.rangeCount ?? 0} IP filter ranges';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to import IP filter: $e';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<void> setFilterEnabled(bool enabled) async {
-    try {
-      _filterStatus = await client.setFilterEnabled(enabled);
-      _statusNotification = enabled
-          ? 'IP Filter enabled'
-          : 'IP Filter disabled';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to toggle IP filter: $e';
-      notifyListeners();
-    }
-  }
-
-  Future<void> clearFilter() async {
-    try {
-      _filterStatus = await client.clearFilter();
-      _statusNotification = 'IP Filter cleared';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to clear IP filter: $e';
-      notifyListeners();
-    }
-  }
-
-  Future<void> fetchRateLimits() async {
-    try {
-      _rateLimits = await client.getRateLimits();
-      notifyListeners();
-    } catch (_) {}
-  }
-
-  Future<void> setRateLimits(RateLimitsModel limits) async {
-    try {
-      _rateLimits = await client.setRateLimits(limits);
-      _statusNotification = 'Rate limits updated';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to set rate limits: $e';
-      notifyListeners();
-    }
-  }
+  Future<void> fetchNetworkPolicy() => networkPolicyCtl.fetchPolicy();
+  Future<void> setNetworkProfile(NetworkProfile profile) =>
+      networkPolicyCtl.setProfile(profile);
+  Future<void> disconnectAllNetwork() => networkPolicyCtl.disconnectAll();
+  Future<void> enableNetwork() => networkPolicyCtl.enableNetwork();
+  Future<void> fetchNetworkAuditLog({int limit = 50}) =>
+      networkPolicyCtl.fetchAuditLog(limit: limit);
+  Future<void> setResourceBudgets(ResourceBudgetsModel budgets) =>
+      networkPolicyCtl.setResourceBudgets(budgets);
+  Future<void> fetchFilterStatus() => networkPolicyCtl.fetchFilterStatus();
+  Future<bool> importFilterFile(String filePath) =>
+      networkPolicyCtl.importFilterFile(filePath);
+  Future<void> setFilterEnabled(bool enabled) =>
+      networkPolicyCtl.setFilterEnabled(enabled);
+  Future<void> clearFilter() => networkPolicyCtl.clearFilter();
+  Future<void> fetchRateLimits() => networkPolicyCtl.fetchRateLimits();
+  Future<void> setRateLimits(RateLimitsModel limits) =>
+      networkPolicyCtl.setRateLimits(limits);
 
   List<Ed2kServerModel> get servers => serversController.servers;
   bool get isServersLoading => serversController.isLoading;
