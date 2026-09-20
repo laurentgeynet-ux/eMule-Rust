@@ -2936,6 +2936,48 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'English'**
   String get english;
+
+  /// No description provided for @daemonConnectTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion au daemon'**
+  String get daemonConnectTitle;
+
+  /// No description provided for @daemonConnectDescription.
+  ///
+  /// In fr, this message translates to:
+  /// **'Emule-Sion Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.'**
+  String get daemonConnectDescription;
+
+  /// No description provided for @daemonUrlLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Adresse du daemon'**
+  String get daemonUrlLabel;
+
+  /// No description provided for @daemonUrlHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'ws://192.168.1.10:4660/rpc'**
+  String get daemonUrlHint;
+
+  /// No description provided for @daemonUrlInvalid.
+  ///
+  /// In fr, this message translates to:
+  /// **'Adresse invalide — format attendu : ws://hôte:port/rpc'**
+  String get daemonUrlInvalid;
+
+  /// No description provided for @connect.
+  ///
+  /// In fr, this message translates to:
+  /// **'Se connecter'**
+  String get connect;
+
+  /// No description provided for @changeDaemon.
+  ///
+  /// In fr, this message translates to:
+  /// **'Changer de daemon'**
+  String get changeDaemon;
 }
 
 class _AppLocalizationsDelegate

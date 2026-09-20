@@ -14,9 +14,12 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   `EmuleSionApp` est partagé ; `apps/desktop/lib/main.dart` devient un
   thin entry point (window/tray/deep-links + supervisor).
 - **`apps/web` — remote controller** : nouvelle app Flutter web qui se
-  connecte à un mule-daemon existant via WebSocket (URL résolue depuis
-  `?daemon=ws://…`, `--dart-define=DAEMON_URL`, ou `ws://<hôte>:4660/rpc`).
-  `flutter build web` + dry-run WASM validés.
+  connecte à un mule-daemon existant via WebSocket. Résolution de l'URL
+  par ordre : `?daemon=ws://…` > `--dart-define=DAEMON_URL` > préférence
+  `daemon.url` persistée > formulaire de connexion
+  (`DaemonConnectScreen`, suggestion `ws://<hôte>:4660/rpc`, validation
+  ws/wss, `?daemon=` vide réinitialise). `flutter build web` + dry-run
+  WASM validés.
 
 - **Desktop polish (P6, début)** :
   - `file_picker` natif remplace le hack PowerShell dans

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:app_shell/app/app_controller.dart';
 import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/l10n/generated/app_localizations.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
+
+import 'daemon_connect_screen.dart';
 
 /// Emule-Sion web remote controller.
 ///
@@ -11,21 +16,99 @@ import 'package:mule_client/mule_client.dart';
 /// supervisor. The daemon URL is resolved from, in order:
 /// 1. `?daemon=ws://host:port/rpc` query parameter
 /// 2. `--dart-define=DAEMON_URL=…`
-/// 3. `ws://<current-host>:4660/rpc` (same host as the web app)
+/// 3. persisted `daemon.url` preference
+/// 4. connect form (suggested default: `ws://<current-host>:4660/rpc`)
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
+  runApp(const WebRemoteApp());
+}
 
-  const defined = String.fromEnvironment('DAEMON_URL');
-  final query = Uri.base.queryParameters['daemon'];
-  final fallback = 'ws://${Uri.base.host}:4660/rpc';
-  final daemonUrl = (query != null && query.isNotEmpty)
-      ? query
-      : (defined.isNotEmpty ? defined : fallback);
+class WebRemoteApp extends StatefulWidget {
+  const WebRemoteApp({super.key});
 
-  final client = RpcDaemonClient();
-  final viewModel = AppController(client: client);
-  viewModel.initialize(url: Uri.parse(daemonUrl));
+  @override
+  State<WebRemoteApp> createState() => _WebRemoteAppState();
+}
 
-  runApp(EmuleSionApp(viewModel: viewModel));
+class _WebRemoteAppState extends State<WebRemoteApp> {
+  static const _prefKey = 'daemon.url';
+
+  AppController? _controller;
+  String? _suggestedUrl;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final params = Uri.base.queryParameters;
+    const defined = String.fromEnvironment('DAEMON_URL');
+    final prefs = await SharedPreferences.getInstance();
+    final suggested = 'ws://${Uri.base.host}:4660/rpc';
+
+    String? url;
+    if (params.containsKey('daemon')) {
+      // `?daemon=` (empty) explicitly resets the saved URL → connect form.
+      final q = params['daemon']!;
+      if (q.isEmpty) {
+        await prefs.remove(_prefKey);
+      } else {
+        url = q;
+      }
+    } else if (defined.isNotEmpty) {
+      url = defined;
+    } else {
+      url = prefs.getString(_prefKey);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _suggestedUrl = suggested;
+      _loading = false;
+    });
+    if (url != null && url.isNotEmpty) _connect(url);
+  }
+
+  Future<void> _connect(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefKey, url);
+    final client = RpcDaemonClient();
+    final controller = AppController(client: client);
+    controller.initialize(url: Uri.parse(url));
+    if (mounted) setState(() => _controller = controller);
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_controller != null) {
+      return EmuleSionApp(viewModel: _controller!);
+    }
+    return MaterialApp(
+      title: 'Emule-Sion',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.dark(),
+      locale: const Locale('fr'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: _loading
+          ? const Scaffold(
+              backgroundColor: AppTheme.darkBackground,
+              body: Center(child: CircularProgressIndicator()),
+            )
+          : DaemonConnectScreen(
+              initialUrl: _suggestedUrl,
+              onConnect: _connect,
+            ),
+    );
+  }
 }

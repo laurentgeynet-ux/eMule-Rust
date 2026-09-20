@@ -970,5 +970,12 @@
   "language": "Langue",
   "languageDescription": "Langue de l'interface utilisateur",
   "french": "Français",
-  "english": "English"
+  "english": "English",
+  "daemonConnectTitle": "Connexion au daemon",
+  "daemonConnectDescription": "Emule-Sion Web pilote un mule-daemon distant. Indiquez l'adresse WebSocket du daemon.",
+  "daemonUrlLabel": "Adresse du daemon",
+  "daemonUrlHint": "ws://192.168.1.10:4660/rpc",
+  "daemonUrlInvalid": "Adresse invalide — format attendu : ws://hôte:port/rpc",
+  "connect": "Se connecter",
+  "changeDaemon": "Changer de daemon"
 }

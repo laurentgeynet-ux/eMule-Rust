@@ -1626,4 +1626,27 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get english => 'English';
+
+  @override
+  String get daemonConnectTitle => 'Connexion au daemon';
+
+  @override
+  String get daemonConnectDescription =>
+      'Emule-Sion Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.';
+
+  @override
+  String get daemonUrlLabel => 'Adresse du daemon';
+
+  @override
+  String get daemonUrlHint => 'ws://192.168.1.10:4660/rpc';
+
+  @override
+  String get daemonUrlInvalid =>
+      'Adresse invalide — format attendu : ws://hôte:port/rpc';
+
+  @override
+  String get connect => 'Se connecter';
+
+  @override
+  String get changeDaemon => 'Changer de daemon';
 }
