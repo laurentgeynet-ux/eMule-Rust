@@ -306,6 +306,10 @@ abstract class MuleDaemonClient {
   /// Get status of the active single-slot upload.
   Future<UploadSessionModel?> getUploadStatus();
 
+  /// Stream of full uploads snapshots (`upload.uploadsUpdated` events):
+  /// active slots, waiting queue and aggregate upload rate.
+  Stream<UploadsSnapshotModel> get uploadsEvents;
+
   /// Cancel an upload or dequeue a waiting peer.
   Future<void> cancelUpload(String clientAddress);
 

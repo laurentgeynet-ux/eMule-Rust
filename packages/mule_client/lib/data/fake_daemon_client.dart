@@ -67,6 +67,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Stream<PeerSessionModel> get peerSessionEvents =>
       _peerSessionController.stream;
 
+
+  @override
+  Stream<UploadsSnapshotModel> get uploadsEvents => _uploadsController.stream;
   @override
   Stream<ServerSessionModel> get serverSessionEvents =>
       _serverSessionController.stream;
@@ -462,6 +465,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     return updated;
   }
 
+  final StreamController<UploadsSnapshotModel> _uploadsController =
+      StreamController<UploadsSnapshotModel>.broadcast();
+  int _simTick = 0;
+
   void _emitUpdate(DownloadItem item) {
     _sequence += 1;
     if (!_eventsController.isClosed) {
@@ -499,7 +506,43 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
           _emitUpdate(updated);
         }
       }
+      _emitUploadsTick();
     });
+  }
+
+  /// Emits a simulated `upload.uploadsUpdated` snapshot each tick: one
+  /// active upload oscillating ~50–250 kB/s plus a small waiting queue.
+  void _emitUploadsTick() {
+    if (_uploadsController.isClosed) return;
+    _simTick += 1;
+    final rate = 50000 + Random().nextInt(200000);
+    final active = [
+      UploadSessionModel(
+        clientAddress: '203.0.113.7:4662',
+        fileHash: 'aabbccddeeff00112233445566778899',
+        fileName: 'shared-sample.iso',
+        transferredBytes: _simTick * rate,
+        uploadRateBps: rate,
+        state: 'uploading',
+        startedAtUnixMs:
+            DateTime.now().millisecondsSinceEpoch - _simTick * 1000,
+      ),
+    ];
+    final queue = [
+      UploadSessionModel(
+        clientAddress: '198.51.100.23:4662',
+        fileHash: '11223344556677889900aabbccddeeff',
+        fileName: 'queued-part.bin',
+        transferredBytes: 0,
+        uploadRateBps: 0,
+        state: 'waiting',
+        queueRank: 1,
+        startedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    ];
+    _uploadsController.add(
+      UploadsSnapshotModel(active: active, queue: queue, uploadRateBps: rate),
+    );
   }
 
   @override
@@ -1780,5 +1823,6 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _foundSourcesController.close();
     _peerSessionController.close();
     _serverSessionController.close();
+    _uploadsController.close();
   }
 }

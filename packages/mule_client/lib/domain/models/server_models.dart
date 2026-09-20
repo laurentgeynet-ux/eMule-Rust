@@ -1059,3 +1059,30 @@ class UpnpStatusModel {
     );
   }
 }
+
+/// Snapshot of the uploads state pushed by `upload.uploadsUpdated`:
+/// active slots, waiting queue, and aggregate upload rate.
+class UploadsSnapshotModel {
+  final List<UploadSessionModel> active;
+  final List<UploadSessionModel> queue;
+  final int uploadRateBps;
+
+  const UploadsSnapshotModel({
+    this.active = const [],
+    this.queue = const [],
+    this.uploadRateBps = 0,
+  });
+
+  factory UploadsSnapshotModel.fromJson(Map<String, dynamic> json) {
+    List<UploadSessionModel> parse(String key) =>
+        ((json[key] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(UploadSessionModel.fromJson)
+            .toList();
+    return UploadsSnapshotModel(
+      active: parse('active'),
+      queue: parse('queue'),
+      uploadRateBps: (json['uploadRateBps'] as num?)?.toInt() ?? 0,
+    );
+  }
+}

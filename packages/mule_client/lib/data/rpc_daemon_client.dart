@@ -48,6 +48,8 @@ class RpcDaemonClient implements MuleDaemonClient {
       StreamController<PeerSessionModel>.broadcast();
   final StreamController<ServerSessionModel> _serverSessionController =
       StreamController<ServerSessionModel>.broadcast();
+  final StreamController<UploadsSnapshotModel> _uploadsController =
+      StreamController<UploadsSnapshotModel>.broadcast();
 
   // Factory constructor or provider callback for custom channel (useful for testing)
   final WebSocketChannel Function(Uri uri)? channelFactory;
@@ -93,6 +95,9 @@ class RpcDaemonClient implements MuleDaemonClient {
   @override
   Stream<ServerSessionModel> get serverSessionEvents =>
       _serverSessionController.stream;
+
+  @override
+  Stream<UploadsSnapshotModel> get uploadsEvents => _uploadsController.stream;
 
   @override
   DaemonInfo? get daemonInfo => _daemonInfo;
@@ -348,6 +353,11 @@ class RpcDaemonClient implements MuleDaemonClient {
               ServerSessionModel.fromJson(sessionJson),
             );
           }
+        }
+      } else if (method == 'upload.uploadsUpdated') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null && !_uploadsController.isClosed) {
+          _uploadsController.add(UploadsSnapshotModel.fromJson(params));
         }
       } else if (method == 'event.snapshotRequired') {
         // Server broadcast buffer lagged — events were dropped.
@@ -1292,6 +1302,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     _foundSourcesController.close();
     _peerSessionController.close();
     _serverSessionController.close();
+    _uploadsController.close();
   }
 }
 
