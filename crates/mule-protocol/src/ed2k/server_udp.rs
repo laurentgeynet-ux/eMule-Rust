@@ -8,9 +8,20 @@
 //! - `OP_GLOBSERVSTATREQ`/`RES` (`0x96`/`0x97`) — server statistics.
 
 use super::opcodes::{
-    OP_GLOBFOUNDSOURCES, OP_GLOBGETSOURCES2, OP_GLOBSEARCHREQ2, OP_GLOBSEARCHRES,
-    OP_GLOBSERVSTATREQ, OP_GLOBSERVSTATRES,
+    OP_GLOBFOUNDSOURCES, OP_GLOBGETSOURCES2, OP_GLOBSEARCHREQ2, OP_GLOBSEARCHREQ3,
+    OP_GLOBSEARCHRES, OP_GLOBSERVSTATREQ, OP_GLOBSERVSTATRES,
 };
+
+/// eMule `SRV_UDPFLG_EXT_GETFILES` — the server answers global UDP search.
+pub const SRV_UDPFLG_EXT_GETFILES: u32 = 0x0000_0002;
+/// eMule `SRV_UDPFLG_LARGEFILES` — the server handles >4 GiB entries.
+pub const SRV_UDPFLG_LARGEFILES: u32 = 0x0000_0100;
+
+/// eMule `CT_SERVER_UDPSEARCH_FLAGS` (`0x0E`) tag name id, sent as the single
+/// tag of `OP_GLOBSEARCHREQ3`.
+pub const CT_SERVER_UDPSEARCH_FLAGS: u8 = 0x0E;
+/// eMule `SRVCAP_UDP_NEWTAGS_LARGEFILES` — value carried by that tag.
+pub const SRVCAP_UDP_NEWTAGS_LARGEFILES: u8 = 0x01;
 use super::protocol::{PR_ED2K, PR_EMULE_COMPRESSED};
 
 /// zlib-inflates a packed UDP payload with a hard cap (eMule
@@ -41,12 +52,23 @@ pub struct GlobFoundSourcesEntry {
 pub enum ServerUdpMessage {
     /// `OP_GLOBFOUNDSOURCES` — sources grouped per file hash.
     GlobFoundSources(Vec<GlobFoundSourcesEntry>),
-    /// `OP_GLOBSERVSTATRES` — server user/file counters.
+    /// `OP_GLOBSERVSTATRES` — server status answer (eMule
+    /// `CUDPSocket::ProcessPacket`): `[challenge:u32][users][files]
+    /// [maxusers][softfiles][hardfiles][udp_flags][lowid_users]
+    /// [udp_obf_port:u16][tcp_obf_port:u16][udp_key:u32]`.
     GlobServStatRes {
+        /// Challenge echo (the u32 sent in `OP_GLOBSERVSTATREQ`).
+        challenge: u32,
         /// Connected users reported by the server.
         users: u32,
         /// Indexed files reported by the server.
         files: u32,
+        /// `SRV_UDPFLG_*` capability bitmask (0 when the server is old).
+        udp_flags: u32,
+        /// Dedicated TCP obfuscation port (0 = none).
+        tcp_obfuscation_port: u16,
+        /// Dedicated UDP obfuscation port (0 = none).
+        udp_obfuscation_port: u16,
     },
     /// `OP_GLOBSEARCHRES` — raw payload kept for the caller (same entry
     /// layout as `OP_SEARCHRESULT`).
@@ -69,9 +91,14 @@ pub fn encode_glob_get_sources2(file_hash: &[u8; 16], file_size: u32) -> Vec<u8>
     out
 }
 
-/// Encodes `OP_GLOBSERVSTATREQ` (empty payload).
-pub fn encode_glob_servstat_req() -> Vec<u8> {
-    vec![PR_ED2K, OP_GLOBSERVSTATREQ]
+/// Encodes `OP_GLOBSERVSTATREQ` with the u32 challenge eMule sends
+/// (`CUDPSocket` sends the challenge; the answer echoes it at offset 0).
+pub fn encode_glob_servstat_req(challenge: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(6);
+    out.push(PR_ED2K);
+    out.push(OP_GLOBSERVSTATREQ);
+    out.extend_from_slice(&challenge.to_le_bytes());
+    out
 }
 
 /// Encodes `OP_GLOBSEARCHREQ2` (`0x92`): the UDP variant of
@@ -82,6 +109,29 @@ pub fn encode_glob_search_req2(search_payload: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(2 + search_payload.len());
     out.push(PR_ED2K);
     out.push(OP_GLOBSEARCHREQ2);
+    out.extend_from_slice(search_payload);
+    out
+}
+
+/// Encodes `OP_GLOBSEARCHREQ3` (`0x90`) — eMule's extended UDP search used
+/// when the server advertises both `SRV_UDPFLG_EXT_GETFILES` and
+/// `SRV_UDPFLG_LARGEFILES` (`SearchResultsWnd.cpp:277-291`). Layout:
+/// `[u32 tag_count=1][CTag(CT_SERVER_UDPSEARCH_FLAGS, SRVCAP_UDP_NEWTAGS_
+/// LARGEFILES)][search_tree]` — the same search-expression bytes as REQ2.
+///
+/// The flag tag tells the server the client understands new-style tags and
+/// 64-bit file sizes in `OP_GLOBSEARCHRES` answers.
+pub fn encode_glob_search_req3(search_payload: &[u8]) -> Vec<u8> {
+    // eMule writes the flag tag with `WriteNewEd2kTag`: the tag type is
+    // OR'd with 0x80 and a numeric tag name is emitted as a single byte
+    // (no u16 name length). Wire: [TAGTYPE_UINT8|0x80][0x0E][0x01].
+    let mut out = Vec::with_capacity(9 + search_payload.len());
+    out.push(PR_ED2K);
+    out.push(OP_GLOBSEARCHREQ3);
+    out.extend_from_slice(&1u32.to_le_bytes()); // tag count
+    out.push(crate::ed2k::tags::TAGTYPE_UINT8 | 0x80);
+    out.push(CT_SERVER_UDPSEARCH_FLAGS);
+    out.push(SRVCAP_UDP_NEWTAGS_LARGEFILES);
     out.extend_from_slice(search_payload);
     out
 }
@@ -136,12 +186,24 @@ pub fn decode_server_udp(data: &[u8]) -> Result<ServerUdpMessage, String> {
             Ok(ServerUdpMessage::GlobFoundSources(entries))
         }
         OP_GLOBSERVSTATRES => {
-            if payload.len() < 8 {
+            // eMule layout: [challenge:u32][users][files][maxusers]
+            // [softfiles][hardfiles][udp_flags][lowid_users]
+            // [udp_obf_port:u16][tcp_obf_port:u16][udp_key:u32]
+            // Only the first 12 bytes are mandatory.
+            if payload.len() < 12 {
                 return Err("truncated OP_GLOBSERVSTATRES".into());
             }
+            let read_u32 =
+                |off: usize| u32::from_le_bytes(payload[off..off + 4].try_into().unwrap());
+            let read_u16 =
+                |off: usize| u16::from_le_bytes(payload[off..off + 2].try_into().unwrap());
             Ok(ServerUdpMessage::GlobServStatRes {
-                users: u32::from_le_bytes(payload[0..4].try_into().unwrap()),
-                files: u32::from_le_bytes(payload[4..8].try_into().unwrap()),
+                challenge: read_u32(0),
+                users: read_u32(4),
+                files: read_u32(8),
+                udp_flags: if payload.len() >= 28 { read_u32(24) } else { 0 },
+                udp_obfuscation_port: if payload.len() >= 40 { read_u16(32) } else { 0 },
+                tcp_obfuscation_port: if payload.len() >= 40 { read_u16(34) } else { 0 },
             })
         }
         OP_GLOBSEARCHRES => Ok(ServerUdpMessage::GlobSearchRes(payload.to_vec())),
@@ -189,17 +251,54 @@ mod tests {
 
     #[test]
     fn servstatres_and_truncation() {
+        // eMule layout: [challenge][users][files][maxusers][soft][hard]
+        // [udp_flags][lowid][udp_obf:u16][tcp_obf:u16][udp_key:u32]
         let mut raw = vec![PR_ED2K, OP_GLOBSERVSTATRES];
-        raw.extend_from_slice(&10_000u32.to_le_bytes());
-        raw.extend_from_slice(&500_000u32.to_le_bytes());
+        raw.extend_from_slice(&0xDEADBEEFu32.to_le_bytes()); // challenge
+        raw.extend_from_slice(&10_000u32.to_le_bytes()); // users
+        raw.extend_from_slice(&500_000u32.to_le_bytes()); // files
+        raw.extend_from_slice(&20_000u32.to_le_bytes()); // maxusers
+        raw.extend_from_slice(&400_000u32.to_le_bytes()); // softfiles
+        raw.extend_from_slice(&600_000u32.to_le_bytes()); // hardfiles
+        raw.extend_from_slice(&0x0000_0102u32.to_le_bytes()); // udp_flags
+        raw.extend_from_slice(&5_000u32.to_le_bytes()); // lowid users
+        raw.extend_from_slice(&6096u16.to_le_bytes()); // udp obf port
+        raw.extend_from_slice(&6082u16.to_le_bytes()); // tcp obf port
+        raw.extend_from_slice(&12345u32.to_le_bytes()); // udp key
         assert_eq!(
             decode_server_udp(&raw).unwrap(),
             ServerUdpMessage::GlobServStatRes {
+                challenge: 0xDEADBEEF,
                 users: 10_000,
-                files: 500_000
+                files: 500_000,
+                udp_flags: 0x0000_0102,
+                udp_obfuscation_port: 6096,
+                tcp_obfuscation_port: 6082,
             }
         );
+
+        // Short form (only mandatory 12 bytes) — flags default to 0.
+        let mut short = vec![PR_ED2K, OP_GLOBSERVSTATRES];
+        short.extend_from_slice(&1u32.to_le_bytes());
+        short.extend_from_slice(&10_000u32.to_le_bytes());
+        short.extend_from_slice(&500_000u32.to_le_bytes());
+        let msg = decode_server_udp(&short).unwrap();
+        match msg {
+            ServerUdpMessage::GlobServStatRes {
+                users,
+                files,
+                udp_flags,
+                ..
+            } => {
+                assert_eq!(users, 10_000);
+                assert_eq!(files, 500_000);
+                assert_eq!(udp_flags, 0);
+            }
+            _ => panic!("expected GlobServStatRes"),
+        }
+
         assert!(decode_server_udp(&[PR_ED2K, OP_GLOBFOUNDSOURCES, 0, 0, 0]).is_err());
+        assert!(decode_server_udp(&[PR_ED2K, OP_GLOBSERVSTATRES, 0, 0, 0]).is_err());
     }
 
     #[test]
@@ -209,5 +308,20 @@ mod tests {
         assert_eq!(pkt[0], 0xE3);
         assert_eq!(pkt[1], 0x92);
         assert_eq!(&pkt[2..], &expr);
+    }
+
+    #[test]
+    fn globsearchreq3_wire_format() {
+        let expr = [0x01, 0x02, 0x03, 0xAA];
+        let pkt = encode_glob_search_req3(&expr);
+        assert_eq!(pkt[0], 0xE3);
+        assert_eq!(pkt[1], 0x90);
+        // [tag_count:u32=1][NewEd2k tag: TAGTYPE_UINT8|0x80][name:0x0E][val:0x01]
+        assert_eq!(&pkt[2..6], &1u32.to_le_bytes());
+        assert_eq!(pkt[6], crate::ed2k::tags::TAGTYPE_UINT8 | 0x80);
+        assert_eq!(pkt[7], 0x0E);
+        assert_eq!(pkt[8], 0x01);
+        // Search tree follows verbatim.
+        assert_eq!(&pkt[9..], &expr);
     }
 }

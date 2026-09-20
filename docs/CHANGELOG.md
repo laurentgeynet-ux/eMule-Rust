@@ -14,6 +14,13 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 - **MCP** : nouveaux outils `emule_kad_search_notes` et `emule_kad_publish_note` ; `DaemonClient::call` applique un timeout de 60 s aux méthodes `kad.search*`/`kad.publish*` (les recherches itératives dépassent 15 s en WAN), exposé via `call_with_timeout`.
 - Tests : codec notes (roundtrips `0x35`/`0x45`/`0x3B`/`0x3A`, malformed, cap tags) ; store notes (upsert, cap, filtre taille, load) ; intégration `kad_udp` : publish → `0x4B` load → search → `0x3B` avec commentaire/rating → filtre taille.
 
+### Ajouté — Recherche globale serveur `GLOBSEARCHREQ3` (eMule 0.72a)
+
+- **Codec** (`mule-protocol/src/ed2k/server_udp.rs`) : `encode_glob_search_req3` (`0x90`) préfixe l'arbre de recherche REQ2 d'un tag `CT_SERVER_UDPSEARCH_FLAGS` (`0x0E`) = `SRVCAP_UDP_NEWTAGS_LARGEFILES` (`0x01`) écrit au format `WriteNewEd2kTag` (type `|0x80`, nom 1 octet) — déclare au serveur le support des tags nouveau format et des tailles 64 bits ; `OP_GLOBSERVSTATRES` décodé en entier (`challenge`, `users`, `files`, `udp_flags`, ports d'obfuscation TCP/UDP), constantes `SRV_UDPFLG_EXT_GETFILES`/`SRV_UDPFLG_LARGEFILES` exposées.
+- **Daemon** (`services/server_udp.rs`) : cache des `udp_flags` par adresse UDP de serveur, alimenté par `OP_GLOBSERVSTATRES` (réponse acceptée uniquement si le challenge correspond à un `GLOBSERVSTATREQ` émis — garde anti-usurpation d'eMule) ; `send_servstat_req` probe un serveur aux capacités inconnues avant la recherche ; `send_glob_search` choisit `REQ3` si `EXT_GETFILES` **et** `LARGEFILES` (logique `SearchResultsWnd.cpp`), `REQ2` sinon, et retourne la forme émise.
+- **RPC** : `servers.search` retourne désormais `udpTargets[]` (`{address, request: "REQ3"|"REQ2"|null}`) pour observer la sélection en test UI/MCP.
+- Tests : wire REQ3 (tag NewEd2k + payload verbatim), décodage `GLOBSERVSTATRES` complet et forme courte, sélection REQ3/REQ2/probe par socket UDP réelle en loopback.
+
 ## [0.1.9] - 2026-09-20
 
 ### Ajouté — Interopérabilité eMule 0.72a (fonctions essentielles du réseau eD2K/Kad)

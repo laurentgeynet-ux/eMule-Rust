@@ -34,6 +34,12 @@ struct ServerUdpInner {
     socket: Option<Arc<UdpSocket>>,
     bind_addr: Option<SocketAddr>,
     listen_task: Option<JoinHandle<()>>,
+    /// Per-server UDP capabilities learned from `OP_GLOBSERVSTATRES`,
+    /// keyed by the server's UDP address (IP + TCP+4). Mirrors eMule's
+    /// `CServer::GetUDPFlags()` storage.
+    server_udp_flags: std::collections::HashMap<SocketAddr, u32>,
+    /// Challenges sent in pending `OP_GLOBSERVSTATREQ` pings.
+    pending_statreq: std::collections::HashMap<SocketAddr, u32>,
 }
 
 /// Shared server UDP service (cloneable handle).
@@ -63,6 +69,8 @@ impl ServerUdpService {
                 socket: None,
                 bind_addr: None,
                 listen_task: None,
+                server_udp_flags: std::collections::HashMap::new(),
+                pending_statreq: std::collections::HashMap::new(),
             })),
         }
     }
@@ -112,6 +120,7 @@ impl ServerUdpService {
         let event_channel = self.event_channel.clone();
         let policy_mgr_clone = self.policy_mgr.clone();
         let socket_for_task = socket_arc.clone();
+        let inner_for_task = self.inner.clone();
 
         inner.listen_task = Some(tokio::spawn(async move {
             let mut buf = vec![0u8; 65536];
@@ -137,10 +146,37 @@ impl ServerUdpService {
                             Ok(ServerUdpMessage::GlobFoundSources(entries)) => {
                                 handle_glob_found_sources(&downloads_arc, entries).await;
                             }
-                            Ok(ServerUdpMessage::GlobServStatRes { users, files }) => {
-                                tracing::debug!(
-                                    "Server UDP: GlobServStatRes from {peer_addr} (users={users}, files={files})"
-                                );
+                            Ok(ServerUdpMessage::GlobServStatRes {
+                                challenge,
+                                users,
+                                files,
+                                udp_flags,
+                                tcp_obfuscation_port,
+                                udp_obfuscation_port,
+                            }) => {
+                                // Only accept answers to challenges we issued
+                                // (eMule `GetChallenge()` check) — unsolicited
+                                // stat replies are dropped.
+                                let accepted = {
+                                    let mut inr = inner_for_task.write().await;
+                                    match inr.pending_statreq.get(&peer_addr) {
+                                        Some(&c) if c == challenge => {
+                                            inr.server_udp_flags.insert(peer_addr, udp_flags);
+                                            inr.pending_statreq.remove(&peer_addr);
+                                            true
+                                        }
+                                        _ => false,
+                                    }
+                                };
+                                if accepted {
+                                    tracing::info!(
+                                        "Server UDP: GlobServStatRes from {peer_addr} (users={users}, files={files}, udp_flags=0x{udp_flags:08X}, obf_tcp={tcp_obfuscation_port}, obf_udp={udp_obfuscation_port})"
+                                    );
+                                } else {
+                                    tracing::debug!(
+                                        "Server UDP: ignoring unsolicited/mismatched GlobServStatRes from {peer_addr} (challenge={challenge})"
+                                    );
+                                }
                             }
                             Ok(ServerUdpMessage::GlobSearchRes(payload)) => {
                                 // Same entry layout as OP_SEARCHRESULT — decode
@@ -217,24 +253,91 @@ impl ServerUdpService {
         }
     }
 
-    /// Sends `OP_GLOBSEARCHREQ2` to a server's UDP port. `search_payload` is
-    /// the raw payload of an encoded `SearchQuery` packet (eMule reuses the
-    /// TCP search packet bytes verbatim, `SearchResultsWnd.cpp:296`).
+    /// Sends `OP_GLOBSERVSTATREQ` to learn the server's UDP capability flags
+    /// (`SRV_UDPFLG_*`) and obfuscation ports — the answer is a
+    /// `GLOBSERVSTATRES` whose challenge must echo the one we send.
+    pub async fn send_servstat_req(&self, server_udp_addr: SocketAddr) -> bool {
+        let (socket, challenge) = {
+            let mut inner = self.inner.write().await;
+            let Some(socket) = inner.socket.clone() else {
+                return false;
+            };
+            let challenge: u32 = rand::random();
+            inner.pending_statreq.insert(server_udp_addr, challenge);
+            (socket, challenge)
+        };
+        let pkt = server_udp::encode_glob_servstat_req(challenge);
+        match socket.send_to(&pkt, server_udp_addr).await {
+            Ok(_) => true,
+            Err(e) => {
+                tracing::debug!("Server UDP: send_servstat_req to {server_udp_addr} failed: {e}");
+                false
+            }
+        }
+    }
+
+    /// Sends a global UDP search to a server's UDP port, choosing the wire
+    /// form like eMule `SearchResultsWnd.cpp:277-310`:
+    /// `OP_GLOBSEARCHREQ3` when the server advertised both
+    /// `SRV_UDPFLG_EXT_GETFILES` and `SRV_UDPFLG_LARGEFILES`, otherwise
+    /// `OP_GLOBSEARCHREQ2`. When the flags are still unknown, a
+    /// `GLOBSERVSTATREQ` ping is sent first so a later search can upgrade.
+    /// `search_payload` is the raw payload of an encoded `SearchQuery`
+    /// packet (eMule reuses the TCP search bytes verbatim).
+    ///
+    /// Returns the wire form actually sent (`"REQ3"`/`"REQ2"`) so the RPC
+    /// layer can report it for testing, `None` when nothing was sent.
     pub async fn send_glob_search(
         &self,
         server_udp_addr: SocketAddr,
         search_payload: &[u8],
-    ) -> bool {
-        let socket = { self.inner.read().await.socket.clone() };
-        let Some(socket) = socket else {
-            return false;
+    ) -> Option<&'static str> {
+        let (socket, flags) = {
+            let inner = self.inner.read().await;
+            let Some(socket) = inner.socket.clone() else {
+                return None;
+            };
+            (
+                socket,
+                inner.server_udp_flags.get(&server_udp_addr).copied(),
+            )
         };
-        let pkt = server_udp::encode_glob_search_req2(search_payload);
+        let Some(flags) = flags else {
+            // Flags unknown — probe the server first, then send REQ2 (eMule
+            // falls back to REQ2 when it cannot prove REQ3 support).
+            self.send_servstat_req(server_udp_addr).await;
+            let pkt = server_udp::encode_glob_search_req2(search_payload);
+            return match socket.send_to(&pkt, server_udp_addr).await {
+                Ok(_) => Some("REQ2"),
+                Err(e) => {
+                    tracing::debug!(
+                        "Server UDP: send_glob_search to {server_udp_addr} failed: {e}"
+                    );
+                    None
+                }
+            };
+        };
+
+        let use_req3 = flags & server_udp::SRV_UDPFLG_EXT_GETFILES != 0
+            && flags & server_udp::SRV_UDPFLG_LARGEFILES != 0;
+        let (pkt, form) = if use_req3 {
+            (server_udp::encode_glob_search_req3(search_payload), "REQ3")
+        } else {
+            (server_udp::encode_glob_search_req2(search_payload), "REQ2")
+        };
+        tracing::debug!(
+            "Server UDP: {} to {server_udp_addr} (udp_flags=0x{flags:08X})",
+            if use_req3 {
+                "GLOBSEARCHREQ3"
+            } else {
+                "GLOBSEARCHREQ2"
+            }
+        );
         match socket.send_to(&pkt, server_udp_addr).await {
-            Ok(_) => true,
+            Ok(_) => Some(form),
             Err(e) => {
                 tracing::debug!("Server UDP: send_glob_search to {server_udp_addr} failed: {e}");
-                false
+                None
             }
         }
     }
@@ -325,5 +428,80 @@ async fn handle_glob_found_sources(
             let mut dl_guard = dl_service.lock().await;
             let _ = dl_guard.upsert_peer_sources(&file_hash_hex, &discovered);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mule_network_policy::ResourceBudgets;
+    use std::net::Ipv4Addr;
+    use std::time::Duration;
+
+    fn service() -> ServerUdpService {
+        ServerUdpService::new(NetworkPolicyManager::new(
+            NetworkProfile::LocalLab,
+            ResourceBudgets::default(),
+        ))
+    }
+
+    /// Receives the next datagram on `recv` and returns its opcode byte.
+    async fn next_opcode(recv: &UdpSocket) -> u8 {
+        let mut buf = [0u8; 2048];
+        tokio::time::timeout(Duration::from_secs(2), recv.recv_from(&mut buf))
+            .await
+            .expect("no datagram received")
+            .expect("recv failed");
+        assert_eq!(buf[0], mule_protocol::ed2k::protocol::PR_ED2K);
+        buf[1]
+    }
+
+    #[tokio::test]
+    async fn glob_search_uses_req3_when_server_supports_it() {
+        let svc = service();
+        svc.start(Ipv4Addr::LOCALHOST.into()).await.unwrap();
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        svc.inner.write().await.server_udp_flags.insert(
+            server_addr,
+            server_udp::SRV_UDPFLG_EXT_GETFILES | server_udp::SRV_UDPFLG_LARGEFILES,
+        );
+
+        let form = svc.send_glob_search(server_addr, &[0xAA, 0xBB]).await;
+        assert_eq!(form, Some("REQ3"));
+        assert_eq!(next_opcode(&server).await, 0x90);
+    }
+
+    #[tokio::test]
+    async fn glob_search_falls_back_to_req2_without_largefiles() {
+        let svc = service();
+        svc.start(Ipv4Addr::LOCALHOST.into()).await.unwrap();
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        svc.inner
+            .write()
+            .await
+            .server_udp_flags
+            .insert(server_addr, server_udp::SRV_UDPFLG_EXT_GETFILES);
+
+        let form = svc.send_glob_search(server_addr, &[0xAA]).await;
+        assert_eq!(form, Some("REQ2"));
+        assert_eq!(next_opcode(&server).await, 0x92);
+    }
+
+    #[tokio::test]
+    async fn glob_search_probes_unknown_server_then_sends_req2() {
+        let svc = service();
+        svc.start(Ipv4Addr::LOCALHOST.into()).await.unwrap();
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        let form = svc.send_glob_search(server_addr, &[0xAA]).await;
+        assert_eq!(form, Some("REQ2"));
+        // First datagram: GLOBSERVSTATREQ probe (0x96), second: REQ2 (0x92).
+        assert_eq!(next_opcode(&server).await, 0x96);
+        assert_eq!(next_opcode(&server).await, 0x92);
     }
 }

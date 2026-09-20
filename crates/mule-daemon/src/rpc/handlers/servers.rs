@@ -330,9 +330,15 @@ pub async fn handle_servers_search(
                 .collect()
         };
         targets.extend(extra);
+        let mut udp_targets = Vec::new();
         for target in targets {
-            state.server_udp.send_glob_search(target, &payload).await;
+            let form = state.server_udp.send_glob_search(target, &payload).await;
+            udp_targets.push(json!({
+                "address": target.to_string(),
+                "request": form,
+            }));
         }
+        return Ok(json!({ "sent": true, "udpTargets": udp_targets }));
     }
 
     Ok(json!({ "sent": true }))
