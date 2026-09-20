@@ -161,7 +161,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: Colors.white54),
+                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -172,7 +172,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
               // Link input
               const Text(
                 'eD2K Link',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 6),
               TextField(
@@ -181,7 +181,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                 style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
                 decoration: InputDecoration(
                   hintText: 'ed2k://|file|example.zip|104857600|0123456789abcdef0123456789abcdef|/',
-                  hintStyle: const TextStyle(fontSize: 12, color: Colors.white30),
+                  hintStyle: const TextStyle(fontSize: 12, color: AppColors.iconFaint),
                   errorText: _parseError,
                 ),
               ),
@@ -219,7 +219,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                       const SizedBox(height: 4),
                       Text(
                         'Hash: $_parsedHash',
-                        style: const TextStyle(fontSize: 11, color: Colors.white54, fontFamily: 'monospace'),
+                        style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontFamily: 'monospace'),
                       ),
                     ],
                   ),
@@ -234,7 +234,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                 children: [
                   const Text(
                     'Category',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 6),
                   Container(
@@ -252,7 +252,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                         items: [
                           const DropdownMenuItem<String?>(
                             value: null,
-                            child: Text('Sans catégorie (None)', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                            child: Text('Sans catégorie (None)', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                           ),
                           ...widget.viewModel.categories.map((c) => DropdownMenuItem<String?>(
                             value: c.id,
@@ -264,9 +264,9 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                                   decoration: BoxDecoration(color: c.parsedColor, shape: BoxShape.circle),
                                 ),
                                 const SizedBox(width: 8),
-                                Text(c.name, style: const TextStyle(fontSize: 13, color: Colors.white)),
+                                Text(c.name, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
                                 if (c.defaultDestination != null && c.defaultDestination!.isNotEmpty)
-                                  Text(' (${c.defaultDestination})', style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                                  Text(' (${c.defaultDestination})', style: const TextStyle(fontSize: 11, color: AppColors.textFaint)),
                               ],
                             ),
                           )),
@@ -301,7 +301,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                       children: [
                         const Text(
                           'Target Directory',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 6),
                         Row(
@@ -339,7 +339,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                       children: [
                         const Text(
                           'Disk Allocation',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 6),
                         Container(
@@ -390,7 +390,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+                    child: const Text('Cancel', style: TextStyle(color: AppColors.textSoft)),
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
@@ -447,7 +447,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(widget.viewModel.errorMessage ?? 'Erreur lors de l\'ajout du téléchargement'),
-          backgroundColor: Colors.orangeAccent.shade700,
+          backgroundColor: AppColors.accentOrangeShade700,
           duration: const Duration(seconds: 4),
         ),
       );

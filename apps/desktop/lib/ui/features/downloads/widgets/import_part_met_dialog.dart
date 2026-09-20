@@ -190,7 +190,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         SizedBox(height: 2),
@@ -198,14 +198,14 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                           'Import an existing partial or completed eMule download safely.',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white70,
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white60),
+                    icon: const Icon(Icons.close, color: AppColors.textSoft),
                     onPressed: () => Navigator.of(context).pop(false),
                   ),
                 ],
@@ -231,7 +231,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                           'The download will be staged into data/temp/ and initialized in Paused state. L’import ne contacte aucun peer et le téléchargement restera en pause.',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             height: 1.3,
                           ),
                         ),
@@ -258,7 +258,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                             Expanded(
                               child: Text(
                                 'Import successful! The download is paused and verified parts have been staged.',
-                                style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
@@ -267,7 +267,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                       const SizedBox(height: 12),
                       const Text(
                         'Audit Report',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                       ),
                       const SizedBox(height: 6),
                       Expanded(
@@ -286,7 +286,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                               style: const TextStyle(
                                 fontFamily: 'monospace',
                                 fontSize: 11,
-                                color: Colors.white70,
+                                color: AppColors.textSecondary,
                                 height: 1.4,
                               ),
                             ),
@@ -317,7 +317,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                             onPressed: () => Navigator.of(context).pop(true),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primary,
-                              foregroundColor: Colors.white,
+                              foregroundColor: AppColors.textPrimary,
                             ),
                             child: const Text('Done'),
                           ),
@@ -339,7 +339,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -351,12 +351,12 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                               controller: _metPathController,
                               style: const TextStyle(
                                 fontSize: 13,
-                                color: Colors.white,
+                                color: AppColors.textPrimary,
                               ),
                               decoration: InputDecoration(
                                 hintText: 'C:\\eMule\\temp\\001.part.met',
                                 hintStyle: const TextStyle(
-                                  color: Colors.white38,
+                                  color: AppColors.textFaint,
                                   fontSize: 13,
                                 ),
                                 filled: true,
@@ -385,14 +385,14 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     height: 14,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary,
                                     ),
                                   )
                                 : const Icon(Icons.search, size: 16),
                             label: const Text('Inspect'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.darkCard,
-                              foregroundColor: Colors.white,
+                              foregroundColor: AppColors.textPrimary,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                                 vertical: 12,
@@ -408,7 +408,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -417,12 +417,12 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                         controller: _partPathController,
                         style: const TextStyle(
                           fontSize: 13,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                         decoration: InputDecoration(
                           hintText: 'Auto-detected next to .met file',
                           hintStyle: const TextStyle(
-                            color: Colors.white38,
+                            color: AppColors.textFaint,
                             fontSize: 13,
                           ),
                           filled: true,
@@ -470,7 +470,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                       style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.white,
+                                        color: AppColors.textPrimary,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -489,7 +489,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     'Total Size:',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.white70,
+                                      color: AppColors.textSecondary,
                                     ),
                                   ),
                                   Text(
@@ -497,7 +497,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary,
                                     ),
                                   ),
                                 ],
@@ -511,7 +511,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     'Est. Acquired / Gaps Complement:',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.white70,
+                                      color: AppColors.textSecondary,
                                     ),
                                   ),
                                   Text(
@@ -534,7 +534,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     'Part Count:',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.white70,
+                                      color: AppColors.textSecondary,
                                     ),
                                   ),
                                   Text(
@@ -542,7 +542,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary,
                                     ),
                                   ),
                                 ],
@@ -556,7 +556,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     '.part File on Disk:',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.white70,
+                                      color: AppColors.textSecondary,
                                     ),
                                   ),
                                   Text(
@@ -580,7 +580,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                     'eD2K Hash: ',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: Colors.white70,
+                                      color: AppColors.textSecondary,
                                     ),
                                   ),
                                   Expanded(
@@ -589,7 +589,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                       style: const TextStyle(
                                         fontSize: 11,
                                         fontFamily: 'monospace',
-                                        color: Colors.white60,
+                                        color: AppColors.textSoft,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -632,7 +632,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -641,7 +641,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                         controller: _targetDirController,
                         style: const TextStyle(
                           fontSize: 13,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                         decoration: InputDecoration(
                           hintText: 'Target directory',
@@ -666,7 +666,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -675,7 +675,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                         initialValue: _selectedCategoryId,
                         dropdownColor: AppTheme.darkSurface,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           fontSize: 13,
                         ),
                         decoration: InputDecoration(
@@ -775,7 +775,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                       onPressed: canImport ? _submitImport : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
+                        foregroundColor: AppColors.textPrimary,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 12,
@@ -787,7 +787,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.white,
+                                color: AppColors.textPrimary,
                               ),
                             )
                           : const Text('Import Download'),

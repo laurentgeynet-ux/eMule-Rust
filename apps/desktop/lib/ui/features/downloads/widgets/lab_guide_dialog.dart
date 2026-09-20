@@ -294,13 +294,13 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                         SizedBox(height: 2),
                         Text(
                           'Full end-to-end eD2K testing on 127.0.0.1 without touching a terminal.',
-                          style: TextStyle(fontSize: 12, color: Colors.white60),
+                          style: TextStyle(fontSize: 12, color: AppColors.textSoft),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: Colors.white54),
+                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -323,7 +323,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                       Expanded(
                         child: Text(
                           _errorMessage!,
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
                         ),
                       ),
                     ],
@@ -393,7 +393,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
               const Expanded(
                 child: Text(
                   'Storage: data/ (Internal State) vs downloads/ (Completed Files)',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -413,7 +413,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
           const SizedBox(height: 4),
           Text(
             '• Internal data (DB, temp .part, fixtures): $workdir',
-            style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.white60),
+            style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: AppColors.textSoft),
             overflow: TextOverflow.ellipsis,
           ),
           Text(
@@ -463,7 +463,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                       ),
               ),
@@ -481,7 +481,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                     ),
                     Text(
                       description,
-                      style: const TextStyle(fontSize: 11, color: Colors.white54),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -546,7 +546,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                     ? const SizedBox(
                         width: 14,
                         height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
                       )
                     : const Icon(Icons.create_new_folder_outlined, size: 16),
                 label: Text(_isCreatingFixture ? 'Generating...' : 'Generate Fixture'),
@@ -559,7 +559,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                 Expanded(
                   child: Text(
                     '${fixture.fileName} (${Formatters.formatBytes(fixture.sizeBytes)})',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -596,11 +596,11 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                       Expanded(
                         child: SelectableText(
                           fixture.ed2kLink,
-                          style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white70),
+                          style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.textSecondary),
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                        icon: const Icon(Icons.copy, size: 16, color: AppColors.textSecondary),
                         tooltip: 'Copy Link',
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: fixture.ed2kLink));
@@ -643,7 +643,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
             )
           : const Text(
               'Complete Step 1 to generate an eD2K fixture first.',
-              style: TextStyle(fontSize: 12, color: Colors.white38),
+              style: TextStyle(fontSize: 12, color: AppColors.textFaint),
             ),
     );
   }
@@ -670,7 +670,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                 ? const SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
                   )
                 : Icon(isRunning ? Icons.stop : Icons.play_arrow, size: 16),
             label: Text(isRunning ? 'Stop Loopback Peer' : 'Start Loopback Peer'),
@@ -684,7 +684,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                 height: 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isRunning ? AppTheme.statusCompleted : Colors.white24,
+                  color: isRunning ? AppTheme.statusCompleted : AppColors.fillMedium,
                 ),
               ),
               const SizedBox(width: 8),
@@ -695,7 +695,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isRunning ? FontWeight.bold : FontWeight.normal,
-                  color: isRunning ? Colors.white : Colors.white38,
+                  color: isRunning ? AppColors.textPrimary : AppColors.textFaint,
                 ),
               ),
             ],
@@ -717,7 +717,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
         isCompleted: false,
         content: const Text(
           'No downloads in queue. Add an eD2K link in Step 2.',
-          style: TextStyle(fontSize: 12, color: Colors.white38),
+          style: TextStyle(fontSize: 12, color: AppColors.textFaint),
         ),
       );
     }
@@ -770,18 +770,18 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.15),
+                color: AppColors.warning.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 16),
+                  const Icon(Icons.warning_amber_rounded, color: AppColors.accentAmber, size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Warning: Download size (${Formatters.formatBytes(selectedDownload.totalBytes)}) does not match fixture (${Formatters.formatBytes(fixture.sizeBytes)}).',
-                      style: const TextStyle(fontSize: 11, color: Colors.amberAccent),
+                      style: const TextStyle(fontSize: 11, color: AppColors.accentAmber),
                     ),
                   ),
                 ],
@@ -806,7 +806,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                   size: 16,
                   color: isCompleted
                       ? AppTheme.statusCompleted
-                      : (isDownloading ? AppTheme.primary : Colors.white54),
+                      : (isDownloading ? AppTheme.primary : AppColors.textMuted),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -818,7 +818,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                             : 'State: ${selectedDownload.status.name.toUpperCase()} — Ready to connect to loopback peer.'),
                     style: TextStyle(
                       fontSize: 11,
-                      color: isCompleted ? AppTheme.statusCompleted : Colors.white70,
+                      color: isCompleted ? AppTheme.statusCompleted : AppColors.textSecondary,
                       fontWeight: isCompleted || isDownloading ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
@@ -834,7 +834,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                     ? const SizedBox(
                         width: 14,
                         height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
                       )
                     : const Icon(Icons.cable, size: 16),
                 label: Text(isCompleted ? 'Already Completed' : 'Connect to Source'),
@@ -845,7 +845,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                 const Expanded(
                   child: Text(
                     'Start loopback peer in Step 3 before connecting.',
-                    style: TextStyle(fontSize: 11, color: Colors.amberAccent),
+                    style: TextStyle(fontSize: 11, color: AppColors.accentAmber),
                   ),
                 ),
               ],
@@ -867,7 +867,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                   Expanded(
                     child: Text(
                       'Final file: ${widget.viewModel.defaultDownloadDirectory.path}\\${selectedDownload.fileName}',
-                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white),
+                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.textPrimary),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -923,7 +923,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                   : 'Cleanup is restricted in installed mode to protect user files.',
               style: TextStyle(
                 fontSize: 11,
-                color: isPortable ? Colors.white54 : Colors.amberAccent,
+                color: isPortable ? AppColors.textMuted : AppColors.accentAmber,
               ),
             ),
           ),

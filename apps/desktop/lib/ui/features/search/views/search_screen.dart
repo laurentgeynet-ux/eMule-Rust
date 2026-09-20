@@ -198,7 +198,7 @@ class _SearchViewState extends State<SearchView> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -207,7 +207,7 @@ class _SearchViewState extends State<SearchView> {
                 if (!isCompact) ...[
                   Text(
                     '${vm.searchResults.length} résultat(s)',
-                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
                   ),
                   const SizedBox(width: 12),
                   OutlinedButton.icon(
@@ -245,18 +245,18 @@ class _SearchViewState extends State<SearchView> {
           margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.blue.withAlpha(20),
+            color: AppColors.tintBlue.withAlpha(20),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.lightBlueAccent.withAlpha(80)),
+            border: Border.all(color: AppColors.accentLightBlue.withAlpha(80)),
           ),
           child: Row(
             children: [
-              const Icon(Icons.hub_rounded, color: Colors.lightBlueAccent, size: 18),
+              const Icon(Icons.hub_rounded, color: AppColors.accentLightBlue, size: 18),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'Kad DHT Actif • Contacts: ${kad.totalContacts} (${kad.activeBuckets} k-buckets) • Bind: ${kad.udpBindAddress ?? "Inconnu"} • Profil: ${kad.networkProfile}',
-                  style: const TextStyle(fontSize: 13, color: Colors.white70),
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -268,18 +268,18 @@ class _SearchViewState extends State<SearchView> {
           margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.amber.withAlpha(20),
+            color: AppColors.warning.withAlpha(20),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.amberAccent.withAlpha(80)),
+            border: Border.all(color: AppColors.accentAmber.withAlpha(80)),
           ),
           child: Row(
             children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 20),
+              const Icon(Icons.warning_amber_rounded, color: AppColors.accentAmber, size: 20),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
                   'Le réseau Kad DHT n\'est pas encore actif. Démarrez le socket Kad ou effectuez un bootstrap.',
-                  style: TextStyle(fontSize: 13, color: Colors.amberAccent),
+                  style: TextStyle(fontSize: 13, color: AppColors.accentAmber),
                 ),
               ),
               const SizedBox(width: 10),
@@ -287,8 +287,8 @@ class _SearchViewState extends State<SearchView> {
                 icon: const Icon(Icons.hub_rounded, size: 14),
                 label: const Text('Aller à Kad'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber.shade700,
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppColors.warningShade700,
+                  foregroundColor: AppColors.textPrimary,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   textStyle: const TextStyle(fontSize: 12),
                 ),
@@ -307,19 +307,19 @@ class _SearchViewState extends State<SearchView> {
         margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.blue.withAlpha(20),
+          color: AppColors.tintBlue.withAlpha(20),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.lightBlueAccent.withAlpha(80)),
+          border: Border.all(color: AppColors.accentLightBlue.withAlpha(80)),
         ),
         child: const Row(
           children: [
-            Icon(Icons.public_rounded, color: Colors.lightBlueAccent, size: 18),
+            Icon(Icons.public_rounded, color: AppColors.accentLightBlue, size: 18),
             SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Recherche globale UDP — interroge tous les serveurs connus '
                 '(REQ3 si le serveur supporte EXT_GETFILES + LARGEFILES).',
-                style: TextStyle(fontSize: 13, color: Colors.white70),
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
             ),
           ],
@@ -333,19 +333,19 @@ class _SearchViewState extends State<SearchView> {
         margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.green.withAlpha(20),
+          color: AppColors.tintGreen.withAlpha(20),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.greenAccent.withAlpha(80)),
+          border: Border.all(color: AppColors.positive.withAlpha(80)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.cloud_done_rounded, color: Colors.greenAccent, size: 18),
+            const Icon(Icons.cloud_done_rounded, color: AppColors.positive, size: 18),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Connecté à ${session.serverName ?? session.serverAddress} (${session.serverAddress})'
                 ' • Client ID: ${session.clientId != null ? "0x${session.clientId!.toRadixString(16).padLeft(8, '0')}" : "Inconnu"} (${session.isHighId ? "HighID" : "LowID"})',
-                style: const TextStyle(fontSize: 13, color: Colors.white70),
+                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -357,9 +357,9 @@ class _SearchViewState extends State<SearchView> {
         margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.amber.withAlpha(20),
+          color: AppColors.warning.withAlpha(20),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.amberAccent.withAlpha(80)),
+          border: Border.all(color: AppColors.accentAmber.withAlpha(80)),
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -371,12 +371,12 @@ class _SearchViewState extends State<SearchView> {
                 children: [
                   Row(
                     children: const [
-                      Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 20),
+                      Icon(Icons.warning_amber_rounded, color: AppColors.accentAmber, size: 20),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'Non connecté à un serveur eD2K.',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.amberAccent),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.accentAmber),
                         ),
                       ),
                     ],
@@ -384,15 +384,15 @@ class _SearchViewState extends State<SearchView> {
                   const SizedBox(height: 6),
                   const Text(
                     'Connectez-vous d\'abord pour effectuer une recherche.',
-                    style: TextStyle(fontSize: 12, color: Colors.amberAccent),
+                    style: TextStyle(fontSize: 12, color: AppColors.accentAmber),
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.dns_rounded, size: 14),
                     label: const Text('Aller aux Serveurs'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber.shade700,
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.warningShade700,
+                      foregroundColor: AppColors.textPrimary,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
@@ -404,12 +404,12 @@ class _SearchViewState extends State<SearchView> {
 
             return Row(
               children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 20),
+                const Icon(Icons.warning_amber_rounded, color: AppColors.accentAmber, size: 20),
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
                     'Vous n\'êtes actuellement pas connecté à un serveur eD2K. Connectez-vous d\'abord pour effectuer une recherche.',
-                    style: TextStyle(fontSize: 13, color: Colors.amberAccent),
+                    style: TextStyle(fontSize: 13, color: AppColors.accentAmber),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -417,8 +417,8 @@ class _SearchViewState extends State<SearchView> {
                   icon: const Icon(Icons.dns_rounded, size: 14),
                   label: const Text('Aller aux Serveurs'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber.shade700,
-                    foregroundColor: Colors.white,
+                    backgroundColor: AppColors.warningShade700,
+                    foregroundColor: AppColors.textPrimary,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     textStyle: const TextStyle(fontSize: 12),
                   ),
@@ -489,7 +489,7 @@ class _SearchViewState extends State<SearchView> {
                     IconButton(
                       icon: Icon(
                         _showFilters ? Icons.filter_alt_off_rounded : Icons.filter_alt_rounded,
-                        color: _showFilters ? AppTheme.primary : Colors.white54,
+                        color: _showFilters ? AppTheme.primary : AppColors.textMuted,
                       ),
                       tooltip: _showFilters ? 'Masquer les filtres' : 'Afficher les filtres avancés',
                       onPressed: () {
@@ -553,7 +553,7 @@ class _SearchViewState extends State<SearchView> {
                       visualDensity: VisualDensity.compact,
                       icon: Icon(
                         _showFilters ? Icons.filter_alt_off_rounded : Icons.filter_alt_rounded,
-                        color: _showFilters ? AppTheme.primary : Colors.white54,
+                        color: _showFilters ? AppTheme.primary : AppColors.textMuted,
                       ),
                       tooltip: _showFilters ? 'Masquer les filtres' : 'Afficher les filtres avancés',
                       onPressed: () {
@@ -581,10 +581,10 @@ class _SearchViewState extends State<SearchView> {
                       flex: 2,
                       child: TextField(
                         controller: _extController,
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
                         decoration: const InputDecoration(
                           labelText: 'Extension (ex: iso, zip, avi)',
-                          labelStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                          labelStyle: TextStyle(color: AppColors.textMuted, fontSize: 12),
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           border: OutlineInputBorder(),
@@ -598,10 +598,10 @@ class _SearchViewState extends State<SearchView> {
                       controller: _minSizeController,
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
                       decoration: const InputDecoration(
                         labelText: 'Taille Min (Mo)',
-                        labelStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                        labelStyle: TextStyle(color: AppColors.textMuted, fontSize: 12),
                         isDense: true,
                         contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         border: OutlineInputBorder(),
@@ -614,10 +614,10 @@ class _SearchViewState extends State<SearchView> {
                       controller: _maxSizeController,
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
                       decoration: const InputDecoration(
                         labelText: 'Taille Max (Mo)',
-                        labelStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                        labelStyle: TextStyle(color: AppColors.textMuted, fontSize: 12),
                         isDense: true,
                         contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         border: OutlineInputBorder(),
@@ -651,16 +651,16 @@ class _SearchViewState extends State<SearchView> {
     return TextField(
       controller: _queryController,
       enabled: isSearchReady && !vm.isSearching,
-      style: const TextStyle(color: Colors.white, fontSize: 14),
+      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
       decoration: InputDecoration(
         hintText: _searchTarget == SearchTarget.kad
             ? 'Mots-clés Kad (min. 3 lettres)...'
             : 'Nom de fichier ou mots-clés...',
-        hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-        prefixIcon: const Icon(Icons.search, color: Colors.white38, size: 20),
+        hintStyle: const TextStyle(color: AppColors.textFaint, fontSize: 14),
+        prefixIcon: const Icon(Icons.search, color: AppColors.textFaint, size: 20),
         suffixIcon: _queryController.text.isNotEmpty
             ? IconButton(
-                icon: const Icon(Icons.clear, size: 16, color: Colors.white38),
+                icon: const Icon(Icons.clear, size: 16, color: AppColors.textFaint),
                 onPressed: () {
                   setState(() {
                     _queryController.clear();
@@ -695,13 +695,13 @@ class _SearchViewState extends State<SearchView> {
           ? const SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
             )
           : const Icon(Icons.search_rounded, size: 18),
       label: Text(vm.isSearching ? 'Recherche...' : 'Rechercher'),
       style: ElevatedButton.styleFrom(
         backgroundColor: AppTheme.primary,
-        foregroundColor: Colors.white,
+        foregroundColor: AppColors.textPrimary,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
@@ -727,7 +727,7 @@ class _SearchViewState extends State<SearchView> {
           const SizedBox(height: 16),
           Text(
             'Recherche en cours sur $targetLabel...',
-            style: TextStyle(fontSize: 14, color: Colors.white.withAlpha(180)),
+            style: TextStyle(fontSize: 14, color: AppColors.textPrimary.withAlpha(180)),
           ),
         ],
       ),
@@ -764,7 +764,7 @@ class _SearchViewState extends State<SearchView> {
           Icon(
             hasSearched ? Icons.search_off_rounded : Icons.search_rounded,
             size: 56,
-            color: Colors.white24,
+            color: AppColors.fillMedium,
           ),
           const SizedBox(height: 16),
           Text(
@@ -776,7 +776,7 @@ class _SearchViewState extends State<SearchView> {
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w500,
-              color: Colors.white54,
+              color: AppColors.textMuted,
             ),
             textAlign: TextAlign.center,
           ),
@@ -787,7 +787,7 @@ class _SearchViewState extends State<SearchView> {
                 : helpText,
             style: const TextStyle(
               fontSize: 12,
-              color: Colors.white30,
+              color: AppColors.iconFaint,
             ),
             textAlign: TextAlign.center,
           ),
@@ -885,7 +885,7 @@ class _SearchViewState extends State<SearchView> {
             label,
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: isSorted ? Colors.white : Colors.white70,
+              color: isSorted ? AppColors.textPrimary : AppColors.textSecondary,
               fontSize: 12.5,
             ),
             overflow: TextOverflow.ellipsis,
@@ -898,7 +898,7 @@ class _SearchViewState extends State<SearchView> {
                 ? (_sortAscending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded)
                 : Icons.unfold_more_rounded,
             size: 14,
-            color: isSorted ? AppTheme.primary : Colors.white24,
+            color: isSorted ? AppTheme.primary : AppColors.fillMedium,
           ),
         ],
       ],
@@ -957,7 +957,7 @@ class _SearchViewState extends State<SearchView> {
         border: const Border(
           bottom: BorderSide(color: AppTheme.darkBorder, width: 0.3),
         ),
-        color: index.isEven ? Colors.transparent : Colors.white.withAlpha(2),
+        color: index.isEven ? Colors.transparent : AppColors.textPrimary.withAlpha(2),
       ),
       child: Material(
         color: Colors.transparent,
@@ -974,7 +974,7 @@ class _SearchViewState extends State<SearchView> {
                   child: Row(
                     children: [
                       const Icon(Icons.insert_drive_file_outlined,
-                          size: 16, color: Colors.white54),
+                          size: 16, color: AppColors.textMuted),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Tooltip(
@@ -983,7 +983,7 @@ class _SearchViewState extends State<SearchView> {
                           child: Text(
                             file.fileName,
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               fontWeight: FontWeight.w500,
                               fontSize: 13,
                             ),
@@ -1004,7 +1004,7 @@ class _SearchViewState extends State<SearchView> {
                     alignment: Alignment.centerRight,
                     child: Text(
                       _formatBytes(file.fileSize),
-                      style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
                     ),
                   ),
                 ),
@@ -1019,16 +1019,16 @@ class _SearchViewState extends State<SearchView> {
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: file.sourceCount > 0
-                            ? Colors.green.withAlpha(30)
-                            : Colors.white10,
+                            ? AppColors.tintGreen.withAlpha(30)
+                            : AppColors.fillSubtle,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         '${file.sourceCount}',
                         style: TextStyle(
                           color: file.sourceCount > 0
-                              ? Colors.greenAccent
-                              : Colors.white38,
+                              ? AppColors.positive
+                              : AppColors.textFaint,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -1062,7 +1062,7 @@ class _SearchViewState extends State<SearchView> {
                           style: const TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 11,
-                            color: Colors.white54,
+                            color: AppColors.textMuted,
                           ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
@@ -1115,7 +1115,7 @@ class _SearchViewState extends State<SearchView> {
                           label: const Text('Télécharger', style: TextStyle(fontSize: 12)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
+                            foregroundColor: AppColors.textPrimary,
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             visualDensity: VisualDensity.compact,
                           ),
@@ -1130,7 +1130,7 @@ class _SearchViewState extends State<SearchView> {
                                         : (vm.errorMessage ?? 'Échec de l\'ajout au téléchargement'),
                                   ),
                                   duration: const Duration(seconds: 4),
-                                  backgroundColor: success ? null : Colors.orangeAccent.shade700,
+                                  backgroundColor: success ? null : AppColors.accentOrangeShade700,
                                   action: success
                                       ? SnackBarAction(
                                           label: 'Afficher',

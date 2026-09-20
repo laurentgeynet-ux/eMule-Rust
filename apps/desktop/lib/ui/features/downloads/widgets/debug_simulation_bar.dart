@@ -21,17 +21,17 @@ class DebugSimulationBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.bug_report_outlined, size: 18, color: Colors.amberAccent),
+          const Icon(Icons.bug_report_outlined, size: 18, color: AppColors.accentAmber),
           const SizedBox(width: 8),
           const Text(
             'Dev Simulation Tools:',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amberAccent),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentAmber),
           ),
           const SizedBox(width: 12),
           if (selected != null) ...[
             Text(
               'Selected: "${selected.fileName}"',
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(width: 12),
             FilledButton.tonal(
@@ -63,13 +63,13 @@ class DebugSimulationBar extends StatelessWidget {
             const Expanded(
               child: Text(
                 'Click any download row above to select it for data injection tests.',
-                style: TextStyle(fontSize: 12, color: Colors.white54, fontStyle: FontStyle.italic),
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontStyle: FontStyle.italic),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
           IconButton(
-            icon: const Icon(Icons.close, size: 16, color: Colors.white54),
+            icon: const Icon(Icons.close, size: 16, color: AppColors.textMuted),
             tooltip: 'Close Debug Bar',
             onPressed: viewModel.toggleDebugBar,
           ),

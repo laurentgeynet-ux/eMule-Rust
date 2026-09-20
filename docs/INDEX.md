@@ -552,6 +552,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `docs/architecture/rapport_architecture_et_avancement.md` | Rapport détaillé d'architecture logicielle, Clean Architecture et état d'avancement |
 | `docs/architecture/rpc_protocol.md` | Contrat JSON-RPC 2.0/WebSocket daemon↔clients : transport, auth, méthodes, events, codes d'erreur, versioning |
 | `docs/architecture/plan_ui_multiplateforme.md` | Plan UI/UX multiplateforme (desktop, mobile, web) : phases, packages, architecture |
+| `docs/architecture/conventions_ui.md` | Conventions clean architecture UI : couches, 1 widget par fichier, design tokens, navigation, état |
 
 ### docs/walkthroughs/ — Guides d'Exécution & Interopérabilité par Phase
 | Fichier | Fonction |

@@ -105,7 +105,7 @@ class _ServersViewState extends State<ServersView> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -124,7 +124,7 @@ class _ServersViewState extends State<ServersView> {
                 ),
                 IconButton(
                   tooltip: 'Mettre à jour depuis URL',
-                  icon: const Icon(Icons.cloud_download_outlined, size: 18, color: Colors.tealAccent),
+                  icon: const Icon(Icons.cloud_download_outlined, size: 18, color: AppColors.accentTeal),
                   onPressed: () => _handleUpdateFromUrl(context, vm),
                 ),
               ] else ...[
@@ -139,7 +139,7 @@ class _ServersViewState extends State<ServersView> {
                   label: const Text('Importer server.met'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppColors.textPrimary,
                   ),
                   onPressed: () => _handleImportMet(context, vm),
                 ),
@@ -148,8 +148,8 @@ class _ServersViewState extends State<ServersView> {
                   icon: const Icon(Icons.cloud_download_outlined, size: 16),
                   label: const Text('Mettre à jour depuis URL'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: Colors.teal[700],
-                    foregroundColor: Colors.white,
+                    backgroundColor: AppColors.labShade700,
+                    foregroundColor: AppColors.textPrimary,
                   ),
                   onPressed: () => _handleUpdateFromUrl(context, vm),
                 ),
@@ -175,17 +175,17 @@ class _ServersViewState extends State<ServersView> {
     Color barBorder;
     Color statusColor;
     if (isConnected) {
-      barBg = Colors.green.withAlpha(20);
-      barBorder = Colors.greenAccent.withAlpha(80);
-      statusColor = Colors.greenAccent;
+      barBg = AppColors.tintGreen.withAlpha(20);
+      barBorder = AppColors.positive.withAlpha(80);
+      statusColor = AppColors.positive;
     } else if (isConnecting) {
-      barBg = Colors.amber.withAlpha(20);
-      barBorder = Colors.amberAccent.withAlpha(80);
-      statusColor = Colors.amberAccent;
+      barBg = AppColors.warning.withAlpha(20);
+      barBorder = AppColors.accentAmber.withAlpha(80);
+      statusColor = AppColors.accentAmber;
     } else {
-      barBg = Colors.white.withAlpha(8);
+      barBg = AppColors.textPrimary.withAlpha(8);
       barBorder = AppTheme.darkBorder;
-      statusColor = Colors.white38;
+      statusColor = AppColors.textFaint;
     }
 
     return Container(
@@ -226,13 +226,13 @@ class _ServersViewState extends State<ServersView> {
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
                     color: session.isHighId
-                        ? Colors.greenAccent.withAlpha(40)
-                        : Colors.orangeAccent.withAlpha(40),
+                        ? AppColors.positive.withAlpha(40)
+                        : AppColors.accentOrange.withAlpha(40),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
                       color: session.isHighId
-                          ? Colors.greenAccent.withAlpha(100)
-                          : Colors.orangeAccent.withAlpha(100),
+                          ? AppColors.positive.withAlpha(100)
+                          : AppColors.accentOrange.withAlpha(100),
                     ),
                   ),
                   child: Text(
@@ -241,8 +241,8 @@ class _ServersViewState extends State<ServersView> {
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                       color: session.isHighId
-                          ? Colors.greenAccent
-                          : Colors.orangeAccent,
+                          ? AppColors.positive
+                          : AppColors.accentOrange,
                     ),
                   ),
                 ),
@@ -255,7 +255,7 @@ class _ServersViewState extends State<ServersView> {
                   session.serverName!,
                   style: const TextStyle(
                     fontSize: 13,
-                    color: Colors.white70,
+                    color: AppColors.textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -265,19 +265,19 @@ class _ServersViewState extends State<ServersView> {
                       session.serverAddress ?? '',
                       style: const TextStyle(
                           fontSize: 12,
-                          color: Colors.white54,
+                          color: AppColors.textMuted,
                           fontFamily: 'monospace'),
                       overflow: TextOverflow.ellipsis,
                     )
                   : const Text(
                       'Aucun serveur connecté',
-                      style: TextStyle(fontSize: 12, color: Colors.white38),
+                      style: TextStyle(fontSize: 12, color: AppColors.textFaint),
                     );
 
           final userMetrics = isConnected && session.currentUsers != null
               ? Text(
                   '${_fmt(session.currentUsers!)} utilisateurs • ${_fmt(session.currentFiles ?? 0)} fichiers',
-                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                 )
               : null;
 
@@ -286,11 +286,11 @@ class _ServersViewState extends State<ServersView> {
                   icon: Icon(
                     isConnecting ? Icons.close_rounded : Icons.power_settings_new,
                     size: 16,
-                    color: Colors.redAccent,
+                    color: AppColors.danger,
                   ),
                   label: Text(
                     isConnecting ? 'Annuler' : 'Déconnecter',
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                    style: const TextStyle(color: AppColors.danger, fontSize: 12),
                   ),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
@@ -350,7 +350,7 @@ class _ServersViewState extends State<ServersView> {
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 11.5, color: Colors.white54, height: 1.4),
+                        fontSize: 11.5, color: AppColors.textMuted, height: 1.4),
                   ),
                 ),
             ],
@@ -395,14 +395,14 @@ class _ServersViewState extends State<ServersView> {
                   error,
                   style: const TextStyle(
                       fontSize: 12,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.w500),
                 ),
                 if (isPolicyError) ...[
                   const SizedBox(height: 2),
                   const Text(
                     'Par défaut, Emule-Sion est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.',
-                    style: TextStyle(fontSize: 11, color: Colors.white70),
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                   ),
                 ],
               ],
@@ -413,7 +413,7 @@ class _ServersViewState extends State<ServersView> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: AppColors.textPrimary,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -444,9 +444,9 @@ class _ServersViewState extends State<ServersView> {
       margin: const EdgeInsets.fromLTRB(20, 14, 20, 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.blue.withAlpha(25),
+        color: AppColors.tintBlue.withAlpha(25),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue.withAlpha(80)),
+        border: Border.all(color: AppColors.tintBlue.withAlpha(80)),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -454,8 +454,8 @@ class _ServersViewState extends State<ServersView> {
 
           final securityBtn = OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
-              side: BorderSide(color: Colors.blueAccent.withAlpha(120)),
-              foregroundColor: Colors.blueAccent,
+              side: BorderSide(color: AppColors.accentBlue.withAlpha(120)),
+              foregroundColor: AppColors.accentBlue,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -477,12 +477,12 @@ class _ServersViewState extends State<ServersView> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.shield_outlined, color: Colors.blueAccent, size: 20),
+                    const Icon(Icons.shield_outlined, color: AppColors.accentBlue, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         text,
-                        style: const TextStyle(fontSize: 12, color: Colors.white70, height: 1.3),
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
                       ),
                     ),
                   ],
@@ -498,12 +498,12 @@ class _ServersViewState extends State<ServersView> {
 
           return Row(
             children: [
-              const Icon(Icons.shield_outlined, color: Colors.blueAccent, size: 20),
+              const Icon(Icons.shield_outlined, color: AppColors.accentBlue, size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   text,
-                  style: const TextStyle(fontSize: 12.5, color: Colors.white70, height: 1.3),
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary, height: 1.3),
                 ),
               ),
               const SizedBox(width: 10),
@@ -542,9 +542,9 @@ class _ServersViewState extends State<ServersView> {
           if (vm.servers.isNotEmpty)
             TextButton.icon(
               icon: const Icon(Icons.delete_sweep_outlined,
-                  color: Colors.redAccent, size: 16),
+                  color: AppColors.danger, size: 16),
               label: const Text('Tout effacer',
-                  style: TextStyle(color: Colors.redAccent)),
+                  style: TextStyle(color: AppColors.danger)),
               onPressed: () => _confirmClearServers(context, vm),
             ),
         ],
@@ -559,19 +559,19 @@ class _ServersViewState extends State<ServersView> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.dns_outlined, size: 64, color: Colors.white.withAlpha(40)),
+          Icon(Icons.dns_outlined, size: 64, color: AppColors.textPrimary.withAlpha(40)),
           const SizedBox(height: 16),
           const Text(
             'Aucun serveur eD2K enregistre',
             style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: Colors.white70),
+                color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
           const Text(
             'Importez un fichier server.met local pour inspecter et gerer vos serveurs.',
-            style: TextStyle(fontSize: 13, color: Colors.white38),
+            style: TextStyle(fontSize: 13, color: AppColors.textFaint),
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
@@ -760,13 +760,13 @@ class _ServersViewState extends State<ServersView> {
           statusBadge = Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.red.withAlpha(40),
+              color: AppColors.tintRed.withAlpha(40),
               borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.redAccent.withAlpha(100)),
+              border: Border.all(color: AppColors.danger.withAlpha(100)),
             ),
             child: const Text('Bloque par IP Filter',
                 style: TextStyle(
-                    color: Colors.redAccent,
+                    color: AppColors.danger,
                     fontSize: 10.5,
                     fontWeight: FontWeight.bold)),
           );
@@ -774,24 +774,24 @@ class _ServersViewState extends State<ServersView> {
           statusBadge = Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.grey.withAlpha(40),
+              color: AppColors.tintGrey.withAlpha(40),
               borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.grey.withAlpha(100)),
+              border: Border.all(color: AppColors.tintGrey.withAlpha(100)),
             ),
             child: const Text('Desactive',
-                style: TextStyle(color: Colors.white60, fontSize: 10.5)),
+                style: TextStyle(color: AppColors.textSoft, fontSize: 10.5)),
           );
         } else {
           statusBadge = Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.green.withAlpha(40),
+              color: AppColors.tintGreen.withAlpha(40),
               borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.greenAccent.withAlpha(100)),
+              border: Border.all(color: AppColors.positive.withAlpha(100)),
             ),
             child: const Text('Autorise',
                 style: TextStyle(
-                    color: Colors.greenAccent,
+                    color: AppColors.positive,
                     fontSize: 10.5,
                     fontWeight: FontWeight.bold)),
           );
@@ -804,7 +804,7 @@ class _ServersViewState extends State<ServersView> {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isActiveSession
-                  ? Colors.greenAccent.withAlpha(100)
+                  ? AppColors.positive.withAlpha(100)
                   : AppTheme.darkBorder,
             ),
           ),
@@ -821,7 +821,7 @@ class _ServersViewState extends State<ServersView> {
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13.5,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -831,14 +831,14 @@ class _ServersViewState extends State<ServersView> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(10),
+                        color: AppColors.textPrimary.withAlpha(10),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         '${server.ping} ms',
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Colors.white70,
+                          color: AppColors.textSecondary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -849,21 +849,21 @@ class _ServersViewState extends State<ServersView> {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  const Icon(Icons.lan_outlined, size: 13, color: Colors.white38),
+                  const Icon(Icons.lan_outlined, size: 13, color: AppColors.textFaint),
                   const SizedBox(width: 5),
                   Text(
                     server.address,
                     style: const TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 11.5,
-                      color: Colors.white70,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                   if (server.version != null && server.version!.isNotEmpty) ...[
                     const SizedBox(width: 10),
                     Text(
                       'v${server.version}',
-                      style: const TextStyle(fontSize: 11, color: Colors.white38),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textFaint),
                     ),
                   ],
                 ],
@@ -872,7 +872,7 @@ class _ServersViewState extends State<ServersView> {
                 const SizedBox(height: 4),
                 Text(
                   server.description,
-                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -886,13 +886,13 @@ class _ServersViewState extends State<ServersView> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.greenAccent.withAlpha(25),
+                          color: AppColors.positive.withAlpha(25),
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.greenAccent.withAlpha(80)),
+                          border: Border.all(color: AppColors.positive.withAlpha(80)),
                         ),
                         child: Text(
                           session.status.toDisplayString(),
-                          style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
+                          style: const TextStyle(color: AppColors.positive, fontSize: 11),
                         ),
                       ),
                     ] else ...[
@@ -901,7 +901,7 @@ class _ServersViewState extends State<ServersView> {
                         label: const Text('Se connecter', style: TextStyle(fontSize: 11)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primary,
-                          foregroundColor: Colors.white,
+                          foregroundColor: AppColors.textPrimary,
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           visualDensity: VisualDensity.compact,
                         ),
@@ -917,13 +917,13 @@ class _ServersViewState extends State<ServersView> {
                     icon: Icon(
                       isDisabled ? Icons.play_arrow_rounded : Icons.pause_rounded,
                       size: 18,
-                      color: isDisabled ? Colors.greenAccent : Colors.amberAccent,
+                      color: isDisabled ? AppColors.positive : AppColors.accentAmber,
                     ),
                     tooltip: isDisabled ? 'Activer' : 'Desactiver',
                     onPressed: () => vm.setServerEnabled(server.address, isDisabled),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18, color: Colors.white54),
+                    icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.textMuted),
                     tooltip: 'Supprimer',
                     onPressed: () => vm.deleteServer(server.address),
                   ),
@@ -957,13 +957,13 @@ class _ServersViewState extends State<ServersView> {
       statusBadge = Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.red.withAlpha(40),
+          color: AppColors.tintRed.withAlpha(40),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.redAccent.withAlpha(100)),
+          border: Border.all(color: AppColors.danger.withAlpha(100)),
         ),
         child: const Text('Bloque par IP Filter',
             style: TextStyle(
-                color: Colors.redAccent,
+                color: AppColors.danger,
                 fontSize: 11,
                 fontWeight: FontWeight.bold)),
       );
@@ -971,24 +971,24 @@ class _ServersViewState extends State<ServersView> {
       statusBadge = Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.grey.withAlpha(40),
+          color: AppColors.tintGrey.withAlpha(40),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.grey.withAlpha(100)),
+          border: Border.all(color: AppColors.tintGrey.withAlpha(100)),
         ),
         child: const Text('Desactive',
-            style: TextStyle(color: Colors.white60, fontSize: 11)),
+            style: TextStyle(color: AppColors.textSoft, fontSize: 11)),
       );
     } else {
       statusBadge = Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.green.withAlpha(40),
+          color: AppColors.tintGreen.withAlpha(40),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.greenAccent.withAlpha(100)),
+          border: Border.all(color: AppColors.positive.withAlpha(100)),
         ),
         child: const Text('Autorise',
             style: TextStyle(
-                color: Colors.greenAccent,
+                color: AppColors.positive,
                 fontSize: 11,
                 fontWeight: FontWeight.bold)),
       );
@@ -1000,13 +1000,13 @@ class _ServersViewState extends State<ServersView> {
         connectBtn = Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: BoxDecoration(
-            color: Colors.greenAccent.withAlpha(25),
+            color: AppColors.positive.withAlpha(25),
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: Colors.greenAccent.withAlpha(80)),
+            border: Border.all(color: AppColors.positive.withAlpha(80)),
           ),
           child: Text(
             session.status.toDisplayString(),
-            style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
+            style: const TextStyle(color: AppColors.positive, fontSize: 11),
           ),
         );
       } else {
@@ -1021,7 +1021,7 @@ class _ServersViewState extends State<ServersView> {
                 const Text('Se connecter', style: TextStyle(fontSize: 12)),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary.withAlpha(200),
-              foregroundColor: Colors.white,
+              foregroundColor: AppColors.textPrimary,
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
               minimumSize: Size.zero,
@@ -1045,7 +1045,7 @@ class _ServersViewState extends State<ServersView> {
           icon: Icon(
             isDisabled ? Icons.play_arrow_rounded : Icons.pause_rounded,
             size: 18,
-            color: isDisabled ? Colors.greenAccent : Colors.amberAccent,
+            color: isDisabled ? AppColors.positive : AppColors.accentAmber,
           ),
           tooltip: isDisabled ? 'Activer' : 'Desactiver',
           onPressed: () =>
@@ -1053,7 +1053,7 @@ class _ServersViewState extends State<ServersView> {
         ),
         IconButton(
           icon: const Icon(Icons.delete_outline,
-              size: 18, color: Colors.white54),
+              size: 18, color: AppColors.textMuted),
           tooltip: 'Supprimer',
           onPressed: () => vm.deleteServer(server.address),
         ),
@@ -1099,7 +1099,7 @@ class _ServersViewState extends State<ServersView> {
             server.description.isNotEmpty ? server.description : '-',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white60),
+            style: const TextStyle(color: AppColors.textSoft),
           ),
         )),
         DataCell(Text(server.ping > 0 ? '${server.ping} ms' : '-')),
@@ -1134,7 +1134,7 @@ class _ServersViewState extends State<ServersView> {
             children: [
               const Text(
                 'Indiquez le chemin absolu vers votre fichier server.met local :',
-                style: TextStyle(fontSize: 13, color: Colors.white70),
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -1204,24 +1204,24 @@ class _ServersViewState extends State<ServersView> {
           children: [
             Text('Fichier : ${report.filePath}',
                 style:
-                    const TextStyle(fontSize: 12, color: Colors.white54)),
+                    const TextStyle(fontSize: 12, color: AppColors.textMuted)),
             const SizedBox(height: 14),
             Row(
               children: [
                 _buildSummaryStat(
-                    'Total', '${report.totalCount}', Colors.white),
+                    'Total', '${report.totalCount}', AppColors.textPrimary),
                 const SizedBox(width: 12),
                 _buildSummaryStat(
-                    'Autorises', '${report.allowedCount}', Colors.greenAccent),
+                    'Autorises', '${report.allowedCount}', AppColors.positive),
                 const SizedBox(width: 12),
                 _buildSummaryStat('Bloques (Filtre IP)',
-                    '${report.blockedCount}', Colors.redAccent),
+                    '${report.blockedCount}', AppColors.danger),
               ],
             ),
             const SizedBox(height: 16),
             const Text(
               'Les serveurs marques en rouge correspondent a des plages de votre filtre IP local. Ils seront importes avec le statut bloque.',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             Container(
@@ -1249,12 +1249,12 @@ class _ServersViewState extends State<ServersView> {
                     trailing: isBlocked
                         ? const Text('Bloque',
                             style: TextStyle(
-                                color: Colors.redAccent,
+                                color: AppColors.danger,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11))
                         : const Text('Autorise',
                             style: TextStyle(
-                                color: Colors.greenAccent, fontSize: 11)),
+                                color: AppColors.positive, fontSize: 11)),
                   );
                 },
               ),
@@ -1318,7 +1318,7 @@ class _ServersViewState extends State<ServersView> {
               child: const Text('Annuler')),
           ElevatedButton(
             style:
-                ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Effacer'),
           ),
@@ -1344,7 +1344,7 @@ class _ServersViewState extends State<ServersView> {
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.cloud_download_outlined, color: Colors.tealAccent),
+            Icon(Icons.cloud_download_outlined, color: AppColors.accentTeal),
             SizedBox(width: 8),
             Text('Mettre à jour depuis une URL'),
           ],
@@ -1357,7 +1357,7 @@ class _ServersViewState extends State<ServersView> {
             children: [
               const Text(
                 'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs :',
-                style: TextStyle(fontSize: 13, color: Colors.white70),
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -1374,7 +1374,7 @@ class _ServersViewState extends State<ServersView> {
               const SizedBox(height: 10),
               const Text(
                 'Note : Les adresses IP de réseaux privés (LAN/RFC1918) et loopback sont rejetées par sécurité (anti-SSRF).',
-                style: TextStyle(fontSize: 11, color: Colors.white38),
+                style: TextStyle(fontSize: 11, color: AppColors.textFaint),
               ),
             ],
           ),
@@ -1388,8 +1388,8 @@ class _ServersViewState extends State<ServersView> {
             icon: const Icon(Icons.download_rounded, size: 16),
             label: const Text('Télécharger et Mettre à jour'),
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.teal[700],
-              foregroundColor: Colors.white,
+              backgroundColor: AppColors.labShade700,
+              foregroundColor: AppColors.textPrimary,
             ),
             onPressed: () {
               final text = urlController.text.trim();

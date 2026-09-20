@@ -83,12 +83,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, size: 20, color: Colors.white54),
+                        icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
@@ -105,13 +105,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       // Section 1: Default Download Directory
                       const Text(
                         'Global Default Download Directory',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                       ),
                       const SizedBox(height: 6),
                       const Text(
                         'This path is used as the default target destination when adding new downloads. '
                         'Temporary .part files remain strictly confined in data/temp/ until completed.',
-                        style: TextStyle(fontSize: 12, color: Colors.white60, height: 1.4),
+                        style: TextStyle(fontSize: 12, color: AppColors.textSoft, height: 1.4),
                       ),
                       const SizedBox(height: 14),
 
@@ -137,7 +137,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                     ? 'Using customized directory (stored in database)'
                                     : 'Using default portable directory (<bundleRoot>/downloads)',
                                 helperStyle: TextStyle(
-                                  color: isCustom ? Colors.tealAccent : Colors.white38,
+                                  color: isCustom ? AppColors.accentTeal : AppColors.textFaint,
                                   fontSize: 11,
                                 ),
                               ),
@@ -154,7 +154,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                 ? const SizedBox(
                                     width: 16,
                                     height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
                                   )
                                 : const Text('Save'),
                           ),
@@ -170,7 +170,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             icon: const Icon(Icons.restart_alt_rounded, size: 16),
                             label: const Text('Reset to Portable Default'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white70,
+                              foregroundColor: AppColors.textSecondary,
                               side: const BorderSide(color: AppTheme.darkBorder),
                             ),
                             onPressed: _isSaving ? null : () => _resetDefaultDir(context),
@@ -213,18 +213,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Colors.teal.withValues(alpha: 0.15),
+                            color: AppColors.lab.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+                            border: Border.all(color: AppColors.lab.withValues(alpha: 0.3)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.check_circle_outline, color: Colors.tealAccent, size: 16),
+                              const Icon(Icons.check_circle_outline, color: AppColors.accentTeal, size: 16),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   _inlineSuccess!,
-                                  style: const TextStyle(fontSize: 12, color: Colors.tealAccent),
+                                  style: const TextStyle(fontSize: 12, color: AppColors.accentTeal),
                                 ),
                               ),
                             ],
@@ -258,13 +258,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    color: AppColors.textPrimary,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
                                   'Historical transition events older than the retention period are automatically pruned on daemon startup.',
-                                  style: TextStyle(fontSize: 12, color: Colors.white54, height: 1.3),
+                                  style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.3),
                                 ),
                                 const SizedBox(height: 12),
                                 Wrap(
@@ -272,7 +272,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
-                                    const Text('Keep history for: ', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                                    const Text('Keep history for: ', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10),
                                       decoration: BoxDecoration(
@@ -284,7 +284,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                         child: DropdownButton<int>(
                                           value: widget.viewModel.historyRetentionDays,
                                           dropdownColor: AppTheme.darkCard,
-                                          style: const TextStyle(fontSize: 13, color: Colors.white),
+                                          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
                                           items: const [
                                             DropdownMenuItem(value: 7, child: Text('7 Days')),
                                             DropdownMenuItem(value: 30, child: Text('30 Days (Default)')),
@@ -322,7 +322,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.shield_outlined, color: Colors.tealAccent, size: 18),
+                            const Icon(Icons.shield_outlined, color: AppColors.accentTeal, size: 18),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Column(
@@ -335,7 +335,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -343,7 +343,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                     widget.viewModel.currentNetworkProfile != NetworkProfile.localLab
                                         ? 'Emule-Sion est connecté aux réseaux eD2K et Kademlia mondiaux avec ports ouverts et protection Anti-SSRF active. Les transferts actifs sont sécurisés dans data/temp/.'
                                         : 'Emule-Sion fonctionne exclusivement sur la boucle locale (127.0.0.1). Aucune connexion publique entrante ou sortante n\'est effectuée.',
-                                    style: const TextStyle(fontSize: 11, color: Colors.white54, height: 1.4),
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.4),
                                   ),
                                 ],
                               ),
@@ -367,13 +367,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    color: AppColors.textPrimary,
                                   ),
                                 ),
                                 SizedBox(height: 4),
                                 Text(
                                   'Bascule entre laboratoire local et réseau public mondial.',
-                                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                                 ),
                               ],
                             ),
@@ -382,7 +382,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           FilledButton.icon(
                             icon: const Icon(Icons.public, size: 16),
                             label: const Text('Configurer'),
-                            style: FilledButton.styleFrom(backgroundColor: Colors.amber[800]),
+                            style: FilledButton.styleFrom(backgroundColor: AppColors.warningShade800),
                             onPressed: () {
                               showDialog(
                                 context: context,
@@ -412,8 +412,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     children: [
                       FilledButton(
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white12,
-                          foregroundColor: Colors.white,
+                          backgroundColor: AppColors.fillLight,
+                          foregroundColor: AppColors.textPrimary,
                         ),
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Close'),

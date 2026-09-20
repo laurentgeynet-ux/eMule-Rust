@@ -35,13 +35,13 @@ class IncompatibleVersionBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   errorMessage,
-                  style: const TextStyle(fontSize: 13, color: Colors.white70),
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
               ],
             ),

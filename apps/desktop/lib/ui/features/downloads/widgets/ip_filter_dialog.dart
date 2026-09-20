@@ -75,10 +75,10 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.15),
+                      color: AppColors.warning.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.security, color: Colors.amber, size: 24),
+                    child: const Icon(Icons.security, color: AppColors.warning, size: 24),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -90,7 +90,7 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         SizedBox(height: 2),
@@ -98,7 +98,7 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                           'Local defensive IP filter (ipfilter.dat) and Token Bucket bandwidth quotas',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white60,
+                            color: AppColors.textSoft,
                           ),
                         ),
                       ],
@@ -106,7 +106,7 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close, color: Colors.white70),
+                    icon: const Icon(Icons.close, color: AppColors.textSecondary),
                   ),
                 ],
               ),
@@ -115,9 +115,9 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
               // Tabs
               TabBar(
                 controller: _tabController,
-                indicatorColor: Colors.amber,
-                labelColor: Colors.amber,
-                unselectedLabelColor: Colors.white60,
+                indicatorColor: AppColors.warning,
+                labelColor: AppColors.warning,
+                unselectedLabelColor: AppColors.textSoft,
                 tabs: const [
                   Tab(icon: Icon(Icons.filter_alt, size: 18), text: 'IP Filter'),
                   Tab(icon: Icon(Icons.speed, size: 18), text: 'Rate Limits'),
@@ -174,19 +174,19 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                             enabled ? 'Filter Active' : 'Filter Disabled',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: enabled ? Colors.greenAccent : Colors.grey,
+                              color: enabled ? AppColors.positive : AppColors.tintGrey,
                             ),
                           ),
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.1),
+                              color: AppColors.textPrimary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
                               '$rangeCount ranges loaded',
-                              style: const TextStyle(fontSize: 11, color: Colors.white70),
+                              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
                             ),
                           ),
                         ],
@@ -194,14 +194,14 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                       const SizedBox(height: 4),
                       Text(
                         'Total blocked connection attempts: $hitsCount',
-                        style: const TextStyle(fontSize: 12, color: Colors.white60),
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSoft),
                       ),
                     ],
                   ),
                 ),
                 Switch(
                   value: enabled,
-                  activeThumbColor: Colors.amber,
+                  activeThumbColor: AppColors.warning,
                   onChanged: (val) async {
                     setState(() => _isLoading = true);
                     await widget.viewModel.setFilterEnabled(val);
@@ -216,12 +216,12 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
           // Import section
           const Text(
             'Import ipfilter.dat',
-            style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 13),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontSize: 13),
           ),
           const SizedBox(height: 6),
           const Text(
             'Load a local PeerGuardian / eMule formatted ipfilter.dat file. Remote URL download is disallowed for safety.',
-            style: TextStyle(fontSize: 11, color: Colors.white60),
+            style: TextStyle(fontSize: 11, color: AppColors.textSoft),
           ),
           const SizedBox(height: 10),
           Row(
@@ -229,10 +229,10 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
               Expanded(
                 child: TextField(
                   controller: _filePathController,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
                   decoration: InputDecoration(
                     hintText: 'C:\\path\\to\\ipfilter.dat',
-                    hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                    hintStyle: const TextStyle(color: AppColors.textFaint, fontSize: 12),
                     filled: true,
                     fillColor: AppTheme.darkBackground,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -258,7 +258,7 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber.shade700,
+                  backgroundColor: AppColors.warningShade700,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
@@ -274,8 +274,8 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                     if (mounted) setState(() => _isLoading = false);
                   },
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
-                    side: const BorderSide(color: Colors.redAccent),
+                    foregroundColor: AppColors.danger,
+                    side: const BorderSide(color: AppColors.danger),
                   ),
                   child: const Text('Clear'),
                 ),
@@ -298,15 +298,15 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                 children: [
                   const Text(
                     'Last Import Report',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.amber),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.warning),
                   ),
                   const SizedBox(height: 6),
-                  Text('Total lines read: ${report.totalLines}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
-                  Text('Valid entries: ${report.validEntriesParsed}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
-                  Text('Coalesced (merged) ranges: ${report.coalescedCount}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
-                  Text('Final active intervals: ${report.finalRangeCount}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                  Text('Total lines read: ${report.totalLines}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  Text('Valid entries: ${report.validEntriesParsed}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  Text('Coalesced (merged) ranges: ${report.coalescedCount}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  Text('Final active intervals: ${report.finalRangeCount}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                   if (report.invalidLines > 0)
-                    Text('Invalid lines skipped: ${report.invalidLines}', style: const TextStyle(fontSize: 11, color: Colors.orangeAccent)),
+                    Text('Invalid lines skipped: ${report.invalidLines}', style: const TextStyle(fontSize: 11, color: AppColors.accentOrange)),
                 ],
               ),
             ),
@@ -323,12 +323,12 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
         children: [
           const Text(
             'Bandwidth & Token Bucket Quotas',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+            style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 13),
           ),
           const SizedBox(height: 4),
           const Text(
             'Limits are enforced asynchronously using Token Buckets. 0 means unlimited.',
-            style: TextStyle(fontSize: 11, color: Colors.white60),
+            style: TextStyle(fontSize: 11, color: AppColors.textSoft),
           ),
           const SizedBox(height: 16),
 
@@ -336,10 +336,10 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
           TextField(
             controller: _downloadLimitController,
             keyboardType: TextInputType.number,
-            style: const TextStyle(color: Colors.white, fontSize: 12),
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
             decoration: const InputDecoration(
               labelText: 'Download Limit (KB/s) [0 = unlimited]',
-              labelStyle: TextStyle(color: Colors.white70, fontSize: 12),
+              labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               filled: true,
               fillColor: AppTheme.darkBackground,
             ),
@@ -350,10 +350,10 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
           TextField(
             controller: _uploadLimitController,
             keyboardType: TextInputType.number,
-            style: const TextStyle(color: Colors.white, fontSize: 12),
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
             decoration: const InputDecoration(
               labelText: 'Upload Limit (KB/s) [0 = unlimited]',
-              labelStyle: TextStyle(color: Colors.white70, fontSize: 12),
+              labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               filled: true,
               fillColor: AppTheme.darkBackground,
             ),
@@ -364,10 +364,10 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
           TextField(
             controller: _connLimitController,
             keyboardType: TextInputType.number,
-            style: const TextStyle(color: Colors.white, fontSize: 12),
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
             decoration: const InputDecoration(
               labelText: 'Max New Connections / Minute',
-              labelStyle: TextStyle(color: Colors.white70, fontSize: 12),
+              labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               filled: true,
               fillColor: AppTheme.darkBackground,
             ),
@@ -396,7 +396,7 @@ class _IpFilterDialogState extends State<IpFilterDialog> with SingleTickerProvid
                 if (mounted) setState(() => _isLoading = false);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber.shade700,
+                backgroundColor: AppColors.warningShade700,
                 foregroundColor: Colors.black,
               ),
               icon: const Icon(Icons.save, size: 16),

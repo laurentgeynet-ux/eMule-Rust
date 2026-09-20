@@ -79,7 +79,7 @@ class DownloadsSidebar extends StatelessWidget {
                           AppStrings.appTagline,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white54,
+                            color: AppColors.textMuted,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -108,7 +108,7 @@ class DownloadsSidebar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white38,
+                          color: AppColors.textFaint,
                           letterSpacing: 1.0,
                         ),
                       ),
@@ -161,12 +161,12 @@ class DownloadsSidebar extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white38,
+                              color: AppColors.textFaint,
                               letterSpacing: 1.0,
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.add_rounded, size: 16, color: Colors.white60),
+                            icon: const Icon(Icons.add_rounded, size: 16, color: AppColors.textSoft),
                             tooltip: 'Add Category',
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
@@ -185,7 +185,7 @@ class DownloadsSidebar extends StatelessWidget {
                     _buildCategoryItem(
                       context: context,
                       title: 'All Downloads',
-                      color: Colors.white70,
+                      color: AppColors.textSecondary,
                       icon: Icons.folder_outlined,
                       count: viewModel.countAll,
                       isSelected: viewModel.currentSection == AppNavSection.downloads &&
@@ -200,7 +200,7 @@ class DownloadsSidebar extends StatelessWidget {
                     _buildCategoryItem(
                       context: context,
                       title: 'Sans catégorie',
-                      color: Colors.white38,
+                      color: AppColors.textFaint,
                       icon: Icons.label_off_outlined,
                       count: viewModel.uncategorizedCount,
                       isSelected: viewModel.currentSection == AppNavSection.downloads &&
@@ -244,7 +244,7 @@ class DownloadsSidebar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white38,
+                          color: AppColors.textFaint,
                           letterSpacing: 1.0,
                         ),
                       ),
@@ -309,7 +309,7 @@ class DownloadsSidebar extends StatelessWidget {
                             child: Row(
                               mainAxisAlignment: isCompact ? MainAxisAlignment.center : MainAxisAlignment.start,
                               children: [
-                                const Icon(Icons.settings_outlined, size: 20, color: Colors.white70),
+                                const Icon(Icons.settings_outlined, size: 20, color: AppColors.textSecondary),
                                 if (!isCompact) ...[
                                   const SizedBox(width: 12),
                                   const Expanded(
@@ -318,7 +318,7 @@ class DownloadsSidebar extends StatelessWidget {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.normal,
-                                        color: Colors.white70,
+                                        color: AppColors.textSecondary,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -355,7 +355,7 @@ class DownloadsSidebar extends StatelessWidget {
                             child: Row(
                               mainAxisAlignment: isCompact ? MainAxisAlignment.center : MainAxisAlignment.start,
                               children: [
-                                const Icon(Icons.file_download_outlined, size: 20, color: Colors.tealAccent),
+                                const Icon(Icons.file_download_outlined, size: 20, color: AppColors.accentTeal),
                                 if (!isCompact) ...[
                                   const SizedBox(width: 12),
                                   const Expanded(
@@ -364,7 +364,7 @@ class DownloadsSidebar extends StatelessWidget {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.normal,
-                                        color: Colors.white70,
+                                        color: AppColors.textSecondary,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -468,14 +468,14 @@ class DownloadsSidebar extends StatelessWidget {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const Icon(Icons.info_outline, size: 14, color: Colors.white38),
+                                  const Icon(Icons.info_outline, size: 14, color: AppColors.textFaint),
                                 ],
                               ),
                               if (viewModel.daemonInfo != null) ...[
                                 const SizedBox(height: 6),
                                 Text(
                                   'Daemon v${viewModel.daemonInfo!.version} (proto v${viewModel.daemonInfo!.protocolVersion})',
-                                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                                 ),
                               ],
                             ],
@@ -518,7 +518,7 @@ class DownloadsSidebar extends StatelessWidget {
                     Icon(
                       icon,
                       size: 20,
-                      color: isSelected ? AppTheme.primary : Colors.white70,
+                      color: isSelected ? AppTheme.primary : AppColors.textSecondary,
                     ),
                     if (isCompact && count != null && count > 0)
                       Positioned(
@@ -544,7 +544,7 @@ class DownloadsSidebar extends StatelessWidget {
                         fontSize: 14,
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.normal,
-                        color: isSelected ? Colors.white : Colors.white70,
+                        color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
                       ),
                     ),
                   ),
@@ -555,7 +555,7 @@ class DownloadsSidebar extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: isSelected
                             ? AppTheme.primary.withValues(alpha: 0.3)
-                            : Colors.white10,
+                            : AppColors.fillSubtle,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -563,7 +563,7 @@ class DownloadsSidebar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
-                          color: isSelected ? Colors.white : Colors.white60,
+                          color: isSelected ? AppColors.textPrimary : AppColors.textSoft,
                         ),
                       ),
                     ),
@@ -619,7 +619,7 @@ class DownloadsSidebar extends StatelessWidget {
                       size: 20,
                       color: isSelected
                           ? AppTheme.primary
-                          : (color ?? Colors.white70),
+                          : (color ?? AppColors.textSecondary),
                     ),
                     if (isCompact && count > 0)
                       Positioned(
@@ -633,7 +633,7 @@ class DownloadsSidebar extends StatelessWidget {
                           ),
                           child: Text(
                             '$count',
-                            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                           ),
                         ),
                       ),
@@ -648,7 +648,7 @@ class DownloadsSidebar extends StatelessWidget {
                         fontSize: 14,
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.normal,
-                        color: isSelected ? Colors.white : Colors.white70,
+                        color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
                       ),
                     ),
                   ),
@@ -658,7 +658,7 @@ class DownloadsSidebar extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppTheme.primary.withValues(alpha: 0.3)
-                          : Colors.white10,
+                          : AppColors.fillSubtle,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
@@ -666,7 +666,7 @@ class DownloadsSidebar extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: isSelected ? Colors.white : Colors.white60,
+                        color: isSelected ? AppColors.textPrimary : AppColors.textSoft,
                       ),
                     ),
                   ),
@@ -765,7 +765,7 @@ class DownloadsSidebar extends StatelessWidget {
                       fontSize: 13,
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.normal,
-                      color: isSelected ? Colors.white : Colors.white70,
+                      color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -776,7 +776,7 @@ class DownloadsSidebar extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isSelected
                         ? AppTheme.primary.withValues(alpha: 0.3)
-                        : Colors.white10,
+                        : AppColors.fillSubtle,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -784,14 +784,14 @@ class DownloadsSidebar extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
-                      color: isSelected ? Colors.white : Colors.white60,
+                      color: isSelected ? AppColors.textPrimary : AppColors.textSoft,
                     ),
                   ),
                 ),
                 if (category != null) ...[
                   const SizedBox(width: 4),
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert_rounded, size: 14, color: Colors.white38),
+                    icon: const Icon(Icons.more_vert_rounded, size: 14, color: AppColors.textFaint),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
                     tooltip: 'Category Options',
@@ -868,12 +868,12 @@ class DownloadsSidebar extends StatelessWidget {
         content: const Text(
           'Deleting this category will move all associated downloads to "Sans catégorie" (Uncategorized).\n\n'
           'No downloads or files will be deleted.',
-          style: TextStyle(fontSize: 13, color: Colors.white70),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSoft)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.statusFailed),

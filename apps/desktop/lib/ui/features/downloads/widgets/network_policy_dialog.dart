@@ -54,13 +54,13 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: isKillSwitchActive
-                          ? Colors.red.withValues(alpha: 0.15)
-                          : Colors.cyan.withValues(alpha: 0.15),
+                          ? AppColors.tintRed.withValues(alpha: 0.15)
+                          : AppColors.tintCyan.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       isKillSwitchActive ? Icons.shield_rounded : Icons.security_rounded,
-                      color: isKillSwitchActive ? Colors.redAccent : Colors.cyanAccent,
+                      color: isKillSwitchActive ? AppColors.danger : AppColors.accentCyan,
                       size: 22,
                     ),
                   ),
@@ -76,7 +76,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                         const SizedBox(height: 2),
                         Text(
                           'Defensive socket authorization, anti-SSRF isolation, and resource quotas',
-                          style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.5)),
+                          style: TextStyle(fontSize: 12, color: AppColors.textPrimary.withValues(alpha: 0.5)),
                         ),
                       ],
                     ),
@@ -95,12 +95,12 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: isKillSwitchActive
-                      ? Colors.red.withValues(alpha: 0.1)
+                      ? AppColors.tintRed.withValues(alpha: 0.1)
                       : AppTheme.darkCard,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isKillSwitchActive
-                        ? Colors.redAccent.withValues(alpha: 0.4)
+                        ? AppColors.danger.withValues(alpha: 0.4)
                         : AppTheme.darkBorder,
                   ),
                 ),
@@ -110,7 +110,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                       isKillSwitchActive
                           ? Icons.highlight_off_rounded
                           : Icons.check_circle_outline_rounded,
-                      color: isKillSwitchActive ? Colors.redAccent : Colors.greenAccent,
+                      color: isKillSwitchActive ? AppColors.danger : AppColors.positive,
                       size: 20,
                     ),
                     const SizedBox(width: 10),
@@ -123,14 +123,14 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: isKillSwitchActive ? Colors.redAccent : Colors.white,
+                              color: isKillSwitchActive ? AppColors.danger : AppColors.textPrimary,
                             ),
                           ),
                           Text(
                             isKillSwitchActive
                                 ? 'All socket operations are stopped. Inbound and outbound connections blocked.'
                                 : 'Socket permits strictly governed by active profile constraints.',
-                            style: const TextStyle(fontSize: 11, color: Colors.white60),
+                            style: const TextStyle(fontSize: 11, color: AppColors.textSoft),
                           ),
                         ],
                       ),
@@ -141,7 +141,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                         icon: const Icon(Icons.play_arrow_rounded, size: 16),
                         label: const Text('Re-enable'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.green.shade700,
+                          backgroundColor: AppColors.positiveShade700,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
                         onPressed: () async {
@@ -155,7 +155,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                         icon: const Icon(Icons.power_settings_new_rounded, size: 16),
                         label: const Text('Disconnect All'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.red.shade700,
+                          backgroundColor: AppColors.dangerShade700,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
                         onPressed: () async {
@@ -210,7 +210,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                                           ? Icons.radio_button_checked
                                           : Icons.radio_button_off,
                                       size: 16,
-                                      color: p == profile ? Colors.cyanAccent : Colors.white38,
+                                      color: p == profile ? AppColors.accentCyan : AppColors.textFaint,
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
@@ -222,14 +222,14 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                                             style: TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600,
-                                              color: p == profile ? Colors.cyanAccent : Colors.white,
+                                              color: p == profile ? AppColors.accentCyan : AppColors.textPrimary,
                                             ),
                                           ),
                                           Text(
                                             _profileDescription(p),
                                             style: TextStyle(
                                               fontSize: 10,
-                                              color: Colors.white.withValues(alpha: 0.5),
+                                              color: AppColors.textPrimary.withValues(alpha: 0.5),
                                             ),
                                           ),
                                         ],
@@ -318,7 +318,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                           ? const Center(
                               child: Text(
                                 'No network events recorded yet.',
-                                style: TextStyle(color: Colors.white38, fontSize: 12),
+                                style: TextStyle(color: AppColors.textFaint, fontSize: 12),
                               ),
                             )
                           : ListView.separated(
@@ -338,7 +338,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                                             ? Icons.check_circle_outline
                                             : Icons.block_flipped,
                                         size: 15,
-                                        color: isAllowed ? Colors.greenAccent : Colors.redAccent,
+                                        color: isAllowed ? AppColors.positive : AppColors.danger,
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
@@ -364,7 +364,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                                             style: const TextStyle(
                                               fontSize: 10,
                                               fontFamily: 'monospace',
-                                              color: Colors.white70,
+                                              color: AppColors.textSecondary,
                                             ),
                                           ),
                                         ),
@@ -374,7 +374,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                                           entry.reason ?? '',
                                           style: const TextStyle(
                                             fontSize: 10,
-                                            color: Colors.white54,
+                                            color: AppColors.textMuted,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -402,14 +402,14 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 11, color: Colors.white60),
+              style: const TextStyle(fontSize: 11, color: AppColors.textSoft),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(width: 6),
           Text(
             value,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
           ),
         ],
       ),

@@ -140,12 +140,12 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: (isPublic ? Colors.amber : Colors.blueAccent).withValues(alpha: 0.2),
+                      color: (isPublic ? AppColors.warning : AppColors.accentBlue).withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
                       isPublic ? Icons.public : Icons.science_outlined,
-                      color: isPublic ? Colors.amber : Colors.blueAccent,
+                      color: isPublic ? AppColors.warning : AppColors.accentBlue,
                       size: 20,
                     ),
                   ),
@@ -156,12 +156,12 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: Colors.white54),
+                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -190,7 +190,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                             children: [
                               Text(
                                 'Profil Réseau Actuel : ',
-                                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+                                style: TextStyle(color: AppColors.textPrimary.withValues(alpha: 0.7), fontSize: 13),
                               ),
                               Chip(
                                 label: Text(
@@ -198,11 +198,11 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: isPublic ? Colors.amber : Colors.blueAccent,
+                                    color: isPublic ? AppColors.warning : AppColors.accentBlue,
                                   ),
                                 ),
-                                backgroundColor: (isPublic ? Colors.amber : Colors.blueAccent).withValues(alpha: 0.15),
-                                side: BorderSide(color: (isPublic ? Colors.amber : Colors.blueAccent).withValues(alpha: 0.4)),
+                                backgroundColor: (isPublic ? AppColors.warning : AppColors.accentBlue).withValues(alpha: 0.15),
+                                side: BorderSide(color: (isPublic ? AppColors.warning : AppColors.accentBlue).withValues(alpha: 0.4)),
                                 padding: EdgeInsets.zero,
                               ),
                             ],
@@ -212,7 +212,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                             isPublic
                                 ? 'Votre client peut contacter des serveurs eD2K publics, des pairs externes et la DHT Kademlia mondiale.'
                                 : 'Toutes les sockets sont strictement confinées à la boucle locale 127.0.0.1. Zéro paquet sur Internet.',
-                            style: const TextStyle(fontSize: 12, color: Colors.white60, height: 1.4),
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSoft, height: 1.4),
                           ),
                         ],
                       ),
@@ -224,7 +224,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                     if (_upnpStatus != null) ...[
                       const Text(
                         'Statut UPnP IGD (Box / Routeur NAT)',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                       ),
                       const SizedBox(height: 8),
                       Container(
@@ -239,7 +239,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Passerelle / Box détectée :', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                                const Text('Passerelle / Box détectée :', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                 Text(
                                   _upnpStatus!.available
                                       ? (_upnpStatus!.gatewayAddr ?? 'Connectée')
@@ -247,7 +247,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
-                                    color: _upnpStatus!.available ? Colors.greenAccent : Colors.orangeAccent,
+                                    color: _upnpStatus!.available ? AppColors.positive : AppColors.accentOrange,
                                   ),
                                 ),
                               ],
@@ -256,10 +256,10 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Adresse IP Externe (WAN) :', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                                const Text('Adresse IP Externe (WAN) :', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                 Text(
                                   _upnpStatus!.externalIp ?? 'Inconnue',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.tealAccent),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.accentTeal),
                                 ),
                               ],
                             ),
@@ -267,20 +267,20 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('Port TCP eD2K (${_upnpStatus!.tcpPort}) :', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                                Text('Port TCP eD2K (${_upnpStatus!.tcpPort}) :', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                 Row(
                                   children: [
                                     Icon(
                                       _upnpStatus!.tcpMapped ? Icons.check_circle : Icons.cancel_outlined,
                                       size: 14,
-                                      color: _upnpStatus!.tcpMapped ? Colors.greenAccent : Colors.white38,
+                                      color: _upnpStatus!.tcpMapped ? AppColors.positive : AppColors.textFaint,
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
                                       _upnpStatus!.tcpMapped ? 'Mappé (HighID)' : 'Non mappé',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: _upnpStatus!.tcpMapped ? Colors.greenAccent : Colors.white60,
+                                        color: _upnpStatus!.tcpMapped ? AppColors.positive : AppColors.textSoft,
                                       ),
                                     ),
                                   ],
@@ -291,20 +291,20 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('Port UDP Kad (${_upnpStatus!.udpPort}) :', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                                Text('Port UDP Kad (${_upnpStatus!.udpPort}) :', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                 Row(
                                   children: [
                                     Icon(
                                       _upnpStatus!.udpMapped ? Icons.check_circle : Icons.cancel_outlined,
                                       size: 14,
-                                      color: _upnpStatus!.udpMapped ? Colors.greenAccent : Colors.white38,
+                                      color: _upnpStatus!.udpMapped ? AppColors.positive : AppColors.textFaint,
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
                                       _upnpStatus!.udpMapped ? 'Mappé (Ouvert)' : 'Non mappé',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: _upnpStatus!.udpMapped ? Colors.greenAccent : Colors.white60,
+                                        color: _upnpStatus!.udpMapped ? AppColors.positive : AppColors.textSoft,
                                       ),
                                     ),
                                   ],
@@ -322,7 +322,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                             icon: const Icon(Icons.refresh, size: 14),
                             label: const Text('Tester / Rafraîchir UPnP'),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white70,
+                              foregroundColor: AppColors.textSecondary,
                               side: const BorderSide(color: AppTheme.darkBorder),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             ),
@@ -338,27 +338,27 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.1),
+                        color: AppColors.warning.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
                           Row(
                             children: [
-                              Icon(Icons.security, color: Colors.amber, size: 16),
+                              Icon(Icons.security, color: AppColors.warning, size: 16),
                               SizedBox(width: 8),
                               Text(
                                 'Garantie de Sécurité Anti-SSRF',
-                                style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12),
+                                style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.bold, fontSize: 12),
                               ),
                             ],
                           ),
                           SizedBox(height: 6),
                           Text(
                             'Même en mode public, la politique réseau d\'Emule-Sion bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.',
-                            style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.4),
+                            style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4),
                           ),
                         ],
                       ),
@@ -370,7 +370,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                     ],
                     if (_success != null) ...[
                       const SizedBox(height: 12),
-                      Text(_success!, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                      Text(_success!, style: const TextStyle(color: AppColors.positive, fontSize: 12)),
                     ],
                   ],
                 ),
@@ -390,20 +390,20 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Fermer', style: TextStyle(color: Colors.white70)),
+                    child: const Text('Fermer', style: TextStyle(color: AppColors.textSecondary)),
                   ),
                   if (isPublic)
                     FilledButton.icon(
                       icon: const Icon(Icons.lock_outline, size: 16),
                       label: const Text('Revenir en Mode Confiné (Lab 127.0.0.1)'),
-                      style: FilledButton.styleFrom(backgroundColor: Colors.blueGrey),
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.labDim),
                       onPressed: _isLoading ? null : () => _switchProfile(NetworkProfile.localLab),
                     )
                   else
                     FilledButton.icon(
                       icon: const Icon(Icons.public, size: 16),
                       label: const Text('Activer le Mode Réseau Public (WAN)'),
-                      style: FilledButton.styleFrom(backgroundColor: Colors.amber[800]),
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.warningShade800),
                       onPressed: _isLoading ? null : () => _switchProfile(NetworkProfile.publicEd2kKadPreview),
                     ),
                 ],

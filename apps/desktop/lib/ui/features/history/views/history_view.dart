@@ -74,7 +74,7 @@ class HistoryView extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -100,7 +100,7 @@ class HistoryView extends StatelessWidget {
                     value: 'json',
                     child: Row(
                       children: [
-                        Icon(Icons.data_object_rounded, size: 18, color: Colors.white70),
+                        Icon(Icons.data_object_rounded, size: 18, color: AppColors.textSecondary),
                         SizedBox(width: 8),
                         Flexible(
                           child: Text(
@@ -115,7 +115,7 @@ class HistoryView extends StatelessWidget {
                     value: 'csv',
                     child: Row(
                       children: [
-                        Icon(Icons.table_chart_outlined, size: 18, color: Colors.white70),
+                        Icon(Icons.table_chart_outlined, size: 18, color: AppColors.textSecondary),
                         SizedBox(width: 8),
                         Flexible(
                           child: Text(
@@ -133,21 +133,21 @@ class HistoryView extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white12,
+                    color: AppColors.fillLight,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.file_download_outlined, size: 16, color: Colors.white70),
+                      const Icon(Icons.file_download_outlined, size: 16, color: AppColors.textSecondary),
                       if (!isCompact) ...[
                         const SizedBox(width: 6),
                         const Text(
                           'Export Report',
-                          style: TextStyle(fontSize: 13, color: Colors.white70),
+                          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.arrow_drop_down, size: 18, color: Colors.white70),
+                        const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textSecondary),
                       ],
                     ],
                   ),
@@ -180,7 +180,7 @@ class HistoryView extends StatelessWidget {
 
               // Refresh Button
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.white70),
+                icon: const Icon(Icons.refresh_rounded, size: 20, color: AppColors.textSecondary),
                 tooltip: 'Refresh',
                 onPressed: () => viewModel.fetchHistory(),
               ),
@@ -213,7 +213,7 @@ class HistoryView extends StatelessWidget {
               mainValue: '${stats.sessionCompletedCount} session (${Formatters.formatBytes(stats.sessionCompletedBytes)})',
               subtitle: '24h: ${stats.last24hCompletedCount} | 7d: ${stats.last7dCompletedCount}',
               icon: Icons.access_time_rounded,
-              color: Colors.cyanAccent,
+              color: AppColors.accentCyan,
             ),
             _buildStatCard(
               width: cardWidth.clamp(200, 350),
@@ -229,7 +229,7 @@ class HistoryView extends StatelessWidget {
               mainValue: '${stats.totalIntegrityFailures} hash mismatch',
               subtitle: stats.totalIntegrityFailures == 0 ? '100% hash verified' : 'Integrity errors detected',
               icon: Icons.verified_user_outlined,
-              color: stats.totalIntegrityFailures == 0 ? Colors.tealAccent : AppTheme.statusFailed,
+              color: stats.totalIntegrityFailures == 0 ? AppColors.accentTeal : AppTheme.statusFailed,
             ),
           ],
         );
@@ -271,18 +271,18 @@ class HistoryView extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 12, color: Colors.white54, fontWeight: FontWeight.w500),
+                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   mainValue,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 11, color: Colors.white38),
+                  style: const TextStyle(fontSize: 11, color: AppColors.textFaint),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -300,7 +300,7 @@ class HistoryView extends StatelessWidget {
       children: [
         const Text(
           'Filter by Event:',
-          style: TextStyle(fontSize: 13, color: Colors.white70),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
         const SizedBox(width: 10),
         Container(
@@ -314,7 +314,7 @@ class HistoryView extends StatelessWidget {
             child: DropdownButton<String?>(
               value: currentEventFilter,
               dropdownColor: AppTheme.darkCard,
-              style: const TextStyle(fontSize: 13, color: Colors.white),
+              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
               items: const [
                 DropdownMenuItem(value: null, child: Text('All Events')),
                 DropdownMenuItem(value: 'completed', child: Text('Completed')),
@@ -332,7 +332,7 @@ class HistoryView extends StatelessWidget {
         const Spacer(),
         Text(
           '${viewModel.historyEntries.length} record(s)',
-          style: const TextStyle(fontSize: 12, color: Colors.white38),
+          style: const TextStyle(fontSize: 12, color: AppColors.textFaint),
         ),
       ],
     );
@@ -343,16 +343,16 @@ class HistoryView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.history_toggle_off_rounded, size: 64, color: Colors.white.withValues(alpha: 0.15)),
+          Icon(Icons.history_toggle_off_rounded, size: 64, color: AppColors.textPrimary.withValues(alpha: 0.15)),
           const SizedBox(height: 16),
           const Text(
             'No download history recorded yet',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white70),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 6),
           const Text(
             'Completed, resumed, failed, and removed transfer events will appear here.',
-            style: TextStyle(fontSize: 13, color: Colors.white38),
+            style: TextStyle(fontSize: 13, color: AppColors.textFaint),
           ),
         ],
       ),
@@ -407,17 +407,17 @@ class HistoryView extends StatelessWidget {
                     Expanded(
                       child: Text(
                         entry.fileName,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
                       _formatTimestamp(entry.timestamp),
-                      style: const TextStyle(fontSize: 11, color: Colors.white54),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.info_outline_rounded, size: 16, color: Colors.white54),
+                      icon: const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textMuted),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                       tooltip: 'View details',
@@ -431,14 +431,14 @@ class HistoryView extends StatelessWidget {
                   children: [
                     Text(
                       '${Formatters.formatBytes(entry.transferredBytes)} of ${Formatters.formatBytes(entry.totalBytes)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.white70),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
                     ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           Formatters.formatDuration(entry.durationSecs),
-                          style: const TextStyle(fontSize: 11, color: Colors.white54),
+                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                         ),
                         const SizedBox(width: 8),
                         Container(
@@ -488,13 +488,13 @@ class HistoryView extends StatelessWidget {
                   children: [
                     Text(
                       entry.fileName,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Hash: ${entry.ed2kHash}',
-                      style: const TextStyle(fontSize: 11, color: Colors.white38, fontFamily: 'monospace'),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textFaint, fontFamily: 'monospace'),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -509,11 +509,11 @@ class HistoryView extends StatelessWidget {
                   children: [
                     Text(
                       Formatters.formatBytes(entry.transferredBytes),
-                      style: const TextStyle(fontSize: 13, color: Colors.white),
+                      style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
                     ),
                     Text(
                       'of ${Formatters.formatBytes(entry.totalBytes)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.white38),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textFaint),
                     ),
                   ],
                 ),
@@ -527,11 +527,11 @@ class HistoryView extends StatelessWidget {
                   children: [
                     Text(
                       Formatters.formatDuration(entry.durationSecs),
-                      style: const TextStyle(fontSize: 13, color: Colors.white),
+                      style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
                     ),
                     Text(
                       '${entry.resumeCount} res. / ${entry.connectionAttempts} att.',
-                      style: const TextStyle(fontSize: 11, color: Colors.white38),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textFaint),
                     ),
                   ],
                 ),
@@ -557,13 +557,13 @@ class HistoryView extends StatelessWidget {
               // Timestamp
               Text(
                 _formatTimestamp(entry.timestamp),
-                style: const TextStyle(fontSize: 12, color: Colors.white54),
+                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
               const SizedBox(width: 8),
 
               // Details Action
               IconButton(
-                icon: const Icon(Icons.info_outline_rounded, size: 18, color: Colors.white54),
+                icon: const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.textMuted),
                 tooltip: 'View details',
                 onPressed: () => _showEntryDetails(context, entry),
               ),
@@ -583,22 +583,22 @@ class HistoryView extends StatelessWidget {
       case 'resumed':
         return AppTheme.statusDownloading;
       case 'verified_pending_promotion':
-        return Colors.purpleAccent;
+        return AppColors.accentPurple;
       case 'removed':
-        return Colors.orangeAccent;
+        return AppColors.accentOrange;
       default:
-        return Colors.white70;
+        return AppColors.textSecondary;
     }
   }
 
   Color _getVerifColor(String verif) {
     switch (verif.toLowerCase()) {
       case 'verified_ok':
-        return Colors.tealAccent;
+        return AppColors.accentTeal;
       case 'hash_mismatch':
         return AppTheme.statusFailed;
       default:
-        return Colors.white54;
+        return AppColors.textMuted;
     }
   }
 
@@ -627,7 +627,7 @@ class HistoryView extends StatelessWidget {
             Expanded(
               child: Text(
                 'Event Detail: ${entry.fileName}',
-                style: const TextStyle(fontSize: 16, color: Colors.white),
+                style: const TextStyle(fontSize: 16, color: AppColors.textPrimary),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -675,7 +675,7 @@ class HistoryView extends StatelessWidget {
             width: 140,
             child: Text(
               '$label:',
-              style: const TextStyle(fontSize: 12, color: Colors.white54, fontWeight: FontWeight.w500),
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w500),
             ),
           ),
           Expanded(
@@ -683,7 +683,7 @@ class HistoryView extends StatelessWidget {
               value,
               style: TextStyle(
                 fontSize: 12,
-                color: isError ? AppTheme.statusFailed : Colors.white,
+                color: isError ? AppTheme.statusFailed : AppColors.textPrimary,
                 fontFamily: label.contains('Hash') || label.contains('Path') ? 'monospace' : null,
               ),
             ),
@@ -708,7 +708,7 @@ class HistoryView extends StatelessWidget {
             const SizedBox(width: 10),
             Text(
               'Export History (${format.toUpperCase()})',
-              style: const TextStyle(fontSize: 16, color: Colors.white),
+              style: const TextStyle(fontSize: 16, color: AppColors.textPrimary),
             ),
           ],
         ),
@@ -720,7 +720,7 @@ class HistoryView extends StatelessWidget {
             children: [
               const Text(
                 'Report is sanitized: all local usernames and filesystem paths are redacted.',
-                style: TextStyle(fontSize: 12, color: Colors.tealAccent),
+                style: TextStyle(fontSize: 12, color: AppColors.accentTeal),
               ),
               const SizedBox(height: 10),
               Expanded(
@@ -734,7 +734,7 @@ class HistoryView extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: SelectableText(
                       content,
-                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white70),
+                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.textSecondary),
                     ),
                   ),
                 ),
@@ -782,7 +782,7 @@ class HistoryView extends StatelessWidget {
         content: const Text(
           'Are you sure you want to permanently delete all download history and statistics records?\n\n'
           'This action is irreversible.',
-          style: TextStyle(fontSize: 13, color: Colors.white70, height: 1.4),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
         ),
         actions: [
           TextButton(

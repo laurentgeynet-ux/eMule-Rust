@@ -139,7 +139,7 @@ class DiagnosticDialog extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: Colors.white54),
+                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -195,7 +195,7 @@ class DiagnosticDialog extends StatelessWidget {
                                     const SizedBox(height: 2),
                                     Text(
                                       subtitle,
-                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                                     ),
                                   ],
                                 ),
@@ -229,13 +229,13 @@ class DiagnosticDialog extends StatelessWidget {
                                       color: isPortable
                                           ? AppTheme.primary.withValues(alpha: 0.2)
                                           : (isInstalled
-                                              ? Colors.amber.withValues(alpha: 0.2)
-                                              : Colors.blueGrey.withValues(alpha: 0.2)),
+                                              ? AppColors.warning.withValues(alpha: 0.2)
+                                              : AppColors.labDim.withValues(alpha: 0.2)),
                                       borderRadius: BorderRadius.circular(4),
                                       border: Border.all(
                                         color: isPortable
                                             ? AppTheme.primary
-                                            : (isInstalled ? Colors.amber : Colors.blueGrey),
+                                            : (isInstalled ? AppColors.warning : AppColors.labDim),
                                         width: 0.5,
                                       ),
                                     ),
@@ -244,7 +244,7 @@ class DiagnosticDialog extends StatelessWidget {
                                       style: TextStyle(
                                         color: isPortable
                                             ? AppTheme.primary
-                                            : (isInstalled ? Colors.amberAccent : Colors.white70),
+                                            : (isInstalled ? AppColors.accentAmber : AppColors.textSecondary),
                                         fontWeight: FontWeight.bold,
                                         fontSize: 11,
                                       ),
@@ -254,7 +254,7 @@ class DiagnosticDialog extends StatelessWidget {
                                     const SizedBox(width: 8),
                                     const Text(
                                       '(Isolated data folder)',
-                                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                                      style: TextStyle(color: AppColors.textMuted, fontSize: 11),
                                     ),
                                   ],
                                 ],
@@ -273,14 +273,14 @@ class DiagnosticDialog extends StatelessWidget {
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontFamily: 'monospace',
-                                          color: Colors.white,
+                                          color: AppColors.textPrimary,
                                         ),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   IconButton(
-                                    icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                                    icon: const Icon(Icons.copy, size: 16, color: AppColors.textSecondary),
                                     tooltip: 'Copy full path',
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -310,14 +310,14 @@ class DiagnosticDialog extends StatelessWidget {
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontFamily: 'monospace',
-                                          color: Colors.white,
+                                          color: AppColors.textPrimary,
                                         ),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   IconButton(
-                                    icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                                    icon: const Icon(Icons.copy, size: 16, color: AppColors.textSecondary),
                                     tooltip: 'Copy downloads directory path',
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -380,7 +380,7 @@ class DiagnosticDialog extends StatelessWidget {
                               'Instance ID',
                               SelectableText(
                                 instanceId,
-                                style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white70),
+                                style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.textSecondary),
                               ),
                             ),
                             const Divider(height: 16, color: AppTheme.darkBorder),
@@ -388,7 +388,7 @@ class DiagnosticDialog extends StatelessWidget {
                               'Session ID',
                               SelectableText(
                                 sessionId,
-                                style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white70),
+                                style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.textSecondary),
                               ),
                             ),
                             const Divider(height: 16, color: AppTheme.darkBorder),
@@ -404,14 +404,14 @@ class DiagnosticDialog extends StatelessWidget {
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontFamily: 'monospace',
-                                          color: Colors.white,
+                                          color: AppColors.textPrimary,
                                         ),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   IconButton(
-                                    icon: const Icon(Icons.copy, size: 16, color: Colors.white70),
+                                    icon: const Icon(Icons.copy, size: 16, color: AppColors.textSecondary),
                                     tooltip: 'Copy daemon log path',
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -436,17 +436,17 @@ class DiagnosticDialog extends StatelessWidget {
                                 runSpacing: 4,
                                 children: capabilities.isEmpty
                                     ? [
-                                        const Text('None', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                                        const Text('None', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                                       ]
                                     : capabilities.map((c) {
                                         final isLab = c == 'lab-tools';
                                         return Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: isLab ? Colors.teal.withValues(alpha: 0.2) : Colors.white10,
+                                            color: isLab ? AppColors.lab.withValues(alpha: 0.2) : AppColors.fillSubtle,
                                             borderRadius: BorderRadius.circular(4),
                                             border: Border.all(
-                                              color: isLab ? Colors.teal : Colors.white24,
+                                              color: isLab ? AppColors.lab : AppColors.fillMedium,
                                               width: 0.5,
                                             ),
                                           ),
@@ -455,7 +455,7 @@ class DiagnosticDialog extends StatelessWidget {
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontFamily: 'monospace',
-                                              color: isLab ? Colors.tealAccent : Colors.white70,
+                                              color: isLab ? AppColors.accentTeal : AppColors.textSecondary,
                                               fontWeight: isLab ? FontWeight.bold : FontWeight.normal,
                                             ),
                                           ),
@@ -536,8 +536,8 @@ class DiagnosticDialog extends StatelessWidget {
                         icon: const Icon(Icons.science, size: 16),
                         label: const Text('Open Lab Guide'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.teal.withValues(alpha: 0.2),
-                          foregroundColor: Colors.tealAccent,
+                          backgroundColor: AppColors.lab.withValues(alpha: 0.2),
+                          foregroundColor: AppColors.accentTeal,
                         ),
                         onPressed: () {
                           Navigator.of(context).pop();
@@ -567,7 +567,7 @@ class DiagnosticDialog extends StatelessWidget {
       style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: Colors.white70,
+        color: AppColors.textSecondary,
         letterSpacing: 0.5,
       ),
     );
@@ -583,7 +583,7 @@ class DiagnosticDialog extends StatelessWidget {
             label,
             style: const TextStyle(
               fontSize: 12,
-              color: Colors.white54,
+              color: AppColors.textMuted,
               fontWeight: FontWeight.w500,
             ),
           ),

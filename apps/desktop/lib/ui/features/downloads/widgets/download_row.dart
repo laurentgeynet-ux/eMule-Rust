@@ -75,12 +75,12 @@ class DownloadRow extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: AppColors.textPrimary.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Icon(
                 _getFileIcon(item.fileName),
-                color: Colors.white70,
+                color: AppColors.textSecondary,
                 size: 18,
               ),
             ),
@@ -94,7 +94,7 @@ class DownloadRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -109,7 +109,7 @@ class DownloadRow extends StatelessWidget {
                         'ID: ${_abbreviateId(item.id)}',
                         style: const TextStyle(
                           fontSize: 10,
-                          color: Colors.white38,
+                          color: AppColors.textFaint,
                           fontFamily: 'monospace',
                         ),
                       ),
@@ -174,7 +174,7 @@ class DownloadRow extends StatelessWidget {
           child: LinearProgressIndicator(
             value: item.progress,
             minHeight: 5,
-            backgroundColor: Colors.white12,
+            backgroundColor: AppColors.fillLight,
             valueColor: AlwaysStoppedAnimation<Color>(statusColor),
           ),
         ),
@@ -191,7 +191,7 @@ class DownloadRow extends StatelessWidget {
           children: [
             Text(
               '${Formatters.formatBytes(item.receivedBytes)} / ${Formatters.formatBytes(item.totalBytes)} (${Formatters.formatPercent(item.progress)})',
-              style: const TextStyle(fontSize: 11, color: Colors.white70),
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
             ),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -203,13 +203,13 @@ class DownloadRow extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: item.downloadRateBps > 0
                         ? AppTheme.statusDownloading
-                        : Colors.white38,
+                        : AppColors.textFaint,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '${item.sourceCount} src',
-                  style: const TextStyle(fontSize: 11, color: Colors.white38),
+                  style: const TextStyle(fontSize: 11, color: AppColors.textFaint),
                 ),
               ],
             ),
@@ -230,12 +230,12 @@ class DownloadRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: AppColors.textPrimary.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Icon(
             _getFileIcon(item.fileName),
-            color: Colors.white70,
+            color: AppColors.textSecondary,
             size: 20,
           ),
         ),
@@ -252,7 +252,7 @@ class DownloadRow extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -273,7 +273,7 @@ class DownloadRow extends StatelessWidget {
                           'ID: ${_abbreviateId(item.id)}',
                           style: const TextStyle(
                             fontSize: 11,
-                            color: Colors.white38,
+                            color: AppColors.textFaint,
                             fontFamily: 'monospace',
                           ),
                         ),
@@ -295,7 +295,7 @@ class DownloadRow extends StatelessWidget {
                           child: Icon(
                             Icons.copy_rounded,
                             size: 11,
-                            color: Colors.white38,
+                            color: AppColors.textFaint,
                           ),
                         ),
                       ),
@@ -353,7 +353,7 @@ class DownloadRow extends StatelessWidget {
                 '${Formatters.formatBytes(item.receivedBytes)} / ${Formatters.formatBytes(item.totalBytes)}',
                 style: const TextStyle(
                   fontSize: 12,
-                  color: Colors.white70,
+                  color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 4),
@@ -363,7 +363,7 @@ class DownloadRow extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: item.progress,
                   minHeight: 6,
-                  backgroundColor: Colors.white12,
+                  backgroundColor: AppColors.fillLight,
                   valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                 ),
               ),
@@ -387,7 +387,7 @@ class DownloadRow extends StatelessWidget {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: AppColors.textPrimary,
             ),
           ),
         ),
@@ -428,7 +428,7 @@ class DownloadRow extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   color: item.downloadRateBps > 0
                       ? AppTheme.statusDownloading
-                      : Colors.white38,
+                      : AppColors.textFaint,
                 ),
               ),
               const SizedBox(height: 2),
@@ -436,7 +436,7 @@ class DownloadRow extends StatelessWidget {
                 '${item.sourceCount} sources',
                 style: const TextStyle(
                   fontSize: 11,
-                  color: Colors.white54,
+                  color: AppColors.textMuted,
                 ),
               ),
             ],
@@ -462,7 +462,7 @@ class DownloadRow extends StatelessWidget {
         PopupMenuButton<String?>(
           icon: Icon(
             category != null ? Icons.label_rounded : Icons.label_outline_rounded,
-            color: category != null ? category.parsedColor : Colors.white54,
+            color: category != null ? category.parsedColor : AppColors.textMuted,
             size: compact ? 16 : 18,
           ),
           tooltip: category != null ? 'Category: ${category.name}' : 'Assign Category',
@@ -494,7 +494,7 @@ class DownloadRow extends StatelessWidget {
         ),
         IconButton(
           icon: Icon(Icons.info_outline_rounded,
-              color: Colors.white70, size: compact ? 16 : 20),
+              color: AppColors.textSecondary, size: compact ? 16 : 20),
           tooltip: 'Inspect Details & Part Map',
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
@@ -520,7 +520,7 @@ class DownloadRow extends StatelessWidget {
           ),
         IconButton(
           icon: Icon(Icons.delete_outline_rounded,
-              color: Colors.white54, size: compact ? 16 : 20),
+              color: AppColors.textMuted, size: compact ? 16 : 20),
           tooltip: 'Remove',
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),

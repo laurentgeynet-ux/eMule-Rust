@@ -167,12 +167,12 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: Colors.white54),
+                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -206,7 +206,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               // Name Field
               const Text(
                 'Category Name *',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 6),
               TextField(
@@ -223,7 +223,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               // Color Palette & Hex Input
               const Text(
                 'Color Tag',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -246,7 +246,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                         color: c,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isSelected ? Colors.white : Colors.white24,
+                          color: isSelected ? AppColors.textPrimary : AppColors.fillMedium,
                           width: isSelected ? 2.5 : 1.0,
                         ),
                         boxShadow: isSelected
@@ -260,7 +260,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                             : null,
                       ),
                       child: isSelected
-                          ? const Icon(Icons.check, size: 16, color: Colors.white)
+                          ? const Icon(Icons.check, size: 16, color: AppColors.textPrimary)
                           : null,
                     ),
                   );
@@ -297,7 +297,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               // Default Destination Field (Optional)
               const Text(
                 'Default Destination (Optional)',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 6),
               Row(
@@ -329,7 +329,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               // Default Priority Dropdown (Optional)
               const Text(
                 'Default Priority (Optional)',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 6),
               Container(
@@ -374,7 +374,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 children: [
                   TextButton(
                     onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+                    child: const Text('Cancel', style: TextStyle(color: AppColors.textSoft)),
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
@@ -382,7 +382,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                         ? const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
                           )
                         : Icon(isEditing ? Icons.save_rounded : Icons.add_rounded, size: 18),
                     label: Text(isEditing ? 'Save Changes' : 'Create Category'),
