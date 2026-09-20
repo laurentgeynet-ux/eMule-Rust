@@ -7,7 +7,7 @@
 > (`services/events.rs`) avec `method()` + `topic()` explicites, et le
 > protocole est documenté dans `rpc_protocol.md`.
 
-## Phase E1 — Uploads temps réel (rang 1)
+## Phase E1 — Uploads temps réel (rang 1) — ✅ livrée
 
 ### Daemon (Rust)
 

@@ -20,8 +20,9 @@ import '../ui/features/downloads/view_models/downloads_store_controller.dart';
 import 'transfer_rate_tracker.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
+import '../ui/features/uploads/view_models/uploads_controller.dart';
 
-enum AppNavSection { downloads, history, servers, search, kad }
+enum AppNavSection { downloads, uploads, history, servers, search, kad }
 
 enum DownloadFilter {
   all,
@@ -101,6 +102,10 @@ class AppController extends ChangeNotifier {
   /// `features/search/view_models/search_controller.dart`).
   late final SearchController search;
 
+  /// Uploads sub-domain (extracted controller, see
+  /// `features/uploads/view_models/uploads_controller.dart`).
+  late final UploadsController uploads;
+
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
@@ -121,6 +126,8 @@ class AppController extends ChangeNotifier {
         } else if (section == AppNavSection.kad) {
           kad.fetchStatus();
           kad.fetchContacts();
+        } else if (section == AppNavSection.uploads) {
+          uploads.fetch();
         }
       },
     )..addListener(notifyListeners);
@@ -130,9 +137,12 @@ class AppController extends ChangeNotifier {
       onError: shellCtl.setError,
       onRefresh: refresh,
     )..addListener(notifyListeners);
+    uploads = UploadsController(client: client)
+      ..attach()
+      ..addListener(notifyListeners);
     speedTracker = TransferRateTracker(
       downloadRate: () => downloadsCtl.totalDownloadSpeed,
-      uploadRate: () => 0,
+      uploadRate: () => uploads.totalUploadRateBps,
     );
     history = HistoryController(
       client: client,
@@ -300,7 +310,7 @@ class AppController extends ChangeNotifier {
   int get totalDownloadSpeed => downloadsCtl.totalDownloadSpeed;
 
   /// Always 0 B/s in this offline / loopback lab client without public upload/seeding.
-  int get totalUploadSpeed => 0;
+  int get totalUploadSpeed => uploads.totalUploadRateBps;
 
   int get countAll => downloadsCtl.countAll;
   int get countActive => downloadsCtl.countActive;
@@ -381,6 +391,7 @@ class AppController extends ChangeNotifier {
       await fetchNetworkPolicy();
       await fetchKadStatus();
       await downloadsCtl.reload();
+      await uploads.fetch();
       shellCtl.setError(null);
     } catch (e) {
       shellCtl.setError("Refresh failed: $e");
@@ -719,6 +730,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     speedTracker.dispose();
+    uploads.dispose();
     _connSub?.cancel();
     
     _supervisorSub?.cancel();

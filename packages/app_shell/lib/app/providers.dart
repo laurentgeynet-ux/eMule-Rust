@@ -16,6 +16,7 @@ import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
 import '../ui/features/search/view_models/search_controller.dart';
 import '../ui/features/servers/view_models/servers_controller.dart';
+import '../ui/features/uploads/view_models/uploads_controller.dart';
 
 /// Daemon client (real `RpcDaemonClient` or `FakeMuleDaemonClient`).
 /// Overridden by the `ProviderScope` created in [EmuleSionApp].
@@ -113,6 +114,11 @@ final downloadsStoreControllerProvider =
     ChangeNotifierProvider<DownloadsStoreController>(
       (ref) => ref.read(appControllerProvider).downloadsCtl,
     );
+
+/// Uploads sub-domain controller. Provider-owned disposal.
+final uploadsControllerProvider = ChangeNotifierProvider<UploadsController>(
+  (ref) => ref.read(appControllerProvider).uploads,
+);
 
 /// App-shell UI state (section, filter, banners). Provider-owned disposal.
 final shellControllerProvider = ChangeNotifierProvider<ShellController>(

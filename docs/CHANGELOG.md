@@ -5,6 +5,16 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **E1 — Uploads temps réel** : event daemon `upload.uploadsUpdated`
+  (topic `uploads`, snapshot actif + file + débit agrégé, émis après chaque
+  mutation de l'upload manager, progression throttlée ~500 ms). Côté client
+  `MuleDaemonClient.uploadsEvents` + `UploadsSnapshotModel` ; le fake client
+  simule un upload actif ~50–250 kB/s + 1 en file. Côté UI : nouveau
+  `UploadsController` (provider dédié), section **Uploads** dans la sidebar
+  (`/uploads`), `UploadsView` avec tables sessions actives / file d'attente
+  (annulation via `uploads.cancel`), et le badge UL + sparkline de la top
+  bar branchés sur le débit réel (fini le `() => 0`).
+
 - **Architecture partagée — `packages/app_shell`** : tout le code UI/app
   (`AppController`, providers, router, vues/features, l10n) est extrait de
   `apps/desktop` vers `packages/app_shell` (platform-pure). Les points de

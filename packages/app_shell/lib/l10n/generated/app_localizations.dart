@@ -170,6 +170,12 @@ abstract class AppLocalizations {
   /// **'Kad DHT'**
   String get navKad;
 
+  /// No description provided for @navUploads.
+  ///
+  /// In fr, this message translates to:
+  /// **'Uploads'**
+  String get navUploads;
+
   /// No description provided for @filterAll.
   ///
   /// In fr, this message translates to:
@@ -2978,6 +2984,66 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Changer de daemon'**
   String get changeDaemon;
+
+  /// No description provided for @sectionUploads.
+  ///
+  /// In fr, this message translates to:
+  /// **'Uploads'**
+  String get sectionUploads;
+
+  /// No description provided for @uploadsActive.
+  ///
+  /// In fr, this message translates to:
+  /// **'UPLOADS ACTIFS'**
+  String get uploadsActive;
+
+  /// No description provided for @uploadsQueue.
+  ///
+  /// In fr, this message translates to:
+  /// **'FILE D\'ATTENTE'**
+  String get uploadsQueue;
+
+  /// No description provided for @uploadsActiveEmpty.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun upload actif'**
+  String get uploadsActiveEmpty;
+
+  /// No description provided for @uploadsQueueEmpty.
+  ///
+  /// In fr, this message translates to:
+  /// **'File d\'attente vide'**
+  String get uploadsQueueEmpty;
+
+  /// No description provided for @uploadsClient.
+  ///
+  /// In fr, this message translates to:
+  /// **'Client'**
+  String get uploadsClient;
+
+  /// No description provided for @uploadsFile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichier'**
+  String get uploadsFile;
+
+  /// No description provided for @uploadsRate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Débit'**
+  String get uploadsRate;
+
+  /// No description provided for @uploadsRank.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rang'**
+  String get uploadsRank;
+
+  /// No description provided for @uploadsCancelTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Annuler l\'upload'**
+  String get uploadsCancelTooltip;
 }
 
 class _AppLocalizationsDelegate

@@ -8,12 +8,14 @@ import '../ui/features/downloads/widgets/settings_dialog.dart';
 import 'app_controller.dart';
 import '../ui/features/history/views/history_view.dart';
 import '../ui/features/kad/views/kad_screen.dart';
+import '../ui/features/uploads/views/uploads_view.dart';
 import '../ui/features/search/views/search_screen.dart';
 import '../ui/features/servers/views/servers_screen.dart';
 
 /// Canonical route path for each navigation section.
 String sectionToPath(AppNavSection section) => switch (section) {
       AppNavSection.downloads => '/downloads',
+      AppNavSection.uploads => '/uploads',
       AppNavSection.history => '/history',
       AppNavSection.servers => '/servers',
       AppNavSection.search => '/search',
@@ -31,6 +33,7 @@ AppNavSection? pathToSection(String path) {
   }
   return switch (path) {
     '/downloads' => AppNavSection.downloads,
+    '/uploads' => AppNavSection.uploads,
     '/history' => AppNavSection.history,
     '/servers' => AppNavSection.servers,
     '/search' => AppNavSection.search,
@@ -144,6 +147,12 @@ GoRouter createAppRouter(AppController viewModel) {
             path: '/settings',
             pageBuilder: (context, state) => NoTransitionPage(
               child: DownloadsView(viewModel: viewModel),
+            ),
+          ),
+          GoRoute(
+            path: '/uploads',
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: const UploadsView(),
             ),
           ),
           GoRoute(

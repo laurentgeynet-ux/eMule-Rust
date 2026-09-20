@@ -47,6 +47,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navKad => 'Kad DHT';
 
   @override
+  String get navUploads => 'Uploads';
+
+  @override
   String get filterAll => 'All Downloads';
 
   @override
@@ -1648,4 +1651,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get changeDaemon => 'Change daemon';
+
+  @override
+  String get sectionUploads => 'Uploads';
+
+  @override
+  String get uploadsActive => 'ACTIVE UPLOADS';
+
+  @override
+  String get uploadsQueue => 'WAITING QUEUE';
+
+  @override
+  String get uploadsActiveEmpty => 'No active uploads';
+
+  @override
+  String get uploadsQueueEmpty => 'Waiting queue is empty';
+
+  @override
+  String get uploadsClient => 'Client';
+
+  @override
+  String get uploadsFile => 'File';
+
+  @override
+  String get uploadsRate => 'Rate';
+
+  @override
+  String get uploadsRank => 'Rank';
+
+  @override
+  String get uploadsCancelTooltip => 'Cancel upload';
 }

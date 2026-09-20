@@ -12,6 +12,7 @@
   "navServers": "eD2K Servers",
   "navSearch": "eD2K Search",
   "navKad": "Kad DHT",
+  "navUploads": "Uploads",
   "filterAll": "All Downloads",
   "filterActive": "Active",
   "filterPaused": "Paused",
@@ -977,5 +978,15 @@
   "daemonUrlHint": "ws://192.168.1.10:4660/rpc",
   "daemonUrlInvalid": "Invalid address — expected format: ws://host:port/rpc",
   "connect": "Connect",
-  "changeDaemon": "Change daemon"
+  "changeDaemon": "Change daemon",
+  "sectionUploads": "Uploads",
+  "uploadsActive": "ACTIVE UPLOADS",
+  "uploadsQueue": "WAITING QUEUE",
+  "uploadsActiveEmpty": "No active uploads",
+  "uploadsQueueEmpty": "Waiting queue is empty",
+  "uploadsClient": "Client",
+  "uploadsFile": "File",
+  "uploadsRate": "Rate",
+  "uploadsRank": "Rank",
+  "uploadsCancelTooltip": "Cancel upload"
 }

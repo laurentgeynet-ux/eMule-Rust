@@ -13,6 +13,7 @@ import '../../history/views/history_view.dart';
 import '../../servers/views/servers_screen.dart';
 import '../../search/views/search_screen.dart';
 import '../../kad/views/kad_screen.dart';
+import '../../uploads/views/uploads_view.dart';
 
 /// Adaptive app shell: full sidebar on wide layouts, compact rail on medium,
 /// drawer on narrow. Global banners and the debug bar wrap the routed content
@@ -102,6 +103,7 @@ class DownloadsScreen extends StatelessWidget {
       AppNavSection.servers => const ServersView(),
       AppNavSection.search => const SearchView(),
       AppNavSection.kad => const KadView(),
+      AppNavSection.uploads => const UploadsView(),
       AppNavSection.downloads => DownloadsView(viewModel: viewModel),
     };
   }

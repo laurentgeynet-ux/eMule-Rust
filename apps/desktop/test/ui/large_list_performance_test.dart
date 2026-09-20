@@ -410,6 +410,9 @@ class LargeListMockClient implements MuleDaemonClient {
   Stream<Map<String, dynamic>> get foundSourcesEvents => const Stream.empty();
 
   @override
+  Stream<UploadsSnapshotModel> get uploadsEvents => const Stream.empty();
+
+  @override
   Stream<PeerSessionModel> get peerSessionEvents => const Stream.empty();
 
   @override

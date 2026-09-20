@@ -152,6 +152,17 @@ class DownloadsSidebar extends StatelessWidget {
                     const Divider(color: AppTheme.darkBorder, height: 1),
                     const SizedBox(height: 6),
                   ],
+                  SidebarNavItem(
+                    title: context.l10n.navUploads,
+                    icon: Icons.upload_rounded,
+                    isSelected:
+                        viewModel.currentSection == AppNavSection.uploads,
+                    onTap: () => viewModel.setSection(AppNavSection.uploads),
+                    count: viewModel.uploads.active.isNotEmpty
+                        ? viewModel.uploads.active.length
+                        : null,
+                    isCompact: isCompact,
+                  ),
                   if (!isCompact)
                     SidebarSectionLabel(
                       label: context.l10n.sectionAuditActivity,
