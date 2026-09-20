@@ -7,6 +7,7 @@ import 'package:mule_client/mule_client.dart';
 
 import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
+import '../../history/view_models/history_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
 
@@ -56,12 +57,9 @@ class DownloadsViewModel extends ChangeNotifier {
   List<CategoryItem> _categories = [];
   String? _selectedCategoryId;
 
-  List<HistoryEntry> _historyEntries = [];
-  HistoryStats _historyStats = const HistoryStats();
-  bool _isHistoryLoading = false;
-  String? _historyEventTypeFilter;
-  String? _historyStatusFilter;
-  int _historyRetentionDays = 30;
+  /// History & Statistics sub-domain (extracted controller, see
+  /// `features/history/view_models/history_controller.dart`).
+  late final HistoryController history;
 
   List<Ed2kServerModel> _servers = [];
   bool _isServersLoading = false;
@@ -98,6 +96,12 @@ class DownloadsViewModel extends ChangeNotifier {
     this.supervisor,
     this.isDevToolsAvailable = false,
   }) {
+    history = HistoryController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+    )..addListener(notifyListeners);
+
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
       if (state == DaemonConnectionState.connected) {
@@ -221,12 +225,12 @@ class DownloadsViewModel extends ChangeNotifier {
   int get uncategorizedCount =>
       _downloads.values.where((d) => d.categoryId == null).length;
 
-  List<HistoryEntry> get historyEntries => _historyEntries;
-  HistoryStats get historyStats => _historyStats;
-  bool get isHistoryLoading => _isHistoryLoading;
-  String? get historyEventTypeFilter => _historyEventTypeFilter;
-  String? get historyStatusFilter => _historyStatusFilter;
-  int get historyRetentionDays => _historyRetentionDays;
+  List<HistoryEntry> get historyEntries => history.entries;
+  HistoryStats get historyStats => history.stats;
+  bool get isHistoryLoading => history.isLoading;
+  String? get historyEventTypeFilter => history.eventTypeFilter;
+  String? get historyStatusFilter => history.statusFilter;
+  int get historyRetentionDays => history.retentionDays;
 
   /// Lab and test fixture features are strictly dual-gated:
   /// Requires Portable workdir mode AND the daemon having the 'lab-tools' capability.
@@ -614,90 +618,27 @@ class DownloadsViewModel extends ChangeNotifier {
   Future<void> fetchSettings() async {
     try {
       _settings = await client.getSettings();
-      _historyRetentionDays =
-          (_settings['historyRetentionDays'] as num?)?.toInt() ?? 30;
+      history.syncRetentionFromSettings(_settings);
       notifyListeners();
     } catch (_) {
       // Non-critical in older or restricted daemons
     }
   }
 
-  void setHistoryEventTypeFilter(String? eventType) {
-    _historyEventTypeFilter = eventType;
-    fetchHistory();
-  }
+  void setHistoryEventTypeFilter(String? eventType) =>
+      history.setEventTypeFilter(eventType);
 
-  void setHistoryStatusFilter(String? status) {
-    _historyStatusFilter = status;
-    fetchHistory();
-  }
+  void setHistoryStatusFilter(String? status) =>
+      history.setStatusFilter(status);
 
-  Future<void> fetchHistory() async {
-    _isHistoryLoading = true;
-    notifyListeners();
-    try {
-      final entries = await client.listHistory(
-        eventType: _historyEventTypeFilter,
-        status: _historyStatusFilter,
-      );
-      final stats = await client.getHistoryStats();
-      _historyEntries = entries;
-      _historyStats = stats;
-    } catch (e) {
-      _errorMessage = 'Failed to fetch history: $e';
-    } finally {
-      _isHistoryLoading = false;
-      notifyListeners();
-    }
-  }
+  Future<void> fetchHistory() => history.fetch();
 
-  Future<bool> clearHistory() async {
-    try {
-      _isHistoryLoading = true;
-      notifyListeners();
-      final count = await client.clearHistory();
-      _historyEntries.clear();
-      _historyStats = await client.getHistoryStats();
-      _statusNotification = 'Cleared $count history record(s)';
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to clear history: $e';
-      return false;
-    } finally {
-      _isHistoryLoading = false;
-      notifyListeners();
-    }
-  }
+  Future<bool> clearHistory() => history.clear();
 
-  Future<String> exportHistory(String format) async {
-    try {
-      return await client.exportHistory(
-        format,
-        eventType: _historyEventTypeFilter,
-        status: _historyStatusFilter,
-      );
-    } catch (e) {
-      _errorMessage = 'Failed to export history: $e';
-      notifyListeners();
-      return '';
-    }
-  }
+  Future<String> exportHistory(String format) => history.export(format);
 
-  Future<bool> setHistoryRetentionDays(int days) async {
-    try {
-      await client.setHistoryRetentionDays(days);
-      _historyRetentionDays = days;
-      _statusNotification = days == 0
-          ? 'History retention set to unlimited'
-          : 'History retention set to $days days';
-      await fetchHistory();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to update retention policy: $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<bool> setHistoryRetentionDays(int days) =>
+      history.setRetentionDays(days);
 
   Future<bool> setDefaultDownloadDirectory(String path) async {
     try {
@@ -1774,6 +1715,7 @@ class DownloadsViewModel extends ChangeNotifier {
     _searchResultSub?.cancel();
     _foundSourcesSub?.cancel();
     _peerSessionSub?.cancel();
+    // history is disposed by historyControllerProvider when scoped.
     supervisor?.dispose();
     client.dispose();
     super.dispose();

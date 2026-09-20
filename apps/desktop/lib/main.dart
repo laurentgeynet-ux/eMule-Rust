@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'services/daemon_supervisor.dart';
 import 'package:ui_kit/ui_kit.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'app/providers.dart';
 import 'app/router.dart';
 import 'ui/features/downloads/view_models/downloads_view_model.dart';
 
@@ -85,11 +87,21 @@ class _EmuleSionAppState extends State<EmuleSionApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Emule-Sion',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark(),
-      routerConfig: _router,
+    return ProviderScope(
+      overrides: [
+        muleDaemonClientProvider.overrideWithValue(widget.viewModel.client),
+        daemonSupervisorProvider.overrideWithValue(widget.viewModel.supervisor),
+        devToolsEnabledProvider.overrideWithValue(
+          widget.viewModel.isDevToolsAvailable,
+        ),
+        downloadsViewModelProvider.overrideWithValue(widget.viewModel),
+      ],
+      child: MaterialApp.router(
+        title: 'Emule-Sion',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.dark(),
+        routerConfig: _router,
+      ),
     );
   }
 }

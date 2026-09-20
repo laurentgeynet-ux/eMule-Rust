@@ -33,6 +33,21 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   vérité de la section : sync VM→URL par listener (`router.go`), sync
   URL→VM (deep links, prêts pour le web) via adoption de la route dans le
   shell. Les vues de section ont désormais chacune leur `ListenableBuilder`.
+- **Clean architecture UI** : design tokens dans `ui_kit`
+  (`AppColors`/`AppSpacing`/`AppRadius`/`AppTextStyles`/`AppBreakpoints`/
+  `AppDecorations` — plus aucun `Colors.*` en dur dans les vues) ;
+  `downloads_screen.dart` découpé en widgets dédiés (`DownloadsTopBar`,
+  `DownloadsList`, `DownloadsEmptyState`, `DownloadDetailsPanel`,
+  `StatusNotificationBanner`) ; conventions dans
+  `docs/architecture/conventions_ui.md`.
+- **Migration Riverpod (P4, démarrée)** : `ProviderScope` dans
+  `EmuleSionApp` (`muleDaemonClientProvider`, `daemonSupervisorProvider`,
+  `devToolsEnabledProvider`, `downloadsViewModelProvider`) ; premier
+  sous-domaine extrait du `DownloadsViewModel` en contrôleur dédié :
+  `HistoryController` (`historyControllerProvider`), `HistoryView` devenu
+  `ConsumerWidget`. Pattern de transition : les sous-contrôleurs sont
+  possédés par le VM, qui forward leurs notifications — les vues et tests
+  existants restent inchangés.
 - **Docs** : `docs/architecture/rpc_protocol.md` (contrat JSON-RPC complet)
   et `docs/architecture/plan_ui_multiplateforme.md` (roadmap desktop/
   mobile/web en 10 phases).

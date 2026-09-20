@@ -1,29 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../downloads/view_models/downloads_view_model.dart';
+import '../../../../app/providers.dart';
+import '../view_models/history_controller.dart';
 
-class HistoryView extends StatelessWidget {
-  final DownloadsViewModel viewModel;
-
-  const HistoryView({super.key, required this.viewModel});
+class HistoryView extends ConsumerWidget {
+  const HistoryView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: viewModel,
-      builder: (context, _) {
-        final stats = viewModel.historyStats;
-        final entries = viewModel.historyEntries;
-        final isLoading = viewModel.isHistoryLoading;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(historyControllerProvider);
+    final stats = history.stats;
+    final entries = history.entries;
+    final isLoading = history.isLoading;
 
-        return Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Top Toolbar
-        _buildToolbar(context),
+        _buildToolbar(context, history),
 
         // Statistics Dashboard
         Padding(
@@ -36,7 +34,7 @@ class HistoryView extends StatelessWidget {
         // Filter and Action Bar
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: _buildFilterBar(context),
+          child: _buildFilterBar(context, history),
         ),
 
         // Event List or Empty State
@@ -48,12 +46,10 @@ class HistoryView extends StatelessWidget {
                   : _buildHistoryTable(context, entries),
         ),
       ],
-        );
-      },
     );
   }
 
-  Widget _buildToolbar(BuildContext context) {
+  Widget _buildToolbar(BuildContext context, HistoryController history) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: const BoxDecoration(
@@ -90,7 +86,7 @@ class HistoryView extends StatelessWidget {
                   side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
                 ),
                 onSelected: (format) async {
-                  final content = await viewModel.exportHistory(format);
+                  final content = await history.export(format);
                   if (context.mounted) {
                     _showExportDialog(context, format, content);
                   }
@@ -163,7 +159,7 @@ class HistoryView extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.delete_sweep_outlined, size: 18),
                   tooltip: 'Clear History',
-                  onPressed: () => _confirmClearHistory(context),
+                  onPressed: () => _confirmClearHistory(context, history),
                 )
               else
                 OutlinedButton.icon(
@@ -174,7 +170,7 @@ class HistoryView extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.delete_sweep_outlined, size: 16),
                   label: const Text('Clear History'),
-                  onPressed: () => _confirmClearHistory(context),
+                  onPressed: () => _confirmClearHistory(context, history),
                 ),
               const SizedBox(width: 6),
 
@@ -182,7 +178,7 @@ class HistoryView extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.refresh_rounded, size: 20, color: AppColors.textSecondary),
                 tooltip: 'Refresh',
-                onPressed: () => viewModel.fetchHistory(),
+                onPressed: () => history.fetch(),
               ),
             ],
           );
@@ -293,8 +289,8 @@ class HistoryView extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterBar(BuildContext context) {
-    final currentEventFilter = viewModel.historyEventTypeFilter;
+  Widget _buildFilterBar(BuildContext context, HistoryController history) {
+    final currentEventFilter = history.eventTypeFilter;
 
     return Row(
       children: [
@@ -324,14 +320,14 @@ class HistoryView extends StatelessWidget {
                 DropdownMenuItem(value: 'removed', child: Text('Removed')),
               ],
               onChanged: (val) {
-                viewModel.setHistoryEventTypeFilter(val);
+                history.setEventTypeFilter(val);
               },
             ),
           ),
         ),
         const Spacer(),
         Text(
-          '${viewModel.historyEntries.length} record(s)',
+          '${history.entries.length} record(s)',
           style: const TextStyle(fontSize: 12, color: AppColors.textFaint),
         ),
       ],
@@ -763,7 +759,7 @@ class HistoryView extends StatelessWidget {
     );
   }
 
-  void _confirmClearHistory(BuildContext context) {
+  void _confirmClearHistory(BuildContext context, HistoryController history) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -793,7 +789,7 @@ class HistoryView extends StatelessWidget {
             style: FilledButton.styleFrom(backgroundColor: AppTheme.statusFailed),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await viewModel.clearHistory();
+              await history.clear();
             },
             child: const Text('Clear All History'),
           ),

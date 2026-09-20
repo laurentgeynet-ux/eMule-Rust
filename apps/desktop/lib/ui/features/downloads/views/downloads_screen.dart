@@ -98,7 +98,7 @@ class DownloadsScreen extends StatelessWidget {
   /// child is injected. In the routed app each GoRoute supplies its own view.
   Widget _sectionContent() {
     return switch (viewModel.currentSection) {
-      AppNavSection.history => HistoryView(viewModel: viewModel),
+      AppNavSection.history => const HistoryView(),
       AppNavSection.servers => ServersView(viewModel: viewModel),
       AppNavSection.search => SearchView(viewModel: viewModel),
       AppNavSection.kad => KadView(viewModel: viewModel),

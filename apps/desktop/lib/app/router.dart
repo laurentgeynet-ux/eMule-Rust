@@ -82,7 +82,7 @@ GoRouter createAppRouter(DownloadsViewModel viewModel) {
           GoRoute(
             path: '/history',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: HistoryView(viewModel: viewModel),
+              child: const HistoryView(),
             ),
           ),
           GoRoute(
