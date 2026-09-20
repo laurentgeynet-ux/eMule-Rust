@@ -101,15 +101,16 @@ class _EmuleSionAppState extends State<EmuleSionApp> {
           disposeNotifier: false,
         ),
       ],
-      child: MaterialApp.router(
-        title: 'Emule-Sion',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark(),
-        // UI is French-first until a language picker lands in settings.
-        locale: const Locale('fr'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: _router,
+      child: Consumer(
+        builder: (context, ref, _) => MaterialApp.router(
+          title: 'Emule-Sion',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.dark(),
+          locale: ref.watch(localeControllerProvider).locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: _router,
+        ),
       ),
     );
   }

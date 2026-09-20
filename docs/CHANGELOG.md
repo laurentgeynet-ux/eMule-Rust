@@ -42,8 +42,9 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   `docs/architecture/conventions_ui.md`.
 - **i18n (P5)** : `gen_l10n` activé — `l10n.yaml`, ARB
   `lib/l10n/app_fr.arb` (template = libellés actuels) + `app_en.arb`
-  (traduction), sortie `lib/l10n/generated/`. `MaterialApp.router` épinglé
-  en `fr` en attendant le sélecteur de langue. Extension `context.l10n`
+  (traduction), sortie `lib/l10n/generated/`. Sélecteur de langue FR/EN
+  dans Settings (`LocaleController` + `localeControllerProvider`, persistance
+  `shared_preferences` clé `app.locale`). Extension `context.l10n`
   (+ `DownloadFilterL10n`). `AppStrings` (ui_kit) est deprecated.
   **Passe complète** : ~400 littéraux visibles migrés vers `context.l10n`
   dans ~90 fichiers (dialogs, tables, toolbars, bannières, empty states),

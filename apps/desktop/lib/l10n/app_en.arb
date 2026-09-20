@@ -966,5 +966,9 @@
   "verificationResult": "Verification Result",
   "sanitizedPath": "Sanitized Path",
   "timestamp": "Timestamp",
-  "errorMessage": "Error Message"
+  "errorMessage": "Error Message",
+  "language": "Language",
+  "languageDescription": "User interface language",
+  "french": "Français",
+  "english": "English"
 }

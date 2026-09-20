@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:desktop/app/app_controller.dart';
@@ -26,12 +27,14 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
-        locale: const Locale('fr'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: SettingsDialog(viewModel: viewModel),
+        ProviderScope(
+          child: MaterialApp(
+            locale: const Locale('fr'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: SettingsDialog(viewModel: viewModel),
+            ),
           ),
         ),
       );
@@ -51,12 +54,14 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
-        locale: const Locale('fr'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: SettingsDialog(viewModel: viewModel),
+        ProviderScope(
+          child: MaterialApp(
+            locale: const Locale('fr'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: SettingsDialog(viewModel: viewModel),
+            ),
           ),
         ),
       );
@@ -81,12 +86,14 @@ void main() {
       await viewModel.fetchSettings();
 
       await tester.pumpWidget(
-        MaterialApp(
-        locale: const Locale('fr'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: SettingsDialog(viewModel: viewModel),
+        ProviderScope(
+          child: MaterialApp(
+            locale: const Locale('fr'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: SettingsDialog(viewModel: viewModel),
+            ),
           ),
         ),
       );

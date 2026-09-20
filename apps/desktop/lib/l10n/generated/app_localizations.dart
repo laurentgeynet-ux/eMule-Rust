@@ -2912,6 +2912,30 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Error Message'**
   String get errorMessage;
+
+  /// No description provided for @language.
+  ///
+  /// In fr, this message translates to:
+  /// **'Langue'**
+  String get language;
+
+  /// No description provided for @languageDescription.
+  ///
+  /// In fr, this message translates to:
+  /// **'Langue de l\'interface utilisateur'**
+  String get languageDescription;
+
+  /// No description provided for @french.
+  ///
+  /// In fr, this message translates to:
+  /// **'Français'**
+  String get french;
+
+  /// No description provided for @english.
+  ///
+  /// In fr, this message translates to:
+  /// **'English'**
+  String get english;
 }
 
 class _AppLocalizationsDelegate

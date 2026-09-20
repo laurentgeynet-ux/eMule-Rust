@@ -7,6 +7,7 @@ import 'settings/settings_dialog_footer.dart';
 import 'settings/settings_dialog_header.dart';
 import 'settings/settings_directory_section.dart';
 import 'settings/settings_inline_message.dart';
+import 'settings/settings_language_section.dart';
 import 'settings/settings_network_card.dart';
 import 'settings/settings_network_mode_row.dart';
 import 'settings/settings_retention_section.dart';
@@ -100,6 +101,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           onChanged:
                               widget.viewModel.setHistoryRetentionDays,
                         ),
+                        const SizedBox(height: 20),
+                        const Divider(color: AppTheme.darkBorder),
+                        const SizedBox(height: 12),
+                        const SettingsLanguageSection(),
                         const SizedBox(height: 20),
                         const Divider(color: AppTheme.darkBorder),
                         const SizedBox(height: 12),

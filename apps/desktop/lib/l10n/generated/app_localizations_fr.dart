@@ -1614,4 +1614,16 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get errorMessage => 'Error Message';
+
+  @override
+  String get language => 'Langue';
+
+  @override
+  String get languageDescription => 'Langue de l\'interface utilisateur';
+
+  @override
+  String get french => 'Français';
+
+  @override
+  String get english => 'English';
 }
