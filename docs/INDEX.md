@@ -76,7 +76,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 
 | Fichier | Fonction |
 |---|---|
-| `lib/ui/features/downloads/view_models/downloads_view_model.dart` | ViewModel de l'écran des téléchargements |
+| `lib/app/app_controller.dart` | Racine de composition : session daemon + wiring des contrôleurs |
 | `lib/ui/features/downloads/views/downloads_screen.dart` | Écran principal des téléchargements |
 | `lib/ui/features/downloads/widgets/add_link_dialog.dart` | Dialogue d'ajout de lien ed2k |
 | `lib/ui/features/downloads/widgets/category_edit_dialog.dart` | Dialogue d'édition de catégorie |

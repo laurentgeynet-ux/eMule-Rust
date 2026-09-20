@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../ui/features/downloads/view_models/downloads_view_model.dart';
+import 'app_controller.dart';
 
 /// App-shell UI state: current nav section, downloads filter & search
 /// query, debug bar visibility, and the global status/error banners.

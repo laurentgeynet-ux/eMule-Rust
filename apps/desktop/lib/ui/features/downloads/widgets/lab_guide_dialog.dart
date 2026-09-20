@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
 import 'package:mule_client/mule_client.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'lab/lab_cleanup_dialog.dart';
 import 'lab/lab_directory_overview.dart';
 import 'lab/lab_error_banner.dart';
@@ -15,7 +15,7 @@ import 'lab/lab_step_peer.dart';
 /// Guided end-to-end loopback test flow: fixture generation, ed2k link,
 /// loopback peer, download connect, and test-data cleanup.
 class LabGuideDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const LabGuideDialog({super.key, required this.viewModel});
 

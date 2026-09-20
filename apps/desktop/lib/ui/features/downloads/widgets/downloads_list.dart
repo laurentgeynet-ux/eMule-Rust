@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'download_row.dart';
 
 /// Virtualized list of downloads (ListView.builder) with selection handling.
 class DownloadsList extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const DownloadsList({super.key, required this.viewModel});
 

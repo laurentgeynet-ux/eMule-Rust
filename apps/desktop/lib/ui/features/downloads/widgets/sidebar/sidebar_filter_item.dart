@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../../view_models/downloads_view_model.dart';
+import '../../../../../app/app_controller.dart';
 
 /// Sidebar filter row (All / Active / Paused / Completed / Failed) with
 /// count pill; dimmed when the count is zero and not selected.

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'diagnostic/capability_chip.dart';
 import 'diagnostic/diagnostic_card.dart';
 import 'diagnostic/diagnostic_copy_row.dart';
@@ -16,7 +16,7 @@ import 'lab_guide_dialog.dart';
 /// System & lab diagnostics: workdir mode/paths, daemon process info,
 /// capabilities, and sanitized/full copy actions.
 class DiagnosticDialog extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const DiagnosticDialog({super.key, required this.viewModel});
 

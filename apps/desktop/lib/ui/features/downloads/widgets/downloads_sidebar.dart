@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'category_edit_dialog.dart';
 import 'diagnostic_dialog.dart';
 import 'import_part_met_dialog.dart';
@@ -19,7 +19,7 @@ import 'sidebar/sidebar_status_colors.dart';
 /// Left navigation rail: brand header, download filters, categories,
 /// section navigation, action shortcuts and the daemon status card.
 class DownloadsSidebar extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
   final bool isCompact;
 
   const DownloadsSidebar({

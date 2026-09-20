@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 import '../../../../core/folder_picker.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'category/category_color_picker.dart';
 import 'category/category_priority_dropdown.dart';
 
 /// Create or edit a download category (name, color, default destination
 /// and priority).
 class CategoryEditDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
   final CategoryItem? category; // null when creating
 
   const CategoryEditDialog({

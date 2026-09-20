@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:desktop/app/providers.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:desktop/app/app_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:desktop/ui/features/kad/views/kad_screen.dart';
 
 void main() {
   group('KadView UI Tests (Phase 12.0a)', () {
     late FakeMuleDaemonClient client;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       client = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: client);
+      viewModel = AppController(client: client);
       await viewModel.initialize();
     });
 
@@ -30,7 +30,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            downloadsViewModelProvider.overrideWithValue(viewModel),
+            appControllerProvider.overrideWith((ref) => viewModel, disposeNotifier: false),
           ],
           child: MaterialApp(
             home: Scaffold(body: const KadView()),
@@ -65,7 +65,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            downloadsViewModelProvider.overrideWithValue(viewModel),
+            appControllerProvider.overrideWith((ref) => viewModel, disposeNotifier: false),
           ],
           child: MaterialApp(
             home: Scaffold(body: const KadView()),

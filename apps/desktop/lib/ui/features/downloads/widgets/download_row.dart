@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'download_detail_dialog.dart';
 import 'row/download_remove_confirm_dialog.dart';
 import 'row/download_row_compact.dart';
@@ -11,7 +11,7 @@ import 'row/download_row_full.dart';
 /// layouts based on available width.
 class DownloadRow extends StatelessWidget {
   final DownloadItem item;
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
   final bool isSelected;
   final VoidCallback onTap;
 

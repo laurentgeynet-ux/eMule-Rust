@@ -9,7 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'app/providers.dart';
 import 'app/router.dart';
-import 'ui/features/downloads/view_models/downloads_view_model.dart';
+import 'app/app_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +30,7 @@ void main() async {
     client = rpcClient;
   }
 
-  final viewModel = DownloadsViewModel(
+  final viewModel = AppController(
     client: client,
     supervisor: supervisor,
     isDevToolsAvailable: isDevToolsAvailable,
@@ -46,7 +46,7 @@ void main() async {
 }
 
 class EmuleSionApp extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
   final DaemonSupervisor? supervisor;
 
   const EmuleSionApp({
@@ -94,7 +94,11 @@ class _EmuleSionAppState extends State<EmuleSionApp> {
         devToolsEnabledProvider.overrideWithValue(
           widget.viewModel.isDevToolsAvailable,
         ),
-        downloadsViewModelProvider.overrideWithValue(widget.viewModel),
+        // The app controller outlives the widget tree; disposal stays manual.
+        appControllerProvider.overrideWith(
+          (ref) => widget.viewModel,
+          disposeNotifier: false,
+        ),
       ],
       child: MaterialApp.router(
         title: 'Emule-Sion',

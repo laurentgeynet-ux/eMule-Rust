@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:mule_client/mule_client.dart';
 
 import '../services/daemon_supervisor.dart';
-import '../ui/features/downloads/view_models/downloads_view_model.dart';
+import 'app_controller.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/downloads_store_controller.dart';
@@ -31,71 +31,84 @@ final daemonSupervisorProvider = Provider<DaemonSupervisor?>(
 /// (`ENABLE_DEV_TOOLS` or fake daemon).
 final devToolsEnabledProvider = Provider<bool>((ref) => false);
 
-/// Root presentation view model. Kept as the source of truth during the
-/// incremental Riverpod migration; per-domain controllers are progressively
-/// extracted from it and exposed below.
-final downloadsViewModelProvider = Provider<DownloadsViewModel>(
-  (ref) =>
-      throw UnimplementedError('downloadsViewModelProvider not overridden'),
+/// Application composition root (daemon session + per-domain controllers).
+/// Overridden by the `ProviderScope` created in [EmuleSionApp].
+final appControllerProvider = ChangeNotifierProvider<AppController>(
+  (ref) => throw UnimplementedError('appControllerProvider not overridden'),
+);
+
+/// Latest `DaemonInfo` handshake result (null until connected).
+final daemonInfoProvider = Provider<DaemonInfo?>(
+  (ref) => ref.watch(appControllerProvider).daemonInfo,
+);
+
+/// Daemon WebSocket connection state.
+final daemonConnectionStateProvider = Provider<DaemonConnectionState>(
+  (ref) => ref.watch(appControllerProvider).connectionState,
+);
+
+/// Desktop supervisor state (`idle` when there is no supervisor).
+final daemonSupervisorStateProvider = Provider<SupervisorState>(
+  (ref) => ref.watch(appControllerProvider).supervisorState,
 );
 
 /// History & Statistics sub-domain controller. The provider owns the
 /// controller's disposal (it is NOT disposed by the view model).
 final historyControllerProvider = ChangeNotifierProvider<HistoryController>(
-  (ref) => ref.watch(downloadsViewModelProvider).history,
+  (ref) => ref.read(appControllerProvider).history,
 );
 
 /// Kad DHT sub-domain controller. Provider-owned disposal.
 final kadControllerProvider = ChangeNotifierProvider<KadController>(
-  (ref) => ref.watch(downloadsViewModelProvider).kad,
+  (ref) => ref.read(appControllerProvider).kad,
 );
 
 /// Search sub-domain controller. Provider-owned disposal.
 final searchControllerProvider = ChangeNotifierProvider<SearchController>(
-  (ref) => ref.watch(downloadsViewModelProvider).search,
+  (ref) => ref.read(appControllerProvider).search,
 );
 
 /// eD2K servers sub-domain controller. Provider-owned disposal.
 final serversControllerProvider = ChangeNotifierProvider<ServersController>(
-  (ref) => ref.watch(downloadsViewModelProvider).serversController,
+  (ref) => ref.read(appControllerProvider).serversController,
 );
 
 /// Peer sources & session sub-domain controller. Provider-owned disposal.
 final peerSourcesControllerProvider =
     ChangeNotifierProvider<PeerSourcesController>(
-      (ref) => ref.watch(downloadsViewModelProvider).peerSources,
+      (ref) => ref.read(appControllerProvider).peerSources,
     );
 
 /// Categories sub-domain controller. Provider-owned disposal.
 final categoriesControllerProvider =
     ChangeNotifierProvider<CategoriesController>(
-      (ref) => ref.watch(downloadsViewModelProvider).categoriesCtl,
+      (ref) => ref.read(appControllerProvider).categoriesCtl,
     );
 
 /// Network policy / IP filter / rate limiter sub-domain controller.
 /// Provider-owned disposal.
 final networkPolicyControllerProvider =
     ChangeNotifierProvider<NetworkPolicyController>(
-      (ref) => ref.watch(downloadsViewModelProvider).networkPolicyCtl,
+      (ref) => ref.read(appControllerProvider).networkPolicyCtl,
     );
 
 /// Daemon settings sub-domain controller. Provider-owned disposal.
 final settingsControllerProvider = ChangeNotifierProvider<SettingsController>(
-  (ref) => ref.watch(downloadsViewModelProvider).settingsCtl,
+  (ref) => ref.read(appControllerProvider).settingsCtl,
 );
 
 /// Loopback lab / dev tools sub-domain controller. Provider-owned disposal.
 final labControllerProvider = ChangeNotifierProvider<LabController>(
-  (ref) => ref.watch(downloadsViewModelProvider).labCtl,
+  (ref) => ref.read(appControllerProvider).labCtl,
 );
 
 /// Downloads store sub-domain controller. Provider-owned disposal.
 final downloadsStoreControllerProvider =
     ChangeNotifierProvider<DownloadsStoreController>(
-      (ref) => ref.watch(downloadsViewModelProvider).downloadsCtl,
+      (ref) => ref.read(appControllerProvider).downloadsCtl,
     );
 
 /// App-shell UI state (section, filter, banners). Provider-owned disposal.
 final shellControllerProvider = ChangeNotifierProvider<ShellController>(
-  (ref) => ref.watch(downloadsViewModelProvider).shellCtl,
+  (ref) => ref.read(appControllerProvider).shellCtl,
 );

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 
 class DebugSimulationBar extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const DebugSimulationBar({super.key, required this.viewModel});
 

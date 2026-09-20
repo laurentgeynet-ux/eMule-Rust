@@ -6,7 +6,7 @@ import 'package:ui_kit/ui_kit.dart';
 import '../../../../app/providers.dart';
 import '../../../../app/shell_controller.dart';
 import '../../downloads/view_models/downloads_store_controller.dart';
-import '../../downloads/view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import '../view_models/search_controller.dart' as search_ctl;
 import '../widgets/search_connection_banner.dart';
 import '../widgets/search_form.dart';

@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:desktop/main.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:desktop/app/app_controller.dart';
 import 'package:desktop/ui/features/downloads/widgets/category_edit_dialog.dart';
 import 'package:desktop/ui/features/downloads/widgets/downloads_sidebar.dart';
 
 void main() {
   group('Category Management Widget Tests', () {
     late FakeMuleDaemonClient fakeClient;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: fakeClient);
+      viewModel = AppController(client: fakeClient);
       await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
     });
 

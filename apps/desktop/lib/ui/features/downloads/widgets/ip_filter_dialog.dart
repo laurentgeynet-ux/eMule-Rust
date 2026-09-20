@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'network/ip_filter_tab.dart';
 import 'network/rate_limits_tab.dart';
 
 /// IP filter (ipfilter.dat) + token-bucket rate limiters dialog.
 class IpFilterDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const IpFilterDialog({super.key, required this.viewModel});
 

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:go_router/go_router.dart';
 
 import '../ui/features/downloads/views/downloads_screen.dart';
-import '../ui/features/downloads/view_models/downloads_view_model.dart';
+import 'app_controller.dart';
 import '../ui/features/history/views/history_view.dart';
 import '../ui/features/kad/views/kad_screen.dart';
 import '../ui/features/search/views/search_screen.dart';
@@ -30,14 +30,14 @@ AppNavSection? pathToSection(String path) => switch (path) {
 
 /// Declarative router for the app.
 ///
-/// The [DownloadsViewModel] remains the source of truth for the current
+/// The [AppController] remains the source of truth for the current
 /// section (sidebar taps and programmatic [setSection] keep working).
 /// Synchronization is one-directional per side, avoiding redirect races:
 /// - VM → URL: a listener on the VM calls `router.go()` when the section
 ///   changes.
 /// - URL → VM: the shell adopts the matched location (deep links, browser
 ///   back/forward) by calling [setSection] after the frame.
-GoRouter createAppRouter(DownloadsViewModel viewModel) {
+GoRouter createAppRouter(AppController viewModel) {
   late final GoRouter router;
 
   void onSectionChanged() {

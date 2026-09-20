@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import '../widgets/debug_simulation_bar.dart';
 import '../widgets/download_details_panel.dart';
 import '../widgets/downloads_empty_state.dart';
@@ -18,9 +18,9 @@ import '../../kad/views/kad_screen.dart';
 /// drawer on narrow. Global banners and the debug bar wrap the routed content
 /// ([child]) provided by the `go_router` ShellRoute. When no [child] is given
 /// (standalone usage in tests), the content is derived from
-/// [DownloadsViewModel.currentSection].
+/// [AppController.currentSection].
 class DownloadsScreen extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
   final Widget? child;
 
   const DownloadsScreen({super.key, required this.viewModel, this.child});
@@ -111,7 +111,7 @@ class DownloadsScreen extends StatelessWidget {
 /// details panel for the selected download. Rendered as the `/downloads`
 /// route content inside [DownloadsScreen].
 class DownloadsView extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const DownloadsView({super.key, required this.viewModel});
 

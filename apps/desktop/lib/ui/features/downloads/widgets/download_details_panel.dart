@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'download_detail_dialog.dart';
 
 /// Collapsible summary panel shown at the bottom of the downloads workspace
 /// when a download is selected. Offers a shortcut to the full detail dialog.
 class DownloadDetailsPanel extends StatelessWidget {
   final DownloadItem item;
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
   final bool isSmall;
 
   const DownloadDetailsPanel({

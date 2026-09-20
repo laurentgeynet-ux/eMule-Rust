@@ -29,7 +29,7 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   avec routes déclaratives par section (`/downloads`, `/history`,
   `/servers`, `/search`, `/kad`), `ShellRoute` injectant le contenu dans le
   shell adaptatif (`DownloadsScreen` : sidebar ≥1100 px, rail compact
-  750–1100 px, drawer <750 px). Le `DownloadsViewModel` reste la source de
+  750–1100 px, drawer <750 px). Le `ShellController` reste la source de
   vérité de la section : sync VM→URL par listener (`router.go`), sync
   URL→VM (deep links, prêts pour le web) via adoption de la route dans le
   shell. Les vues de section ont désormais chacune leur `ListenableBuilder`.
@@ -43,7 +43,8 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 - **Migration Riverpod (P4, découpage du VM terminé)** : `ProviderScope`
   dans `EmuleSionApp` (`muleDaemonClientProvider`,
   `daemonSupervisorProvider`, `devToolsEnabledProvider`,
-  `downloadsViewModelProvider`). Le `DownloadsViewModel` (1781 → 744
+  `appControllerProvider`). L'ancien `DownloadsViewModel`, renommé
+  `AppController` et déplacé dans `lib/app/app_controller.dart` (1781 → ~740
   lignes) est découpé en **10 contrôleurs par sous-domaine**, chacun dans
   son fichier `features/<domaine>/view_models/` et exposé via un
   `ChangeNotifierProvider` dédié : `DownloadsStoreController` (store,

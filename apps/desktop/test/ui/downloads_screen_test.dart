@@ -5,18 +5,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:desktop/main.dart';
 import 'package:desktop/services/daemon_supervisor.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:desktop/app/app_controller.dart';
 import 'package:desktop/ui/features/downloads/widgets/download_row.dart';
 import 'package:desktop/ui/features/downloads/widgets/downloads_sidebar.dart';
 
 void main() {
   group('DownloadsScreen Widget Tests', () {
     late FakeMuleDaemonClient fakeClient;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: fakeClient);
+      viewModel = AppController(client: fakeClient);
       await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
     });
 
@@ -220,7 +220,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      final devVm = DownloadsViewModel(
+      final devVm = AppController(
         client: fakeClient,
         isDevToolsAvailable: true,
       );
@@ -252,7 +252,7 @@ void main() {
       for (final id in ['item-1', 'item-2', 'item-3']) {
         await emptyFake.removeDownload(id);
       }
-      final emptyVm = DownloadsViewModel(client: emptyFake);
+      final emptyVm = AppController(client: emptyFake);
       addTearDown(emptyVm.dispose);
 
       await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));
@@ -280,7 +280,7 @@ void main() {
       for (final id in ['item-1', 'item-2', 'item-3']) {
         await emptyFake.removeDownload(id);
       }
-      final emptyVm = DownloadsViewModel(client: emptyFake);
+      final emptyVm = AppController(client: emptyFake);
       addTearDown(emptyVm.dispose);
 
       await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'add_link_dialog.dart';
 import 'import_part_met_dialog.dart';
 import 'lab_guide_dialog.dart';
@@ -9,7 +9,7 @@ import 'lab_guide_dialog.dart';
 /// Empty state of the downloads list: icon, title, subtitle and the
 /// primary actions (add link, import .part.met, guided lab test).
 class DownloadsEmptyState extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const DownloadsEmptyState({super.key, required this.viewModel});
 

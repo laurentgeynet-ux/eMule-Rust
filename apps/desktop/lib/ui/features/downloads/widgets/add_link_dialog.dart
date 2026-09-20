@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 import '../../../../core/folder_picker.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'add_link/add_link_allocation_dropdown.dart';
 import 'add_link/add_link_category_dropdown.dart';
 import 'add_link/add_link_field_label.dart';
@@ -11,7 +11,7 @@ import 'add_link/ed2k_link_parser.dart';
 /// Dialog adding a download from an `ed2k://|file|…` link with category,
 /// target directory and disk allocation options.
 class AddLinkDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const AddLinkDialog({super.key, required this.viewModel});
 

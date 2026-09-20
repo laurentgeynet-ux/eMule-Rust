@@ -47,14 +47,16 @@ Si une couleur/valeur manque : **ajouter un token** dans
 
 - Routes déclaratives `go_router` dans `lib/app/router.dart` — jamais
   `Navigator.push` pour les sections principales.
-- Le `DownloadsViewModel` est la source de vérité de la section courante ;
+- Le `ShellController` (via `AppController`) est la source de vérité de la
+  section courante ;
   la synchro URL se fait dans `router.dart` (VM→URL par listener,
   URL→VM par adoption de la route dans le shell).
 
 ## État
 
-- P4 : le `DownloadsViewModel` est découpé en **contrôleurs par
-  sous-domaine** (1 classe/fichier sous
+- P4 : l'ancien `DownloadsViewModel` est devenu `AppController`
+  (`lib/app/app_controller.dart` — racine de composition + session daemon),
+  découpé en **contrôleurs par sous-domaine** (1 classe/fichier sous
   `features/<domaine>/view_models/`), chacun exposé via un
   `ChangeNotifierProvider` dans `app/providers.dart`. Les contrôleurs
   reçoivent `onStatus`/`onError` (+ callbacks de rafraîchissement

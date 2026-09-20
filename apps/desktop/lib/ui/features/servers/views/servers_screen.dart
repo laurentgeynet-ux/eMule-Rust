@@ -32,7 +32,7 @@ class _ServersViewState extends ConsumerState<ServersView> {
 
   @override
   Widget build(BuildContext context) {
-    final vm = ref.watch(downloadsViewModelProvider);
+    final vm = ref.watch(appControllerProvider);
     final ctl = ref.watch(serversControllerProvider);
 
     var servers = ctl.servers.where((s) {

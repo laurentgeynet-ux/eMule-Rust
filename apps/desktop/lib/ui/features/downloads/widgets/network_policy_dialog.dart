@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'network/network_audit_log_list.dart';
 import 'network/network_profile_selector.dart';
 import 'network/network_quotas_card.dart';
@@ -9,7 +9,7 @@ import 'network/network_state_banner.dart';
 /// Network policy & defense guard: kill switch, connectivity profile,
 /// socket budgets and the redacted audit log.
 class NetworkPolicyDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const NetworkPolicyDialog({super.key, required this.viewModel});
 

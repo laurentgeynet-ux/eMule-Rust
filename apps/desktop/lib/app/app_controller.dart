@@ -5,19 +5,19 @@ import 'package:flutter/foundation.dart';
 
 import 'package:mule_client/mule_client.dart';
 
-import '../../../../app/shell_controller.dart';
-import '../../../../services/daemon_supervisor.dart';
-import '../../../../services/work_directory_resolver.dart';
-import '../../history/view_models/history_controller.dart';
-import '../../kad/view_models/kad_controller.dart';
-import '../../search/view_models/search_controller.dart';
-import '../../servers/view_models/servers_controller.dart';
-import '../../settings/view_models/settings_controller.dart';
-import 'lab_controller.dart';
-import 'categories_controller.dart';
-import 'downloads_store_controller.dart';
-import 'network_policy_controller.dart';
-import 'peer_sources_controller.dart';
+import 'shell_controller.dart';
+import '../services/daemon_supervisor.dart';
+import '../services/work_directory_resolver.dart';
+import '../ui/features/history/view_models/history_controller.dart';
+import '../ui/features/kad/view_models/kad_controller.dart';
+import '../ui/features/search/view_models/search_controller.dart';
+import '../ui/features/servers/view_models/servers_controller.dart';
+import '../ui/features/settings/view_models/settings_controller.dart';
+import '../ui/features/downloads/view_models/lab_controller.dart';
+import '../ui/features/downloads/view_models/categories_controller.dart';
+import '../ui/features/downloads/view_models/downloads_store_controller.dart';
+import '../ui/features/downloads/view_models/network_policy_controller.dart';
+import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
 
@@ -44,7 +44,15 @@ enum DownloadFilter {
   }
 }
 
-class DownloadsViewModel extends ChangeNotifier {
+/// Application composition root and daemon session owner.
+///
+/// Wires the per-domain controllers (downloads store, categories, network
+/// policy, settings, lab, history, servers, peer sources, kad, search, shell)
+/// together, owns the daemon connection/supervisor subscriptions, and
+/// orchestrates `initialize`/`refresh`. Forwards controller notifications so
+/// legacy `ListenableBuilder` consumers keep working; new widgets should
+/// watch the per-domain providers in `app/providers.dart` instead.
+class AppController extends ChangeNotifier {
   final MuleDaemonClient client;
   final DaemonSupervisor? supervisor;
   final bool isDevToolsAvailable;
@@ -93,7 +101,7 @@ class DownloadsViewModel extends ChangeNotifier {
   StreamSubscription<void>? _instanceSub;
 
 
-  DownloadsViewModel({
+  AppController({
     required this.client,
     this.supervisor,
     this.isDevToolsAvailable = false,

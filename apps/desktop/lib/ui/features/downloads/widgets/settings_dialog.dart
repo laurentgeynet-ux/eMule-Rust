@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import '../../settings/widgets/network_mode_dialog.dart';
 import 'settings/settings_dialog_footer.dart';
 import 'settings/settings_dialog_header.dart';
@@ -14,7 +14,7 @@ import 'settings/settings_retention_section.dart';
 /// Download settings: default directory, history retention, network
 /// profile summary and network mode shortcut.
 class SettingsDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const SettingsDialog({super.key, required this.viewModel});
 

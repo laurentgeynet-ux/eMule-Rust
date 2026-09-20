@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
 import 'package:mule_client/mule_client.dart';
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'import/import_category_dropdown.dart';
 import 'import/import_field_label.dart';
 import 'import/import_inline_error.dart';
@@ -13,7 +13,7 @@ import 'import/import_safety_notice.dart';
 
 /// Import an existing eMule `.part.met` (inspect → preview → stage paused).
 class ImportPartMetDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const ImportPartMetDialog({super.key, required this.viewModel});
 

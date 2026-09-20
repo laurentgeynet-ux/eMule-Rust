@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'detail/download_detail_action_bar.dart';
 import 'detail/download_detail_header.dart';
 import 'detail/download_diagnostics_card.dart';
@@ -17,7 +17,7 @@ import 'detail/download_sources_card.dart';
 /// facade (or its sub-controllers) until providers reach this dialog.
 class DownloadDetailDialog extends StatefulWidget {
   final String downloadId;
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const DownloadDetailDialog({
     super.key,

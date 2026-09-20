@@ -32,7 +32,7 @@ class HistoryController extends ChangeNotifier {
   int get retentionDays => _retentionDays;
 
   /// Applies the retention policy found in daemon settings (see
-  /// `DownloadsViewModel.fetchSettings`).
+  /// `AppController.fetchSettings`).
   void syncRetentionFromSettings(Map<String, dynamic> settings) {
     _retentionDays =
         (settings['historyRetentionDays'] as num?)?.toInt() ?? 30;

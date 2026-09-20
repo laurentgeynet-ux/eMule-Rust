@@ -1,5 +1,5 @@
 import 'package:mule_client/mule_client.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:desktop/app/app_controller.dart';
 import 'package:desktop/ui/features/downloads/views/downloads_screen.dart';
 import 'package:desktop/ui/features/downloads/widgets/ip_filter_dialog.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   testWidgets('IP filter button opens dialog and displays tabs', (WidgetTester tester) async {
     final client = FakeMuleDaemonClient(enableAutoSimulation: false);
-    final viewModel = DownloadsViewModel(client: client, isDevToolsAvailable: true);
+    final viewModel = AppController(client: client, isDevToolsAvailable: true);
 
     await tester.binding.setSurfaceSize(const Size(1280, 800));
 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:desktop/main.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:desktop/app/app_controller.dart';
 import 'package:desktop/ui/features/downloads/widgets/download_row.dart';
 
 class LargeListMockClient implements MuleDaemonClient {
@@ -669,7 +669,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final mockClient = LargeListMockClient(500);
-      final viewModel = DownloadsViewModel(client: mockClient);
+      final viewModel = AppController(client: mockClient);
       await viewModel.initialize(url: Uri.parse('ws://mock:4660/rpc'));
 
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));

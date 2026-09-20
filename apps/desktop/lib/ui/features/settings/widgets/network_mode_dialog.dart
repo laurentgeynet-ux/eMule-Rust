@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
 import 'package:mule_client/mule_client.dart';
-import '../../downloads/view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'anti_ssrf_notice.dart';
 import 'network_mode_status_card.dart';
 import 'upnp_status_card.dart';
@@ -10,7 +10,7 @@ import 'upnp_status_card.dart';
 /// Network mode switch (confined lab ↔ public WAN/Kad) with UPnP
 /// traversal status and refresh.
 class NetworkModeDialog extends StatefulWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
 
   const NetworkModeDialog({super.key, required this.viewModel});
 

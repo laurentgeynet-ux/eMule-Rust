@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../view_models/downloads_view_model.dart';
+import '../../../../app/app_controller.dart';
 import 'add_link_dialog.dart';
 import 'diagnostic_dialog.dart';
 import 'ip_filter_dialog.dart';
@@ -13,7 +13,7 @@ import 'network_policy_dialog.dart';
 /// (diagnostics, lab tools, speeds, network policy, dev tools, refresh,
 /// add link).
 class DownloadsTopBar extends StatelessWidget {
-  final DownloadsViewModel viewModel;
+  final AppController viewModel;
   final bool isSmall;
 
   const DownloadsTopBar({
