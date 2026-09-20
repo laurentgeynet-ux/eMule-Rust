@@ -3,6 +3,17 @@
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [Unreleased]
+
+### Ajouté — Notes Kad (commentaires/évaluations de fichiers) et outillage MCP
+
+- **Kad notes — modèle wire et codec bornés** (`crates/mule-protocol/src/kad`) : `KadNoteWire` (entrée `CEntry` avec `m_bSource = false`), décodeurs/encodeurs pour `KADEMLIA2_SEARCH_NOTES_REQ` (`0x35`, `[target:16][file_size:u64]`), `KADEMLIA2_PUBLISH_NOTES_REQ` (`0x45`, `[target][source:16][tag_count:u8][tags]`), les réponses notes sur le `KADEMLIA2_SEARCH_RES` unifié (`0x3B`, forme émise par `CIndexed::SendValidNoteResult`) et le `KADEMLIA_SEARCH_NOTES_RES` legacy (`0x3A`). Listes de tags génériques bornées : tags connus décodés en `Ed2kTag`, inconnus préservés en `RawTag`, compteur plafonné à 32 — les commentaires restent des données d'affichage non fiables.
+- **Kad notes — index de stockage** (`kad_udp/storage.rs`) : map `target → source_id → entrée` (une note par publieur et par fichier), TTL 5 h, plafond 100 notes/fichier, filtrage `file_size` à la lecture (`SendValidNoteResult`), rapport `load` (0-100) dans `KADEMLIA2_PUBLISH_RES`. Handlers : `SearchNotesReq` servi, `PublishNotesReq` refusé quand le nœud est UDP-firewallé (garde eMule), réponse `0x4B` routée vers les transactions notes par `expected_response`.
+- **Kad notes — persistance SQLite** : table `kad_notes_index` (`file_hash`,`source_id` PK) stockant la liste de tags en **blob wire** (`encode_note_tags_blob`/`decode_note_tags_blob`) — les tags arbitraires/inconnus traversent un redémarrage à l'identique ; purge TTL et réhydratation au démarrage de la socket Kad.
+- **Kad notes — recherche et publication sortantes** : `send_search_notes`/`send_publish_notes` (transactions `KadUdpService` avec corrélation in-flight) ; `KadService::search_notes` interroge les 20 contacts les plus proches du hash fichier et agrège les notes dédupliquées par `source_id` ; `publish_note` pousse une liste de tags bornée (`filename`/`filesize`/`comment`/`rating`, commentaire ≤ 512 o). RPC : `kad.searchNotes`, `kad.publishNote`. Point subtil : `0x3B` étant partagé sources/keywords/notes, la boucle UDP **re-décode** le payload brut en forme notes quand une transaction attend `SearchNotesRes` (sinon les tag lists s'aplatiraient en entrées keyword).
+- **MCP** : nouveaux outils `emule_kad_search_notes` et `emule_kad_publish_note` ; `DaemonClient::call` applique un timeout de 60 s aux méthodes `kad.search*`/`kad.publish*` (les recherches itératives dépassent 15 s en WAN), exposé via `call_with_timeout`.
+- Tests : codec notes (roundtrips `0x35`/`0x45`/`0x3B`/`0x3A`, malformed, cap tags) ; store notes (upsert, cap, filtre taille, load) ; intégration `kad_udp` : publish → `0x4B` load → search → `0x3B` avec commentaire/rating → filtre taille.
+
 ## [0.1.9] - 2026-09-20
 
 ### Ajouté — Interopérabilité eMule 0.72a (fonctions essentielles du réseau eD2K/Kad)
