@@ -232,12 +232,18 @@ abstract class MuleDaemonClient {
   /// Get current eD2K server session status.
   Future<ServerSessionModel> getServerStatus();
 
-  /// Send a search query to the connected eD2K server.
-  Future<void> searchServer({
+  /// Send a search query to eD2K servers. With [udpOnly] (eMule "Global"
+  /// scope) only the UDP fan-out to the server list is performed, skipping
+  /// the TCP search on the connected server.
+  ///
+  /// Returns the raw RPC result, including `udpTargets` — the per-server
+  /// UDP wire form actually sent (`REQ3`/`REQ2`/`null`).
+  Future<Map<String, dynamic>> searchServer({
     required String term,
     int? minSize,
     int? maxSize,
     String? extension,
+    bool udpOnly = false,
   });
 
   /// Request sources from the connected eD2K server for a file hash.

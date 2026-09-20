@@ -407,12 +407,14 @@ class PeerSourcesMockClient implements MuleDaemonClient {
       ServerSessionModel.disconnected;
 
   @override
-  Future<void> searchServer({
+  Future<Map<String, dynamic>> searchServer({
     required String term,
     int? minSize,
     int? maxSize,
     String? extension,
-  }) async {}
+    bool udpOnly = false,
+  }) async =>
+      const {'sent': true};
 
   @override
   Future<void> queryServerSources({

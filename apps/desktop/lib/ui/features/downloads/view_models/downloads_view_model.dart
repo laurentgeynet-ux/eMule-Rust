@@ -1283,6 +1283,7 @@ class DownloadsViewModel extends ChangeNotifier {
     int? minSize,
     int? maxSize,
     String? extension,
+    bool udpOnly = false,
   }) async {
     final trimmed = term.trim();
     if (trimmed.isEmpty) return;
@@ -1294,13 +1295,33 @@ class DownloadsViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await client.searchServer(
+      final resp = await client.searchServer(
         term: trimmed,
         minSize: minSize,
         maxSize: maxSize,
         extension: extension,
+        udpOnly: udpOnly,
       );
-      _statusNotification = 'Recherche "$trimmed" envoyée au serveur';
+      final targets = resp['udpTargets'];
+      var udpSummary = '';
+      if (targets is List && targets.isNotEmpty) {
+        var req3 = 0, req2 = 0, failed = 0;
+        for (final t in targets) {
+          switch (t is Map ? t['request'] : null) {
+            case 'REQ3':
+              req3++;
+            case 'REQ2':
+              req2++;
+            default:
+              failed++;
+          }
+        }
+        udpSummary =
+            ' — UDP: $req3×REQ3, $req2×REQ2${failed > 0 ? ', $failed échec(s)' : ''}';
+      }
+      _statusNotification = udpOnly
+          ? 'Recherche globale "$trimmed" envoyée$udpSummary'
+          : 'Recherche "$trimmed" envoyée au serveur$udpSummary';
       // eD2K servers may legitimately never answer (busy, throttled, dead):
       // without a reply the spinner would block every later search forever.
       // Auto-release after 30 s — late results still populate the list.

@@ -1205,11 +1205,12 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<void> searchServer({
+  Future<Map<String, dynamic>> searchServer({
     required String term,
     int? minSize,
     int? maxSize,
     String? extension,
+    bool udpOnly = false,
   }) async {
     final results = [
       SearchResultFileModel(
@@ -1230,6 +1231,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         _searchResultController.add(results);
       }
     });
+    return <String, dynamic>{
+      'sent': true,
+      'udpTargets': const [],
+    };
   }
 
   @override

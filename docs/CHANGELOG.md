@@ -18,7 +18,8 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 - **Codec** (`mule-protocol/src/ed2k/server_udp.rs`) : `encode_glob_search_req3` (`0x90`) préfixe l'arbre de recherche REQ2 d'un tag `CT_SERVER_UDPSEARCH_FLAGS` (`0x0E`) = `SRVCAP_UDP_NEWTAGS_LARGEFILES` (`0x01`) écrit au format `WriteNewEd2kTag` (type `|0x80`, nom 1 octet) — déclare au serveur le support des tags nouveau format et des tailles 64 bits ; `OP_GLOBSERVSTATRES` décodé en entier (`challenge`, `users`, `files`, `udp_flags`, ports d'obfuscation TCP/UDP), constantes `SRV_UDPFLG_EXT_GETFILES`/`SRV_UDPFLG_LARGEFILES` exposées.
 - **Daemon** (`services/server_udp.rs`) : cache des `udp_flags` par adresse UDP de serveur, alimenté par `OP_GLOBSERVSTATRES` (réponse acceptée uniquement si le challenge correspond à un `GLOBSERVSTATREQ` émis — garde anti-usurpation d'eMule) ; `send_servstat_req` probe un serveur aux capacités inconnues avant la recherche ; `send_glob_search` choisit `REQ3` si `EXT_GETFILES` **et** `LARGEFILES` (logique `SearchResultsWnd.cpp`), `REQ2` sinon, et retourne la forme émise.
-- **RPC** : `servers.search` retourne désormais `udpTargets[]` (`{address, request: "REQ3"|"REQ2"|null}`) pour observer la sélection en test UI/MCP.
+- **RPC** : `servers.search` retourne désormais `udpTargets[]` (`{address, request: "REQ3"|"REQ2"|null}`) pour observer la sélection en test UI/MCP, et accepte `udpOnly` (portée « Global » d'eMule : fan-out UDP vers la liste de serveurs sans recherche TCP sur le serveur connecté).
+- **UI desktop (harnais de test)** : troisième cible de recherche « Global UDP » (`udpOnly`), bandeau d'info sans connexion requise, et résumé `UDP: n×REQ3, m×REQ2` affiché dans la notification de statut après envoi.
 - Tests : wire REQ3 (tag NewEd2k + payload verbatim), décodage `GLOBSERVSTATRES` complet et forme courte, sélection REQ3/REQ2/probe par socket UDP réelle en loopback.
 
 ## [0.1.9] - 2026-09-20

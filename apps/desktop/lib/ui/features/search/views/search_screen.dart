@@ -8,12 +8,15 @@ import '../../downloads/view_models/downloads_view_model.dart';
 
 enum SearchTarget {
   server,
+  global,
   kad;
 
   String get label {
     switch (this) {
       case SearchTarget.server:
         return 'Serveur eD2K';
+      case SearchTarget.global:
+        return 'Global (UDP)';
       case SearchTarget.kad:
         return 'Réseau Kad DHT';
     }
@@ -133,6 +136,7 @@ class _SearchViewState extends State<SearchView> {
         minSize: minBytes,
         maxSize: maxBytes,
         extension: ext.isNotEmpty ? ext : null,
+        udpOnly: _searchTarget == SearchTarget.global,
       );
     }
   }
@@ -142,7 +146,12 @@ class _SearchViewState extends State<SearchView> {
     final vm = widget.viewModel;
     final isConnected = vm.serverSession.status == ServerConnectionStatus.connected;
     final isKadActive = vm.kadStatus.isUdpActive;
-    final isSearchReady = _searchTarget == SearchTarget.kad ? isKadActive : isConnected;
+    final isSearchReady = switch (_searchTarget) {
+      SearchTarget.kad => isKadActive,
+      // Global UDP search only needs a populated server list.
+      SearchTarget.global => true,
+      SearchTarget.server => isConnected,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -287,6 +296,33 @@ class _SearchViewState extends State<SearchView> {
       }
     }
 
+    // Global UDP search targets the known-server list; a TCP connection is
+    // helpful (the connected server is queried too) but not required.
+    if (_searchTarget == SearchTarget.global && !isConnected) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.blue.withAlpha(20),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.lightBlueAccent.withAlpha(80)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.public_rounded, color: Colors.lightBlueAccent, size: 18),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Recherche globale UDP — interroge tous les serveurs connus '
+                '(REQ3 si le serveur supporte EXT_GETFILES + LARGEFILES).',
+                style: TextStyle(fontSize: 13, color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (isConnected) {
       final session = vm.serverSession;
       return Container(
@@ -420,6 +456,11 @@ class _SearchViewState extends State<SearchView> {
                           label: Text('Serveur eD2K', style: TextStyle(fontSize: 12)),
                         ),
                         ButtonSegment(
+                          value: SearchTarget.global,
+                          icon: Icon(Icons.public_rounded, size: 16),
+                          label: Text('Global UDP', style: TextStyle(fontSize: 12)),
+                        ),
+                        ButtonSegment(
                           value: SearchTarget.kad,
                           icon: Icon(Icons.hub_rounded, size: 16),
                           label: Text('Kad DHT', style: TextStyle(fontSize: 12)),
@@ -473,6 +514,11 @@ class _SearchViewState extends State<SearchView> {
                           label: Text('Serveur eD2K', style: TextStyle(fontSize: 13)),
                         ),
                         ButtonSegment(
+                          value: SearchTarget.global,
+                          icon: Icon(Icons.public_rounded, size: 16),
+                          label: Text('Global UDP', style: TextStyle(fontSize: 13)),
+                        ),
+                        ButtonSegment(
                           value: SearchTarget.kad,
                           icon: Icon(Icons.hub_rounded, size: 16),
                           label: Text('Réseau Kad DHT', style: TextStyle(fontSize: 13)),
@@ -522,7 +568,7 @@ class _SearchViewState extends State<SearchView> {
               ),
               child: Row(
                 children: [
-                  if (_searchTarget == SearchTarget.server) ...[
+                  if (_searchTarget != SearchTarget.kad) ...[
                     Expanded(
                       flex: 2,
                       child: TextField(
@@ -660,7 +706,11 @@ class _SearchViewState extends State<SearchView> {
   // ── Searching State ────────────────────────────────────────────────────────
 
   Widget _buildSearchingState(BuildContext context) {
-    final targetLabel = _searchTarget == SearchTarget.kad ? 'le réseau Kad DHT' : 'le serveur eD2K';
+    final targetLabel = switch (_searchTarget) {
+      SearchTarget.kad => 'le réseau Kad DHT',
+      SearchTarget.global => 'les serveurs eD2K (UDP)',
+      SearchTarget.server => 'le serveur eD2K',
+    };
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -684,10 +734,20 @@ class _SearchViewState extends State<SearchView> {
     bool isSearchReady,
   ) {
     final hasSearched = vm.lastSearchTerm != null;
-    final targetName = _searchTarget == SearchTarget.kad ? 'le réseau Kad DHT' : 'un serveur eD2K';
-    final helpText = _searchTarget == SearchTarget.kad
-        ? 'Les requêtes KADEMLIA2_SEARCH_KEYWORD interrogent les nœuds Kad stockant l\'index du mot-clé MD4.'
-        : 'Les requêtes OP_SEARCHREQUEST interrogent directement l\'index du serveur eD2K connecté.';
+    final targetName = switch (_searchTarget) {
+      SearchTarget.kad => 'le réseau Kad DHT',
+      SearchTarget.global => 'la liste de serveurs eD2K',
+      SearchTarget.server => 'un serveur eD2K',
+    };
+    final helpText = switch (_searchTarget) {
+      SearchTarget.kad =>
+        'Les requêtes KADEMLIA2_SEARCH_KEYWORD interrogent les nœuds Kad stockant l\'index du mot-clé MD4.',
+      SearchTarget.global =>
+        'Les requêtes OP_GLOBSEARCHREQ3/REQ2 sont envoyées en UDP à tous les serveurs connus (port TCP+4). '
+            'REQ3 est utilisé quand le serveur annonce EXT_GETFILES + LARGEFILES.',
+      SearchTarget.server =>
+        'Les requêtes OP_SEARCHREQUEST interrogent directement l\'index du serveur eD2K connecté.',
+    };
 
     return Center(
       child: Column(

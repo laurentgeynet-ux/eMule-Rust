@@ -766,17 +766,20 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<void> searchServer({
+  Future<Map<String, dynamic>> searchServer({
     required String term,
     int? minSize,
     int? maxSize,
     String? extension,
+    bool udpOnly = false,
   }) async {
     final params = <String, dynamic>{'term': term};
     if (minSize != null) params['minSize'] = minSize;
     if (maxSize != null) params['maxSize'] = maxSize;
     if (extension != null) params['extension'] = extension;
-    await _call('servers.search', params);
+    if (udpOnly) params['udpOnly'] = true;
+    final resp = await _call('servers.search', params);
+    return resp is Map<String, dynamic> ? resp : <String, dynamic>{};
   }
 
   @override

@@ -300,9 +300,14 @@ pub async fn handle_servers_search(
             .unwrap_or_default()
     };
 
-    state.server_session.search(query).await?;
+    // `udpOnly` (eMule "Global search" scope): skip the TCP search on the
+    // connected server and only fan out over UDP to the server list.
+    let udp_only = params["udpOnly"].as_bool().unwrap_or(false);
+    if !udp_only {
+        state.server_session.search(query).await?;
+    }
 
-    // Global UDP search (OP_GLOBSEARCHREQ2): eMule also queries servers over
+    // Global UDP search (OP_GLOBSEARCHREQ2/3): eMule also queries servers over
     // UDP — the connected server plus other enabled known servers, on their
     // UDP port (TCP+4). Fire-and-forget; answers arrive as OP_GLOBSEARCHRES.
     if !payload.is_empty() {
