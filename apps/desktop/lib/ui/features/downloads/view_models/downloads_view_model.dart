@@ -11,6 +11,7 @@ import '../../history/view_models/history_controller.dart';
 import '../../kad/view_models/kad_controller.dart';
 import '../../search/view_models/search_controller.dart';
 import '../../servers/view_models/servers_controller.dart';
+import 'peer_sources_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
 
@@ -68,10 +69,8 @@ class DownloadsViewModel extends ChangeNotifier {
   /// `features/servers/view_models/servers_controller.dart`).
   late final ServersController serversController;
 
-  final Map<String, List<PeerSourceModel>> _peerSources = {};
-  bool _isSourcesLoading = false;
-  PeerSessionModel _peerSession = PeerSessionModel.disconnected;
-  bool _isPeerConnecting = false;
+  /// Peer sources & session sub-domain (extracted controller).
+  late final PeerSourcesController peerSources;
 
   /// Kad DHT sub-domain (extracted controller).
   late final KadController kad;
@@ -84,8 +83,7 @@ class DownloadsViewModel extends ChangeNotifier {
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
-  StreamSubscription<Map<String, dynamic>>? _foundSourcesSub;
-  StreamSubscription<PeerSessionModel>? _peerSessionSub;
+
 
   DownloadsViewModel({
     required this.client,
@@ -113,6 +111,11 @@ class DownloadsViewModel extends ChangeNotifier {
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
     )..addListener(notifyListeners);
+    peerSources = PeerSourcesController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+    )..addListener(notifyListeners);
 
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
@@ -121,25 +124,6 @@ class DownloadsViewModel extends ChangeNotifier {
 
     _eventSub = client.downloadEvents.listen((event) {
       _downloads[event.download.id] = event.download;
-      notifyListeners();
-    });
-
-    _foundSourcesSub = client.foundSourcesEvents.listen((params) {
-      final rawSources = params['sources'] as List<dynamic>? ?? [];
-      final hash = params['file_hash'] as String? ?? '';
-      _statusNotification =
-          '${rawSources.length} source(s) trouvée(s) pour $hash';
-      if (hash.isNotEmpty) {
-        loadSourcesForHash(hash);
-      }
-      notifyListeners();
-    });
-
-    _peerSessionSub = client.peerSessionEvents.listen((session) {
-      _peerSession = session;
-      _isPeerConnecting =
-          session.status == PeerConnectionStatus.connecting ||
-          session.status == PeerConnectionStatus.handshaking;
       notifyListeners();
     });
 
@@ -1126,95 +1110,31 @@ class DownloadsViewModel extends ChangeNotifier {
 
   // --- Peer Sources & Session ---
 
-  bool get isSourcesLoading => _isSourcesLoading;
-  PeerSessionModel get peerSession => _peerSession;
-  bool get isPeerConnecting => _isPeerConnecting;
+  bool get isSourcesLoading => peerSources.isLoading;
+  PeerSessionModel get peerSession => peerSources.session;
+  bool get isPeerConnecting => peerSources.isConnecting;
 
-  List<PeerSourceModel> getSourcesForHash(String fileHash) {
-    return _peerSources[fileHash] ?? [];
-  }
+  List<PeerSourceModel> getSourcesForHash(String fileHash) =>
+      peerSources.getSourcesForHash(fileHash);
 
-  Future<void> loadSourcesForHash(String fileHash) async {
-    _isSourcesLoading = true;
-    notifyListeners();
-    try {
-      final sources = await client.listSources(fileHash);
-      _peerSources[fileHash] = sources;
-    } catch (e) {
-      _errorMessage = 'Échec du chargement des sources : $e';
-    } finally {
-      _isSourcesLoading = false;
-      notifyListeners();
-    }
-  }
+  Future<void> loadSourcesForHash(String fileHash) =>
+      peerSources.loadSourcesForHash(fileHash);
 
-  Future<bool> addManualSource(String fileHash, String address) async {
-    try {
-      final src = await client.addManualSource(fileHash, address);
-      final list = _peerSources.putIfAbsent(fileHash, () => []);
-      list.removeWhere((s) => s.address == address);
-      list.insert(0, src);
-      _statusNotification = 'Source $address ajoutée';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Échec de l\'ajout de la source : $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<bool> addManualSource(String fileHash, String address) =>
+      peerSources.addManualSource(fileHash, address);
 
   Future<bool> connectPeerSource(
     String fileHash,
     String address, {
     bool force = false,
-  }) async {
-    _isPeerConnecting = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      _peerSession = await client.connectPeerSource(
-        fileHash,
-        address,
-        force: force,
-      );
-      _statusNotification = 'Connexion à $address initialisée';
-      await loadSourcesForHash(fileHash);
-      return true;
-    } catch (e) {
-      _errorMessage = 'Échec de la connexion à la source : $e';
-      await loadSourcesForHash(fileHash);
-      return false;
-    } finally {
-      _isPeerConnecting = false;
-      notifyListeners();
-    }
-  }
+  }) =>
+      peerSources.connect(fileHash, address, force: force);
 
-  Future<void> disconnectPeerSource({String? address}) async {
-    try {
-      _peerSession = await client.disconnectPeerSource(address: address);
-      _statusNotification = address != null
-          ? 'Peer $address déconnecté'
-          : 'Session(s) peer déconnectée(s)';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Échec de la déconnexion peer : $e';
-      notifyListeners();
-    }
-  }
+  Future<void> disconnectPeerSource({String? address}) =>
+      peerSources.disconnect(address: address);
 
-  Future<void> clearSourcesForHash(String fileHash) async {
-    try {
-      await client.clearSources(fileHash);
-      _peerSources.remove(fileHash);
-      _statusNotification = 'Sources effacées';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Échec de l\'effacement des sources : $e';
-      notifyListeners();
-    }
-  }
+  Future<void> clearSourcesForHash(String fileHash) =>
+      peerSources.clearSourcesForHash(fileHash);
 
   // --- Kad DHT (delegated to KadController) ---
 
@@ -1251,10 +1171,10 @@ class DownloadsViewModel extends ChangeNotifier {
     _eventSub?.cancel();
     _supervisorSub?.cancel();
     _instanceSub?.cancel();
-    _foundSourcesSub?.cancel();
-    _peerSessionSub?.cancel();
-    // history/kad/search/servers are disposed by their providers when
-    // scoped.
+    
+    
+    // history/kad/search/servers/peerSources are disposed by their
+    // providers when scoped.
     supervisor?.dispose();
     client.dispose();
     super.dispose();

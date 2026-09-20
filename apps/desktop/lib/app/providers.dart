@@ -4,6 +4,7 @@ import 'package:mule_client/mule_client.dart';
 
 import '../services/daemon_supervisor.dart';
 import '../ui/features/downloads/view_models/downloads_view_model.dart';
+import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
 import '../ui/features/search/view_models/search_controller.dart';
@@ -52,3 +53,9 @@ final searchControllerProvider = ChangeNotifierProvider<SearchController>(
 final serversControllerProvider = ChangeNotifierProvider<ServersController>(
   (ref) => ref.watch(downloadsViewModelProvider).serversController,
 );
+
+/// Peer sources & session sub-domain controller. Provider-owned disposal.
+final peerSourcesControllerProvider =
+    ChangeNotifierProvider<PeerSourcesController>(
+      (ref) => ref.watch(downloadsViewModelProvider).peerSources,
+    );
