@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../../../../../services/daemon_supervisor.dart';
+import '../../../../../core/daemon_lifecycle.dart';
 
 /// Status dot color for the raw daemon connection state.
 Color connectionStateColor(DaemonConnectionState state) {

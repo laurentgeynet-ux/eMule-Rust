@@ -44,12 +44,12 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
             TextEditingController(text: cat.defaultDestination!);
       } else {
         _targetDirController = TextEditingController(
-          text: widget.viewModel.defaultDownloadDirectory.path,
+          text: widget.viewModel.defaultDownloadDirectoryPath,
         );
       }
     } else {
       _targetDirController = TextEditingController(
-        text: widget.viewModel.defaultDownloadDirectory.path,
+        text: widget.viewModel.defaultDownloadDirectoryPath,
       );
     }
     _linkController.addListener(_validateLink);
@@ -296,7 +296,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
 
     final destination = targetDir.isNotEmpty
         ? targetDir
-        : widget.viewModel.defaultDownloadDirectory.path;
+        : widget.viewModel.defaultDownloadDirectoryPath;
 
     final success = await widget.viewModel.addEd2kLink(
       link,

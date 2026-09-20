@@ -32,7 +32,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   @override
   void initState() {
     super.initState();
-    final currentDir = widget.viewModel.defaultDownloadDirectory.path;
+    final currentDir = widget.viewModel.defaultDownloadDirectoryPath;
     _dirController = TextEditingController(text: currentDir);
     widget.viewModel.fetchSettings();
   }
@@ -182,7 +182,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         _isSaving = false;
         if (success) {
           _dirController.text =
-              widget.viewModel.defaultDownloadDirectory.path;
+              widget.viewModel.defaultDownloadDirectoryPath;
           _inlineSuccess = 'Reset to portable default directory.';
           _inlineError = null;
         } else {

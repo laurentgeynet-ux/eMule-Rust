@@ -1,11 +1,9 @@
 import 'dart:io';
 
-enum WorkDirMode {
-  explicitCli,
-  environment,
-  portable,
-  installedDefault,
-}
+import 'package:app_shell/core/work_dirs.dart';
+
+export 'package:app_shell/core/work_dirs.dart' show WorkDirMode;
+
 
 class ResolvedDirectories {
   final Directory? bundleRoot;

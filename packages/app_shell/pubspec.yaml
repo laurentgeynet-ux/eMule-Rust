@@ -1,0 +1,30 @@
+name: app_shell
+description: Shared Emule-Sion application shell — AppController, feature views, providers, router, l10n. Platform-pure (no dart:io at import time).
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.13.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  go_router: ^18.0.1
+  shared_preferences: ^2.5.5
+  file_picker: 12.3.0
+  intl: ^0.20.3
+  mule_client:
+    path: ../mule_client
+  ui_kit:
+    path: ../ui_kit
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  generate: true

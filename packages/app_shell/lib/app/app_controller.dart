@@ -1,13 +1,14 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
 import 'package:mule_client/mule_client.dart';
 
 import 'shell_controller.dart';
-import '../services/daemon_supervisor.dart';
-import '../services/work_directory_resolver.dart';
+import '../core/daemon_lifecycle.dart';
+import '../core/system_actions.dart';
+import '../core/work_dirs.dart';
+
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
 import '../ui/features/search/view_models/search_controller.dart';
@@ -55,7 +56,7 @@ enum DownloadFilter {
 /// watch the per-domain providers in `app/providers.dart` instead.
 class AppController extends ChangeNotifier {
   final MuleDaemonClient client;
-  final DaemonSupervisor? supervisor;
+  final DaemonLifecycle? supervisor;
   final bool isDevToolsAvailable;
 
   DaemonConnectionState _connectionState = DaemonConnectionState.disconnected;
@@ -267,41 +268,29 @@ class AppController extends ChangeNotifier {
     if (info == null) return false;
     final isPortable =
         (info.workdirMode?.toLowerCase() == 'portable') ||
-        (supervisor?.resolveWorkDir().mode == WorkDirMode.portable);
+        (supervisor?.resolveWorkDirInfo().mode == WorkDirMode.portable);
     return isPortable && info.capabilities.contains('lab-tools');
   }
 
   Map<String, dynamic> get settings => settingsCtl.settings;
 
-  Directory get defaultDownloadDirectory {
+  /// Default download directory path (custom setting > daemon > supervisor).
+  String get defaultDownloadDirectoryPath {
     final customDir = settings['defaultDownloadDir'] as String?;
     if (customDir != null && customDir.isNotEmpty) {
-      return Directory(customDir);
+      return customDir;
     }
     final daemonDir = daemonInfo?.defaultDownloadDir;
     if (daemonDir != null && daemonDir.isNotEmpty) {
-      return Directory(daemonDir);
+      return daemonDir;
     }
-    if (supervisor != null) {
-      return supervisor!.resolveWorkDir().defaultDownloadDirectory;
-    }
-    return WorkDirectoryResolver.resolve().defaultDownloadDirectory;
+    return supervisor?.resolveWorkDirInfo().defaultDownloadDirPath ?? '';
   }
 
   Future<void> openDownloadsFolder() async {
-    final dir = defaultDownloadDirectory;
-    if (!dir.existsSync()) {
-      try {
-        dir.createSync(recursive: true);
-      } catch (_) {}
-    }
-    if (Platform.isWindows) {
-      await Process.start('explorer.exe', [dir.path]);
-    } else if (Platform.isMacOS) {
-      await Process.start('open', [dir.path]);
-    } else if (Platform.isLinux) {
-      await Process.start('xdg-open', [dir.path]);
-    }
+    final path = defaultDownloadDirectoryPath;
+    if (path.isEmpty) return;
+    await systemActions.openDirectory(path);
   }
 
   DownloadItem? get selectedDownload => selectedDownloadId != null

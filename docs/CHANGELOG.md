@@ -5,6 +5,19 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Architecture partagée — `packages/app_shell`** : tout le code UI/app
+  (`AppController`, providers, router, vues/features, l10n) est extrait de
+  `apps/desktop` vers `packages/app_shell` (platform-pure). Les points de
+  contact OS passent par des abstractions : `DaemonLifecycle` (implémenté
+  par `DaemonSupervisor` desktop), `WorkDirInfo`/`WorkDirMode`, et les
+  helpers conditionnels `systemActions`/`pickFolder` (stub web / impl IO).
+  `EmuleSionApp` est partagé ; `apps/desktop/lib/main.dart` devient un
+  thin entry point (window/tray/deep-links + supervisor).
+- **`apps/web` — remote controller** : nouvelle app Flutter web qui se
+  connecte à un mule-daemon existant via WebSocket (URL résolue depuis
+  `?daemon=ws://…`, `--dart-define=DAEMON_URL`, ou `ws://<hôte>:4660/rpc`).
+  `flutter build web` + dry-run WASM validés.
+
 - **Desktop polish (P6, début)** :
   - `file_picker` natif remplace le hack PowerShell dans
     `lib/core/folder_picker.dart` (Windows/Linux/macOS/Android).

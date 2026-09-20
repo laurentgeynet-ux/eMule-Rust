@@ -25,18 +25,18 @@ class DiagnosticDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final info = viewModel.daemonInfo;
     final supervisor = viewModel.supervisor;
-    final resolvedLocal = supervisor?.resolveWorkDir();
+    final resolvedLocal = supervisor?.resolveWorkDirInfo();
 
     final workdirMode = info?.workdirMode ??
         (resolvedLocal != null
             ? formatWorkDirMode(resolvedLocal.mode)
             : 'Unknown');
     final workdirPath = info?.workdirPath ??
-        resolvedLocal?.directory.path ??
+        resolvedLocal?.workDirPath ??
         'Not available';
     final downloadsPath = info?.defaultDownloadDir ??
-        resolvedLocal?.defaultDownloadDirectory.path ??
-        viewModel.defaultDownloadDirectory.path;
+        resolvedLocal?.defaultDownloadDirPath ??
+        viewModel.defaultDownloadDirectoryPath;
     final isPortable = workdirMode.toLowerCase() == 'portable';
     final isInstalled = workdirMode.toLowerCase() == 'installeddefault';
 

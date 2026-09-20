@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:mule_client/mule_client.dart';
 
-import '../services/daemon_supervisor.dart';
+import '../core/daemon_lifecycle.dart';
 import 'app_controller.dart';
 import 'locale_controller.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
@@ -24,7 +24,7 @@ final muleDaemonClientProvider = Provider<MuleDaemonClient>(
 );
 
 /// Desktop daemon supervisor (null in fake-daemon or remote-daemon modes).
-final daemonSupervisorProvider = Provider<DaemonSupervisor?>(
+final daemonSupervisorProvider = Provider<DaemonLifecycle?>(
   (ref) => null,
 );
 

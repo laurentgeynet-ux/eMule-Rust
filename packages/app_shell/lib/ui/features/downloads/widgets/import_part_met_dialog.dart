@@ -51,12 +51,12 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
             TextEditingController(text: cat.defaultDestination!);
       } else {
         _targetDirController = TextEditingController(
-          text: widget.viewModel.defaultDownloadDirectory.path,
+          text: widget.viewModel.defaultDownloadDirectoryPath,
         );
       }
     } else {
       _targetDirController = TextEditingController(
-        text: widget.viewModel.defaultDownloadDirectory.path,
+        text: widget.viewModel.defaultDownloadDirectoryPath,
       );
     }
   }

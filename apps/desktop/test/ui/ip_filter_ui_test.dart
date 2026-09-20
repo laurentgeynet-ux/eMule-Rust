@@ -1,8 +1,8 @@
 import 'package:mule_client/mule_client.dart';
-import 'package:desktop/app/app_controller.dart';
-import 'package:desktop/l10n/generated/app_localizations.dart';
-import 'package:desktop/ui/features/downloads/views/downloads_screen.dart';
-import 'package:desktop/ui/features/downloads/widgets/ip_filter_dialog.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:app_shell/l10n/generated/app_localizations.dart';
+import 'package:app_shell/ui/features/downloads/views/downloads_screen.dart';
+import 'package:app_shell/ui/features/downloads/widgets/ip_filter_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

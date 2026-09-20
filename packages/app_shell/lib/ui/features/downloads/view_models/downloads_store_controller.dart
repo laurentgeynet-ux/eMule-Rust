@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import '../../../../core/system_actions.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
@@ -292,25 +292,7 @@ class DownloadsStoreController extends ChangeNotifier {
     final targetPath = item.targetPath;
     if (targetPath == null || targetPath.isEmpty) return;
     try {
-      final file = File(targetPath);
-      final dir = file.parent;
-      if (Platform.isWindows) {
-        if (file.existsSync()) {
-          await Process.start('explorer.exe', ['/select,', file.path]);
-        } else if (dir.existsSync()) {
-          await Process.start('explorer.exe', [dir.path]);
-        }
-      } else if (Platform.isMacOS) {
-        if (file.existsSync()) {
-          await Process.start('open', ['-R', file.path]);
-        } else if (dir.existsSync()) {
-          await Process.start('open', [dir.path]);
-        }
-      } else if (Platform.isLinux) {
-        if (dir.existsSync()) {
-          await Process.start('xdg-open', [dir.path]);
-        }
-      }
+      await systemActions.revealFile(targetPath);
     } catch (e) {
       onError?.call('Could not open completed file location: $e');
       notifyListeners();
@@ -320,7 +302,7 @@ class DownloadsStoreController extends ChangeNotifier {
   String getRedactedDiagnostic(DownloadItem item) {
     String sanitizedTarget;
     try {
-      final sep = Platform.isWindows ? r'\' : '/';
+      final sep = systemActions.pathSeparator;
       sanitizedTarget = '[DOWNLOAD_DIR]$sep${item.fileName}';
     } catch (_) {
       sanitizedTarget = '[DOWNLOAD_DIR]/${item.fileName}';

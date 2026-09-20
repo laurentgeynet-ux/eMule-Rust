@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 
-import '../app/app_controller.dart';
+import 'package:app_shell/app/app_controller.dart';
 
 /// Receives OS deep links (`ed2k://`) and forwards them to the daemon via
 /// [AppController.addEd2kLink]. No-op on web.

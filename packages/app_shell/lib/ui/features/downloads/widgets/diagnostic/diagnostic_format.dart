@@ -1,6 +1,6 @@
 import 'package:mule_client/mule_client.dart';
 
-import '../../../../../services/work_directory_resolver.dart';
+import '../../../../../core/work_dirs.dart';
 
 /// Display label for a [WorkDirMode].
 String formatWorkDirMode(WorkDirMode mode) {

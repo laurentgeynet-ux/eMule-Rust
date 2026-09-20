@@ -248,9 +248,9 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
   @override
   Widget build(BuildContext context) {
     final workdir = widget.viewModel.daemonInfo?.workdirPath ??
-        widget.viewModel.supervisor?.resolveWorkDir().directory.path ??
+        widget.viewModel.supervisor?.resolveWorkDirInfo().workDirPath ??
         'data';
-    final downloadsDir = widget.viewModel.defaultDownloadDirectory.path;
+    final downloadsDir = widget.viewModel.defaultDownloadDirectoryPath;
 
     return Dialog(
       backgroundColor: AppTheme.darkSurface,
