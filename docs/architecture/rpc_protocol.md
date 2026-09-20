@@ -157,6 +157,10 @@ souscription et sérialise son payload via `to_wire_json()` ; tous les
 | `upnp.statusChanged` | `UpnpStatus` | `network` | par action UPnP |
 | `event.snapshotRequired` | `{skipped: u64}` | — (toujours forwardé) | rarissime (lag) |
 
+`DownloadSnapshot` inclut `etaSeconds` (Option<u64>, seconds restantes
+au débit courant) depuis E5 ; `PeerSessionSnapshot.transferRateBps`
+expose le débit par source.
+
 Le champ `sequence` (u64 monotone partagé) permet au client de détecter
 les trous et de resynchroniser via `*.list`/`*.status` — implémenté
 dans `RpcDaemonClient` (gap → `listDownloads()` en arrière-plan).

@@ -5,6 +5,13 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **E5 — Détail par pair + ETA** : `PeerSessionSnapshot.transferRateBps`
+  existait déjà (affiché dans la carte sources du détail) ; ajout de
+  `etaSeconds` au `DownloadSnapshot` léger (seconds restantes au débit
+  courant, `None` si nul/terminé) — peuplé dans `DownloadItem.etaSeconds`
+  sans appel `downloads.get`, affiché dans la ligne de téléchargement
+  (`ETA: 12m 34s` sous le débit).
+
 - **E4 — Fin du polling** : events daemon `kad.statusChanged`,
   `history.entryAdded`, `settings.changed {keys}`, `network.policyChanged`
   (topics `kad`/`history`/`settings`/`network`, payload nudge = refetch).

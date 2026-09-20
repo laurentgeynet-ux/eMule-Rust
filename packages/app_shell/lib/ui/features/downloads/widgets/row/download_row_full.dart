@@ -186,6 +186,14 @@ class DownloadRowFull extends StatelessWidget {
                   color: AppColors.textMuted,
                 ),
               ),
+              if (item.etaSeconds != null)
+                Text(
+                  '${context.l10n.eta}: ${Formatters.formatDuration(item.etaSeconds!)}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                  ),
+                ),
             ],
           ),
         ),

@@ -27,6 +27,9 @@ pub struct DownloadSnapshot {
     pub created_at_unix_ms: i64,
     pub updated_at_unix_ms: i64,
     pub category_id: Option<String>,
+    /// Seconds remaining at the current rate (None when stalled/done).
+    #[serde(default)]
+    pub eta_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -188,6 +191,13 @@ pub fn make_snapshot(
         0
     };
 
+    let remaining = dl.total_size.saturating_sub(received_bytes);
+    let eta_seconds = if download_rate_bps > 0 && remaining > 0 {
+        Some(remaining / download_rate_bps)
+    } else {
+        None
+    };
+
     DownloadSnapshot {
         id: dl.id,
         file_name: dl.display_name.clone(),
@@ -203,5 +213,6 @@ pub fn make_snapshot(
         created_at_unix_ms: dl.created_at,
         updated_at_unix_ms: dl.updated_at,
         category_id: dl.category_id.clone(),
+        eta_seconds,
     }
 }

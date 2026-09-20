@@ -113,7 +113,7 @@
 - [ ] `SettingsController`/`NetworkPolicyController` : appliquer les
       events (multi-clients synchronisés)
 
-## Phase E5 — Détail par pair (rang 5, optionnel)
+## Phase E5 — Détail par pair (rang 5) — ✅ livrée
 
 - [ ] `download_rate_bps` par `PeerSessionSnapshot` (débit par source)
 - [ ] Tableau des sources du détail download avec débit live
