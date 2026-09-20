@@ -5,6 +5,15 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **E3 — Cycle de vie downloads** : events daemon `event.downloadAdded` /
+  `downloadRemoved` / `downloadCompleted` / `downloadFailed` (topic
+  `downloads`), émis centralement par `DownloadService` (`set_event_channel`
+  — tous les chemins couverts : RPC, deep link, lab, transitions internes).
+  Côté client `DownloadLifecycleEvent` + `downloadLifecycleEvents` ; côté UI
+  `AppController` applique added/completed/failed via `upsert`, removed via
+  `removeLocal`, et affiche bannière de fin / erreur d'échec (toast partagé
+  desktop + web).
+
 - **E2 — Tick de stats globales** : event daemon `event.statsTick`
   (topic `stats`, ~2 s, suspendu sans abonné) avec `downloadBps`,
   `uploadBps`, `downloadsActive`, `peersConnected`, `serverConnected`,

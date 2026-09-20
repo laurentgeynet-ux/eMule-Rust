@@ -426,6 +426,10 @@ class PeerSourcesMockClient implements MuleDaemonClient {
   Stream<DaemonStatsModel> get statsEvents => const Stream.empty();
 
   @override
+  Stream<DownloadLifecycleEvent> get downloadLifecycleEvents =>
+      const Stream.empty();
+
+  @override
   Stream<PeerSessionModel> get peerSessionEvents =>
       _sessionEventsController.stream;
 

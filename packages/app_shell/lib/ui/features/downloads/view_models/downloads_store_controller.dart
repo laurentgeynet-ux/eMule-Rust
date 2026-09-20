@@ -53,6 +53,13 @@ class DownloadsStoreController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remove an entry locally (event.downloadRemoved).
+  void removeLocal(String id) {
+    if (_downloads.remove(id) != null) {
+      notifyListeners();
+    }
+  }
+
   /// Drop all entries (daemon restart / instance change).
   void clearAll() {
     _downloads.clear();

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::error::DaemonError;
+use crate::services::DaemonEvent;
 
 pub mod history_categories;
 pub mod operations;
@@ -26,6 +27,10 @@ pub struct DownloadService {
     temp_dir: PathBuf,
     active: HashMap<Uuid, ActiveDownload>,
     session_start_ms: i64,
+    /// Event channel installed by `AppState` for lifecycle events
+    /// (`event.downloadAdded/Removed/Completed/Failed`).
+    event_tx: Option<tokio::sync::broadcast::Sender<String>>,
+    sequence: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl DownloadService {
@@ -108,6 +113,8 @@ impl DownloadService {
             temp_dir,
             active,
             session_start_ms,
+            event_tx: None,
+            sequence: None,
         })
     }
 
@@ -120,7 +127,27 @@ impl DownloadService {
             temp_dir,
             active: HashMap::new(),
             session_start_ms: now_ms(),
+            event_tx: None,
+            sequence: None,
         })
+    }
+
+    /// Installs the broadcast channel used to emit download lifecycle
+    /// events. Called once by `AppState::new` before the service is shared.
+    pub fn set_event_channel(
+        &mut self,
+        tx: tokio::sync::broadcast::Sender<String>,
+        seq: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        self.event_tx = Some(tx);
+        self.sequence = Some(seq);
+    }
+
+    fn emit(&self, make: impl FnOnce(u64) -> DaemonEvent) {
+        let (Some(tx), Some(seq)) = (&self.event_tx, &self.sequence) else {
+            return;
+        };
+        make(seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst)).send(tx);
     }
 
     pub fn add_ed2k_link(
@@ -130,7 +157,7 @@ impl DownloadService {
         policy: AllocationPolicy,
         category_id: Option<String>,
     ) -> Result<DownloadSnapshot, DaemonError> {
-        operations::add_ed2k_link(
+        let snapshot = operations::add_ed2k_link(
             &mut self.db,
             &self.temp_dir,
             &mut self.active,
@@ -138,7 +165,12 @@ impl DownloadService {
             target_dir,
             policy,
             category_id,
-        )
+        )?;
+        self.emit(|sequence| DaemonEvent::DownloadAdded {
+            sequence,
+            download: snapshot.clone(),
+        });
+        Ok(snapshot)
     }
 
     pub fn inspect_part_met(
@@ -219,7 +251,12 @@ impl DownloadService {
     }
 
     pub fn remove_download(&mut self, id: &Uuid, delete_files: bool) -> Result<(), DaemonError> {
-        operations::remove_download(&mut self.db, &mut self.active, id, delete_files)
+        operations::remove_download(&mut self.db, &mut self.active, id, delete_files)?;
+        self.emit(|sequence| DaemonEvent::DownloadRemoved {
+            sequence,
+            id: id.to_string(),
+        });
+        Ok(())
     }
 
     pub fn inject_range(
@@ -236,7 +273,23 @@ impl DownloadService {
         id: &Uuid,
         status: DownloadStatus,
     ) -> Result<DownloadSnapshot, DaemonError> {
-        operations::update_status(&mut self.db, &mut self.active, id, status)
+        let snapshot = operations::update_status(&mut self.db, &mut self.active, id, status)?;
+        match status {
+            DownloadStatus::Completed => self.emit(|sequence| DaemonEvent::DownloadCompleted {
+                sequence,
+                download: snapshot.clone(),
+            }),
+            DownloadStatus::Failed => {
+                let reason = self.active.get(id).and_then(|a| a.last_error.clone());
+                self.emit(|sequence| DaemonEvent::DownloadFailed {
+                    sequence,
+                    download: snapshot.clone(),
+                    reason: reason.clone(),
+                });
+            }
+            _ => {}
+        }
+        Ok(snapshot)
     }
 
     pub fn get_missing_ranges(&self, id: &Uuid) -> Option<Vec<std::ops::Range<u64>>> {

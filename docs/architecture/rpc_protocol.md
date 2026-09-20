@@ -140,6 +140,10 @@ souscription et sérialise son payload via `to_wire_json()` ; tous les
 | method | params | topic | Fréquence |
 |---|---|---|---|
 | `event.downloadUpdated` | `{sequence, download: DownloadSnapshot}` | `downloads` | haute (progression) |
+| `event.downloadAdded` | `{sequence, download: DownloadSnapshot}` | `downloads` | par ajout |
+| `event.downloadRemoved` | `{sequence, id}` | `downloads` | par suppression |
+| `event.downloadCompleted` | `{sequence, download: DownloadSnapshot}` | `downloads` | transition → `completed` |
+| `event.downloadFailed` | `{sequence, download: DownloadSnapshot, reason}` | `downloads` | transition → `failed` |
 | `event.peerSessionUpdated` | `{sequence, session: PeerSessionSnapshot}` | `peers` | moyenne |
 | `server.sessionUpdated` | `{sequence, session: ServerSessionSnapshot}` | `servers` | faible |
 | `upload.uploadsUpdated` | `{sequence, active: [UploadSessionSnapshot], queue: [UploadSessionSnapshot], uploadRateBps}` | `uploads` | par mutation + progression throttlée ~500 ms |

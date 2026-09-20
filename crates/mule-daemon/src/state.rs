@@ -45,7 +45,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(config: DaemonConfig, downloads: DownloadService) -> Self {
+    pub fn new(config: DaemonConfig, mut downloads: DownloadService) -> Self {
         let (event_tx, _) = broadcast::channel(1024);
         let (max_per_dl, max_global) = {
             let max_g = downloads
@@ -73,6 +73,7 @@ impl AppState {
         let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
         let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence))
             .with_limits(max_per_dl, max_global);
+        downloads.set_event_channel(event_tx.clone(), Arc::clone(&sequence));
         let dl_arc = Arc::new(Mutex::new(downloads));
         server_session.set_downloads(Arc::clone(&dl_arc));
         let identity_service = crate::services::IdentityService::load_or_generate(&config.data_dir);

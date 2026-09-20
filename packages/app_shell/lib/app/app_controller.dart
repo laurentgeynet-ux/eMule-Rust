@@ -113,6 +113,7 @@ class AppController extends ChangeNotifier {
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
+  StreamSubscription<DownloadLifecycleEvent>? _lifecycleSub;
 
 
   AppController({
@@ -207,6 +208,29 @@ class AppController extends ChangeNotifier {
       onDownloadUpdated: downloadsCtl.upsert,
       onRefreshDownloads: refresh,
     )..addListener(notifyListeners);
+
+    _lifecycleSub = client.downloadLifecycleEvents.listen((e) {
+      switch (e.kind) {
+        case DownloadLifecycleKind.added:
+          final d = e.download;
+          if (d != null) downloadsCtl.upsert(d);
+        case DownloadLifecycleKind.removed:
+          final id = e.id;
+          if (id != null) downloadsCtl.removeLocal(id);
+        case DownloadLifecycleKind.completed:
+          final d = e.download;
+          if (d != null) {
+            downloadsCtl.upsert(d);
+            shellCtl.setStatus('Téléchargement terminé : ${d.fileName}');
+          }
+        case DownloadLifecycleKind.failed:
+          final d = e.download;
+          if (d != null) downloadsCtl.upsert(d);
+          shellCtl.setError(
+            'Échec du téléchargement : ${d?.fileName ?? e.id ?? "?"}',
+          );
+      }
+    });
 
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
@@ -744,6 +768,7 @@ class AppController extends ChangeNotifier {
     stats.dispose();
     uploads.dispose();
     _connSub?.cancel();
+    _lifecycleSub?.cancel();
     
     _supervisorSub?.cancel();
     _instanceSub?.cancel();

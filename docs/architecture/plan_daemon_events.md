@@ -63,7 +63,7 @@
 - [ ] Top bar : badges serveur/Kad rafraîchis par le tick
 - [ ] Extension future : mini-dashboard d'accueil
 
-## Phase E3 — Cycle de vie des downloads (rang 3)
+## Phase E3 — Cycle de vie des downloads (rang 3) — ✅ livrée
 
 ### Daemon
 

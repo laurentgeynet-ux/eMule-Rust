@@ -73,6 +73,10 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<DaemonStatsModel> get statsEvents => _statsController.stream;
+
+  @override
+  Stream<DownloadLifecycleEvent> get downloadLifecycleEvents =>
+      _lifecycleController.stream;
   @override
   Stream<ServerSessionModel> get serverSessionEvents =>
       _serverSessionController.stream;
@@ -394,6 +398,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     );
 
     _downloads[id] = item;
+    _emitLifecycle(DownloadLifecycleKind.added, download: item);
     _emitUpdate(item);
     return id;
   }
@@ -433,6 +438,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   @override
   Future<void> removeDownload(String id, {bool deleteFiles = false}) async {
     _downloads.remove(id);
+    _emitLifecycle(DownloadLifecycleKind.removed, id: id);
   }
 
   @override
@@ -472,7 +478,28 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       StreamController<UploadsSnapshotModel>.broadcast();
   final StreamController<DaemonStatsModel> _statsController =
       StreamController<DaemonStatsModel>.broadcast();
+  final StreamController<DownloadLifecycleEvent> _lifecycleController =
+      StreamController<DownloadLifecycleEvent>.broadcast();
   int _simTick = 0;
+
+  void _emitLifecycle(
+    DownloadLifecycleKind kind, {
+    DownloadItem? download,
+    String? id,
+    String? reason,
+  }) {
+    if (_lifecycleController.isClosed) return;
+    _sequence += 1;
+    _lifecycleController.add(
+      DownloadLifecycleEvent(
+        sequence: _sequence,
+        kind: kind,
+        download: download,
+        id: id,
+        reason: reason,
+      ),
+    );
+  }
 
   void _emitUpdate(DownloadItem item) {
     _sequence += 1;
@@ -509,6 +536,12 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
 
           _downloads[item.id] = updated;
           _emitUpdate(updated);
+          if (isDone) {
+            _emitLifecycle(
+              DownloadLifecycleKind.completed,
+              download: updated,
+            );
+          }
         }
       }
       _emitUploadsTick();
@@ -1854,5 +1887,6 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _serverSessionController.close();
     _uploadsController.close();
     _statsController.close();
+    _lifecycleController.close();
   }
 }

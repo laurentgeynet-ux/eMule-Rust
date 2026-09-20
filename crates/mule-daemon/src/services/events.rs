@@ -43,6 +43,24 @@ pub enum DaemonEvent {
         sequence: u64,
         download: DownloadSnapshot,
     },
+    /// A download was added to the queue (any source: RPC, deep link, lab).
+    DownloadAdded {
+        sequence: u64,
+        download: DownloadSnapshot,
+    },
+    /// A download was removed from the queue. Carries only the id.
+    DownloadRemoved { sequence: u64, id: String },
+    /// A download transitioned to `completed` (verified + moved).
+    DownloadCompleted {
+        sequence: u64,
+        download: DownloadSnapshot,
+    },
+    /// A download transitioned to `failed`.
+    DownloadFailed {
+        sequence: u64,
+        download: DownloadSnapshot,
+        reason: Option<String>,
+    },
     /// A peer session's connection or transfer status changed.
     PeerSessionUpdated {
         sequence: u64,
@@ -80,6 +98,10 @@ impl DaemonEvent {
     pub fn method(&self) -> &str {
         match self {
             Self::DownloadUpdated { .. } => "event.downloadUpdated",
+            Self::DownloadAdded { .. } => "event.downloadAdded",
+            Self::DownloadRemoved { .. } => "event.downloadRemoved",
+            Self::DownloadCompleted { .. } => "event.downloadCompleted",
+            Self::DownloadFailed { .. } => "event.downloadFailed",
             Self::PeerSessionUpdated { .. } => "event.peerSessionUpdated",
             Self::ServerSessionUpdated { .. } => "server.sessionUpdated",
             Self::UploadsUpdated { .. } => "upload.uploadsUpdated",
@@ -92,7 +114,11 @@ impl DaemonEvent {
     /// control events that bypass the topic filter.
     pub fn topic(&self) -> Option<&'static str> {
         match self {
-            Self::DownloadUpdated { .. } => Some("downloads"),
+            Self::DownloadUpdated { .. }
+            | Self::DownloadAdded { .. }
+            | Self::DownloadRemoved { .. }
+            | Self::DownloadCompleted { .. }
+            | Self::DownloadFailed { .. } => Some("downloads"),
             Self::PeerSessionUpdated { .. } => Some("peers"),
             Self::ServerSessionUpdated { .. } => Some("servers"),
             Self::UploadsUpdated { .. } => Some("uploads"),
@@ -109,9 +135,24 @@ impl DaemonEvent {
     /// Serializes to the JSON-RPC notification frame sent over the socket.
     pub fn to_wire_json(&self) -> Option<String> {
         let params = match self {
-            Self::DownloadUpdated { sequence, download } => serde_json::json!({
+            Self::DownloadUpdated { sequence, download }
+            | Self::DownloadAdded { sequence, download }
+            | Self::DownloadCompleted { sequence, download } => serde_json::json!({
                 "sequence": sequence,
                 "download": download,
+            }),
+            Self::DownloadRemoved { sequence, id } => serde_json::json!({
+                "sequence": sequence,
+                "id": id,
+            }),
+            Self::DownloadFailed {
+                sequence,
+                download,
+                reason,
+            } => serde_json::json!({
+                "sequence": sequence,
+                "download": download,
+                "reason": reason,
             }),
             Self::PeerSessionUpdated { sequence, session } => serde_json::json!({
                 "sequence": sequence,

@@ -52,6 +52,8 @@ class RpcDaemonClient implements MuleDaemonClient {
       StreamController<UploadsSnapshotModel>.broadcast();
   final StreamController<DaemonStatsModel> _statsController =
       StreamController<DaemonStatsModel>.broadcast();
+  final StreamController<DownloadLifecycleEvent> _lifecycleController =
+      StreamController<DownloadLifecycleEvent>.broadcast();
 
   // Factory constructor or provider callback for custom channel (useful for testing)
   final WebSocketChannel Function(Uri uri)? channelFactory;
@@ -103,6 +105,10 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<DaemonStatsModel> get statsEvents => _statsController.stream;
+
+  @override
+  Stream<DownloadLifecycleEvent> get downloadLifecycleEvents =>
+      _lifecycleController.stream;
 
   @override
   DaemonInfo? get daemonInfo => _daemonInfo;
@@ -358,6 +364,30 @@ class RpcDaemonClient implements MuleDaemonClient {
               ServerSessionModel.fromJson(sessionJson),
             );
           }
+        }
+      } else if (method == 'event.downloadAdded' ||
+          method == 'event.downloadRemoved' ||
+          method == 'event.downloadCompleted' ||
+          method == 'event.downloadFailed') {
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null && !_lifecycleController.isClosed) {
+          final dlJson = params['download'];
+          _lifecycleController.add(
+            DownloadLifecycleEvent(
+              sequence: (params['sequence'] as num?)?.toInt() ?? 0,
+              kind: switch (method) {
+                'event.downloadAdded' => DownloadLifecycleKind.added,
+                'event.downloadRemoved' => DownloadLifecycleKind.removed,
+                'event.downloadCompleted' => DownloadLifecycleKind.completed,
+                _ => DownloadLifecycleKind.failed,
+              },
+              download: dlJson is Map<String, dynamic>
+                  ? DownloadItem.fromJson(dlJson)
+                  : null,
+              id: params['id'] as String?,
+              reason: params['reason'] as String?,
+            ),
+          );
         }
       } else if (method == 'event.statsTick') {
         final params = data['params'] as Map<String, dynamic>?;
@@ -1315,6 +1345,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     _serverSessionController.close();
     _uploadsController.close();
     _statsController.close();
+    _lifecycleController.close();
   }
 }
 

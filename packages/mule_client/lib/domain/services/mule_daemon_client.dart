@@ -29,6 +29,11 @@ abstract class MuleDaemonClient {
   /// Stream of download updates emitted by the daemon.
   Stream<DownloadUpdatedEvent> get downloadEvents;
 
+  /// Stream of download lifecycle events (`event.downloadAdded/Removed/
+  /// Completed/Failed`). Complements [downloadEvents] which carries
+  /// progression updates.
+  Stream<DownloadLifecycleEvent> get downloadLifecycleEvents;
+
   /// Fetch full snapshot of all downloads and current sequence.
   Future<List<DownloadItem>> listDownloads();
 

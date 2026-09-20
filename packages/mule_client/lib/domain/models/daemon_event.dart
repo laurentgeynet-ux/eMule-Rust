@@ -14,3 +14,31 @@ class DownloadUpdatedEvent {
   @override
   String toString() => 'DownloadUpdatedEvent(seq: $sequence, dl: ${download.id}, progress: ${download.progress})';
 }
+
+/// Lifecycle transitions of a download (`event.downloadAdded/Removed/
+/// Completed/Failed`). Distinct from [DownloadUpdatedEvent] (progression) —
+/// lets the UI react to queue changes without diffing `downloads.list`.
+enum DownloadLifecycleKind { added, removed, completed, failed }
+
+@immutable
+class DownloadLifecycleEvent {
+  final int sequence;
+  final DownloadLifecycleKind kind;
+
+  /// Snapshot of the download (null for [DownloadLifecycleKind.removed]).
+  final DownloadItem? download;
+
+  /// Download id (set for [DownloadLifecycleKind.removed]).
+  final String? id;
+
+  /// Failure reason when [kind] is `failed`.
+  final String? reason;
+
+  const DownloadLifecycleEvent({
+    required this.sequence,
+    required this.kind,
+    this.download,
+    this.id,
+    this.reason,
+  });
+}
