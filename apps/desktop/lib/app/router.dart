@@ -94,7 +94,7 @@ GoRouter createAppRouter(DownloadsViewModel viewModel) {
           GoRoute(
             path: '/search',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: SearchView(viewModel: viewModel),
+              child: const SearchView(),
             ),
           ),
           GoRoute(

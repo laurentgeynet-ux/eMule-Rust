@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../app/providers.dart';
 import '../../downloads/view_models/downloads_view_model.dart';
 
 enum SearchTarget {
@@ -22,16 +24,19 @@ enum SearchTarget {
   }
 }
 
-class SearchView extends StatefulWidget {
-  final DownloadsViewModel viewModel;
-
-  const SearchView({super.key, required this.viewModel});
+/// Search section (eD2K server / global UDP / Kad DHT).
+///
+/// Rebuilds are driven by the domain controllers (search results, kad
+/// status, server session); the root VM facade is used for cross-domain
+/// actions and reads that have not migrated yet.
+class SearchView extends ConsumerStatefulWidget {
+  const SearchView({super.key});
 
   @override
-  State<SearchView> createState() => _SearchViewState();
+  ConsumerState<SearchView> createState() => _SearchViewState();
 }
 
-class _SearchViewState extends State<SearchView> {
+class _SearchViewState extends ConsumerState<SearchView> {
   final TextEditingController _queryController = TextEditingController();
   final TextEditingController _minSizeController = TextEditingController();
   final TextEditingController _maxSizeController = TextEditingController();
@@ -123,14 +128,15 @@ class _SearchViewState extends State<SearchView> {
     final minBytes = minMb != null ? minMb * 1024 * 1024 : null;
     final maxBytes = maxMb != null ? maxMb * 1024 * 1024 : null;
 
+    final vm = ref.read(downloadsViewModelProvider);
     if (_searchTarget == SearchTarget.kad) {
-      widget.viewModel.searchKadKeywords(
+      vm.searchKadKeywords(
         term: term,
         minSize: minBytes,
         maxSize: maxBytes,
       );
     } else {
-      widget.viewModel.searchServer(
+      vm.searchServer(
         term: term,
         minSize: minBytes,
         maxSize: maxBytes,
@@ -142,11 +148,13 @@ class _SearchViewState extends State<SearchView> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.viewModel,
-      builder: (context, _) {
-    final vm = widget.viewModel;
-    final isConnected = vm.serverSession.status == ServerConnectionStatus.connected;
+    final vm = ref.watch(downloadsViewModelProvider);
+    // Rebuild triggers — domain controllers actually consumed by this view.
+    ref.watch(searchControllerProvider);
+    ref.watch(kadControllerProvider);
+    ref.watch(serversControllerProvider);
+    final isConnected =
+        vm.serverSession.status == ServerConnectionStatus.connected;
     final isKadActive = vm.kadStatus.isUdpActive;
     final isSearchReady = switch (_searchTarget) {
       SearchTarget.kad => isKadActive,
@@ -170,8 +178,6 @@ class _SearchViewState extends State<SearchView> {
                   : _buildResultsTable(context, vm),
         ),
       ],
-    );
-      },
     );
   }
 

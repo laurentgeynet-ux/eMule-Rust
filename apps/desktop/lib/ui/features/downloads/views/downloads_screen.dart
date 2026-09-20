@@ -100,7 +100,7 @@ class DownloadsScreen extends StatelessWidget {
     return switch (viewModel.currentSection) {
       AppNavSection.history => const HistoryView(),
       AppNavSection.servers => const ServersView(),
-      AppNavSection.search => SearchView(viewModel: viewModel),
+      AppNavSection.search => const SearchView(),
       AppNavSection.kad => const KadView(),
       AppNavSection.downloads => DownloadsView(viewModel: viewModel),
     };
