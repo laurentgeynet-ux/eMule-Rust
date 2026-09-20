@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../app/app_controller.dart';
+import '../../../../l10n/l10n.dart';
 import 'add_link_dialog.dart';
 import 'import_part_met_dialog.dart';
 import 'lab_guide_dialog.dart';
@@ -35,8 +36,8 @@ class DownloadsEmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
-          const Text(
-            AppStrings.emptyStateTitle,
+          Text(
+            context.l10n.emptyStateTitle,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -44,10 +45,10 @@ class DownloadsEmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 32),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              AppStrings.emptyStateSubtitle,
+              context.l10n.emptyStateSubtitle,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: AppColors.textFaint, height: 1.4),
             ),
@@ -60,7 +61,7 @@ class DownloadsEmptyState extends StatelessWidget {
             children: [
               FilledButton.icon(
                 icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text(AppStrings.btnAddEd2kLink),
+                label: Text(context.l10n.btnAddEd2kLink),
                 style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
                 onPressed: () {
                   showDialog(
@@ -72,7 +73,7 @@ class DownloadsEmptyState extends StatelessWidget {
               OutlinedButton.icon(
                 key: const Key('empty_import_part_met_btn'),
                 icon: const Icon(Icons.file_download_outlined, size: 16),
-                label: const Text('Import .part.met'),
+                label: Text(context.l10n.actionImportPartMet),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.textSecondary,
                   side: const BorderSide(color: AppColors.border),
@@ -87,7 +88,7 @@ class DownloadsEmptyState extends StatelessWidget {
               if (viewModel.isLabModeAvailable)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.biotech, size: 16),
-                  label: const Text('Guided Local Test'),
+                  label: Text(context.l10n.actionGuidedLabTest),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textSecondary,
                     side: BorderSide(color: AppColors.lab.withValues(alpha: 0.5)),

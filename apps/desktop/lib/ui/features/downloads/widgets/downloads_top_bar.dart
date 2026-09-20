@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../app/app_controller.dart';
+import '../../../../l10n/l10n.dart';
 import 'add_link_dialog.dart';
 import 'diagnostic_dialog.dart';
 import 'ip_filter_dialog.dart';
@@ -34,7 +35,7 @@ class DownloadsTopBar extends StatelessWidget {
             Builder(
               builder: (ctx) => IconButton(
                 icon: const Icon(Icons.menu_rounded, color: AppColors.textSecondary),
-                tooltip: 'Ouvrir le menu de navigation',
+                tooltip: context.l10n.tooltipOpenDrawer,
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
               ),
             ),
@@ -43,7 +44,7 @@ class DownloadsTopBar extends StatelessWidget {
           // Filter title
           if (!isSmall) ...[
             Text(
-              viewModel.currentFilter.label,
+              viewModel.currentFilter.labelOf(context),
               style: AppTextStyles.sectionTitle,
             ),
             const SizedBox(width: AppSpacing.lg),
@@ -57,7 +58,7 @@ class DownloadsTopBar extends StatelessWidget {
               onChanged: viewModel.setSearchQuery,
               style: const TextStyle(fontSize: 13),
               decoration: InputDecoration(
-                hintText: AppStrings.searchPlaceholder,
+                hintText: context.l10n.searchPlaceholder,
                 hintStyle: const TextStyle(fontSize: 12, color: AppColors.textFaint),
                 isDense: true,
                 prefixIcon: const Icon(Icons.search, size: 16, color: AppColors.textFaint),
@@ -90,11 +91,11 @@ class DownloadsTopBar extends StatelessWidget {
                   _buildIpFilterButton(context),
                   if (viewModel.isDevToolsAvailable) ...[
                     const SizedBox(width: AppSpacing.sm),
-                    _buildDevBadge(),
-                    _buildDebugBarButton(),
+                    _buildDevBadge(context),
+                    _buildDebugBarButton(context),
                   ],
                   const SizedBox(width: AppSpacing.xxs),
-                  _buildRefreshButton(),
+                  _buildRefreshButton(context),
                   const SizedBox(width: AppSpacing.sm - 2),
                   _buildAddLinkButton(context),
                 ],
@@ -111,8 +112,8 @@ class DownloadsTopBar extends StatelessWidget {
     final accent = isLab ? AppColors.lab : AppColors.labDim;
     return Tooltip(
       message: isLab
-          ? '${AppStrings.tooltipLoopbackLabMode}\n\nClick to inspect system & workdir diagnostics.'
-          : 'System Diagnostics & Confinement (127.0.0.1)\n\nClick to inspect system & workdir diagnostics.',
+          ? '${context.l10n.tooltipLoopbackLabMode}\n\n${context.l10n.tooltipDiagnostics}'
+          : '${context.l10n.tooltipSystemDiagnostics}\n\n${context.l10n.tooltipDiagnostics}',
       preferBelow: true,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -150,7 +151,9 @@ class DownloadsTopBar extends StatelessWidget {
               ),
               const SizedBox(width: 5),
               Text(
-                isLab ? AppStrings.loopbackLabMode : 'Diagnostics',
+                isLab
+                    ? context.l10n.loopbackLabMode
+                    : context.l10n.diagnosticsBadge,
                 style: AppTextStyles.toolbarLabel.copyWith(
                   color: isLab ? AppColors.accentTeal : AppColors.textSecondary,
                 ),
@@ -168,7 +171,7 @@ class DownloadsTopBar extends StatelessWidget {
       padding: EdgeInsets.zero,
       visualDensity: VisualDensity.compact,
       icon: const Icon(Icons.biotech, color: AppColors.accentTeal, size: 18),
-      tooltip: 'Guided Local Test Flow',
+      tooltip: context.l10n.tooltipLabGuide,
       onPressed: () {
         showDialog(
           context: context,
@@ -217,8 +220,11 @@ class DownloadsTopBar extends StatelessWidget {
     final accentText = killSwitch ? AppColors.danger : AppColors.accentCyan;
     return Tooltip(
       message: killSwitch
-          ? 'Network Subsystem is DISABLED (Kill Switch engaged).\nClick to view policy and re-enable.'
-          : 'Network Policy: ${viewModel.currentNetworkProfile.label}\nStatus: ${viewModel.currentNetworkState.label}\nClick to inspect policy, quotas, and audit log.',
+          ? context.l10n.tooltipPolicyKill
+          : context.l10n.tooltipPolicyInfo(
+              viewModel.currentNetworkProfile.label,
+              viewModel.currentNetworkState.label,
+            ),
       child: InkWell(
         key: const Key('network_policy_badge'),
         borderRadius: AppRadius.mdAll,
@@ -249,7 +255,7 @@ class DownloadsTopBar extends StatelessWidget {
               const SizedBox(width: 5),
               Text(
                 killSwitch
-                    ? 'Disabled'
+                    ? context.l10n.killSwitchBadgeDisabled
                     : viewModel.currentNetworkProfile.toKebabCase(),
                 style: AppTextStyles.badgeLabel.copyWith(color: accentText),
               ),
@@ -277,8 +283,8 @@ class DownloadsTopBar extends StatelessWidget {
         size: 18,
       ),
       tooltip: killSwitch
-          ? 'Re-enable Network Subsystem'
-          : 'Kill Switch: Disconnect All Sockets Immediately',
+          ? context.l10n.tooltipKillSwitchEnable
+          : context.l10n.tooltipKillSwitchDisable,
       onPressed: () {
         if (killSwitch) {
           viewModel.enableNetwork();
@@ -300,7 +306,7 @@ class DownloadsTopBar extends StatelessWidget {
         color: AppColors.warning,
         size: 18,
       ),
-      tooltip: 'IP Filter & Rate Limits',
+      tooltip: context.l10n.tooltipIpFilter,
       onPressed: () {
         showDialog(
           context: context,
@@ -310,7 +316,7 @@ class DownloadsTopBar extends StatelessWidget {
     );
   }
 
-  Widget _buildDevBadge() {
+  Widget _buildDevBadge(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
@@ -321,9 +327,9 @@ class DownloadsTopBar extends StatelessWidget {
           width: 0.5,
         ),
       ),
-      child: const Text(
-        AppStrings.devModeBadge,
-        style: TextStyle(
+      child: Text(
+        context.l10n.devModeBadge,
+        style: const TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.bold,
           color: AppColors.accentAmber,
@@ -332,7 +338,7 @@ class DownloadsTopBar extends StatelessWidget {
     );
   }
 
-  Widget _buildDebugBarButton() {
+  Widget _buildDebugBarButton(BuildContext context) {
     return IconButton(
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       padding: EdgeInsets.zero,
@@ -344,18 +350,18 @@ class DownloadsTopBar extends StatelessWidget {
             : AppColors.textMuted,
         size: 18,
       ),
-      tooltip: AppStrings.tooltipDevTools,
+      tooltip: context.l10n.tooltipDevTools,
       onPressed: viewModel.toggleDebugBar,
     );
   }
 
-  Widget _buildRefreshButton() {
+  Widget _buildRefreshButton(BuildContext context) {
     return IconButton(
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       padding: EdgeInsets.zero,
       visualDensity: VisualDensity.compact,
       icon: const Icon(Icons.refresh_rounded, color: AppColors.textMuted, size: 18),
-      tooltip: AppStrings.tooltipRefresh,
+      tooltip: context.l10n.tooltipRefresh,
       onPressed: viewModel.refresh,
     );
   }
@@ -371,14 +377,14 @@ class DownloadsTopBar extends StatelessWidget {
     if (isSmall) {
       return IconButton.filled(
         icon: const Icon(Icons.add_rounded, size: 18),
-        tooltip: AppStrings.btnAddLink,
+        tooltip: context.l10n.btnAddLink,
         style: IconButton.styleFrom(backgroundColor: AppColors.accent),
         onPressed: showAddDialog,
       );
     }
     return FilledButton.icon(
       icon: const Icon(Icons.add_rounded, size: 16),
-      label: const Text(AppStrings.btnAddLink),
+      label: Text(context.l10n.btnAddLink),
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.accent,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

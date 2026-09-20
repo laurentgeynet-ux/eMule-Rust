@@ -38,7 +38,8 @@ hiérarchie typographique, l'espacement courant et les breakpoints :
 | Text styles | `AppTextStyles.sectionTitle/toolbarLabel/badgeLabel/metricLabel/metricValue/bodySmall` |
 | Breakpoints | `AppBreakpoints.compact` (750), `AppBreakpoints.medium` (1100) |
 | Décorations récurrentes | `AppDecorations.headerBar`, `footerBar`, `chip()` |
-| Textes utilisateur | `AppStrings.*` (jusqu'à la migration gen_l10n — P5) |
+| Textes utilisateur | `context.l10n.*` (gen_l10n — `lib/l10n/app_fr.arb` est
+  le template, `app_en.arb` la traduction ; `AppStrings` est deprecated) |
 
 Si une couleur/valeur manque : **ajouter un token** dans
 `packages/ui_kit/lib/src/tokens.dart` plutôt qu'écrire la valeur en dur.

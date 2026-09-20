@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:desktop/app/app_controller.dart';
+import 'package:desktop/l10n/generated/app_localizations.dart';
 import 'package:desktop/ui/features/downloads/views/downloads_screen.dart';
 
 void main() {
@@ -27,6 +28,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: DownloadsScreen(viewModel: viewModel),
         ),
       );
@@ -48,6 +52,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: DownloadsScreen(viewModel: viewModel),
         ),
       );
@@ -80,6 +87,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: DownloadsScreen(viewModel: viewModel),
         ),
       );

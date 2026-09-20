@@ -1,6 +1,10 @@
 /// Centralized UI strings for the Emule-Sion desktop application.
 /// All user-facing strings are strictly in English to ensure international consistency
 /// and provide a clean foundation for future i18n/localization files.
+@Deprecated(
+  'Use AppLocalizations (gen_l10n) via `context.l10n` in apps instead. '
+  'Kept for reference until all consumers migrate.',
+)
 abstract final class AppStrings {
   // Application branding
   static const String appName = 'Emule-Sion';

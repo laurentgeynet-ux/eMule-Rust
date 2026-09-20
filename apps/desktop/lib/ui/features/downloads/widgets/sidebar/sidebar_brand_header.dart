@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../../l10n/l10n.dart';
+
 /// Sidebar brand block: app icon + name/tagline (hidden in compact mode).
 class SidebarBrandHeader extends StatelessWidget {
   final bool isCompact;
@@ -25,7 +27,7 @@ class SidebarBrandHeader extends StatelessWidget {
             : MainAxisAlignment.start,
         children: [
           Tooltip(
-            message: '${AppStrings.appName} - ${AppStrings.appTagline}',
+            message: '${context.l10n.appName} - ${context.l10n.appTagline}',
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -41,13 +43,13 @@ class SidebarBrandHeader extends StatelessWidget {
           ),
           if (!isCompact) ...[
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    AppStrings.appName,
-                    style: TextStyle(
+                    context.l10n.appName,
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.5,
@@ -55,8 +57,8 @@ class SidebarBrandHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    AppStrings.appTagline,
-                    style: TextStyle(
+                    context.l10n.appTagline,
+                    style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textMuted,
                     ),

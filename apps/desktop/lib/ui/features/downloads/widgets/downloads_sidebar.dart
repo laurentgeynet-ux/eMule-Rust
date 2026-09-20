@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 import '../../../../app/app_controller.dart';
+import '../../../../l10n/l10n.dart';
 import 'category_edit_dialog.dart';
 import 'diagnostic_dialog.dart';
 import 'import_part_met_dialog.dart';
@@ -49,8 +50,8 @@ class DownloadsSidebar extends StatelessWidget {
                 children: [
                   const SizedBox(height: 8),
                   if (!isCompact)
-                    const SidebarSectionLabel(
-                      label: AppStrings.sectionDownloads,
+                    SidebarSectionLabel(
+                      label: context.l10n.sectionDownloads,
                     ),
                   SidebarFilterItem(
                     filter: DownloadFilter.all,
@@ -102,7 +103,7 @@ class DownloadsSidebar extends StatelessWidget {
                   if (!isCompact) ...[
                     _CategoriesHeader(onAdd: () => _showCategoryDialog(context)),
                     SidebarCategoryItem(
-                      title: 'All Downloads',
+                      title: context.l10n.filterAll,
                       color: AppColors.textSecondary,
                       icon: Icons.folder_outlined,
                       count: viewModel.countAll,
@@ -115,7 +116,7 @@ class DownloadsSidebar extends StatelessWidget {
                       onDelete: (_) {},
                     ),
                     SidebarCategoryItem(
-                      title: 'Sans catégorie',
+                      title: context.l10n.uncategorized,
                       color: AppColors.textFaint,
                       icon: Icons.label_off_outlined,
                       count: viewModel.uncategorizedCount,
@@ -152,9 +153,11 @@ class DownloadsSidebar extends StatelessWidget {
                     const SizedBox(height: 6),
                   ],
                   if (!isCompact)
-                    const SidebarSectionLabel(label: 'AUDIT & ACTIVITY'),
+                    SidebarSectionLabel(
+                      label: context.l10n.sectionAuditActivity,
+                    ),
                   SidebarNavItem(
-                    title: 'History & Statistics',
+                    title: context.l10n.navHistoryStats,
                     icon: Icons.history_rounded,
                     isSelected:
                         viewModel.currentSection == AppNavSection.history,
@@ -165,7 +168,7 @@ class DownloadsSidebar extends StatelessWidget {
                     isCompact: isCompact,
                   ),
                   SidebarNavItem(
-                    title: 'Serveurs eD2K',
+                    title: context.l10n.navServers,
                     icon: Icons.dns_rounded,
                     isSelected:
                         viewModel.currentSection == AppNavSection.servers,
@@ -176,7 +179,7 @@ class DownloadsSidebar extends StatelessWidget {
                     isCompact: isCompact,
                   ),
                   SidebarNavItem(
-                    title: 'Recherche eD2K',
+                    title: context.l10n.navSearch,
                     icon: Icons.search_rounded,
                     isSelected:
                         viewModel.currentSection == AppNavSection.search,
@@ -187,7 +190,7 @@ class DownloadsSidebar extends StatelessWidget {
                     isCompact: isCompact,
                   ),
                   SidebarNavItem(
-                    title: 'Kad DHT',
+                    title: context.l10n.navKad,
                     icon: Icons.hub_rounded,
                     isSelected: viewModel.currentSection == AppNavSection.kad,
                     onTap: () => viewModel.setSection(AppNavSection.kad),
@@ -199,7 +202,7 @@ class DownloadsSidebar extends StatelessWidget {
                   const SizedBox(height: 4),
                   SidebarActionButton(
                     icon: Icons.settings_outlined,
-                    label: 'Settings',
+                    label: context.l10n.actionSettings,
                     iconColor: AppColors.textSecondary,
                     isCompact: isCompact,
                     onTap: () => showDialog(
@@ -211,7 +214,7 @@ class DownloadsSidebar extends StatelessWidget {
                   SidebarActionButton(
                     key: const Key('btn_import_part_met'),
                     icon: Icons.file_download_outlined,
-                    label: 'Import .part.met',
+                    label: context.l10n.actionImportPartMet,
                     iconColor: AppColors.accentTeal,
                     isCompact: isCompact,
                     onTap: () => showDialog(
@@ -231,8 +234,10 @@ class DownloadsSidebar extends StatelessWidget {
             statusLabel: _statusLabel,
             tooltipLabel: _statusLabel,
             versionLine: viewModel.daemonInfo != null
-                ? 'Daemon v${viewModel.daemonInfo!.version} '
-                    '(proto v${viewModel.daemonInfo!.protocolVersion})'
+                ? context.l10n.daemonVersionLine(
+                    viewModel.daemonInfo!.version,
+                    viewModel.daemonInfo!.protocolVersion.toString(),
+                  )
                 : null,
             onTap: () => showDialog(
               context: context,
@@ -282,9 +287,9 @@ class _CategoriesHeader extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
-            'CATEGORIES',
-            style: TextStyle(
+          Text(
+            context.l10n.sectionCategories,
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: AppColors.textFaint,
@@ -297,7 +302,7 @@ class _CategoriesHeader extends StatelessWidget {
               size: 16,
               color: AppColors.textSoft,
             ),
-            tooltip: 'Add Category',
+            tooltip: context.l10n.tooltipAddCategory,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
             onPressed: onAdd,

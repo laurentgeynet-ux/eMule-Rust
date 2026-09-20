@@ -1,0 +1,89 @@
+{
+  "@@locale": "fr",
+
+  "appName": "Emule-Sion",
+  "@appName": {"description": "Application brand name."},
+  "appTagline": "Modern eD2K Client",
+
+  "loopbackLabMode": "Loopback Lab Mode",
+  "tooltipLoopbackLabMode": "Laboratory mode.\nConnections are restricted to 127.0.0.1.\n\nNo public eD2K servers, Kad nodes,\nor external peers are contacted.",
+  "devModeBadge": "DEV",
+
+  "sectionDownloads": "DOWNLOADS",
+  "sectionCategories": "CATEGORIES",
+  "sectionAuditActivity": "AUDIT & ACTIVITY",
+  "navHistoryStats": "History & Statistics",
+  "navServers": "Serveurs eD2K",
+  "navSearch": "Recherche eD2K",
+  "navKad": "Kad DHT",
+
+  "filterAll": "All Downloads",
+  "filterActive": "Active",
+  "filterPaused": "Paused",
+  "filterCompleted": "Completed",
+  "filterFailed": "Failed",
+  "uncategorized": "Sans catégorie",
+
+  "searchPlaceholder": "Search downloads...",
+  "btnAddLink": "Add Link",
+  "btnAddEd2kLink": "Add eD2K Link",
+  "btnAddDownload": "Add Download",
+  "btnCancel": "Cancel",
+  "btnClose": "Fermer",
+  "btnSave": "Enregistrer",
+  "btnDelete": "Supprimer",
+  "btnRetry": "Réessayer",
+  "btnCopy": "Copier",
+  "btnCopied": "Copié",
+  "actionSettings": "Settings",
+  "actionImportPartMet": "Import .part.met",
+  "actionGuidedLabTest": "Guided Local Test",
+  "tooltipAddCategory": "Add Category",
+  "tooltipRefresh": "Refresh Downloads",
+  "tooltipDevTools": "Toggle Simulation & Debug Tools",
+  "tooltipResume": "Resume",
+  "tooltipPause": "Pause",
+  "tooltipDelete": "Delete",
+
+  "emptyStateTitle": "No downloads in this view",
+  "emptyStateSubtitle": "Add an eD2K link to create a local download entry.\nThis lab build operates in loopback-only mode.",
+
+  "zeroSpeedDual": "↓ 0 B/s   ↑ 0 B/s",
+
+  "daemonConnected": "Daemon Connected",
+  "daemonConnecting": "Connecting to daemon...",
+  "daemonReconnecting": "Reconnecting...",
+  "daemonError": "Daemon Error",
+  "daemonDisconnected": "Daemon Disconnected",
+  "daemonVersionLine": "Daemon v{version} (proto v{protocol})",
+  "@daemonVersionLine": {
+    "placeholders": {
+      "version": {"type": "String"},
+      "protocol": {"type": "String"}
+    }
+  },
+
+  "dialogAddTitle": "Add eD2K Download",
+  "dialogFieldLabel": "eD2K Link URL",
+  "dialogFieldHint": "ed2k://|file|name|size|hash|/",
+  "dialogValidationPrefix": "Must start with \"ed2k://|file|\"",
+  "dialogValidationParts": "Must contain: name, size, and hash",
+
+  "diagnosticsBadge": "Diagnostics",
+  "tooltipDiagnostics": "Click to inspect system & workdir diagnostics.",
+  "tooltipSystemDiagnostics": "System Diagnostics & Confinement (127.0.0.1)",
+  "tooltipOpenDrawer": "Ouvrir le menu de navigation",
+  "tooltipLabGuide": "Guided Local Test Flow",
+  "killSwitchBadgeDisabled": "Disabled",
+  "tooltipPolicyKill": "Network Subsystem is DISABLED (Kill Switch engaged).\nClick to view policy and re-enable.",
+  "tooltipPolicyInfo": "Network Policy: {profile}\nStatus: {status}\nClick to inspect policy, quotas, and audit log.",
+  "@tooltipPolicyInfo": {
+    "placeholders": {
+      "profile": {"type": "String"},
+      "status": {"type": "String"}
+    }
+  },
+  "tooltipKillSwitchEnable": "Re-enable Network Subsystem",
+  "tooltipKillSwitchDisable": "Kill Switch: Disconnect All Sockets Immediately",
+  "tooltipIpFilter": "IP Filter & Rate Limits"
+}

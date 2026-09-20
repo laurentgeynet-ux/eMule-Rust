@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'app/providers.dart';
 import 'app/router.dart';
 import 'app/app_controller.dart';
+import 'l10n/generated/app_localizations.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,6 +105,10 @@ class _EmuleSionAppState extends State<EmuleSionApp> {
         title: 'Emule-Sion',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
+        // UI is French-first until a language picker lands in settings.
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: _router,
       ),
     );

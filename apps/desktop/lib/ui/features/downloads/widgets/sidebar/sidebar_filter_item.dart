@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../../app/app_controller.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Sidebar filter row (All / Active / Paused / Completed / Failed) with
 /// count pill; dimmed when the count is zero and not selected.
@@ -91,7 +92,7 @@ class SidebarFilterItem extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      filter.label,
+                      filter.labelOf(context),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: isSelected
@@ -135,7 +136,7 @@ class SidebarFilterItem extends StatelessWidget {
 
     final wrapped = isCompact
         ? Tooltip(
-            message: '${filter.label} ($count)',
+            message: '${filter.labelOf(context)} ($count)',
             preferBelow: false,
             child: item,
           )

@@ -40,6 +40,12 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   `DownloadsList`, `DownloadsEmptyState`, `DownloadDetailsPanel`,
   `StatusNotificationBanner`) ; conventions dans
   `docs/architecture/conventions_ui.md`.
+- **i18n (P5, infrastructure)** : `gen_l10n` activé — `l10n.yaml`, ARB
+  `lib/l10n/app_fr.arb` (template = libellés actuels) + `app_en.arb`
+  (traduction), sortie `lib/l10n/generated/`. `MaterialApp.router` épinglé
+  en `fr` en attendant le sélecteur de langue. Extension `context.l10n`
+  (+ `DownloadFilterL10n`). Sidebar, top bar et empty state migrés ;
+  `AppStrings` (ui_kit) est deprecated.
 - **Migration Riverpod (P4, découpage du VM terminé)** : `ProviderScope`
   dans `EmuleSionApp` (`muleDaemonClientProvider`,
   `daemonSupervisorProvider`, `devToolsEnabledProvider`,
