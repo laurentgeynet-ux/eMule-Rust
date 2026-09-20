@@ -208,12 +208,12 @@ impl ServerUdpService {
                                 }
                             }
                             Ok(ServerUdpMessage::Unknown { opcode }) => {
-                                tracing::debug!(
-                                    "Server UDP: ignoring opcode 0x{opcode:02X} from {peer_addr}"
+                                tracing::info!(
+                                    "Server UDP: unknown opcode 0x{opcode:02X} from {peer_addr}"
                                 );
                             }
                             Err(e) => {
-                                tracing::debug!("Server UDP: decode error from {peer_addr}: {e}");
+                                tracing::info!("Server UDP: decode error from {peer_addr}: {e}");
                             }
                         }
                     }

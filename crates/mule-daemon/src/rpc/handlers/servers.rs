@@ -336,8 +336,14 @@ pub async fn handle_servers_search(
         };
         targets.extend(extra);
         let mut udp_targets = Vec::new();
-        for target in targets {
-            let form = state.server_udp.send_glob_search(target, &payload).await;
+        for (i, target) in targets.iter().enumerate() {
+            // eMule paces global UDP sends at ~50 ms per server
+            // (SearchResultsWnd TimerServerTimeout) — blasting all servers
+            // at once gets dropped by rate-limiting servers.
+            if i > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            let form = state.server_udp.send_glob_search(*target, &payload).await;
             udp_targets.push(json!({
                 "address": target.to_string(),
                 "request": form,
