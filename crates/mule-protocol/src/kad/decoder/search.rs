@@ -849,3 +849,221 @@ pub fn decode_publish_keyword_res(
         status,
     }))
 }
+
+// ---------------------------------------------------------------------------
+// Kad notes (file comments / ratings)
+// ---------------------------------------------------------------------------
+
+/// Reads a bounded notes tag list (`tag_count:u8` then tags), preserving both
+/// typed tags and unknown raw tags — note data is untrusted, display-only
+/// (eMule `CDataIO::ReadTagList` with `bOptACP` semantics).
+fn read_note_taglist(
+    raw: &[u8],
+    mut cursor: usize,
+    protocol: u8,
+    opcode: u8,
+) -> Result<
+    (
+        Vec<crate::ed2k::tags::Ed2kTag>,
+        Vec<crate::ed2k::tags::RawTag>,
+        usize,
+    ),
+    Ed2kParseError,
+> {
+    if cursor >= raw.len() {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            cursor,
+            "note_tag_count",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: cursor + 1,
+                available: raw.len(),
+            },
+        ));
+    }
+    let tag_count = raw[cursor] as usize;
+    cursor += 1;
+    if tag_count > MAX_NOTE_TAG_COUNT {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            cursor - 1,
+            "note_tag_count",
+            Ed2kErrorKind::MalformedField {
+                message: format!("note tag count {tag_count} exceeds {MAX_NOTE_TAG_COUNT}"),
+            },
+        ));
+    }
+    let limits = Ed2kLimits::default();
+    let mut reader = TagReader::new(raw, cursor, protocol, Some(opcode));
+    let mut tags = Vec::with_capacity(tag_count);
+    let mut unknown_tags = Vec::new();
+    for _ in 0..tag_count {
+        match reader.read_tag(&limits) {
+            Ok((Some(tag), _)) => tags.push(tag),
+            Ok((None, Some(raw_tag))) => unknown_tags.push(raw_tag),
+            Ok((None, None)) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok((tags, unknown_tags, reader.pos()))
+}
+
+/// Decodes a `KADEMLIA2_SEARCH_NOTES_REQ` (0x35) payload:
+/// `[target_file_hash:16][file_size:u64]`
+/// (eMule `Process_KADEMLIA2_SEARCH_NOTES_REQ`).
+pub fn decode_search_notes_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
+    if payload.len() < 24 {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            2,
+            "KadSearchNotesReq",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: 24,
+                available: payload.len(),
+            },
+        ));
+    }
+    let mut target_file_hash = [0u8; 16];
+    payload.copy_to_slice(&mut target_file_hash);
+    let file_size = payload.get_u64_le();
+    Ok(KadMessage::SearchNotesReq(KadSearchNotesReq {
+        target_file_hash,
+        file_size,
+    }))
+}
+
+/// Decodes a `KADEMLIA2_PUBLISH_NOTES_REQ` (0x45) payload:
+/// `[target_file_hash:16][source_id:16][tag_count:u8][tags]`
+/// (eMule `Process_KADEMLIA2_PUBLISH_NOTES_REQ`).
+pub fn decode_publish_notes_req(
+    protocol: u8,
+    opcode: u8,
+    mut payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
+    if payload.len() < 33 {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            2,
+            "KadPublishNotesReq",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: 33,
+                available: payload.len(),
+            },
+        ));
+    }
+    let mut target_file_hash = [0u8; 16];
+    target_file_hash.copy_from_slice(&payload[..16]);
+    payload.advance(16);
+    let mut source_id = [0u8; 16];
+    source_id.copy_from_slice(&payload[..16]);
+
+    let (tags, unknown_tags, _) = read_note_taglist(payload, 16, protocol, opcode)?;
+    Ok(KadMessage::PublishNotesReq(KadPublishNotesReq {
+        target_file_hash,
+        source_id,
+        tags,
+        unknown_tags,
+    }))
+}
+
+/// Decodes a notes search response payload. Two wire forms exist:
+///
+/// - `KADEMLIA2_SEARCH_RES` (0x3B): `[sender_id:16][target:16][count:u16]`
+///   then `count` × `[source_id:16][tag_count:u8][tags]` — sent by eMule
+///   `CIndexed::SendValidNoteResult` even for Kad2 note searches.
+/// - `KADEMLIA_SEARCH_NOTES_RES` (0x3A, legacy Kad1): `[target:16][count:u16]`
+///   then the same entry list (no sender id).
+pub fn decode_search_notes_res(
+    protocol: u8,
+    opcode: u8,
+    payload: &[u8],
+) -> Result<KadMessage, Ed2kParseError> {
+    // Header size: 0x3B carries sender_id (34 bytes), 0x3A doesn't (18 bytes).
+    let (sender_id, hdr) = if opcode == KADEMLIA2_SEARCH_RES {
+        if payload.len() < 34 {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                2,
+                "KadSearchNotesRes",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 34,
+                    available: payload.len(),
+                },
+            ));
+        }
+        let mut s = [0u8; 16];
+        s.copy_from_slice(&payload[..16]);
+        (s, 34usize)
+    } else {
+        if payload.len() < 18 {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                2,
+                "KadSearchNotesRes",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: 18,
+                    available: payload.len(),
+                },
+            ));
+        }
+        ([0u8; 16], 18usize)
+    };
+
+    let mut target_file_hash = [0u8; 16];
+    target_file_hash.copy_from_slice(&payload[hdr - 18..hdr - 2]);
+    let count = u16::from_le_bytes([payload[hdr - 2], payload[hdr - 1]]) as usize;
+    if count > MAX_NOTE_SEARCH_RESULTS {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            hdr,
+            "KadSearchNotesRes::count",
+            Ed2kErrorKind::MalformedField {
+                message: format!("notes result count {count} exceeds {MAX_NOTE_SEARCH_RESULTS}"),
+            },
+        ));
+    }
+
+    let mut cursor = hdr;
+    let mut notes = Vec::with_capacity(count.min(16));
+    for _ in 0..count {
+        if cursor + 17 > payload.len() {
+            return Err(Ed2kParseError::new(
+                protocol,
+                Some(opcode),
+                cursor,
+                "KadSearchNotesRes::entry",
+                Ed2kErrorKind::UnexpectedEof {
+                    needed: cursor + 17,
+                    available: payload.len(),
+                },
+            ));
+        }
+        let mut source_id = [0u8; 16];
+        source_id.copy_from_slice(&payload[cursor..cursor + 16]);
+        cursor += 16;
+        let (tags, unknown_tags, next) = read_note_taglist(payload, cursor, protocol, opcode)?;
+        cursor = next;
+        notes.push(KadNoteWire {
+            source_id,
+            tags,
+            unknown_tags,
+        });
+    }
+
+    Ok(KadMessage::SearchNotesRes(KadSearchNotesRes {
+        sender_id,
+        target_file_hash,
+        notes,
+    }))
+}

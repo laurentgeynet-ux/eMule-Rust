@@ -59,6 +59,8 @@ pub enum KadExpectedResponse {
     SearchKeywordRes,
     PublishSourceRes,
     PublishKeywordRes,
+    SearchNotesRes,
+    PublishNotesRes,
 }
 
 /// Pending in-flight transaction state.

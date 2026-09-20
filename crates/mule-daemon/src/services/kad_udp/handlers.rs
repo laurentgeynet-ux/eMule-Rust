@@ -197,7 +197,8 @@ pub async fn handle_incoming_message(
                     .expected_target_hash
                     .map_or(true, |h| h == pub_res.target_file_hash);
                 let resp_match = tx.expected_response == KadExpectedResponse::PublishSourceRes
-                    || tx.expected_response == KadExpectedResponse::PublishKeywordRes;
+                    || tx.expected_response == KadExpectedResponse::PublishKeywordRes
+                    || tx.expected_response == KadExpectedResponse::PublishNotesRes;
                 if ip_match && hash_match && resp_match {
                     matched_tx = Some(*id);
                     break;
@@ -209,7 +210,14 @@ pub async fn handle_incoming_message(
             );
             if let Some(id) = matched_tx {
                 if let Some(tx) = inf.remove(&id) {
-                    if tx.expected_response == KadExpectedResponse::PublishKeywordRes {
+                    if tx.expected_response == KadExpectedResponse::PublishNotesRes {
+                        let _ =
+                            tx.sender
+                                .send(Ok(KadMessage::PublishNotesRes(KadPublishNotesRes {
+                                    target_file_hash: pub_res.target_file_hash,
+                                    load: pub_res.status,
+                                })));
+                    } else if tx.expected_response == KadExpectedResponse::PublishKeywordRes {
                         let _ = tx.sender.send(Ok(KadMessage::PublishKeywordRes(
                             KadPublishKeywordRes {
                                 keyword_hash: pub_res.target_file_hash,
@@ -413,6 +421,103 @@ pub async fn handle_incoming_message(
                     "Kad UDP: dropping CALLBACK_REQ from {peer_addr} — no active buddy link"
                 );
             }
+        }
+        // --- Kad notes (file comments / ratings) ---
+        KadMessage::SearchNotesReq(req) => {
+            let notes = {
+                let mut store = storage.lock().await;
+                store.get_notes(
+                    &req.target_file_hash,
+                    req.file_size,
+                    MAX_NOTE_SEARCH_RESULTS,
+                )
+            };
+            if notes.is_empty() {
+                tracing::debug!(
+                    "Kad UDP: SearchNotesReq from {peer_addr} for file {} — no stored notes",
+                    hex::encode(req.target_file_hash)
+                );
+                return;
+            }
+            tracing::info!(
+                "Kad UDP: received SearchNotesReq from {peer_addr} for file {}, replying with {} notes",
+                hex::encode(req.target_file_hash),
+                notes.len()
+            );
+            if let Some(res) =
+                KadCodec::encode_search_notes_res(local_kad_id, &req.target_file_hash, &notes)
+            {
+                let _ = socket.send_to(&res, peer_addr).await;
+            }
+        }
+        KadMessage::SearchNotesRes(res) => {
+            let mut inf = in_flight.lock().await;
+            let mut matched_tx = None;
+            for (id, tx) in inf.iter() {
+                let ip_match = tx.target == peer_addr || tx.target.ip() == peer_addr.ip();
+                let hash_match = tx
+                    .expected_target_hash
+                    .map_or(true, |h| h == res.target_file_hash);
+                let resp_match = tx.expected_response == KadExpectedResponse::SearchNotesRes;
+                if ip_match && hash_match && resp_match {
+                    matched_tx = Some(*id);
+                    break;
+                }
+            }
+            tracing::info!(
+                "Kad UDP: received SearchNotesRes from {peer_addr} with {} notes for file {} (matched_tx={matched_tx:?})",
+                res.notes.len(),
+                hex::encode(res.target_file_hash)
+            );
+            if let Some(id) = matched_tx {
+                if let Some(tx) = inf.remove(&id) {
+                    let _ = tx.sender.send(Ok(KadMessage::SearchNotesRes(res)));
+                }
+            }
+        }
+        KadMessage::PublishNotesReq(req) => {
+            // eMule CKademliaUDPListener::Process_KADEMLIA2_PUBLISH_NOTES_REQ:
+            // a UDP-firewalled node refuses indexing work.
+            let firewalled = {
+                let fw = firewall.lock().await;
+                fw.verified && fw.status == UdpFirewallStatus::Firewalled
+            };
+            if firewalled {
+                tracing::debug!(
+                    "Kad UDP: rejecting PublishNotesReq from {peer_addr} — we are UDP-firewalled"
+                );
+                return;
+            }
+            let publisher_ip = match peer_addr.ip() {
+                IpAddr::V4(v4) => v4.octets(),
+                IpAddr::V6(_) => [127, 0, 0, 1],
+            };
+            let note = KadNoteWire {
+                source_id: req.source_id,
+                tags: req.tags,
+                unknown_tags: req.unknown_tags,
+            };
+            let accepted = {
+                let mut store = storage.lock().await;
+                store.store_note(req.target_file_hash, note, publisher_ip, peer_addr.port())
+            };
+            let load = {
+                let store = storage.lock().await;
+                store.note_load(&req.target_file_hash)
+            };
+            tracing::info!(
+                "Kad UDP: received PublishNotesReq from {peer_addr} for file {} (accepted={}, load={})",
+                hex::encode(req.target_file_hash),
+                accepted,
+                load
+            );
+            let res = KadCodec::encode_publish_notes_res(&req.target_file_hash, load);
+            let _ = socket.send_to(&res, peer_addr).await;
+        }
+        KadMessage::PublishNotesRes(_) => {
+            // Shares opcode 0x4B with PublishSourceRes/PublishKeywordRes; the
+            // unified PublishSourceRes arm above already routes it by the
+            // in-flight expected_response. Unreachable in practice.
         }
     }
 }

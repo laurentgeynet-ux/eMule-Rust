@@ -52,6 +52,13 @@ pub const KADEMLIA2_SEARCH_KEY_REQ: u8 = 0x33;
 pub const KADEMLIA2_SEARCH_SOURCE_REQ: u8 = 0x34;
 /// Kad2 Search Notes request (0x35).
 pub const KADEMLIA2_SEARCH_NOTES_REQ: u8 = 0x35;
+/// Legacy Kad1 Search Notes request (0x32) — `[target:16]` only.
+pub const KADEMLIA_SEARCH_NOTES_REQ_LEGACY: u8 = 0x32;
+/// Legacy Kad1 Search Notes response (0x3A) — `[target:16][count:u16]`
+/// then the same `[answer:16][taglist]` entries as the unified 0x3B form.
+/// NOTE: eMule 0.72a answers Kad2 note searches on `KADEMLIA2_SEARCH_RES`
+/// (0x3B); 0x3A is only seen from Kad1 nodes.
+pub const KADEMLIA_SEARCH_NOTES_RES: u8 = 0x3A;
 /// Kad2 Search response (0x3B) — unified response for keyword, source, and notes search.
 pub const KADEMLIA2_SEARCH_RES: u8 = 0x3B;
 /// Alias: Kad2 Search Source response is the unified KADEMLIA2_SEARCH_RES (0x3B).
