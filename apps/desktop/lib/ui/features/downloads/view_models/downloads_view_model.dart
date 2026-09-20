@@ -14,6 +14,7 @@ import '../../servers/view_models/servers_controller.dart';
 import '../../settings/view_models/settings_controller.dart';
 import 'lab_controller.dart';
 import 'categories_controller.dart';
+import 'downloads_store_controller.dart';
 import 'network_policy_controller.dart';
 import 'peer_sources_controller.dart';
 
@@ -52,13 +53,14 @@ class DownloadsViewModel extends ChangeNotifier {
   DaemonInfo? _daemonInfo;
   String? _errorMessage;
   String? _protocolMismatchError;
-  bool _isLoading = false;
 
   AppNavSection _currentSection = AppNavSection.downloads;
-  final Map<String, DownloadItem> _downloads = {};
+  /// Downloads store sub-domain (extracted controller, see
+  /// `downloads_store_controller.dart`).
+  late final DownloadsStoreController downloadsCtl;
   DownloadFilter _currentFilter = DownloadFilter.all;
   String _searchQuery = '';
-  String? _selectedDownloadId;
+
   bool _isDebugBarVisible = false;
   String? _statusNotification;
 
@@ -94,7 +96,6 @@ class DownloadsViewModel extends ChangeNotifier {
   late final SearchController search;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
-  StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
 
@@ -104,6 +105,12 @@ class DownloadsViewModel extends ChangeNotifier {
     this.supervisor,
     this.isDevToolsAvailable = false,
   }) {
+    downloadsCtl = DownloadsStoreController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+      onRefresh: refresh,
+    )..addListener(notifyListeners);
     history = HistoryController(
       client: client,
       onStatus: (m) => _statusNotification = m,
@@ -135,7 +142,7 @@ class DownloadsViewModel extends ChangeNotifier {
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
       onRefreshDownloads: refresh,
-      onDownloadUpdated: (item) => _downloads[item.id] = item,
+      onDownloadUpdated: downloadsCtl.upsert,
     )..addListener(notifyListeners);
     networkPolicyCtl = NetworkPolicyController(
       client: client,
@@ -153,17 +160,12 @@ class DownloadsViewModel extends ChangeNotifier {
       client: client,
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
-      onDownloadUpdated: (item) => _downloads[item.id] = item,
+      onDownloadUpdated: downloadsCtl.upsert,
       onRefreshDownloads: refresh,
     )..addListener(notifyListeners);
 
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
-      notifyListeners();
-    });
-
-    _eventSub = client.downloadEvents.listen((event) {
-      _downloads[event.download.id] = event.download;
       notifyListeners();
     });
 
@@ -184,7 +186,7 @@ class DownloadsViewModel extends ChangeNotifier {
 
       _instanceSub = supervisor!.instanceChangedStream.listen((_) {
         // Reset downloads and sequence on daemon restart
-        _downloads.clear();
+        downloadsCtl.clearAll();
         _daemonInfo = client.daemonInfo;
         refresh();
       });
@@ -197,11 +199,11 @@ class DownloadsViewModel extends ChangeNotifier {
   String? get protocolMismatchError => _protocolMismatchError;
   DaemonInfo? get daemonInfo => _daemonInfo ?? client.daemonInfo;
   String? get errorMessage => _errorMessage;
-  bool get isLoading => _isLoading;
+  bool get isLoading => downloadsCtl.isLoading;
   DownloadFilter get currentFilter => _currentFilter;
   AppNavSection get currentSection => _currentSection;
   String get searchQuery => _searchQuery;
-  String? get selectedDownloadId => _selectedDownloadId;
+  String? get selectedDownloadId => downloadsCtl.selectedId;
   bool get isDebugBarVisible => isDevToolsAvailable && _isDebugBarVisible;
   String? get statusNotification => _statusNotification;
 
@@ -219,15 +221,14 @@ class DownloadsViewModel extends ChangeNotifier {
   Map<String, int> get categoryCounts {
     final map = <String, int>{};
     for (final cat in categories) {
-      map[cat.id] = _downloads.values
-          .where((d) => d.categoryId == cat.id)
-          .length;
+      map[cat.id] =
+          allDownloads.where((d) => d.categoryId == cat.id).length;
     }
     return map;
   }
 
   int get uncategorizedCount =>
-      _downloads.values.where((d) => d.categoryId == null).length;
+      allDownloads.where((d) => d.categoryId == null).length;
 
   List<HistoryEntry> get historyEntries => history.entries;
   HistoryStats get historyStats => history.stats;
@@ -281,42 +282,29 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  DownloadItem? get selectedDownload =>
-      _selectedDownloadId != null ? _downloads[_selectedDownloadId] : null;
+  DownloadItem? get selectedDownload => selectedDownloadId != null
+      ? downloadsCtl.downloadById(selectedDownloadId!)
+      : null;
 
-  int get totalDownloadSpeed => _downloads.values
-      .where((d) => d.status.isActive)
-      .fold<int>(0, (sum, d) => sum + d.downloadRateBps);
+  int get totalDownloadSpeed => downloadsCtl.totalDownloadSpeed;
 
   /// Always 0 B/s in this offline / loopback lab client without public upload/seeding.
   int get totalUploadSpeed => 0;
 
-  int get countAll => _downloads.length;
-  int get countActive =>
-      _downloads.values.where((d) => d.status.isActive).length;
-  int get countPaused =>
-      _downloads.values.where((d) => d.status.isPaused).length;
-  int get countCompleted =>
-      _downloads.values.where((d) => d.status.isCompleted).length;
-  int get countFailed =>
-      _downloads.values.where((d) => d.status.isFailed).length;
+  int get countAll => downloadsCtl.countAll;
+  int get countActive => downloadsCtl.countActive;
+  int get countPaused => downloadsCtl.countPaused;
+  int get countCompleted => downloadsCtl.countCompleted;
+  int get countFailed => downloadsCtl.countFailed;
 
-  List<DownloadItem> get allDownloads => _downloads.values.toList();
+  List<DownloadItem> get allDownloads => downloadsCtl.allDownloads;
 
-  DownloadItem? getDownloadByHash(String? hash) {
-    if (hash == null || hash.isEmpty) return null;
-    final lower = hash.toLowerCase();
-    for (final d in _downloads.values) {
-      if (d.ed2kHash?.toLowerCase() == lower) {
-        return d;
-      }
-    }
-    return null;
-  }
+  DownloadItem? getDownloadByHash(String? hash) =>
+      downloadsCtl.getDownloadByHash(hash);
 
   List<DownloadItem> get filteredDownloads {
     final query = _searchQuery.trim().toLowerCase();
-    return _downloads.values.where((item) {
+    return allDownloads.where((item) {
       // Filter tab check
       switch (_currentFilter) {
         case DownloadFilter.all:
@@ -355,7 +343,7 @@ class DownloadsViewModel extends ChangeNotifier {
 
   // Actions
   Future<void> initialize({Uri? url, String? token}) async {
-    _isLoading = true;
+    downloadsCtl.setLoading(true);
     _errorMessage = null;
     notifyListeners();
 
@@ -366,7 +354,7 @@ class DownloadsViewModel extends ChangeNotifier {
     } catch (e) {
       _errorMessage = e.toString();
     } finally {
-      _isLoading = false;
+      downloadsCtl.setLoading(false);
       notifyListeners();
     }
   }
@@ -381,11 +369,7 @@ class DownloadsViewModel extends ChangeNotifier {
       await fetchCategories();
       await fetchNetworkPolicy();
       await fetchKadStatus();
-      final list = await client.listDownloads();
-      _downloads.clear();
-      for (final item in list) {
-        _downloads[item.id] = item;
-      }
+      await downloadsCtl.reload();
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Refresh failed: $e';
@@ -418,11 +402,7 @@ class DownloadsViewModel extends ChangeNotifier {
   }
 
   void selectDownload(String? id) {
-    _selectedDownloadId = id;
-    if (id != null) {
-      fetchDownloadDetail(id);
-    }
-    notifyListeners();
+    downloadsCtl.select(id);
   }
 
   void toggleDebugBar() {
@@ -431,135 +411,88 @@ class DownloadsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Download actions (delegated to DownloadsStoreController) ──────────────
+
   Future<bool> addEd2kLink(
     String link, {
     String? targetDirectory,
     String? allocationPolicy,
     String? categoryId,
-  }) async {
-    try {
-      _isLoading = true;
-      notifyListeners();
-
-      // Check for existing download with the same eD2K hash
-      final tokens = link.split('|');
-      String? linkHash;
-      if (tokens.length >= 5 && tokens[1].toLowerCase() == 'file') {
-        linkHash = tokens[4].toLowerCase();
-      }
-      if (linkHash != null) {
-        final existing = getDownloadByHash(linkHash);
-        if (existing != null) {
-          _errorMessage = 'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}", statut : ${existing.status.label})';
-          return false;
-        }
-      }
-
-      final dlId = await client.addEd2kLink(
+  }) =>
+      downloadsCtl.addEd2kLink(
         link,
         targetDirectory: targetDirectory,
         allocationPolicy: allocationPolicy,
         categoryId: categoryId,
       );
 
-      // Extract human-friendly filename from eD2K link for clean user notification
-      String displayName = dlId;
-      if (tokens.length >= 4 && tokens[1].toLowerCase() == 'file') {
-        final rawName = tokens[2];
-        try {
-          displayName = Uri.decodeComponent(rawName);
-        } catch (_) {
-          displayName = rawName;
-        }
-      }
-
-      _statusNotification = 'Fichier "$displayName" ajouté aux téléchargements';
-      await refresh();
-      return true;
-    } catch (e) {
-      final msg = e.toString().replaceAll(RegExp(r'^Exception:\s*'), '');
-      _errorMessage = msg;
-      return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
   Future<PartMetInspectionResult> inspectPartMet(
     String metPath, {
     String? partPath,
-  }) {
-    return client.inspectPartMet(metPath, partPath: partPath);
-  }
+  }) =>
+      downloadsCtl.inspectPartMet(metPath, partPath: partPath);
 
   Future<ImportPartMetResult?> importPartMet(
     String metPath, {
     String? partPath,
     String? targetDirectory,
     String? categoryId,
-  }) async {
-    try {
-      _isLoading = true;
-      notifyListeners();
-
-      final res = await client.importPartMet(
+  }) =>
+      downloadsCtl.importPartMet(
         metPath,
         partPath: partPath,
         targetDirectory: targetDirectory,
         categoryId: categoryId,
       );
 
-      _downloads[res.download.id] = res.download;
-      _selectedDownloadId = res.download.id;
-      _statusNotification =
-          'Imported "${res.download.fileName}" (${res.verifiedParts}/${res.totalParts} verified, status: Paused)';
-      await refresh();
-      return res;
-    } catch (e) {
-      _errorMessage = 'Failed to import .part.met: $e';
-      return null;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
+  Future<void> pauseDownload(String id) => downloadsCtl.pause(id);
 
-  Future<void> pauseDownload(String id) async {
-    try {
-      final updated = await client.pauseDownload(id);
-      _downloads[updated.id] = updated;
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to pause: $e';
-      notifyListeners();
-    }
-  }
+  Future<void> resumeDownload(String id) => downloadsCtl.resume(id);
 
-  Future<void> resumeDownload(String id) async {
-    try {
-      final updated = await client.resumeDownload(id);
-      _downloads[updated.id] = updated;
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to resume: $e';
-      notifyListeners();
-    }
-  }
+  Future<void> removeDownload(String id, {bool deleteFiles = false}) =>
+      downloadsCtl.remove(id, deleteFiles: deleteFiles);
 
-  Future<void> removeDownload(String id, {bool deleteFiles = false}) async {
-    try {
-      await client.removeDownload(id, deleteFiles: deleteFiles);
-      _downloads.remove(id);
-      if (_selectedDownloadId == id) {
-        _selectedDownloadId = null;
-      }
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to remove: $e';
-      notifyListeners();
-    }
-  }
+  Future<DownloadItem?> fetchDownloadDetail(String id) =>
+      downloadsCtl.fetchDetail(id);
+
+  Future<bool> changeDownloadDestination(String id, String newDirectory) =>
+      downloadsCtl.changeDestination(id, newDirectory);
+
+  Future<bool> retryDownloadConnection(String id) =>
+      downloadsCtl.retryConnection(id);
+
+  Future<void> openCompletedFile(DownloadItem item) =>
+      downloadsCtl.openCompletedFile(item);
+
+  String getRedactedDownloadDiagnostic(DownloadItem item) =>
+      downloadsCtl.getRedactedDiagnostic(item);
+
+  // ── Settings (delegated to SettingsController) ────────────────────────────
+
+  Future<void> fetchSettings() => settingsCtl.fetch();
+
+  Future<bool> setDefaultDownloadDirectory(String path) =>
+      settingsCtl.setDefaultDownloadDirectory(path);
+
+  Future<bool> resetDefaultDownloadDirectory() =>
+      settingsCtl.resetDefaultDownloadDirectory();
+
+  // ── History (delegated to HistoryController) ──────────────────────────────
+
+  void setHistoryEventTypeFilter(String? eventType) =>
+      history.setEventTypeFilter(eventType);
+
+  void setHistoryStatusFilter(String? status) =>
+      history.setStatusFilter(status);
+
+  Future<void> fetchHistory() => history.fetch();
+
+  Future<bool> clearHistory() => history.clear();
+
+  Future<String> exportHistory(String format) => history.export(format);
+
+  Future<bool> setHistoryRetentionDays(int days) =>
+      history.setRetentionDays(days);
 
   // ── Lab / dev tools (delegated to LabController) ──────────────────────────
 
@@ -583,166 +516,6 @@ class DownloadsViewModel extends ChangeNotifier {
 
   Future<void> connectDownloadToSource(String downloadId, String peerAddr) =>
       labCtl.connectDownloadToSource(downloadId, peerAddr);
-
-  // ── Settings (delegated to SettingsController) ────────────────────────────
-
-  Future<void> fetchSettings() => settingsCtl.fetch();
-
-  void setHistoryEventTypeFilter(String? eventType) =>
-      history.setEventTypeFilter(eventType);
-
-  void setHistoryStatusFilter(String? status) =>
-      history.setStatusFilter(status);
-
-  Future<void> fetchHistory() => history.fetch();
-
-  Future<bool> clearHistory() => history.clear();
-
-  Future<String> exportHistory(String format) => history.export(format);
-
-  Future<bool> setHistoryRetentionDays(int days) =>
-      history.setRetentionDays(days);
-
-  Future<bool> setDefaultDownloadDirectory(String path) =>
-      settingsCtl.setDefaultDownloadDirectory(path);
-
-  Future<bool> resetDefaultDownloadDirectory() =>
-      settingsCtl.resetDefaultDownloadDirectory();
-
-  Future<DownloadItem?> fetchDownloadDetail(String id) async {
-    try {
-      final detail = await client.getDownload(id);
-      if (detail != null) {
-        _downloads[detail.id] = detail;
-        notifyListeners();
-      }
-      return detail;
-    } catch (e) {
-      _errorMessage = 'Failed to fetch details: $e';
-      notifyListeners();
-      return null;
-    }
-  }
-
-  Future<bool> changeDownloadDestination(String id, String newDirectory) async {
-    try {
-      _isLoading = true;
-      notifyListeners();
-      final updated = await client.setDownloadDestination(id, newDirectory);
-      _downloads[updated.id] = updated;
-      _statusNotification = 'Updated destination for "${updated.fileName}"';
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to set destination: $e';
-      return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> retryDownloadConnection(String id) async {
-    try {
-      final updated = await client.retryDownloadConnection(id);
-      _downloads[updated.id] = updated;
-      _statusNotification =
-          'Retrying loopback connection for "${updated.fileName}"';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to retry connection: $e';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<void> openCompletedFile(DownloadItem item) async {
-    if (!item.status.isCompleted) return;
-    final targetPath = item.targetPath;
-    if (targetPath == null || targetPath.isEmpty) return;
-    try {
-      final file = File(targetPath);
-      final dir = file.parent;
-      if (Platform.isWindows) {
-        if (file.existsSync()) {
-          await Process.start('explorer.exe', ['/select,', file.path]);
-        } else if (dir.existsSync()) {
-          await Process.start('explorer.exe', [dir.path]);
-        }
-      } else if (Platform.isMacOS) {
-        if (file.existsSync()) {
-          await Process.start('open', ['-R', file.path]);
-        } else if (dir.existsSync()) {
-          await Process.start('open', [dir.path]);
-        }
-      } else if (Platform.isLinux) {
-        if (dir.existsSync()) {
-          await Process.start('xdg-open', [dir.path]);
-        }
-      }
-    } catch (e) {
-      _errorMessage = 'Could not open completed file location: $e';
-      notifyListeners();
-    }
-  }
-
-  String getRedactedDownloadDiagnostic(DownloadItem item) {
-    String sanitizedTarget;
-    try {
-      final sep = Platform.isWindows ? r'\' : '/';
-      sanitizedTarget = '[DOWNLOAD_DIR]$sep${item.fileName}';
-    } catch (_) {
-      sanitizedTarget = '[DOWNLOAD_DIR]/${item.fileName}';
-    }
-
-    final sanitizedTemp = 'data/temp/${item.id}.part';
-    final totalParts = item.parts.length;
-    final verifiedParts = item.parts.where((p) => p.isVerified).length;
-    final completedParts = item.parts
-        .where((p) => p.state == 'completed')
-        .length;
-    final downloadingParts = item.parts
-        .where((p) => p.state == 'downloading')
-        .length;
-    final missingParts = item.parts.where((p) => p.state == 'missing').length;
-
-    final buffer = StringBuffer();
-    buffer.writeln('=== Emule-Sion Download Diagnostic (Sanitized) ===');
-    buffer.writeln('Generated: ${DateTime.now().toUtc().toIso8601String()}');
-    buffer.writeln(
-      'Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)',
-    );
-    buffer.writeln('Download ID: ${item.id}');
-    buffer.writeln('File Name: ${item.fileName}');
-    buffer.writeln('Status: ${item.status.label}');
-    buffer.writeln('Size: ${item.totalBytes} bytes');
-    buffer.writeln('Received: ${item.receivedBytes} bytes');
-    buffer.writeln('Verified: ${item.verifiedBytes} bytes');
-    buffer.writeln('Progress: ${(item.progress * 100).toStringAsFixed(1)}%');
-    buffer.writeln('Current Speed: ${item.downloadRateBps} B/s');
-    buffer.writeln('Average Speed: ${item.averageRateBps} B/s');
-    if (item.etaSeconds != null) {
-      buffer.writeln('ETA: ${item.etaSeconds}s');
-    }
-    buffer.writeln('Connection Attempts: ${item.connectionAttempts}');
-    if (item.lastError != null) {
-      buffer.writeln('Last Error: ${item.lastError}');
-    }
-    if (item.ed2kHash != null) {
-      buffer.writeln('eD2K Hash: ${item.ed2kHash}');
-    }
-    if (item.ed2kLink != null) {
-      buffer.writeln('Canonical Link: ${item.ed2kLink}');
-    }
-    buffer.writeln('Temp Path: $sanitizedTemp');
-    buffer.writeln('Destination Target: $sanitizedTarget');
-    buffer.writeln(
-      'Part Map Summary: $totalParts parts total ($verifiedParts verified, $completedParts unverified, $downloadingParts downloading, $missingParts missing)',
-    );
-    buffer.writeln('Created At: ${item.createdAt.toIso8601String()}');
-    buffer.writeln('Updated At: ${item.updatedAt.toIso8601String()}');
-    return buffer.toString();
-  }
 
   // --- Category Actions (delegated to CategoriesController) ---
 
@@ -958,7 +731,6 @@ class DownloadsViewModel extends ChangeNotifier {
   void dispose() {
     _connSub?.cancel();
     
-    _eventSub?.cancel();
     _supervisorSub?.cancel();
     _instanceSub?.cancel();
     

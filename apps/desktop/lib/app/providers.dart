@@ -6,6 +6,7 @@ import '../services/daemon_supervisor.dart';
 import '../ui/features/downloads/view_models/downloads_view_model.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
+import '../ui/features/downloads/view_models/downloads_store_controller.dart';
 import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/settings/view_models/settings_controller.dart';
@@ -86,3 +87,9 @@ final settingsControllerProvider = ChangeNotifierProvider<SettingsController>(
 final labControllerProvider = ChangeNotifierProvider<LabController>(
   (ref) => ref.watch(downloadsViewModelProvider).labCtl,
 );
+
+/// Downloads store sub-domain controller. Provider-owned disposal.
+final downloadsStoreControllerProvider =
+    ChangeNotifierProvider<DownloadsStoreController>(
+      (ref) => ref.watch(downloadsViewModelProvider).downloadsCtl,
+    );
