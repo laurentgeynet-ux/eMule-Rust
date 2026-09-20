@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   gtk
+  local_notifier
   screen_retriever_linux
   tray_manager
   window_manager

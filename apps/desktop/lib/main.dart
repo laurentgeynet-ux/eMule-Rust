@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -7,6 +9,7 @@ import 'package:app_shell/emule_sion_app.dart';
 import 'package:mule_client/mule_client.dart';
 import 'services/daemon_supervisor.dart';
 import 'core/deep_link_handler.dart';
+import 'core/download_notifier.dart';
 import 'core/tray_setup.dart';
 import 'core/window_setup.dart';
 
@@ -39,6 +42,10 @@ void main() async {
   );
 
   DeepLinkHandler(viewModel).init();
+
+  // Native OS toasts on download completion/failure (desktop only).
+  final notifier = DownloadNotifier(client);
+  unawaited(notifier.init());
 
   if (supervisor != null) {
     supervisor.start();

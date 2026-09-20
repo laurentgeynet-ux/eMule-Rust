@@ -5,6 +5,13 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Desktop : notifications natives de fin de téléchargement** :
+  `DownloadNotifier` (`apps/desktop/lib/core/download_notifier.dart`)
+  souscrit à `downloadLifecycleEvents` et affiche un toast OS via
+  `local_notifier` (Windows/Linux/macOS) sur `completed` (nom du fichier)
+  et `failed` (nom + raison). No-op sur les autres plateformes ou si le
+  notifier OS est indisponible.
+
 - **Web : bouton "Changer de daemon"** : nouveau provider
   `onChangeDaemonProvider` (null par défaut — desktop/mobile). La sidebar
   affiche une action `link_off` quand il est défini ; `EmuleSionApp`
