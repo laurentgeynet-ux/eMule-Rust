@@ -25,6 +25,14 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 - **UI desktop** : correction du débordement du sélecteur de cible de
   recherche (scroll horizontal en mode compact, espacements resserrés) ;
   watchdog de recherche 30 s annulé dès réception de résultats.
+- **Navigation `go_router` + shell adaptatif (P3)** : `MaterialApp.router`
+  avec routes déclaratives par section (`/downloads`, `/history`,
+  `/servers`, `/search`, `/kad`), `ShellRoute` injectant le contenu dans le
+  shell adaptatif (`DownloadsScreen` : sidebar ≥1100 px, rail compact
+  750–1100 px, drawer <750 px). Le `DownloadsViewModel` reste la source de
+  vérité de la section : sync VM→URL par listener (`router.go`), sync
+  URL→VM (deep links, prêts pour le web) via adoption de la route dans le
+  shell. Les vues de section ont désormais chacune leur `ListenableBuilder`.
 - **Docs** : `docs/architecture/rpc_protocol.md` (contrat JSON-RPC complet)
   et `docs/architecture/plan_ui_multiplateforme.md` (roadmap desktop/
   mobile/web en 10 phases).

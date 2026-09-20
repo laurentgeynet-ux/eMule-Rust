@@ -142,6 +142,9 @@ class _SearchViewState extends State<SearchView> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.viewModel,
+      builder: (context, _) {
     final vm = widget.viewModel;
     final isConnected = vm.serverSession.status == ServerConnectionStatus.connected;
     final isKadActive = vm.kadStatus.isUdpActive;
@@ -167,6 +170,8 @@ class _SearchViewState extends State<SearchView> {
                   : _buildResultsTable(context, vm),
         ),
       ],
+    );
+      },
     );
   }
 

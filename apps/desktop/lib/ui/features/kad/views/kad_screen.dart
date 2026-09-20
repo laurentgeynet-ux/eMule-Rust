@@ -18,6 +18,9 @@ class _KadViewState extends State<KadView> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.viewModel,
+      builder: (context, _) {
     final vm = widget.viewModel;
     final status = vm.kadStatus;
     final contacts = vm.kadContacts.where((c) {
@@ -44,6 +47,8 @@ class _KadViewState extends State<KadView> {
               : _buildContactsTable(context, vm, contacts),
         ),
       ],
+    );
+      },
     );
   }
 

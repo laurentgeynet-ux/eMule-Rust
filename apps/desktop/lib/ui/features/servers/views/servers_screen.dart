@@ -21,6 +21,9 @@ class _ServersViewState extends State<ServersView> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.viewModel,
+      builder: (context, _) {
     final vm = widget.viewModel;
     var servers = vm.servers.where((s) {
       if (_searchQuery.isEmpty) return true;
@@ -75,6 +78,8 @@ class _ServersViewState extends State<ServersView> {
                       hasServerConnectionCap: hasServerConnectionCap),
         ),
       ],
+    );
+      },
     );
   }
 

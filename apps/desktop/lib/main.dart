@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'services/daemon_supervisor.dart';
 import 'package:ui_kit/ui_kit.dart';
+import 'package:go_router/go_router.dart';
+import 'app/router.dart';
 import 'ui/features/downloads/view_models/downloads_view_model.dart';
-import 'ui/features/downloads/views/downloads_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +59,7 @@ class EmuleSionApp extends StatefulWidget {
 
 class _EmuleSionAppState extends State<EmuleSionApp> {
   AppLifecycleListener? _lifecycleListener;
+  late final GoRouter _router = createAppRouter(widget.viewModel);
 
   @override
   void initState() {
@@ -77,16 +79,17 @@ class _EmuleSionAppState extends State<EmuleSionApp> {
   @override
   void dispose() {
     _lifecycleListener?.dispose();
+    _router.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Emule-Sion',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
-      home: DownloadsScreen(viewModel: widget.viewModel),
+      routerConfig: _router,
     );
   }
 }

@@ -18,10 +18,16 @@ import '../../servers/views/servers_screen.dart';
 import '../../search/views/search_screen.dart';
 import '../../kad/views/kad_screen.dart';
 
+/// Adaptive app shell: full sidebar on wide layouts, compact rail on medium,
+/// drawer on narrow. Global banners and the debug bar wrap the routed content
+/// ([child]) provided by the `go_router` ShellRoute. When no [child] is given
+/// (standalone usage in tests), the content is derived from
+/// [DownloadsViewModel.currentSection].
 class DownloadsScreen extends StatelessWidget {
   final DownloadsViewModel viewModel;
+  final Widget? child;
 
-  const DownloadsScreen({super.key, required this.viewModel});
+  const DownloadsScreen({super.key, required this.viewModel, this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -68,36 +74,10 @@ class DownloadsScreen extends StatelessWidget {
                         if (viewModel.statusNotification != null)
                           _buildStatusNotificationBanner(context, viewModel.statusNotification!),
 
-                        // Main Workspace Area
-                        if (viewModel.currentSection == AppNavSection.history) ...[
-                          Expanded(
-                            child: HistoryView(viewModel: viewModel),
-                          ),
-                        ] else if (viewModel.currentSection == AppNavSection.servers) ...[
-                          Expanded(
-                            child: ServersView(viewModel: viewModel),
-                          ),
-                        ] else if (viewModel.currentSection == AppNavSection.search) ...[
-                          Expanded(
-                            child: SearchView(viewModel: viewModel),
-                          ),
-                        ] else if (viewModel.currentSection == AppNavSection.kad) ...[
-                          Expanded(
-                            child: KadView(viewModel: viewModel),
-                          ),
-                        ] else ...[
-                          // Top Navigation / Actions Bar
-                          _buildTopBar(context, isSmall: isSmall),
-
-                          // Main Content: Downloads Table or Empty State
-                          Expanded(
-                            child: _buildDownloadsArea(context),
-                          ),
-
-                          // Selected item details panel (collapsible)
-                          if (viewModel.selectedDownload != null)
-                            _buildDetailsPanel(context, viewModel.selectedDownload!, isSmall: isSmall),
-                        ],
+                        // Main Workspace Area (routed or VM-driven)
+                        Expanded(
+                          child: child ?? _sectionContent(),
+                        ),
 
                         // Optional Debug Bar
                         if (viewModel.isDebugBarVisible)
@@ -111,6 +91,73 @@ class DownloadsScreen extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  /// Legacy content switch kept for standalone usage (tests) where no router
+  /// child is injected. In the routed app each GoRoute supplies its own view.
+  Widget _sectionContent() {
+    return switch (viewModel.currentSection) {
+      AppNavSection.history => HistoryView(viewModel: viewModel),
+      AppNavSection.servers => ServersView(viewModel: viewModel),
+      AppNavSection.search => SearchView(viewModel: viewModel),
+      AppNavSection.kad => KadView(viewModel: viewModel),
+      AppNavSection.downloads => DownloadsView(viewModel: viewModel),
+    };
+  }
+
+  Widget _buildStatusNotificationBanner(BuildContext context, String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.teal.withValues(alpha: 0.15),
+        border: const Border(bottom: BorderSide(color: Colors.teal, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_outline, size: 16, color: Colors.tealAccent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 12, color: Colors.tealAccent),
+            ),
+          ),
+          InkWell(
+            onTap: viewModel.clearStatusNotification,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.close, size: 14, color: Colors.tealAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Downloads workspace: top action bar, downloads list, and the collapsible
+/// details panel for the selected download. Rendered as the `/downloads`
+/// route content inside [DownloadsScreen].
+class DownloadsView extends StatelessWidget {
+  final DownloadsViewModel viewModel;
+
+  const DownloadsView({super.key, required this.viewModel});
+
+  @override
+  Widget build(BuildContext context) {
+    final isSmall = MediaQuery.sizeOf(context).width < 750;
+    return ListenableBuilder(
+      listenable: viewModel,
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTopBar(context, isSmall: isSmall),
+          Expanded(child: _buildDownloadsArea(context)),
+          if (viewModel.selectedDownload != null)
+            _buildDetailsPanel(context, viewModel.selectedDownload!, isSmall: isSmall),
+        ],
+      ),
     );
   }
 
@@ -687,35 +734,6 @@ class DownloadsScreen extends StatelessWidget {
         const SizedBox(height: 2),
         Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
       ],
-    );
-  }
-
-  Widget _buildStatusNotificationBanner(BuildContext context, String message) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.teal.withValues(alpha: 0.15),
-        border: const Border(bottom: BorderSide(color: Colors.teal, width: 0.5)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.check_circle_outline, size: 16, color: Colors.tealAccent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(fontSize: 12, color: Colors.tealAccent),
-            ),
-          ),
-          InkWell(
-            onTap: viewModel.clearStatusNotification,
-            child: const Padding(
-              padding: EdgeInsets.all(4),
-              child: Icon(Icons.close, size: 14, color: Colors.tealAccent),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

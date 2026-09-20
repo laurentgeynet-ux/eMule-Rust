@@ -40,6 +40,7 @@ dependencies:
     path: ../../packages/mule_client
   ui_kit:
     path: ../../packages/ui_kit
+  go_router: ^18.0.1
 
 dev_dependencies:
   flutter_test:

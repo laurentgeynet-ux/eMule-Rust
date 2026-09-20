@@ -55,14 +55,15 @@ But : un seul langage visuel pour les 4 plateformes + web.
 Critère de sortie : `apps/desktop` n'importe plus aucune couleur/typo
 en dur ; tout passe par `ui_kit`.
 
-## Phase 3 — Navigation & structure d'app
+## Phase 3 — Navigation & structure d'app ✅ (partiel)
 
-| Tâche | Détail |
-|---|---|
-| `go_router` | Routes : `/downloads`, `/downloads/:id`, `/search`, `/servers`, `/kad`, `/history`, `/settings`. Deep links prêts pour le web |
-| Shell adaptatif | `ResponsiveScaffold` : sidebar (≥1100px) / NavigationRail (700–1100) / NavigationBar bottom (<700) |
-| `url_strategy` | `usePathUrlStrategy()` pour le web (URLs sans `#`) |
-| ed2k:// links | Enregistrer le handler de protocole (Windows registry, Linux .desktop) + `app_links` pour mobile/web |
+| Tâche | Détail | Statut |
+|---|---|---|
+| `go_router` | Routes `/downloads`, `/history`, `/servers`, `/search`, `/kad` dans un `ShellRoute` (`lib/app/router.dart`) ; sync bidirectionnelle `currentSection` ↔ URL | ✅ |
+| Shell adaptatif | `DownloadsScreen` = shell : sidebar (≥1100 px) / rail compact (750–1100 px) / drawer (<750 px) ; bannières globales + debug bar mutualisés | ✅ |
+| Routes détail | `/downloads/:id`, `/settings` | 🔲 |
+| `url_strategy` | `usePathUrlStrategy()` pour le web (URLs sans `#`) — à faire au lancement d'`apps/web` | 🔲 |
+| ed2k:// links | Handler de protocole + `app_links` | 🔲 |
 
 ## Phase 4 — Migration Riverpod (state management)
 

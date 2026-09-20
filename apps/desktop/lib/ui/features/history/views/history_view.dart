@@ -12,11 +12,14 @@ class HistoryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stats = viewModel.historyStats;
-    final entries = viewModel.historyEntries;
-    final isLoading = viewModel.isHistoryLoading;
+    return ListenableBuilder(
+      listenable: viewModel,
+      builder: (context, _) {
+        final stats = viewModel.historyStats;
+        final entries = viewModel.historyEntries;
+        final isLoading = viewModel.isHistoryLoading;
 
-    return Column(
+        return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Top Toolbar
@@ -45,6 +48,8 @@ class HistoryView extends StatelessWidget {
                   : _buildHistoryTable(context, entries),
         ),
       ],
+        );
+      },
     );
   }
 
