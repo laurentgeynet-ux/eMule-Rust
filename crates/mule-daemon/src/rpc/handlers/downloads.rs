@@ -7,7 +7,7 @@ use crate::state::AppState;
 
 pub async fn handle_downloads_list(state: &AppState) -> Result<Value, JsonRpcError> {
     let seq = state.sequence.load(std::sync::atomic::Ordering::SeqCst);
-    let list = state.downloads.lock().await.list_downloads();
+    let list = state.downloads.lock().await.list_download_details();
     Ok(json!({
         "sequence": seq,
         "downloads": list

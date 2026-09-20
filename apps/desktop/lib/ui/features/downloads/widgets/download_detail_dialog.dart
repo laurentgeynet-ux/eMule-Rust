@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../../domain/models/download_item.dart';
-import '../../../../domain/models/server_models.dart';
+import 'package:mule_client/mule_client.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
+import 'part_availability_bar.dart';
 
 class DownloadDetailDialog extends StatefulWidget {
   final String downloadId;
@@ -1494,31 +1494,5 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
     );
   }
 
-  Color _getPartColor(DownloadPartInfo part) {
-    if (part.isVerified) {
-      return Colors.tealAccent;
-    }
-    // eMule-style availability coloring: red = no known source has this
-    // part (download will stall), blue shades = rare → common.
-    if (part.state == 'missing') {
-      if (part.availableSourceCount == 0) {
-        return Colors.redAccent;
-      }
-      // 1-2 sources → dark blue, ≥8 → light blue.
-      final t = (part.availableSourceCount / 8).clamp(0.0, 1.0);
-      return Color.lerp(
-        const Color(0xFF0D47A1),
-        Colors.lightBlueAccent,
-        t,
-      )!;
-    }
-    switch (part.state) {
-      case 'completed':
-        return Colors.blueAccent;
-      case 'downloading':
-        return Colors.amberAccent;
-      default:
-        return Colors.white12;
-    }
-  }
+  Color _getPartColor(DownloadPartInfo part) => partColorFor(part);
 }

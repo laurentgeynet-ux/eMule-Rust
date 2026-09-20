@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../domain/models/category_item.dart';
-import '../../../../domain/models/download_item.dart';
+import 'package:mule_client/mule_client.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../view_models/downloads_view_model.dart';
 import 'download_detail_dialog.dart';
+import 'part_availability_bar.dart';
 
 class DownloadRow extends StatelessWidget {
   final DownloadItem item;
@@ -180,6 +180,10 @@ class DownloadRow extends StatelessWidget {
             valueColor: AlwaysStoppedAnimation<Color>(statusColor),
           ),
         ),
+
+        // eMule-style per-part availability strip
+        const SizedBox(height: 3),
+        PartAvailabilityBar(parts: item.parts, totalBytes: item.totalBytes),
 
         const SizedBox(height: 6),
 
@@ -364,6 +368,12 @@ class DownloadRow extends StatelessWidget {
                   backgroundColor: Colors.white12,
                   valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                 ),
+              ),
+              // eMule-style per-part availability strip
+              const SizedBox(height: 3),
+              PartAvailabilityBar(
+                parts: item.parts,
+                totalBytes: item.totalBytes,
               ),
             ],
           ),

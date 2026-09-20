@@ -193,6 +193,15 @@ impl DownloadService {
         self.active.values().map(|a| a.snapshot()).collect()
     }
 
+    /// Full details (incl. per-part state and source availability) so the
+    /// downloads list can render an eMule-style part map per row.
+    pub fn list_download_details(&self) -> Vec<DownloadDetail> {
+        self.active
+            .values()
+            .filter_map(|a| operations::get_download_detail(&self.db, &self.active, &a.download.id))
+            .collect()
+    }
+
     pub fn get_download(&self, id: &Uuid) -> Option<DownloadSnapshot> {
         self.active.get(id).map(|a| a.snapshot())
     }
