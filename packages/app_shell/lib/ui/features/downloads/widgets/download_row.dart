@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'download_detail_dialog.dart';
 import 'row/download_remove_confirm_dialog.dart';
 import 'row/download_row_compact.dart';
@@ -9,24 +10,25 @@ import 'row/download_row_full.dart';
 
 /// Selectable download list row — switches between full and compact
 /// layouts based on available width.
-class DownloadRow extends StatelessWidget {
+class DownloadRow extends ConsumerWidget {
   final DownloadItem item;
-  final AppController viewModel;
-  final bool isSelected;
+    final bool isSelected;
   final VoidCallback onTap;
 
   const DownloadRow({
     super.key,
     required this.item,
-    required this.viewModel,
     required this.isSelected,
     required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categories = ref.watch(categoriesControllerProvider).categories;
+    final downloads = ref.read(downloadsStoreControllerProvider);
+    final categoriesCtl = ref.read(categoriesControllerProvider);
     final category = item.categoryId != null
-        ? viewModel.categories
+        ? categories
             .where((c) => c.id == item.categoryId)
             .firstOrNull
         : null;
@@ -59,25 +61,25 @@ class DownloadRow extends StatelessWidget {
                   return DownloadRowCompact(
                     item: item,
                     category: category,
-                    categories: viewModel.categories,
+                    categories: categories,
                     onCategorySelected: (catId) =>
-                        viewModel.setDownloadCategory(item.id, catId),
-                    onDetails: () => _openDetailDialog(context),
-                    onPause: () => viewModel.pauseDownload(item.id),
-                    onResume: () => viewModel.resumeDownload(item.id),
-                    onRemove: () => _confirmRemove(context),
+                        categoriesCtl.assignDownload(item.id, catId),
+                    onDetails: () => _openDetailDialog(context, ref),
+                    onPause: () => downloads.pause(item.id),
+                    onResume: () => downloads.resume(item.id),
+                    onRemove: () => _confirmRemove(context, ref),
                   );
                 }
                 return DownloadRowFull(
                   item: item,
                   category: category,
-                  categories: viewModel.categories,
+                  categories: categories,
                   onCategorySelected: (catId) =>
-                      viewModel.setDownloadCategory(item.id, catId),
-                  onDetails: () => _openDetailDialog(context),
-                  onPause: () => viewModel.pauseDownload(item.id),
-                  onResume: () => viewModel.resumeDownload(item.id),
-                  onRemove: () => _confirmRemove(context),
+                      categoriesCtl.assignDownload(item.id, catId),
+                  onDetails: () => _openDetailDialog(context, ref),
+                  onPause: () => downloads.pause(item.id),
+                  onResume: () => downloads.resume(item.id),
+                  onRemove: () => _confirmRemove(context, ref),
                 );
               },
             ),
@@ -87,22 +89,20 @@ class DownloadRow extends StatelessWidget {
     );
   }
 
-  void _openDetailDialog(BuildContext context) {
+  void _openDetailDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (ctx) => DownloadDetailDialog(
-        downloadId: item.id,
-        viewModel: viewModel,
-      ),
+      builder: (ctx) => DownloadDetailDialog(downloadId: item.id),
     );
   }
 
-  void _confirmRemove(BuildContext context) {
+  void _confirmRemove(BuildContext context, WidgetRef ref) {
     showDownloadRemoveConfirmDialog(
       context,
       item.fileName,
       onConfirm: ({required deleteFiles}) =>
-          viewModel.removeDownload(item.id, deleteFiles: deleteFiles),
+          ref.read(downloadsStoreControllerProvider)
+              .remove(item.id, deleteFiles: deleteFiles),
     );
   }
 }

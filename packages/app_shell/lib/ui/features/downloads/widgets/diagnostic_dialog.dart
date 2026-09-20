@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'diagnostic/capability_chip.dart';
 import 'diagnostic/diagnostic_card.dart';
 import 'diagnostic/diagnostic_copy_row.dart';
@@ -16,15 +17,13 @@ import '../../../../l10n/l10n.dart';
 
 /// System & lab diagnostics: workdir mode/paths, daemon process info,
 /// capabilities, and sanitized/full copy actions.
-class DiagnosticDialog extends StatelessWidget {
-  final AppController viewModel;
-
-  const DiagnosticDialog({super.key, required this.viewModel});
+class DiagnosticDialog extends ConsumerWidget {
+    const DiagnosticDialog({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final info = viewModel.daemonInfo;
-    final supervisor = viewModel.supervisor;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final info = ref.watch(daemonInfoProvider);
+    final supervisor = ref.watch(daemonSupervisorProvider);
     final resolvedLocal = supervisor?.resolveWorkDirInfo();
 
     final workdirMode = info?.workdirMode ??
@@ -34,9 +33,9 @@ class DiagnosticDialog extends StatelessWidget {
     final workdirPath = info?.workdirPath ??
         resolvedLocal?.workDirPath ??
         'Not available';
-    final downloadsPath = info?.defaultDownloadDir ??
+    final String downloadsPath = info?.defaultDownloadDir ??
         resolvedLocal?.defaultDownloadDirPath ??
-        viewModel.defaultDownloadDirectoryPath;
+        ref.read(defaultDownloadDirectoryProvider);
     final isPortable = workdirMode.toLowerCase() == 'portable';
     final isInstalled = workdirMode.toLowerCase() == 'installeddefault';
 
@@ -44,7 +43,7 @@ class DiagnosticDialog extends StatelessWidget {
         ? '${supervisor!.activeSession!.pid}'
         : (supervisor?.activePid != null
             ? '${supervisor!.activePid}'
-            : (viewModel.connectionState.label));
+            : (ref.watch(daemonConnectionStateProvider).label));
 
     final rpcEndpoint = supervisor?.activeSession?.endpoint ??
         'ws://127.0.0.1:4660/rpc';
@@ -112,7 +111,7 @@ class DiagnosticDialog extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       NetworkProfileBanner(
-                        profile: viewModel.currentNetworkProfile,
+                        profile: ref.watch(networkPolicyControllerProvider).currentProfile,
                       ),
                       const SizedBox(height: 16),
                       DiagnosticSectionTitle(
@@ -276,9 +275,9 @@ class DiagnosticDialog extends StatelessWidget {
                           workdirMode: workdirMode,
                           isPortable: isPortable,
                           isInstalled: isInstalled,
-                          countAll: viewModel.countAll,
+                          countAll: ref.watch(downloadsStoreControllerProvider).countAll,
                           networkProfile:
-                              viewModel.currentNetworkProfile,
+                              ref.watch(networkPolicyControllerProvider).currentProfile,
                         );
                         Clipboard.setData(
                           ClipboardData(text: sanitized),
@@ -306,9 +305,9 @@ class DiagnosticDialog extends StatelessWidget {
                           workdirPath: workdirPath,
                           pidText: pidText,
                           rpcEndpoint: rpcEndpoint,
-                          countAll: viewModel.countAll,
+                          countAll: ref.watch(downloadsStoreControllerProvider).countAll,
                           networkProfile:
-                              viewModel.currentNetworkProfile,
+                              ref.watch(networkPolicyControllerProvider).currentProfile,
                         );
                         Clipboard.setData(ClipboardData(text: full));
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -320,7 +319,7 @@ class DiagnosticDialog extends StatelessWidget {
                         );
                       },
                     ),
-                    if (viewModel.isLabModeAvailable)
+                    if (ref.watch(isLabModeAvailableProvider))
                       FilledButton.tonalIcon(
                         icon: const Icon(Icons.science, size: 16),
                         label: Text(context.l10n.openLabGuide),
@@ -334,7 +333,7 @@ class DiagnosticDialog extends StatelessWidget {
                           showDialog(
                             context: context,
                             builder: (ctx) =>
-                                LabGuideDialog(viewModel: viewModel),
+                                const LabGuideDialog(),
                           );
                         },
                       ),

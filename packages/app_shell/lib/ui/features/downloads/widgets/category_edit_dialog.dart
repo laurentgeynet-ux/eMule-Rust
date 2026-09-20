@@ -2,28 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 import '../../../../core/folder_picker.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'category/category_color_picker.dart';
 import 'category/category_priority_dropdown.dart';
 import '../../../../l10n/l10n.dart';
 
 /// Create or edit a download category (name, color, default destination
 /// and priority).
-class CategoryEditDialog extends StatefulWidget {
-  final AppController viewModel;
+class CategoryEditDialog extends ConsumerStatefulWidget {
   final CategoryItem? category; // null when creating
 
   const CategoryEditDialog({
     super.key,
-    required this.viewModel,
     this.category,
   });
 
   @override
-  State<CategoryEditDialog> createState() => _CategoryEditDialogState();
+  ConsumerState<CategoryEditDialog> createState() => _CategoryEditDialogState();
 }
 
-class _CategoryEditDialogState extends State<CategoryEditDialog> {
+class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _colorController;
   late final TextEditingController _destController;
@@ -84,14 +83,14 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
 
     bool success;
     if (widget.category == null) {
-      success = await widget.viewModel.createCategory(
+      success = await ref.read(categoriesControllerProvider).create(
         name: name,
         color: color,
         defaultDestination: dest,
         defaultPriority: prio,
       );
     } else {
-      success = await widget.viewModel.updateCategory(
+      success = await ref.read(categoriesControllerProvider).update(
         widget.category!.id,
         name: name,
         color: color,
@@ -107,7 +106,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       Navigator.of(context).pop();
     } else {
       setState(() =>
-          _error = widget.viewModel.errorMessage ?? 'Operation failed');
+          _error = ref.read(shellControllerProvider).errorMessage ?? 'Operation failed');
     }
   }
 

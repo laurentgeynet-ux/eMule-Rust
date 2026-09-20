@@ -81,7 +81,7 @@ GoRouter createAppRouter(AppController viewModel) {
       }
       await showDialog<void>(
         context: context,
-        builder: (_) => SettingsDialog(viewModel: viewModel),
+        builder: (_) => const SettingsDialog(),
       );
       settingsDialogOpen = false;
       if (router.state.matchedLocation == '/settings') {
@@ -128,25 +128,25 @@ GoRouter createAppRouter(AppController viewModel) {
               }),
             );
           }
-          return DownloadsScreen(viewModel: viewModel, child: child);
+          return DownloadsScreen(child: child);
         },
         routes: [
           GoRoute(
             path: '/downloads',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: DownloadsView(viewModel: viewModel),
+              child: const DownloadsView(),
             ),
           ),
           GoRoute(
             path: '/downloads/:id',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: DownloadsView(viewModel: viewModel),
+              child: const DownloadsView(),
             ),
           ),
           GoRoute(
             path: '/settings',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: DownloadsView(viewModel: viewModel),
+              child: const DownloadsView(),
             ),
           ),
           GoRoute(

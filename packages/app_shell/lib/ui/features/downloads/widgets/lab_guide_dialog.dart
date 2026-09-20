@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
 import 'package:mule_client/mule_client.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
+import '../../../../core/system_actions.dart';
 import 'lab/lab_cleanup_dialog.dart';
 import 'lab/lab_directory_overview.dart';
 import 'lab/lab_error_banner.dart';
@@ -15,16 +17,14 @@ import '../../../../l10n/l10n.dart';
 
 /// Guided end-to-end loopback test flow: fixture generation, ed2k link,
 /// loopback peer, download connect, and test-data cleanup.
-class LabGuideDialog extends StatefulWidget {
-  final AppController viewModel;
-
-  const LabGuideDialog({super.key, required this.viewModel});
+class LabGuideDialog extends ConsumerStatefulWidget {
+    const LabGuideDialog({super.key, });
 
   @override
-  State<LabGuideDialog> createState() => _LabGuideDialogState();
+  ConsumerState<LabGuideDialog> createState() => _LabGuideDialogState();
 }
 
-class _LabGuideDialogState extends State<LabGuideDialog> {
+class _LabGuideDialogState extends ConsumerState<LabGuideDialog> {
   bool _isLoading = true;
   String? _errorMessage;
   LabStatus? _labStatus;
@@ -49,7 +49,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
   @override
   void initState() {
     super.initState();
-    _loadStatus();
+    Future.microtask(_loadStatus);
   }
 
   Future<void> _loadStatus() async {
@@ -59,7 +59,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
     });
 
     try {
-      final status = await widget.viewModel.getLabStatus();
+      final status = await ref.read(labControllerProvider).getLabStatus();
       if (mounted) {
         setState(() {
           _labStatus = status;
@@ -87,8 +87,8 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
 
     try {
       final fixture =
-          await widget.viewModel.createLabFixture(_selectedFixtureType);
-      final updatedStatus = await widget.viewModel.getLabStatus();
+          await ref.read(labControllerProvider).createLabFixture(_selectedFixtureType);
+      final updatedStatus = await ref.read(labControllerProvider).getLabStatus();
       if (mounted) {
         setState(() {
           _lastCreatedFixture = fixture;
@@ -117,7 +117,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
     });
 
     try {
-      final success = await widget.viewModel.addEd2kLink(fixture.ed2kLink);
+      final success = await ref.read(downloadsStoreControllerProvider).addEd2kLink(fixture.ed2kLink);
       if (mounted) {
         setState(() {
           _addedToDownloadsSuccess = success;
@@ -143,11 +143,11 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
 
     try {
       if (isRunning) {
-        await widget.viewModel.stopLabPeer();
+        await ref.read(labControllerProvider).stopLabPeer();
       } else {
-        await widget.viewModel.startLabPeer();
+        await ref.read(labControllerProvider).startLabPeer();
       }
-      final updatedStatus = await widget.viewModel.getLabStatus();
+      final updatedStatus = await ref.read(labControllerProvider).getLabStatus();
       if (mounted) {
         setState(() {
           _labStatus = updatedStatus;
@@ -167,8 +167,8 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
   Future<void> _connectDownload() async {
     final peerAddr = _labStatus?.activeLoopbackPeer;
     final downloadId = _selectedDownloadIdForConnect ??
-        (widget.viewModel.filteredDownloads.isNotEmpty
-            ? widget.viewModel.filteredDownloads.first.id
+        (ref.read(filteredDownloadsProvider).isNotEmpty
+            ? ref.read(filteredDownloadsProvider).first.id
             : null);
 
     if (peerAddr == null || downloadId == null) return;
@@ -179,7 +179,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
     });
 
     try {
-      await widget.viewModel.connectDownloadToSource(downloadId, peerAddr);
+      await ref.read(labControllerProvider).connectDownloadToSource(downloadId, peerAddr);
       if (mounted) {
         setState(() {
           _isConnectingDownload = false;
@@ -215,8 +215,8 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
     });
 
     try {
-      final report = await widget.viewModel.cleanupLabTestData();
-      final updatedStatus = await widget.viewModel.getLabStatus();
+      final report = await ref.read(labControllerProvider).cleanupLabTestData();
+      final updatedStatus = await ref.read(labControllerProvider).getLabStatus();
       if (mounted) {
         setState(() {
           _labStatus = updatedStatus;
@@ -247,10 +247,10 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final workdir = widget.viewModel.daemonInfo?.workdirPath ??
-        widget.viewModel.supervisor?.resolveWorkDirInfo().workDirPath ??
+    final workdir = ref.read(daemonInfoProvider)?.workdirPath ??
+        ref.read(daemonSupervisorProvider)?.resolveWorkDirInfo().workDirPath ??
         'data';
-    final downloadsDir = widget.viewModel.defaultDownloadDirectoryPath;
+    final downloadsDir = ref.read(defaultDownloadDirectoryProvider);
 
     return Dialog(
       backgroundColor: AppTheme.darkSurface,
@@ -324,7 +324,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                               workdir: workdir,
                               downloadsDir: downloadsDir,
                               onOpenFolder:
-                                  widget.viewModel.openDownloadsFolder,
+                                  () => systemActions.openDirectory(ref.read(defaultDownloadDirectoryProvider)),
                             ),
                             LabStepFixture(
                               selectedFixtureType: _selectedFixtureType,
@@ -353,7 +353,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                             const SizedBox(height: 16),
                             LabStepConnect(
                               downloads:
-                                  widget.viewModel.filteredDownloads,
+                                  ref.watch(filteredDownloadsProvider),
                               selectedDownloadId:
                                   _selectedDownloadIdForConnect,
                               onDownloadChanged: (id) => setState(
@@ -366,7 +366,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                               onConnect: _connectDownload,
                               downloadsDir: downloadsDir,
                               onOpenFolder:
-                                  widget.viewModel.openDownloadsFolder,
+                                  () => systemActions.openDirectory(ref.read(defaultDownloadDirectoryProvider)),
                             ),
                             const SizedBox(height: 16),
                             LabStepCleanup(

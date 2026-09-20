@@ -3,26 +3,25 @@ import 'package:go_router/go_router.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'download_detail_dialog.dart';
 import '../../../../l10n/l10n.dart';
 
 /// Collapsible summary panel shown at the bottom of the downloads workspace
 /// when a download is selected. Offers a shortcut to the full detail dialog.
-class DownloadDetailsPanel extends StatelessWidget {
+class DownloadDetailsPanel extends ConsumerWidget {
   final DownloadItem item;
-  final AppController viewModel;
-  final bool isSmall;
+    final bool isSmall;
 
   const DownloadDetailsPanel({
     super.key,
     required this.item,
-    required this.viewModel,
     this.isSmall = false,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       padding: AppSpacing.pagePadding,
       decoration: AppDecorations.footerBar,
@@ -65,7 +64,7 @@ class DownloadDetailsPanel extends StatelessWidget {
                   if (router != null) {
                     router.go('/downloads');
                   } else {
-                    viewModel.selectDownload(null);
+                    ref.read(downloadsStoreControllerProvider).select(null);
                   }
                 },
               ),
@@ -91,10 +90,7 @@ class DownloadDetailsPanel extends StatelessWidget {
   void _openDetails(BuildContext context) {
     showDialog(
       context: context,
-      builder: (ctx) => DownloadDetailDialog(
-        downloadId: item.id,
-        viewModel: viewModel,
-      ),
+      builder: (ctx) => DownloadDetailDialog(downloadId: item.id),
     );
   }
 }

@@ -73,7 +73,7 @@ class _ServersViewState extends ConsumerState<ServersView> {
     void showPolicyDialog() {
       showDialog(
         context: context,
-        builder: (ctx) => NetworkPolicyDialog(viewModel: vm),
+        builder: (ctx) => const NetworkPolicyDialog(),
       );
     }
 

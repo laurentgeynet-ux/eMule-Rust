@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
 import 'package:mule_client/mule_client.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'anti_ssrf_notice.dart';
 import 'network_mode_status_card.dart';
 import 'upnp_status_card.dart';
@@ -10,16 +11,14 @@ import '../../../../l10n/l10n.dart';
 
 /// Network mode switch (confined lab ↔ public WAN/Kad) with UPnP
 /// traversal status and refresh.
-class NetworkModeDialog extends StatefulWidget {
-  final AppController viewModel;
-
-  const NetworkModeDialog({super.key, required this.viewModel});
+class NetworkModeDialog extends ConsumerStatefulWidget {
+  const NetworkModeDialog({super.key});
 
   @override
-  State<NetworkModeDialog> createState() => _NetworkModeDialogState();
+  ConsumerState<NetworkModeDialog> createState() => _NetworkModeDialogState();
 }
 
-class _NetworkModeDialogState extends State<NetworkModeDialog> {
+class _NetworkModeDialogState extends ConsumerState<NetworkModeDialog> {
   bool _isLoading = false;
   UpnpStatusModel? _upnpStatus;
   NetworkPolicySnapshot? _policy;
@@ -29,14 +28,14 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
   @override
   void initState() {
     super.initState();
-    _loadStatus();
+    Future.microtask(_loadStatus);
   }
 
   Future<void> _loadStatus() async {
     setState(() => _isLoading = true);
     try {
-      final policy = await widget.viewModel.client.getNetworkPolicy();
-      final upnp = await widget.viewModel.client.getUpnpStatus();
+      final policy = await ref.read(muleDaemonClientProvider).getNetworkPolicy();
+      final upnp = await ref.read(muleDaemonClientProvider).getUpnpStatus();
       if (mounted) {
         setState(() {
           _policy = policy;
@@ -61,14 +60,14 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
       _success = null;
     });
     try {
-      await widget.viewModel.client.setNetworkProfile(targetProfile);
+      await ref.read(muleDaemonClientProvider).setNetworkProfile(targetProfile);
       if (targetProfile == NetworkProfile.publicEd2kKadPreview) {
         try {
-          await widget.viewModel.client.mapUpnpPorts();
+          await ref.read(muleDaemonClientProvider).mapUpnpPorts();
         } catch (_) {}
       } else {
         try {
-          await widget.viewModel.client.unmapUpnpPorts();
+          await ref.read(muleDaemonClientProvider).unmapUpnpPorts();
         } catch (_) {}
       }
       await _loadStatus();
@@ -97,7 +96,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
       _success = null;
     });
     try {
-      final upnp = await widget.viewModel.client.mapUpnpPorts();
+      final upnp = await ref.read(muleDaemonClientProvider).mapUpnpPorts();
       if (mounted) {
         setState(() {
           _upnpStatus = upnp;

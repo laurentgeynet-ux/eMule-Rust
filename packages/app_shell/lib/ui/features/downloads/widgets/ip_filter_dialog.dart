@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'network/ip_filter_tab.dart';
 import 'network/rate_limits_tab.dart';
 import '../../../../l10n/l10n.dart';
 
 /// IP filter (ipfilter.dat) + token-bucket rate limiters dialog.
-class IpFilterDialog extends StatefulWidget {
-  final AppController viewModel;
-
-  const IpFilterDialog({super.key, required this.viewModel});
+class IpFilterDialog extends ConsumerStatefulWidget {
+    const IpFilterDialog({super.key, });
 
   @override
-  State<IpFilterDialog> createState() => _IpFilterDialogState();
+  ConsumerState<IpFilterDialog> createState() => _IpFilterDialogState();
 }
 
-class _IpFilterDialogState extends State<IpFilterDialog>
+class _IpFilterDialogState extends ConsumerState<IpFilterDialog>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _filePathController =
@@ -34,7 +33,7 @@ class _IpFilterDialogState extends State<IpFilterDialog>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadData();
+    Future.microtask(_loadData);
   }
 
   @override
@@ -49,10 +48,10 @@ class _IpFilterDialogState extends State<IpFilterDialog>
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    await widget.viewModel.fetchFilterStatus();
-    await widget.viewModel.fetchRateLimits();
+    await ref.read(networkPolicyControllerProvider).fetchFilterStatus();
+    await ref.read(networkPolicyControllerProvider).fetchRateLimits();
 
-    final limits = widget.viewModel.rateLimits;
+    final limits = ref.watch(networkPolicyControllerProvider).rateLimits;
     if (limits != null) {
       _downloadLimitController.text =
           (limits.downloadBytesPerSec ~/ 1024).toString();
@@ -69,13 +68,13 @@ class _IpFilterDialogState extends State<IpFilterDialog>
 
   Future<void> _toggleFilter(bool enabled) async {
     setState(() => _isLoading = true);
-    await widget.viewModel.setFilterEnabled(enabled);
+    await ref.read(networkPolicyControllerProvider).setFilterEnabled(enabled);
     if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _importFilter(String path) async {
     setState(() => _isLoading = true);
-    final success = await widget.viewModel.importFilterFile(path);
+    final success = await ref.read(networkPolicyControllerProvider).importFilterFile(path);
     if (mounted) {
       setState(() => _isLoading = false);
       if (success) {
@@ -86,7 +85,7 @@ class _IpFilterDialogState extends State<IpFilterDialog>
 
   Future<void> _clearFilter() async {
     setState(() => _isLoading = true);
-    await widget.viewModel.clearFilter();
+    await ref.read(networkPolicyControllerProvider).clearFilter();
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -107,7 +106,7 @@ class _IpFilterDialogState extends State<IpFilterDialog>
     );
 
     setState(() => _isLoading = true);
-    await widget.viewModel.setRateLimits(limits);
+    await ref.read(networkPolicyControllerProvider).setRateLimits(limits);
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -200,7 +199,7 @@ class _IpFilterDialogState extends State<IpFilterDialog>
                         controller: _tabController,
                         children: [
                           IpFilterTab(
-                            status: widget.viewModel.filterStatus,
+                            status: ref.watch(networkPolicyControllerProvider).filterStatus,
                             filePathController: _filePathController,
                             onToggle: _toggleFilter,
                             onImport: _importFilter,

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 import '../../../../core/folder_picker.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'add_link/add_link_allocation_dropdown.dart';
 import 'add_link/add_link_category_dropdown.dart';
 import 'add_link/add_link_field_label.dart';
@@ -11,16 +12,14 @@ import '../../../../l10n/l10n.dart';
 
 /// Dialog adding a download from an `ed2k://|file|…` link with category,
 /// target directory and disk allocation options.
-class AddLinkDialog extends StatefulWidget {
-  final AppController viewModel;
-
-  const AddLinkDialog({super.key, required this.viewModel});
+class AddLinkDialog extends ConsumerStatefulWidget {
+    const AddLinkDialog({super.key, });
 
   @override
-  State<AddLinkDialog> createState() => _AddLinkDialogState();
+  ConsumerState<AddLinkDialog> createState() => _AddLinkDialogState();
 }
 
-class _AddLinkDialogState extends State<AddLinkDialog> {
+class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
   final _linkController = TextEditingController();
   late final TextEditingController _targetDirController;
   String _allocationPolicy = 'sparse';
@@ -31,10 +30,10 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
   @override
   void initState() {
     super.initState();
-    final initialCatId = widget.viewModel.selectedCategoryId;
+    final initialCatId = ref.read(categoriesControllerProvider).selectedId;
     if (initialCatId != null && initialCatId != 'uncategorized') {
       _selectedCategoryId = initialCatId;
-      final cat = widget.viewModel.categories
+      final cat = ref.read(categoriesControllerProvider).categories
           .where((c) => c.id == initialCatId)
           .firstOrNull;
       if (cat != null &&
@@ -44,12 +43,12 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
             TextEditingController(text: cat.defaultDestination!);
       } else {
         _targetDirController = TextEditingController(
-          text: widget.viewModel.defaultDownloadDirectoryPath,
+          text: ref.read(defaultDownloadDirectoryProvider),
         );
       }
     } else {
       _targetDirController = TextEditingController(
-        text: widget.viewModel.defaultDownloadDirectoryPath,
+        text: ref.read(defaultDownloadDirectoryProvider),
       );
     }
     _linkController.addListener(_validateLink);
@@ -59,7 +58,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     var result = parseEd2kLink(_linkController.text);
 
     if (result.isValid) {
-      final existing = widget.viewModel.getDownloadByHash(result.hash!);
+      final existing = ref.read(downloadsStoreControllerProvider).getDownloadByHash(result.hash!);
       if (existing != null) {
         result = Ed2kLinkParseResult.error(
           'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}")',
@@ -160,7 +159,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                 children: [
                   AddLinkFieldLabel(label: context.l10n.category),
                   AddLinkCategoryDropdown(
-                    categories: widget.viewModel.categories,
+                    categories: ref.read(categoriesControllerProvider).categories,
                     selectedId: _selectedCategoryId,
                     onChanged: _onCategoryChanged,
                   ),
@@ -268,7 +267,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     setState(() {
       _selectedCategoryId = val;
       if (val != null) {
-        final cat = widget.viewModel.categories
+        final cat = ref.read(categoriesControllerProvider).categories
             .where((c) => c.id == val)
             .firstOrNull;
         if (cat != null &&
@@ -296,9 +295,9 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
 
     final destination = targetDir.isNotEmpty
         ? targetDir
-        : widget.viewModel.defaultDownloadDirectoryPath;
+        : ref.read(defaultDownloadDirectoryProvider);
 
-    final success = await widget.viewModel.addEd2kLink(
+    final success = await ref.read(downloadsStoreControllerProvider).addEd2kLink(
       link,
       targetDirectory: destination,
       allocationPolicy: _allocationPolicy,
@@ -311,7 +310,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            widget.viewModel.errorMessage ??
+            ref.read(shellControllerProvider).errorMessage ??
                 'Erreur lors de l\'ajout du téléchargement',
           ),
           backgroundColor: AppColors.accentOrangeShade700,

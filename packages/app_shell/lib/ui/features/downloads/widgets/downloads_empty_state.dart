@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import '../../../../l10n/l10n.dart';
 import 'add_link_dialog.dart';
 import 'import_part_met_dialog.dart';
@@ -9,13 +10,11 @@ import 'lab_guide_dialog.dart';
 
 /// Empty state of the downloads list: icon, title, subtitle and the
 /// primary actions (add link, import .part.met, guided lab test).
-class DownloadsEmptyState extends StatelessWidget {
-  final AppController viewModel;
-
-  const DownloadsEmptyState({super.key, required this.viewModel});
+class DownloadsEmptyState extends ConsumerWidget {
+    const DownloadsEmptyState({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -66,7 +65,7 @@ class DownloadsEmptyState extends StatelessWidget {
                 onPressed: () {
                   showDialog(
                     context: context,
-                    builder: (ctx) => AddLinkDialog(viewModel: viewModel),
+                    builder: (ctx) => const AddLinkDialog(),
                   );
                 },
               ),
@@ -81,11 +80,11 @@ class DownloadsEmptyState extends StatelessWidget {
                 onPressed: () {
                   showDialog(
                     context: context,
-                    builder: (ctx) => ImportPartMetDialog(viewModel: viewModel),
+                    builder: (ctx) => const ImportPartMetDialog(),
                   );
                 },
               ),
-              if (viewModel.isLabModeAvailable)
+              if (ref.watch(isLabModeAvailableProvider))
                 OutlinedButton.icon(
                   icon: const Icon(Icons.biotech, size: 16),
                   label: Text(context.l10n.actionGuidedLabTest),
@@ -96,7 +95,7 @@ class DownloadsEmptyState extends StatelessWidget {
                   onPressed: () {
                     showDialog(
                       context: context,
-                      builder: (ctx) => LabGuideDialog(viewModel: viewModel),
+                      builder: (ctx) => const LabGuideDialog(),
                     );
                   },
                 ),

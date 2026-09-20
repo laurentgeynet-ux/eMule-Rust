@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'network/network_audit_log_list.dart';
 import 'network/network_profile_selector.dart';
 import 'network/network_quotas_card.dart';
@@ -9,28 +10,26 @@ import '../../../../l10n/l10n.dart';
 
 /// Network policy & defense guard: kill switch, connectivity profile,
 /// socket budgets and the redacted audit log.
-class NetworkPolicyDialog extends StatefulWidget {
-  final AppController viewModel;
-
-  const NetworkPolicyDialog({super.key, required this.viewModel});
+class NetworkPolicyDialog extends ConsumerStatefulWidget {
+    const NetworkPolicyDialog({super.key, });
 
   @override
-  State<NetworkPolicyDialog> createState() => _NetworkPolicyDialogState();
+  ConsumerState<NetworkPolicyDialog> createState() => _NetworkPolicyDialogState();
 }
 
-class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
+class _NetworkPolicyDialogState extends ConsumerState<NetworkPolicyDialog> {
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    Future.microtask(_loadData);
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    await widget.viewModel.fetchNetworkPolicy();
-    await widget.viewModel.fetchNetworkAuditLog(limit: 20);
+    await ref.read(networkPolicyControllerProvider).fetchPolicy();
+    await ref.read(networkPolicyControllerProvider).fetchAuditLog(limit: 20);
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -39,8 +38,8 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
   @override
   Widget build(BuildContext context) {
     final isKillSwitchActive =
-        widget.viewModel.isNetworkKillSwitchActive;
-    final profile = widget.viewModel.currentNetworkProfile;
+        ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
+    final profile = ref.watch(networkPolicyControllerProvider).currentProfile;
 
     return Dialog(
       backgroundColor: AppTheme.darkSurface,
@@ -104,14 +103,14 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
               ),
               const SizedBox(height: 18),
               NetworkStateBanner(
-                state: widget.viewModel.currentNetworkState,
+                state: ref.watch(networkPolicyControllerProvider).currentState,
                 isKillSwitchActive: isKillSwitchActive,
                 onDisconnectAll: () async {
-                  await widget.viewModel.disconnectAllNetwork();
+                  await ref.read(networkPolicyControllerProvider).disconnectAll();
                   await _loadData();
                 },
                 onReenable: () async {
-                  await widget.viewModel.enableNetwork();
+                  await ref.read(networkPolicyControllerProvider).enableNetwork();
                   await _loadData();
                 },
               ),
@@ -124,7 +123,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                     child: NetworkProfileSelector(
                       active: profile,
                       onSelected: (p) async {
-                        await widget.viewModel.setNetworkProfile(p);
+                        await ref.read(networkPolicyControllerProvider).setProfile(p);
                         await _loadData();
                       },
                     ),
@@ -133,7 +132,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                   Expanded(
                     flex: 2,
                     child: NetworkQuotasCard(
-                      policy: widget.viewModel.networkPolicy,
+                      policy: ref.watch(networkPolicyControllerProvider).policy,
                     ),
                   ),
                 ],
@@ -148,7 +147,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
               const SizedBox(height: 6),
               Expanded(
                 child: NetworkAuditLogList(
-                  entries: widget.viewModel.networkAuditLog,
+                  entries: ref.watch(networkPolicyControllerProvider).auditLog,
                   isLoading: _isLoading,
                 ),
               ),

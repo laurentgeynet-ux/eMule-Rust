@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:app_shell/app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_shell/app/providers.dart';
 import 'package:app_shell/ui/features/downloads/widgets/lab_guide_dialog.dart';
 import 'package:app_shell/l10n/generated/app_localizations.dart';
 
@@ -28,12 +30,21 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
         locale: const Locale('fr'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(body: LabGuideDialog(viewModel: viewModel)),
-        ),
+          home: Scaffold(body: LabGuideDialog()),
+        )),
       );
       await tester.pumpAndSettle();
 
@@ -66,12 +77,21 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
         locale: const Locale('fr'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(body: LabGuideDialog(viewModel: viewModel)),
-        ),
+          home: Scaffold(body: LabGuideDialog()),
+        )),
       );
       await tester.pumpAndSettle();
 

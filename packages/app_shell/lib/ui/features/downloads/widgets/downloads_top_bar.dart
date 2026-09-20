@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import '../../../../l10n/l10n.dart';
 import 'add_link_dialog.dart';
 import 'diagnostic_dialog.dart';
@@ -14,18 +15,16 @@ import 'network_policy_dialog.dart';
 /// filter title, search field, and the action/badges cluster
 /// (diagnostics, lab tools, speeds, network policy, dev tools, refresh,
 /// add link).
-class DownloadsTopBar extends StatelessWidget {
-  final AppController viewModel;
-  final bool isSmall;
+class DownloadsTopBar extends ConsumerWidget {
+    final bool isSmall;
 
   const DownloadsTopBar({
     super.key,
-    required this.viewModel,
     this.isSmall = false,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: AppDecorations.headerBar,
@@ -45,7 +44,7 @@ class DownloadsTopBar extends StatelessWidget {
           // Filter title
           if (!isSmall) ...[
             Text(
-              viewModel.currentFilter.labelOf(context),
+              ref.watch(shellControllerProvider).filter.labelOf(context),
               style: AppTextStyles.sectionTitle,
             ),
             const SizedBox(width: AppSpacing.lg),
@@ -56,7 +55,7 @@ class DownloadsTopBar extends StatelessWidget {
             width: isSmall ? 130 : 180,
             height: 36,
             child: TextField(
-              onChanged: viewModel.setSearchQuery,
+              onChanged: ref.read(shellControllerProvider).setSearchQuery,
               style: const TextStyle(fontSize: 13),
               decoration: InputDecoration(
                 hintText: context.l10n.searchPlaceholder,
@@ -82,23 +81,23 @@ class DownloadsTopBar extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildModeBadge(context),
-                  if (viewModel.isLabModeAvailable) _buildLabButton(context),
+                  _buildModeBadge(context, ref),
+                  if (ref.watch(isLabModeAvailableProvider)) _buildLabButton(context, ref),
                   const SizedBox(width: AppSpacing.sm - 2),
-                  _buildSpeedBadge(),
+                  _buildSpeedBadge(ref),
                   const SizedBox(width: AppSpacing.sm),
-                  _buildNetworkPolicyBadge(context),
-                  _buildKillSwitchButton(context),
-                  _buildIpFilterButton(context),
-                  if (viewModel.isDevToolsAvailable) ...[
+                  _buildNetworkPolicyBadge(context, ref),
+                  _buildKillSwitchButton(context, ref),
+                  _buildIpFilterButton(context, ref),
+                  if (ref.watch(devToolsEnabledProvider)) ...[
                     const SizedBox(width: AppSpacing.sm),
-                    _buildDevBadge(context),
-                    _buildDebugBarButton(context),
+                    _buildDevBadge(context, ref),
+                    _buildDebugBarButton(context, ref),
                   ],
                   const SizedBox(width: AppSpacing.xxs),
-                  _buildRefreshButton(context),
+                  _buildRefreshButton(context, ref),
                   const SizedBox(width: AppSpacing.sm - 2),
-                  _buildAddLinkButton(context),
+                  _buildAddLinkButton(context, ref),
                 ],
               ),
             ),
@@ -108,8 +107,8 @@ class DownloadsTopBar extends StatelessWidget {
     );
   }
 
-  Widget _buildModeBadge(BuildContext context) {
-    final isLab = viewModel.isLabModeAvailable;
+  Widget _buildModeBadge(BuildContext context, WidgetRef ref) {
+    final isLab = ref.watch(isLabModeAvailableProvider);
     final accent = isLab ? AppColors.lab : AppColors.labDim;
     return Tooltip(
       message: isLab
@@ -132,7 +131,7 @@ class DownloadsTopBar extends StatelessWidget {
         onTap: () {
           showDialog(
             context: context,
-            builder: (ctx) => DiagnosticDialog(viewModel: viewModel),
+            builder: (ctx) => const DiagnosticDialog(),
           );
         },
         child: Container(
@@ -166,7 +165,7 @@ class DownloadsTopBar extends StatelessWidget {
     );
   }
 
-  Widget _buildLabButton(BuildContext context) {
+  Widget _buildLabButton(BuildContext context, WidgetRef ref) {
     return IconButton(
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       padding: EdgeInsets.zero,
@@ -176,13 +175,13 @@ class DownloadsTopBar extends StatelessWidget {
       onPressed: () {
         showDialog(
           context: context,
-          builder: (ctx) => LabGuideDialog(viewModel: viewModel),
+          builder: (ctx) => const LabGuideDialog(),
         );
       },
     );
   }
 
-  Widget _buildSpeedBadge() {
+  Widget _buildSpeedBadge(WidgetRef ref) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: AppDecorations.chip(),
@@ -192,7 +191,7 @@ class DownloadsTopBar extends StatelessWidget {
           const Icon(Icons.arrow_downward_rounded, size: 13, color: AppTheme.statusDownloading),
           const SizedBox(width: 3),
           Text(
-            Formatters.formatSpeed(viewModel.totalDownloadSpeed),
+            Formatters.formatSpeed(ref.watch(downloadsStoreControllerProvider).totalDownloadSpeed),
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
@@ -203,7 +202,7 @@ class DownloadsTopBar extends StatelessWidget {
           const Icon(Icons.arrow_upward_rounded, size: 13, color: AppColors.textFaint),
           const SizedBox(width: 3),
           Text(
-            Formatters.formatSpeed(viewModel.totalUploadSpeed),
+            Formatters.formatSpeed(ref.watch(uploadsControllerProvider).totalUploadRateBps),
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
@@ -211,22 +210,22 @@ class DownloadsTopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          SpeedSparkline(tracker: viewModel.speedTracker),
+          SpeedSparkline(tracker: ref.read(speedTrackerProvider)),
         ],
       ),
     );
   }
 
-  Widget _buildNetworkPolicyBadge(BuildContext context) {
-    final killSwitch = viewModel.isNetworkKillSwitchActive;
+  Widget _buildNetworkPolicyBadge(BuildContext context, WidgetRef ref) {
+    final killSwitch = ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
     final accent = killSwitch ? AppColors.tintRed : AppColors.tintCyan;
     final accentText = killSwitch ? AppColors.danger : AppColors.accentCyan;
     return Tooltip(
       message: killSwitch
           ? context.l10n.tooltipPolicyKill
           : context.l10n.tooltipPolicyInfo(
-              viewModel.currentNetworkProfile.label,
-              viewModel.currentNetworkState.label,
+              ref.watch(networkPolicyControllerProvider).currentProfile.label,
+              ref.watch(networkPolicyControllerProvider).currentState.label,
             ),
       child: InkWell(
         key: const Key('network_policy_badge'),
@@ -234,7 +233,7 @@ class DownloadsTopBar extends StatelessWidget {
         onTap: () {
           showDialog(
             context: context,
-            builder: (ctx) => NetworkPolicyDialog(viewModel: viewModel),
+            builder: (ctx) => const NetworkPolicyDialog(),
           );
         },
         child: Container(
@@ -259,7 +258,7 @@ class DownloadsTopBar extends StatelessWidget {
               Text(
                 killSwitch
                     ? context.l10n.killSwitchBadgeDisabled
-                    : viewModel.currentNetworkProfile.toKebabCase(),
+                    : ref.watch(networkPolicyControllerProvider).currentProfile.toKebabCase(),
                 style: AppTextStyles.badgeLabel.copyWith(color: accentText),
               ),
             ],
@@ -269,8 +268,8 @@ class DownloadsTopBar extends StatelessWidget {
     );
   }
 
-  Widget _buildKillSwitchButton(BuildContext context) {
-    final killSwitch = viewModel.isNetworkKillSwitchActive;
+  Widget _buildKillSwitchButton(BuildContext context, WidgetRef ref) {
+    final killSwitch = ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
     return IconButton(
       key: const Key('network_kill_switch_button'),
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -290,15 +289,15 @@ class DownloadsTopBar extends StatelessWidget {
           : context.l10n.tooltipKillSwitchDisable,
       onPressed: () {
         if (killSwitch) {
-          viewModel.enableNetwork();
+          ref.read(networkPolicyControllerProvider).enableNetwork();
         } else {
-          viewModel.disconnectAllNetwork();
+          ref.read(networkPolicyControllerProvider).disconnectAll();
         }
       },
     );
   }
 
-  Widget _buildIpFilterButton(BuildContext context) {
+  Widget _buildIpFilterButton(BuildContext context, WidgetRef ref) {
     return IconButton(
       key: const Key('ip_filter_button'),
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -313,13 +312,13 @@ class DownloadsTopBar extends StatelessWidget {
       onPressed: () {
         showDialog(
           context: context,
-          builder: (ctx) => IpFilterDialog(viewModel: viewModel),
+          builder: (ctx) => const IpFilterDialog(),
         );
       },
     );
   }
 
-  Widget _buildDevBadge(BuildContext context) {
+  Widget _buildDevBadge(BuildContext context, WidgetRef ref) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
@@ -341,39 +340,39 @@ class DownloadsTopBar extends StatelessWidget {
     );
   }
 
-  Widget _buildDebugBarButton(BuildContext context) {
+  Widget _buildDebugBarButton(BuildContext context, WidgetRef ref) {
     return IconButton(
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       padding: EdgeInsets.zero,
       visualDensity: VisualDensity.compact,
       icon: Icon(
         Icons.bug_report_rounded,
-        color: viewModel.isDebugBarVisible
+        color: ref.watch(shellControllerProvider).isDebugBarVisible
             ? AppColors.accentAmber
             : AppColors.textMuted,
         size: 18,
       ),
       tooltip: context.l10n.tooltipDevTools,
-      onPressed: viewModel.toggleDebugBar,
+      onPressed: ref.read(shellControllerProvider).toggleDebugBar,
     );
   }
 
-  Widget _buildRefreshButton(BuildContext context) {
+  Widget _buildRefreshButton(BuildContext context, WidgetRef ref) {
     return IconButton(
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       padding: EdgeInsets.zero,
       visualDensity: VisualDensity.compact,
       icon: const Icon(Icons.refresh_rounded, color: AppColors.textMuted, size: 18),
       tooltip: context.l10n.tooltipRefresh,
-      onPressed: viewModel.refresh,
+      onPressed: ref.read(appControllerProvider).refresh,
     );
   }
 
-  Widget _buildAddLinkButton(BuildContext context) {
+  Widget _buildAddLinkButton(BuildContext context, WidgetRef ref) {
     void showAddDialog() {
       showDialog(
         context: context,
-        builder: (ctx) => AddLinkDialog(viewModel: viewModel),
+        builder: (ctx) => const AddLinkDialog(),
       );
     }
 

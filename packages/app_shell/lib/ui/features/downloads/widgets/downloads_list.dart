@@ -2,30 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'download_row.dart';
 
 /// Virtualized list of downloads (ListView.builder) with selection handling.
-class DownloadsList extends StatelessWidget {
-  final AppController viewModel;
-
-  const DownloadsList({super.key, required this.viewModel});
+class DownloadsList extends ConsumerWidget {
+    const DownloadsList({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final list = viewModel.filteredDownloads;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(filteredDownloadsProvider);
 
     return ListView.builder(
       padding: AppSpacing.pagePadding,
       itemCount: list.length,
       itemBuilder: (context, index) {
         final item = list[index];
-        final isSelected = viewModel.selectedDownloadId == item.id;
+        final isSelected = ref.watch(downloadsStoreControllerProvider).selectedId == item.id;
 
         return DownloadRow(
           key: ValueKey(item.id),
           item: item,
-          viewModel: viewModel,
           isSelected: isSelected,
           onTap: () {
             final router = GoRouter.maybeOf(context);
@@ -36,7 +34,7 @@ class DownloadsList extends StatelessWidget {
                     : '/downloads/${Uri.encodeComponent(item.id)}',
               );
             } else {
-              viewModel.selectDownload(isSelected ? null : item.id);
+              ref.read(downloadsStoreControllerProvider).select(isSelected ? null : item.id);
             }
           },
         );

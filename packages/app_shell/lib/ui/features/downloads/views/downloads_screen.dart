@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
+import '../../../../app/shell_controller.dart';
 import '../widgets/debug_simulation_bar.dart';
 import '../widgets/download_details_panel.dart';
 import '../widgets/downloads_empty_state.dart';
@@ -20,18 +22,14 @@ import '../../uploads/views/uploads_view.dart';
 /// ([child]) provided by the `go_router` ShellRoute. When no [child] is given
 /// (standalone usage in tests), the content is derived from
 /// [AppController.currentSection].
-class DownloadsScreen extends StatelessWidget {
-  final AppController viewModel;
+class DownloadsScreen extends ConsumerWidget {
   final Widget? child;
 
-  const DownloadsScreen({super.key, required this.viewModel, this.child});
+  const DownloadsScreen({super.key, this.child});
 
   @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: viewModel,
-      builder: (context, _) {
-        return LayoutBuilder(
+  Widget build(BuildContext context, WidgetRef ref) {
+    return LayoutBuilder(
           builder: (context, constraints) {
             final isSmall = constraints.maxWidth < AppBreakpoints.compact;
             final isMedium = constraints.maxWidth >= AppBreakpoints.compact &&
@@ -43,7 +41,7 @@ class DownloadsScreen extends StatelessWidget {
                   ? Drawer(
                       backgroundColor: AppColors.surface,
                       child: SafeArea(
-                        child: DownloadsSidebar(viewModel: viewModel, isCompact: false),
+                        child: const DownloadsSidebar(isCompact: false),
                       ),
                     )
                   : null,
@@ -51,10 +49,7 @@ class DownloadsScreen extends StatelessWidget {
                 children: [
                   // Left Navigation Sidebar (Hidden on small screen, compact on medium, full on large)
                   if (!isSmall)
-                    DownloadsSidebar(
-                      viewModel: viewModel,
-                      isCompact: isMedium,
-                    ),
+                    DownloadsSidebar(isCompact: isMedium),
 
                   // Right Workspace Area
                   Expanded(
@@ -62,27 +57,27 @@ class DownloadsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // Incompatible protocol banner if any
-                        if (viewModel.protocolMismatchError != null)
+                        if (ref.watch(shellControllerProvider).protocolMismatchError != null)
                           IncompatibleVersionBanner(
-                            errorMessage: viewModel.protocolMismatchError!,
-                            onRetry: () => viewModel.supervisor?.start(),
+                            errorMessage: ref.watch(shellControllerProvider).protocolMismatchError!,
+                            onRetry: () => ref.watch(daemonSupervisorProvider)?.start(),
                           ),
 
                         // Status Notification banner if any
-                        if (viewModel.statusNotification != null)
+                        if (ref.watch(shellControllerProvider).statusNotification != null)
                           StatusNotificationBanner(
-                            message: viewModel.statusNotification!,
-                            onClose: viewModel.clearStatusNotification,
+                            message: ref.watch(shellControllerProvider).statusNotification!,
+                            onClose: ref.read(shellControllerProvider).clearStatusNotification,
                           ),
 
                         // Main Workspace Area (routed or VM-driven)
                         Expanded(
-                          child: child ?? _sectionContent(),
+                          child: child ?? _sectionContent(ref),
                         ),
 
                         // Optional Debug Bar
-                        if (viewModel.isDebugBarVisible)
-                          DebugSimulationBar(viewModel: viewModel),
+                        if (ref.watch(shellControllerProvider).isDebugBarVisible)
+                          const DebugSimulationBar(),
                       ],
                     ),
                   ),
@@ -91,20 +86,18 @@ class DownloadsScreen extends StatelessWidget {
             );
           },
         );
-      },
-    );
   }
 
   /// Legacy content switch kept for standalone usage (tests) where no router
   /// child is injected. In the routed app each GoRoute supplies its own view.
-  Widget _sectionContent() {
-    return switch (viewModel.currentSection) {
+  Widget _sectionContent(WidgetRef ref) {
+    return switch (ref.watch(shellControllerProvider).section) {
       AppNavSection.history => const HistoryView(),
       AppNavSection.servers => const ServersView(),
       AppNavSection.search => const SearchView(),
       AppNavSection.kad => const KadView(),
       AppNavSection.uploads => const UploadsView(),
-      AppNavSection.downloads => DownloadsView(viewModel: viewModel),
+      AppNavSection.downloads => const DownloadsView(),
     };
   }
 }
@@ -112,40 +105,34 @@ class DownloadsScreen extends StatelessWidget {
 /// Downloads workspace: top action bar, downloads list, and the collapsible
 /// details panel for the selected download. Rendered as the `/downloads`
 /// route content inside [DownloadsScreen].
-class DownloadsView extends StatelessWidget {
-  final AppController viewModel;
-
-  const DownloadsView({super.key, required this.viewModel});
+class DownloadsView extends ConsumerWidget {
+  const DownloadsView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isSmall =
         MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
-    return ListenableBuilder(
-      listenable: viewModel,
-      builder: (context, _) => Column(
+    final selected = ref.watch(selectedDownloadProvider);
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DownloadsTopBar(viewModel: viewModel, isSmall: isSmall),
-          Expanded(child: _buildContent()),
-          if (viewModel.selectedDownload != null)
-            DownloadDetailsPanel(
-              item: viewModel.selectedDownload!,
-              viewModel: viewModel,
-              isSmall: isSmall,
-            ),
+          DownloadsTopBar(isSmall: isSmall),
+          Expanded(child: _buildContent(ref)),
+          if (selected != null)
+            DownloadDetailsPanel(item: selected, isSmall: isSmall),
         ],
-      ),
     );
   }
 
-  Widget _buildContent() {
-    if (viewModel.isLoading && viewModel.filteredDownloads.isEmpty) {
+  Widget _buildContent(WidgetRef ref) {
+    final filtered = ref.watch(filteredDownloadsProvider);
+    if (ref.watch(downloadsStoreControllerProvider).isLoading &&
+        filtered.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (viewModel.filteredDownloads.isEmpty) {
-      return DownloadsEmptyState(viewModel: viewModel);
+    if (filtered.isEmpty) {
+      return const DownloadsEmptyState();
     }
-    return DownloadsList(viewModel: viewModel);
+    return const DownloadsList();
   }
 }

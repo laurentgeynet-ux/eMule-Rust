@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import '../../../../l10n/l10n.dart';
 
-class DebugSimulationBar extends StatelessWidget {
-  final AppController viewModel;
-
-  const DebugSimulationBar({super.key, required this.viewModel});
+class DebugSimulationBar extends ConsumerWidget {
+    const DebugSimulationBar({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final selected = viewModel.selectedDownload;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(selectedDownloadProvider);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -41,7 +40,7 @@ class DebugSimulationBar extends StatelessWidget {
               onPressed: () {
                 // Generate 256KB of dummy hex data (512 hex characters)
                 final hexChunk = 'AA' * 256 * 1024;
-                viewModel.injectSimulationChunk(selected.id, selected.receivedBytes, hexChunk);
+                ref.read(labControllerProvider).injectSimulationChunk(selected.id, selected.receivedBytes, hexChunk);
               },
               child: Text(context.l10n.inject256KbChunk),
             ),
@@ -53,7 +52,7 @@ class DebugSimulationBar extends StatelessWidget {
               ),
               onPressed: () {
                 final hexChunk = 'BB' * 1024 * 1024;
-                viewModel.injectSimulationChunk(selected.id, selected.receivedBytes, hexChunk);
+                ref.read(labControllerProvider).injectSimulationChunk(selected.id, selected.receivedBytes, hexChunk);
               },
               child: Text(context.l10n.inject1MbChunk),
             ),
@@ -69,7 +68,7 @@ class DebugSimulationBar extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.close, size: 16, color: AppColors.textMuted),
             tooltip: context.l10n.closeDebugBar,
-            onPressed: viewModel.toggleDebugBar,
+            onPressed: ref.read(shellControllerProvider).toggleDebugBar,
           ),
         ],
       ),

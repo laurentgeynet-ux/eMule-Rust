@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:app_shell/app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_shell/app/providers.dart';
 import 'package:app_shell/ui/features/downloads/widgets/download_detail_dialog.dart';
 import 'package:app_shell/l10n/generated/app_localizations.dart';
 
@@ -753,17 +755,25 @@ void main() {
       await viewModel.initialize(url: Uri.parse('ws://mock:4660/rpc'));
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
         locale: const Locale('fr'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: DownloadDetailDialog(
               downloadId: 'dl-1',
-              viewModel: viewModel,
-            ),
+              ),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 

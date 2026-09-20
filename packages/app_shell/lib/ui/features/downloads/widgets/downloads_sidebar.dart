@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
+import '../../../../app/shell_controller.dart';
 import '../../../../l10n/l10n.dart';
 import 'category_edit_dialog.dart';
 import 'diagnostic_dialog.dart';
@@ -19,18 +21,16 @@ import 'sidebar/sidebar_status_colors.dart';
 
 /// Left navigation rail: brand header, download filters, categories,
 /// section navigation, action shortcuts and the daemon status card.
-class DownloadsSidebar extends StatelessWidget {
-  final AppController viewModel;
-  final bool isCompact;
+class DownloadsSidebar extends ConsumerWidget {
+    final bool isCompact;
 
   const DownloadsSidebar({
     super.key,
-    required this.viewModel,
     this.isCompact = false,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       width: isCompact ? 68 : 260,
       decoration: const BoxDecoration(
@@ -56,46 +56,46 @@ class DownloadsSidebar extends StatelessWidget {
                   SidebarFilterItem(
                     filter: DownloadFilter.all,
                     icon: Icons.all_inbox_rounded,
-                    count: viewModel.countAll,
-                    isSelected: _isFilterSelected(DownloadFilter.all),
+                    count: ref.watch(downloadsStoreControllerProvider).countAll,
+                    isSelected: _isFilterSelected(ref, DownloadFilter.all),
                     isCompact: isCompact,
-                    onTap: () => viewModel.setFilter(DownloadFilter.all),
+                    onTap: () => ref.read(shellControllerProvider).setFilter(DownloadFilter.all),
                   ),
                   SidebarFilterItem(
                     filter: DownloadFilter.active,
                     icon: Icons.downloading_rounded,
-                    count: viewModel.countActive,
+                    count: ref.watch(downloadsStoreControllerProvider).countActive,
                     color: AppTheme.statusDownloading,
-                    isSelected: _isFilterSelected(DownloadFilter.active),
+                    isSelected: _isFilterSelected(ref, DownloadFilter.active),
                     isCompact: isCompact,
-                    onTap: () => viewModel.setFilter(DownloadFilter.active),
+                    onTap: () => ref.read(shellControllerProvider).setFilter(DownloadFilter.active),
                   ),
                   SidebarFilterItem(
                     filter: DownloadFilter.paused,
                     icon: Icons.pause_circle_outline_rounded,
-                    count: viewModel.countPaused,
+                    count: ref.watch(downloadsStoreControllerProvider).countPaused,
                     color: AppTheme.statusPaused,
-                    isSelected: _isFilterSelected(DownloadFilter.paused),
+                    isSelected: _isFilterSelected(ref, DownloadFilter.paused),
                     isCompact: isCompact,
-                    onTap: () => viewModel.setFilter(DownloadFilter.paused),
+                    onTap: () => ref.read(shellControllerProvider).setFilter(DownloadFilter.paused),
                   ),
                   SidebarFilterItem(
                     filter: DownloadFilter.completed,
                     icon: Icons.check_circle_outline_rounded,
-                    count: viewModel.countCompleted,
+                    count: ref.watch(downloadsStoreControllerProvider).countCompleted,
                     color: AppTheme.statusCompleted,
-                    isSelected: _isFilterSelected(DownloadFilter.completed),
+                    isSelected: _isFilterSelected(ref, DownloadFilter.completed),
                     isCompact: isCompact,
-                    onTap: () => viewModel.setFilter(DownloadFilter.completed),
+                    onTap: () => ref.read(shellControllerProvider).setFilter(DownloadFilter.completed),
                   ),
                   SidebarFilterItem(
                     filter: DownloadFilter.failed,
                     icon: Icons.error_outline_rounded,
-                    count: viewModel.countFailed,
+                    count: ref.watch(downloadsStoreControllerProvider).countFailed,
                     color: AppTheme.statusFailed,
-                    isSelected: _isFilterSelected(DownloadFilter.failed),
+                    isSelected: _isFilterSelected(ref, DownloadFilter.failed),
                     isCompact: isCompact,
-                    onTap: () => viewModel.setFilter(DownloadFilter.failed),
+                    onTap: () => ref.read(shellControllerProvider).setFilter(DownloadFilter.failed),
                   ),
                   const SizedBox(height: 6),
                   const Divider(color: AppTheme.darkBorder, height: 1),
@@ -106,12 +106,12 @@ class DownloadsSidebar extends StatelessWidget {
                       title: context.l10n.filterAll,
                       color: AppColors.textSecondary,
                       icon: Icons.folder_outlined,
-                      count: viewModel.countAll,
+                      count: ref.watch(downloadsStoreControllerProvider).countAll,
                       isSelected:
-                          viewModel.currentSection ==
+                          ref.watch(shellControllerProvider).section ==
                                   AppNavSection.downloads &&
-                              viewModel.selectedCategoryId == null,
-                      onTap: () => _selectCategory(null),
+                              ref.watch(categoriesControllerProvider).selectedId == null,
+                      onTap: () => _selectCategory(ref, null),
                       onEdit: (_) {},
                       onDelete: (_) {},
                     ),
@@ -119,32 +119,32 @@ class DownloadsSidebar extends StatelessWidget {
                       title: context.l10n.uncategorized,
                       color: AppColors.textFaint,
                       icon: Icons.label_off_outlined,
-                      count: viewModel.uncategorizedCount,
+                      count: ref.watch(uncategorizedCountProvider),
                       isSelected:
-                          viewModel.currentSection ==
+                          ref.watch(shellControllerProvider).section ==
                                   AppNavSection.downloads &&
-                              viewModel.selectedCategoryId == 'uncategorized',
-                      onTap: () => _selectCategory('uncategorized'),
+                              ref.watch(categoriesControllerProvider).selectedId == 'uncategorized',
+                      onTap: () => _selectCategory(ref, 'uncategorized'),
                       onEdit: (_) {},
                       onDelete: (_) {},
                     ),
-                    ...viewModel.categories.map(
+                    ...ref.watch(categoriesControllerProvider).categories.map(
                       (cat) => SidebarCategoryItem(
                         title: cat.name,
                         color: cat.parsedColor,
-                        count: viewModel.categoryCounts[cat.id] ?? 0,
+                        count: ref.watch(categoryCountsProvider)[cat.id] ?? 0,
                         isSelected:
-                            viewModel.currentSection ==
+                            ref.watch(shellControllerProvider).section ==
                                     AppNavSection.downloads &&
-                                viewModel.selectedCategoryId == cat.id,
+                                ref.watch(categoriesControllerProvider).selectedId == cat.id,
                         category: cat,
-                        onTap: () => _selectCategory(cat.id),
+                        onTap: () => _selectCategory(ref, cat.id),
                         onEdit: (category) =>
                             _showCategoryDialog(context, category),
                         onDelete: (category) => showCategoryDeleteDialog(
                           context,
                           category,
-                          onDelete: viewModel.deleteCategory,
+                          onDelete: ref.read(categoriesControllerProvider).delete,
                         ),
                       ),
                     ),
@@ -156,10 +156,10 @@ class DownloadsSidebar extends StatelessWidget {
                     title: context.l10n.navUploads,
                     icon: Icons.upload_rounded,
                     isSelected:
-                        viewModel.currentSection == AppNavSection.uploads,
-                    onTap: () => viewModel.setSection(AppNavSection.uploads),
-                    count: viewModel.uploads.active.isNotEmpty
-                        ? viewModel.uploads.active.length
+                        ref.watch(shellControllerProvider).section == AppNavSection.uploads,
+                    onTap: () => ref.read(shellControllerProvider).setSection(AppNavSection.uploads),
+                    count: ref.watch(uploadsControllerProvider).active.isNotEmpty
+                        ? ref.watch(uploadsControllerProvider).active.length
                         : null,
                     isCompact: isCompact,
                   ),
@@ -171,10 +171,10 @@ class DownloadsSidebar extends StatelessWidget {
                     title: context.l10n.navHistoryStats,
                     icon: Icons.history_rounded,
                     isSelected:
-                        viewModel.currentSection == AppNavSection.history,
-                    onTap: () => viewModel.setSection(AppNavSection.history),
-                    count: viewModel.historyEntries.isNotEmpty
-                        ? viewModel.historyEntries.length
+                        ref.watch(shellControllerProvider).section == AppNavSection.history,
+                    onTap: () => ref.read(shellControllerProvider).setSection(AppNavSection.history),
+                    count: ref.watch(historyControllerProvider).entries.isNotEmpty
+                        ? ref.watch(historyControllerProvider).entries.length
                         : null,
                     isCompact: isCompact,
                   ),
@@ -182,10 +182,10 @@ class DownloadsSidebar extends StatelessWidget {
                     title: context.l10n.navServers,
                     icon: Icons.dns_rounded,
                     isSelected:
-                        viewModel.currentSection == AppNavSection.servers,
-                    onTap: () => viewModel.setSection(AppNavSection.servers),
-                    count: viewModel.servers.isNotEmpty
-                        ? viewModel.servers.length
+                        ref.watch(shellControllerProvider).section == AppNavSection.servers,
+                    onTap: () => ref.read(shellControllerProvider).setSection(AppNavSection.servers),
+                    count: ref.watch(serversControllerProvider).servers.isNotEmpty
+                        ? ref.watch(serversControllerProvider).servers.length
                         : null,
                     isCompact: isCompact,
                   ),
@@ -193,20 +193,20 @@ class DownloadsSidebar extends StatelessWidget {
                     title: context.l10n.navSearch,
                     icon: Icons.search_rounded,
                     isSelected:
-                        viewModel.currentSection == AppNavSection.search,
-                    onTap: () => viewModel.setSection(AppNavSection.search),
-                    count: viewModel.searchResults.isNotEmpty
-                        ? viewModel.searchResults.length
+                        ref.watch(shellControllerProvider).section == AppNavSection.search,
+                    onTap: () => ref.read(shellControllerProvider).setSection(AppNavSection.search),
+                    count: ref.watch(searchControllerProvider).results.isNotEmpty
+                        ? ref.watch(searchControllerProvider).results.length
                         : null,
                     isCompact: isCompact,
                   ),
                   SidebarNavItem(
                     title: context.l10n.navKad,
                     icon: Icons.hub_rounded,
-                    isSelected: viewModel.currentSection == AppNavSection.kad,
-                    onTap: () => viewModel.setSection(AppNavSection.kad),
-                    count: viewModel.kadStatus.totalContacts > 0
-                        ? viewModel.kadStatus.totalContacts
+                    isSelected: ref.watch(shellControllerProvider).section == AppNavSection.kad,
+                    onTap: () => ref.read(shellControllerProvider).setSection(AppNavSection.kad),
+                    count: ref.watch(kadControllerProvider).status.totalContacts > 0
+                        ? ref.watch(kadControllerProvider).status.totalContacts
                         : null,
                     isCompact: isCompact,
                   ),
@@ -218,7 +218,7 @@ class DownloadsSidebar extends StatelessWidget {
                     isCompact: isCompact,
                     onTap: () => showDialog(
                       context: context,
-                      builder: (ctx) => SettingsDialog(viewModel: viewModel),
+                      builder: (ctx) => const SettingsDialog(),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -231,7 +231,7 @@ class DownloadsSidebar extends StatelessWidget {
                     onTap: () => showDialog(
                       context: context,
                       builder: (ctx) =>
-                          ImportPartMetDialog(viewModel: viewModel),
+                          const ImportPartMetDialog(),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -241,18 +241,18 @@ class DownloadsSidebar extends StatelessWidget {
           ),
           SidebarStatusCard(
             isCompact: isCompact,
-            statusColor: _statusColor,
-            statusLabel: _statusLabel,
-            tooltipLabel: _statusLabel,
-            versionLine: viewModel.daemonInfo != null
+            statusColor: _statusColor(ref),
+            statusLabel: _statusLabel(ref),
+            tooltipLabel: _statusLabel(ref),
+            versionLine: ref.watch(daemonInfoProvider) != null
                 ? context.l10n.daemonVersionLine(
-                    viewModel.daemonInfo!.version,
-                    viewModel.daemonInfo!.protocolVersion.toString(),
+                    ref.watch(daemonInfoProvider)!.version,
+                    ref.watch(daemonInfoProvider)!.protocolVersion.toString(),
                   )
                 : null,
             onTap: () => showDialog(
               context: context,
-              builder: (ctx) => DiagnosticDialog(viewModel: viewModel),
+              builder: (ctx) => const DiagnosticDialog(),
             ),
           ),
         ],
@@ -260,30 +260,30 @@ class DownloadsSidebar extends StatelessWidget {
     );
   }
 
-  bool _isFilterSelected(DownloadFilter filter) =>
-      viewModel.currentSection == AppNavSection.downloads &&
-      viewModel.currentFilter == filter;
+  bool _isFilterSelected(WidgetRef ref, DownloadFilter filter) =>
+      ref.watch(shellControllerProvider).section == AppNavSection.downloads &&
+      ref.watch(shellControllerProvider).filter == filter;
 
-  void _selectCategory(String? id) {
-    viewModel.selectCategory(id);
-    viewModel.setSection(AppNavSection.downloads);
+  void _selectCategory(WidgetRef ref, String? id) {
+    ref.read(categoriesControllerProvider).select(id);
+    ref.read(shellControllerProvider).setSection(AppNavSection.downloads);
   }
 
   void _showCategoryDialog(BuildContext context, [CategoryItem? category]) {
     showDialog(
       context: context,
       builder: (ctx) =>
-          CategoryEditDialog(viewModel: viewModel, category: category),
+          CategoryEditDialog(category: category),
     );
   }
 
-  String get _statusLabel => viewModel.supervisor != null
-      ? viewModel.supervisorState.label
-      : viewModel.connectionState.label;
+  String _statusLabel(WidgetRef ref) => ref.watch(daemonSupervisorProvider) != null
+      ? ref.watch(daemonSupervisorStateProvider).label
+      : ref.watch(daemonConnectionStateProvider).label;
 
-  Color get _statusColor => viewModel.supervisor != null
-      ? supervisorStateColor(viewModel.supervisorState)
-      : connectionStateColor(viewModel.connectionState);
+  Color _statusColor(WidgetRef ref) => ref.watch(daemonSupervisorProvider) != null
+      ? supervisorStateColor(ref.watch(daemonSupervisorStateProvider))
+      : connectionStateColor(ref.watch(daemonConnectionStateProvider));
 }
 
 class _CategoriesHeader extends StatelessWidget {

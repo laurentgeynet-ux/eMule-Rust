@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
 import 'package:mule_client/mule_client.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'import/import_category_dropdown.dart';
 import 'import/import_field_label.dart';
 import 'import/import_inline_error.dart';
@@ -13,16 +14,14 @@ import 'import/import_safety_notice.dart';
 import '../../../../l10n/l10n.dart';
 
 /// Import an existing eMule `.part.met` (inspect → preview → stage paused).
-class ImportPartMetDialog extends StatefulWidget {
-  final AppController viewModel;
-
-  const ImportPartMetDialog({super.key, required this.viewModel});
+class ImportPartMetDialog extends ConsumerStatefulWidget {
+    const ImportPartMetDialog({super.key, });
 
   @override
-  State<ImportPartMetDialog> createState() => _ImportPartMetDialogState();
+  ConsumerState<ImportPartMetDialog> createState() => _ImportPartMetDialogState();
 }
 
-class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
+class _ImportPartMetDialogState extends ConsumerState<ImportPartMetDialog> {
   final _metPathController = TextEditingController();
   final _partPathController = TextEditingController();
   late final TextEditingController _targetDirController;
@@ -38,10 +37,10 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
   @override
   void initState() {
     super.initState();
-    final initialCatId = widget.viewModel.selectedCategoryId;
+    final initialCatId = ref.read(categoriesControllerProvider).selectedId;
     if (initialCatId != null && initialCatId != 'uncategorized') {
       _selectedCategoryId = initialCatId;
-      final cat = widget.viewModel.categories
+      final cat = ref.read(categoriesControllerProvider).categories
           .where((c) => c.id == initialCatId)
           .firstOrNull;
       if (cat != null &&
@@ -51,12 +50,12 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
             TextEditingController(text: cat.defaultDestination!);
       } else {
         _targetDirController = TextEditingController(
-          text: widget.viewModel.defaultDownloadDirectoryPath,
+          text: ref.read(defaultDownloadDirectoryProvider),
         );
       }
     } else {
       _targetDirController = TextEditingController(
-        text: widget.viewModel.defaultDownloadDirectoryPath,
+        text: ref.read(defaultDownloadDirectoryProvider),
       );
     }
   }
@@ -81,7 +80,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
     });
 
     try {
-      final res = await widget.viewModel.inspectPartMet(
+      final res = await ref.read(downloadsStoreControllerProvider).inspectPartMet(
         metPath,
         partPath: partPath.isNotEmpty ? partPath : null,
       );
@@ -123,7 +122,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
     });
 
     try {
-      final res = await widget.viewModel.importPartMet(
+      final res = await ref.read(downloadsStoreControllerProvider).importPartMet(
         metPath,
         partPath: partPath.isNotEmpty ? partPath : null,
         targetDirectory: targetDir.isNotEmpty ? targetDir : null,
@@ -158,7 +157,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
     setState(() {
       _selectedCategoryId = val;
       if (val != null) {
-        final cat = widget.viewModel.categories
+        final cat = ref.read(categoriesControllerProvider).categories
             .where((c) => c.id == val)
             .firstOrNull;
         if (cat != null &&
@@ -331,7 +330,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                           label: context.l10n.categoryOptional,
                         ),
                         ImportCategoryDropdown(
-                          categories: widget.viewModel.categories,
+                          categories: ref.read(categoriesControllerProvider).categories,
                           selectedId: _selectedCategoryId,
                           onChanged: _onCategoryChanged,
                         ),

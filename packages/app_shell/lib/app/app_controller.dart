@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
 import 'shell_controller.dart';
+
+export 'shell_controller.dart';
 import '../core/daemon_lifecycle.dart';
 import '../core/system_actions.dart';
 import '../core/work_dirs.dart';
@@ -23,32 +25,7 @@ import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/uploads/view_models/uploads_controller.dart';
 
-enum AppNavSection { downloads, uploads, history, servers, search, kad }
-
-enum DownloadFilter {
-  all,
-  active,
-  paused,
-  completed,
-  failed;
-
-  String get label {
-    switch (this) {
-      case DownloadFilter.all:
-        return 'All Downloads';
-      case DownloadFilter.active:
-        return 'Active';
-      case DownloadFilter.paused:
-        return 'Paused';
-      case DownloadFilter.completed:
-        return 'Completed';
-      case DownloadFilter.failed:
-        return 'Failed';
-    }
-  }
-}
-
-/// Application composition root and daemon session owner.
+// Application composition root and daemon session owner.
 ///
 /// Wires the per-domain controllers (downloads store, categories, network
 /// policy, settings, lab, history, servers, peer sources, kad, search, shell)
@@ -762,11 +739,17 @@ class AppController extends ChangeNotifier {
   Future<int> publishKadSource(String fileHash, int fileSize, {int tcpPort = 39735}) =>
       kad.publishSource(fileHash, fileSize, tcpPort: tcpPort);
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    // Idempotent: the controller may be disposed both by its owner (tests,
+    // entry points) and by the ProviderScope overriding appControllerProvider.
+    if (_disposed) return;
+    _disposed = true;
     speedTracker.dispose();
-    stats.dispose();
-    uploads.dispose();
+    // stats/uploads and the per-domain controllers are disposed by their
+    // ChangeNotifierProviders when the ProviderScope unmounts.
     _connSub?.cancel();
     _lifecycleSub?.cancel();
     
@@ -774,8 +757,7 @@ class AppController extends ChangeNotifier {
     _instanceSub?.cancel();
     
     
-    // history/kad/search/servers/peerSources are disposed by their
-    // providers when scoped.
+
     supervisor?.dispose();
     client.dispose();
     super.dispose();

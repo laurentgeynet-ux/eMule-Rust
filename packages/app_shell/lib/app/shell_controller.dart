@@ -1,6 +1,30 @@
 import 'package:flutter/foundation.dart';
 
-import 'app_controller.dart';
+enum AppNavSection { downloads, uploads, history, servers, search, kad }
+
+enum DownloadFilter {
+  all,
+  active,
+  paused,
+  completed,
+  failed;
+
+  String get label {
+    switch (this) {
+      case DownloadFilter.all:
+        return 'All Downloads';
+      case DownloadFilter.active:
+        return 'Active';
+      case DownloadFilter.paused:
+        return 'Paused';
+      case DownloadFilter.completed:
+        return 'Completed';
+      case DownloadFilter.failed:
+        return 'Failed';
+    }
+  }
+}
+
 
 /// App-shell UI state: current nav section, downloads filter & search
 /// query, debug bar visibility, and the global status/error banners.

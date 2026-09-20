@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
+import '../../../../core/system_actions.dart';
 import '../../settings/widgets/network_mode_dialog.dart';
 import 'settings/settings_dialog_footer.dart';
 import 'settings/settings_dialog_header.dart';
@@ -14,16 +16,14 @@ import 'settings/settings_retention_section.dart';
 
 /// Download settings: default directory, history retention, network
 /// profile summary and network mode shortcut.
-class SettingsDialog extends StatefulWidget {
-  final AppController viewModel;
-
-  const SettingsDialog({super.key, required this.viewModel});
+class SettingsDialog extends ConsumerStatefulWidget {
+    const SettingsDialog({super.key, });
 
   @override
-  State<SettingsDialog> createState() => _SettingsDialogState();
+  ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
 }
 
-class _SettingsDialogState extends State<SettingsDialog> {
+class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   late TextEditingController _dirController;
   bool _isSaving = false;
   String? _inlineError;
@@ -32,9 +32,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
   @override
   void initState() {
     super.initState();
-    final currentDir = widget.viewModel.defaultDownloadDirectoryPath;
+    final currentDir = ref.read(defaultDownloadDirectoryProvider);
     _dirController = TextEditingController(text: currentDir);
-    widget.viewModel.fetchSettings();
+    Future.microtask(() => ref.read(settingsControllerProvider).fetch());
   }
 
   @override
@@ -45,15 +45,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.viewModel,
-      builder: (context, _) {
-        final isCustom = widget.viewModel.settings['isCustom'] == true ||
-            (widget.viewModel.settings['defaultDownloadDir'] != null &&
-                widget.viewModel.settings['defaultDownloadDir'] !=
-                    widget.viewModel.settings['portableDownloadDir']);
+    final settings = ref.watch(settingsControllerProvider).settings;
+    final isCustom = settings['isCustom'] == true ||
+        (settings['defaultDownloadDir'] != null &&
+            settings['defaultDownloadDir'] != settings['portableDownloadDir']);
 
-        return Dialog(
+    return Dialog(
           backgroundColor: AppTheme.darkSurface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -80,7 +77,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           onSave: () => _saveDefaultDir(context),
                           onReset: () => _resetDefaultDir(context),
                           onOpenFolder:
-                              widget.viewModel.openDownloadsFolder,
+                              () => systemActions.openDirectory(ref.read(defaultDownloadDirectoryProvider)),
                         ),
                         if (_inlineError != null)
                           SettingsInlineMessage(
@@ -97,9 +94,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         const SizedBox(height: 12),
                         SettingsRetentionSection(
                           retentionDays:
-                              widget.viewModel.historyRetentionDays,
+                              ref.watch(historyControllerProvider).retentionDays,
                           onChanged:
-                              widget.viewModel.setHistoryRetentionDays,
+                              ref.read(historyControllerProvider).setRetentionDays,
                         ),
                         const SizedBox(height: 20),
                         const Divider(color: AppTheme.darkBorder),
@@ -110,15 +107,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         const SizedBox(height: 12),
                         SettingsNetworkCard(
                           profile:
-                              widget.viewModel.currentNetworkProfile,
+                              ref.watch(networkPolicyControllerProvider).currentProfile,
                         ),
                         const SizedBox(height: 16),
                         SettingsNetworkModeRow(
                           onConfigure: () => showDialog(
                             context: context,
-                            builder: (_) => NetworkModeDialog(
-                              viewModel: widget.viewModel,
-                            ),
+                            builder: (_) => const NetworkModeDialog(),
                           ),
                         ),
                       ],
@@ -130,8 +125,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ),
           ),
         );
-      },
-    );
   }
 
   Future<void> _saveDefaultDir(BuildContext context) async {
@@ -151,7 +144,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     }
 
     final success =
-        await widget.viewModel.setDefaultDownloadDirectory(newDir);
+        await ref.read(settingsControllerProvider).setDefaultDownloadDirectory(newDir);
     if (mounted) {
       setState(() {
         _isSaving = false;
@@ -160,7 +153,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
               'Default download directory updated successfully.';
           _inlineError = null;
         } else {
-          _inlineError = widget.viewModel.errorMessage ??
+          _inlineError = ref.read(shellControllerProvider).errorMessage ??
               'Directory write probe failed.';
           _inlineSuccess = null;
         }
@@ -176,17 +169,17 @@ class _SettingsDialogState extends State<SettingsDialog> {
     });
 
     final success =
-        await widget.viewModel.resetDefaultDownloadDirectory();
+        await ref.read(settingsControllerProvider).resetDefaultDownloadDirectory();
     if (mounted) {
       setState(() {
         _isSaving = false;
         if (success) {
           _dirController.text =
-              widget.viewModel.defaultDownloadDirectoryPath;
+              ref.read(defaultDownloadDirectoryProvider);
           _inlineSuccess = 'Reset to portable default directory.';
           _inlineError = null;
         } else {
-          _inlineError = widget.viewModel.errorMessage ??
+          _inlineError = ref.read(shellControllerProvider).errorMessage ??
               'Failed to reset download directory.';
           _inlineSuccess = null;
         }

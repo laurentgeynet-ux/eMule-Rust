@@ -1,5 +1,7 @@
 import 'package:mule_client/mule_client.dart';
 import 'package:app_shell/app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_shell/app/providers.dart';
 import 'package:app_shell/l10n/generated/app_localizations.dart';
 import 'package:app_shell/ui/features/downloads/views/downloads_screen.dart';
 import 'package:app_shell/ui/features/downloads/widgets/ip_filter_dialog.dart';
@@ -14,15 +16,24 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1280, 800));
 
     await tester.pumpWidget(
-      MaterialApp(
+      ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
         locale: const Locale('fr'),
         
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
-          body: DownloadsScreen(viewModel: viewModel),
+          body: DownloadsScreen(),
         ),
-      ),
+      )),
     );
     await tester.pumpAndSettle();
 

@@ -5,6 +5,18 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Migration AppController → providers (fin)** : les ~18 widgets restants
+  (dialogs add-link/import/settings/network-policy/ip-filter/lab-guide/
+  diagnostic/category/network-mode/download-detail, sidebar, top bar, list,
+  row, empty state, details panel, downloads screen) consomment désormais
+  les providers Riverpod (`ref.watch`/`ref.read`) au lieu de recevoir
+  `AppController` en paramètre. `AppNavSection`/`DownloadFilter` déplacés
+  dans `shell_controller.dart` (ré-exportés par `app_controller.dart` pour
+  compat). `AppController.dispose` est idempotent — les sous-contrôleurs
+  sont disposés par leurs `ChangeNotifierProvider`. `AppController` reste
+  uniquement composition root (router, `EmuleSionApp`, tests).
+
+
 - **E5 — Détail par pair + ETA** : `PeerSessionSnapshot.transferRateBps`
   existait déjà (affiché dans la carte sources du détail) ; ajout de
   `etaSeconds` au `DownloadSnapshot` léger (seconds restantes au débit

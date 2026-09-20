@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:mule_client/mule_client.dart';
 
 import '../core/daemon_lifecycle.dart';
+import '../core/work_dirs.dart';
+import 'transfer_rate_tracker.dart';
 import 'app_controller.dart';
 import 'locale_controller.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/downloads_store_controller.dart';
-import 'shell_controller.dart';
 import 'stats_controller.dart';
 import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
@@ -130,3 +131,97 @@ final uploadsControllerProvider = ChangeNotifierProvider<UploadsController>(
 final shellControllerProvider = ChangeNotifierProvider<ShellController>(
   (ref) => ref.read(appControllerProvider).shellCtl,
 );
+
+/// Rolling transfer-rate samples for the top-bar sparkline.
+final speedTrackerProvider = Provider<TransferRateTracker>(
+  (ref) => ref.read(appControllerProvider).speedTracker,
+);
+
+/// Downloads after filter tab + search query + category selection.
+final filteredDownloadsProvider = Provider<List<DownloadItem>>((ref) {
+  final store = ref.watch(downloadsStoreControllerProvider);
+  final shell = ref.watch(shellControllerProvider);
+  final categories = ref.watch(categoriesControllerProvider);
+  final query = shell.searchQuery.trim().toLowerCase();
+  return store.allDownloads.where((item) {
+    switch (shell.filter) {
+      case DownloadFilter.all:
+        break;
+      case DownloadFilter.active:
+        if (!item.status.isActive) return false;
+      case DownloadFilter.paused:
+        if (!item.status.isPaused) return false;
+      case DownloadFilter.completed:
+        if (!item.status.isCompleted) return false;
+      case DownloadFilter.failed:
+        if (!item.status.isFailed) return false;
+    }
+    if (query.isNotEmpty && !item.fileName.toLowerCase().contains(query)) {
+      return false;
+    }
+    final catId = categories.selectedId;
+    if (catId != null) {
+      if (catId == 'uncategorized') {
+        if (item.categoryId != null) return false;
+      } else if (item.categoryId != catId) {
+        return false;
+      }
+    }
+    return true;
+  }).toList();
+});
+
+/// Per-category download counts (sidebar badges).
+final categoryCountsProvider = Provider<Map<String, int>>((ref) {
+  final store = ref.watch(downloadsStoreControllerProvider);
+  final categories = ref.watch(categoriesControllerProvider);
+  return {
+    for (final cat in categories.categories)
+      cat.id:
+          store.allDownloads.where((d) => d.categoryId == cat.id).length,
+  };
+});
+
+/// Downloads with no category assigned.
+final uncategorizedCountProvider = Provider<int>(
+  (ref) => ref
+      .watch(downloadsStoreControllerProvider)
+      .allDownloads
+      .where((d) => d.categoryId == null)
+      .length,
+);
+
+/// Currently selected download (null when none).
+final selectedDownloadProvider = Provider<DownloadItem?>((ref) {
+  final store = ref.watch(downloadsStoreControllerProvider);
+  final id = store.selectedId;
+  return id == null ? null : store.downloadById(id);
+});
+
+/// Effective default download directory (custom setting > daemon >
+/// supervisor workdir).
+final defaultDownloadDirectoryProvider = Provider<String>((ref) {
+  final settings = ref.watch(settingsControllerProvider).settings;
+  final custom = settings['defaultDownloadDir'] as String?;
+  if (custom != null && custom.isNotEmpty) return custom;
+  final daemonDir = ref.watch(daemonInfoProvider)?.defaultDownloadDir;
+  if (daemonDir != null && daemonDir.isNotEmpty) return daemonDir;
+  return ref
+          .watch(daemonSupervisorProvider)
+          ?.resolveWorkDirInfo()
+          .defaultDownloadDirPath ??
+      '';
+});
+
+/// Lab/fixture features gate: dev tools OR portable daemon with
+/// `lab-tools` capability.
+final isLabModeAvailableProvider = Provider<bool>((ref) {
+  if (ref.watch(devToolsEnabledProvider)) return true;
+  final info = ref.watch(daemonInfoProvider);
+  if (info == null) return false;
+  final isPortable =
+      (info.workdirMode?.toLowerCase() == 'portable') ||
+      ref.watch(daemonSupervisorProvider)?.resolveWorkDirInfo().mode ==
+          WorkDirMode.portable;
+  return isPortable && info.capabilities.contains('lab-tools');
+});

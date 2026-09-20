@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
-import '../../../../app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/providers.dart';
 import 'detail/download_detail_action_bar.dart';
 import 'detail/download_detail_header.dart';
 import 'detail/download_diagnostics_card.dart';
@@ -16,45 +17,43 @@ import '../../../../l10n/l10n.dart';
 /// Download detail dialog — composition only. Every section is a dedicated
 /// widget under `widgets/detail/`; domain calls go through the view-model
 /// facade (or its sub-controllers) until providers reach this dialog.
-class DownloadDetailDialog extends StatefulWidget {
+class DownloadDetailDialog extends ConsumerStatefulWidget {
   final String downloadId;
-  final AppController viewModel;
-
-  const DownloadDetailDialog({
+    const DownloadDetailDialog({
     super.key,
     required this.downloadId,
-    required this.viewModel,
-  });
+    });
 
   @override
-  State<DownloadDetailDialog> createState() => _DownloadDetailDialogState();
+  ConsumerState<DownloadDetailDialog> createState() => _DownloadDetailDialogState();
 }
 
-class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
+class _DownloadDetailDialogState extends ConsumerState<DownloadDetailDialog> {
   @override
   void initState() {
     super.initState();
-    widget.viewModel.fetchDownloadDetail(widget.downloadId);
-    final item = widget.viewModel.filteredDownloads
-        .where((d) => d.id == widget.downloadId)
-        .firstOrNull;
-    if (item?.ed2kHash != null && item!.ed2kHash!.isNotEmpty) {
-      widget.viewModel.loadSourcesForHash(item.ed2kHash!);
-    }
+    Future.microtask(() {
+      if (!mounted) return;
+      ref.read(downloadsStoreControllerProvider).fetchDetail(widget.downloadId);
+      final item = ref.read(filteredDownloadsProvider)
+          .where((d) => d.id == widget.downloadId)
+          .firstOrNull;
+      if (item?.ed2kHash != null && item!.ed2kHash!.isNotEmpty) {
+        ref.read(peerSourcesControllerProvider)
+            .loadSourcesForHash(item.ed2kHash!);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.viewModel,
-      builder: (context, _) {
-        final item =
-            widget.viewModel.filteredDownloads
-                .where((d) => d.id == widget.downloadId)
-                .firstOrNull ??
-            widget.viewModel.selectedDownload;
+    final item =
+        ref.watch(filteredDownloadsProvider)
+            .where((d) => d.id == widget.downloadId)
+            .firstOrNull ??
+        ref.watch(selectedDownloadProvider);
 
-        if (item == null) {
+    if (item == null) {
           return AlertDialog(
             title: Text(context.l10n.downloadNotFound),
             content: Text(context.l10n.theRequestedDownloadIsNo,
@@ -68,7 +67,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
           );
         }
 
-        final vm = widget.viewModel;
+    final store = ref.read(downloadsStoreControllerProvider);
+    final categoriesCtl = ref.read(categoriesControllerProvider);
+    final categories = ref.watch(categoriesControllerProvider).categories;
         final statusColor = AppTheme.getStatusColor(item.status);
 
         return Dialog(
@@ -91,9 +92,9 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                       children: [
                         DownloadIdentityCard(
                           item: item,
-                          categories: vm.categories,
+                          categories: categories,
                           onCategoryChanged: (newCatId) =>
-                              vm.setDownloadCategory(item.id, newCatId),
+                              categoriesCtl.assignDownload(item.id, newCatId),
                         ),
                         const SizedBox(height: 16),
                         DownloadMetricsCard(
@@ -103,11 +104,13 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                         const SizedBox(height: 16),
                         DownloadSourcesCard(
                           item: item,
-                          controller: vm.peerSources,
-                          onQueryServerSources: (hash, size) => vm
-                              .queryServerSources(hash, fileSize: size),
-                          onQueryKadSources: (hash, size) => vm
-                              .searchKadSources(hash, fileSize: size),
+                          controller: ref.watch(peerSourcesControllerProvider),
+                          onQueryServerSources: (hash, size) => ref
+                              .read(searchControllerProvider)
+                              .querySources(hash, fileSize: size),
+                          onQueryKadSources: (hash, size) => ref
+                              .read(kadControllerProvider)
+                              .searchSources(hash, fileSize: size),
                         ),
                         const SizedBox(height: 16),
                         DownloadPartMapCard(item: item),
@@ -115,13 +118,13 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                         DownloadPathsCard(
                           item: item,
                           onChangeDestination: (newDir) =>
-                              vm.changeDownloadDestination(item.id, newDir),
+                              store.changeDestination(item.id, newDir),
                         ),
                         const SizedBox(height: 16),
                         DownloadDiagnosticsCard(
                           item: item,
                           diagnosticBuilder:
-                              vm.getRedactedDownloadDiagnostic,
+                              store.getRedactedDiagnostic,
                         ),
                       ],
                     ),
@@ -129,14 +132,14 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 ),
                 DownloadDetailActionBar(
                   item: item,
-                  onPause: () => vm.pauseDownload(item.id),
-                  onResume: () => vm.resumeDownload(item.id),
-                  onRetry: () => vm.retryDownloadConnection(item.id),
-                  onOpenCompletedFile: () => vm.openCompletedFile(item),
+                  onPause: () => store.pause(item.id),
+                  onResume: () => store.resume(item.id),
+                  onRetry: () => store.retryConnection(item.id),
+                  onOpenCompletedFile: () => store.openCompletedFile(item),
                   onRemove: () => showDownloadRemoveDialog(
                     context,
                     item,
-                    onConfirm: ({required deleteFiles}) => vm.removeDownload(
+                    onConfirm: ({required deleteFiles}) => store.remove(
                       item.id,
                       deleteFiles: deleteFiles,
                     ),
@@ -146,7 +149,5 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
             ),
           ),
         );
-      },
-    );
   }
 }
