@@ -1,31 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../app/providers.dart';
 import '../../downloads/view_models/downloads_view_model.dart';
 import '../../downloads/widgets/network_policy_dialog.dart';
+import '../view_models/servers_controller.dart';
 
-class ServersView extends StatefulWidget {
-  final DownloadsViewModel viewModel;
-
-  const ServersView({super.key, required this.viewModel});
+/// eD2K servers section. Server state comes from
+/// [serversControllerProvider]; `daemonInfo`/`errorMessage` are read from
+/// the root view model (rebuilds are driven by the controller).
+class ServersView extends ConsumerStatefulWidget {
+  const ServersView({super.key});
 
   @override
-  State<ServersView> createState() => _ServersViewState();
+  ConsumerState<ServersView> createState() => _ServersViewState();
 }
 
-class _ServersViewState extends State<ServersView> {
+class _ServersViewState extends ConsumerState<ServersView> {
   String _searchQuery = '';
   int _sortColumnIndex = 1; // Default sort by Server Name
   bool _sortAscending = true;
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.viewModel,
-      builder: (context, _) {
-    final vm = widget.viewModel;
-    var servers = vm.servers.where((s) {
+    final vm = ref.watch(downloadsViewModelProvider);
+    final ctl = ref.watch(serversControllerProvider);
+    return _buildWith(context, vm, ctl);
+  }
+
+  Widget _buildWith(
+    BuildContext context,
+    DownloadsViewModel vm,
+    ServersController ctl,
+  ) {
+    var servers = ctl.servers.where((s) {
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       return s.name.toLowerCase().contains(q) ||
@@ -70,7 +80,7 @@ class _ServersViewState extends State<ServersView> {
         _buildFilterBar(context, vm),
         const Divider(color: AppTheme.darkBorder, height: 1),
         Expanded(
-          child: vm.isServersLoading && servers.isEmpty
+          child: ctl.isLoading && servers.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : servers.isEmpty
                   ? _buildEmptyState(context, vm)
@@ -78,8 +88,6 @@ class _ServersViewState extends State<ServersView> {
                       hasServerConnectionCap: hasServerConnectionCap),
         ),
       ],
-    );
-      },
     );
   }
 

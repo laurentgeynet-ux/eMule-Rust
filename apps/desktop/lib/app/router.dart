@@ -88,7 +88,7 @@ GoRouter createAppRouter(DownloadsViewModel viewModel) {
           GoRoute(
             path: '/servers',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: ServersView(viewModel: viewModel),
+              child: const ServersView(),
             ),
           ),
           GoRoute(
