@@ -130,6 +130,9 @@ impl AppState {
         inbound_listener
             .upload_manager()
             .set_uss_gate(uss.accept_flag());
+        inbound_listener
+            .upload_manager()
+            .set_event_channel(event_tx.clone(), Arc::clone(&sequence));
         let kad_udp = Arc::clone(kad.udp());
         let client_udp_for_kad = client_udp.clone();
         let kad_udp_dl = Arc::clone(&dl_arc);

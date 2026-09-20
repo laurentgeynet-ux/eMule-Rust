@@ -5,6 +5,7 @@ use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::types::DownloadSnapshot;
 use crate::services::peer_session::types::PeerSessionSnapshot;
 use crate::services::server_session::types::ServerSessionSnapshot;
+use crate::services::upload_queue::UploadSessionSnapshot;
 
 /// Strongly-typed domain and lifecycle events emitted across the daemon.
 ///
@@ -31,6 +32,15 @@ pub enum DaemonEvent {
         sequence: u64,
         session: ServerSessionSnapshot,
     },
+    /// Upload slots/queue changed or upload progress ticked (throttled
+    /// ~500 ms). Carries the full active+queue snapshot plus the
+    /// aggregate upload rate — clients render without diffing.
+    UploadsUpdated {
+        sequence: u64,
+        active: Vec<UploadSessionSnapshot>,
+        queue: Vec<UploadSessionSnapshot>,
+        upload_rate_bps: u64,
+    },
     /// A notification outside the typed set (search results, found
     /// sources, control events like `event.snapshotRequired`).
     Custom {
@@ -46,6 +56,7 @@ impl DaemonEvent {
             Self::DownloadUpdated { .. } => "event.downloadUpdated",
             Self::PeerSessionUpdated { .. } => "event.peerSessionUpdated",
             Self::ServerSessionUpdated { .. } => "server.sessionUpdated",
+            Self::UploadsUpdated { .. } => "upload.uploadsUpdated",
             Self::Custom { method, .. } => method.as_str(),
         }
     }
@@ -57,6 +68,7 @@ impl DaemonEvent {
             Self::DownloadUpdated { .. } => Some("downloads"),
             Self::PeerSessionUpdated { .. } => Some("peers"),
             Self::ServerSessionUpdated { .. } => Some("servers"),
+            Self::UploadsUpdated { .. } => Some("uploads"),
             Self::Custom { method, .. } => match method.as_str() {
                 "server.searchResult" | "server.foundSources" => Some("search"),
                 "upnp.statusChanged" => Some("network"),
@@ -80,6 +92,17 @@ impl DaemonEvent {
             Self::ServerSessionUpdated { sequence, session } => serde_json::json!({
                 "sequence": sequence,
                 "session": session,
+            }),
+            Self::UploadsUpdated {
+                sequence,
+                active,
+                queue,
+                upload_rate_bps,
+            } => serde_json::json!({
+                "sequence": sequence,
+                "active": active,
+                "queue": queue,
+                "uploadRateBps": upload_rate_bps,
             }),
             Self::Custom { payload, .. } => payload.clone(),
         };

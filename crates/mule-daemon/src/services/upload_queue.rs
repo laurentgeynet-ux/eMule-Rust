@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
+
+use crate::services::DaemonEvent;
 
 /// Maximum number of queued upload requests.
 pub const MAX_UPLOAD_QUEUE: usize = 500;
@@ -71,6 +73,11 @@ pub struct UploadManager {
     /// USS `AcceptNewClient` gate — when false, new clients stay queued
     /// while latency is above tolerance (`UssService::accept_flag`).
     uss_gate: Arc<std::sync::RwLock<Arc<AtomicBool>>>,
+    /// Optional event channel (set by `AppState`) for `upload.uploadsUpdated`.
+    event_tx: Arc<std::sync::RwLock<Option<broadcast::Sender<String>>>>,
+    sequence: Arc<std::sync::RwLock<Option<Arc<AtomicU64>>>>,
+    /// Throttle for progress-driven emissions (~500 ms).
+    last_progress_emit_ms: Arc<AtomicI64>,
 }
 
 impl Default for UploadManager {
@@ -88,6 +95,60 @@ impl UploadManager {
             active_count: Arc::new(AtomicUsize::new(0)),
             max_active: Arc::new(AtomicUsize::new(MAX_ACTIVE_UPLOADS)),
             uss_gate: Arc::new(std::sync::RwLock::new(Arc::new(AtomicBool::new(true)))),
+            event_tx: Arc::new(std::sync::RwLock::new(None)),
+            sequence: Arc::new(std::sync::RwLock::new(None)),
+            last_progress_emit_ms: Arc::new(AtomicI64::new(0)),
+        }
+    }
+
+    /// Installs the broadcast channel used to emit `upload.uploadsUpdated`.
+    pub fn set_event_channel(
+        &self,
+        tx: broadcast::Sender<String>,
+        seq: Arc<AtomicU64>,
+    ) {
+        *self.event_tx.write().unwrap() = Some(tx);
+        *self.sequence.write().unwrap() = Some(seq);
+    }
+
+    /// Emits the full uploads snapshot (active slots + queue + aggregate
+    /// rate). No-op when no event channel is installed.
+    async fn emit_uploads_updated(&self) {
+        let (tx, seq) = {
+            let tx = self.event_tx.read().unwrap().clone();
+            let seq = self.sequence.read().unwrap().clone();
+            (tx, seq)
+        };
+        let (Some(tx), Some(seq)) = (tx, seq) else { return };
+        let active = self.active_snapshots().await;
+        let queue = self.list_queue().await;
+        let rate = active.iter().map(|s| s.upload_rate_bps).sum();
+        DaemonEvent::UploadsUpdated {
+            sequence: seq.fetch_add(1, Ordering::SeqCst),
+            active,
+            queue,
+            upload_rate_bps: rate,
+        }
+        .send(&tx);
+    }
+
+    /// Emits `uploadsUpdated` from the hot progress path, throttled to at
+    /// most once every 500 ms.
+    async fn emit_uploads_updated_throttled(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let last = self.last_progress_emit_ms.load(Ordering::SeqCst);
+        if now - last < 500 {
+            return;
+        }
+        if self
+            .last_progress_emit_ms
+            .compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            self.emit_uploads_updated().await;
         }
     }
 
@@ -161,6 +222,8 @@ impl UploadManager {
                 "[UPLOAD_SLOT_GRANTED] Client {} granted active upload slot for file '{}' (hash: {}) ({}/{} slots used)",
                 client_address, file_name, file_hash, active.len(), self.max_active.load(Ordering::SeqCst)
             );
+            drop(active);
+            self.emit_uploads_updated().await;
             return Ok((UploadSlotState::Uploading, None));
         }
 
@@ -211,17 +274,23 @@ impl UploadManager {
             "[UPLOAD_QUEUED] Client {} queued for file '{}' (hash: {}) with rank #{} (credits mult: {:.2}x, queue size: {})",
             client_address, file_name, file_hash, rank, credit_multiplier, q.len()
         );
+        drop(q);
+        drop(active);
+        self.emit_uploads_updated().await;
 
         Ok((UploadSlotState::Waiting, Some(rank)))
     }
 
     /// Updates active upload progress.
     pub async fn update_progress(&self, client_key: &str, bytes_sent: u64, rate_bps: u64) {
-        let mut active = self.active_uploads.lock().await;
-        if let Some(cur) = active.get_mut(client_key) {
-            cur.transferred_bytes = cur.transferred_bytes.saturating_add(bytes_sent);
-            cur.upload_rate_bps = rate_bps;
+        {
+            let mut active = self.active_uploads.lock().await;
+            if let Some(cur) = active.get_mut(client_key) {
+                cur.transferred_bytes = cur.transferred_bytes.saturating_add(bytes_sent);
+                cur.upload_rate_bps = rate_bps;
+            }
         }
+        self.emit_uploads_updated_throttled().await;
     }
 
     /// Releases the client's active upload slot and promotes waiting clients
@@ -289,6 +358,8 @@ impl UploadManager {
             }
         }
         self.active_count.store(active.len(), Ordering::SeqCst);
+        drop(active);
+        self.emit_uploads_updated().await;
     }
 
     /// Clears queue and active slots on kill switch or network reset.
@@ -298,6 +369,9 @@ impl UploadManager {
         self.active_count.store(0, Ordering::SeqCst);
         let mut q = self.queue.lock().await;
         q.clear();
+        drop(q);
+        drop(active);
+        self.emit_uploads_updated().await;
     }
 
     /// Returns the snapshot of the first active upload (if any).
@@ -456,6 +530,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
+    }
+
+    #[tokio::test]
+    async fn events_emitted_on_grant_queue_release() {
+        let mgr = UploadManager::new();
+        let (tx, mut rx) = broadcast::channel(16);
+        mgr.set_event_channel(tx, Arc::new(AtomicU64::new(1)));
+
+        mgr.set_max_active(1);
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0)
+            .await
+            .unwrap();
+        let ev = rx.recv().await.unwrap();
+        assert!(ev.contains("upload.uploadsUpdated"));
+        assert!(ev.contains("\"uploadRateBps\""));
+
+        mgr.request_upload_slot("b", "b", "h", "f", 1.0)
+            .await
+            .unwrap();
+        let ev = rx.recv().await.unwrap();
+        assert!(ev.contains("upload.uploadsUpdated"));
+        assert!(ev.contains("queue"));
+
+        mgr.release_slot("a").await;
+        let ev = rx.recv().await.unwrap();
+        assert!(ev.contains("upload.uploadsUpdated"));
     }
 
     #[tokio::test]
