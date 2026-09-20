@@ -108,6 +108,7 @@ class DownloadPartInfo {
   final int receivedBytes;
   final bool isVerified;
   final String state; // 'verified', 'completed', 'downloading', 'missing'
+  final int availableSourceCount; // sources advertising this part (eMule blue/red)
 
   const DownloadPartInfo({
     required this.partIndex,
@@ -117,6 +118,7 @@ class DownloadPartInfo {
     required this.receivedBytes,
     required this.isVerified,
     required this.state,
+    this.availableSourceCount = 0,
   });
 
   factory DownloadPartInfo.fromJson(Map<String, dynamic> json) {
@@ -128,6 +130,7 @@ class DownloadPartInfo {
       receivedBytes: (json['receivedBytes'] as num?)?.toInt() ?? 0,
       isVerified: json['isVerified'] as bool? ?? false,
       state: json['state'] as String? ?? 'missing',
+      availableSourceCount: (json['availableSourceCount'] as num?)?.toInt() ?? 0,
     );
   }
 

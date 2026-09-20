@@ -167,6 +167,14 @@ pub fn get_download_detail(
             "missing"
         };
 
+        // eMule's availability coloring: count sources advertising this part
+        // in their PartAvailabilityMask.
+        let available_source_count = act
+            .sources
+            .values()
+            .filter(|s| u16::try_from(i).is_ok_and(|p| s.mask.has_part(p)))
+            .count() as u32;
+
         parts.push(PartProgressSummary {
             part_index: i,
             start_offset,
@@ -175,6 +183,7 @@ pub fn get_download_detail(
             received_bytes: received_in_part,
             is_verified,
             state: state.to_string(),
+            available_source_count,
         });
     }
 

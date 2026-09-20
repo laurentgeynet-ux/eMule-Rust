@@ -39,6 +39,9 @@ pub struct PartProgressSummary {
     pub received_bytes: u64,
     pub is_verified: bool,
     pub state: String, // "verified", "completed", "downloading", "missing"
+    /// Number of known sources whose availability mask covers this part
+    /// (eMule's blue-shade/red coloring: 0 = no source has it → stuck part).
+    pub available_source_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

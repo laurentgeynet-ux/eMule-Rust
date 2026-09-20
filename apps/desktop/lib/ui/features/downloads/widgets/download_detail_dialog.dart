@@ -417,6 +417,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
         .where((p) => p.state == 'downloading')
         .length;
     final missingCount = parts.where((p) => p.state == 'missing').length;
+    final unavailableCount =
+        parts.where((p) => p.state == 'missing' && p.availableSourceCount == 0).length;
 
     return _buildSectionCard(
       title: 'eD2K Part Map (${parts.length} parts of 9.28 MB)',
@@ -450,7 +452,8 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                           'Range: ${Formatters.formatBytes(part.startOffset)} - ${Formatters.formatBytes(part.endOffset)}\n'
                           'Size: ${Formatters.formatBytes(part.size)}\n'
                           'Received: ${Formatters.formatBytes(part.receivedBytes)}\n'
-                          'Status: ${part.isVerified ? "Verified (Hash valid)" : part.state}',
+                          'Status: ${part.isVerified ? "Verified (Hash valid)" : part.state}\n'
+                          'Sources: ${part.availableSourceCount}',
                       child: Container(
                         width: blockWidth,
                         height: 24,
@@ -502,6 +505,10 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
                 _buildLegendItem(
                   color: Colors.white24,
                   label: 'Missing ($missingCount)',
+                ),
+                _buildLegendItem(
+                  color: Colors.redAccent,
+                  label: 'No source ($unavailableCount)',
                 ),
               ],
             ),
@@ -1490,6 +1497,20 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
   Color _getPartColor(DownloadPartInfo part) {
     if (part.isVerified) {
       return Colors.tealAccent;
+    }
+    // eMule-style availability coloring: red = no known source has this
+    // part (download will stall), blue shades = rare → common.
+    if (part.state == 'missing') {
+      if (part.availableSourceCount == 0) {
+        return Colors.redAccent;
+      }
+      // 1-2 sources → dark blue, ≥8 → light blue.
+      final t = (part.availableSourceCount / 8).clamp(0.0, 1.0);
+      return Color.lerp(
+        const Color(0xFF0D47A1),
+        Colors.lightBlueAccent,
+        t,
+      )!;
     }
     switch (part.state) {
       case 'completed':
