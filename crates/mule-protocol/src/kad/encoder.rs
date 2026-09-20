@@ -416,3 +416,117 @@ impl KadEncoder {
         buf.freeze()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Kad notes (file comments / ratings)
+// ---------------------------------------------------------------------------
+
+/// Encodes a `KADEMLIA2_SEARCH_NOTES_REQ` (0x35):
+/// `[target_file_hash:16][file_size:u64]`.
+pub fn encode_search_notes_req_payload(target_file_hash: &KadIdBytes, file_size: u64) -> Bytes {
+    let mut buf = BytesMut::with_capacity(26);
+    buf.put_u8(PR_KADEMLIA);
+    buf.put_u8(KADEMLIA2_SEARCH_NOTES_REQ);
+    buf.put_slice(target_file_hash);
+    buf.put_u64_le(file_size);
+    buf.freeze()
+}
+
+/// Encodes a notes search response on the unified `KADEMLIA2_SEARCH_RES`
+/// (0x3B) form — the exact wire shape eMule `CIndexed::SendValidNoteResult`
+/// emits: `[sender_id:16][target:16][count:u16]` then per entry
+/// `[source_id:16][tag_count:u8][tags]`.
+///
+/// Returns `None` when any tag fails the bounded encoder (oversized strings
+/// etc.) — the caller should simply not answer.
+pub fn encode_search_notes_res(
+    sender_id: &KadIdBytes,
+    target_file_hash: &KadIdBytes,
+    notes: &[KadNoteWire],
+) -> Option<Bytes> {
+    let limits = crate::ed2k::limits::Ed2kLimits::default();
+    let count = notes.len().min(MAX_NOTE_SEARCH_RESULTS);
+    let mut buf = BytesMut::with_capacity(2 + 34 + count * 96);
+    buf.put_u8(PR_KADEMLIA);
+    buf.put_u8(KADEMLIA2_SEARCH_RES);
+    buf.put_slice(sender_id);
+    buf.put_slice(target_file_hash);
+    buf.put_u16_le(count as u16);
+    for n in &notes[..count] {
+        let tag_total = n.tags.len() + n.unknown_tags.len();
+        if tag_total > MAX_NOTE_TAG_COUNT {
+            return None;
+        }
+        buf.put_slice(&n.source_id);
+        buf.put_u8(tag_total as u8);
+        let mut tmp = Vec::new();
+        for t in &n.tags {
+            crate::ed2k::encoder::encode_tag(&limits, KADEMLIA2_SEARCH_RES, t, &mut tmp).ok()?;
+        }
+        for t in &n.unknown_tags {
+            crate::ed2k::encoder::encode_raw_tag(&limits, KADEMLIA2_SEARCH_RES, t, &mut tmp)
+                .ok()?;
+        }
+        buf.put_slice(&tmp);
+    }
+    Some(buf.freeze())
+}
+
+/// Encodes a `KADEMLIA2_PUBLISH_NOTES_REQ` (0x45):
+/// `[target_file_hash:16][source_id:16][tag_count:u8][tags]`.
+pub fn encode_publish_notes_req(
+    target_file_hash: &KadIdBytes,
+    source_id: &KadIdBytes,
+    tags: &[crate::ed2k::tags::Ed2kTag],
+) -> Option<Bytes> {
+    if tags.len() > MAX_NOTE_TAG_COUNT {
+        return None;
+    }
+    let limits = crate::ed2k::limits::Ed2kLimits::default();
+    let mut buf = BytesMut::with_capacity(2 + 33 + tags.len() * 32);
+    buf.put_u8(PR_KADEMLIA);
+    buf.put_u8(KADEMLIA2_PUBLISH_NOTES_REQ);
+    buf.put_slice(target_file_hash);
+    buf.put_slice(source_id);
+    buf.put_u8(tags.len() as u8);
+    let mut tmp = Vec::new();
+    for t in tags {
+        crate::ed2k::encoder::encode_tag(&limits, KADEMLIA2_PUBLISH_NOTES_REQ, t, &mut tmp).ok()?;
+    }
+    buf.put_slice(&tmp);
+    Some(buf.freeze())
+}
+
+/// Encodes a note tag list as a standalone blob (`[tag_count:u8][tags]`) for
+/// persistence; `decode_note_tags_blob` reverses it.
+pub fn encode_note_tags_blob(
+    tags: &[crate::ed2k::tags::Ed2kTag],
+    unknown_tags: &[crate::ed2k::tags::RawTag],
+) -> Option<Vec<u8>> {
+    let total = tags.len() + unknown_tags.len();
+    if total > MAX_NOTE_TAG_COUNT {
+        return None;
+    }
+    let limits = crate::ed2k::limits::Ed2kLimits::default();
+    let mut out = Vec::with_capacity(1 + total * 32);
+    out.push(total as u8);
+    for t in tags {
+        crate::ed2k::encoder::encode_tag(&limits, KADEMLIA2_PUBLISH_NOTES_REQ, t, &mut out).ok()?;
+    }
+    for t in unknown_tags {
+        crate::ed2k::encoder::encode_raw_tag(&limits, KADEMLIA2_PUBLISH_NOTES_REQ, t, &mut out)
+            .ok()?;
+    }
+    Some(out)
+}
+
+/// Encodes a `KADEMLIA2_PUBLISH_RES` (0x4B) for notes:
+/// `[target_file_hash:16][load:u8]`.
+pub fn encode_publish_notes_res(target_file_hash: &KadIdBytes, load: u8) -> Bytes {
+    let mut buf = BytesMut::with_capacity(19);
+    buf.put_u8(PR_KADEMLIA);
+    buf.put_u8(KADEMLIA2_PUBLISH_RES);
+    buf.put_slice(target_file_hash);
+    buf.put_u8(load);
+    buf.freeze()
+}

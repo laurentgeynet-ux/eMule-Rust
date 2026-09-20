@@ -334,6 +334,62 @@ pub async fn handle_kad_publish_keywords(
     }))
 }
 
+pub async fn handle_kad_search_notes(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+    let file_size = params["fileSize"]
+        .as_u64()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileSize' parameter"))?;
+
+    let notes = state
+        .kad
+        .search_notes(file_hash, file_size)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    Ok(json!({
+        "fileHash": file_hash,
+        "notes": notes,
+        "count": notes.len(),
+    }))
+}
+
+pub async fn handle_kad_publish_note(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash' parameter"))?;
+    let file_name = params["fileName"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileName' parameter"))?;
+    let file_size = params["fileSize"]
+        .as_u64()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileSize' parameter"))?;
+    let comment = params["comment"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'comment' parameter"))?;
+    let rating = params["rating"].as_u64().map(|r| r.min(5) as u8);
+
+    let published_count = state
+        .kad
+        .publish_note(file_hash, file_name, file_size, comment, rating)
+        .await
+        .map_err(JsonRpcError::business)?;
+
+    Ok(json!({
+        "fileHash": file_hash,
+        "publishedCount": published_count,
+    }))
+}
+
 pub async fn handle_kad_bootstrap_from_url(
     state: &AppState,
     params: Option<Value>,

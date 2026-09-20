@@ -183,6 +183,23 @@ impl DaemonClient {
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+        // Iterative Kad lookups and multi-node queries can legitimately run
+        // longer than the default timeout on a real WAN.
+        let timeout_secs = if method.starts_with("kad.search") || method.starts_with("kad.publish")
+        {
+            60
+        } else {
+            15
+        };
+        self.call_with_timeout(method, params, timeout_secs).await
+    }
+
+    pub async fn call_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        timeout_secs: u64,
+    ) -> Result<Value, String> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let req = json!({
             "jsonrpc": "2.0",
@@ -203,13 +220,15 @@ impl DaemonClient {
             .await
             .map_err(|e| format!("Failed to send RPC request: {e}"))?;
 
-        match tokio::time::timeout(tokio::time::Duration::from_secs(15), rx).await {
+        match tokio::time::timeout(tokio::time::Duration::from_secs(timeout_secs), rx).await {
             Ok(Ok(res)) => res,
             Ok(Err(_)) => Err("RPC response channel dropped unexpectedly".to_string()),
             Err(_) => {
                 let mut map = self.pending.lock().await;
                 map.remove(&id);
-                Err(format!("RPC call to '{method}' timed out after 15 seconds"))
+                Err(format!(
+                    "RPC call to '{method}' timed out after {timeout_secs} seconds"
+                ))
             }
         }
     }

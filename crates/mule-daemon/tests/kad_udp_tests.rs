@@ -463,3 +463,101 @@ async fn test_kad_buddy_findbuddy_rejected_when_unverified() {
         "FINDBUDDY_REQ must be refused when unverified"
     );
 }
+
+/// Publish a note to the daemon's storage-node role, then retrieve it via a
+/// SearchNotesReq — full roundtrip through the live UDP service.
+#[tokio::test]
+async fn test_kad_notes_publish_and_search_roundtrip() {
+    use mule_protocol::ed2k::tags::{Ed2kTag, TagName, TagValue};
+
+    let tmp = tempdir().expect("create tempdir");
+    let state = setup_test_state(&tmp);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
+
+    let bound_addr = state
+        .kad
+        .udp()
+        .start("127.0.0.1:0".parse().unwrap())
+        .await
+        .expect("start kad udp");
+
+    let mock = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock");
+    let file_hash = [0x42u8; 16];
+    let source_id = [0x77u8; 16];
+
+    // 1. PublishNotesReq → daemon stores it and answers 0x4B with load.
+    let tags = vec![
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_FILENAME),
+            value: TagValue::String("movie.avi".to_string()),
+        },
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_FILESIZE),
+            value: TagValue::UInt64(700_000),
+        },
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_DESCRIPTION),
+            value: TagValue::String("good copy".to_string()),
+        },
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_FILERATING),
+            value: TagValue::UInt8(4),
+        },
+    ];
+    let pub_req = KadCodec::encode_publish_notes_req(&file_hash, &source_id, &tags)
+        .expect("encode publish notes req");
+    mock.send_to(&pub_req, bound_addr).await.expect("send");
+
+    let mut buf = vec![0u8; 2048];
+    let (len, _) =
+        tokio::time::timeout(std::time::Duration::from_secs(2), mock.recv_from(&mut buf))
+            .await
+            .expect("expected publish res")
+            .expect("recv");
+    match KadCodec::decode(&buf[..len]).expect("decode publish res") {
+        KadMessage::PublishSourceRes(r) => {
+            assert_eq!(r.target_file_hash, file_hash);
+            assert!(r.status <= 100); // load percentage
+        }
+        other => panic!("expected PublishSourceRes (0x4B), got {other:?}"),
+    }
+
+    // 2. SearchNotesReq → daemon replies with the stored note on 0x3B.
+    let search_req = KadCodec::encode_search_notes_req(&file_hash, 700_000);
+    mock.send_to(&search_req, bound_addr).await.expect("send");
+
+    let (len, _) =
+        tokio::time::timeout(std::time::Duration::from_secs(2), mock.recv_from(&mut buf))
+            .await
+            .expect("expected search notes res")
+            .expect("recv");
+    let packet = &buf[..len];
+    assert_eq!(packet[1], KADEMLIA2_SEARCH_RES);
+    match KadCodec::decode_search_notes_res(packet[0], packet[1], &packet[2..])
+        .expect("decode notes res")
+    {
+        KadMessage::SearchNotesRes(r) => {
+            assert_eq!(r.target_file_hash, file_hash);
+            assert_eq!(r.notes.len(), 1);
+            assert_eq!(r.notes[0].source_id, source_id);
+            assert_eq!(r.notes[0].comment(), Some("good copy"));
+            assert_eq!(r.notes[0].rating(), Some(4));
+        }
+        other => panic!("expected SearchNotesRes, got {other:?}"),
+    }
+
+    // 3. Wrong file size → no response (SendValidNoteResult filters).
+    let bad_search = KadCodec::encode_search_notes_req(&file_hash, 12345);
+    mock.send_to(&bad_search, bound_addr).await.expect("send");
+    let res = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        mock.recv_from(&mut buf),
+    )
+    .await;
+    assert!(
+        res.is_err(),
+        "size-mismatched notes query must get no reply"
+    );
+}

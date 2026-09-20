@@ -174,6 +174,54 @@ pub fn list_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            name: "emule_kad_search_notes".to_string(),
+            description: "Query Kad DHT for file notes (user comments and ratings) indexed for a file hash.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "required": ["file_hash", "file_size"],
+                "properties": {
+                    "file_hash": {
+                        "type": "string",
+                        "description": "32-character hex eD2K hash"
+                    },
+                    "file_size": {
+                        "type": "integer",
+                        "description": "File size in bytes (used to filter matching note entries)"
+                    }
+                }
+            }),
+        },
+        ToolDefinition {
+            name: "emule_kad_publish_note".to_string(),
+            description: "Publish a comment/rating for a file to the Kad DHT notes index.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "required": ["file_hash", "file_name", "file_size", "comment"],
+                "properties": {
+                    "file_hash": {
+                        "type": "string",
+                        "description": "32-character hex eD2K hash"
+                    },
+                    "file_name": {
+                        "type": "string",
+                        "description": "File name"
+                    },
+                    "file_size": {
+                        "type": "integer",
+                        "description": "File size in bytes"
+                    },
+                    "comment": {
+                        "type": "string",
+                        "description": "Comment text (max 512 bytes)"
+                    },
+                    "rating": {
+                        "type": "integer",
+                        "description": "Optional rating 0-5"
+                    }
+                }
+            }),
+        },
+        ToolDefinition {
             name: "emule_kad_inspect_nodes_dat".to_string(),
             description: "Inspect an offline nodes.dat file on disk to examine its Kad contacts before importing.".to_string(),
             input_schema: json!({
@@ -430,6 +478,90 @@ pub async fn handle_tool(
                 Ok(res) => Some(ToolCallResult::json(&res)),
                 Err(e) => Some(ToolCallResult::error(format!(
                     "Failed to publish keywords to Kad: {e}"
+                ))),
+            }
+        }
+
+        "emule_kad_search_notes" => {
+            let hash = match args.get("file_hash").and_then(|h| h.as_str()) {
+                Some(h) => h,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_hash'",
+                    ))
+                }
+            };
+            let size = match args.get("file_size").and_then(|s| s.as_u64()) {
+                Some(s) => s,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_size'",
+                    ))
+                }
+            };
+
+            match client
+                .call(
+                    "kad.searchNotes",
+                    json!({ "fileHash": hash, "fileSize": size }),
+                )
+                .await
+            {
+                Ok(res) => Some(ToolCallResult::json(&res)),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to search Kad notes: {e}"
+                ))),
+            }
+        }
+
+        "emule_kad_publish_note" => {
+            let hash = match args.get("file_hash").and_then(|h| h.as_str()) {
+                Some(h) => h,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_hash'",
+                    ))
+                }
+            };
+            let name = match args.get("file_name").and_then(|n| n.as_str()) {
+                Some(n) => n,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_name'",
+                    ))
+                }
+            };
+            let size = match args.get("file_size").and_then(|s| s.as_u64()) {
+                Some(s) => s,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_size'",
+                    ))
+                }
+            };
+            let comment = match args.get("comment").and_then(|c| c.as_str()) {
+                Some(c) => c,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'comment'",
+                    ))
+                }
+            };
+
+            let mut params = json!({
+                "fileHash": hash,
+                "fileName": name,
+                "fileSize": size,
+                "comment": comment
+            });
+            if let Some(r) = args.get("rating").and_then(|r| r.as_u64()) {
+                params["rating"] = json!(r.min(5));
+            }
+
+            match client.call("kad.publishNote", params).await {
+                Ok(res) => Some(ToolCallResult::json(&res)),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to publish note to Kad: {e}"
                 ))),
             }
         }

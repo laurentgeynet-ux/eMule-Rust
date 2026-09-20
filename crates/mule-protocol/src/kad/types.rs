@@ -1,5 +1,7 @@
 //! Wire types and constants for Kad UDP packets.
 
+use crate::ed2k::tags::{Ed2kTag, RawTag, TagName, TagValue};
+
 /// 128-bit Kad ID alias (16 bytes).
 pub type KadIdBytes = [u8; 16];
 
@@ -261,8 +263,149 @@ pub struct KadCallbackReq {
     pub tcp_port: u16,
 }
 
+// ---------------------------------------------------------------------------
+// Kad notes (file comments / ratings) — eMule `CEntry` with `m_bSource=false`.
+//
+// Notes are third-party-supplied, display-only data: eMule explicitly treats
+// note tag strings as the one place where non-UTF8/codepage content is allowed
+// "for viewing only". We therefore keep the full tag list verbatim (typed
+// `Ed2kTag` + `RawTag` for unknown types) and expose convenience accessors
+// instead of a closed struct that would drop unknown metadata.
+// ---------------------------------------------------------------------------
+
+/// `TAG_FILENAME` (`\x01`) — file name tag inside a note entry.
+pub const TAG_NOTE_FILENAME: u8 = 0x01;
+/// `TAG_FILESIZE` (`\x02`) — file size tag inside a note entry.
+pub const TAG_NOTE_FILESIZE: u8 = 0x02;
+/// `TAG_DESCRIPTION` (`\x0B`) — user comment text of a note entry.
+pub const TAG_NOTE_DESCRIPTION: u8 = 0x0B;
+/// `TAG_FILERATING` (`\xF7`) — 0..5 user rating of a note entry.
+pub const TAG_NOTE_FILERATING: u8 = 0xF7;
+
+/// Maximum tag count accepted in a notes entry/request (anti-abuse bound).
+pub const MAX_NOTE_TAG_COUNT: usize = 32;
+
+/// Maximum note entries accepted in one search response
+/// (eMule `SendValidNoteResult` caps at 150 per packet).
+pub const MAX_NOTE_SEARCH_RESULTS: usize = 150;
+
+/// A single note entry (`CEntry`) as carried by `KADEMLIA2_SEARCH_RES` (0x3B)
+/// note results and `KADEMLIA2_PUBLISH_NOTES_REQ` (0x45).
+#[derive(Debug, Clone, PartialEq)]
+pub struct KadNoteWire {
+    /// Publisher's Kad ID (`m_uSourceID`) — the "answer hash" in search
+    /// results, the `source` field in publish requests.
+    pub source_id: KadIdBytes,
+    /// Typed tags (filename, filesize, description, rating, …).
+    pub tags: Vec<Ed2kTag>,
+    /// Unrecognized tags preserved raw (no data loss).
+    pub unknown_tags: Vec<RawTag>,
+}
+
+impl KadNoteWire {
+    fn note_tag(&self, id: u8) -> Option<&TagValue> {
+        self.tags.iter().find_map(|t| {
+            if t.name == TagName::Id(id) {
+                Some(&t.value)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// `TAG_FILENAME` string, if present.
+    pub fn file_name(&self) -> Option<&str> {
+        match self.note_tag(TAG_NOTE_FILENAME) {
+            Some(TagValue::String(s)) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// `TAG_FILESIZE` value, if present.
+    pub fn file_size(&self) -> Option<u64> {
+        match self.note_tag(TAG_NOTE_FILESIZE) {
+            Some(TagValue::UInt8(v)) => Some(*v as u64),
+            Some(TagValue::UInt16(v)) => Some(*v as u64),
+            Some(TagValue::UInt32(v)) => Some(*v as u64),
+            Some(TagValue::UInt64(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
+    /// `TAG_DESCRIPTION` — the user comment. Untrusted display-only text.
+    pub fn comment(&self) -> Option<&str> {
+        match self.note_tag(TAG_NOTE_DESCRIPTION) {
+            Some(TagValue::String(s)) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// `TAG_FILERATING` — 0..5 rating, if present.
+    pub fn rating(&self) -> Option<u8> {
+        match self.note_tag(TAG_NOTE_FILERATING) {
+            Some(TagValue::UInt8(v)) => Some(*v),
+            Some(TagValue::UInt16(v)) => Some(*v as u8),
+            Some(TagValue::UInt32(v)) => Some(*v as u8),
+            _ => None,
+        }
+    }
+}
+
+/// Kad2 Search Notes request (`KADEMLIA2_SEARCH_NOTES_REQ`, 0x35):
+/// `[target_file_hash:16][file_size:u64]` — eMule
+/// `Process_KADEMLIA2_SEARCH_NOTES_REQ`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KadSearchNotesReq {
+    /// Target file hash (16 bytes).
+    pub target_file_hash: KadIdBytes,
+    /// File size used to filter note entries (0 = accept any).
+    pub file_size: u64,
+}
+
+/// Notes search response. On the wire this is the unified
+/// `KADEMLIA2_SEARCH_RES` (0x3B) — `[sender_id:16][target:16][count:u16]
+/// ([source_id:16][tag_count:u8][tags])*` — see eMule
+/// `CIndexed::SendValidNoteResult`. The legacy Kad1 opcode
+/// `KADEMLIA_SEARCH_NOTES_RES` (0x3A) carries the same entries without the
+/// sender ID.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KadSearchNotesRes {
+    /// Responder Kad ID (zero for the legacy 0x3A form).
+    pub sender_id: KadIdBytes,
+    /// Target file hash (16 bytes).
+    pub target_file_hash: KadIdBytes,
+    /// Note entries (bounded).
+    pub notes: Vec<KadNoteWire>,
+}
+
+/// Kad2 Publish Notes request (`KADEMLIA2_PUBLISH_NOTES_REQ`, 0x45):
+/// `[target_file_hash:16][source_id:16][tag_count:u8][tags]` — eMule
+/// `Process_KADEMLIA2_PUBLISH_NOTES_REQ`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KadPublishNotesReq {
+    /// Target file hash (16 bytes).
+    pub target_file_hash: KadIdBytes,
+    /// Publisher's Kad ID (`m_uSourceID`).
+    pub source_id: KadIdBytes,
+    /// Note tags (typed).
+    pub tags: Vec<Ed2kTag>,
+    /// Unrecognized tags preserved raw.
+    pub unknown_tags: Vec<RawTag>,
+}
+
+/// Kad2 Publish Notes response (`KADEMLIA2_PUBLISH_RES`, 0x4B):
+/// `[target_file_hash:16][load:u8]` — same wire shape as source/keyword
+/// publish responses; the byte is the indexer's store load.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KadPublishNotesRes {
+    /// Target file hash (16 bytes).
+    pub target_file_hash: KadIdBytes,
+    /// Indexer load report (eMule `uLoad`).
+    pub load: u8,
+}
+
 /// Enum representing decoded Kad UDP messages.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum KadMessage {
     /// Kad2 Ping request.
     Ping(KadPing),
@@ -302,4 +445,12 @@ pub enum KadMessage {
     FindBuddyRes(KadFindBuddyRes),
     /// Kad buddy callback relay request.
     CallbackReq(KadCallbackReq),
+    /// Kad2 Search Notes request.
+    SearchNotesReq(KadSearchNotesReq),
+    /// Notes search response (0x3B unified or legacy 0x3A).
+    SearchNotesRes(KadSearchNotesRes),
+    /// Kad2 Publish Notes request.
+    PublishNotesReq(KadPublishNotesReq),
+    /// Kad2 Publish Notes response.
+    PublishNotesRes(KadPublishNotesRes),
 }

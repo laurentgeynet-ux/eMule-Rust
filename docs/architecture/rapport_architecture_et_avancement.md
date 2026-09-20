@@ -50,7 +50,7 @@ flowchart TB
 
     subgraph AGENTS ["Écosystème Agents IA (crates/mule-mcp)"]
         MCPServer["Serveur MCP (Stdio JSON-RPC)"]
-        MCPTools["83 Outils MCP (Downloads, Swarm, Kad, Servers, Shares, System)"]
+        MCPTools["85 Outils MCP (Downloads, Swarm, Kad, Servers, Shares, System)"]
     end
 
     subgraph IPC ["Liaison Locale IPC (127.0.0.1:4660)"]
@@ -202,7 +202,7 @@ Refactorisé selon une architecture modulaire propre :
   * Téléchargements : `emule_list_downloads`, `emule_add_link`, `emule_pause_download`, `emule_resume_download`, `emule_remove_download`, `emule_set_destination`, `emule_download_set_category`, `emule_retry_download`, `emule_inspect_part_met`, `emule_import_part_met`.
   * Swarm & Sources : `emule_list_sources`, `emule_add_manual_source`, `emule_connect_source`, `emule_disconnect_source`, `emule_clear_sources`, `emule_swarm_status`.
   * Serveurs : `emule_list_servers`, `emule_connect_server`, `emule_disconnect_server`, `emule_update_servers_from_url`, `emule_inspect_server_met`, `emule_import_server_met`, `emule_search`, `emule_query_server_sources`.
-  * Kad DHT : `emule_kad_status`, `emule_kad_bootstrap`, `emule_kad_start_udp`, `emule_kad_stop_udp`, `emule_kad_ping`, `emule_kad_find_node`, `emule_kad_list_contacts`, `emule_kad_search_sources`, `emule_kad_publish_source`, `emule_kad_publish_keywords`, `emule_kad_import_nodes_dat`.
+  * Kad DHT : `emule_kad_status`, `emule_kad_bootstrap`, `emule_kad_start_udp`, `emule_kad_stop_udp`, `emule_kad_ping`, `emule_kad_find_node`, `emule_kad_list_contacts`, `emule_kad_search_sources`, `emule_kad_publish_source`, `emule_kad_publish_keywords`, `emule_kad_search_notes`, `emule_kad_publish_note`, `emule_kad_import_nodes_dat`.
   * Partages & Uploads : `emule_list_shares`, `emule_add_share`, `emule_remove_share`, `emule_list_uploads`, `emule_cancel_upload`, `emule_start_listener`, `emule_stop_listener`, `emule_listener_status`.
   * Sécurité & Réseau : `emule_get_network_policy`, `emule_set_network_profile`, `emule_network_disconnect_all`, `emule_import_ip_filter`, `emule_set_network_budgets`, `emule_upnp_status`, `emule_upnp_map_ports`, `emule_get_identity`, `emule_rotate_identity`, `emule_list_credits`.
 
@@ -288,7 +288,7 @@ Le projet dispose d'une suite complète de 83 outils MCP intégrés (`crates/mul
 | **Téléchargements** | `emule_list_downloads`, `emule_add_link`, `emule_pause_download`, `emule_resume_download`, `emule_remove_download`, `emule_set_destination`, `emule_download_set_category`, `emule_inspect_part_met`, `emule_import_part_met` | Pilotage complet du cycle de vie des téléchargements et fichiers partiels. |
 | **Swarm & Sources** | `emule_list_sources`, `emule_add_manual_source`, `emule_connect_source`, `emule_disconnect_source`, `emule_swarm_status` | Inspection et gestion fine de l'essaim de pairs. |
 | **Serveurs eD2K** | `emule_list_servers`, `emule_connect_server`, `emule_disconnect_server`, `emule_search`, `emule_query_server_sources`, `emule_update_servers_from_url` | Recherche et gestion de l'annuaire de serveurs eD2K. |
-| **Kad DHT** | `emule_kad_status`, `emule_kad_bootstrap`, `emule_kad_ping`, `emule_kad_find_node`, `emule_kad_list_contacts`, `emule_kad_search_sources`, `emule_kad_publish_source`, `emule_kad_publish_keywords` | Contrôle et recherche distribuée sur la table DHT Kademlia. |
+| **Kad DHT** | `emule_kad_status`, `emule_kad_bootstrap`, `emule_kad_ping`, `emule_kad_find_node`, `emule_kad_list_contacts`, `emule_kad_search_sources`, `emule_kad_publish_source`, `emule_kad_publish_keywords`, `emule_kad_search_notes`, `emule_kad_publish_note` | Contrôle et recherche distribuée sur la table DHT Kademlia. |
 | **Partages & Upload** | `emule_list_shares`, `emule_add_share`, `emule_remove_share`, `emule_list_uploads`, `emule_start_listener`, `emule_stop_listener`, `emule_listener_status` | Gestion des fichiers partagés et du serveur d'écoute entrant. |
 | **Sécurité & Politique** | `emule_get_network_policy`, `emule_set_network_profile`, `emule_network_disconnect_all`, `emule_import_ip_filter`, `emule_set_network_budgets`, `emule_upnp_status`, `emule_get_identity`, `emule_rotate_identity`, `emule_list_credits` | Contrôle du confinement, kill switch, IPFilter et gestion cryptographique. |
 
@@ -369,11 +369,12 @@ Audit comparatif du daemon contre les sources officielles **eMule 0.72a** (`D:\e
 | **Connexion serveur obfusquée** (DH768+RC4, `ECS_PENDING_SERVER`) | Handshake client↔serveur dédié (`ObfuscatedStream::connect_server_outgoing`) : `[marker][G^A][padlen][pad]` clair → pubkey serveur → clés `RC4(MD5(S‖34))/RC4(MD5(S‖203))` drop-1024 → syncs chiffrés ; lecture de `ST_TCPPORTOBFUSCATION`/`ST_UDPPORTOBFUSCATION` (`0x97`/`0x98`) dans `OP_SERVERIDENT`, persistance par adresse ; sémantique `CServerSocket::ConnectTo` (tentative une fois même sans port dédié, `SetTriedCrypt`, fallback plaintext) ; login envoyé post-handshake ; transport `ObfuscatedStream<TcpStream>` transparent. |
 | **Recherche serveur : timeout UI** | Un serveur muet laissait `_isSearching` actif à vie et bloquait toute recherche ; timeout de 30 s avec statut explicite, résultats tardifs toujours acceptés. |
 | **Bootstrap Kad depuis pairs entrants** | `maybe_bootstrap_from_peer` (throttle 1×/min, table < 50) déclenché aussi par les connexions entrantes annonçant un port Kad (`CT_EMULE_UDPPORTS`), pas seulement les sortantes. |
+| **Notes Kad** (`0x35`/`0x45`/`0x3B`/`0x3A`/`0x4B`) | Commentaires/évaluations de fichiers — *wire* : `KadNoteWire` + codecs bornés (`SEARCH_NOTES_REQ`, `PUBLISH_NOTES_REQ`, réponses `0x3B` unifiée et `0x3A` legacy, tag lists génériques ≤32 préservant les tags inconnus en `RawTag`) ; *stockage* : index `(target, source_id)` TTL 5 h, 100/fichier, filtre `file_size`, `load` dans `PUBLISH_RES`, refus si UDP-firewallé ; *persistance* : `kad_notes_index` avec tags en blob wire ; *sortant* : `send_search_notes`/`send_publish_notes`, `KadService::search_notes`/`publish_note` sur les 20 contacts les plus proches, RPC `kad.searchNotes`/`kad.publishNote` ; réponses `0x3B` re-décodées en forme notes quand une transaction `SearchNotesRes` est en attente. |
+| **Outils MCP notes** | `emule_kad_search_notes`/`emule_kad_publish_note` ; timeout `DaemonClient::call` porté à 60 s pour `kad.search*`/`kad.publish*`. |
 
 ### Restant (roadmap par priorité)
 
-1. **Kad restant** : notes (`SEARCH_NOTES` — nécessite un index de notes `CEntry` + tags).
-2. **Recherche UDP** : `OP_GLOBSEARCHREQ3` (forme étendue avec tag `CT_SERVER_UDPSEARCH_FLAGS`) non émis — REQ2 seulement.
+1. **Recherche UDP** : `OP_GLOBSEARCHREQ3` (forme étendue avec tag `CT_SERVER_UDPSEARCH_FLAGS`) non émis — REQ2 seulement.
 
 Limites connues du buddy callback livré : pas de rôle *client buddy* (le daemon LowID ne cherche pas de buddy pour lui-même — `FINDBUDDY_REQ` sortant non implémenté), pas de ré-emission périodique de `BUDDYPING` côté demandeur. Limites connues du test UDP livré : le drapeau « résultat biaisé » (demandeur déjà connu) côté serveur n'est pas calculé (toujours 0), la clé de vérification UDP est acceptée mais non utilisée (pas de chiffrement Kad UDP), et l'état du pare-feu n'influence pas encore les décisions de publication ni le callback direct (MiscOptions2 `DirectUDPCallback` reste à 0).
 

@@ -3,7 +3,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 use crate::error::CoreError;
-use crate::kad::{KadContact, KadIndexedSource, KadKeywordEntry};
+use crate::kad::{KadContact, KadIndexedNote, KadIndexedSource, KadKeywordEntry};
 use crate::model::{
     Download, DownloadCategory, DownloadStatus, Ed2kServer, HistoryEntry, HistoryFilter,
     HistoryStats, PeerCredit, PeerSource, PeerSourceStatus, SharedFile,
@@ -528,6 +528,30 @@ impl Database {
     /// Counts total indexed Kad keyword entries.
     pub fn count_kad_keyword_entries(&self) -> Result<usize, CoreError> {
         kad::count_kad_keyword_entries(&self.conn)
+    }
+
+    /// Upserts Kad note entries (storage-node role).
+    pub fn insert_kad_notes(&mut self, notes: &[KadIndexedNote]) -> Result<usize, CoreError> {
+        kad::insert_kad_notes(&mut self.conn, notes)
+    }
+
+    /// Loads every live Kad note entry for store rehydration.
+    pub fn list_all_kad_notes(
+        &self,
+        now_unix_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<KadIndexedNote>, CoreError> {
+        kad::list_all_kad_notes(&self.conn, now_unix_ms, limit)
+    }
+
+    /// Purges expired Kad note entries.
+    pub fn purge_expired_kad_notes(&mut self, now_unix_ms: u64) -> Result<usize, CoreError> {
+        kad::purge_expired_kad_notes(&mut self.conn, now_unix_ms)
+    }
+
+    /// Counts total indexed Kad note entries.
+    pub fn count_kad_notes(&self) -> Result<usize, CoreError> {
+        kad::count_kad_notes(&self.conn)
     }
 }
 

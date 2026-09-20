@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection};
 
 use crate::error::CoreError;
-use crate::kad::{KadContact, KadId, KadIndexedSource, KadKeywordEntry};
+use crate::kad::{KadContact, KadId, KadIndexedNote, KadIndexedSource, KadKeywordEntry};
 
 pub fn upsert_kad_contact(conn: &mut Connection, contact: &KadContact) -> Result<(), CoreError> {
     conn.execute(
@@ -404,5 +404,95 @@ pub fn purge_expired_kad_keywords(
 
 pub fn count_kad_keyword_entries(conn: &Connection) -> Result<usize, CoreError> {
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_keywords_index", [], |r| r.get(0))?;
+    Ok(count.max(0) as usize)
+}
+
+// ---------------------------------------------------------------------------
+// Kad notes index (file comments / ratings — storage-node role)
+// ---------------------------------------------------------------------------
+
+/// Upserts note entries keyed by (file_hash, source_id) — one note per
+/// publisher per file, like eMule `CEntry` with `m_bSource = false`.
+pub fn insert_kad_notes(
+    conn: &mut Connection,
+    notes: &[KadIndexedNote],
+) -> Result<usize, CoreError> {
+    let tx = conn.transaction()?;
+    let mut inserted = 0;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO kad_notes_index (
+                file_hash, source_id, publisher_ip, publisher_udp_port,
+                tags_blob, discovered_at_unix_ms, expires_at_unix_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(file_hash, source_id) DO UPDATE SET
+                publisher_ip = excluded.publisher_ip,
+                publisher_udp_port = excluded.publisher_udp_port,
+                tags_blob = excluded.tags_blob,
+                expires_at_unix_ms = excluded.expires_at_unix_ms",
+        )?;
+
+        for n in notes {
+            stmt.execute(params![
+                n.file_hash.to_lowercase(),
+                n.source_id.to_lowercase(),
+                n.publisher_ip,
+                n.publisher_udp_port as i64,
+                n.tags_blob,
+                n.discovered_at_unix_ms,
+                n.expires_at_unix_ms,
+            ])?;
+            inserted += 1;
+        }
+    }
+    tx.commit()?;
+    Ok(inserted)
+}
+
+/// Loads every live note entry (storage-node rehydration at startup).
+pub fn list_all_kad_notes(
+    conn: &Connection,
+    now_unix_ms: u64,
+    limit: usize,
+) -> Result<Vec<KadIndexedNote>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT file_hash, source_id, publisher_ip, publisher_udp_port,
+                tags_blob, discovered_at_unix_ms, expires_at_unix_ms
+         FROM kad_notes_index
+         WHERE expires_at_unix_ms > ?1
+         ORDER BY discovered_at_unix_ms DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![now_unix_ms as i64, limit as i64], |row| {
+        Ok(KadIndexedNote {
+            file_hash: row.get(0)?,
+            source_id: row.get(1)?,
+            publisher_ip: row.get(2)?,
+            publisher_udp_port: (row.get::<_, i64>(3)?).max(0) as u16,
+            tags_blob: row.get(4)?,
+            discovered_at_unix_ms: row.get(5)?,
+            expires_at_unix_ms: row.get(6)?,
+        })
+    })?;
+    let mut list = Vec::new();
+    for r in rows {
+        list.push(r?);
+    }
+    Ok(list)
+}
+
+pub fn purge_expired_kad_notes(
+    conn: &mut Connection,
+    now_unix_ms: u64,
+) -> Result<usize, CoreError> {
+    let count = conn.execute(
+        "DELETE FROM kad_notes_index WHERE expires_at_unix_ms <= ?1",
+        params![now_unix_ms as i64],
+    )?;
+    Ok(count)
+}
+
+pub fn count_kad_notes(conn: &Connection) -> Result<usize, CoreError> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_notes_index", [], |r| r.get(0))?;
     Ok(count.max(0) as usize)
 }

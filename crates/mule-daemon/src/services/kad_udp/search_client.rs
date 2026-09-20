@@ -400,4 +400,188 @@ impl KadUdpService {
             }
         }
     }
+
+    /// Sends a Kad2 Search Notes request (0x35) and waits for a notes
+    /// response (unified 0x3B or legacy 0x3A).
+    pub async fn send_search_notes(
+        &self,
+        target: SocketAddr,
+        file_hash: &[u8; 16],
+        file_size: u64,
+    ) -> Result<Vec<KadNoteWire>, String> {
+        let (socket, in_flight) = {
+            let inner = self.inner.read().await;
+            let socket = inner.socket.clone().ok_or("UDP socket is not active")?;
+            (socket, inner.in_flight.clone())
+        };
+
+        let _permit = self
+            .policy_mgr
+            .request_tcp_connect(target, ConnectionPurpose::KadNode)
+            .map_err(|e| format!("Policy denied Kad UDP send to {target}: {e}"))?;
+
+        let tx_id = self.next_tx_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        {
+            let mut inf = in_flight.lock().await;
+            if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
+                return Err(format!(
+                    "Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"
+                ));
+            }
+            inf.insert(
+                tx_id,
+                InFlightTransaction {
+                    target,
+                    expected_response: KadExpectedResponse::SearchNotesRes,
+                    expected_target_hash: Some(*file_hash),
+                    _created_at: Instant::now(),
+                    sender: tx,
+                },
+            );
+        }
+
+        let req_bytes = KadCodec::encode_search_notes_req(file_hash, file_size);
+
+        tracing::info!(
+            "Kad sending SearchNotesReq (0x35) to node {} for file {} (size={}, tx_id={})",
+            target,
+            hex::encode(file_hash),
+            file_size,
+            tx_id
+        );
+
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        socket
+            .send_to(&req_bytes, target)
+            .await
+            .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
+
+        let timeout_fut = tokio::time::sleep(Duration::from_secs(KAD_TRANSACTION_TIMEOUT_SECS));
+
+        tokio::select! {
+            _ = timeout_fut => {
+                let inner = self.inner.read().await;
+                let mut inf = inner.in_flight.lock().await;
+                inf.remove(&tx_id);
+                tracing::warn!(
+                    "Kad SearchNotes to node {} timed out after {}s (file={}, tx_id={})",
+                    target,
+                    KAD_TRANSACTION_TIMEOUT_SECS,
+                    hex::encode(file_hash),
+                    tx_id
+                );
+                Err(format!("Kad search_notes to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
+            }
+            res = rx => {
+                match res {
+                    Ok(Ok(KadMessage::SearchNotesRes(notes_res))) => {
+                        self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            "Kad received SearchNotesRes from node {} with {} notes (tx_id={})",
+                            target,
+                            notes_res.notes.len(),
+                            tx_id
+                        );
+                        Ok(notes_res.notes)
+                    }
+                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                }
+            }
+        }
+    }
+
+    /// Sends a Kad2 Publish Notes request (0x45) and waits for the
+    /// shared 0x4B publish response (status byte = indexer load).
+    pub async fn send_publish_notes(
+        &self,
+        target: SocketAddr,
+        file_hash: &[u8; 16],
+        source_id: &[u8; 16],
+        tags: &[mule_protocol::ed2k::tags::Ed2kTag],
+    ) -> Result<u8, String> {
+        let (socket, in_flight) = {
+            let inner = self.inner.read().await;
+            let socket = inner.socket.clone().ok_or("UDP socket is not active")?;
+            (socket, inner.in_flight.clone())
+        };
+
+        let tx_id = self.next_tx_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        {
+            let mut inf = in_flight.lock().await;
+            if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
+                return Err(format!(
+                    "Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"
+                ));
+            }
+            inf.insert(
+                tx_id,
+                InFlightTransaction {
+                    target,
+                    expected_response: KadExpectedResponse::PublishNotesRes,
+                    expected_target_hash: Some(*file_hash),
+                    _created_at: Instant::now(),
+                    sender: tx,
+                },
+            );
+        }
+
+        let Some(req_bytes) = KadCodec::encode_publish_notes_req(file_hash, source_id, tags) else {
+            return Err("Failed to encode notes tag list (oversized)".to_string());
+        };
+
+        tracing::info!(
+            "Kad sending PublishNotesReq (0x45) to node {} for file {} with {} tags (tx_id={})",
+            target,
+            hex::encode(file_hash),
+            tags.len(),
+            tx_id
+        );
+
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        socket
+            .send_to(&req_bytes, target)
+            .await
+            .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
+
+        let timeout_fut = tokio::time::sleep(Duration::from_secs(KAD_TRANSACTION_TIMEOUT_SECS));
+
+        tokio::select! {
+            _ = timeout_fut => {
+                let inner = self.inner.read().await;
+                let mut inf = inner.in_flight.lock().await;
+                inf.remove(&tx_id);
+                tracing::warn!(
+                    "Kad PublishNotes to node {} timed out after {}s (file={}, tx_id={})",
+                    target,
+                    KAD_TRANSACTION_TIMEOUT_SECS,
+                    hex::encode(file_hash),
+                    tx_id
+                );
+                Err(format!("Kad publish_notes to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
+            }
+            res = rx => {
+                match res {
+                    Ok(Ok(KadMessage::PublishNotesRes(pub_res))) => {
+                        self.packets_received.fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            "Kad received PublishNotesRes from node {} with load {} (tx_id={})",
+                            target,
+                            pub_res.load,
+                            tx_id
+                        );
+                        Ok(pub_res.load)
+                    }
+                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                }
+            }
+        }
+    }
 }

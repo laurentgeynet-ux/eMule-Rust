@@ -492,3 +492,185 @@ fn test_kad_callback_req_roundtrip() {
 
     assert!(KadCodec::decode(&encoded[..20]).is_err());
 }
+
+// ---------------------------------------------------------------------------
+// Kad notes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_kad_search_notes_req_roundtrip() {
+    let target = [0x42u8; 16];
+    let encoded = KadCodec::encode_search_notes_req(&target, 1_234_567_890);
+    assert_eq!(encoded.len(), 26);
+    assert_eq!(encoded[0], PR_KADEMLIA);
+    assert_eq!(encoded[1], KADEMLIA2_SEARCH_NOTES_REQ);
+
+    match KadCodec::decode(&encoded).expect("decode notes req") {
+        KadMessage::SearchNotesReq(r) => {
+            assert_eq!(r.target_file_hash, target);
+            assert_eq!(r.file_size, 1_234_567_890);
+        }
+        _ => panic!("expected SearchNotesReq"),
+    }
+    assert!(KadCodec::decode(&encoded[..10]).is_err());
+}
+
+#[test]
+fn test_kad_publish_notes_req_roundtrip() {
+    use mule_protocol::ed2k::tags::{Ed2kTag, TagName, TagValue};
+
+    let target = [0x11u8; 16];
+    let source = [0x22u8; 16];
+    let tags = vec![
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_FILENAME),
+            value: TagValue::String("some file.zip".to_string()),
+        },
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_FILESIZE),
+            value: TagValue::UInt64(9_999),
+        },
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_DESCRIPTION),
+            value: TagValue::String("fake crack inside!".to_string()),
+        },
+        Ed2kTag {
+            name: TagName::Id(TAG_NOTE_FILERATING),
+            value: TagValue::UInt8(1),
+        },
+    ];
+    let encoded = KadCodec::encode_publish_notes_req(&target, &source, &tags).expect("encode");
+    assert_eq!(encoded[0], PR_KADEMLIA);
+    assert_eq!(encoded[1], KADEMLIA2_PUBLISH_NOTES_REQ);
+
+    match KadCodec::decode(&encoded).expect("decode publish notes req") {
+        KadMessage::PublishNotesReq(r) => {
+            assert_eq!(r.target_file_hash, target);
+            assert_eq!(r.source_id, source);
+            let note = KadNoteWire {
+                source_id: source,
+                tags: r.tags,
+                unknown_tags: r.unknown_tags,
+            };
+            assert_eq!(note.file_name(), Some("some file.zip"));
+            assert_eq!(note.file_size(), Some(9_999));
+            assert_eq!(note.comment(), Some("fake crack inside!"));
+            assert_eq!(note.rating(), Some(1));
+        }
+        _ => panic!("expected PublishNotesReq"),
+    }
+}
+
+#[test]
+fn test_kad_search_notes_res_roundtrip_3b() {
+    use mule_protocol::ed2k::tags::{Ed2kTag, TagName, TagValue};
+
+    let sender = [0xAAu8; 16];
+    let target = [0xBBu8; 16];
+    let notes = vec![
+        KadNoteWire {
+            source_id: [0x33u8; 16],
+            tags: vec![
+                Ed2kTag {
+                    name: TagName::Id(TAG_NOTE_FILENAME),
+                    value: TagValue::String("release.iso".to_string()),
+                },
+                Ed2kTag {
+                    name: TagName::Id(TAG_NOTE_DESCRIPTION),
+                    value: TagValue::String("works fine".to_string()),
+                },
+                Ed2kTag {
+                    name: TagName::Id(TAG_NOTE_FILERATING),
+                    value: TagValue::UInt8(4),
+                },
+            ],
+            unknown_tags: vec![],
+        },
+        KadNoteWire {
+            source_id: [0x44u8; 16],
+            tags: vec![Ed2kTag {
+                name: TagName::Text("customtag".to_string()),
+                value: TagValue::String("non-utf8 \u{FFFD} content".to_string()),
+            }],
+            unknown_tags: vec![],
+        },
+    ];
+    let encoded = KadCodec::encode_search_notes_res(&sender, &target, &notes).expect("encode");
+    assert_eq!(encoded[0], PR_KADEMLIA);
+    assert_eq!(encoded[1], KADEMLIA2_SEARCH_RES);
+
+    // The generic decoder sees note entries as keyword-ish; the contextual
+    // decode produces the full tag-preserving form.
+    match KadCodec::decode_search_notes_res(encoded[0], encoded[1], &encoded[2..])
+        .expect("decode notes res")
+    {
+        KadMessage::SearchNotesRes(r) => {
+            assert_eq!(r.sender_id, sender);
+            assert_eq!(r.target_file_hash, target);
+            assert_eq!(r.notes.len(), 2);
+            assert_eq!(r.notes[0].source_id, [0x33u8; 16]);
+            assert_eq!(r.notes[0].comment(), Some("works fine"));
+            assert_eq!(r.notes[0].rating(), Some(4));
+            assert_eq!(r.notes[1].source_id, [0x44u8; 16]);
+        }
+        _ => panic!("expected SearchNotesRes"),
+    }
+}
+
+#[test]
+fn test_kad_search_notes_res_legacy_3a() {
+    // Legacy Kad1 form: [0xE4][0x3A][target:16][count:u16][entries...]
+    let target = [0x77u8; 16];
+    let mut raw = vec![PR_KADEMLIA, KADEMLIA_SEARCH_NOTES_RES];
+    raw.extend_from_slice(&target);
+    raw.extend_from_slice(&1u16.to_le_bytes());
+    raw.extend_from_slice(&[0x55u8; 16]); // source_id
+    raw.push(1); // tag_count
+                 // TAG_DESCRIPTION (0x0B) -> TAGTYPE_STRING (0x02)
+    raw.push(0x02);
+    raw.extend_from_slice(&1u16.to_le_bytes());
+    raw.push(0x0B);
+    let comment = b"legacy note";
+    raw.extend_from_slice(&(comment.len() as u16).to_le_bytes());
+    raw.extend_from_slice(comment);
+
+    match KadCodec::decode(&raw).expect("decode legacy notes res") {
+        KadMessage::SearchNotesRes(r) => {
+            assert_eq!(r.sender_id, [0u8; 16]);
+            assert_eq!(r.target_file_hash, target);
+            assert_eq!(r.notes.len(), 1);
+            assert_eq!(r.notes[0].comment(), Some("legacy note"));
+        }
+        _ => panic!("expected SearchNotesRes"),
+    }
+}
+
+#[test]
+fn test_kad_notes_malformed() {
+    // Truncated publish notes req
+    assert!(KadCodec::decode(&[PR_KADEMLIA, KADEMLIA2_PUBLISH_NOTES_REQ, 0x01, 0x02]).is_err());
+    // Truncated search notes req
+    assert!(KadCodec::decode(&[PR_KADEMLIA, KADEMLIA2_SEARCH_NOTES_REQ, 0x01]).is_err());
+    // Truncated legacy notes res
+    assert!(KadCodec::decode(&[PR_KADEMLIA, KADEMLIA_SEARCH_NOTES_RES, 0x01]).is_err());
+    // Tag count above bound -> error
+    let mut raw = vec![PR_KADEMLIA, KADEMLIA2_PUBLISH_NOTES_REQ];
+    raw.extend_from_slice(&[0u8; 32]);
+    raw.push(200); // tag_count > MAX_NOTE_TAG_COUNT
+    raw.extend_from_slice(&[0u8; 64]);
+    assert!(KadCodec::decode(&raw).is_err());
+}
+
+#[test]
+fn test_kad_publish_notes_res() {
+    let target = [0x66u8; 16];
+    let encoded = KadCodec::encode_publish_notes_res(&target, 37);
+    assert_eq!(encoded[1], KADEMLIA2_PUBLISH_RES);
+    match KadCodec::decode(&encoded).expect("decode publish res") {
+        KadMessage::PublishSourceRes(r) => {
+            assert_eq!(r.target_file_hash, target);
+            assert_eq!(r.status, 37); // load byte carried via shared 0x4B shape
+        }
+        _ => panic!("expected PublishSourceRes (shared 0x4B)"),
+    }
+}

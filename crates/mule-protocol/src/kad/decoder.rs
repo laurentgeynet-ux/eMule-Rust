@@ -13,9 +13,10 @@ pub use routing::{
     decode_pong, decode_req, decode_res,
 };
 pub use search::{
-    decode_publish_keyword_req, decode_publish_keyword_res, decode_publish_source_req,
-    decode_publish_source_res, decode_search_keyword_req, decode_search_keyword_res_legacy,
-    decode_search_res, decode_search_source_req,
+    decode_note_tags_blob, decode_publish_keyword_req, decode_publish_keyword_res,
+    decode_publish_notes_req, decode_publish_source_req, decode_publish_source_res,
+    decode_search_keyword_req, decode_search_keyword_res_legacy, decode_search_notes_req,
+    decode_search_notes_res, decode_search_res, decode_search_source_req,
 };
 
 /// Bounded decoder for Kad UDP wire datagrams.
@@ -101,12 +102,18 @@ impl KadDecoder {
             KADEMLIA2_SEARCH_KEY_REQ => decode_search_keyword_req(protocol, opcode, payload),
             // 0x34 = SEARCH_SOURCE_REQ
             KADEMLIA2_SEARCH_SOURCE_REQ => decode_search_source_req(protocol, opcode, payload),
+            // 0x35 = SEARCH_NOTES_REQ (Kad2)
+            KADEMLIA2_SEARCH_NOTES_REQ => decode_search_notes_req(protocol, opcode, payload),
+            // 0x3A = SEARCH_NOTES_RES (legacy Kad1 form)
+            KADEMLIA_SEARCH_NOTES_RES => decode_search_notes_res(protocol, opcode, payload),
             // 0x3B = SEARCH_RES (unified for keyword, source, and notes search)
             KADEMLIA2_SEARCH_RES => decode_search_res(protocol, opcode, payload),
             // 0x43 = PUBLISH_KEY_REQ = PUBLISH_KEYWORD_REQ (aliased)
             KADEMLIA2_PUBLISH_KEY_REQ => decode_publish_keyword_req(protocol, opcode, payload),
             // 0x44 = PUBLISH_SOURCE_REQ
             KADEMLIA2_PUBLISH_SOURCE_REQ => decode_publish_source_req(protocol, opcode, payload),
+            // 0x45 = PUBLISH_NOTES_REQ
+            KADEMLIA2_PUBLISH_NOTES_REQ => decode_publish_notes_req(protocol, opcode, payload),
             // 0x4B = PUBLISH_RES (unified for keyword, source, and notes publish)
             KADEMLIA2_PUBLISH_RES => decode_publish_source_res(protocol, opcode, payload),
             // 0x2C = legacy search keyword response (internal tests)

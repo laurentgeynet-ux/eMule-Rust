@@ -177,4 +177,49 @@ impl KadCodec {
     ) -> Bytes {
         KadEncoder::encode_callback_req(buddy_id, file_id, tcp_port)
     }
+
+    /// Encodes a KADEMLIA2_SEARCH_NOTES_REQ (0x35) packet.
+    #[inline]
+    pub fn encode_search_notes_req(target_file_hash: &KadIdBytes, file_size: u64) -> Bytes {
+        super::encoder::encode_search_notes_req_payload(target_file_hash, file_size)
+    }
+
+    /// Encodes a notes search response (unified 0x3B form).
+    #[inline]
+    pub fn encode_search_notes_res(
+        sender_id: &KadIdBytes,
+        target_file_hash: &KadIdBytes,
+        notes: &[KadNoteWire],
+    ) -> Option<Bytes> {
+        super::encoder::encode_search_notes_res(sender_id, target_file_hash, notes)
+    }
+
+    /// Encodes a KADEMLIA2_PUBLISH_NOTES_REQ (0x45) packet.
+    #[inline]
+    pub fn encode_publish_notes_req(
+        target_file_hash: &KadIdBytes,
+        source_id: &KadIdBytes,
+        tags: &[crate::ed2k::tags::Ed2kTag],
+    ) -> Option<Bytes> {
+        super::encoder::encode_publish_notes_req(target_file_hash, source_id, tags)
+    }
+
+    /// Encodes a KADEMLIA2_PUBLISH_RES (0x4B) notes response.
+    #[inline]
+    pub fn encode_publish_notes_res(target_file_hash: &KadIdBytes, load: u8) -> Bytes {
+        super::encoder::encode_publish_notes_res(target_file_hash, load)
+    }
+
+    /// Re-decodes a raw datagram payload as a notes search response — used
+    /// when the pending transaction context says the `0x3B` reply belongs to
+    /// a notes search (the generic decoder cannot distinguish it from a
+    /// keyword response by content alone).
+    #[inline]
+    pub fn decode_search_notes_res(
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+    ) -> Result<KadMessage, Ed2kParseError> {
+        super::decoder::decode_search_notes_res(protocol, opcode, payload)
+    }
 }
