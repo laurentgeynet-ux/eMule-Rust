@@ -11,6 +11,7 @@ import '../../history/view_models/history_controller.dart';
 import '../../kad/view_models/kad_controller.dart';
 import '../../search/view_models/search_controller.dart';
 import '../../servers/view_models/servers_controller.dart';
+import 'categories_controller.dart';
 import 'peer_sources_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
@@ -58,8 +59,8 @@ class DownloadsViewModel extends ChangeNotifier {
   bool _isDebugBarVisible = false;
   String? _statusNotification;
 
-  List<CategoryItem> _categories = [];
-  String? _selectedCategoryId;
+  /// Categories sub-domain (extracted controller).
+  late final CategoriesController categoriesCtl;
 
   /// History & Statistics sub-domain (extracted controller, see
   /// `features/history/view_models/history_controller.dart`).
@@ -116,6 +117,13 @@ class DownloadsViewModel extends ChangeNotifier {
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
     )..addListener(notifyListeners);
+    categoriesCtl = CategoriesController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+      onRefreshDownloads: refresh,
+      onDownloadUpdated: (item) => _downloads[item.id] = item,
+    )..addListener(notifyListeners);
 
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
@@ -170,15 +178,15 @@ class DownloadsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<CategoryItem> get categories => _categories;
-  String? get selectedCategoryId => _selectedCategoryId;
-  CategoryItem? get selectedCategory => _selectedCategoryId != null
-      ? _categories.where((c) => c.id == _selectedCategoryId).firstOrNull
+  List<CategoryItem> get categories => categoriesCtl.categories;
+  String? get selectedCategoryId => categoriesCtl.selectedId;
+  CategoryItem? get selectedCategory => selectedCategoryId != null
+      ? categories.where((c) => c.id == selectedCategoryId).firstOrNull
       : null;
 
   Map<String, int> get categoryCounts {
     final map = <String, int>{};
-    for (final cat in _categories) {
+    for (final cat in categories) {
       map[cat.id] = _downloads.values
           .where((d) => d.categoryId == cat.id)
           .length;
@@ -302,11 +310,11 @@ class DownloadsViewModel extends ChangeNotifier {
       }
 
       // Category filter check
-      if (_selectedCategoryId != null) {
-        if (_selectedCategoryId == 'uncategorized') {
+      if (selectedCategoryId != null) {
+        if (selectedCategoryId == 'uncategorized') {
           if (item.categoryId != null) return false;
         } else {
-          if (item.categoryId != _selectedCategoryId) return false;
+          if (item.categoryId != selectedCategoryId) return false;
         }
       }
 
@@ -767,45 +775,24 @@ class DownloadsViewModel extends ChangeNotifier {
     return buffer.toString();
   }
 
-  // --- Category Actions ---
+  // --- Category Actions (delegated to CategoriesController) ---
 
-  void selectCategory(String? categoryId) {
-    _selectedCategoryId = categoryId;
-    notifyListeners();
-  }
+  void selectCategory(String? categoryId) => categoriesCtl.select(categoryId);
 
-  Future<void> fetchCategories() async {
-    try {
-      _categories = await client.listCategories();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Failed to fetch categories: $e');
-    }
-  }
+  Future<void> fetchCategories() => categoriesCtl.fetch();
 
   Future<bool> createCategory({
     required String name,
     required String color,
     String? defaultDestination,
     String? defaultPriority,
-  }) async {
-    try {
-      final cat = await client.createCategory(
+  }) =>
+      categoriesCtl.create(
         name: name,
         color: color,
         defaultDestination: defaultDestination,
         defaultPriority: defaultPriority,
       );
-      await fetchCategories();
-      _statusNotification = 'Created category "${cat.name}"';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to create category: $e';
-      notifyListeners();
-      return false;
-    }
-  }
 
   Future<bool> updateCategory(
     String id, {
@@ -814,9 +801,8 @@ class DownloadsViewModel extends ChangeNotifier {
     String? defaultDestination,
     String? defaultPriority,
     int? sortOrder,
-  }) async {
-    try {
-      final cat = await client.updateCategory(
+  }) =>
+      categoriesCtl.update(
         id,
         name: name,
         color: color,
@@ -824,67 +810,17 @@ class DownloadsViewModel extends ChangeNotifier {
         defaultPriority: defaultPriority,
         sortOrder: sortOrder,
       );
-      await fetchCategories();
-      _statusNotification = 'Updated category "${cat.name}"';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to update category: $e';
-      notifyListeners();
-      return false;
-    }
-  }
 
-  Future<bool> deleteCategory(String id) async {
-    try {
-      final cat = _categories.where((c) => c.id == id).firstOrNull;
-      await client.deleteCategory(id);
-      if (_selectedCategoryId == id) {
-        _selectedCategoryId = null;
-      }
-      await refresh();
-      _statusNotification = 'Deleted category "${cat?.name ?? id}"';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to delete category: $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<bool> deleteCategory(String id) => categoriesCtl.delete(id);
 
-  Future<bool> reorderCategories(List<String> categoryIds) async {
-    try {
-      await client.reorderCategories(categoryIds);
-      await fetchCategories();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to reorder categories: $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<bool> reorderCategories(List<String> categoryIds) =>
+      categoriesCtl.reorder(categoryIds);
 
   Future<bool> setDownloadCategory(
     String downloadId,
     String? categoryId,
-  ) async {
-    try {
-      final updated = await client.setDownloadCategory(downloadId, categoryId);
-      _downloads[downloadId] = updated;
-      final catName = categoryId != null
-          ? (_categories.where((c) => c.id == categoryId).firstOrNull?.name ??
-                'Category')
-          : 'None';
-      _statusNotification = 'Assigned to category "$catName"';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to set category: $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  ) =>
+      categoriesCtl.assignDownload(downloadId, categoryId);
 
   // Network Policy & Kill Switch
   NetworkPolicySnapshot? _networkPolicy;
