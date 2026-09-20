@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../ui/features/downloads/views/downloads_screen.dart';
+import '../ui/features/downloads/widgets/settings_dialog.dart';
 import 'app_controller.dart';
 import '../ui/features/history/views/history_view.dart';
 import '../ui/features/kad/views/kad_screen.dart';
@@ -19,14 +21,23 @@ String sectionToPath(AppNavSection section) => switch (section) {
     };
 
 /// Inverse of [sectionToPath]. Returns null for unknown paths.
-AppNavSection? pathToSection(String path) => switch (path) {
-      '/downloads' => AppNavSection.downloads,
-      '/history' => AppNavSection.history,
-      '/servers' => AppNavSection.servers,
-      '/search' => AppNavSection.search,
-      '/kad' => AppNavSection.kad,
-      _ => null,
-    };
+///
+/// `/downloads/<id>` and `/settings` resolve to the downloads section: the
+/// former selects a download, the latter opens the settings dialog on top
+/// of it (handled in the shell builder).
+AppNavSection? pathToSection(String path) {
+  if (path == '/settings' || path.startsWith('/downloads/')) {
+    return AppNavSection.downloads;
+  }
+  return switch (path) {
+    '/downloads' => AppNavSection.downloads,
+    '/history' => AppNavSection.history,
+    '/servers' => AppNavSection.servers,
+    '/search' => AppNavSection.search,
+    '/kad' => AppNavSection.kad,
+    _ => null,
+  };
+}
 
 /// Declarative router for the app.
 ///
@@ -40,15 +51,40 @@ AppNavSection? pathToSection(String path) => switch (path) {
 GoRouter createAppRouter(AppController viewModel) {
   late final GoRouter router;
 
+  var settingsDialogOpen = false;
+
   void onSectionChanged() {
     try {
       final wanted = sectionToPath(viewModel.currentSection);
-      if (router.state.matchedLocation != wanted) {
+      final location = router.state.matchedLocation;
+      // Keep deep links stable while the downloads section stays active.
+      if (wanted == '/downloads' && location.startsWith('/downloads/')) {
+        return;
+      }
+      if (location != wanted) {
         router.go(wanted);
       }
     } catch (_) {
       // Router already disposed (app teardown / test cleanup).
     }
+  }
+
+  void openSettingsDialog(BuildContext context) {
+    settingsDialogOpen = true;
+    unawaited(() async {
+      if (!context.mounted) {
+        settingsDialogOpen = false;
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (_) => SettingsDialog(viewModel: viewModel),
+      );
+      settingsDialogOpen = false;
+      if (router.state.matchedLocation == '/settings') {
+        router.go('/downloads');
+      }
+    }());
   }
 
   router = GoRouter(
@@ -63,11 +99,30 @@ GoRouter createAppRouter(AppController viewModel) {
     routes: [
       ShellRoute(
         builder: (context, state, child) {
-          final section = pathToSection(state.matchedLocation);
+          final location = state.matchedLocation;
+          final section = pathToSection(location);
           if (section != null && section != viewModel.currentSection) {
             // URL-driven navigation: adopt the section into the VM.
             unawaited(
               Future.microtask(() => viewModel.setSection(section)),
+            );
+          }
+          final id = state.pathParameters['id'];
+          if (id != null && id != viewModel.selectedDownloadId) {
+            unawaited(
+              Future.microtask(() => viewModel.selectDownload(id)),
+            );
+          } else if (location == '/downloads' &&
+              viewModel.selectedDownloadId != null) {
+            unawaited(
+              Future.microtask(() => viewModel.selectDownload(null)),
+            );
+          }
+          if (location == '/settings' && !settingsDialogOpen) {
+            unawaited(
+              Future.microtask(() {
+                if (context.mounted) openSettingsDialog(context);
+              }),
             );
           }
           return DownloadsScreen(viewModel: viewModel, child: child);
@@ -75,6 +130,18 @@ GoRouter createAppRouter(AppController viewModel) {
         routes: [
           GoRoute(
             path: '/downloads',
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: DownloadsView(viewModel: viewModel),
+            ),
+          ),
+          GoRoute(
+            path: '/downloads/:id',
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: DownloadsView(viewModel: viewModel),
+            ),
+          ),
+          GoRoute(
+            path: '/settings',
             pageBuilder: (context, state) => NoTransitionPage(
               child: DownloadsView(viewModel: viewModel),
             ),

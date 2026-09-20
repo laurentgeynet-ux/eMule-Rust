@@ -12,6 +12,15 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
     la géométrie de fenêtre (min 760×500, shared_preferences `window.*`).
   - `tray_manager` : `lib/core/tray_setup.dart` ajoute l'icône tray
     (Show/Quit) avec `assets/app_icon.ico`.
+  - Routes profondes (`lib/app/router.dart`) : `/downloads/:id` ouvre le
+    panneau détail d'un téléchargement (l'URL devient la source de vérité
+    pour la sélection — clic row → `router.go`, fermeture → retour
+    `/downloads`), `/settings` ouvre le dialog Settings par-dessus la
+    section downloads, `usePathUrlStrategy()` activé sur le web.
+  - Graphe de débit : `TransferRateTracker` (`lib/app/`) échantillonne le
+    débit agrégé chaque seconde (fenêtre glissante 60 s, timer paresseux
+    démarré au premier listener) ; `SpeedSparkline` (CustomPainter, sans
+    dépendance chart) affiché dans le badge de vitesse de la top bar.
 
 ### Ajouté — Refonte UI multiplateforme (branche `ui-ux`)
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
@@ -59,7 +60,14 @@ class DownloadDetailsPanel extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               IconButton(
                 icon: const Icon(Icons.close, size: 16, color: AppColors.textMuted),
-                onPressed: () => viewModel.selectDownload(null),
+                onPressed: () {
+                  final router = GoRouter.maybeOf(context);
+                  if (router != null) {
+                    router.go('/downloads');
+                  } else {
+                    viewModel.selectDownload(null);
+                  }
+                },
               ),
             ],
           ),

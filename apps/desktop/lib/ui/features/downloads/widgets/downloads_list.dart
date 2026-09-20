@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../app/app_controller.dart';
@@ -27,7 +28,16 @@ class DownloadsList extends StatelessWidget {
           viewModel: viewModel,
           isSelected: isSelected,
           onTap: () {
-            viewModel.selectDownload(isSelected ? null : item.id);
+            final router = GoRouter.maybeOf(context);
+            if (router != null) {
+              router.go(
+                isSelected
+                    ? '/downloads'
+                    : '/downloads/${Uri.encodeComponent(item.id)}',
+              );
+            } else {
+              viewModel.selectDownload(isSelected ? null : item.id);
+            }
           },
         );
       },

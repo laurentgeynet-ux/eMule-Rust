@@ -5,6 +5,7 @@ import '../../../../app/app_controller.dart';
 import '../../../../l10n/l10n.dart';
 import 'add_link_dialog.dart';
 import 'diagnostic_dialog.dart';
+import 'speed_sparkline.dart';
 import 'ip_filter_dialog.dart';
 import 'lab_guide_dialog.dart';
 import 'network_policy_dialog.dart';
@@ -209,6 +210,8 @@ class DownloadsTopBar extends StatelessWidget {
               color: AppColors.textFaint,
             ),
           ),
+          const SizedBox(width: 8),
+          SpeedSparkline(tracker: viewModel.speedTracker),
         ],
       ),
     );

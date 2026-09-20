@@ -16,6 +16,7 @@ import '../ui/features/settings/view_models/settings_controller.dart';
 import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/downloads_store_controller.dart';
+import 'transfer_rate_tracker.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 
@@ -75,6 +76,9 @@ class AppController extends ChangeNotifier {
   /// Daemon settings sub-domain (extracted controller).
   late final SettingsController settingsCtl;
 
+  /// Rolling 60 s transfer-rate samples for the top-bar sparkline.
+  late final TransferRateTracker speedTracker;
+
   /// Loopback lab / dev tools sub-domain (extracted controller).
   late final LabController labCtl;
 
@@ -125,6 +129,10 @@ class AppController extends ChangeNotifier {
       onError: shellCtl.setError,
       onRefresh: refresh,
     )..addListener(notifyListeners);
+    speedTracker = TransferRateTracker(
+      downloadRate: () => downloadsCtl.totalDownloadSpeed,
+      uploadRate: () => 0,
+    );
     history = HistoryController(
       client: client,
       onStatus: shellCtl.setStatus,
@@ -721,6 +729,7 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    speedTracker.dispose();
     _connSub?.cancel();
     
     _supervisorSub?.cancel();
