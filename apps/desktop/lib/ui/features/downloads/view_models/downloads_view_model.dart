@@ -10,6 +10,7 @@ import '../../../../services/work_directory_resolver.dart';
 import '../../history/view_models/history_controller.dart';
 import '../../kad/view_models/kad_controller.dart';
 import '../../search/view_models/search_controller.dart';
+import '../../servers/view_models/servers_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
 
@@ -63,12 +64,9 @@ class DownloadsViewModel extends ChangeNotifier {
   /// `features/history/view_models/history_controller.dart`).
   late final HistoryController history;
 
-  List<Ed2kServerModel> _servers = [];
-  bool _isServersLoading = false;
-  ServerSessionModel _serverSession = ServerSessionModel.disconnected;
-  bool _isServerConnecting = false;
-
-
+  /// eD2K servers sub-domain (extracted controller, see
+  /// `features/servers/view_models/servers_controller.dart`).
+  late final ServersController serversController;
 
   final Map<String, List<PeerSourceModel>> _peerSources = {};
   bool _isSourcesLoading = false;
@@ -83,7 +81,6 @@ class DownloadsViewModel extends ChangeNotifier {
   late final SearchController search;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
-  StreamSubscription<ServerSessionModel>? _serverSessionSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
@@ -111,20 +108,14 @@ class DownloadsViewModel extends ChangeNotifier {
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
     )..addListener(notifyListeners);
+    serversController = ServersController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+    )..addListener(notifyListeners);
 
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
-      notifyListeners();
-    });
-
-    _serverSessionSub = client.serverSessionEvents.listen((session) {
-      _serverSession = session;
-      if (session.status == ServerConnectionStatus.connected ||
-          session.status == ServerConnectionStatus.disconnected) {
-        _isServerConnecting = false;
-      } else if (session.status == ServerConnectionStatus.connecting) {
-        _isServerConnecting = true;
-      }
       notifyListeners();
     });
 
@@ -946,7 +937,7 @@ class DownloadsViewModel extends ChangeNotifier {
     try {
       await client.disconnectAll();
       await fetchNetworkPolicy();
-      _serverSession = ServerSessionModel.disconnected;
+      serversController.markDisconnected();
       _statusNotification =
           'Kill Switch engaged: All network connections disconnected';
       notifyListeners();
@@ -1056,141 +1047,36 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  List<Ed2kServerModel> get servers => _servers;
-  bool get isServersLoading => _isServersLoading;
-  ServerSessionModel get serverSession => _serverSession;
-  bool get isServerConnecting => _isServerConnecting;
+  List<Ed2kServerModel> get servers => serversController.servers;
+  bool get isServersLoading => serversController.isLoading;
+  ServerSessionModel get serverSession => serversController.session;
+  bool get isServerConnecting => serversController.isConnecting;
 
-  Future<void> fetchServers() async {
-    _isServersLoading = true;
-    notifyListeners();
-    try {
-      _servers = await client.listServers();
-      _errorMessage = null;
-    } catch (e) {
-      _errorMessage = 'Failed to list servers: $e';
-    } finally {
-      _isServersLoading = false;
-      notifyListeners();
-    }
-  }
+  Future<void> fetchServers() => serversController.fetch();
 
-  Future<ServerInspectReport?> inspectServerMet(String filePath) async {
-    try {
-      final report = await client.inspectServerMet(filePath);
-      return report;
-    } catch (e) {
-      _errorMessage = 'Failed to inspect server.met: $e';
-      notifyListeners();
-      return null;
-    }
-  }
+  Future<ServerInspectReport?> inspectServerMet(String filePath) =>
+      serversController.inspectServerMet(filePath);
 
-  Future<bool> importServerMet(String filePath) async {
-    try {
-      final result = await client.importServerMet(filePath);
-      _statusNotification =
-          'Imported ${result.imported} servers (${result.allowedCount} allowed, ${result.blockedCount} blocked by filter)';
-      await fetchServers();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to import server.met: $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<bool> importServerMet(String filePath) =>
+      serversController.importServerMet(filePath);
 
-  Future<Map<String, dynamic>?> updateServersFromUrl(String url) async {
-    _isServersLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final result = await client.updateServersFromUrl(url);
-      final count = result['serversCount'] ?? result['imported'] ?? 0;
-      _statusNotification =
-          'Mise à jour réussie : $count serveurs traités depuis l\'URL';
-      await fetchServers();
-      return result;
-    } catch (e) {
-      _errorMessage = 'Échec de la mise à jour des serveurs depuis l\'URL : $e';
-      notifyListeners();
-      return null;
-    } finally {
-      _isServersLoading = false;
-      notifyListeners();
-    }
-  }
+  Future<Map<String, dynamic>?> updateServersFromUrl(String url) =>
+      serversController.updateFromUrl(url);
 
-  Future<void> setServerEnabled(String address, bool enabled) async {
-    try {
-      await client.setServerEnabled(address, enabled);
-      await fetchServers();
-    } catch (e) {
-      _errorMessage = 'Failed to toggle server state: $e';
-      notifyListeners();
-    }
-  }
+  Future<void> setServerEnabled(String address, bool enabled) =>
+      serversController.setEnabled(address, enabled);
 
-  Future<void> deleteServer(String address) async {
-    try {
-      await client.deleteServer(address);
-      await fetchServers();
-    } catch (e) {
-      _errorMessage = 'Failed to delete server: $e';
-      notifyListeners();
-    }
-  }
+  Future<void> deleteServer(String address) => serversController.delete(address);
 
-  Future<void> clearServers() async {
-    try {
-      final count = await client.clearServers();
-      _statusNotification = 'Cleared $count servers';
-      await fetchServers();
-    } catch (e) {
-      _errorMessage = 'Failed to clear servers: $e';
-      notifyListeners();
-    }
-  }
+  Future<void> clearServers() => serversController.clear();
 
   // ── eD2K Server Session ─────────────────────────────────────────────────────
 
-  Future<void> connectServer(String address) async {
-    if (_isServerConnecting) return;
-    _isServerConnecting = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      _serverSession = await client.connectServer(address);
-      _statusNotification =
-          'Connexion au serveur ${_serverSession.serverName ?? address}...';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Connexion impossible : $e';
-      _serverSession = ServerSessionModel.disconnected;
-      notifyListeners();
-    } finally {
-      _isServerConnecting = false;
-      notifyListeners();
-    }
-  }
+  Future<void> connectServer(String address) => serversController.connect(address);
 
-  Future<void> disconnectServer() async {
-    try {
-      _serverSession = await client.disconnectServer();
-      _statusNotification = 'Déconnecté du serveur eD2K';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Erreur de déconnexion : $e';
-      notifyListeners();
-    }
-  }
+  Future<void> disconnectServer() => serversController.disconnect();
 
-  Future<void> refreshServerSession() async {
-    try {
-      _serverSession = await client.getServerStatus();
-      notifyListeners();
-    } catch (_) {}
-  }
+  Future<void> refreshServerSession() => serversController.refreshSession();
 
   // ── eD2K Server Search & Sources ──────────────────────────────────────────
 
@@ -1361,13 +1247,14 @@ class DownloadsViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _connSub?.cancel();
-    _serverSessionSub?.cancel();
+    
     _eventSub?.cancel();
     _supervisorSub?.cancel();
     _instanceSub?.cancel();
     _foundSourcesSub?.cancel();
     _peerSessionSub?.cancel();
-    // history/kad/search are disposed by their providers when scoped.
+    // history/kad/search/servers are disposed by their providers when
+    // scoped.
     supervisor?.dispose();
     client.dispose();
     super.dispose();
