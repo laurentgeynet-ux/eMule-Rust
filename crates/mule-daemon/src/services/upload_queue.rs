@@ -102,11 +102,7 @@ impl UploadManager {
     }
 
     /// Installs the broadcast channel used to emit `upload.uploadsUpdated`.
-    pub fn set_event_channel(
-        &self,
-        tx: broadcast::Sender<String>,
-        seq: Arc<AtomicU64>,
-    ) {
+    pub fn set_event_channel(&self, tx: broadcast::Sender<String>, seq: Arc<AtomicU64>) {
         *self.event_tx.write().unwrap() = Some(tx);
         *self.sequence.write().unwrap() = Some(seq);
     }
@@ -119,7 +115,9 @@ impl UploadManager {
             let seq = self.sequence.read().unwrap().clone();
             (tx, seq)
         };
-        let (Some(tx), Some(seq)) = (tx, seq) else { return };
+        let (Some(tx), Some(seq)) = (tx, seq) else {
+            return;
+        };
         let active = self.active_snapshots().await;
         let queue = self.list_queue().await;
         let rate = active.iter().map(|s| s.upload_rate_bps).sum();

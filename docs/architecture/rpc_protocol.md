@@ -143,6 +143,7 @@ souscription et sérialise son payload via `to_wire_json()` ; tous les
 | `event.peerSessionUpdated` | `{sequence, session: PeerSessionSnapshot}` | `peers` | moyenne |
 | `server.sessionUpdated` | `{sequence, session: ServerSessionSnapshot}` | `servers` | faible |
 | `upload.uploadsUpdated` | `{sequence, active: [UploadSessionSnapshot], queue: [UploadSessionSnapshot], uploadRateBps}` | `uploads` | par mutation + progression throttlée ~500 ms |
+| `event.statsTick` | `{sequence, stats: {downloadBps, uploadBps, downloadsActive, peersConnected, serverConnected, kadContacts, kadUdpBound}}` | `stats` | cadence ~2 s, suspendu sans abonné |
 | `server.searchResult` | `{sequence, files: [...]}` | `search` | par recherche |
 | `server.foundSources` | `{sequence, fileHash, sources}` | `search` | par recherche de sources |
 | `upnp.statusChanged` | `UpnpStatus` | `network` | par action UPnP |

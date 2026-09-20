@@ -11,9 +11,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 
 use crate::rpc::methods::{handle_request, DAEMON_VERSION};
-use crate::rpc::types::{
-    JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
-};
+use crate::rpc::types::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 use crate::state::AppState;
 
 pub fn create_router(state: AppState) -> Router {

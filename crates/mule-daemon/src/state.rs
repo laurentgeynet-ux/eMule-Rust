@@ -7,10 +7,10 @@ use mule_network_policy::{NetworkPolicyManager, ResourceBudgets};
 
 use crate::config::DaemonConfig;
 use crate::services::downloads::types::DownloadSnapshot;
-use crate::services::DaemonEvent;
 use crate::services::downloads::DownloadService;
 use crate::services::peer_session::PeerSessionManager;
 use crate::services::server_session::ServerSessionManager;
+use crate::services::DaemonEvent;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -140,6 +140,59 @@ impl AppState {
             kad_udp.set_client_udp(client_udp_for_kad).await;
             kad_udp.set_downloads(kad_udp_dl).await;
         });
+
+        // Periodic aggregate stats tick (event.statsTick, topic `stats`).
+        // Skipped entirely while no WebSocket client is subscribed.
+        {
+            let stats_downloads = Arc::clone(&dl_arc);
+            let stats_uploads = inbound_listener.upload_manager().clone();
+            let stats_peers = peer_session.clone();
+            let stats_server = server_session.clone();
+            let stats_kad = Arc::clone(&kad);
+            let stats_tx = event_tx.clone();
+            let stats_seq = Arc::clone(&sequence);
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    interval.tick().await;
+                    if stats_tx.receiver_count() == 0 {
+                        continue;
+                    }
+                    let downloads = stats_downloads.lock().await.list_downloads();
+                    let download_bps: u64 = downloads.iter().map(|d| d.download_rate_bps).sum();
+                    let downloads_active = downloads
+                        .iter()
+                        .filter(|d| d.status == "downloading")
+                        .count();
+                    let upload_bps: u64 = stats_uploads
+                        .active_snapshots()
+                        .await
+                        .iter()
+                        .map(|u| u.upload_rate_bps)
+                        .sum();
+                    let peers_connected = stats_peers.swarm_snapshot(None).await.active_peer_count;
+                    let server_connected = matches!(
+                        stats_server.snapshot().await.status,
+                        crate::services::server_session::ServerConnectionStatus::Connected
+                    );
+                    let kad_status = stats_kad.get_status().await;
+                    DaemonEvent::StatsTick {
+                        sequence: stats_seq.fetch_add(1, Ordering::SeqCst),
+                        stats: crate::services::events::StatsTickSnapshot {
+                            download_bps,
+                            upload_bps,
+                            downloads_active,
+                            peers_connected,
+                            server_connected,
+                            kad_contacts: kad_status.total_contacts,
+                            kad_udp_bound: kad_status.udp_bind_address.is_some(),
+                        },
+                    }
+                    .send(&stats_tx);
+                }
+            });
+        }
         peer_session.set_kad(Arc::clone(&kad));
         peer_session.set_rate_limiters(network_policy.rate_limiters());
         peer_session.set_identity(Arc::clone(&identity));

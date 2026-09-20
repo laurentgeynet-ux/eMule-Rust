@@ -1086,3 +1086,38 @@ class UploadsSnapshotModel {
     );
   }
 }
+
+/// Aggregate daemon metrics pushed by `event.statsTick` (~2 s cadence).
+/// See `docs/architecture/rpc_protocol.md` §6.
+class DaemonStatsModel {
+  final int downloadBps;
+  final int uploadBps;
+  final int downloadsActive;
+  final int peersConnected;
+  final bool serverConnected;
+  final int kadContacts;
+  final bool kadUdpBound;
+
+  const DaemonStatsModel({
+    this.downloadBps = 0,
+    this.uploadBps = 0,
+    this.downloadsActive = 0,
+    this.peersConnected = 0,
+    this.serverConnected = false,
+    this.kadContacts = 0,
+    this.kadUdpBound = false,
+  });
+
+  factory DaemonStatsModel.fromJson(Map<String, dynamic> json) {
+    int toInt(String k) => (json[k] as num?)?.toInt() ?? 0;
+    return DaemonStatsModel(
+      downloadBps: toInt('downloadBps'),
+      uploadBps: toInt('uploadBps'),
+      downloadsActive: toInt('downloadsActive'),
+      peersConnected: toInt('peersConnected'),
+      serverConnected: json['serverConnected'] == true,
+      kadContacts: toInt('kadContacts'),
+      kadUdpBound: json['kadUdpBound'] == true,
+    );
+  }
+}

@@ -9,6 +9,7 @@ import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/downloads_store_controller.dart';
 import 'shell_controller.dart';
+import 'stats_controller.dart';
 import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/settings/view_models/settings_controller.dart';
@@ -114,6 +115,11 @@ final downloadsStoreControllerProvider =
     ChangeNotifierProvider<DownloadsStoreController>(
       (ref) => ref.read(appControllerProvider).downloadsCtl,
     );
+
+/// Latest aggregate stats tick (`event.statsTick`). Provider-owned disposal.
+final statsControllerProvider = ChangeNotifierProvider<StatsController>(
+  (ref) => ref.read(appControllerProvider).stats,
+);
 
 /// Uploads sub-domain controller. Provider-owned disposal.
 final uploadsControllerProvider = ChangeNotifierProvider<UploadsController>(

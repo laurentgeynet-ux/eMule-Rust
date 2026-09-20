@@ -17,6 +17,7 @@ import '../ui/features/settings/view_models/settings_controller.dart';
 import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/downloads_store_controller.dart';
+import 'stats_controller.dart';
 import 'transfer_rate_tracker.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
@@ -106,6 +107,9 @@ class AppController extends ChangeNotifier {
   /// `features/uploads/view_models/uploads_controller.dart`).
   late final UploadsController uploads;
 
+  /// Latest aggregate `event.statsTick` snapshot (app-level).
+  late final StatsController stats;
+
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
@@ -140,9 +144,16 @@ class AppController extends ChangeNotifier {
     uploads = UploadsController(client: client)
       ..attach()
       ..addListener(notifyListeners);
+    stats = StatsController(client: client)
+      ..attach()
+      ..addListener(notifyListeners);
     speedTracker = TransferRateTracker(
-      downloadRate: () => downloadsCtl.totalDownloadSpeed,
-      uploadRate: () => uploads.totalUploadRateBps,
+      // Prefer the daemon's aggregate rates (statsTick) when available;
+      // fall back to client-side sums for daemons without E2 support.
+      downloadRate: () =>
+          stats.latest?.downloadBps ?? downloadsCtl.totalDownloadSpeed,
+      uploadRate: () =>
+          stats.latest?.uploadBps ?? uploads.totalUploadRateBps,
     );
     history = HistoryController(
       client: client,
@@ -730,6 +741,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     speedTracker.dispose();
+    stats.dispose();
     uploads.dispose();
     _connSub?.cancel();
     

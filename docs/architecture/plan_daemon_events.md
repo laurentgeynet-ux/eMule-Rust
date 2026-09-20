@@ -39,7 +39,7 @@
       d'attente avec rang/score
 - [ ] Badge UL de la top bar branché sur le débit réel
 
-## Phase E2 — Tick de stats globales (rang 2)
+## Phase E2 — Tick de stats globales (rang 2) — ✅ livrée
 
 ### Daemon
 

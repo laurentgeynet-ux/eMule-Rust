@@ -70,6 +70,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<UploadsSnapshotModel> get uploadsEvents => _uploadsController.stream;
+
+  @override
+  Stream<DaemonStatsModel> get statsEvents => _statsController.stream;
   @override
   Stream<ServerSessionModel> get serverSessionEvents =>
       _serverSessionController.stream;
@@ -467,6 +470,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
 
   final StreamController<UploadsSnapshotModel> _uploadsController =
       StreamController<UploadsSnapshotModel>.broadcast();
+  final StreamController<DaemonStatsModel> _statsController =
+      StreamController<DaemonStatsModel>.broadcast();
   int _simTick = 0;
 
   void _emitUpdate(DownloadItem item) {
@@ -507,7 +512,31 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         }
       }
       _emitUploadsTick();
+      _emitStatsTick();
     });
+  }
+
+  /// Simulated `event.statsTick`: rates follow the fake upload rate and the
+  /// sum of downloading items' `downloadRateBps`.
+  void _emitStatsTick() {
+    if (_statsController.isClosed) return;
+    final downloadBps = _downloads.values
+        .where((d) => d.status == DownloadStatus.downloading)
+        .fold<int>(0, (sum, d) => sum + d.downloadRateBps);
+    final uploadBps = _fakeActiveUpload?.uploadRateBps ?? 0;
+    _statsController.add(
+      DaemonStatsModel(
+        downloadBps: downloadBps,
+        uploadBps: uploadBps,
+        downloadsActive: _downloads.values
+            .where((d) => d.status == DownloadStatus.downloading)
+            .length,
+        peersConnected: _activePeer != null ? 1 : 0,
+        serverConnected: _state == DaemonConnectionState.connected,
+        kadContacts: 42,
+        kadUdpBound: true,
+      ),
+    );
   }
 
   /// Emits a simulated `upload.uploadsUpdated` snapshot each tick: one
@@ -1824,5 +1853,6 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _peerSessionController.close();
     _serverSessionController.close();
     _uploadsController.close();
+    _statsController.close();
   }
 }

@@ -5,6 +5,14 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **E2 — Tick de stats globales** : event daemon `event.statsTick`
+  (topic `stats`, ~2 s, suspendu sans abonné) avec `downloadBps`,
+  `uploadBps`, `downloadsActive`, `peersConnected`, `serverConnected`,
+  `kadContacts`, `kadUdpBound`. Côté client `DaemonStatsModel` +
+  `statsEvents` ; côté UI `StatsController` (provider dédié) et le
+  `TransferRateTracker` préfère les débits agrégés du daemon quand un tick
+  est disponible (fallback : sommes locales).
+
 - **E1 — Uploads temps réel** : event daemon `upload.uploadsUpdated`
   (topic `uploads`, snapshot actif + file + débit agrégé, émis après chaque
   mutation de l'upload manager, progression throttlée ~500 ms). Côté client

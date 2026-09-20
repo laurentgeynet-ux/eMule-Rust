@@ -7,6 +7,27 @@ use crate::services::peer_session::types::PeerSessionSnapshot;
 use crate::services::server_session::types::ServerSessionSnapshot;
 use crate::services::upload_queue::UploadSessionSnapshot;
 
+/// Aggregate daemon metrics emitted on a fixed cadence (~2 s) so clients can
+/// render live top-bar badges and rate graphs without polling or sampling.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StatsTickSnapshot {
+    /// Sum of `download_rate_bps` across all downloads.
+    pub download_bps: u64,
+    /// Sum of `upload_rate_bps` across active upload slots.
+    pub upload_bps: u64,
+    /// Downloads currently in `downloading` status.
+    pub downloads_active: usize,
+    /// Total active peer connections (all files).
+    pub peers_connected: usize,
+    /// Whether the eD2K server session is connected.
+    pub server_connected: bool,
+    /// Total Kad routing-table contacts.
+    pub kad_contacts: usize,
+    /// Whether the Kad UDP socket is bound.
+    pub kad_udp_bound: bool,
+}
+
 /// Strongly-typed domain and lifecycle events emitted across the daemon.
 ///
 /// This is the single definition of the notification wire format: every
@@ -41,6 +62,11 @@ pub enum DaemonEvent {
         queue: Vec<UploadSessionSnapshot>,
         upload_rate_bps: u64,
     },
+    /// Periodic aggregate stats tick (topic `stats`, cadence ~2 s).
+    StatsTick {
+        sequence: u64,
+        stats: StatsTickSnapshot,
+    },
     /// A notification outside the typed set (search results, found
     /// sources, control events like `event.snapshotRequired`).
     Custom {
@@ -57,6 +83,7 @@ impl DaemonEvent {
             Self::PeerSessionUpdated { .. } => "event.peerSessionUpdated",
             Self::ServerSessionUpdated { .. } => "server.sessionUpdated",
             Self::UploadsUpdated { .. } => "upload.uploadsUpdated",
+            Self::StatsTick { .. } => "event.statsTick",
             Self::Custom { method, .. } => method.as_str(),
         }
     }
@@ -69,6 +96,7 @@ impl DaemonEvent {
             Self::PeerSessionUpdated { .. } => Some("peers"),
             Self::ServerSessionUpdated { .. } => Some("servers"),
             Self::UploadsUpdated { .. } => Some("uploads"),
+            Self::StatsTick { .. } => Some("stats"),
             Self::Custom { method, .. } => match method.as_str() {
                 "server.searchResult" | "server.foundSources" => Some("search"),
                 "upnp.statusChanged" => Some("network"),
@@ -103,6 +131,10 @@ impl DaemonEvent {
                 "active": active,
                 "queue": queue,
                 "uploadRateBps": upload_rate_bps,
+            }),
+            Self::StatsTick { sequence, stats } => serde_json::json!({
+                "sequence": sequence,
+                "stats": stats,
             }),
             Self::Custom { payload, .. } => payload.clone(),
         };

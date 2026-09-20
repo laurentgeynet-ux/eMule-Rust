@@ -310,6 +310,10 @@ abstract class MuleDaemonClient {
   /// active slots, waiting queue and aggregate upload rate.
   Stream<UploadsSnapshotModel> get uploadsEvents;
 
+  /// Stream of aggregate stats ticks (`event.statsTick`, ~2 s cadence):
+  /// global rates, active downloads, connected peers, server/Kad state.
+  Stream<DaemonStatsModel> get statsEvents;
+
   /// Cancel an upload or dequeue a waiting peer.
   Future<void> cancelUpload(String clientAddress);
 
