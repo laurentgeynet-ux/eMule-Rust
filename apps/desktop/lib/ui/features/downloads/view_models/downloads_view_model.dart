@@ -9,6 +9,7 @@ import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
 import '../../history/view_models/history_controller.dart';
 import '../../kad/view_models/kad_controller.dart';
+import '../../search/view_models/search_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
 
@@ -67,10 +68,7 @@ class DownloadsViewModel extends ChangeNotifier {
   ServerSessionModel _serverSession = ServerSessionModel.disconnected;
   bool _isServerConnecting = false;
 
-  final List<SearchResultFileModel> _searchResults = [];
-  bool _isSearching = false;
-  String? _lastSearchTerm;
-  int _searchEpoch = 0;
+
 
   final Map<String, List<PeerSourceModel>> _peerSources = {};
   bool _isSourcesLoading = false;
@@ -80,15 +78,17 @@ class DownloadsViewModel extends ChangeNotifier {
   /// Kad DHT sub-domain (extracted controller).
   late final KadController kad;
 
+  /// Search sub-domain (extracted controller, see
+  /// `features/search/view_models/search_controller.dart`).
+  late final SearchController search;
+
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<ServerSessionModel>? _serverSessionSub;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
-  StreamSubscription<List<SearchResultFileModel>>? _searchResultSub;
   StreamSubscription<Map<String, dynamic>>? _foundSourcesSub;
   StreamSubscription<PeerSessionModel>? _peerSessionSub;
-  Timer? _searchTimeout;
 
   DownloadsViewModel({
     required this.client,
@@ -103,6 +103,11 @@ class DownloadsViewModel extends ChangeNotifier {
     kad = KadController(
       client: client,
       isSectionActive: () => _currentSection == AppNavSection.kad,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+    )..addListener(notifyListeners);
+    search = SearchController(
+      client: client,
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
     )..addListener(notifyListeners);
@@ -125,21 +130,6 @@ class DownloadsViewModel extends ChangeNotifier {
 
     _eventSub = client.downloadEvents.listen((event) {
       _downloads[event.download.id] = event.download;
-      notifyListeners();
-    });
-
-    _searchResultSub = client.searchResultEvents.listen((files) {
-      final existingHashes = _searchResults.map((f) => f.fileHash).toSet();
-      for (final f in files) {
-        if (!existingHashes.contains(f.fileHash)) {
-          _searchResults.add(f);
-          existingHashes.add(f.fileHash);
-        }
-      }
-      _searchEpoch++;
-      _isSearching = false;
-      // Results arrived — the no-answer watchdog is no longer needed.
-      _searchTimeout?.cancel();
       notifyListeners();
     });
 
@@ -1204,10 +1194,10 @@ class DownloadsViewModel extends ChangeNotifier {
 
   // ── eD2K Server Search & Sources ──────────────────────────────────────────
 
-  List<SearchResultFileModel> get searchResults => _searchResults;
-  bool get isSearching => _isSearching;
-  String? get lastSearchTerm => _lastSearchTerm;
-  int get searchEpoch => _searchEpoch;
+  List<SearchResultFileModel> get searchResults => search.results;
+  bool get isSearching => search.isSearching;
+  String? get lastSearchTerm => search.lastTerm;
+  int get searchEpoch => search.epoch;
 
   Future<void> searchServer({
     required String term,
@@ -1215,111 +1205,23 @@ class DownloadsViewModel extends ChangeNotifier {
     int? maxSize,
     String? extension,
     bool udpOnly = false,
-  }) async {
-    final trimmed = term.trim();
-    if (trimmed.isEmpty) return;
-    _isSearching = true;
-    _searchResults.clear();
-    _searchEpoch++;
-    _lastSearchTerm = trimmed;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      final resp = await client.searchServer(
-        term: trimmed,
+  }) =>
+      search.searchServer(
+        term: term,
         minSize: minSize,
         maxSize: maxSize,
         extension: extension,
         udpOnly: udpOnly,
       );
-      final targets = resp['udpTargets'];
-      var udpSummary = '';
-      if (targets is List && targets.isNotEmpty) {
-        var req3 = 0, req2 = 0, req1 = 0, failed = 0;
-        for (final t in targets) {
-          switch (t is Map ? t['request'] : null) {
-            case 'REQ3':
-              req3++;
-            case 'REQ2':
-              req2++;
-            case 'REQ1':
-              req1++;
-            default:
-              failed++;
-          }
-        }
-        udpSummary = ' — UDP: $req3×REQ3, $req2×REQ2, $req1×REQ1'
-            '${failed > 0 ? ', $failed échec(s)' : ''}';
-      }
-      _statusNotification = udpOnly
-          ? 'Recherche globale "$trimmed" envoyée$udpSummary'
-          : 'Recherche "$trimmed" envoyée au serveur$udpSummary';
-      // eD2K servers may legitimately never answer (busy, throttled, dead):
-      // without a reply the spinner would block every later search forever.
-      // Auto-release after 30 s — late results still populate the list.
-      _searchTimeout?.cancel();
-      _searchTimeout = Timer(const Duration(seconds: 30), () {
-        if (_isSearching) {
-          _isSearching = false;
-          _statusNotification =
-              'Recherche "$trimmed" terminée sans réponse du serveur';
-          notifyListeners();
-        }
-      });
-    } catch (e) {
-      _errorMessage = 'Échec de la recherche : $e';
-      _isSearching = false;
-    } finally {
-      notifyListeners();
-    }
-  }
 
   Future<void> searchKadKeywords({
     required String term,
     int? minSize,
     int? maxSize,
-  }) async {
-    final trimmed = term.trim();
-    if (trimmed.isEmpty) return;
-    _isSearching = true;
-    _searchResults.clear();
-    _searchEpoch++;
-    _lastSearchTerm = trimmed;
-    _errorMessage = null;
-    notifyListeners();
+  }) =>
+      search.searchKadKeywords(term: term, minSize: minSize, maxSize: maxSize);
 
-    try {
-      final results = await client.searchKadKeywords(
-        term: trimmed,
-        minSize: minSize,
-        maxSize: maxSize,
-      );
-      final existingHashes = _searchResults.map((f) => f.fileHash).toSet();
-      for (final f in results) {
-        if (!existingHashes.contains(f.fileHash)) {
-          _searchResults.add(f);
-          existingHashes.add(f.fileHash);
-        }
-      }
-      _searchEpoch++;
-      _statusNotification =
-          'Recherche Kad "$trimmed" terminée (${_searchResults.length} résultat(s))';
-    } catch (e) {
-      _errorMessage = 'Échec de la recherche Kad : $e';
-    } finally {
-      _isSearching = false;
-      notifyListeners();
-    }
-  }
-
-  void clearSearchResults() {
-    _searchResults.clear();
-    _searchEpoch++;
-    _isSearching = false;
-    _lastSearchTerm = null;
-    notifyListeners();
-  }
+  void clearSearchResults() => search.clearResults();
 
   Future<bool> downloadSearchResult(
     SearchResultFileModel file, {
@@ -1333,16 +1235,8 @@ class DownloadsViewModel extends ChangeNotifier {
     );
   }
 
-  Future<void> queryServerSources(String fileHash, {int? fileSize}) async {
-    try {
-      await client.queryServerSources(fileHash: fileHash, fileSize: fileSize);
-      _statusNotification = 'Demande de sources envoyée pour $fileHash';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Échec de la demande de sources : $e';
-      notifyListeners();
-    }
-  }
+  Future<void> queryServerSources(String fileHash, {int? fileSize}) =>
+      search.querySources(fileHash, fileSize: fileSize);
 
   // --- Peer Sources & Session ---
 
@@ -1466,16 +1360,14 @@ class DownloadsViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    _searchTimeout?.cancel();
     _connSub?.cancel();
     _serverSessionSub?.cancel();
     _eventSub?.cancel();
     _supervisorSub?.cancel();
     _instanceSub?.cancel();
-    _searchResultSub?.cancel();
     _foundSourcesSub?.cancel();
     _peerSessionSub?.cancel();
-    // history is disposed by historyControllerProvider when scoped.
+    // history/kad/search are disposed by their providers when scoped.
     supervisor?.dispose();
     client.dispose();
     super.dispose();

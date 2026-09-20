@@ -6,6 +6,7 @@ import '../services/daemon_supervisor.dart';
 import '../ui/features/downloads/view_models/downloads_view_model.dart';
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
+import '../ui/features/search/view_models/search_controller.dart';
 
 /// Daemon client (real `RpcDaemonClient` or `FakeMuleDaemonClient`).
 /// Overridden by the `ProviderScope` created in [EmuleSionApp].
@@ -39,4 +40,9 @@ final historyControllerProvider = ChangeNotifierProvider<HistoryController>(
 /// Kad DHT sub-domain controller. Provider-owned disposal.
 final kadControllerProvider = ChangeNotifierProvider<KadController>(
   (ref) => ref.watch(downloadsViewModelProvider).kad,
+);
+
+/// Search sub-domain controller. Provider-owned disposal.
+final searchControllerProvider = ChangeNotifierProvider<SearchController>(
+  (ref) => ref.watch(downloadsViewModelProvider).search,
 );
