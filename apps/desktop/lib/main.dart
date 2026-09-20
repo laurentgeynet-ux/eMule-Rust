@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'package:mule_client/mule_client.dart';
 import 'services/daemon_supervisor.dart';
+import 'core/tray_setup.dart';
+import 'core/window_setup.dart';
 import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +16,8 @@ import 'l10n/generated/app_localizations.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await WindowSetup.init();
+  await TraySetup.init();
 
   // Check if user specified fake daemon or dev tools via dart-define
   const useFake = bool.fromEnvironment('USE_FAKE_DAEMON', defaultValue: false);

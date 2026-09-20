@@ -5,6 +5,14 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Desktop polish (P6, début)** :
+  - `file_picker` natif remplace le hack PowerShell dans
+    `lib/core/folder_picker.dart` (Windows/Linux/macOS/Android).
+  - `window_manager` : `lib/core/window_setup.dart` restaure et persiste
+    la géométrie de fenêtre (min 760×500, shared_preferences `window.*`).
+  - `tray_manager` : `lib/core/tray_setup.dart` ajoute l'icône tray
+    (Show/Quit) avec `assets/app_icon.ico`.
+
 ### Ajouté — Refonte UI multiplateforme (branche `ui-ux`)
 
 - **`packages/mule_client`** : extraction du client daemon dans un package
