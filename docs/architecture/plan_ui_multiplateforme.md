@@ -70,14 +70,13 @@ en dur ; tout passe par `ui_kit`.
 Remplacer `ChangeNotifier` + `ListenableBuilder` par Riverpod, **un
 feature à la fois**, en gardant les tests verts.
 
-| Étape | Détail |
-|---|---|
-| Bootstrap | `ProviderScope` dans `main.dart` ; provider `muleDaemonClientProvider` (fake vs rpc via `dart-define`, même logique qu'actuellement) |
-| Connexion | `connectionProvider` : `StreamProvider<DaemonConnectionState>` ; `daemonInfoProvider` |
-| Downloads | `downloadsProvider` : `AsyncNotifier` consommant `downloads.list` + `event.downloadUpdated` (le plus gros : `downloads_view_model.dart` 1779 lignes → découper en providers par sous-domaine) |
-| Recherche | `searchProvider` + `searchResultsProvider` |
-| Servers/Kad | `serversProvider`, `kadProvider` |
-| Settings | `settingsProvider` |
+| Étape | Détail | État |
+|---|---|---|
+| Bootstrap | `ProviderScope` dans `main.dart` ; `muleDaemonClientProvider`, `daemonSupervisorProvider`, `devToolsEnabledProvider` | ✅ |
+| Découpage | `DownloadsViewModel` 1781 → 744 lignes, en 10 contrôleurs/fichiers par sous-domaine (`downloads_store`, `history`, `kad`, `search`, `servers`, `peer_sources`, `categories`, `network_policy`, `settings`, `lab`), chacun derrière son `ChangeNotifierProvider` | ✅ |
+| Vues | Basculer les `XView(viewModel:)` vers `Consumer*` + `ref.watch(<domaine>ControllerProvider)` — fait : History, Kad ; reste : Downloads, Search, Servers | 🔲 |
+| Connexion | `connectionProvider` : `StreamProvider<DaemonConnectionState>` ; `daemonInfoProvider` | 🔲 |
+| Façade | Supprimer les délégations du VM quand toutes les vues sont migrées | 🔲 |
 
 Règle : les widgets ne parlent **jamais** au client directement —
 toujours via providers. Les view models actuels deviennent des

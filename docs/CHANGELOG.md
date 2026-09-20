@@ -40,14 +40,22 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   `DownloadsList`, `DownloadsEmptyState`, `DownloadDetailsPanel`,
   `StatusNotificationBanner`) ; conventions dans
   `docs/architecture/conventions_ui.md`.
-- **Migration Riverpod (P4, démarrée)** : `ProviderScope` dans
-  `EmuleSionApp` (`muleDaemonClientProvider`, `daemonSupervisorProvider`,
-  `devToolsEnabledProvider`, `downloadsViewModelProvider`) ; premier
-  sous-domaine extrait du `DownloadsViewModel` en contrôleur dédié :
-  `HistoryController` (`historyControllerProvider`), `HistoryView` devenu
-  `ConsumerWidget`. Pattern de transition : les sous-contrôleurs sont
-  possédés par le VM, qui forward leurs notifications — les vues et tests
-  existants restent inchangés.
+- **Migration Riverpod (P4, découpage du VM terminé)** : `ProviderScope`
+  dans `EmuleSionApp` (`muleDaemonClientProvider`,
+  `daemonSupervisorProvider`, `devToolsEnabledProvider`,
+  `downloadsViewModelProvider`). Le `DownloadsViewModel` (1781 → 744
+  lignes) est découpé en **10 contrôleurs par sous-domaine**, chacun dans
+  son fichier `features/<domaine>/view_models/` et exposé via un
+  `ChangeNotifierProvider` dédié : `DownloadsStoreController` (store,
+  events, CRUD, sélection, part.met, diagnostic), `HistoryController`,
+  `KadController`, `SearchController` (watchdog 30 s, dédup par hash),
+  `ServersController` (liste + session), `PeerSourcesController`,
+  `CategoriesController`, `NetworkPolicyController` (kill switch, IP
+  filter, rate limits), `SettingsController`, `LabController`. Le VM
+  reste un orchestrateur fin (connexion/supervisor, section, bannières)
+  qui délègue et forward les notifications — aucune vue ni test cassé.
+  Reste : basculer les vues sur les providers (`HistoryView` et `KadView`
+  déjà en `Consumer*`), puis supprimer la façade.
 - **Docs** : `docs/architecture/rpc_protocol.md` (contrat JSON-RPC complet)
   et `docs/architecture/plan_ui_multiplateforme.md` (roadmap desktop/
   mobile/web en 10 phases).

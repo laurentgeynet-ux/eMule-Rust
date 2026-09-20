@@ -53,10 +53,15 @@ Si une couleur/valeur manque : **ajouter un token** dans
 
 ## État
 
-- P4 migre `ChangeNotifier`/`ListenableBuilder` vers **Riverpod**, un
-  feature à la fois ; `DownloadsViewModel` sera découpé en providers par
-  sous-domaine (downloads, search, servers, kad, history, network,
-  categories, devtools).
+- P4 : le `DownloadsViewModel` est découpé en **contrôleurs par
+  sous-domaine** (1 classe/fichier sous
+  `features/<domaine>/view_models/`), chacun exposé via un
+  `ChangeNotifierProvider` dans `app/providers.dart`. Les contrôleurs
+  reçoivent `onStatus`/`onError` (+ callbacks de rafraîchissement
+  croisé) — ils ne connaissent pas le VM. Le VM reste l'orchestrateur :
+  connexion/supervisor, section courante, bannières, façade de
+  délégation pendant la transition. Disposal : le provider possède le
+  contrôleur (le VM ne dispose pas les contrôleurs).
 - Chaque vue de section possède son propre `ListenableBuilder`/`watch`
   (ne pas dépendre du rebuild du shell).
 
