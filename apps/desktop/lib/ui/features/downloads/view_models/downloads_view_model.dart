@@ -11,6 +11,8 @@ import '../../history/view_models/history_controller.dart';
 import '../../kad/view_models/kad_controller.dart';
 import '../../search/view_models/search_controller.dart';
 import '../../servers/view_models/servers_controller.dart';
+import '../../settings/view_models/settings_controller.dart';
+import 'lab_controller.dart';
 import 'categories_controller.dart';
 import 'network_policy_controller.dart';
 import 'peer_sources_controller.dart';
@@ -66,6 +68,12 @@ class DownloadsViewModel extends ChangeNotifier {
   /// Network policy / IP filter / rate limiter sub-domain (extracted
   /// controller).
   late final NetworkPolicyController networkPolicyCtl;
+
+  /// Daemon settings sub-domain (extracted controller).
+  late final SettingsController settingsCtl;
+
+  /// Loopback lab / dev tools sub-domain (extracted controller).
+  late final LabController labCtl;
 
   /// History & Statistics sub-domain (extracted controller, see
   /// `features/history/view_models/history_controller.dart`).
@@ -134,6 +142,19 @@ class DownloadsViewModel extends ChangeNotifier {
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
       onAllDisconnected: serversController.markDisconnected,
+    )..addListener(notifyListeners);
+    settingsCtl = SettingsController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+      onSettingsLoaded: history.syncRetentionFromSettings,
+    )..addListener(notifyListeners);
+    labCtl = LabController(
+      client: client,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+      onDownloadUpdated: (item) => _downloads[item.id] = item,
+      onRefreshDownloads: refresh,
     )..addListener(notifyListeners);
 
     _connSub = client.connectionState.listen((state) {
@@ -227,11 +248,10 @@ class DownloadsViewModel extends ChangeNotifier {
     return isPortable && info.capabilities.contains('lab-tools');
   }
 
-  Map<String, dynamic> _settings = {};
-  Map<String, dynamic> get settings => _settings;
+  Map<String, dynamic> get settings => settingsCtl.settings;
 
   Directory get defaultDownloadDirectory {
-    final customDir = _settings['defaultDownloadDir'] as String?;
+    final customDir = settings['defaultDownloadDir'] as String?;
     if (customDir != null && customDir.isNotEmpty) {
       return Directory(customDir);
     }
@@ -541,72 +561,32 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
+  // ── Lab / dev tools (delegated to LabController) ──────────────────────────
+
   Future<void> injectSimulationChunk(
     String id,
     int offset,
     String hexData,
-  ) async {
-    try {
-      final updated = await client.injectRange(id, offset, hexData);
-      _downloads[updated.id] = updated;
-      _statusNotification =
-          'Injected ${hexData.length ~/ 2} bytes at offset $offset';
-      notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Injection failed: $e';
-      notifyListeners();
-    }
-  }
+  ) =>
+      labCtl.injectSimulationChunk(id, offset, hexData);
 
-  Future<LabStatus> getLabStatus() async {
-    return await client.getLabStatus();
-  }
+  Future<LabStatus> getLabStatus() => labCtl.getLabStatus();
 
-  Future<LabFixtureInfo> createLabFixture(String fixtureType) async {
-    final fixture = await client.createLabFixture(fixtureType);
-    _statusNotification = 'Created fixture ${fixture.fileName}';
-    notifyListeners();
-    return fixture;
-  }
+  Future<LabFixtureInfo> createLabFixture(String fixtureType) =>
+      labCtl.createLabFixture(fixtureType);
 
-  Future<LabPeerInfo> startLabPeer() async {
-    final peer = await client.startLabPeer();
-    _statusNotification = 'Started loopback peer at ${peer.peerAddr}';
-    notifyListeners();
-    return peer;
-  }
+  Future<LabPeerInfo> startLabPeer() => labCtl.startLabPeer();
 
-  Future<void> stopLabPeer() async {
-    await client.stopLabPeer();
-    _statusNotification = 'Stopped loopback test peer';
-    notifyListeners();
-  }
+  Future<void> stopLabPeer() => labCtl.stopLabPeer();
 
-  Future<LabCleanupReport> cleanupLabTestData() async {
-    final report = await client.cleanupLabTestData();
-    _statusNotification = report.message;
-    await refresh();
-    return report;
-  }
+  Future<LabCleanupReport> cleanupLabTestData() => labCtl.cleanupLabTestData();
 
-  Future<void> connectDownloadToSource(
-    String downloadId,
-    String peerAddr,
-  ) async {
-    await client.connectDownloadToSource(downloadId, peerAddr);
-    _statusNotification = 'Connected download to $peerAddr';
-    await refresh();
-  }
+  Future<void> connectDownloadToSource(String downloadId, String peerAddr) =>
+      labCtl.connectDownloadToSource(downloadId, peerAddr);
 
-  Future<void> fetchSettings() async {
-    try {
-      _settings = await client.getSettings();
-      history.syncRetentionFromSettings(_settings);
-      notifyListeners();
-    } catch (_) {
-      // Non-critical in older or restricted daemons
-    }
-  }
+  // ── Settings (delegated to SettingsController) ────────────────────────────
+
+  Future<void> fetchSettings() => settingsCtl.fetch();
 
   void setHistoryEventTypeFilter(String? eventType) =>
       history.setEventTypeFilter(eventType);
@@ -623,33 +603,11 @@ class DownloadsViewModel extends ChangeNotifier {
   Future<bool> setHistoryRetentionDays(int days) =>
       history.setRetentionDays(days);
 
-  Future<bool> setDefaultDownloadDirectory(String path) async {
-    try {
-      await client.setDefaultDownloadDirectory(path);
-      await fetchSettings();
-      _statusNotification = 'Updated default download directory';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to set default download directory: $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<bool> setDefaultDownloadDirectory(String path) =>
+      settingsCtl.setDefaultDownloadDirectory(path);
 
-  Future<bool> resetDefaultDownloadDirectory() async {
-    try {
-      await client.resetDefaultDownloadDirectory();
-      await fetchSettings();
-      _statusNotification = 'Reset download directory to portable default';
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to reset default download directory: $e';
-      notifyListeners();
-      return false;
-    }
-  }
+  Future<bool> resetDefaultDownloadDirectory() =>
+      settingsCtl.resetDefaultDownloadDirectory();
 
   Future<DownloadItem?> fetchDownloadDetail(String id) async {
     try {

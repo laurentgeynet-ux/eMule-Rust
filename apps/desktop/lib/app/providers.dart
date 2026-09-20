@@ -6,7 +6,9 @@ import '../services/daemon_supervisor.dart';
 import '../ui/features/downloads/view_models/downloads_view_model.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
+import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
+import '../ui/features/settings/view_models/settings_controller.dart';
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
 import '../ui/features/search/view_models/search_controller.dart';
@@ -74,3 +76,13 @@ final networkPolicyControllerProvider =
     ChangeNotifierProvider<NetworkPolicyController>(
       (ref) => ref.watch(downloadsViewModelProvider).networkPolicyCtl,
     );
+
+/// Daemon settings sub-domain controller. Provider-owned disposal.
+final settingsControllerProvider = ChangeNotifierProvider<SettingsController>(
+  (ref) => ref.watch(downloadsViewModelProvider).settingsCtl,
+);
+
+/// Loopback lab / dev tools sub-domain controller. Provider-owned disposal.
+final labControllerProvider = ChangeNotifierProvider<LabController>(
+  (ref) => ref.watch(downloadsViewModelProvider).labCtl,
+);
