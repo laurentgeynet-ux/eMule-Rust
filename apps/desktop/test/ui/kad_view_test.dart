@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:desktop/app/providers.dart';
 import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:desktop/ui/features/kad/views/kad_screen.dart';
 
 void main() {
@@ -26,8 +28,13 @@ void main() {
       await viewModel.fetchKadContacts();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: KadView(viewModel: viewModel)),
+        ProviderScope(
+          overrides: [
+            downloadsViewModelProvider.overrideWithValue(viewModel),
+          ],
+          child: MaterialApp(
+            home: Scaffold(body: const KadView()),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -56,8 +63,13 @@ void main() {
       await viewModel.fetchKadContacts();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: KadView(viewModel: viewModel)),
+        ProviderScope(
+          overrides: [
+            downloadsViewModelProvider.overrideWithValue(viewModel),
+          ],
+          child: MaterialApp(
+            home: Scaffold(body: const KadView()),
+          ),
         ),
       );
       await tester.pumpAndSettle();

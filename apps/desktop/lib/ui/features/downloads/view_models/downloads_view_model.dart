@@ -8,6 +8,7 @@ import 'package:mule_client/mule_client.dart';
 import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
 import '../../history/view_models/history_controller.dart';
+import '../../kad/view_models/kad_controller.dart';
 
 enum AppNavSection { downloads, history, servers, search, kad }
 
@@ -76,10 +77,8 @@ class DownloadsViewModel extends ChangeNotifier {
   PeerSessionModel _peerSession = PeerSessionModel.disconnected;
   bool _isPeerConnecting = false;
 
-  KadStatusModel _kadStatus = KadStatusModel.initial;
-  List<KadContactModel> _kadContacts = [];
-  bool _isKadLoading = false;
-  Timer? _kadStatusTimer;
+  /// Kad DHT sub-domain (extracted controller).
+  late final KadController kad;
 
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<ServerSessionModel>? _serverSessionSub;
@@ -101,15 +100,15 @@ class DownloadsViewModel extends ChangeNotifier {
       onStatus: (m) => _statusNotification = m,
       onError: (m) => _errorMessage = m,
     )..addListener(notifyListeners);
+    kad = KadController(
+      client: client,
+      isSectionActive: () => _currentSection == AppNavSection.kad,
+      onStatus: (m) => _statusNotification = m,
+      onError: (m) => _errorMessage = m,
+    )..addListener(notifyListeners);
 
     _connSub = client.connectionState.listen((state) {
       _connectionState = state;
-      if (state == DaemonConnectionState.connected) {
-        _startKadStatusTimer();
-      } else {
-        _kadStatusTimer?.cancel();
-        _kadStatusTimer = null;
-      }
       notifyListeners();
     });
 
@@ -1437,275 +1436,36 @@ class DownloadsViewModel extends ChangeNotifier {
     }
   }
 
-  // --- Kad DHT (Phase 12.0a) ---
+  // --- Kad DHT (delegated to KadController) ---
 
-  KadStatusModel get kadStatus => _kadStatus;
-  List<KadContactModel> get kadContacts => _kadContacts;
-  bool get isKadLoading => _isKadLoading;
+  KadStatusModel get kadStatus => kad.status;
+  List<KadContactModel> get kadContacts => kad.contacts;
+  bool get isKadLoading => kad.isLoading;
 
-  Future<void> fetchKadStatus() async {
-    try {
-      _kadStatus = await client.getKadStatus();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Failed to fetch Kad status: $e');
-    }
-  }
-
-  Future<void> fetchKadContacts({int limit = 100}) async {
-    _isKadLoading = true;
-    notifyListeners();
-    try {
-      _kadContacts = await client.listKadContacts(limit: limit);
-      _errorMessage = null;
-    } catch (e) {
-      _errorMessage = 'Échec de la récupération des contacts Kad : $e';
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<NodesDatInspectReportModel?> inspectNodesDat(String filePath) async {
-    try {
-      return await client.inspectNodesDat(filePath);
-    } catch (e) {
-      _errorMessage = 'Échec de l\'inspection de nodes.dat : $e';
-      notifyListeners();
-      return null;
-    }
-  }
-
-  Future<bool> importNodesDat(String filePath) async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final res = await client.importNodesDat(filePath);
-      final count = res['importedCount'] ?? 0;
-      _statusNotification =
-          'Importé $count contacts Kad dans la table K-buckets';
-      await fetchKadStatus();
-      await fetchKadContacts();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Échec de l\'importation de nodes.dat : $e';
-      notifyListeners();
-      return false;
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> clearKadContacts() async {
-    try {
-      final count = await client.clearKadContacts();
-      _statusNotification = 'Effacé $count contacts Kad';
-      await fetchKadStatus();
-      await fetchKadContacts();
-    } catch (e) {
-      _errorMessage = 'Échec de l\'effacement des contacts Kad : $e';
-      notifyListeners();
-    }
-  }
-
-  Future<bool> startKadUdp({String? bindAddress}) async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      await client.startKadUdp(bindAddress: bindAddress);
-      _statusNotification =
-          'Socket UDP Kad démarré sur ${bindAddress ?? "127.0.0.1:39737"}';
-      await fetchKadStatus();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Échec du démarrage UDP Kad : $e';
-      notifyListeners();
-      return false;
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> stopKadUdp() async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      await client.stopKadUdp();
-      _statusNotification = 'Socket UDP Kad arrêté';
-      await fetchKadStatus();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Échec de l\'arrêt UDP Kad : $e';
-      notifyListeners();
-      return false;
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<int?> pingKadContact({
-    required String ip,
-    required int port,
-    String? kadId,
-  }) async {
-    try {
-      final res = await client.pingKadContact(ip: ip, port: port, kadId: kadId);
-      final latency = (res['latencyMs'] as num?)?.toInt() ?? 0;
-      _statusNotification = 'Pong reçu de $ip:$port en ${latency}ms';
-      await fetchKadStatus();
-      await fetchKadContacts();
-      return latency;
-    } catch (e) {
-      _errorMessage = 'Échec du ping Kad ($ip:$port) : $e';
-      notifyListeners();
-      return null;
-    }
-  }
-
-  Future<bool> bootstrapKad({required String ip, required int port}) async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final res = await client.bootstrapKad(ip: ip, port: port);
-      final count = (res['receivedContacts'] as num?)?.toInt() ?? 0;
-      _statusNotification = 'Amorçage Kad réussi ($count contacts reçus)';
-      await fetchKadStatus();
-      await fetchKadContacts();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Échec de l\'amorçage Kad : $e';
-      notifyListeners();
-      return false;
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> bootstrapKadFromUrl(String url) async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final res = await client.bootstrapKadFromUrl(url);
-      final count = (res['importedNodes'] as num?)?.toInt() ?? 0;
-      _statusNotification =
-          'Amorçage Kad depuis URL réussi ($count nœuds importés)';
-      await fetchKadStatus();
-      await fetchKadContacts();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Échec de l\'amorçage Kad depuis URL : $e';
-      notifyListeners();
-      return false;
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<List<KadContactModel>> findKadNode(String targetId) async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final contacts = await client.findKadNode(targetId);
-      _statusNotification =
-          'Recherche Kad : ${contacts.length} nœuds les plus proches trouvés';
-      await fetchKadStatus();
-      await fetchKadContacts();
-      return contacts;
-    } catch (e) {
-      _errorMessage = 'Échec de la recherche Kad : $e';
-      notifyListeners();
-      return const [];
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  /// Searches Kad DHT for sources of a specific file hash and auto-injects them.
-  Future<List<PeerSourceModel>> searchKadSources(
-    String fileHash, {
-    int? fileSize,
-  }) async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final sources = await client.searchKadSources(
-        fileHash: fileHash,
-        fileSize: fileSize,
-      );
-      _statusNotification =
-          'Kad : ${sources.length} sources trouvées pour ${fileHash.substring(0, 8)}…';
-      notifyListeners();
-      return sources;
-    } catch (e) {
-      _errorMessage = 'Échec de la recherche de sources Kad : $e';
-      notifyListeners();
-      return const [];
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  /// Publishes this node as a source for a file hash to Kad DHT.
-  Future<int> publishKadSource(
-    String fileHash,
-    int fileSize, {
-    int tcpPort = 39735,
-  }) async {
-    _isKadLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final count = await client.publishKadSource(
-        fileHash: fileHash,
-        fileSize: fileSize,
-        tcpPort: tcpPort,
-      );
-      _statusNotification =
-          'Kad : publié sur $count nœuds pour ${fileHash.substring(0, 8)}…';
-      notifyListeners();
-      return count;
-    } catch (e) {
-      _errorMessage = 'Échec de la publication Kad : $e';
-      notifyListeners();
-      return 0;
-    } finally {
-      _isKadLoading = false;
-      notifyListeners();
-    }
-  }
-
-  void _startKadStatusTimer() {
-    _kadStatusTimer?.cancel();
-    _kadStatusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      if (_connectionState == DaemonConnectionState.connected) {
-        await fetchKadStatus();
-        if (_currentSection == AppNavSection.kad && !_isKadLoading) {
-          try {
-            _kadContacts = await client.listKadContacts(limit: 100);
-            notifyListeners();
-          } catch (_) {}
-        }
-      }
-    });
-  }
+  Future<void> fetchKadStatus() => kad.fetchStatus();
+  Future<void> fetchKadContacts({int limit = 100}) =>
+      kad.fetchContacts(limit: limit);
+  Future<NodesDatInspectReportModel?> inspectNodesDat(String filePath) =>
+      kad.inspectNodesDat(filePath);
+  Future<bool> importNodesDat(String filePath) => kad.importNodesDat(filePath);
+  Future<void> clearKadContacts() => kad.clearContacts();
+  Future<bool> startKadUdp({String? bindAddress}) =>
+      kad.startUdp(bindAddress: bindAddress);
+  Future<bool> stopKadUdp() => kad.stopUdp();
+  Future<int?> pingKadContact({required String ip, required int port, String? kadId}) =>
+      kad.pingContact(ip: ip, port: port, kadId: kadId);
+  Future<bool> bootstrapKad({required String ip, required int port}) =>
+      kad.bootstrap(ip: ip, port: port);
+  Future<bool> bootstrapKadFromUrl(String url) => kad.bootstrapFromUrl(url);
+  Future<List<KadContactModel>> findKadNode(String targetId) =>
+      kad.findNode(targetId);
+  Future<List<PeerSourceModel>> searchKadSources(String fileHash, {int? fileSize}) =>
+      kad.searchSources(fileHash, fileSize: fileSize);
+  Future<int> publishKadSource(String fileHash, int fileSize, {int tcpPort = 39735}) =>
+      kad.publishSource(fileHash, fileSize, tcpPort: tcpPort);
 
   @override
   void dispose() {
-    _kadStatusTimer?.cancel();
     _searchTimeout?.cancel();
     _connSub?.cancel();
     _serverSessionSub?.cancel();

@@ -100,7 +100,7 @@ GoRouter createAppRouter(DownloadsViewModel viewModel) {
           GoRoute(
             path: '/kad',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: KadView(viewModel: viewModel),
+              child: const KadView(),
             ),
           ),
         ],

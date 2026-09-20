@@ -1,29 +1,26 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
-import '../../downloads/view_models/downloads_view_model.dart';
+import '../../../../app/providers.dart';
+import '../view_models/kad_controller.dart';
 
-class KadView extends StatefulWidget {
-  final DownloadsViewModel viewModel;
-
-  const KadView({super.key, required this.viewModel});
+class KadView extends ConsumerStatefulWidget {
+  const KadView({super.key});
 
   @override
-  State<KadView> createState() => _KadViewState();
+  ConsumerState<KadView> createState() => _KadViewState();
 }
 
-class _KadViewState extends State<KadView> {
+class _KadViewState extends ConsumerState<KadView> {
   String _searchQuery = '';
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.viewModel,
-      builder: (context, _) {
-    final vm = widget.viewModel;
-    final status = vm.kadStatus;
-    final contacts = vm.kadContacts.where((c) {
+    final vm = ref.watch(kadControllerProvider);
+    final status = vm.status;
+    final contacts = vm.contacts.where((c) {
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       return c.kadId.toLowerCase().contains(q) ||
@@ -40,7 +37,7 @@ class _KadViewState extends State<KadView> {
         _buildFilterBar(context, vm),
         const Divider(color: AppTheme.darkBorder, height: 1),
         Expanded(
-          child: vm.isKadLoading && contacts.isEmpty
+          child: vm.isLoading && contacts.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : contacts.isEmpty
               ? _buildEmptyState(context, vm)
@@ -48,13 +45,11 @@ class _KadViewState extends State<KadView> {
         ),
       ],
     );
-      },
-    );
   }
 
   // ── Toolbar ────────────────────────────────────────────────────────────────
 
-  Widget _buildToolbar(BuildContext context, DownloadsViewModel vm) {
+  Widget _buildToolbar(BuildContext context, KadController vm) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: const BoxDecoration(
@@ -87,8 +82,8 @@ class _KadViewState extends State<KadView> {
                   tooltip: 'Actualiser',
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   onPressed: () {
-                    vm.fetchKadStatus();
-                    vm.fetchKadContacts();
+                    vm.fetchStatus();
+                    vm.fetchContacts();
                   },
                 ),
                 IconButton(
@@ -123,8 +118,8 @@ class _KadViewState extends State<KadView> {
                   icon: const Icon(Icons.refresh_rounded, size: 16),
                   label: const Text('Actualiser'),
                   onPressed: () {
-                    vm.fetchKadStatus();
-                    vm.fetchKadContacts();
+                    vm.fetchStatus();
+                    vm.fetchContacts();
                   },
                 ),
                 const SizedBox(width: 10),
@@ -217,7 +212,7 @@ class _KadViewState extends State<KadView> {
 
   Widget _buildStatusCard(
     BuildContext context,
-    DownloadsViewModel vm,
+    KadController vm,
     KadStatusModel status,
   ) {
     final isPublic = status.networkProfile != 'local-lab';
@@ -281,7 +276,7 @@ class _KadViewState extends State<KadView> {
                       vertical: 4,
                     ),
                   ),
-                  onPressed: () => vm.stopKadUdp(),
+                  onPressed: () => vm.stopUdp(),
                 )
               else
                 FilledButton.icon(
@@ -299,7 +294,7 @@ class _KadViewState extends State<KadView> {
                       vertical: 4,
                     ),
                   ),
-                  onPressed: () => vm.startKadUdp(
+                  onPressed: () => vm.startUdp(
                     bindAddress: isPublic ? '0.0.0.0:39737' : '127.0.0.1:39737',
                   ),
                 ),
@@ -391,7 +386,7 @@ class _KadViewState extends State<KadView> {
 
   // ── Filter Bar ─────────────────────────────────────────────────────
 
-  Widget _buildFilterBar(BuildContext context, DownloadsViewModel vm) {
+  Widget _buildFilterBar(BuildContext context, KadController vm) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
@@ -454,7 +449,7 @@ class _KadViewState extends State<KadView> {
 
   Widget _buildContactsTable(
     BuildContext context,
-    DownloadsViewModel vm,
+    KadController vm,
     List<KadContactModel> contacts,
   ) {
     return SingleChildScrollView(
@@ -565,7 +560,7 @@ class _KadViewState extends State<KadView> {
                       color: AppColors.accentCyan,
                     ),
                     tooltip: 'Envoyer Kad Ping (0x60)',
-                    onPressed: () => vm.pingKadContact(
+                    onPressed: () => vm.pingContact(
                       ip: c.ip,
                       port: c.udpPort,
                       kadId: c.kadId,
@@ -602,7 +597,7 @@ class _KadViewState extends State<KadView> {
 
   // ── Empty State ────────────────────────────────────────────────────
 
-  Widget _buildEmptyState(BuildContext context, DownloadsViewModel vm) {
+  Widget _buildEmptyState(BuildContext context, KadController vm) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -637,7 +632,7 @@ class _KadViewState extends State<KadView> {
 
   Future<void> _handleImportNodesDat(
     BuildContext context,
-    DownloadsViewModel vm,
+    KadController vm,
   ) async {
     final pathController = TextEditingController();
     NodesDatInspectReportModel? report;
@@ -827,9 +822,9 @@ class _KadViewState extends State<KadView> {
 
   Future<void> _handleBootstrapDialog(
     BuildContext context,
-    DownloadsViewModel vm,
+    KadController vm,
   ) async {
-    final isPublic = vm.kadStatus.networkProfile != 'local-lab';
+    final isPublic = vm.status.networkProfile != 'local-lab';
     final ipController = TextEditingController(
       text: isPublic ? '' : '127.0.0.1',
     );
@@ -914,7 +909,7 @@ class _KadViewState extends State<KadView> {
               final ip = ipController.text.trim();
               final port = int.tryParse(portController.text.trim()) ?? 39737;
               Navigator.of(ctx).pop();
-              await vm.bootstrapKad(ip: ip, port: port);
+              await vm.bootstrap(ip: ip, port: port);
             },
             child: const Text('Lancer l\'amorçage'),
           ),
@@ -925,7 +920,7 @@ class _KadViewState extends State<KadView> {
 
   // ── Confirm Clear Contacts Dialog ──────────────────────────────────
 
-  void _confirmClearContacts(BuildContext context, DownloadsViewModel vm) {
+  void _confirmClearContacts(BuildContext context, KadController vm) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -952,7 +947,7 @@ class _KadViewState extends State<KadView> {
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () {
               Navigator.of(ctx).pop();
-              vm.clearKadContacts();
+              vm.clearContacts();
             },
             child: const Text('Effacer'),
           ),
@@ -965,7 +960,7 @@ class _KadViewState extends State<KadView> {
 
   Future<void> _handleBootstrapFromUrl(
     BuildContext context,
-    DownloadsViewModel vm,
+    KadController vm,
   ) async {
     final urlController = TextEditingController(
       text: 'https://upd.emule-security.org/nodes.dat',
@@ -1054,6 +1049,6 @@ class _KadViewState extends State<KadView> {
     if (url == null || url.isEmpty) return;
 
     if (!context.mounted) return;
-    await vm.bootstrapKadFromUrl(url);
+    await vm.bootstrapFromUrl(url);
   }
 }

@@ -5,6 +5,7 @@ import 'package:mule_client/mule_client.dart';
 import '../services/daemon_supervisor.dart';
 import '../ui/features/downloads/view_models/downloads_view_model.dart';
 import '../ui/features/history/view_models/history_controller.dart';
+import '../ui/features/kad/view_models/kad_controller.dart';
 
 /// Daemon client (real `RpcDaemonClient` or `FakeMuleDaemonClient`).
 /// Overridden by the `ProviderScope` created in [EmuleSionApp].
@@ -33,4 +34,9 @@ final downloadsViewModelProvider = Provider<DownloadsViewModel>(
 /// controller's disposal (it is NOT disposed by the view model).
 final historyControllerProvider = ChangeNotifierProvider<HistoryController>(
   (ref) => ref.watch(downloadsViewModelProvider).history,
+);
+
+/// Kad DHT sub-domain controller. Provider-owned disposal.
+final kadControllerProvider = ChangeNotifierProvider<KadController>(
+  (ref) => ref.watch(downloadsViewModelProvider).kad,
 );
