@@ -30,19 +30,23 @@ class KadController extends ChangeNotifier {
   }) {
     _connSub = client.connectionState.listen((state) {
       if (state == DaemonConnectionState.connected) {
-        _startStatusTimer();
-      } else {
-        _statusTimer?.cancel();
-        _statusTimer = null;
+        fetchStatus();
+        fetchContacts();
       }
+    });
+    // Event-driven refresh (`kad.statusChanged`) — replaces the former 3 s
+    // polling timer.
+    _kadSub = client.kadStatusEvents.listen((_) {
+      fetchStatus();
+      if (isSectionActive()) fetchContacts();
     });
   }
 
   KadStatusModel _status = KadStatusModel.initial;
   List<KadContactModel> _contacts = [];
   bool _isLoading = false;
-  Timer? _statusTimer;
   StreamSubscription<DaemonConnectionState>? _connSub;
+  StreamSubscription<int>? _kadSub;
 
   KadStatusModel get status => _status;
   List<KadContactModel> get contacts => _contacts;
@@ -233,22 +237,9 @@ class KadController extends ChangeNotifier {
     }
   }
 
-  void _startStatusTimer() {
-    _statusTimer?.cancel();
-    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      await fetchStatus();
-      if (isSectionActive() && !_isLoading) {
-        try {
-          _contacts = await client.listKadContacts(limit: 100);
-          notifyListeners();
-        } catch (_) {}
-      }
-    });
-  }
-
   @override
   void dispose() {
-    _statusTimer?.cancel();
+    _kadSub?.cancel();
     _connSub?.cancel();
     super.dispose();
   }

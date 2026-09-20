@@ -42,3 +42,13 @@ class DownloadLifecycleEvent {
     this.reason,
   });
 }
+
+/// `settings.changed` notification: lists the setting keys touched so
+/// clients can decide whether to refetch.
+@immutable
+class SettingsChangedEvent {
+  final int sequence;
+  final List<String> keys;
+
+  const SettingsChangedEvent({required this.sequence, this.keys = const []});
+}

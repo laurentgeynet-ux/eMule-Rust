@@ -85,6 +85,17 @@ pub enum DaemonEvent {
         sequence: u64,
         stats: StatsTickSnapshot,
     },
+    /// Kad routing/UDP state changed (contacts, bootstrap, firewall
+    /// status). Nudge event: clients refetch `kad.status`.
+    KadStatusChanged { sequence: u64 },
+    /// A history entry was recorded. Nudge event: clients refetch
+    /// `history.list` / `history.stats`.
+    HistoryEntryAdded { sequence: u64 },
+    /// Daemon settings changed. `keys` lists the setting keys touched.
+    SettingsChanged { sequence: u64, keys: Vec<String> },
+    /// Network policy changed (profile, kill switch, budgets). Nudge
+    /// event: clients refetch `network.getPolicy`.
+    NetworkPolicyChanged { sequence: u64 },
     /// A notification outside the typed set (search results, found
     /// sources, control events like `event.snapshotRequired`).
     Custom {
@@ -106,6 +117,10 @@ impl DaemonEvent {
             Self::ServerSessionUpdated { .. } => "server.sessionUpdated",
             Self::UploadsUpdated { .. } => "upload.uploadsUpdated",
             Self::StatsTick { .. } => "event.statsTick",
+            Self::KadStatusChanged { .. } => "kad.statusChanged",
+            Self::HistoryEntryAdded { .. } => "history.entryAdded",
+            Self::SettingsChanged { .. } => "settings.changed",
+            Self::NetworkPolicyChanged { .. } => "network.policyChanged",
             Self::Custom { method, .. } => method.as_str(),
         }
     }
@@ -123,6 +138,10 @@ impl DaemonEvent {
             Self::ServerSessionUpdated { .. } => Some("servers"),
             Self::UploadsUpdated { .. } => Some("uploads"),
             Self::StatsTick { .. } => Some("stats"),
+            Self::KadStatusChanged { .. } => Some("kad"),
+            Self::HistoryEntryAdded { .. } => Some("history"),
+            Self::SettingsChanged { .. } => Some("settings"),
+            Self::NetworkPolicyChanged { .. } => Some("network"),
             Self::Custom { method, .. } => match method.as_str() {
                 "server.searchResult" | "server.foundSources" => Some("search"),
                 "upnp.statusChanged" => Some("network"),
@@ -176,6 +195,15 @@ impl DaemonEvent {
             Self::StatsTick { sequence, stats } => serde_json::json!({
                 "sequence": sequence,
                 "stats": stats,
+            }),
+            Self::KadStatusChanged { sequence }
+            | Self::HistoryEntryAdded { sequence }
+            | Self::NetworkPolicyChanged { sequence } => serde_json::json!({
+                "sequence": sequence,
+            }),
+            Self::SettingsChanged { sequence, keys } => serde_json::json!({
+                "sequence": sequence,
+                "keys": keys,
             }),
             Self::Custom { payload, .. } => payload.clone(),
         };

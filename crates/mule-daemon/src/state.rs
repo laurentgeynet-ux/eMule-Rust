@@ -251,11 +251,16 @@ impl AppState {
 
     /// Emits a sequenced download update event to all active WebSocket subscribers.
     pub fn broadcast_download_update(&self, snapshot: DownloadSnapshot) {
-        let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
-        DaemonEvent::DownloadUpdated {
-            sequence: seq,
+        self.emit_event(|sequence| DaemonEvent::DownloadUpdated {
+            sequence,
             download: snapshot,
-        }
-        .send(&self.event_tx);
+        });
+    }
+
+    /// Emits any sequenced daemon event. The single entry point for
+    /// handlers/services that don't own the sequence counter.
+    pub fn emit_event(&self, make: impl FnOnce(u64) -> DaemonEvent) {
+        let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
+        make(seq).send(&self.event_tx);
     }
 }

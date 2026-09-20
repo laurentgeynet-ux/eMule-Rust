@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
@@ -15,12 +17,23 @@ class SettingsController extends ChangeNotifier {
   /// Called after every successful settings fetch.
   final void Function(Map<String, dynamic> settings)? onSettingsLoaded;
 
+  StreamSubscription<SettingsChangedEvent>? _settingsSub;
+
   SettingsController({
     required this.client,
     this.onStatus,
     this.onError,
     this.onSettingsLoaded,
-  });
+  }) {
+    // Event-driven refresh (`settings.changed`) — multi-client sync.
+    _settingsSub = client.settingsEvents.listen((_) => fetch());
+  }
+
+  @override
+  void dispose() {
+    _settingsSub?.cancel();
+    super.dispose();
+  }
 
   Map<String, dynamic> _settings = {};
 

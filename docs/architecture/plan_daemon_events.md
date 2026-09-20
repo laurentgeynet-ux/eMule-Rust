@@ -89,7 +89,7 @@
       sur desktop + snackbar/toast sur mobile/web
 - [ ] Sidebar counts réactifs immédiats
 
-## Phase E4 — Statuts pollés → événements (rang 4)
+## Phase E4 — Statuts pollés → événements (rang 4) — ✅ livrée
 
 ### Daemon
 

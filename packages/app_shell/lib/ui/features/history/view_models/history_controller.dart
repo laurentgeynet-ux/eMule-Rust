@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
@@ -15,7 +17,20 @@ class HistoryController extends ChangeNotifier {
   /// Called with an error message on failed RPC calls.
   final void Function(String message)? onError;
 
-  HistoryController({required this.client, this.onStatus, this.onError});
+  StreamSubscription<int>? _historySub;
+
+  HistoryController({required this.client, this.onStatus, this.onError}) {
+    // Event-driven refresh (`history.entryAdded`).
+    _historySub = client.historyEvents.listen((_) {
+      if (!_isLoading) fetch();
+    });
+  }
+
+  @override
+  void dispose() {
+    _historySub?.cancel();
+    super.dispose();
+  }
 
   List<HistoryEntry> _entries = [];
   HistoryStats _stats = const HistoryStats();

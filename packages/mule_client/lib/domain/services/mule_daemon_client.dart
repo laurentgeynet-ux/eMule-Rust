@@ -319,6 +319,19 @@ abstract class MuleDaemonClient {
   /// global rates, active downloads, connected peers, server/Kad state.
   Stream<DaemonStatsModel> get statsEvents;
 
+  /// Nudge stream for `kad.statusChanged` (payload = sequence; refetch
+  /// `getKadStatus`/`listKadContacts` on receipt).
+  Stream<int> get kadStatusEvents;
+
+  /// Nudge stream for `history.entryAdded` (refetch `listHistory`).
+  Stream<int> get historyEvents;
+
+  /// `settings.changed` notifications with the touched keys.
+  Stream<SettingsChangedEvent> get settingsEvents;
+
+  /// Nudge stream for `network.policyChanged` (refetch `getNetworkPolicy`).
+  Stream<int> get networkPolicyEvents;
+
   /// Cancel an upload or dequeue a waiting peer.
   Future<void> cancelUpload(String clientAddress);
 

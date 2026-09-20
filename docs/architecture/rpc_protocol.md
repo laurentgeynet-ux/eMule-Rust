@@ -148,6 +148,10 @@ souscription et sérialise son payload via `to_wire_json()` ; tous les
 | `server.sessionUpdated` | `{sequence, session: ServerSessionSnapshot}` | `servers` | faible |
 | `upload.uploadsUpdated` | `{sequence, active: [UploadSessionSnapshot], queue: [UploadSessionSnapshot], uploadRateBps}` | `uploads` | par mutation + progression throttlée ~500 ms |
 | `event.statsTick` | `{sequence, stats: {downloadBps, uploadBps, downloadsActive, peersConnected, serverConnected, kadContacts, kadUdpBound}}` | `stats` | cadence ~2 s, suspendu sans abonné |
+| `kad.statusChanged` | `{sequence}` (nudge → refetch `kad.status`) | `kad` | par mutation (udp, bootstrap, contacts) |
+| `history.entryAdded` | `{sequence}` (nudge → refetch `history.list`) | `history` | par entrée d'historique |
+| `settings.changed` | `{sequence, keys: [String]}` | `settings` | par `settings.set*` |
+| `network.policyChanged` | `{sequence}` (nudge → refetch `network.getPolicy`) | `network` | profil, kill switch, budgets |
 | `server.searchResult` | `{sequence, files: [...]}` | `search` | par recherche |
 | `server.foundSources` | `{sequence, fileHash, sources}` | `search` | par recherche de sources |
 | `upnp.statusChanged` | `UpnpStatus` | `network` | par action UPnP |

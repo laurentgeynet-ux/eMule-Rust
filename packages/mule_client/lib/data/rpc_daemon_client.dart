@@ -54,6 +54,14 @@ class RpcDaemonClient implements MuleDaemonClient {
       StreamController<DaemonStatsModel>.broadcast();
   final StreamController<DownloadLifecycleEvent> _lifecycleController =
       StreamController<DownloadLifecycleEvent>.broadcast();
+  final StreamController<int> _kadStatusController =
+      StreamController<int>.broadcast();
+  final StreamController<int> _historyController =
+      StreamController<int>.broadcast();
+  final StreamController<SettingsChangedEvent> _settingsController =
+      StreamController<SettingsChangedEvent>.broadcast();
+  final StreamController<int> _networkPolicyController =
+      StreamController<int>.broadcast();
 
   // Factory constructor or provider callback for custom channel (useful for testing)
   final WebSocketChannel Function(Uri uri)? channelFactory;
@@ -109,6 +117,18 @@ class RpcDaemonClient implements MuleDaemonClient {
   @override
   Stream<DownloadLifecycleEvent> get downloadLifecycleEvents =>
       _lifecycleController.stream;
+
+  @override
+  Stream<int> get kadStatusEvents => _kadStatusController.stream;
+
+  @override
+  Stream<int> get historyEvents => _historyController.stream;
+
+  @override
+  Stream<SettingsChangedEvent> get settingsEvents => _settingsController.stream;
+
+  @override
+  Stream<int> get networkPolicyEvents => _networkPolicyController.stream;
 
   @override
   DaemonInfo? get daemonInfo => _daemonInfo;
@@ -388,6 +408,33 @@ class RpcDaemonClient implements MuleDaemonClient {
               reason: params['reason'] as String?,
             ),
           );
+        }
+      } else if (method == 'kad.statusChanged' ||
+          method == 'history.entryAdded' ||
+          method == 'settings.changed' ||
+          method == 'network.policyChanged') {
+        final params = data['params'] as Map<String, dynamic>?;
+        final seq = (params?['sequence'] as num?)?.toInt() ?? 0;
+        switch (method) {
+          case 'kad.statusChanged':
+            if (!_kadStatusController.isClosed) _kadStatusController.add(seq);
+          case 'history.entryAdded':
+            if (!_historyController.isClosed) _historyController.add(seq);
+          case 'network.policyChanged':
+            if (!_networkPolicyController.isClosed) {
+              _networkPolicyController.add(seq);
+            }
+          case 'settings.changed':
+            if (!_settingsController.isClosed) {
+              _settingsController.add(
+                SettingsChangedEvent(
+                  sequence: seq,
+                  keys: ((params?['keys'] as List?) ?? const [])
+                      .whereType<String>()
+                      .toList(),
+                ),
+              );
+            }
         }
       } else if (method == 'event.statsTick') {
         final params = data['params'] as Map<String, dynamic>?;
@@ -1346,6 +1393,10 @@ class RpcDaemonClient implements MuleDaemonClient {
     _uploadsController.close();
     _statsController.close();
     _lifecycleController.close();
+    _kadStatusController.close();
+    _historyController.close();
+    _settingsController.close();
+    _networkPolicyController.close();
   }
 }
 

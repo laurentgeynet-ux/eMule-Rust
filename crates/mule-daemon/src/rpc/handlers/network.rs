@@ -3,6 +3,10 @@ use serde_json::{json, Value};
 use crate::error::JsonRpcError;
 use crate::state::AppState;
 
+fn emit_policy_changed(state: &AppState) {
+    state.emit_event(|sequence| crate::services::DaemonEvent::NetworkPolicyChanged { sequence });
+}
+
 pub async fn handle_network_get_policy(state: &AppState) -> Result<Value, JsonRpcError> {
     let profile = state.network_policy.profile();
     let net_state = state.network_policy.state();
@@ -36,7 +40,7 @@ pub async fn handle_network_set_profile(
         .map_err(|e: String| JsonRpcError::invalid_params(&e))?;
 
     state.network_policy.set_profile(profile);
-
+    emit_policy_changed(state);
     handle_network_get_policy(state).await
 }
 
@@ -46,6 +50,7 @@ pub async fn handle_network_disconnect_all(state: &AppState) -> Result<Value, Js
     let _ = state.peer_session.disconnect().await;
     state.inbound_listener.stop().await;
     state.abort_all_tasks().await;
+    emit_policy_changed(state);
     Ok(json!({
         "success": true,
         "state": state.network_policy.state().as_str()
@@ -54,6 +59,7 @@ pub async fn handle_network_disconnect_all(state: &AppState) -> Result<Value, Js
 
 pub async fn handle_network_enable(state: &AppState) -> Result<Value, JsonRpcError> {
     state.network_policy.enable();
+    emit_policy_changed(state);
     Ok(json!({
         "success": true,
         "state": state.network_policy.state().as_str()
@@ -94,6 +100,7 @@ pub async fn handle_network_set_budgets(
         .set_budgets(budgets)
         .map_err(|e| JsonRpcError::invalid_params(&format!("Failed to set budgets: {e}")))?;
 
+    emit_policy_changed(state);
     handle_network_get_policy(state).await
 }
 

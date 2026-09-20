@@ -103,7 +103,10 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
 
     let portable_default =
         crate::workdir::WorkDirectoryResolver::resolve(None, None).default_download_dir;
-
+    state.emit_event(|sequence| crate::services::DaemonEvent::SettingsChanged {
+        sequence,
+        keys: vec!["defaultDownloadDir".to_string()],
+    });
     Ok(json!({
         "defaultDownloadDir": current_dir.to_string_lossy(),
         "portableDownloadDir": portable_default.to_string_lossy(),
@@ -218,6 +221,29 @@ pub async fn handle_settings_set(
         }
     }
 
+    let mut keys = Vec::new();
+    if updated_dir.is_some() {
+        keys.push("defaultDownloadDir");
+    }
+    if updated_retention.is_some() {
+        keys.push("historyRetentionDays");
+    }
+    if updated_max_global.is_some() {
+        keys.push("maxGlobalDownloadPeers");
+    }
+    if updated_max_per_file.is_some() {
+        keys.push("maxPeersPerDownload");
+    }
+    if updated_min_per_file.is_some() {
+        keys.push("minPeersPerDownload");
+    }
+    if !keys.is_empty() {
+        state.emit_event(|sequence| crate::services::DaemonEvent::SettingsChanged {
+            sequence,
+            keys: keys.iter().map(|k| k.to_string()).collect(),
+        });
+    }
+
     Ok(json!({
         "success": true,
         "defaultDownloadDir": updated_dir,
@@ -241,7 +267,11 @@ pub async fn handle_settings_set_retention_days(
     let mut dls = state.downloads.lock().await;
     dls.set_setting("history_retention_days", &retention_days.to_string())?;
     let pruned_count = dls.apply_retention_policy(retention_days)?;
-
+    drop(dls);
+    state.emit_event(|sequence| crate::services::DaemonEvent::SettingsChanged {
+        sequence,
+        keys: vec!["historyRetentionDays".to_string()],
+    });
     Ok(json!({
         "success": true,
         "retentionDays": retention_days,
@@ -258,7 +288,10 @@ pub async fn handle_settings_reset_download_dir(state: &AppState) -> Result<Valu
 
     let portable_default =
         crate::workdir::WorkDirectoryResolver::resolve(None, None).default_download_dir;
-
+    state.emit_event(|sequence| crate::services::DaemonEvent::SettingsChanged {
+        sequence,
+        keys: vec!["defaultDownloadDir".to_string()],
+    });
     Ok(json!({
         "success": true,
         "defaultDownloadDir": portable_default.to_string_lossy(),

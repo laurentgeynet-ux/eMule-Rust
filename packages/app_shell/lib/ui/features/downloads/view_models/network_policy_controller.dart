@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
@@ -16,12 +18,24 @@ class NetworkPolicyController extends ChangeNotifier {
   /// Called after `disconnectAll` succeeds (kill switch engaged).
   final void Function()? onAllDisconnected;
 
+  StreamSubscription<int>? _policySub;
+
   NetworkPolicyController({
     required this.client,
     this.onStatus,
     this.onError,
     this.onAllDisconnected,
-  });
+  }) {
+    // Event-driven refresh (`network.policyChanged`) — kill switch /
+    // profile / budgets stay in sync across connected clients.
+    _policySub = client.networkPolicyEvents.listen((_) => fetchPolicy());
+  }
+
+  @override
+  void dispose() {
+    _policySub?.cancel();
+    super.dispose();
+  }
 
   NetworkPolicySnapshot? _policy;
   List<NetworkAuditEntryItem> _auditLog = [];

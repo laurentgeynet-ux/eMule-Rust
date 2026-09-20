@@ -77,6 +77,18 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   @override
   Stream<DownloadLifecycleEvent> get downloadLifecycleEvents =>
       _lifecycleController.stream;
+
+  @override
+  Stream<int> get kadStatusEvents => _kadStatusController.stream;
+
+  @override
+  Stream<int> get historyEvents => _historyController.stream;
+
+  @override
+  Stream<SettingsChangedEvent> get settingsEvents => _settingsController.stream;
+
+  @override
+  Stream<int> get networkPolicyEvents => _networkPolicyController.stream;
   @override
   Stream<ServerSessionModel> get serverSessionEvents =>
       _serverSessionController.stream;
@@ -480,6 +492,14 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       StreamController<DaemonStatsModel>.broadcast();
   final StreamController<DownloadLifecycleEvent> _lifecycleController =
       StreamController<DownloadLifecycleEvent>.broadcast();
+  final StreamController<int> _kadStatusController =
+      StreamController<int>.broadcast();
+  final StreamController<int> _historyController =
+      StreamController<int>.broadcast();
+  final StreamController<SettingsChangedEvent> _settingsController =
+      StreamController<SettingsChangedEvent>.broadcast();
+  final StreamController<int> _networkPolicyController =
+      StreamController<int>.broadcast();
   int _simTick = 0;
 
   void _emitLifecycle(
@@ -1888,5 +1908,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _uploadsController.close();
     _statsController.close();
     _lifecycleController.close();
+    _kadStatusController.close();
+    _historyController.close();
+    _settingsController.close();
+    _networkPolicyController.close();
   }
 }

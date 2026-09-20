@@ -170,6 +170,7 @@ impl DownloadService {
             sequence,
             download: snapshot.clone(),
         });
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
         Ok(snapshot)
     }
 
@@ -243,11 +244,15 @@ impl DownloadService {
     }
 
     pub fn pause_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, DaemonError> {
-        operations::pause_download(&mut self.db, &mut self.active, id)
+        let snap = operations::pause_download(&mut self.db, &mut self.active, id)?;
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
+        Ok(snap)
     }
 
     pub fn resume_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, DaemonError> {
-        operations::resume_download(&mut self.db, &mut self.active, id)
+        let snap = operations::resume_download(&mut self.db, &mut self.active, id)?;
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
+        Ok(snap)
     }
 
     pub fn remove_download(&mut self, id: &Uuid, delete_files: bool) -> Result<(), DaemonError> {
@@ -256,6 +261,7 @@ impl DownloadService {
             sequence,
             id: id.to_string(),
         });
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
         Ok(())
     }
 
@@ -286,6 +292,7 @@ impl DownloadService {
                     download: snapshot.clone(),
                     reason: reason.clone(),
                 });
+                self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
             }
             _ => {}
         }

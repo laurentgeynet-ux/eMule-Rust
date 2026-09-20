@@ -5,6 +5,16 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **E4 — Fin du polling** : events daemon `kad.statusChanged`,
+  `history.entryAdded`, `settings.changed {keys}`, `network.policyChanged`
+  (topics `kad`/`history`/`settings`/`network`, payload nudge = refetch).
+  `AppState::emit_event` = point d'entrée unique pour les handlers. Côté
+  client : `kadStatusEvents`/`historyEvents`/`settingsEvents`/
+  `networkPolicyEvents` + `SettingsChangedEvent`. Côté UI : le timer 3 s
+  de `KadController` est supprimé (events + fetch à la connexion),
+  `HistoryController`/`SettingsController`/`NetworkPolicyController` se
+  rafraîchissent sur event → synchronisation multi-clients live.
+
 - **E3 — Cycle de vie downloads** : events daemon `event.downloadAdded` /
   `downloadRemoved` / `downloadCompleted` / `downloadFailed` (topic
   `downloads`), émis centralement par `DownloadService` (`set_event_channel`
