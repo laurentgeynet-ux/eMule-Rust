@@ -303,12 +303,13 @@ impl ServerUdpService {
             )
         };
         let Some(flags) = flags else {
-            // Flags unknown — probe the server first, then send REQ2 (eMule
-            // falls back to REQ2 when it cannot prove REQ3 support).
+            // Flags unknown — probe the server first, then send REQ1, the
+            // lowest common denominator (eMule sends GLOBSEARCHREQ 0x98 to
+            // servers without EXT_GETFILES; REQ2 would be ignored there).
             self.send_servstat_req(server_udp_addr).await;
-            let pkt = server_udp::encode_glob_search_req2(search_payload);
+            let pkt = server_udp::encode_glob_search_req(search_payload);
             return match socket.send_to(&pkt, server_udp_addr).await {
-                Ok(_) => Some("REQ2"),
+                Ok(_) => Some("REQ1"),
                 Err(e) => {
                     tracing::debug!(
                         "Server UDP: send_glob_search to {server_udp_addr} failed: {e}"
@@ -318,20 +319,18 @@ impl ServerUdpService {
             };
         };
 
-        let use_req3 = flags & server_udp::SRV_UDPFLG_EXT_GETFILES != 0
-            && flags & server_udp::SRV_UDPFLG_LARGEFILES != 0;
-        let (pkt, form) = if use_req3 {
+        // eMule SearchResultsWnd.cpp:277-310 — three wire forms:
+        // EXT_GETFILES+LARGEFILES → REQ3, EXT_GETFILES → REQ2, else REQ1.
+        let ext_getfiles = flags & server_udp::SRV_UDPFLG_EXT_GETFILES != 0;
+        let (pkt, form) = if ext_getfiles && flags & server_udp::SRV_UDPFLG_LARGEFILES != 0 {
             (server_udp::encode_glob_search_req3(search_payload), "REQ3")
-        } else {
+        } else if ext_getfiles {
             (server_udp::encode_glob_search_req2(search_payload), "REQ2")
+        } else {
+            (server_udp::encode_glob_search_req(search_payload), "REQ1")
         };
         tracing::debug!(
-            "Server UDP: {} to {server_udp_addr} (udp_flags=0x{flags:08X})",
-            if use_req3 {
-                "GLOBSEARCHREQ3"
-            } else {
-                "GLOBSEARCHREQ2"
-            }
+            "Server UDP: GLOBSEARCH{form} to {server_udp_addr} (udp_flags=0x{flags:08X})"
         );
         match socket.send_to(&pkt, server_udp_addr).await {
             Ok(_) => Some(form),
@@ -492,16 +491,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn glob_search_probes_unknown_server_then_sends_req2() {
+    async fn glob_search_probes_unknown_server_then_sends_req1() {
         let svc = service();
         svc.start(Ipv4Addr::LOCALHOST.into()).await.unwrap();
         let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().unwrap();
 
         let form = svc.send_glob_search(server_addr, &[0xAA]).await;
-        assert_eq!(form, Some("REQ2"));
-        // First datagram: GLOBSERVSTATREQ probe (0x96), second: REQ2 (0x92).
+        assert_eq!(form, Some("REQ1"));
+        // First datagram: GLOBSERVSTATREQ probe (0x96), second: REQ1 (0x98).
         assert_eq!(next_opcode(&server).await, 0x96);
-        assert_eq!(next_opcode(&server).await, 0x92);
+        assert_eq!(next_opcode(&server).await, 0x98);
+    }
+
+    #[tokio::test]
+    async fn glob_search_sends_req1_when_server_lacks_ext_getfiles() {
+        let svc = service();
+        svc.start(Ipv4Addr::LOCALHOST.into()).await.unwrap();
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        svc.inner
+            .write()
+            .await
+            .server_udp_flags
+            .insert(server_addr, server_udp::SRV_UDPFLG_LARGEFILES);
+
+        let form = svc.send_glob_search(server_addr, &[0xAA]).await;
+        assert_eq!(form, Some("REQ1"));
+        assert_eq!(next_opcode(&server).await, 0x98);
     }
 }

@@ -8,8 +8,8 @@
 //! - `OP_GLOBSERVSTATREQ`/`RES` (`0x96`/`0x97`) — server statistics.
 
 use super::opcodes::{
-    OP_GLOBFOUNDSOURCES, OP_GLOBGETSOURCES2, OP_GLOBSEARCHREQ2, OP_GLOBSEARCHREQ3,
-    OP_GLOBSEARCHRES, OP_GLOBSERVSTATREQ, OP_GLOBSERVSTATRES,
+    OP_GLOBFOUNDSOURCES, OP_GLOBGETSOURCES2, OP_GLOBSEARCHREQ, OP_GLOBSEARCHREQ2,
+    OP_GLOBSEARCHREQ3, OP_GLOBSEARCHRES, OP_GLOBSERVSTATREQ, OP_GLOBSERVSTATRES,
 };
 
 /// eMule `SRV_UDPFLG_EXT_GETFILES` — the server answers global UDP search.
@@ -98,6 +98,17 @@ pub fn encode_glob_servstat_req(challenge: u32) -> Vec<u8> {
     out.push(PR_ED2K);
     out.push(OP_GLOBSERVSTATREQ);
     out.extend_from_slice(&challenge.to_le_bytes());
+    out
+}
+
+/// Encodes `OP_GLOBSEARCHREQ` (`0x98`) — the legacy UDP search eMule sends
+/// to servers that do NOT advertise `SRV_UDPFLG_EXT_GETFILES`
+/// (`SearchResultsWnd.cpp:305-310`). Same raw search-tree body as REQ2.
+pub fn encode_glob_search_req(search_payload: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 + search_payload.len());
+    out.push(PR_ED2K);
+    out.push(OP_GLOBSEARCHREQ);
+    out.extend_from_slice(search_payload);
     out
 }
 

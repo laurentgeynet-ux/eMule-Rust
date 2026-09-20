@@ -1305,19 +1305,21 @@ class DownloadsViewModel extends ChangeNotifier {
       final targets = resp['udpTargets'];
       var udpSummary = '';
       if (targets is List && targets.isNotEmpty) {
-        var req3 = 0, req2 = 0, failed = 0;
+        var req3 = 0, req2 = 0, req1 = 0, failed = 0;
         for (final t in targets) {
           switch (t is Map ? t['request'] : null) {
             case 'REQ3':
               req3++;
             case 'REQ2':
               req2++;
+            case 'REQ1':
+              req1++;
             default:
               failed++;
           }
         }
-        udpSummary =
-            ' — UDP: $req3×REQ3, $req2×REQ2${failed > 0 ? ', $failed échec(s)' : ''}';
+        udpSummary = ' — UDP: $req3×REQ3, $req2×REQ2, $req1×REQ1'
+            '${failed > 0 ? ', $failed échec(s)' : ''}';
       }
       _statusNotification = udpOnly
           ? 'Recherche globale "$trimmed" envoyée$udpSummary'
