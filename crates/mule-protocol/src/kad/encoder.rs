@@ -40,6 +40,42 @@ impl KadEncoder {
         buf.freeze()
     }
 
+    /// Encodes a KADEMLIA_FINDBUDDY_RES (0x5A) acceptance packet:
+    /// [buddy_id:16][client_id:16][tcp_port:2][connect_opts:1] — official
+    /// eMule format (`Process_KADEMLIA_FINDBUDDY_REQ` response).
+    pub fn encode_findbuddy_res(
+        buddy_id: &KadIdBytes,
+        client_id: &KadIdBytes,
+        tcp_port: u16,
+        connect_options: u8,
+    ) -> Bytes {
+        let mut buf = BytesMut::with_capacity(37);
+        buf.put_u8(PR_KADEMLIA);
+        buf.put_u8(KADEMLIA_FINDBUDDY_RES);
+        buf.put_slice(buddy_id);
+        buf.put_slice(client_id);
+        buf.put_u16_le(tcp_port);
+        buf.put_u8(connect_options);
+        buf.freeze()
+    }
+
+    /// Encodes a KADEMLIA_CALLBACK_REQ (0x52) relay request:
+    /// [buddy_id:16][file_id:16][tcp_port:2] — sent unencrypted to the
+    /// buddy's Kad UDP port (eMule `TryToConnect` CCS_KADCALLBACK).
+    pub fn encode_callback_req(
+        buddy_id: &KadIdBytes,
+        file_id: &KadIdBytes,
+        tcp_port: u16,
+    ) -> Bytes {
+        let mut buf = BytesMut::with_capacity(36);
+        buf.put_u8(PR_KADEMLIA);
+        buf.put_u8(KADEMLIA_CALLBACK_REQ);
+        buf.put_slice(buddy_id);
+        buf.put_slice(file_id);
+        buf.put_u16_le(tcp_port);
+        buf.freeze()
+    }
+
     /// Encodes a Kad2 Hello request packet.
     pub fn encode_hello_req(
         kad_id: &KadIdBytes,
@@ -173,7 +209,7 @@ impl KadEncoder {
         buf.put_u16_le(count as u16);
         for s in &sources[..count] {
             buf.put_slice(&s.kad_id);
-            buf.put_u8(5); // 5 tags
+            buf.put_u8(if s.buddy_id.is_some() { 6 } else { 5 });
 
             // 1. TAG_SOURCETYPE (0xFF) -> TAGTYPE_UINT8 (0x09)
             buf.put_u8(0x09);
@@ -204,6 +240,18 @@ impl KadEncoder {
             buf.put_u16_le(1);
             buf.put_u8(0xF3);
             buf.put_u8(s.encryption);
+
+            // 6. TAG_BUDDYHASH (0xF8) -> TAGTYPE_STRING (0x02), 32-char hex
+            //    (eMule CKadTagStr(TAG_BUDDYHASH, md4str(buddyID))) — only on
+            //    LowID sources reachable through a Kad buddy.
+            if let Some(buddy) = &s.buddy_id {
+                let hex_str: String = buddy.iter().map(|b| format!("{b:02X}")).collect();
+                buf.put_u8(0x02);
+                buf.put_u16_le(1);
+                buf.put_u8(0xF8);
+                buf.put_u16_le(hex_str.len() as u16);
+                buf.put_slice(hex_str.as_bytes());
+            }
         }
         buf.freeze()
     }

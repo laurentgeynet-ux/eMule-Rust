@@ -54,6 +54,7 @@ impl InboundListenerService {
             server_session: Arc::new(std::sync::RwLock::new(None)),
             client_udp: Arc::new(std::sync::RwLock::new(None)),
             kad_udp: Arc::new(std::sync::RwLock::new(None)),
+            kad: Arc::new(std::sync::RwLock::new(None)),
         }
     }
 
@@ -65,6 +66,11 @@ impl InboundListenerService {
     /// Injects the Kad UDP service (server side of the UDP firewall check).
     pub fn set_kad_udp(&mut self, svc: Arc<crate::services::kad_udp::KadUdpService>) {
         *self.kad_udp.write().unwrap() = Some(svc);
+    }
+
+    /// Injects the Kad service (bootstrap-from-client on inbound hellos).
+    pub fn set_kad(&mut self, svc: Arc<crate::services::kad::KadService>) {
+        *self.kad.write().unwrap() = Some(svc);
     }
 
     /// Injects the peer session manager (LowID callback adoption).

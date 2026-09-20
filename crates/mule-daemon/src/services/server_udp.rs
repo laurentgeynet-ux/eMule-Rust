@@ -313,6 +313,7 @@ async fn handle_glob_found_sources(
                 cooldown_until_unix_ms: None,
                 user_hash: None,
                 crypt_options: 0,
+                buddy_id: None,
             });
         }
 

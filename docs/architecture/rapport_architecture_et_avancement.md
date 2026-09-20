@@ -2,7 +2,7 @@
 
 **Projet :** Emule-Sion  
 **Date :** 19 Septembre 2026  
-**Version Workspace :** `v0.1.8` (Desktop `v0.1.8+1`)  
+**Version Workspace :** `v0.1.9` (Desktop `v0.1.9+1`)  
 **Auteurs :** Analyse d'ingénierie logicielle & architecture système  
 **Statut :** Document d'audit et de synthèse technique mis à jour
 
@@ -207,7 +207,7 @@ Refactorisé selon une architecture modulaire propre :
   * Sécurité & Réseau : `emule_get_network_policy`, `emule_set_network_profile`, `emule_network_disconnect_all`, `emule_import_ip_filter`, `emule_set_network_budgets`, `emule_upnp_status`, `emule_upnp_map_ports`, `emule_get_identity`, `emule_rotate_identity`, `emule_list_credits`.
 
 ### 3.8 `apps/desktop` — Interface Utilisateur Flutter Desktop Windows
-Développée en Clean Architecture et MVVM (`v0.1.8+1`) :
+Développée en Clean Architecture et MVVM (`v0.1.9+1`) :
 * **Téléchargements** : Part Map interactive bloc par bloc (9,28 Mo) avec tooltips d'offset, métriques de vitesse en direct (calculée et synchronisée avec le débit agrégé du swarm), glisser-déposer de `.part.met`, gestion de catégories.
 * **Recherche Unifiée** : sélecteur bi-moteur (*Serveurs eD2K* / *Réseau Kad DHT*), filtres de taille et ajout direct aux téléchargements.
 * **Serveurs** : état de connexion, import de listes `server.met`, ping de latence et interrogation de sources.
@@ -229,7 +229,8 @@ Développée en Clean Architecture et MVVM (`v0.1.8+1`) :
 | **v0.1.5** | 17/09/2026 | Allocateur dynamique de swarm (**Weighted Max-Min Fair-Share**), démarrage basse latence des téléchargements (intervalles d'auto-découverte 30s/60s/300s), interopérabilité Kad legacy (`KADEMLIA_BOOTSTRAP_REQ_OLD`), polling Kad dans l'UI Flutter. | ✅ Validé & Mergé |
 | **v0.1.6** | 18/09/2026 | **Source Exchange v4 (SX1 & SX2)** : échange de sources pair-à-pair complet. **Gestion des blocs compressés** : décompression zlib en continu (`OP_COMPRESSEDPART`). **Intégration MCP (`mule-mcp`)** : crate dédié avec 83 outils MCP pour assistants IA. | ✅ Validé & Mergé |
 | **v0.1.7** | 19/09/2026 | **Convergence Recherche Kad DHT** : métrique de distance numérique DWORDs (CUInt128), endianness IP wire corrigée, convergence itérative vers `SEARCHTOLERANCE` (0x01000000), résolution collision d'opcodes sur 0x3B, timeout UDP optimisé (3s). **Refactorisation Clean Architecture** : éclatement modulaire de `mule-daemon`, `mule-protocol`, `mule-core`, `mule-mcp`. | ✅ Validé & Mergé |
-| **v0.1.8** *(Actuel)* | 19/09/2026 | **Téléchargement Multi-Pairs & Swarm eMule** : agrégation des débits en direct (`sync_transfer_rates`), gestion conforme des files d'attente distantes (`Disconnected in queue` avec re-ask à 10–15m), protection du plafond de quota water-filling, dispatcher de téléversement (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`). **Cartographie** : inventaire exhaustif `INDEX.md`. | ✅ Compilé, testé et validé en conditions réelles |
+| **v0.1.8** | 19/09/2026 | **Téléchargement Multi-Pairs & Swarm eMule** : agrégation des débits en direct (`sync_transfer_rates`), gestion conforme des files d'attente distantes (`Disconnected in queue` avec re-ask à 10–15m), protection du plafond de quota water-filling, dispatcher de téléversement (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`). **Cartographie** : inventaire exhaustif `INDEX.md`. | ✅ Compilé, testé et validé en conditions réelles |
+| **v0.1.9** *(Actuel)* | 20/09/2026 | **Interopérabilité eMule 0.72a (Phase 16)** : AICH + hashsets par part, `.part.met`, multi-slots upload + crédits SUI, USS, socket client-UDP, `OP_OFFERFILES`, callback LowID, nœud de stockage Kad, `FIREWALLUDP` (WAN validé), buddy callback Kad, obfuscation serveur DH768+RC4 + paquets compressés `0xD4` (WAN validé). | ✅ Validé WAN réel |
 
 ---
 
@@ -298,7 +299,7 @@ Le projet dispose d'une suite complète de 83 outils MCP intégrés (`crates/mul
 Toutes les vérifications s'exécutent de manière reproductible et hors-ligne :
 
 ```powershell
-# 1. Compilation du workspace complet (Rust v0.1.8)
+# 1. Compilation du workspace complet (Rust v0.1.9)
 cargo check --workspace --all-targets --all-features
 
 # 2. Linter Rust
@@ -363,19 +364,25 @@ Audit comparatif du daemon contre les sources officielles **eMule 0.72a** (`D:\e
 | **SUI durci** | Migration `cryptkey.dat` legacy, ordre de challenge différé inbound/outbound, rôle de signataire inbound, métriques SUI. |
 | **Test de joignabilité UDP Kad** (`0x62`/`0xA7`) | Sémantique `CUDPFirewallTester` : `OP_FWCHECKUDPREQ` (PR_EMULE) envoyé à ≤2 contacts vérifiés Kad≥6 via connexion TCP dédiée (hello `KadVersion=6`), corrélation des datagrammes `KADEMLIA2_FIREWALLUDP` par IP candidate, états `unverified/testing/open/firewalled` + détection du port externe NAT (`use_extern`), budget ~6 min ; datagrammes non sollicités ignorés ; **déchiffrement des réponses** : les pairs eMule chiffrent `FIREWALLUDP` (`EncryptSendClient` : RC4/MD5(receiverKey‖rand), magic `0x395F2EC1`) — validé sur WAN réel — la boucle UDP déchiffre via la clé `GetUDPVerifyKey` conservée par le tracker avant de rejeter un premier octet inconnu ; côté serveur : réponse aux `OP_FWCHECKUDPREQ` entrants (sondes vers port interne puis externe) ; état exposé dans `kad.status`. |
 
+| **Buddy callback Kad (LowID via relais Kad)** (`0x51`/`0x52`/`0x5A`, `0x94`/`0x99`/`0x9F`/`0xA0`) | Trois rôles eMule : *relais* — `FINDBUDDY_REQ` accepté si vérifié non-firewallé et sans buddy → `FINDBUDDY_RES` + pending (TTL 120 s), adoption TCP comme lien buddy (`BUDDYPING`→`BUDDYPONG`), `CALLBACK_REQ` relayé en `OP_CALLBACK`, `OP_REASKCALLBACKUDP` relayé en `OP_REASKCALLBACKTCP` ; *demandeur* — `TAG_BUDDYHASH` (`0xF8`) persisté (`peer_sources.buddy_id`), sources LowID Kad `kadcb:<ip>`, `CALLBACK_REQ` via la table de routage, adoption inbound par IP (`pending_kad_callbacks`) ; *rappel serveur* — `OP_CALLBACKREQUESTED` déclenche une connexion sortante (`connect_back`) au lieu d'un log. |
+| **Paquets serveur compressés** (`OP_PACKEDPROT` `0xD4`) | TCP : décompression zlib du payload avant dispatch (cap strict 250 Ko, `Packet::UnPackPacket`), opcode préservé, proto restauré en `PR_ED2K` — corrige les serveurs « muets » qui compressent `SEARCHRESULT`/`FOUNDSOURCES` ; UDP : `decode_server_udp` décompresse les datagrammes `0xD4` avec la même borne ; paquets malformés ignorés proprement. |
+| **Connexion serveur obfusquée** (DH768+RC4, `ECS_PENDING_SERVER`) | Handshake client↔serveur dédié (`ObfuscatedStream::connect_server_outgoing`) : `[marker][G^A][padlen][pad]` clair → pubkey serveur → clés `RC4(MD5(S‖34))/RC4(MD5(S‖203))` drop-1024 → syncs chiffrés ; lecture de `ST_TCPPORTOBFUSCATION`/`ST_UDPPORTOBFUSCATION` (`0x97`/`0x98`) dans `OP_SERVERIDENT`, persistance par adresse ; sémantique `CServerSocket::ConnectTo` (tentative une fois même sans port dédié, `SetTriedCrypt`, fallback plaintext) ; login envoyé post-handshake ; transport `ObfuscatedStream<TcpStream>` transparent. |
+| **Recherche serveur : timeout UI** | Un serveur muet laissait `_isSearching` actif à vie et bloquait toute recherche ; timeout de 30 s avec statut explicite, résultats tardifs toujours acceptés. |
+| **Bootstrap Kad depuis pairs entrants** | `maybe_bootstrap_from_peer` (throttle 1×/min, table < 50) déclenché aussi par les connexions entrantes annonçant un port Kad (`CT_EMULE_UDPPORTS`), pas seulement les sortantes. |
+
 ### Restant (roadmap par priorité)
 
-1. **Kad restant** : notes (`SEARCH_NOTES` — nécessite un index de notes `CEntry` + tags), callback buddy (`KADEMLIA_CALLBACK_REQ`, `OP_REASKCALLBACKUDP`).
+1. **Kad restant** : notes (`SEARCH_NOTES` — nécessite un index de notes `CEntry` + tags).
 2. **Recherche UDP** : `OP_GLOBSEARCHREQ3` (forme étendue avec tag `CT_SERVER_UDPSEARCH_FLAGS`) non émis — REQ2 seulement.
 
-Limites connues du callback LowID livré : pas de connexion sortante en réponse à `OP_CALLBACKREQUESTED`, pas de callback Kad via buddy. Limites connues du test UDP livré : le drapeau « résultat biaisé » (demandeur déjà connu) côté serveur n'est pas calculé (toujours 0), la clé de vérification UDP est acceptée mais non utilisée (pas de chiffrement Kad UDP), et l'état du pare-feu n'influence pas encore les décisions de publication ni le callback direct (MiscOptions2 `DirectUDPCallback` reste à 0).
+Limites connues du buddy callback livré : pas de rôle *client buddy* (le daemon LowID ne cherche pas de buddy pour lui-même — `FINDBUDDY_REQ` sortant non implémenté), pas de ré-emission périodique de `BUDDYPING` côté demandeur. Limites connues du test UDP livré : le drapeau « résultat biaisé » (demandeur déjà connu) côté serveur n'est pas calculé (toujours 0), la clé de vérification UDP est acceptée mais non utilisée (pas de chiffrement Kad UDP), et l'état du pare-feu n'influence pas encore les décisions de publication ni le callback direct (MiscOptions2 `DirectUDPCallback` reste à 0).
 
 ---
 
 ## 11. Conclusion
 
 Le projet **Emule-Sion** a franchi avec succès les jalons de conception les plus exigeants :
-* L'architecture a atteint le stade **v0.1.8** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
+* L'architecture a atteint le stade **v0.1.9** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
 * Les fonctionnalités de transfert multi-sources, de décompression continue zlib, de Source Exchange v1/v2, et de convergence Kad DHT avec calcul métrique 128 bits eMule sont pleinement opérationnelles.
 * La Phase 16 a ajouté l'interopérabilité réseau essentielle : vérification par hashset, AICH réseau, publication serveur (`OP_OFFERFILES`), callback LowID, écriture `.part.met`, nœud de stockage Kad, upload compressé et multi-slots.
 * L'intégration d'un serveur **MCP natif** confère au projet une dimension d'observabilité et d'automatisation par intelligence artificielle unique dans le paysage des clients P2P.

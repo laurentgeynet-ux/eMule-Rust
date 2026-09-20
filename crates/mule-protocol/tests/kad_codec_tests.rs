@@ -185,6 +185,7 @@ fn test_kad_search_and_publish_source_roundtrip() {
             udp_port: 39737,
             tcp_port: 39735,
             encryption: 0,
+            buddy_id: None,
         },
         KadSourceWire {
             kad_id: [0x22u8; 16],
@@ -192,6 +193,7 @@ fn test_kad_search_and_publish_source_roundtrip() {
             udp_port: 4673,
             tcp_port: 4663,
             encryption: 1,
+            buddy_id: None,
         },
     ];
 
@@ -344,6 +346,7 @@ fn test_emule_source_response_with_tags_roundtrip() {
         udp_port: 50671,
         tcp_port: 50662,
         encryption: 3,
+        buddy_id: None,
     }];
 
     let encoded = KadCodec::encode_search_source_res(&file_hash, &sources);
@@ -423,4 +426,69 @@ fn test_kad_firewall_udp_malformed() {
     // Payload shorter than 3 bytes must be rejected.
     let raw = [PR_KADEMLIA, KADEMLIA2_FIREWALLUDP, 0x00];
     assert!(KadCodec::decode(&raw).is_err());
+}
+
+#[test]
+fn test_kad_findbuddy_req_decode() {
+    // eMule KADEMLIA_FINDBUDDY_REQ: [buddy_id:16][user_id:16][tcp_port:2]
+    let buddy_id = [0x11u8; 16];
+    let user_id = [0x22u8; 16];
+    let mut raw = Vec::with_capacity(36);
+    raw.push(PR_KADEMLIA);
+    raw.push(KADEMLIA_FINDBUDDY_REQ);
+    raw.extend_from_slice(&buddy_id);
+    raw.extend_from_slice(&user_id);
+    raw.extend_from_slice(&4662u16.to_le_bytes());
+
+    match KadCodec::decode(&raw).expect("decode findbuddy req") {
+        KadMessage::FindBuddyReq(r) => {
+            assert_eq!(r.buddy_id, buddy_id);
+            assert_eq!(r.user_id, user_id);
+            assert_eq!(r.tcp_port, 4662);
+        }
+        _ => panic!("expected FindBuddyReq"),
+    }
+
+    // Truncated payload rejected
+    assert!(KadCodec::decode(&raw[..20]).is_err());
+}
+
+#[test]
+fn test_kad_findbuddy_res_roundtrip() {
+    let buddy_id = [0x33u8; 16];
+    let client_id = [0x44u8; 16];
+    let encoded = KadCodec::encode_findbuddy_res(&buddy_id, &client_id, 4662, 0x01);
+    assert_eq!(encoded[0], PR_KADEMLIA);
+    assert_eq!(encoded[1], KADEMLIA_FINDBUDDY_RES);
+
+    match KadCodec::decode(&encoded).expect("decode findbuddy res") {
+        KadMessage::FindBuddyRes(r) => {
+            assert_eq!(r.buddy_id, buddy_id);
+            assert_eq!(r.client_id, client_id);
+            assert_eq!(r.tcp_port, 4662);
+            assert_eq!(r.connect_options, 0x01);
+        }
+        _ => panic!("expected FindBuddyRes"),
+    }
+}
+
+#[test]
+fn test_kad_callback_req_roundtrip() {
+    let buddy_id = [0x55u8; 16];
+    let file_id = [0x66u8; 16];
+    let encoded = KadCodec::encode_callback_req(&buddy_id, &file_id, 4672);
+    assert_eq!(encoded.len(), 36);
+    assert_eq!(encoded[0], PR_KADEMLIA);
+    assert_eq!(encoded[1], KADEMLIA_CALLBACK_REQ);
+
+    match KadCodec::decode(&encoded).expect("decode callback req") {
+        KadMessage::CallbackReq(r) => {
+            assert_eq!(r.buddy_id, buddy_id);
+            assert_eq!(r.file_id, file_id);
+            assert_eq!(r.tcp_port, 4672);
+        }
+        _ => panic!("expected CallbackReq"),
+    }
+
+    assert!(KadCodec::decode(&encoded[..20]).is_err());
 }

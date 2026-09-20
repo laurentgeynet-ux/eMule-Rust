@@ -11,7 +11,10 @@ use tracing::{error, info, warn};
 
 use mule_core::model::{PeerSource, PeerSourceOrigin, PeerSourceStatus};
 use mule_network_policy::SocketPermit;
-use mule_protocol::ed2k::{decode_server_response, Ed2kLimits, ServerLoginRequest, ServerResponse};
+use mule_protocol::ed2k::{
+    decode_server_response, Ed2kLimits, ServerLoginRequest, ServerResponse, PR_ED2K,
+    PR_EMULE_COMPRESSED,
+};
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
 use super::events::{emit_event, emit_found_sources, emit_found_sources_obfu, emit_search_results};
@@ -25,6 +28,13 @@ pub struct ActiveSession {
     pub abort_handle: Option<tokio::task::AbortHandle>,
     pub permit: Option<SocketPermit>,
     pub outgoing_tx: Option<mpsc::Sender<RawPacket>>,
+    /// Server address → (obf_tcp_port, obf_udp_port) learned from
+    /// `OP_SERVERIDENT` tags `ST_TCPPORTOBFUSCATION`/`ST_UDPPORTOBFUSCATION`.
+    /// Persists across reconnects (mirrors eMule's server.met storage).
+    pub obf_ports: std::collections::HashMap<String, (u16, u16)>,
+    /// Addresses where an obfuscated handshake already failed this process
+    /// (eMule `SetTriedCrypt`) — subsequent connects go plaintext.
+    pub obf_failed: std::collections::HashSet<String>,
 }
 
 impl ActiveSession {
@@ -34,6 +44,8 @@ impl ActiveSession {
             abort_handle: None,
             permit: None,
             outgoing_tx: None,
+            obf_ports: std::collections::HashMap::new(),
+            obf_failed: std::collections::HashSet::new(),
         }
     }
 }
@@ -52,54 +64,149 @@ pub fn spawn_connection_task(
     event_tx_clone: broadcast::Sender<String>,
     sequence_clone: Arc<AtomicU64>,
     downloads_clone: Option<Arc<Mutex<DownloadService>>>,
+    inbound_clone: Option<crate::services::inbound_listener::InboundListenerService>,
+    prefer_obfuscation: bool,
+    obfuscation_padding_max: u8,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let start_connect = std::time::Instant::now();
+
+        // eMule CServerSocket::ConnectTo: if the server advertised an
+        // obfuscation port (ST_TCPPORTOBFUSCATION in a previous SERVERIDENT)
+        // and we prefer the crypt layer, connect to that port with the
+        // DH768+RC4 handshake; on failure mark tried and retry plaintext.
+        let address_str = target_addr.to_string();
+        // eMule: bEncrypt = cryptPreferred && (SupportsObfuscationTCP() || !TriedCrypt())
+        // — obfuscation is attempted at least once per server even without an
+        // advertised port; on the first failure the server is marked tried and
+        // subsequent connects go plaintext.
+        let try_obf = {
+            let g = inner_clone.lock().await;
+            prefer_obfuscation && !g.obf_failed.contains(&address_str)
+        };
+        let obf_dial_port = {
+            if try_obf {
+                let g = inner_clone.lock().await;
+                g.obf_ports
+                    .get(&address_str)
+                    .map(|(tcp, _)| *tcp)
+                    .filter(|p| *p != 0)
+            } else {
+                None
+            }
+        };
+
+        let dial_addr = match obf_dial_port {
+            Some(p) => SocketAddr::new(target_addr.ip(), p),
+            None => target_addr,
+        };
+        if try_obf {
+            info!(
+                "Connecting to eD2K server {} via protocol obfuscation{}",
+                dial_addr,
+                if obf_dial_port.is_some() {
+                    " (dedicated port)"
+                } else {
+                    " (standard port)"
+                }
+            );
+        }
         info!(
             "Attempting TCP connection to eD2K server {} (timeout: {} ms)...",
-            target_addr, connect_timeout_ms
+            dial_addr, connect_timeout_ms
         );
 
         // 1. TCP Connect with connect_timeout
         let stream_res = tokio::select! {
             _ = cancel_token.cancelled() => {
-                warn!("Server connection to {} cancelled by policy kill switch during connect", target_addr);
+                warn!("Server connection to {} cancelled by policy kill switch during connect", dial_addr);
                 Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Cancelled by network policy"))
             }
-            res = tokio::time::timeout(Duration::from_millis(connect_timeout_ms), TcpStream::connect(target_addr)) => {
+            res = tokio::time::timeout(Duration::from_millis(connect_timeout_ms), TcpStream::connect(dial_addr)) => {
                 match res {
                     Ok(Ok(stream)) => {
-                        info!("TCP socket connected successfully to eD2K server {} in {} ms", target_addr, start_connect.elapsed().as_millis());
+                        info!("TCP socket connected successfully to eD2K server {} in {} ms", dial_addr, start_connect.elapsed().as_millis());
                         Ok(stream)
                     }
                     Ok(Err(e)) => {
-                        warn!("TCP connect failed to eD2K server {}: {}", target_addr, e);
+                        warn!("TCP connect failed to eD2K server {}: {}", dial_addr, e);
                         Err(e)
                     }
                     Err(_) => {
-                        warn!("TCP connect timed out after {} ms to eD2K server {}", connect_timeout_ms, target_addr);
+                        warn!("TCP connect timed out after {} ms to eD2K server {}", connect_timeout_ms, dial_addr);
                         Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "TCP connect timed out"))
                     }
                 }
             }
         };
 
-        let mut stream = match stream_res {
-            Ok(s) => s,
-            Err(e) => {
-                warn!(
-                    "Failed to establish TCP connection to eD2K server {}: {}",
-                    target_addr, e
-                );
-                let mut g = inner_clone.lock().await;
-                g.snapshot = ServerSessionSnapshot::default();
-                g.permit = None;
-                g.abort_handle = None;
-                g.outgoing_tx = None;
-                emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
-                return;
-            }
-        };
+        let mut stream: crate::services::obfuscation_stream::ObfuscatedStream<TcpStream> =
+            match stream_res {
+                Ok(s) => {
+                    if try_obf {
+                        match tokio::time::timeout(
+                            Duration::from_millis(handshake_timeout_ms),
+                            crate::services::obfuscation_stream::ObfuscatedStream::connect_server_outgoing(
+                                s,
+                                obfuscation_padding_max,
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(Ok(obf)) => {
+                                info!("Obfuscated (DH768+RC4) server handshake completed with {dial_addr}");
+                                obf
+                            }
+                            res => {
+                                let why = match res {
+                                    Ok(Err(e)) => e.to_string(),
+                                    Err(_) => "handshake timeout".to_string(),
+                                    _ => unreachable!(),
+                                };
+                                warn!(
+                                    "Obfuscated server handshake with {dial_addr} failed ({why}) — falling back to plaintext {target_addr}"
+                                );
+                                let mut g = inner_clone.lock().await;
+                                g.obf_failed.insert(address_str.clone());
+                                drop(g);
+                                match tokio::time::timeout(
+                                    Duration::from_millis(connect_timeout_ms),
+                                    TcpStream::connect(target_addr),
+                                )
+                                .await
+                                {
+                                    Ok(Ok(plain)) => crate::services::obfuscation_stream::ObfuscatedStream::plaintext(plain),
+                                    _ => {
+                                        warn!("Plaintext fallback connect to eD2K server {target_addr} failed");
+                                        let mut g = inner_clone.lock().await;
+                                        g.snapshot = ServerSessionSnapshot::default();
+                                        g.permit = None;
+                                        g.abort_handle = None;
+                                        g.outgoing_tx = None;
+                                        emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        crate::services::obfuscation_stream::ObfuscatedStream::plaintext(s)
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to establish TCP connection to eD2K server {}: {}",
+                        dial_addr, e
+                    );
+                    let mut g = inner_clone.lock().await;
+                    g.snapshot = ServerSessionSnapshot::default();
+                    g.permit = None;
+                    g.abort_handle = None;
+                    g.outgoing_tx = None;
+                    emit_event(&event_tx_clone, &sequence_clone, &g.snapshot);
+                    return;
+                }
+            };
 
         let ping_ms = start_connect.elapsed().as_millis() as u32;
 
@@ -215,7 +322,26 @@ pub fn spawn_connection_task(
                                             raw_packet.opcode,
                                             raw_packet.payload.len()
                                         );
-                                        match decode_server_response(raw_packet.protocol, raw_packet.opcode, &raw_packet.payload, &limits) {
+                                        // eMule OP_PACKEDPROT (0xD4): payload is zlib-compressed;
+                                        // unpack with eMule's 250 KB server cap, then dispatch on
+                                        // opcode as a normal PR_ED2K packet.
+                                        let (resp_protocol, resp_payload);
+                                        if raw_packet.protocol == PR_EMULE_COMPRESSED {
+                                            match unpack_packed_packet(&raw_packet.payload) {
+                                                Some(p) => {
+                                                    resp_protocol = PR_ED2K;
+                                                    resp_payload = p;
+                                                }
+                                                None => {
+                                                    warn!("Server {} sent an undecodable packed packet (opcode=0x{:02X})", target_addr, raw_packet.opcode);
+                                                    continue;
+                                                }
+                                            }
+                                        } else {
+                                            resp_protocol = raw_packet.protocol;
+                                            resp_payload = raw_packet.payload.to_vec();
+                                        }
+                                        match decode_server_response(resp_protocol, raw_packet.opcode, &resp_payload, &limits) {
                                             Ok(resp) => {
                                                 let mut g = inner_clone.lock().await;
                                                 let mut updated = false;
@@ -259,6 +385,21 @@ pub fn spawn_connection_task(
                                                         info!("Server ident: ip={:08x}, port={}", ident.ip, ident.port);
                                                         if let Some(name) = ident.name() {
                                                             g.snapshot.server_name = Some(name);
+                                                        }
+                                                        let obf_tcp = ident.obfuscation_tcp_port();
+                                                        let obf_udp = ident.obfuscation_udp_port();
+                                                        if obf_tcp.is_some() || obf_udp.is_some() {
+                                                            info!(
+                                                                "Server {} advertises obfuscation ports: TCP={:?} UDP={:?}",
+                                                                target_addr, obf_tcp, obf_udp
+                                                            );
+                                                            g.obf_ports.insert(
+                                                                target_addr.to_string(),
+                                                                (
+                                                                    obf_tcp.unwrap_or(0),
+                                                                    obf_udp.unwrap_or(0),
+                                                                ),
+                                                            );
                                                         }
                                                         updated = true;
                                                     }
@@ -322,6 +463,7 @@ pub fn spawn_connection_task(
                                                                     cooldown_until_unix_ms: None,
                                                                     user_hash: None,
                                                                     crypt_options: 0,
+                                                                    buddy_id: None,
                                                                 });
                                                             }
 
@@ -396,6 +538,7 @@ pub fn spawn_connection_task(
                                                                     cooldown_until_unix_ms: None,
                                                                     user_hash: src.user_hash.map(|h| hex::encode(h)),
                                                                     crypt_options: src.obf_settings,
+                                                                    buddy_id: None,
                                                                 });
                                                             }
 
@@ -417,10 +560,9 @@ pub fn spawn_connection_task(
                                                     }
                                                     ServerResponse::CallbackRequested(cb) => {
                                                         // A client asked the server to relay a callback
-                                                        // to us (we are the LowID target, or the server
-                                                        // forwarded anyway). eMule connects back to the
-                                                        // requester; we only log — the requester will
-                                                        // contact us for its transfer once connected.
+                                                        // to us (we are the LowID target). eMule
+                                                        // `TryToConnect`s back to the requester; the
+                                                        // connect-back runs as an upload-serving session.
                                                         let ip_addr = std::net::Ipv4Addr::from(cb.ip.to_le_bytes());
                                                         info!(
                                                             "OP_CALLBACKREQUESTED: peer {}:{} wants us to connect back (crypt_opts={:?}, user_hash={})",
@@ -429,6 +571,41 @@ pub fn spawn_connection_task(
                                                             cb.crypt_options,
                                                             cb.user_hash.map(hex::encode).as_deref().unwrap_or("<none>")
                                                         );
+                                                        if let Some(inbound) = inbound_clone.clone() {
+                                                            let target = SocketAddr::new(
+                                                                std::net::IpAddr::V4(ip_addr),
+                                                                cb.port,
+                                                            );
+                                                            let uh = cb.user_hash;
+                                                            let crypt = cb.crypt_options.unwrap_or(0);
+                                                            let our_id = g.snapshot.client_id.unwrap_or(0);
+                                                            let srv_addr = g
+                                                                .snapshot
+                                                                .server_address
+                                                                .as_deref()
+                                                                .and_then(|a| a.parse::<SocketAddr>().ok());
+                                                            let (srv_ip, srv_port) = srv_addr
+                                                                .map(|a| match a.ip() {
+                                                                    std::net::IpAddr::V4(v4) => {
+                                                                        (u32::from_be_bytes(v4.octets()), a.port())
+                                                                    }
+                                                                    _ => (0, a.port()),
+                                                                })
+                                                                .unwrap_or((0, 0));
+                                                            tokio::spawn(async move {
+                                                                if let Err(e) = inbound
+                                                                    .connect_back(
+                                                                        target, uh, crypt, our_id,
+                                                                        srv_ip, srv_port,
+                                                                    )
+                                                                    .await
+                                                                {
+                                                                    warn!(
+                                                                        "Callback connect-back to {target} failed: {e}"
+                                                                    );
+                                                                }
+                                                            });
+                                                        }
                                                     }
                                                     ServerResponse::ServerList { servers } => {
                 // OP_SERVERLIST: merge advertised servers into the local DB
@@ -565,7 +742,7 @@ pub fn spawn_connection_task(
 /// Publishes the shared file list to the connected server via `OP_OFFERFILES`
 /// (eMule `CSharedFileList::SendListToServer`, capped at 200 files).
 async fn publish_shared_files(
-    stream: &mut TcpStream,
+    stream: &mut crate::services::obfuscation_stream::ObfuscatedStream<TcpStream>,
     target_addr: SocketAddr,
     client_id: u32,
     tcp_flags: u32,
@@ -625,5 +802,59 @@ async fn publish_shared_files(
             }
         }
         Err(e) => warn!("Failed to encode OP_OFFERFILES for {}: {}", target_addr, e),
+    }
+}
+
+/// eMule `Packet::UnPackPacket` for server packets: zlib-inflate the packed
+/// payload with a hard 250 KB decompressed-size cap (eMule passes 250000).
+/// Returns `None` on truncated/oversized/corrupt data.
+fn unpack_packed_packet(payload: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Read;
+    const MAX_DECOMPRESSED: u64 = 250_000;
+    let decoder = flate2::read::ZlibDecoder::new(payload).take(MAX_DECOMPRESSED + 1);
+    let mut out = Vec::new();
+    let mut decoder = decoder;
+    decoder.read_to_end(&mut out).ok()?;
+    if out.len() as u64 > MAX_DECOMPRESSED {
+        return None;
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unpack_packed_packet;
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+
+    fn zlib(data: &[u8]) -> Vec<u8> {
+        let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
+        e.write_all(data).unwrap();
+        e.finish().unwrap()
+    }
+
+    #[test]
+    fn unpack_packed_packet_roundtrip() {
+        let payload = b"search-result-payload".repeat(64);
+        assert_eq!(unpack_packed_packet(&zlib(&payload)).unwrap(), payload);
+    }
+
+    #[test]
+    fn unpack_packed_packet_rejects_corrupt() {
+        assert!(unpack_packed_packet(b"not zlib at all").is_none());
+        let mut truncated = zlib(b"hello world");
+        truncated.truncate(truncated.len() / 2);
+        assert!(unpack_packed_packet(&truncated).is_none());
+    }
+
+    #[test]
+    fn unpack_packed_packet_enforces_250kb_cap() {
+        // ~300 KB of zeros compress to a few hundred bytes — a bomb shape.
+        let big = vec![0u8; 300_000];
+        assert!(unpack_packed_packet(&zlib(&big)).is_none());
+        // Just under the cap still passes.
+        let ok = vec![0u8; 250_000];
+        assert_eq!(unpack_packed_packet(&zlib(&ok)).unwrap().len(), 250_000);
     }
 }

@@ -131,6 +131,7 @@ async fn test_adversarial_cooldown_rejection_and_force_bypass() {
             cooldown_until_unix_ms: Some(now + 60_000), // 60s cooldown
             user_hash: None,
             crypt_options: 0,
+            buddy_id: None,
         };
         let _ = dl_svc.upsert_peer_sources(&hash, &[src]);
     }

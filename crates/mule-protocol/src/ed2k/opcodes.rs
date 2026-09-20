@@ -161,6 +161,17 @@ pub const OP_QUEUEFULL: u8 = 0x93;
 /// UDP callback re-request relayed through a Kad buddy (`0x94`).
 pub const OP_REASKCALLBACKUDP: u8 = 0x94;
 
+/// Buddy-relayed callback notification over the buddy TCP link (`0x99`):
+/// `[buddy_id:16][file_id:16][requester_ip:4][requester_tcp:2]`.
+pub const OP_CALLBACK: u8 = 0x99;
+/// TCP form of the buddy-relayed re-request (`0x9A`):
+/// `[requester_ip:4][requester_udp:2][file_id:16][partstatus][complete_src:2]`.
+pub const OP_REASKCALLBACKTCP: u8 = 0x9A;
+/// Buddy link keep-alive ping (`0x9F`, empty payload).
+pub const OP_BUDDYPING: u8 = 0x9F;
+/// Buddy link keep-alive pong (`0xA0`, empty payload).
+pub const OP_BUDDYPONG: u8 = 0xA0;
+
 // ---------------------------------------------------------------------------
 // Extended eMule Opcodes (Protocol 0xC5)
 // ---------------------------------------------------------------------------

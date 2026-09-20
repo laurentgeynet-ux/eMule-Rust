@@ -1,6 +1,6 @@
 use mule_protocol::ed2k::obfuscation::{
-    derive_initiator_peer_ciphers, derive_responder_peer_ciphers, generate_semi_random_marker,
-    Rc4Cipher, ENM_OBFUSCATION, MAGICVALUE_SYNC,
+    derive_initiator_peer_ciphers, derive_responder_peer_ciphers, derive_server_ciphers,
+    generate_semi_random_marker, Dh768KeyPair, Rc4Cipher, ENM_OBFUSCATION, MAGICVALUE_SYNC,
 };
 use rand::Rng;
 use std::io;
@@ -157,6 +157,99 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ObfuscatedStream<S> {
             stream.read_exact(&mut pad_buf).await?;
             recv_cipher.process(&mut pad_buf);
         }
+
+        Ok(Self {
+            inner: stream,
+            send_cipher: Some(send_cipher),
+            recv_cipher: Some(recv_cipher),
+            read_prefix: Vec::new(),
+            read_prefix_offset: 0,
+            write_buf: Vec::new(),
+            write_offset: 0,
+        })
+    }
+
+    /// Performs an outbound eD2K client-to-server obfuscation handshake
+    /// (eMule `ECS_PENDING_SERVER` / `ONS_BASIC_SERVER_*`):
+    ///
+    /// - Client → `[SemiRandomMarker (1B), G^A (96B), PadLen (1B), RandomPadding]` (unencrypted)
+    /// - Server → `[G^B (96B)]` (unencrypted) then `[MAGICVALUE_SYNC (4B), MethodsSupported (1B), MethodPreferred (1B), PadLen (1B), Padding]` (encrypted)
+    /// - Client → `[MAGICVALUE_SYNC (4B), MethodSelected (1B), PadLen (1B), Padding]` (encrypted)
+    ///
+    /// Keys: `SendKey = MD5(S[96] ‖ 34)`, `RecvKey = MD5(S[96] ‖ 203)` where
+    /// `S` is the DH768 shared secret; RC4-drop1024 both ways.
+    pub async fn connect_server_outgoing(
+        mut stream: S,
+        max_padding: u8,
+    ) -> Result<Self, io::Error> {
+        let (key_pair, marker, pad_len, padding) = {
+            let mut rng = rand::rng();
+            let kp = Dh768KeyPair::generate(&mut rng);
+            let marker = generate_semi_random_marker(&mut rng);
+            // eMule pads with 0-15 bytes on the server handshake.
+            let pad_len = if max_padding > 0 {
+                rng.random_range(0..=max_padding.min(15))
+            } else {
+                0
+            };
+            let mut padding = Vec::with_capacity(pad_len as usize);
+            for _ in 0..pad_len {
+                padding.push(rng.random());
+            }
+            (kp, marker, pad_len, padding)
+        };
+
+        // Unencrypted: marker + our 96-byte DH public key + padding.
+        let mut out = Vec::with_capacity(98 + pad_len as usize);
+        out.push(marker);
+        out.extend_from_slice(&key_pair.public_key);
+        out.push(pad_len);
+        out.extend_from_slice(&padding);
+        stream.write_all(&out).await?;
+
+        // Unencrypted: server's 96-byte DH public key.
+        let mut remote_pub = [0u8; 96];
+        stream.read_exact(&mut remote_pub).await?;
+        let shared = key_pair.compute_shared_secret(&remote_pub);
+        let (mut send_cipher, mut recv_cipher) = derive_server_ciphers(&shared);
+
+        // Encrypted: [MAGICVALUE_SYNC][supported][preferred][padlen][padding]
+        let mut resp_head = [0u8; 7];
+        stream.read_exact(&mut resp_head).await?;
+        recv_cipher.process(&mut resp_head);
+        let magic = u32::from_le_bytes(resp_head[..4].try_into().unwrap());
+        if magic != MAGICVALUE_SYNC {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Invalid obfuscation magic sync from server: 0x{magic:08X}"),
+            ));
+        }
+        if resp_head[5] != ENM_OBFUSCATION {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Unsupported obfuscation method from server: {}",
+                    resp_head[5]
+                ),
+            ));
+        }
+        let resp_pad_len = resp_head[6] as usize;
+        if resp_pad_len > 0 {
+            let mut pad_buf = vec![0u8; resp_pad_len];
+            stream.read_exact(&mut pad_buf).await?;
+            recv_cipher.process(&mut pad_buf);
+        }
+
+        // Encrypted answer: [MAGICVALUE_SYNC][selected method][padlen][padding]
+        // (eMule delays it to the first payload; sending it immediately is
+        // equivalent on the wire).
+        let mut ans = Vec::with_capacity(7 + padding.len());
+        ans.extend_from_slice(&MAGICVALUE_SYNC.to_le_bytes());
+        ans.push(ENM_OBFUSCATION);
+        ans.push(pad_len);
+        ans.extend_from_slice(&padding);
+        send_cipher.process(&mut ans);
+        stream.write_all(&ans).await?;
 
         Ok(Self {
             inner: stream,
@@ -465,5 +558,112 @@ mod tests {
         let mut buf = vec![0u8; 11];
         stream.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"HELLO WORLD");
+    }
+
+    /// Loopback test of the eD2K client↔server DH768+RC4 handshake
+    /// (`connect_server_outgoing`) with a mock server performing the
+    /// responder side exactly as eMule `ONS_BASIC_SERVER_*` does.
+    #[tokio::test]
+    async fn test_server_obfuscation_handshake_and_crypto() {
+        let (client_io, mut server_io) = tokio::io::duplex(8192);
+
+        let client_task = tokio::spawn(async move {
+            let mut stream = ObfuscatedStream::connect_server_outgoing(client_io, 8)
+                .await
+                .expect("client server handshake failed");
+            assert!(stream.is_obfuscated());
+            stream.write_all(b"PING_TO_SERVER").await.unwrap();
+            stream.flush().await.unwrap();
+            let mut buf = vec![0u8; 15];
+            stream.read_exact(&mut buf).await.unwrap();
+            assert_eq!(&buf, b"PONG_FROM_SRV!!");
+        });
+
+        let server_task = tokio::spawn(async move {
+            // Unencrypted client hello: [marker(1)][G^A(96)][padlen(1)][pad]
+            let mut marker = [0u8; 1];
+            server_io.read_exact(&mut marker).await.unwrap();
+            let mut client_pub = [0u8; 96];
+            server_io.read_exact(&mut client_pub).await.unwrap();
+            let mut pad_len = [0u8; 1];
+            server_io.read_exact(&mut pad_len).await.unwrap();
+            let mut pad = vec![0u8; pad_len[0] as usize];
+            server_io.read_exact(&mut pad).await.unwrap();
+
+            let server_kp = Dh768KeyPair::generate(&mut rand::rng());
+            let shared = server_kp.compute_shared_secret(&client_pub);
+            server_io.write_all(&server_kp.public_key).await.unwrap();
+
+            // Server keys are the mirror of the client's
+            // (client send = MD5(S‖34), client recv = MD5(S‖203)).
+            let (client_send, client_recv) = derive_server_ciphers(&shared);
+            let mut send_cipher = client_recv;
+            let mut recv_cipher = client_send;
+
+            // Encrypted server answer: [magic(4)][supported][requested][padlen][pad]
+            let mut ans = Vec::new();
+            ans.extend_from_slice(&MAGICVALUE_SYNC.to_le_bytes());
+            ans.push(ENM_OBFUSCATION);
+            ans.push(ENM_OBFUSCATION);
+            ans.push(0u8);
+            send_cipher.process(&mut ans);
+            server_io.write_all(&ans).await.unwrap();
+
+            // Encrypted client confirm: [magic(4)][method][padlen][pad]
+            let mut conf = [0u8; 6];
+            server_io.read_exact(&mut conf).await.unwrap();
+            recv_cipher.process(&mut conf);
+            assert_eq!(
+                u32::from_le_bytes(conf[..4].try_into().unwrap()),
+                MAGICVALUE_SYNC
+            );
+            assert_eq!(conf[4], ENM_OBFUSCATION);
+            let conf_pad = conf[5] as usize;
+            if conf_pad > 0 {
+                let mut p = vec![0u8; conf_pad];
+                server_io.read_exact(&mut p).await.unwrap();
+                recv_cipher.process(&mut p);
+            }
+
+            // Encrypted data exchange.
+            let mut buf = vec![0u8; 14];
+            server_io.read_exact(&mut buf).await.unwrap();
+            recv_cipher.process(&mut buf);
+            assert_eq!(&buf, b"PING_TO_SERVER");
+            let mut pong = b"PONG_FROM_SRV!!".to_vec();
+            send_cipher.process(&mut pong);
+            server_io.write_all(&pong).await.unwrap();
+        });
+
+        let (c_res, s_res) = tokio::join!(client_task, server_task);
+        c_res.unwrap();
+        s_res.unwrap();
+    }
+
+    /// A non-obfuscating peer answering the DH probe with plaintext garbage
+    /// must produce a clean handshake failure (server falls back to plaintext).
+    #[tokio::test]
+    async fn test_server_obfuscation_rejects_plaintext_answer() {
+        let (client_io, mut server_io) = tokio::io::duplex(8192);
+        let client_task =
+            tokio::spawn(
+                async move { ObfuscatedStream::connect_server_outgoing(client_io, 0).await },
+            );
+        let server_task = tokio::spawn(async move {
+            // Read the client hello, answer with a syntactically valid DH
+            // public key but follow it with a PLAINTEXT answer — the client's
+            // decrypted magic check must fail cleanly.
+            let mut hello = [0u8; 98];
+            server_io.read_exact(&mut hello).await.unwrap();
+            let mut client_pub = [0u8; 96];
+            client_pub.copy_from_slice(&hello[1..97]);
+            let server_kp = Dh768KeyPair::generate(&mut rand::rng());
+            server_io.write_all(&server_kp.public_key).await.unwrap();
+            // Unencrypted junk where the encrypted magic value is expected.
+            server_io.write_all(&[0xDE; 7]).await.unwrap();
+        });
+        let (c_res, s_res) = tokio::join!(client_task, server_task);
+        s_res.unwrap();
+        assert!(c_res.unwrap().is_err());
     }
 }

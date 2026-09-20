@@ -81,4 +81,8 @@ pub struct InboundListenerService {
     /// `KADEMLIA2_FIREWALLUDP` probe datagrams on the shared UDP socket.
     pub(crate) kad_udp:
         Arc<std::sync::RwLock<Option<Arc<crate::services::kad_udp::KadUdpService>>>>,
+
+    /// Kad service — inbound peers advertising a Kad UDP port can seed a
+    /// routing-table bootstrap (eMule "bootstrap from clients").
+    pub(crate) kad: Arc<std::sync::RwLock<Option<Arc<crate::services::kad::KadService>>>>,
 }

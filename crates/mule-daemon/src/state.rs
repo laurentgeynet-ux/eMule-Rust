@@ -107,11 +107,19 @@ impl AppState {
         ));
         kad.set_ed2k_tcp_port(config.ed2k_port);
         kad.set_fw_check_identity(user_hash);
+        // Buddy relay role: TCP port the buddy client connects to, and the
+        // GetMyConnectOptions-style flags byte sent in KADEMLIA_FINDBUDDY_RES
+        // (bit0/1 = obfuscation supported+requested, bit2 = required).
+        let connect_opts: u8 = if config.obfuscation_enabled { 0x03 } else { 0 }
+            | if config.obfuscation_required { 0x04 } else { 0 };
+        kad.udp().set_buddy_tcp_info(config.ed2k_port, connect_opts);
         inbound_listener.set_kad_udp(Arc::clone(kad.udp()));
+        inbound_listener.set_kad(Arc::clone(&kad));
         let client_udp = crate::services::ClientUdpService::new();
         client_udp.set_downloads(Arc::clone(&dl_arc));
         client_udp.set_upload_manager(inbound_listener.upload_manager().clone());
         client_udp.set_peer_session(peer_session.clone());
+        client_udp.set_buddy_registry(kad.udp().buddy_registry());
         inbound_listener.set_client_udp(client_udp.clone());
         let server_udp = crate::services::server_udp::ServerUdpService::new(network_policy.clone());
         server_udp.set_downloads(Arc::clone(&dl_arc));

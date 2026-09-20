@@ -384,6 +384,10 @@ pub struct PeerSource {
     pub user_hash: Option<String>,
     #[serde(default)]
     pub crypt_options: u8,
+    /// Kad buddy ID (hex) for LowID sources reachable only through a buddy
+    /// callback (`KADEMLIA_CALLBACK_REQ` relayed by this buddy node).
+    #[serde(default)]
+    pub buddy_id: Option<String>,
 }
 
 impl PeerSource {
@@ -414,6 +418,20 @@ impl PeerSource {
     /// Whether this peer strictly requires protocol obfuscation (bit 2).
     pub fn requires_crypt(&self) -> bool {
         (self.crypt_options & 0x04) != 0
+    }
+
+    /// Returns the 16-byte decoded buddy Kad ID if valid hex.
+    pub fn buddy_id_bytes(&self) -> Option<[u8; 16]> {
+        self.buddy_id.as_deref().and_then(|s| {
+            if s.len() != 32 {
+                return None;
+            }
+            let mut bytes = [0u8; 16];
+            for i in 0..16 {
+                bytes[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+            }
+            Some(bytes)
+        })
     }
 }
 

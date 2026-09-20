@@ -202,6 +202,110 @@ impl FirewallTestTracker {
     }
 }
 
+/// Buddy link relay state (eMule `CClientList::m_pBuddy` — a single buddy
+/// at a time). The daemon can act as a *relay* for one LowID client:
+/// `KADEMLIA_FINDBUDDY_REQ` registers a pending entry, the requester's TCP
+/// connection (adopted by the inbound listener) becomes the active link, and
+/// `KADEMLIA_CALLBACK_REQ` / `OP_REASKCALLBACKUDP` datagrams are forwarded
+/// onto it as `OP_CALLBACK` / `OP_REASKCALLBACKTCP`.
+#[derive(Debug, Default)]
+pub struct BuddyRegistry {
+    /// Accepted `FINDBUDDY_REQ` senders awaiting their TCP buddy link.
+    pending: HashMap<IpAddr, PendingBuddy>,
+    /// The live buddy link (at most one, mirroring eMule).
+    pub active: Option<ActiveBuddy>,
+}
+
+/// How long a `FINDBUDDY_REQ` acceptance stays valid awaiting the TCP link.
+pub const BUDDY_PENDING_TTL: Duration = Duration::from_secs(120);
+
+/// A `FINDBUDDY_REQ` we accepted; awaiting the requester's TCP connection.
+#[derive(Debug, Clone)]
+pub struct PendingBuddy {
+    /// Buddy ID the requester asked us to register under.
+    pub buddy_id: [u8; 16],
+    /// Requester's Kad client ID.
+    pub user_id: [u8; 16],
+    /// Requester's announced TCP port.
+    pub tcp_port: u16,
+    /// Expiry instant of this pending registration.
+    pub expires: Instant,
+}
+
+/// A live buddy TCP link; `tx` accepts fully framed eD2K wire packets
+/// (`proto + len:u32 + opcode + payload`) to write on the buddy socket.
+#[derive(Debug)]
+pub struct ActiveBuddy {
+    /// Buddy ID registered at `FINDBUDDY_REQ` time.
+    pub buddy_id: [u8; 16],
+    /// Buddy client's Kad ID / user hash.
+    pub user_id: [u8; 16],
+    /// Remote socket address of the buddy link.
+    pub remote_addr: SocketAddr,
+    /// Outbound packet sink for the buddy socket writer task.
+    pub tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+}
+
+impl BuddyRegistry {
+    /// Registers an accepted buddy candidate. Caller must have checked
+    /// eligibility (verified non-firewalled node, no active buddy).
+    pub fn register_pending(
+        &mut self,
+        ip: IpAddr,
+        buddy_id: [u8; 16],
+        user_id: [u8; 16],
+        tcp_port: u16,
+    ) {
+        self.pending.retain(|_, p| p.expires > Instant::now());
+        self.pending.insert(
+            ip,
+            PendingBuddy {
+                buddy_id,
+                user_id,
+                tcp_port,
+                expires: Instant::now() + BUDDY_PENDING_TTL,
+            },
+        );
+    }
+
+    /// Consumes the pending registration for `ip` when its TCP link arrives.
+    pub fn take_pending(&mut self, ip: &IpAddr) -> Option<PendingBuddy> {
+        self.pending.retain(|_, p| p.expires > Instant::now());
+        self.pending.remove(ip)
+    }
+
+    /// Installs the active buddy link. Returns false when a buddy is
+    /// already connected (eMule accepts a single buddy).
+    pub fn set_active(&mut self, buddy: ActiveBuddy) -> bool {
+        if self.active.is_some() {
+            return false;
+        }
+        self.active = Some(buddy);
+        true
+    }
+
+    /// Clears the active buddy if it belongs to `addr`.
+    pub fn clear_active(&mut self, addr: &SocketAddr) {
+        if self
+            .active
+            .as_ref()
+            .map(|b| b.remote_addr == *addr)
+            .unwrap_or(false)
+        {
+            self.active = None;
+        }
+    }
+
+    /// Sends a framed packet to the active buddy. Returns false when no
+    /// buddy link exists or its writer task is gone.
+    pub fn send_to_buddy(&self, packet: Vec<u8>) -> bool {
+        match &self.active {
+            Some(b) => b.tx.send(packet).is_ok(),
+            None => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +361,43 @@ mod tests {
         assert!(t.has_pending());
         t.unregister_candidate(&asked);
         assert!(!t.has_pending());
+    }
+
+    #[test]
+    fn buddy_pending_lifecycle() {
+        let mut r = BuddyRegistry::default();
+        let ip = IpAddr::V4(Ipv4Addr::new(9, 8, 7, 6));
+        r.register_pending(ip, [1u8; 16], [2u8; 16], 4662);
+        let p = r.take_pending(&ip).expect("pending registered");
+        assert_eq!(p.buddy_id, [1u8; 16]);
+        assert_eq!(p.tcp_port, 4662);
+        assert!(r.take_pending(&ip).is_none());
+    }
+
+    #[test]
+    fn buddy_single_active() {
+        let mut r = BuddyRegistry::default();
+        let (tx1, _rx1) = tokio::sync::mpsc::unbounded_channel();
+        let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel();
+        let a1 = ActiveBuddy {
+            buddy_id: [1u8; 16],
+            user_id: [2u8; 16],
+            remote_addr: "1.2.3.4:4662".parse().unwrap(),
+            tx: tx1,
+        };
+        let a2 = ActiveBuddy {
+            buddy_id: [3u8; 16],
+            user_id: [4u8; 16],
+            remote_addr: "5.6.7.8:4662".parse().unwrap(),
+            tx: tx2,
+        };
+        assert!(r.set_active(a1));
+        assert!(!r.set_active(a2));
+        assert!(r.send_to_buddy(vec![0xC5]));
+        r.clear_active(&"9.9.9.9:1".parse().unwrap());
+        assert!(r.send_to_buddy(vec![0xC5]));
+        r.clear_active(&"1.2.3.4:4662".parse().unwrap());
+        assert!(!r.send_to_buddy(vec![0xC5]));
     }
 
     #[test]

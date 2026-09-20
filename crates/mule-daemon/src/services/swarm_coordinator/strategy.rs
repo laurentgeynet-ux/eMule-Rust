@@ -525,6 +525,72 @@ impl SwarmCoordinator {
                     continue;
                 }
 
+                // Kad LowID source: reachable only through its published
+                // buddy. Send KADEMLIA_CALLBACK_REQ to the buddy node; the
+                // LowID client then connects inbound to our TCP port and is
+                // adopted by remote IP (pending_kad_callbacks).
+                if let Some(ip_str) = src.address.strip_prefix("kadcb:") {
+                    let Ok(src_ip) = ip_str.parse::<std::net::IpAddr>() else {
+                        continue;
+                    };
+                    let Some(buddy_bytes) = src.buddy_id_bytes() else {
+                        continue;
+                    };
+                    if self.state.peer_session.has_pending_kad_callback(src_ip) {
+                        continue;
+                    }
+                    let buddy_id = mule_core::kad::KadId(buddy_bytes);
+                    let Some(buddy) = self.state.kad.find_contact(&buddy_id).await else {
+                        tracing::debug!(
+                            "Kad buddy {buddy_id:?} for LowID source {src_ip} not in routing table"
+                        );
+                        continue;
+                    };
+                    let Ok(file_id_bytes) = hex::decode(&hash_hex) else {
+                        continue;
+                    };
+                    let mut file_id = [0u8; 16];
+                    file_id.copy_from_slice(&file_id_bytes);
+                    let buddy_addr =
+                        SocketAddr::new(std::net::IpAddr::V4(buddy.ip), buddy.udp_port);
+                    match self
+                        .state
+                        .kad
+                        .udp()
+                        .send_callback_req(
+                            buddy_addr,
+                            &buddy_bytes,
+                            &file_id,
+                            self.state.config.ed2k_port,
+                        )
+                        .await
+                    {
+                        Ok(()) => {
+                            tracing::info!(
+                                "Requested Kad buddy callback to LowID source {src_ip} via {buddy_addr} for {hash_hex}"
+                            );
+                            self.state.peer_session.register_pending_kad_callback(
+                                src_ip,
+                                hash_hex.clone(),
+                                5 * 60 * 1000,
+                            );
+                            let mut dl_guard = self.state.downloads.lock().await;
+                            let _ = dl_guard.update_peer_source_status(
+                                &hash_hex,
+                                &src.address,
+                                PeerSourceStatus::Tried,
+                                None,
+                                Some(now_ms + 5 * 60 * 1000),
+                            );
+                            connected_this_tick += 1;
+                        }
+                        Err(e) => {
+                            tracing::debug!("Kad buddy callback request for {src_ip} failed: {e}");
+                        }
+                    }
+                    continue;
+                }
+
                 let peer_addr: SocketAddr = match src.address.parse() {
                     Ok(a) => a,
                     Err(_) => continue,

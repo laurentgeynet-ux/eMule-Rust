@@ -1,16 +1,21 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 
+use mule_protocol::ed2k::OP_CALLBACK;
 use mule_protocol::kad::*;
 
 use super::storage::{KadStorage, KAD_STORE_TTL};
-use super::types::{FirewallTestTracker, FirewallUdpResult, InFlightMap, KadExpectedResponse};
+use super::types::{
+    BuddyRegistry, FirewallTestTracker, FirewallUdpResult, InFlightMap, KadExpectedResponse,
+    UdpFirewallStatus,
+};
 use crate::services::downloads::DownloadService;
 
 type DownloadsSlot = Arc<tokio::sync::RwLock<Option<Arc<tokio::sync::Mutex<DownloadService>>>>>;
 
 /// Internal dispatcher for incoming messages.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_incoming_message(
     socket: &Arc<UdpSocket>,
     peer_addr: SocketAddr,
@@ -21,6 +26,9 @@ pub async fn handle_incoming_message(
     storage: &Arc<tokio::sync::Mutex<KadStorage>>,
     downloads: &DownloadsSlot,
     firewall: &Arc<tokio::sync::Mutex<FirewallTestTracker>>,
+    buddy: &Arc<tokio::sync::Mutex<BuddyRegistry>>,
+    buddy_tcp_port: u16,
+    buddy_connect_options: u8,
 ) {
     match msg {
         KadMessage::Ping(_ping) => {
@@ -157,6 +165,7 @@ pub async fn handle_incoming_message(
                             udp_port: req.contact.udp_port,
                             tcp_port: req.contact.tcp_port,
                             encryption: 0,
+                            buddy_id: None,
                         },
                     )
                 };
@@ -329,7 +338,95 @@ pub async fn handle_incoming_message(
                 );
             }
         }
+        // --- Buddy relay role (eMule CClientList::GetBuddy machinery) ---
+        KadMessage::FindBuddyReq(req) => {
+            // eMule Process_KADEMLIA_FINDBUDDY_REQ: only a verified,
+            // non-firewalled node with no current buddy may accept.
+            let eligible = {
+                let fw = firewall.lock().await;
+                fw.verified && fw.status == UdpFirewallStatus::Open
+            };
+            let mut reg = buddy.lock().await;
+            if !eligible || buddy_tcp_port == 0 || reg.active.is_some() || req.tcp_port == 0 {
+                tracing::debug!(
+                    "Kad UDP: rejecting FINDBUDDY_REQ from {peer_addr} (eligible={eligible}, has_buddy={})",
+                    reg.active.is_some()
+                );
+                return;
+            }
+            reg.register_pending(peer_addr.ip(), req.buddy_id, req.user_id, req.tcp_port);
+            drop(reg);
+            let res = KadCodec::encode_findbuddy_res(
+                &req.buddy_id,
+                local_kad_id,
+                buddy_tcp_port,
+                buddy_connect_options,
+            );
+            tracing::info!(
+                "Kad UDP: accepted FINDBUDDY_REQ from {peer_addr}, awaiting buddy TCP link on port {} (buddy_id={})",
+                buddy_tcp_port,
+                hex::encode(req.buddy_id)
+            );
+            let _ = socket.send_to(&res, peer_addr).await;
+        }
+        KadMessage::FindBuddyRes(res) => {
+            // We never send FINDBUDDY_REQ (the LowID-self buddy client is
+            // not implemented); log unsolicited responses.
+            tracing::debug!(
+                "Kad UDP: ignoring unsolicited FINDBUDDY_RES from {peer_addr} (tcp_port={})",
+                res.tcp_port
+            );
+        }
+        KadMessage::CallbackReq(req) => {
+            // eMule Process_KADEMLIA_CALLBACK_REQ: forward to our buddy's
+            // TCP link as OP_CALLBACK
+            // [check:16][file:16][requester_ip:4][requester_tcp:2].
+            let relayed = {
+                let reg = buddy.lock().await;
+                if reg.active.is_some() {
+                    let mut payload = Vec::with_capacity(38);
+                    payload.extend_from_slice(&req.buddy_id);
+                    payload.extend_from_slice(&req.file_id);
+                    match peer_addr.ip() {
+                        IpAddr::V4(v4) => payload.extend_from_slice(&v4.octets()),
+                        IpAddr::V6(v6) => payload.extend_from_slice(
+                            &v6.to_ipv4_mapped()
+                                .map(|v4| v4.octets())
+                                .unwrap_or([0, 0, 0, 0]),
+                        ),
+                    }
+                    payload.extend_from_slice(&req.tcp_port.to_le_bytes());
+                    let frame = frame_emule_packet(OP_CALLBACK, &payload);
+                    reg.send_to_buddy(frame)
+                } else {
+                    false
+                }
+            };
+            if relayed {
+                tracing::info!(
+                    "Kad UDP: relayed CALLBACK_REQ from {peer_addr} to buddy link (file={}, cb_port={})",
+                    hex::encode(req.file_id),
+                    req.tcp_port
+                );
+            } else {
+                tracing::debug!(
+                    "Kad UDP: dropping CALLBACK_REQ from {peer_addr} — no active buddy link"
+                );
+            }
+        }
     }
+}
+
+/// Frames an eD2K/eMule TCP packet: `[proto][len:u32][opcode][payload]`
+/// (opcode included in the length, like `Packet`/`PacketCodec`).
+fn frame_emule_packet(opcode: u8, payload: &[u8]) -> Vec<u8> {
+    use mule_protocol::ed2k::PR_EMULE;
+    let mut out = Vec::with_capacity(6 + payload.len());
+    out.push(PR_EMULE);
+    out.extend_from_slice(&(payload.len() as u32 + 1).to_le_bytes());
+    out.push(opcode);
+    out.extend_from_slice(payload);
+    out
 }
 
 fn now_unix_ms() -> u64 {

@@ -85,6 +85,7 @@ async fn test_kad_source_publish_and_search_flow() {
                         udp_port: mock_addr.port(),
                         tcp_port: 39735,
                         encryption: 0,
+                        buddy_id: None,
                     }];
                     let res = KadCodec::encode_search_source_res(&s.target_file_hash, &sources);
                     mock_socket

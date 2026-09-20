@@ -23,9 +23,9 @@ use mule_protocol::kad::*;
 use crate::services::client_udp::ClientUdpService;
 
 pub use types::{
-    FirewallTestTracker, FirewallUdpResult, InFlightTransaction, IpRateLimiter, KadUdpSnapshot,
-    UdpFirewallStatus, KAD_TRANSACTION_TIMEOUT_SECS, MAX_IN_FLIGHT_TRANSACTIONS,
-    MAX_KAD_REQUESTS_PER_SEC_PER_IP,
+    ActiveBuddy, BuddyRegistry, FirewallTestTracker, FirewallUdpResult, InFlightTransaction,
+    IpRateLimiter, KadUdpSnapshot, PendingBuddy, UdpFirewallStatus, BUDDY_PENDING_TTL,
+    KAD_TRANSACTION_TIMEOUT_SECS, MAX_IN_FLIGHT_TRANSACTIONS, MAX_KAD_REQUESTS_PER_SEC_PER_IP,
 };
 
 /// Inner state of the Kad UDP service.
@@ -72,6 +72,14 @@ pub struct KadUdpService {
     downloads: Arc<RwLock<Option<Arc<Mutex<crate::services::downloads::DownloadService>>>>>,
     /// UDP firewall/reachability test state (KADEMLIA2_FIREWALLUDP).
     firewall: Arc<Mutex<FirewallTestTracker>>,
+    /// Buddy relay state (FINDBUDDY_REQ acceptances + active buddy link).
+    buddy: Arc<Mutex<BuddyRegistry>>,
+    /// Local eD2K TCP port advertised in `KADEMLIA_FINDBUDDY_RES` — the buddy
+    /// client connects to it for its relay link.
+    buddy_tcp_port: Arc<std::sync::atomic::AtomicU16>,
+    /// Connection option flags sent in `KADEMLIA_FINDBUDDY_RES`
+    /// (eMule `GetMyConnectOptions(true, false)` byte).
+    buddy_connect_options: Arc<std::sync::atomic::AtomicU8>,
 }
 
 impl KadUdpService {
@@ -94,7 +102,51 @@ impl KadUdpService {
             client_udp: Arc::new(RwLock::new(None)),
             downloads: Arc::new(RwLock::new(None)),
             firewall: Arc::new(Mutex::new(FirewallTestTracker::default())),
+            buddy: Arc::new(Mutex::new(BuddyRegistry::default())),
+            buddy_tcp_port: Arc::new(std::sync::atomic::AtomicU16::new(0)),
+            buddy_connect_options: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         }
+    }
+
+    /// Shared buddy relay registry (pending acceptances + active link).
+    pub fn buddy_registry(&self) -> Arc<Mutex<BuddyRegistry>> {
+        Arc::clone(&self.buddy)
+    }
+
+    /// Sets the eD2K TCP port + connect-option flags advertised in
+    /// `KADEMLIA_FINDBUDDY_RES` answers.
+    pub fn set_buddy_tcp_info(&self, tcp_port: u16, connect_options: u8) {
+        self.buddy_tcp_port.store(tcp_port, Ordering::Relaxed);
+        self.buddy_connect_options
+            .store(connect_options, Ordering::Relaxed);
+    }
+
+    /// Sends a `KADEMLIA_CALLBACK_REQ` (0x52) to a buddy node, asking it to
+    /// relay a callback to its LowID buddy client so that client connects
+    /// back to our `tcp_port` (eMule `TryToConnect` → `CCS_KADCALLBACK`).
+    /// Sent unencrypted, matching eMule's FIXME comment.
+    pub async fn send_callback_req(
+        &self,
+        buddy_addr: SocketAddr,
+        buddy_id: &[u8; 16],
+        file_id: &[u8; 16],
+        tcp_port: u16,
+    ) -> Result<(), String> {
+        let socket = { self.inner.read().await.socket.clone() };
+        let socket = socket.ok_or_else(|| "Kad UDP socket not bound".to_string())?;
+        let pkt = KadCodec::encode_callback_req(buddy_id, file_id, tcp_port);
+        socket
+            .send_to(&pkt, buddy_addr)
+            .await
+            .map_err(|e| format!("Failed to send CALLBACK_REQ to {buddy_addr}: {e}"))?;
+        self.packets_sent.fetch_add(1, Ordering::Relaxed);
+        tracing::info!(
+            "Kad UDP: CALLBACK_REQ sent to buddy {} (buddy_id={}, file={})",
+            buddy_addr,
+            hex::encode(buddy_id),
+            hex::encode(file_id)
+        );
+        Ok(())
     }
 
     /// Shared firewall test tracker (pending candidates + last known state).
@@ -180,6 +232,9 @@ impl KadUdpService {
         let client_udp_arc = Arc::clone(&self.client_udp);
         let downloads_arc = Arc::clone(&self.downloads);
         let firewall_arc = Arc::clone(&self.firewall);
+        let buddy_arc = Arc::clone(&self.buddy);
+        let buddy_tcp_port = self.buddy_tcp_port.load(Ordering::Relaxed);
+        let buddy_connect_options = self.buddy_connect_options.load(Ordering::Relaxed);
         if let Some(svc) = self.client_udp.read().await.as_ref() {
             svc.set_socket(socket_arc.clone()).await;
         }
@@ -276,6 +331,9 @@ impl KadUdpService {
                                                             &storage_arc,
                                                             &downloads_arc,
                                                             &firewall_arc,
+                                                            &buddy_arc,
+                                                            buddy_tcp_port,
+                                                            buddy_connect_options,
                                                         ).await;
                                                         decrypted = true;
                                                     }
@@ -343,6 +401,9 @@ impl KadUdpService {
                                             &storage_arc,
                                             &downloads_arc,
                                             &firewall_arc,
+                                            &buddy_arc,
+                                            buddy_tcp_port,
+                                            buddy_connect_options,
                                         ).await;
                                     }
                                     Err(err) => {

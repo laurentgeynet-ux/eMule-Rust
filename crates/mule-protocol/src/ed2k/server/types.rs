@@ -154,6 +154,39 @@ impl ServerIdent {
             _ => None,
         })
     }
+
+    /// eMule `ST_TCPPORTOBFUSCATION` (`0x97`, uint16) — dedicated TCP port
+    /// accepting obfuscated (DH768+RC4) server connections.
+    pub fn obfuscation_tcp_port(&self) -> Option<u16> {
+        self.server_tag_u16(0x97)
+    }
+
+    /// eMule `ST_UDPPORTOBFUSCATION` (`0x98`, uint16) — dedicated UDP port
+    /// accepting obfuscated server datagrams.
+    pub fn obfuscation_udp_port(&self) -> Option<u16> {
+        self.server_tag_u16(0x98)
+    }
+
+    fn server_tag_u16(&self, tag_id: u8) -> Option<u16> {
+        for t in &self.tags {
+            if t.name == TagName::Id(tag_id) {
+                match t.value {
+                    TagValue::UInt16(v) => return Some(v),
+                    TagValue::UInt32(v) => return u16::try_from(v).ok(),
+                    _ => {}
+                }
+            }
+        }
+        // Fall back to raw tags (unrecognized typed decode): a uint16 tag is
+        // 2 little-endian bytes.
+        self.unknown_tags.iter().find_map(|t| {
+            if t.name == TagName::Id(tag_id) && t.raw_bytes.len() == 2 {
+                Some(u16::from_le_bytes([t.raw_bytes[0], t.raw_bytes[1]]))
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// eMule `SRV_TCPFLG_COMPRESSION`: server accepts the 0xFBFB/0xFCFC offer

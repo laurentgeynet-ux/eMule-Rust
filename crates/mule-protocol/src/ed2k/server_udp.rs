@@ -11,7 +11,21 @@ use super::opcodes::{
     OP_GLOBFOUNDSOURCES, OP_GLOBGETSOURCES2, OP_GLOBSEARCHREQ2, OP_GLOBSEARCHRES,
     OP_GLOBSERVSTATREQ, OP_GLOBSERVSTATRES,
 };
-use super::protocol::PR_ED2K;
+use super::protocol::{PR_ED2K, PR_EMULE_COMPRESSED};
+
+/// zlib-inflates a packed UDP payload with a hard cap (eMule
+/// `Packet::UnPackPacket` — server packets cap at 250 KB).
+fn unpack_udp_payload(data: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Read;
+    const MAX_DECOMPRESSED: u64 = 250_000;
+    let mut decoder = flate2::read::ZlibDecoder::new(data).take(MAX_DECOMPRESSED + 1);
+    let mut out = Vec::new();
+    decoder.read_to_end(&mut out).ok()?;
+    if out.is_empty() || out.len() as u64 > MAX_DECOMPRESSED {
+        return None;
+    }
+    Some(out)
+}
 
 /// One file's found sources inside an `OP_GLOBFOUNDSOURCES` datagram.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,13 +91,22 @@ pub fn decode_server_udp(data: &[u8]) -> Result<ServerUdpMessage, String> {
     if data.len() < 2 {
         return Err("server UDP datagram too short".into());
     }
-    if data[0] != PR_ED2K {
+    // eMule packs UDP replies too (OP_PACKEDPROT 0xD4): the payload after
+    // the opcode is a zlib stream; inflate with a bounded cap and decode
+    // the decompressed body.
+    let decompressed;
+    let payload = if data[0] == PR_EMULE_COMPRESSED {
+        decompressed = unpack_udp_payload(&data[2..])
+            .ok_or_else(|| "invalid packed server UDP datagram".to_string())?;
+        &decompressed[..]
+    } else if data[0] == PR_ED2K {
+        &data[2..]
+    } else {
         return Err(format!(
             "invalid server UDP protocol byte 0x{:02X}",
             data[0]
         ));
-    }
-    let payload = &data[2..];
+    };
     match data[1] {
         OP_GLOBFOUNDSOURCES => {
             let mut entries = Vec::new();

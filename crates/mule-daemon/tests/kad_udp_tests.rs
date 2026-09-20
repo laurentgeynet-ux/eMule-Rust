@@ -334,3 +334,132 @@ async fn test_udp_firewall_check_no_candidates_stays_unverified() {
     let status = state.kad.run_udp_firewall_check().await;
     assert_eq!(status, UdpFirewallStatus::Unverified);
 }
+
+/// Buddy relay role: FINDBUDDY_REQ from a Kad peer is accepted only when we
+/// are a verified non-firewalled node; the requester is registered as a
+/// pending buddy awaiting its TCP link, and a CALLBACK_REQ without an
+/// active buddy link is dropped silently.
+#[tokio::test]
+async fn test_kad_buddy_findbuddy_accept_and_callback_drop() {
+    let tmp = tempdir().expect("create tempdir");
+    let state = setup_test_state(&tmp);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
+
+    let bound_addr = state
+        .kad
+        .udp()
+        .start("127.0.0.1:0".parse().unwrap())
+        .await
+        .expect("start kad udp");
+
+    // Pretend we completed the UDP firewall check successfully — eMule only
+    // accepts buddy duty on a verified non-firewalled node.
+    {
+        let fw_tracker = state.kad.udp().firewall_tracker();
+        let mut fw = fw_tracker.lock().await;
+        fw.status = mule_daemon::services::UdpFirewallStatus::Open;
+        fw.verified = true;
+    }
+    state.kad.udp().set_buddy_tcp_info(4662, 0);
+
+    let mock = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock");
+    let mock_addr = mock.local_addr().unwrap();
+
+    // 1. FINDBUDDY_REQ → expect FINDBUDDY_RES echoing our buddy_id.
+    let buddy_id = [0x77u8; 16];
+    let user_id = [0x88u8; 16];
+    let mut req = Vec::new();
+    req.push(PR_KADEMLIA);
+    req.push(KADEMLIA_FINDBUDDY_REQ);
+    req.extend_from_slice(&buddy_id);
+    req.extend_from_slice(&user_id);
+    req.extend_from_slice(&5555u16.to_le_bytes());
+    mock.send_to(&req, bound_addr)
+        .await
+        .expect("send findbuddy req");
+
+    let mut buf = vec![0u8; 512];
+    let (len, from) =
+        tokio::time::timeout(std::time::Duration::from_secs(2), mock.recv_from(&mut buf))
+            .await
+            .expect("findbuddy res timeout")
+            .expect("recv findbuddy res");
+    assert_eq!(from, bound_addr);
+    match KadCodec::decode(&buf[..len]).expect("decode res") {
+        KadMessage::FindBuddyRes(r) => {
+            assert_eq!(r.buddy_id, buddy_id);
+            assert_eq!(r.tcp_port, 39735);
+        }
+        other => panic!("expected FindBuddyRes, got {other:?}"),
+    }
+
+    // Pending registration keyed by the requester's IP.
+    let pending = state
+        .kad
+        .udp()
+        .buddy_registry()
+        .lock()
+        .await
+        .take_pending(&mock_addr.ip());
+    let pb = pending.expect("pending buddy registered");
+    assert_eq!(pb.buddy_id, buddy_id);
+    assert_eq!(pb.user_id, user_id);
+    assert_eq!(pb.tcp_port, 5555);
+
+    // 2. CALLBACK_REQ without an active buddy TCP link → dropped, no reply.
+    let cb = KadCodec::encode_callback_req(&buddy_id, &[0x99u8; 16], 4662);
+    mock.send_to(&cb, bound_addr)
+        .await
+        .expect("send callback req");
+    let res = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        mock.recv_from(&mut buf),
+    )
+    .await;
+    assert!(
+        res.is_err(),
+        "no datagram expected for dropped CALLBACK_REQ"
+    );
+}
+
+/// When the node has not passed its UDP firewall check, FINDBUDDY_REQ is
+/// refused silently (eMule requires verified, non-firewalled buddies).
+#[tokio::test]
+async fn test_kad_buddy_findbuddy_rejected_when_unverified() {
+    let tmp = tempdir().expect("create tempdir");
+    let state = setup_test_state(&tmp);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
+
+    let bound_addr = state
+        .kad
+        .udp()
+        .start("127.0.0.1:0".parse().unwrap())
+        .await
+        .expect("start kad udp");
+    state.kad.udp().set_buddy_tcp_info(4662, 0);
+
+    let mock = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock");
+
+    let mut req = Vec::new();
+    req.push(PR_KADEMLIA);
+    req.push(KADEMLIA_FINDBUDDY_REQ);
+    req.extend_from_slice(&[0x11u8; 16]);
+    req.extend_from_slice(&[0x22u8; 16]);
+    req.extend_from_slice(&5555u16.to_le_bytes());
+    mock.send_to(&req, bound_addr).await.expect("send");
+
+    let mut buf = vec![0u8; 512];
+    let res = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        mock.recv_from(&mut buf),
+    )
+    .await;
+    assert!(
+        res.is_err(),
+        "FINDBUDDY_REQ must be refused when unverified"
+    );
+}

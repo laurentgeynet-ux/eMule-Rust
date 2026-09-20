@@ -75,6 +75,9 @@ pub struct ClientUdpService {
     downloads: Arc<std::sync::RwLock<Option<Arc<Mutex<DownloadService>>>>>,
     upload_manager: Arc<std::sync::RwLock<Option<UploadManager>>>,
     peer_session: Arc<std::sync::RwLock<Option<crate::services::peer_session::PeerSessionManager>>>,
+    /// Buddy relay registry — `OP_REASKCALLBACKUDP` datagrams for our buddy
+    /// client's ID are forwarded onto its TCP link as `OP_REASKCALLBACKTCP`.
+    buddy: Arc<std::sync::RwLock<Option<Arc<Mutex<crate::services::kad_udp::BuddyRegistry>>>>>,
 }
 
 impl ClientUdpService {
@@ -101,6 +104,11 @@ impl ClientUdpService {
     /// Injects the peer session manager (rank application + reask bookkeeping).
     pub fn set_peer_session(&self, mgr: crate::services::peer_session::PeerSessionManager) {
         *self.peer_session.write().unwrap() = Some(mgr);
+    }
+
+    /// Injects the buddy relay registry shared with `KadUdpService`.
+    pub fn set_buddy_registry(&self, reg: Arc<Mutex<crate::services::kad_udp::BuddyRegistry>>) {
+        *self.buddy.write().unwrap() = Some(reg);
     }
 
     /// Records the UDP version an inbound client announced in its hello,
@@ -195,6 +203,9 @@ impl ClientUdpService {
                 self.handle_reask_ack(peer_addr, UdpReaskResult::FileNotFound, None)
                     .await
             }
+            ClientUdpMessage::ReaskCallback { buddy_id, rest } => {
+                self.handle_reask_callback(peer_addr, buddy_id, rest).await
+            }
             ClientUdpMessage::Unknown { opcode } => {
                 tracing::debug!("Client UDP: ignoring opcode 0x{opcode:02X} from {peer_addr}");
             }
@@ -256,6 +267,59 @@ impl ClientUdpService {
             if let Err(e) = socket.send_to(&response, peer_addr).await {
                 tracing::debug!("Client UDP: reask reply to {peer_addr} failed: {e}");
             }
+        }
+    }
+
+    /// eMule `case OP_REASKCALLBACKUDP` — when the datagram targets our
+    /// buddy client's ID, forward it on the buddy TCP link as
+    /// `OP_REASKCALLBACKTCP`: `[requester_ip:4][requester_udp:2][file_hash:16]
+    /// [part_status..]` (eMule pokes ip/port at payload+10 then copies from
+    /// there — bytes 10..16 of the buddy ID are replaced).
+    async fn handle_reask_callback(
+        &self,
+        peer_addr: SocketAddr,
+        buddy_id: [u8; 16],
+        rest: Vec<u8>,
+    ) {
+        let reg = self.buddy.read().unwrap().clone();
+        let Some(reg) = reg else { return };
+        let ip4 = match peer_addr.ip() {
+            IpAddr::V4(v4) => v4.octets(),
+            IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+                Some(v4) => v4.octets(),
+                None => return,
+            },
+        };
+        let mut payload = Vec::with_capacity(6 + rest.len());
+        payload.extend_from_slice(&ip4);
+        payload.extend_from_slice(&peer_addr.port().to_le_bytes());
+        payload.extend_from_slice(&rest);
+        let mut frame = Vec::with_capacity(6 + payload.len());
+        frame.push(PR_EMULE);
+        frame.extend_from_slice(&(payload.len() as u32 + 1).to_le_bytes());
+        frame.push(mule_protocol::ed2k::OP_REASKCALLBACKTCP);
+        frame.extend_from_slice(&payload);
+        let relayed = {
+            let reg = reg.lock().await;
+            if reg
+                .active
+                .as_ref()
+                .map(|b| b.buddy_id == buddy_id)
+                .unwrap_or(false)
+            {
+                reg.send_to_buddy(frame)
+            } else {
+                false
+            }
+        };
+        if relayed {
+            tracing::info!(
+                "Client UDP: relayed OP_REASKCALLBACKUDP from {peer_addr} to buddy link"
+            );
+        } else {
+            tracing::debug!(
+                "Client UDP: dropping OP_REASKCALLBACKUDP from {peer_addr} — buddy_id mismatch or no buddy"
+            );
         }
     }
 

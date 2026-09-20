@@ -244,11 +244,18 @@ pub async fn search_sources_iterative(
                         continue;
                     }
 
-                    if w.tcp_port == 0 {
-                        continue;
-                    }
-
-                    let peer_addr_str = format!("{}:{}", ip, w.tcp_port);
+                    // LowID Kad source (tcp_port == 0): only reachable through a
+                    // buddy callback (KADEMLIA_CALLBACK_REQ). Keep it only if a
+                    // buddy ID was published; the peer's own IP is used to adopt
+                    // the incoming callback connection.
+                    let (peer_addr_str, buddy_hex) = if w.tcp_port == 0 {
+                        match w.buddy_id {
+                            Some(bid) => (format!("kadcb:{ip}"), Some(KadId(bid).to_hash_hex())),
+                            None => continue,
+                        }
+                    } else {
+                        (format!("{}:{}", ip, w.tcp_port), None)
+                    };
                     let ip_u32 = u32::from_le_bytes(w.ip);
 
                     discovered_sources.push(PeerSource {
@@ -265,6 +272,7 @@ pub async fn search_sources_iterative(
                         cooldown_until_unix_ms: None,
                         user_hash: Some(KadId(w.kad_id).to_hash_hex()),
                         crypt_options: w.encryption,
+                        buddy_id: buddy_hex,
                     });
                 }
             }

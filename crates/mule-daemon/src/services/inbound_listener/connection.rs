@@ -1,13 +1,15 @@
 //! Inbound connection handling, obfuscation detection, and handshake logic.
 
 use bytes::BytesMut;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::warn;
 
-use mule_protocol::ed2k::{Ed2kDecoder, Ed2kEncoder, Ed2kHelloAnswer, OP_HELLO, PR_ED2K};
+use mule_protocol::ed2k::{
+    Ed2kDecoder, Ed2kEncoder, Ed2kHelloAnswer, OP_HELLO, OP_HELLO_ANSWER, PR_ED2K, PR_EMULE,
+};
 use mule_protocol::framing::PacketCodec;
 
 use super::types::{InboundListenerService, MAX_READ_BUFFER_SIZE};
@@ -174,6 +176,58 @@ impl InboundListenerService {
             }
         }
 
+        // Kad bootstrap from clients: an inbound peer advertising a Kad UDP
+        // port (CT_EMULE_UDPPORTS high word) can seed our routing table when
+        // it is thin — mirrors eMule's "bootstrap from clients" behaviour.
+        if let Some(hello) = callback_hello.as_ref() {
+            for tag in &hello.tags {
+                if let mule_protocol::ed2k::tags::TagName::Id(
+                    mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_UDPPORTS,
+                ) = tag.name
+                {
+                    if let mule_protocol::ed2k::tags::TagValue::UInt32(ports) = tag.value {
+                        let peer_kad_port = (ports >> 16) as u16;
+                        if peer_kad_port > 0 {
+                            if let IpAddr::V4(ip4) = remote_addr.ip() {
+                                let kad_svc = self.kad.read().unwrap().clone();
+                                if let Some(k) = kad_svc {
+                                    tokio::spawn(async move {
+                                        k.maybe_bootstrap_from_peer(ip4, peer_kad_port).await;
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Buddy link adoption: a LowID client we accepted via
+        // KADEMLIA_FINDBUDDY_REQ connects to our TCP port; the link is kept
+        // alive (OP_BUDDYPING→OP_BUDDYPONG) and used to relay OP_CALLBACK /
+        // OP_REASKCALLBACKTCP from requesters (eMule `IncomingBuddy` +
+        // `KS_CONNECTED_BUDDY`).
+        let pending_buddy = {
+            let kad_udp = self.kad_udp.read().unwrap().clone();
+            match kad_udp {
+                Some(k) => k
+                    .buddy_registry()
+                    .lock()
+                    .await
+                    .take_pending(&remote_addr.ip()),
+                None => None,
+            }
+        };
+        if let Some(pb) = pending_buddy {
+            tracing::info!(
+                "Inbound connection from {remote_str} matched pending Kad buddy (buddy_id={}) — adopting as buddy link",
+                hex::encode(pb.buddy_id)
+            );
+            self.serve_buddy_link(stream, remote_addr, pb, cancel_token.clone())
+                .await;
+            return;
+        }
+
         // LowID callback adoption: if the connecting peer announced a LowID
         // client_id that matches a pending server-relayed callback, adopt the
         // socket as a client-role download session instead of serving uploads.
@@ -215,6 +269,52 @@ impl InboundListenerService {
             return;
         }
 
+        // Kad buddy callback adoption: a LowID Kad source we pinged via
+        // KADEMLIA_CALLBACK_REQ connects inbound; matched by remote IP.
+        let pending_kad_cb = {
+            let ps = self.peer_session.read().unwrap().clone();
+            ps.and_then(|ps| {
+                ps.take_pending_kad_callback(remote_addr.ip())
+                    .map(|file_hash| (ps, file_hash))
+            })
+        };
+        if let Some((ps, file_hash)) = pending_kad_cb {
+            let peer_info = callback_hello
+                .as_ref()
+                .map(mule_protocol::ed2k::Ed2kPeerInfo::from_hello);
+            let source_address = format!("kadcb:{}", remote_addr.ip());
+            tracing::info!(
+                "Inbound connection from {remote_str} matched pending Kad buddy callback (file={file_hash}) — adopting as download session"
+            );
+            let _ = ps
+                .accept_callback(
+                    stream,
+                    remote_addr,
+                    &file_hash,
+                    source_address,
+                    peer_info
+                        .as_ref()
+                        .map(|p| p.supports_source_exchange())
+                        .unwrap_or(false),
+                    peer_info
+                        .as_ref()
+                        .map(|p| p.supports_source_exchange2())
+                        .unwrap_or(false),
+                    peer_info
+                        .as_ref()
+                        .map(|p| p.supports_aich())
+                        .unwrap_or(false),
+                    peer_info
+                        .as_ref()
+                        .map(|p| p.secure_ident_support())
+                        .unwrap_or(0),
+                    self.downloads.clone(),
+                    cancel_token.clone(),
+                )
+                .await;
+            return;
+        }
+
         // Record the peer's client-UDP version so OP_REASKACK replies match
         // its GetUDPVersion() semantics (part status only for ver > 3).
         if let Some(hello) = callback_hello.as_ref() {
@@ -249,5 +349,249 @@ impl InboundListenerService {
             peer_user_hash,
         )
         .await;
+    }
+
+    /// Outbound connect-back after a server-relayed `OP_CALLBACKREQUESTED`
+    /// (eMule `ServerSocket` → `TryToConnect`): we dial the requester, do
+    /// the eD2K hello, then serve its requests like an inbound session.
+    pub async fn connect_back(
+        &self,
+        target: SocketAddr,
+        peer_user_hash: Option<[u8; 16]>,
+        crypt_options: u8,
+        our_client_id: u32,
+        server_ip: u32,
+        server_port: u16,
+    ) -> Result<(), String> {
+        let permit = self
+            .network_policy
+            .request_tcp_connect(target, mule_network_policy::ConnectionPurpose::Ed2kPeer)
+            .map_err(|e| format!("Network policy rejected callback connect to {target}: {e}"))?;
+        let cancel_token = permit.cancellation_token().clone();
+
+        let stream = tokio::select! {
+            _ = cancel_token.cancelled() => {
+                return Err("Cancelled by network policy".into());
+            }
+            res = tokio::time::timeout(Duration::from_secs(10), TcpStream::connect(target)) => {
+                res.map_err(|_| format!("TCP connect timed out to {target}"))?
+                    .map_err(|e| format!("TCP connect to {target} failed: {e}"))?
+            }
+        };
+        let local_ip = stream
+            .local_addr()
+            .map(|a| a.ip())
+            .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+
+        // Obfuscation: when the requester announced crypt support and we have
+        // its user hash (CALLBACKREQUESTED ≥23B form), use the encrypted
+        // handshake; otherwise plaintext.
+        let use_obfu =
+            crypt_options & 0x01 != 0 && self.obfuscation_enabled && peer_user_hash.is_some();
+        let mut stream = if use_obfu {
+            crate::services::obfuscation_stream::ObfuscatedStream::connect_peer_outgoing(
+                stream,
+                &peer_user_hash.unwrap(),
+                self.obfuscation_padding_max,
+            )
+            .await
+            .map_err(|e| format!("Callback connect obfuscation handshake failed: {e}"))?
+        } else {
+            crate::services::obfuscation_stream::ObfuscatedStream::plaintext(stream)
+        };
+
+        // Send OP_HELLO (same capability tags as the inbound answer).
+        let encoder = Ed2kEncoder::default();
+        let decoder = Ed2kDecoder::default();
+        let codec = PacketCodec::new();
+        let sec_ident: u32 = if self.sui_pubkey_der.is_some() { 3 } else { 0 };
+        let misc1: u32 = (1 << 29)
+            | (1 << 28)
+            | (4 << 24)
+            | (1 << 20)
+            | ((sec_ident & 0x0F) << 16)
+            | (4 << 12)
+            | (1 << 4)
+            | 1;
+        let mut tags = vec![mule_protocol::ed2k::tags::Ed2kTag {
+            name: mule_protocol::ed2k::tags::TagName::Id(
+                mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS1,
+            ),
+            value: mule_protocol::ed2k::tags::TagValue::UInt32(misc1),
+        }];
+        let mut misc2: u32 = 0;
+        if self.obfuscation_enabled {
+            misc2 |= (1 << 7) | (1 << 8);
+        }
+        if self.obfuscation_required {
+            misc2 |= 1 << 9;
+        }
+        if misc2 > 0 {
+            tags.push(mule_protocol::ed2k::tags::Ed2kTag {
+                name: mule_protocol::ed2k::tags::TagName::Id(
+                    mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS2,
+                ),
+                value: mule_protocol::ed2k::tags::TagValue::UInt32(misc2),
+            });
+        }
+        let hello = mule_protocol::ed2k::Ed2kHello {
+            user_hash: self.user_hash,
+            client_id: our_client_id,
+            tcp_port: self.listen_addr.lock().await.map(|a| a.port()).unwrap_or(0),
+            tags,
+            unknown_tags: vec![],
+            server_ip,
+            server_port,
+        };
+        let pkt = encoder
+            .encode_hello(&hello)
+            .map_err(|e| format!("Failed to encode OP_HELLO: {e}"))?;
+        let mut out = Vec::with_capacity(6 + pkt.payload.len());
+        out.push(pkt.protocol);
+        out.extend_from_slice(&(pkt.frame_len() as u32).to_le_bytes());
+        out.push(pkt.opcode);
+        out.extend_from_slice(&pkt.payload);
+        stream
+            .write_all(&out)
+            .await
+            .map_err(|e| format!("Failed to send OP_HELLO to {target}: {e}"))?;
+
+        // Read OP_HELLO_ANSWER.
+        let mut read_buf = BytesMut::with_capacity(65536);
+        let mut raw_buf = [0u8; 8192];
+        let remote_str = target.to_string();
+        let answer = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let n = stream.read(&mut raw_buf).await.map_err(|e| e.to_string())?;
+                if n == 0 {
+                    return Err("EOF during callback handshake".to_string());
+                }
+                read_buf.extend_from_slice(&raw_buf[..n]);
+                if read_buf.len() > MAX_READ_BUFFER_SIZE {
+                    return Err("Read buffer limit exceeded during handshake".to_string());
+                }
+                while let Ok(Some(p)) = codec.decode(&mut read_buf) {
+                    if p.protocol == PR_ED2K && p.opcode == OP_HELLO_ANSWER {
+                        return decoder
+                            .decode_hello_answer(p.protocol, p.opcode, &p.payload, 0)
+                            .map_err(|e| format!("Invalid OP_HELLO_ANSWER: {e}"));
+                    }
+                }
+            }
+        })
+        .await;
+
+        let answer = match answer {
+            Ok(Ok(a)) => a,
+            Ok(Err(e)) => return Err(format!("Callback handshake with {target} failed: {e}")),
+            Err(_) => return Err(format!("Callback handshake with {target} timed out")),
+        };
+
+        let peer_info = mule_protocol::ed2k::Ed2kPeerInfo::from_hello_answer(&answer);
+        let peer_hash = if answer.user_hash != [0u8; 16] {
+            Some(answer.user_hash)
+        } else {
+            peer_user_hash
+        };
+        tracing::info!(
+            "Callback connect-back to {target} established (OP_HELLO_ANSWER ok) — serving requests"
+        );
+        self.dispatch_requests(
+            stream,
+            remote_str,
+            local_ip,
+            cancel_token,
+            peer_info.has_compression_capability(),
+            peer_hash,
+        )
+        .await;
+        Ok(())
+    }
+
+    /// Serves an adopted Kad buddy link (eMule `KS_CONNECTED_BUDDY`): keeps
+    /// the TCP connection open, answers `OP_BUDDYPING` with `OP_BUDDYPONG`,
+    /// and forwards packets queued by the buddy relay (`OP_CALLBACK`,
+    /// `OP_REASKCALLBACKTCP`) through an mpsc writer.
+    pub(crate) async fn serve_buddy_link(
+        &self,
+        stream: crate::services::obfuscation_stream::ObfuscatedStream<TcpStream>,
+        remote_addr: SocketAddr,
+        pending: crate::services::kad_udp::PendingBuddy,
+        cancel_token: mule_network_policy::CancellationToken,
+    ) {
+        let Some(kad_udp) = self.kad_udp.read().unwrap().clone() else {
+            return;
+        };
+        let registry = kad_udp.buddy_registry();
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        {
+            let mut reg = registry.lock().await;
+            if !reg.set_active(crate::services::kad_udp::ActiveBuddy {
+                buddy_id: pending.buddy_id,
+                user_id: pending.user_id,
+                remote_addr,
+                tx: tx.clone(),
+            }) {
+                tracing::warn!(
+                    "Buddy link from {remote_addr} rejected: another buddy is already active"
+                );
+                return;
+            }
+        }
+
+        let (mut rd, mut wr) = tokio::io::split(stream);
+        let writer = tokio::spawn(async move {
+            while let Some(pkt) = rx.recv().await {
+                if wr.write_all(&pkt).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let mut read_buf = BytesMut::with_capacity(8192);
+        let mut raw_buf = [0u8; 8192];
+        let codec = PacketCodec::new();
+        loop {
+            tokio::select! {
+                _ = cancel_token.cancelled() => break,
+                res = rd.read(&mut raw_buf) => {
+                    match res {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            read_buf.extend_from_slice(&raw_buf[..n]);
+                            if read_buf.len() > MAX_READ_BUFFER_SIZE {
+                                break;
+                            }
+                            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                                if pkt.protocol == PR_EMULE
+                                    && pkt.opcode == mule_protocol::ed2k::OP_BUDDYPING
+                                {
+                                    // eMule ListenSocket.cpp: OP_BUDDYPING →
+                                    // empty OP_BUDDYPONG.
+                                    let pong = {
+                                        let mut f = Vec::with_capacity(6);
+                                        f.push(PR_EMULE);
+                                        f.extend_from_slice(&1u32.to_le_bytes());
+                                        f.push(mule_protocol::ed2k::OP_BUDDYPONG);
+                                        f
+                                    };
+                                    let _ = tx.send(pong);
+                                } else {
+                                    tracing::debug!(
+                                        "Buddy link {}: ignoring packet proto=0x{:02X} opcode=0x{:02X}",
+                                        remote_addr, pkt.protocol, pkt.opcode
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        writer.abort();
+        registry.lock().await.clear_active(&remote_addr);
+        tracing::info!("Kad buddy link from {remote_addr} closed");
     }
 }

@@ -110,6 +110,7 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
             cooldown_until_unix_ms INTEGER,
             user_hash TEXT,
             crypt_options INTEGER DEFAULT 0,
+            buddy_id TEXT,
             PRIMARY KEY(file_hash, address)
         );
 
@@ -213,12 +214,15 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     let mut rows_peer2 = stmt_peer2.query([])?;
     let mut has_user_hash = false;
     let mut has_crypt_options = false;
+    let mut has_buddy_id = false;
     while let Some(row) = rows_peer2.next()? {
         let col_name: String = row.get(1)?;
         if col_name == "user_hash" {
             has_user_hash = true;
         } else if col_name == "crypt_options" {
             has_crypt_options = true;
+        } else if col_name == "buddy_id" {
+            has_buddy_id = true;
         }
     }
     if !has_user_hash {
@@ -226,6 +230,9 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     }
     if !has_crypt_options {
         conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN crypt_options INTEGER DEFAULT 0;")?;
+    }
+    if !has_buddy_id {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN buddy_id TEXT;")?;
     }
 
     let mut stmt_sf = conn.prepare("PRAGMA table_info(shared_files)")?;

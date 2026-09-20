@@ -4,7 +4,7 @@ pub mod search_keywords;
 pub mod search_sources;
 pub mod types;
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -32,6 +32,9 @@ pub struct KadService {
     ed2k_tcp_port: std::sync::atomic::AtomicU16,
     /// Local eD2K user hash used in firewall-test connection hellos.
     fw_user_hash: std::sync::RwLock<[u8; 16]>,
+    /// Last time we bootstrapped Kad from a connected eD2K peer
+    /// (eMule "bootstrap from clients") — throttles the per-peer hook.
+    last_peer_bootstrap: std::sync::Mutex<Option<std::time::Instant>>,
 }
 
 /// Interval between Kad republication rounds of shared files
@@ -57,6 +60,7 @@ impl KadService {
             in_flight_searches: Arc::new(Mutex::new(std::collections::HashSet::new())),
             ed2k_tcp_port: std::sync::atomic::AtomicU16::new(0),
             fw_user_hash: std::sync::RwLock::new([0u8; 16]),
+            last_peer_bootstrap: std::sync::Mutex::new(None),
         }
     }
 
@@ -72,6 +76,15 @@ impl KadService {
 
     pub fn udp(&self) -> &Arc<KadUdpService> {
         &self.udp
+    }
+
+    /// Returns the routing-table contact for `kad_id`, if known.
+    /// Used to resolve a published buddy ID to a UDP endpoint.
+    pub async fn find_contact(
+        &self,
+        kad_id: &mule_core::kad::KadId,
+    ) -> Option<mule_core::kad::KadContact> {
+        self.routing_table.lock().await.get(kad_id).cloned()
     }
 
     pub async fn init_from_db(&self) {
@@ -240,6 +253,37 @@ impl KadService {
         }
 
         Ok(valid_contacts.len())
+    }
+
+    /// Bootstraps Kad from a connected eD2K peer that advertised a Kad UDP
+    /// port (eMule "bootstrap from clients": any Kad-capable client can seed
+    /// the routing table). Only runs while the routing table is thin
+    /// (< 50 contacts) and at most once per minute.
+    pub async fn maybe_bootstrap_from_peer(&self, ip: Ipv4Addr, kad_udp_port: u16) {
+        const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+        let thin = {
+            let table = self.routing_table.lock().await;
+            table.total_contacts() < 50
+        };
+        if !thin {
+            return;
+        }
+        {
+            let mut last = self.last_peer_bootstrap.lock().unwrap();
+            if last
+                .map(|t| t.elapsed() < PEER_BOOTSTRAP_MIN_INTERVAL)
+                .unwrap_or(false)
+            {
+                return;
+            }
+            *last = Some(std::time::Instant::now());
+        }
+        tracing::info!(
+            "Kad: bootstrapping from connected peer {ip}:{kad_udp_port} (thin routing table)"
+        );
+        let _ = self
+            .bootstrap_from_node(&ip.to_string(), kad_udp_port)
+            .await;
     }
 
     /// Bootstraps active contacts by sending bootstrap requests to seed contacts in parallel.

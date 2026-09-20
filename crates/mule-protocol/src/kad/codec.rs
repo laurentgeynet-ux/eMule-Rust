@@ -156,4 +156,25 @@ impl KadCodec {
     pub fn encode_firewall_udp(error_code: u8, udp_port: u16) -> Bytes {
         KadEncoder::encode_firewall_udp(error_code, udp_port)
     }
+
+    /// Encodes a KADEMLIA_FINDBUDDY_RES (0x5A) packet.
+    #[inline]
+    pub fn encode_findbuddy_res(
+        buddy_id: &KadIdBytes,
+        client_id: &KadIdBytes,
+        tcp_port: u16,
+        connect_options: u8,
+    ) -> Bytes {
+        KadEncoder::encode_findbuddy_res(buddy_id, client_id, tcp_port, connect_options)
+    }
+
+    /// Encodes a KADEMLIA_CALLBACK_REQ (0x52) packet.
+    #[inline]
+    pub fn encode_callback_req(
+        buddy_id: &KadIdBytes,
+        file_id: &KadIdBytes,
+        tcp_port: u16,
+    ) -> Bytes {
+        KadEncoder::encode_callback_req(buddy_id, file_id, tcp_port)
+    }
 }

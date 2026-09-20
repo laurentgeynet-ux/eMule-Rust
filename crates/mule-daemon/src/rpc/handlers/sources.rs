@@ -85,6 +85,7 @@ pub async fn handle_sources_add_manual(
         cooldown_until_unix_ms: None,
         user_hash: user_hash_param,
         crypt_options: crypt_options_param,
+        buddy_id: None,
     };
 
     state
@@ -152,6 +153,7 @@ pub async fn handle_sources_connect(
             cooldown_until_unix_ms: None,
             user_hash: user_hash_param.clone(),
             crypt_options: crypt_options_param.unwrap_or(0),
+            buddy_id: None,
         };
         let mut dl_svc = state.downloads.lock().await;
         let _ = dl_svc.upsert_peer_sources(hash_str, &[filtered_src]);
@@ -205,6 +207,7 @@ pub async fn handle_sources_connect(
             cooldown_until_unix_ms: None,
             user_hash: user_hash_param,
             crypt_options: crypt_options_param.unwrap_or(0),
+            buddy_id: None,
         };
         let _ = dl_svc.upsert_peer_sources(hash_str, &[init_src]);
     }

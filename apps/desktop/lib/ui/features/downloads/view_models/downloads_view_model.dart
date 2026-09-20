@@ -102,6 +102,7 @@ class DownloadsViewModel extends ChangeNotifier {
   StreamSubscription<List<SearchResultFileModel>>? _searchResultSub;
   StreamSubscription<Map<String, dynamic>>? _foundSourcesSub;
   StreamSubscription<PeerSessionModel>? _peerSessionSub;
+  Timer? _searchTimeout;
 
   DownloadsViewModel({
     required this.client,
@@ -1300,6 +1301,18 @@ class DownloadsViewModel extends ChangeNotifier {
         extension: extension,
       );
       _statusNotification = 'Recherche "$trimmed" envoyée au serveur';
+      // eD2K servers may legitimately never answer (busy, throttled, dead):
+      // without a reply the spinner would block every later search forever.
+      // Auto-release after 30 s — late results still populate the list.
+      _searchTimeout?.cancel();
+      _searchTimeout = Timer(const Duration(seconds: 30), () {
+        if (_isSearching) {
+          _isSearching = false;
+          _statusNotification =
+              'Recherche "$trimmed" terminée sans réponse du serveur';
+          notifyListeners();
+        }
+      });
     } catch (e) {
       _errorMessage = 'Échec de la recherche : $e';
       _isSearching = false;
@@ -1738,6 +1751,7 @@ class DownloadsViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _kadStatusTimer?.cancel();
+    _searchTimeout?.cancel();
     _connSub?.cancel();
     _serverSessionSub?.cancel();
     _eventSub?.cancel();

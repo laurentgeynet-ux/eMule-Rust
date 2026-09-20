@@ -48,6 +48,11 @@ pub struct PeerSessionManager {
     /// LowID → (file_hash_hex, expiry unix ms) for pending server-relayed
     /// callbacks (`OP_CALLBACKREQUEST`). Entries expire after 5 minutes.
     pending_callbacks: Arc<std::sync::Mutex<std::collections::HashMap<u32, (String, i64)>>>,
+    /// Peer IP → (file_hash_hex, expiry unix ms) for pending Kad buddy
+    /// callbacks (`KADEMLIA_CALLBACK_REQ`). The LowID source connects
+    /// inbound; matched in the inbound listener by the remote IP.
+    pending_kad_callbacks:
+        Arc<std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, (String, i64)>>>,
     /// Global bandwidth rate limiters shared with the network policy —
     /// the transfer loop paces received data through `download_bucket`.
     rate_limiters: Arc<std::sync::RwLock<Option<Arc<mule_network_policy::PolicyRateLimiters>>>>,
@@ -74,6 +79,9 @@ impl PeerSessionManager {
                 crate::services::identity::SuiStats::default(),
             ))),
             pending_callbacks: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            pending_kad_callbacks: Arc::new(
+                std::sync::Mutex::new(std::collections::HashMap::new()),
+            ),
             rate_limiters: Arc::new(std::sync::RwLock::new(None)),
         }
     }
@@ -124,6 +132,47 @@ impl PeerSessionManager {
         let mut map = self.pending_callbacks.lock().unwrap();
         map.retain(|_, (_, exp)| *exp > now);
         map.contains_key(&lowid)
+    }
+
+    /// Registers a pending Kad buddy callback: after `KADEMLIA_CALLBACK_REQ`
+    /// was relayed to the buddy, the LowID source (at `ip`) is expected to
+    /// connect inbound within `ttl_ms`.
+    pub fn register_pending_kad_callback(
+        &self,
+        ip: std::net::IpAddr,
+        file_hash: String,
+        ttl_ms: i64,
+    ) {
+        let expiry = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+            + ttl_ms;
+        let mut map = self.pending_kad_callbacks.lock().unwrap();
+        map.retain(|_, (_, exp)| *exp > expiry - ttl_ms);
+        map.insert(ip, (file_hash, expiry));
+    }
+
+    /// Consumes a pending Kad buddy callback registration for `ip`.
+    pub fn take_pending_kad_callback(&self, ip: std::net::IpAddr) -> Option<String> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let mut map = self.pending_kad_callbacks.lock().unwrap();
+        map.retain(|_, (_, exp)| *exp > now);
+        map.remove(&ip).map(|(h, _)| h)
+    }
+
+    /// Returns true if a pending (unexpired) Kad buddy callback exists for `ip`.
+    pub fn has_pending_kad_callback(&self, ip: std::net::IpAddr) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let mut map = self.pending_kad_callbacks.lock().unwrap();
+        map.retain(|_, (_, exp)| *exp > now);
+        map.contains_key(&ip)
     }
 
     /// Sets the shared SUI anomaly counters (identity.status `sui` object).

@@ -90,6 +90,7 @@ pub fn decode_search_res(
                 let mut udp_port = 0u16;
                 let mut tcp_port = 0u16;
                 let mut encryption = 0u8;
+                let mut buddy_id: Option<KadIdBytes> = None;
                 let mut entry_is_source = false;
 
                 let mut reader = TagReader::new(raw_bytes, cursor, protocol, Some(opcode));
@@ -190,8 +191,29 @@ pub fn decode_search_res(
                                     }
                                 }
                                 TagName::Id(0xF8) => {
-                                    // FT_BUDDYHASH (0xF8)
+                                    // FT_BUDDYHASH (0xF8) — Kad buddy ID of a
+                                    // LowID source, as 32-char hex string
+                                    // (eMule `CKadTagStr(TAG_BUDDYHASH, md4str)`).
                                     entry_is_source = true;
+                                    if let TagValue::String(s) = &tag.value {
+                                        let s = s.trim();
+                                        if s.len() == 32 {
+                                            let mut id = [0u8; 16];
+                                            let mut ok = true;
+                                            for i in 0..16 {
+                                                match u8::from_str_radix(&s[i * 2..i * 2 + 2], 16) {
+                                                    Ok(b) => id[i] = b,
+                                                    Err(_) => {
+                                                        ok = false;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            if ok {
+                                                buddy_id = Some(id);
+                                            }
+                                        }
+                                    }
                                 }
                                 TagName::Text(name) => {
                                     let lower = name.to_lowercase();
@@ -268,6 +290,7 @@ pub fn decode_search_res(
                         udp_port,
                         tcp_port,
                         encryption,
+                        buddy_id,
                     });
                 } else {
                     keyword_entries.push(KadKeywordEntryWire {
@@ -373,6 +396,7 @@ pub fn decode_search_res(
             udp_port,
             tcp_port,
             encryption,
+            buddy_id: None,
         });
     }
 

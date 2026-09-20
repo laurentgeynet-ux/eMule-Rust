@@ -108,10 +108,14 @@ pub struct KadSourceWire {
     pub ip: [u8; 4],
     /// UDP port.
     pub udp_port: u16,
-    /// TCP port (0 if none).
+    /// TCP port (0 if none — Kad-LowID source reachable only via buddy).
     pub tcp_port: u16,
     /// Encryption/capability flags.
     pub encryption: u8,
+    /// Buddy Kad ID advertised via `TAG_BUDDYHASH`/`FT_BUDDYHASH` (0xF8) —
+    /// present on LowID sources that can only be reached through a Kad
+    /// buddy callback (`KADEMLIA_CALLBACK_REQ`).
+    pub buddy_id: Option<KadIdBytes>,
 }
 
 /// Kad2 Search Source Request (0x34).
@@ -220,6 +224,43 @@ pub struct KadPublishKeywordRes {
     pub status: u8,
 }
 
+/// Kad buddy search request (0x51) — a firewalled client asks us to act as
+/// its buddy (`Process_KADEMLIA_FINDBUDDY_REQ`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadFindBuddyReq {
+    /// Buddy ID the requester wants us to register under (its contact target).
+    pub buddy_id: KadIdBytes,
+    /// Requester's Kad client ID.
+    pub user_id: KadIdBytes,
+    /// Requester's TCP listening port (where the buddy link will come from).
+    pub tcp_port: u16,
+}
+
+/// Kad buddy search response (0x5A) — acceptance of a buddy request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadFindBuddyRes {
+    /// Echoed buddy ID.
+    pub buddy_id: KadIdBytes,
+    /// Responder's Kad client ID.
+    pub client_id: KadIdBytes,
+    /// Responder's TCP listening port (buddy connects there).
+    pub tcp_port: u16,
+    /// Connection option flags (post-0.49a senders; 0 when absent).
+    pub connect_options: u8,
+}
+
+/// Kad buddy callback relay request (0x52) — a HighID requester asks us to
+/// relay a callback to our buddy client (`Process_KADEMLIA_CALLBACK_REQ`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadCallbackReq {
+    /// Buddy ID check field (forwarded verbatim to the buddy client).
+    pub buddy_id: KadIdBytes,
+    /// File hash the requester wants from the buddy client.
+    pub file_id: KadIdBytes,
+    /// Requester's TCP port where the buddy should connect back.
+    pub tcp_port: u16,
+}
+
 /// Enum representing decoded Kad UDP messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KadMessage {
@@ -255,4 +296,10 @@ pub enum KadMessage {
     PublishKeywordRes(KadPublishKeywordRes),
     /// Kad2 Firewall UDP test packet.
     FirewallUdp(KadFirewallUdp),
+    /// Kad buddy search request.
+    FindBuddyReq(KadFindBuddyReq),
+    /// Kad buddy search response.
+    FindBuddyRes(KadFindBuddyRes),
+    /// Kad buddy callback relay request.
+    CallbackReq(KadCallbackReq),
 }

@@ -132,6 +132,79 @@ impl KadDecoder {
                     udp_port: u16::from_le_bytes([payload[1], payload[2]]),
                 }))
             }
+            // 0x51 = FINDBUDDY_REQ: [buddy_id:16][user_id:16][tcp_port:2]
+            KADEMLIA_FINDBUDDY_REQ => {
+                if payload.len() < 34 {
+                    return Err(Ed2kParseError::new(
+                        protocol,
+                        Some(opcode),
+                        2,
+                        "KadFindBuddyReq",
+                        Ed2kErrorKind::UnexpectedEof {
+                            needed: 34,
+                            available: payload.len(),
+                        },
+                    ));
+                }
+                let mut buddy_id = [0u8; 16];
+                buddy_id.copy_from_slice(&payload[0..16]);
+                let mut user_id = [0u8; 16];
+                user_id.copy_from_slice(&payload[16..32]);
+                Ok(KadMessage::FindBuddyReq(KadFindBuddyReq {
+                    buddy_id,
+                    user_id,
+                    tcp_port: u16::from_le_bytes([payload[32], payload[33]]),
+                }))
+            }
+            // 0x52 = CALLBACK_REQ: [buddy_id:16][file_id:16][tcp_port:2]
+            KADEMLIA_CALLBACK_REQ => {
+                if payload.len() < 34 {
+                    return Err(Ed2kParseError::new(
+                        protocol,
+                        Some(opcode),
+                        2,
+                        "KadCallbackReq",
+                        Ed2kErrorKind::UnexpectedEof {
+                            needed: 34,
+                            available: payload.len(),
+                        },
+                    ));
+                }
+                let mut buddy_id = [0u8; 16];
+                buddy_id.copy_from_slice(&payload[0..16]);
+                let mut file_id = [0u8; 16];
+                file_id.copy_from_slice(&payload[16..32]);
+                Ok(KadMessage::CallbackReq(KadCallbackReq {
+                    buddy_id,
+                    file_id,
+                    tcp_port: u16::from_le_bytes([payload[32], payload[33]]),
+                }))
+            }
+            // 0x5A = FINDBUDDY_RES: [buddy_id:16][client_id:16][tcp_port:2][opts:1]
+            KADEMLIA_FINDBUDDY_RES => {
+                if payload.len() < 34 {
+                    return Err(Ed2kParseError::new(
+                        protocol,
+                        Some(opcode),
+                        2,
+                        "KadFindBuddyRes",
+                        Ed2kErrorKind::UnexpectedEof {
+                            needed: 34,
+                            available: payload.len(),
+                        },
+                    ));
+                }
+                let mut buddy_id = [0u8; 16];
+                buddy_id.copy_from_slice(&payload[0..16]);
+                let mut client_id = [0u8; 16];
+                client_id.copy_from_slice(&payload[16..32]);
+                Ok(KadMessage::FindBuddyRes(KadFindBuddyRes {
+                    buddy_id,
+                    client_id,
+                    tcp_port: u16::from_le_bytes([payload[32], payload[33]]),
+                    connect_options: payload.get(34).copied().unwrap_or(0),
+                }))
+            }
             _ => Err(Ed2kParseError::new(
                 protocol,
                 Some(opcode),

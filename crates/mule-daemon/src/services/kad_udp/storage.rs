@@ -213,6 +213,7 @@ impl KadStorage {
                     udp_port: s.udp_port,
                     tcp_port: s.tcp_port,
                     encryption: s.encryption,
+                    buddy_id: None,
                 },
                 expires_at: Instant::now() + Duration::from_millis(remaining),
             });
@@ -275,6 +276,7 @@ mod tests {
             udp_port: 4672,
             tcp_port: 4662,
             encryption: 0,
+            buddy_id: None,
         }
     }
 

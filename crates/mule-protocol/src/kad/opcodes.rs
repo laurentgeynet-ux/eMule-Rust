@@ -83,6 +83,12 @@ pub const KADEMLIA2_PING: u8 = 0x60;
 pub const KADEMLIA2_PONG: u8 = 0x61;
 /// Kad2 Firewall UDP test (0x62).
 pub const KADEMLIA2_FIREWALLUDP: u8 = 0x62;
+/// Kad buddy search request (0x51): [buddy_id:16][user_id:16][tcp_port:2].
+pub const KADEMLIA_FINDBUDDY_REQ: u8 = 0x51;
+/// Kad buddy callback relay request (0x52): [buddy_id:16][file_id:16][tcp_port:2].
+pub const KADEMLIA_CALLBACK_REQ: u8 = 0x52;
+/// Kad buddy search response (0x5A): [buddy_id:16][client_id:16][tcp_port:2][connect_opts:1].
+pub const KADEMLIA_FINDBUDDY_RES: u8 = 0x5A;
 
 /// Maximum allowable search keywords returned in a single packet.
 pub const MAX_KAD_SEARCH_KEYWORDS: usize = 50;

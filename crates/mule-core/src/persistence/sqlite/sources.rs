@@ -15,14 +15,15 @@ pub fn upsert_peer_sources(
             "INSERT INTO peer_sources (
                 file_hash, address, ip, port, origin,
                 discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
-                user_hash, crypt_options
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                user_hash, crypt_options, buddy_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
             ON CONFLICT(file_hash, address) DO UPDATE SET
                 last_seen_unix_ms = excluded.last_seen_unix_ms,
                 ip = excluded.ip,
                 port = excluded.port,
                 user_hash = COALESCE(excluded.user_hash, peer_sources.user_hash),
-                crypt_options = CASE WHEN excluded.crypt_options != 0 THEN excluded.crypt_options ELSE peer_sources.crypt_options END"
+                crypt_options = CASE WHEN excluded.crypt_options != 0 THEN excluded.crypt_options ELSE peer_sources.crypt_options END,
+                buddy_id = COALESCE(excluded.buddy_id, peer_sources.buddy_id)"
         )?;
 
         for s in sources {
@@ -40,6 +41,7 @@ pub fn upsert_peer_sources(
                 s.cooldown_until_unix_ms,
                 s.user_hash,
                 s.crypt_options as i32,
+                s.buddy_id,
             ])?;
             count += 1;
         }
@@ -52,7 +54,7 @@ pub fn list_peer_sources(conn: &Connection, file_hash: &str) -> Result<Vec<PeerS
     let mut stmt = conn.prepare(
         "SELECT file_hash, address, ip, port, origin,
                 discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
-                user_hash, crypt_options
+                user_hash, crypt_options, buddy_id
          FROM peer_sources
          WHERE file_hash = ?1
          ORDER BY status ASC, last_seen_unix_ms DESC"
@@ -82,6 +84,7 @@ pub fn list_peer_sources(conn: &Connection, file_hash: &str) -> Result<Vec<PeerS
             cooldown_until_unix_ms: row.get(10)?,
             user_hash: row.get(11)?,
             crypt_options: crypt_options_i32 as u8,
+            buddy_id: row.get(13)?,
         })
     })?;
 

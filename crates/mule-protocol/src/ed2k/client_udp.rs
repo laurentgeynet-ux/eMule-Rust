@@ -39,6 +39,17 @@ pub enum ClientUdpMessage {
     FileNotFound,
     /// `OP_QUEUEFULL` — the peer's upload queue is full.
     QueueFull,
+    /// `OP_REASKCALLBACKUDP` — a requester asks us (as Kad buddy) to relay
+    /// a file re-request to our buddy client over TCP.
+    /// Payload: `[buddy_id:16][file_hash:16][part_status..][complete_src:2]`.
+    ReaskCallback {
+        /// Buddy ID the packet targets (must match our buddy's ID).
+        buddy_id: [u8; 16],
+        /// Remaining payload after the buddy ID: `file_hash` + extended
+        /// re-request info, forwarded verbatim after the requester
+        /// IP/port header (eMule `memcpy(packet + 10)` packing).
+        rest: Vec<u8>,
+    },
     /// Any other opcode received on the client UDP channel.
     Unknown {
         /// Raw opcode byte.
@@ -141,9 +152,17 @@ pub fn decode_client_udp(data: &[u8]) -> Result<ClientUdpMessage, String> {
         }
         OP_FILENOTFOUND => Ok(ClientUdpMessage::FileNotFound),
         OP_QUEUEFULL => Ok(ClientUdpMessage::QueueFull),
-        OP_REASKCALLBACKUDP => Ok(ClientUdpMessage::Unknown {
-            opcode: OP_REASKCALLBACKUDP,
-        }),
+        OP_REASKCALLBACKUDP => {
+            if payload.len() < 17 {
+                return Err("truncated OP_REASKCALLBACKUDP".into());
+            }
+            let mut buddy_id = [0u8; 16];
+            buddy_id.copy_from_slice(&payload[..16]);
+            Ok(ClientUdpMessage::ReaskCallback {
+                buddy_id,
+                rest: payload[16..].to_vec(),
+            })
+        }
         other => Ok(ClientUdpMessage::Unknown { opcode: other }),
     }
 }

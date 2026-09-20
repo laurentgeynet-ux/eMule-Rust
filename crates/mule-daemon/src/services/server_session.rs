@@ -33,6 +33,15 @@ pub struct ServerSessionManager {
     event_tx: broadcast::Sender<String>,
     sequence: Arc<AtomicU64>,
     downloads: Arc<std::sync::RwLock<Option<Arc<Mutex<DownloadService>>>>>,
+    /// Inbound listener — `OP_CALLBACKREQUESTED` (server-relayed callback to
+    /// a LowID us) triggers an outbound connect-back served by this service.
+    inbound:
+        Arc<std::sync::RwLock<Option<crate::services::inbound_listener::InboundListenerService>>>,
+    /// Prefer the server's dedicated obfuscation port (`ST_TCPPORTOBFUSCATION`)
+    /// when advertised — mirrors eMule `IsServerCryptLayerConnection()`.
+    prefer_obfuscation: Arc<std::sync::atomic::AtomicBool>,
+    /// Max random padding for the obfuscated handshake (eMule PAD_DIGITS).
+    obfuscation_padding_max: Arc<std::sync::atomic::AtomicU8>,
 }
 
 impl ServerSessionManager {
@@ -43,7 +52,28 @@ impl ServerSessionManager {
             event_tx,
             sequence,
             downloads: Arc::new(std::sync::RwLock::new(None)),
+            inbound: Arc::new(std::sync::RwLock::new(None)),
+            prefer_obfuscation: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            obfuscation_padding_max: Arc::new(std::sync::atomic::AtomicU8::new(0)),
         }
+    }
+
+    /// Enables/disables obfuscated server connections (`ST_TCPPORTOBFUSCATION`)
+    /// and sets the max handshake padding (0 = no padding, eMule default ≤ 254).
+    pub fn set_obfuscation_preference(&self, enabled: bool, padding_max: u8) {
+        self.prefer_obfuscation
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
+        self.obfuscation_padding_max
+            .store(padding_max, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Injects the inbound listener service used for `OP_CALLBACKREQUESTED`
+    /// connect-backs.
+    pub fn set_inbound_listener(
+        &self,
+        svc: crate::services::inbound_listener::InboundListenerService,
+    ) {
+        *self.inbound.write().unwrap() = Some(svc);
     }
 
     /// Sets the download service reference for auto-ingesting found sources.
@@ -206,7 +236,14 @@ impl ServerSessionManager {
         let event_tx_clone = self.event_tx.clone();
         let sequence_clone = Arc::clone(&self.sequence);
         let downloads_clone = self.downloads.read().ok().and_then(|g| g.clone());
+        let inbound_clone = self.inbound.read().ok().and_then(|g| g.clone());
         let cancel_token = permit.cancellation_token();
+        let prefer_obf = self
+            .prefer_obfuscation
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let pad_max = self
+            .obfuscation_padding_max
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         let task = spawn_connection_task(
             target_addr,
@@ -221,6 +258,9 @@ impl ServerSessionManager {
             event_tx_clone,
             sequence_clone,
             downloads_clone,
+            inbound_clone,
+            prefer_obf,
+            pad_max,
         );
 
         guard.abort_handle = Some(task.abort_handle());
