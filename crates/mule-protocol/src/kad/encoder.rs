@@ -497,6 +497,29 @@ pub fn encode_publish_notes_req(
     Some(buf.freeze())
 }
 
+/// Encodes a note tag list as a standalone blob (`[tag_count:u8][tags]`) for
+/// persistence; `decode_note_tags_blob` reverses it.
+pub fn encode_note_tags_blob(
+    tags: &[crate::ed2k::tags::Ed2kTag],
+    unknown_tags: &[crate::ed2k::tags::RawTag],
+) -> Option<Vec<u8>> {
+    let total = tags.len() + unknown_tags.len();
+    if total > MAX_NOTE_TAG_COUNT {
+        return None;
+    }
+    let limits = crate::ed2k::limits::Ed2kLimits::default();
+    let mut out = Vec::with_capacity(1 + total * 32);
+    out.push(total as u8);
+    for t in tags {
+        crate::ed2k::encoder::encode_tag(&limits, KADEMLIA2_PUBLISH_NOTES_REQ, t, &mut out).ok()?;
+    }
+    for t in unknown_tags {
+        crate::ed2k::encoder::encode_raw_tag(&limits, KADEMLIA2_PUBLISH_NOTES_REQ, t, &mut out)
+            .ok()?;
+    }
+    Some(out)
+}
+
 /// Encodes a `KADEMLIA2_PUBLISH_RES` (0x4B) for notes:
 /// `[target_file_hash:16][load:u8]`.
 pub fn encode_publish_notes_res(target_file_hash: &KadIdBytes, load: u8) -> Bytes {

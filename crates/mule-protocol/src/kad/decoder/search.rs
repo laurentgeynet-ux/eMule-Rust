@@ -910,6 +910,23 @@ fn read_note_taglist(
     Ok((tags, unknown_tags, reader.pos()))
 }
 
+/// Decodes a persisted note tag-list blob (`[tag_count:u8][tags]`), the exact
+/// fragment `read_note_taglist` consumes. Returns `None` on malformed data —
+/// used to rehydrate the notes index from storage.
+pub fn decode_note_tags_blob(
+    blob: &[u8],
+) -> Option<(
+    Vec<crate::ed2k::tags::Ed2kTag>,
+    Vec<crate::ed2k::tags::RawTag>,
+)> {
+    if blob.is_empty() || blob.len() > 64 * 1024 {
+        return None;
+    }
+    read_note_taglist(blob, 0, PR_KADEMLIA, KADEMLIA2_PUBLISH_NOTES_REQ)
+        .ok()
+        .map(|(tags, unknown, _)| (tags, unknown))
+}
+
 /// Decodes a `KADEMLIA2_SEARCH_NOTES_REQ` (0x35) payload:
 /// `[target_file_hash:16][file_size:u64]`
 /// (eMule `Process_KADEMLIA2_SEARCH_NOTES_REQ`).

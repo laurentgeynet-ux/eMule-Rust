@@ -42,6 +42,16 @@ struct StoredNote {
     expires_at: Instant,
 }
 
+/// A note entry rehydrated from persistence (tags already decoded).
+pub struct HydratedNote {
+    pub target_hash: KadIdBytes,
+    pub note: KadNoteWire,
+    pub publisher_ip: [u8; 4],
+    pub publisher_udp_port: u16,
+    /// Remaining TTL in milliseconds (0 = already expired, skipped).
+    pub remaining_ms: u64,
+}
+
 /// Bounded in-memory store for Kad published entries.
 #[derive(Default)]
 pub struct KadStorage {
@@ -290,6 +300,35 @@ impl KadStorage {
             self.notes.len(),
             self.total_entries,
         )
+    }
+
+    /// Rehydrates persisted note entries, preserving each entry's remaining
+    /// TTL (expired or malformed entries are skipped by the caller).
+    pub fn hydrate_notes(&mut self, notes: Vec<HydratedNote>) {
+        for n in notes {
+            if n.remaining_ms == 0 || self.total_entries >= MAX_TOTAL_ENTRIES {
+                continue;
+            }
+            let entries = self.notes.entry(n.target_hash).or_default();
+            if entries.len() >= MAX_NOTES_PER_TARGET {
+                continue;
+            }
+            if let Some(existing) = entries
+                .iter_mut()
+                .find(|e| e.note.source_id == n.note.source_id)
+            {
+                existing.note = n.note;
+                existing.expires_at = Instant::now() + Duration::from_millis(n.remaining_ms);
+                continue;
+            }
+            entries.push(StoredNote {
+                note: n.note,
+                publisher_ip: n.publisher_ip,
+                publisher_udp_port: n.publisher_udp_port,
+                expires_at: Instant::now() + Duration::from_millis(n.remaining_ms),
+            });
+            self.total_entries += 1;
+        }
     }
 
     /// Rehydrates the store from persisted index rows, preserving each

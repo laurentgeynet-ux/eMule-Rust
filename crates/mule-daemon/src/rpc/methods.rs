@@ -124,6 +124,8 @@ pub async fn handle_request(
         "kad.publishSource" => handle_kad_publish_source(state, req.params).await,
         "kad.searchKeywords" => handle_kad_search_keywords(state, req.params).await,
         "kad.publishKeywords" => handle_kad_publish_keywords(state, req.params).await,
+        "kad.searchNotes" => handle_kad_search_notes(state, req.params).await,
+        "kad.publishNote" => handle_kad_publish_note(state, req.params).await,
         "kad.bootstrapFromUrl" => handle_kad_bootstrap_from_url(state, req.params).await,
         "events.subscribe" => Ok(json!({ "subscribed": true })),
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]

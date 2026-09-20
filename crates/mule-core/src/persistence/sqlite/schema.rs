@@ -178,6 +178,20 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
 
         CREATE INDEX IF NOT EXISTS idx_kad_keywords_lookup ON kad_keywords_index(keyword_hash);
         CREATE INDEX IF NOT EXISTS idx_kad_keywords_expires ON kad_keywords_index(expires_at_unix_ms);
+
+        CREATE TABLE IF NOT EXISTS kad_notes_index (
+            file_hash TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            publisher_ip TEXT NOT NULL,
+            publisher_udp_port INTEGER NOT NULL,
+            tags_blob BLOB NOT NULL,
+            discovered_at_unix_ms INTEGER NOT NULL,
+            expires_at_unix_ms INTEGER NOT NULL,
+            PRIMARY KEY(file_hash, source_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_kad_notes_lookup ON kad_notes_index(file_hash);
+        CREATE INDEX IF NOT EXISTS idx_kad_notes_expires ON kad_notes_index(expires_at_unix_ms);
         ",
     )?;
 

@@ -13,10 +13,10 @@ pub use routing::{
     decode_pong, decode_req, decode_res,
 };
 pub use search::{
-    decode_publish_keyword_req, decode_publish_keyword_res, decode_publish_notes_req,
-    decode_publish_source_req, decode_publish_source_res, decode_search_keyword_req,
-    decode_search_keyword_res_legacy, decode_search_notes_req, decode_search_notes_res,
-    decode_search_res, decode_search_source_req,
+    decode_note_tags_blob, decode_publish_keyword_req, decode_publish_keyword_res,
+    decode_publish_notes_req, decode_publish_source_req, decode_publish_source_res,
+    decode_search_keyword_req, decode_search_keyword_res_legacy, decode_search_notes_req,
+    decode_search_notes_res, decode_search_res, decode_search_source_req,
 };
 
 /// Bounded decoder for Kad UDP wire datagrams.

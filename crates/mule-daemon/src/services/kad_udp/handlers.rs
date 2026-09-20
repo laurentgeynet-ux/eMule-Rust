@@ -499,8 +499,23 @@ pub async fn handle_incoming_message(
             };
             let accepted = {
                 let mut store = storage.lock().await;
-                store.store_note(req.target_file_hash, note, publisher_ip, peer_addr.port())
+                store.store_note(
+                    req.target_file_hash,
+                    note.clone(),
+                    publisher_ip,
+                    peer_addr.port(),
+                )
             };
+            if accepted {
+                persist_indexed_note(
+                    downloads,
+                    &req.target_file_hash,
+                    &note,
+                    publisher_ip,
+                    peer_addr.port(),
+                )
+                .await;
+            }
             let load = {
                 let store = storage.lock().await;
                 store.note_load(&req.target_file_hash)
@@ -562,6 +577,41 @@ async fn persist_indexed_source(downloads: &DownloadsSlot, req: &KadPublishSourc
     let mut dl_guard = dl.lock().await;
     if let Err(e) = dl_guard.db_mut().insert_kad_indexed_sources(&[row]) {
         tracing::warn!("Kad storage: failed to persist indexed source: {e}");
+    }
+}
+
+/// Mirrors an accepted `PublishNotesReq` into `kad_notes_index` so the
+/// storage-node role survives daemon restarts. The tag list is persisted
+/// as its wire-encoded blob (`encode_note_tags_blob`) — arbitrary/unknown
+/// tags round-trip exactly.
+async fn persist_indexed_note(
+    downloads: &DownloadsSlot,
+    target_hash: &KadIdBytes,
+    note: &KadNoteWire,
+    publisher_ip: [u8; 4],
+    publisher_udp_port: u16,
+) {
+    let Some(dl) = downloads.read().await.as_ref().cloned() else {
+        return;
+    };
+    let Some(blob) =
+        mule_protocol::kad::encoder::encode_note_tags_blob(&note.tags, &note.unknown_tags)
+    else {
+        return;
+    };
+    let now_ms = now_unix_ms();
+    let row = mule_core::kad::KadIndexedNote {
+        file_hash: hex::encode(target_hash),
+        source_id: hex::encode(note.source_id),
+        publisher_ip: std::net::Ipv4Addr::from(publisher_ip).to_string(),
+        publisher_udp_port,
+        tags_blob: blob,
+        discovered_at_unix_ms: now_ms as i64,
+        expires_at_unix_ms: (now_ms + KAD_STORE_TTL.as_millis() as u64) as i64,
+    };
+    let mut dl_guard = dl.lock().await;
+    if let Err(e) = dl_guard.db_mut().insert_kad_notes(&[row]) {
+        tracing::warn!("Kad storage: failed to persist indexed note: {e}");
     }
 }
 

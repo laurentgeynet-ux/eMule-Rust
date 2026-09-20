@@ -24,8 +24,9 @@ use crate::services::client_udp::ClientUdpService;
 
 pub use types::{
     ActiveBuddy, BuddyRegistry, FirewallTestTracker, FirewallUdpResult, InFlightTransaction,
-    IpRateLimiter, KadUdpSnapshot, PendingBuddy, UdpFirewallStatus, BUDDY_PENDING_TTL,
-    KAD_TRANSACTION_TIMEOUT_SECS, MAX_IN_FLIGHT_TRANSACTIONS, MAX_KAD_REQUESTS_PER_SEC_PER_IP,
+    IpRateLimiter, KadExpectedResponse, KadUdpSnapshot, PendingBuddy, UdpFirewallStatus,
+    BUDDY_PENDING_TTL, KAD_TRANSACTION_TIMEOUT_SECS, MAX_IN_FLIGHT_TRANSACTIONS,
+    MAX_KAD_REQUESTS_PER_SEC_PER_IP,
 };
 
 /// Inner state of the Kad UDP service.
@@ -246,10 +247,11 @@ impl KadUdpService {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64;
-            let (sources, keywords) = {
+            let (sources, keywords, notes) = {
                 let mut dl_guard = dl.lock().await;
                 let _ = dl_guard.db_mut().purge_expired_kad_sources(now_ms);
                 let _ = dl_guard.db_mut().purge_expired_kad_keywords(now_ms);
+                let _ = dl_guard.db_mut().purge_expired_kad_notes(now_ms);
                 (
                     dl_guard
                         .db_mut()
@@ -259,14 +261,48 @@ impl KadUdpService {
                         .db_mut()
                         .list_all_kad_keyword_entries(now_ms, storage::MAX_TOTAL_ENTRIES)
                         .unwrap_or_default(),
+                    dl_guard
+                        .db_mut()
+                        .list_all_kad_notes(now_ms, storage::MAX_TOTAL_ENTRIES)
+                        .unwrap_or_default(),
                 )
             };
-            if !sources.is_empty() || !keywords.is_empty() {
+            if !sources.is_empty() || !keywords.is_empty() || !notes.is_empty() {
                 let n_s = sources.len();
                 let n_k = keywords.len();
+                let n_n = notes.len();
+                let hydrated_notes: Vec<storage::HydratedNote> = notes
+                    .into_iter()
+                    .filter_map(|n| {
+                        let target =
+                            <[u8; 16]>::try_from(hex::decode(&n.file_hash).ok()?.as_slice())
+                                .ok()?;
+                        let source_id =
+                            <[u8; 16]>::try_from(hex::decode(&n.source_id).ok()?.as_slice())
+                                .ok()?;
+                        let (tags, unknown_tags) =
+                            mule_protocol::kad::decoder::decode_note_tags_blob(&n.tags_blob)?;
+                        let ip: std::net::Ipv4Addr = n.publisher_ip.parse().ok()?;
+                        Some(storage::HydratedNote {
+                            target_hash: target,
+                            note: KadNoteWire {
+                                source_id,
+                                tags,
+                                unknown_tags,
+                            },
+                            publisher_ip: ip.octets(),
+                            publisher_udp_port: n.publisher_udp_port,
+                            remaining_ms: (n.expires_at_unix_ms.max(0) as u64)
+                                .saturating_sub(now_ms),
+                        })
+                    })
+                    .collect();
                 let mut store = storage_arc.lock().await;
                 store.hydrate(sources, keywords, now_ms);
-                tracing::info!("Kad storage rehydrated: {n_s} sources, {n_k} keyword entries");
+                store.hydrate_notes(hydrated_notes);
+                tracing::info!(
+                    "Kad storage rehydrated: {n_s} sources, {n_k} keyword entries, {n_n} notes"
+                );
             }
         }
 
@@ -389,7 +425,50 @@ impl KadUdpService {
                                     opcode_byte
                                 );
 
-                                match KadCodec::decode(packet_slice) {
+                                // A 0x3B unified search response is ambiguous:
+                                // notes replies (SendValidNoteResult) carry
+                                // arbitrary tag lists which the generic decoder
+                                // flattens to keyword entries. When a pending
+                                // transaction from this peer expects
+                                // SearchNotesRes, re-decode the raw payload in
+                                // notes form to preserve the full tag lists.
+                                let decoded = match KadCodec::decode(packet_slice) {
+                                    Ok(msg) => {
+                                        if opcode_byte == KADEMLIA2_SEARCH_RES {
+                                            let expects_notes = {
+                                                let inf = in_flight_arc.lock().await;
+                                                inf.values().any(|tx| {
+                                                    (tx.target == peer_addr
+                                                        || tx.target.ip() == peer_addr.ip())
+                                                        && tx.expected_response
+                                                            == KadExpectedResponse::SearchNotesRes
+                                                })
+                                            };
+                                            if expects_notes {
+                                                match KadCodec::decode_search_notes_res(
+                                                    proto_byte,
+                                                    opcode_byte,
+                                                    &packet_slice[2..],
+                                                ) {
+                                                    Ok(m) => Ok(m),
+                                                    Err(e) => {
+                                                        tracing::warn!(
+                                                            "Kad UDP: notes-form redecode of 0x3B from {peer_addr} failed: {e} — using generic form"
+                                                        );
+                                                        Ok(msg)
+                                                    }
+                                                }
+                                            } else {
+                                                Ok(msg)
+                                            }
+                                        } else {
+                                            Ok(msg)
+                                        }
+                                    }
+                                    Err(e) => Err(e),
+                                };
+
+                                match decoded {
                                     Ok(msg) => {
                                         handlers::handle_incoming_message(
                                             &socket_for_task,

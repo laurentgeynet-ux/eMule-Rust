@@ -676,4 +676,129 @@ impl KadService {
         )
         .await
     }
+
+    /// Searches Kad DHT for file notes (comments/ratings): sends
+    /// `KADEMLIA2_SEARCH_NOTES_REQ` (0x35) to the contacts closest to the
+    /// file hash and aggregates the returned `CEntry` tag lists, deduped by
+    /// publisher `source_id`. Returned as display-safe JSON.
+    pub async fn search_notes(
+        &self,
+        file_hash_hex: &str,
+        file_size: u64,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let target_kad_id = KadId::from_hash_hex(file_hash_hex)
+            .ok_or_else(|| format!("Invalid target file hash hex: {file_hash_hex}"))?;
+
+        let closest = {
+            let table = self.routing_table.lock().await;
+            table.find_closest(&target_kad_id, 20)
+        };
+        if closest.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for contact in closest {
+            let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
+            let Ok(notes) = self
+                .udp
+                .send_search_notes(addr, &target_kad_id.0, file_size)
+                .await
+            else {
+                continue;
+            };
+            for n in notes {
+                if !seen.insert(n.source_id) {
+                    continue;
+                }
+                out.push(serde_json::json!({
+                    "sourceId": hex::encode(n.source_id),
+                    "fileName": n.file_name(),
+                    "fileSize": n.file_size(),
+                    "comment": n.comment(),
+                    "rating": n.rating(),
+                }));
+            }
+        }
+        tracing::info!(
+            "Kad search_notes for {}: {} unique notes collected",
+            file_hash_hex,
+            out.len()
+        );
+        Ok(out)
+    }
+
+    /// Publishes a local file note (comment + optional rating) to the Kad
+    /// contacts closest to the file hash (`KADEMLIA2_PUBLISH_NOTES_REQ`,
+    /// 0x45). Returns the number of indexers that accepted.
+    pub async fn publish_note(
+        &self,
+        file_hash_hex: &str,
+        file_name: &str,
+        file_size: u64,
+        comment: &str,
+        rating: Option<u8>,
+    ) -> Result<usize, String> {
+        use mule_protocol::ed2k::tags::{Ed2kTag, TagName, TagValue};
+        use mule_protocol::kad::{
+            TAG_NOTE_DESCRIPTION, TAG_NOTE_FILENAME, TAG_NOTE_FILERATING, TAG_NOTE_FILESIZE,
+        };
+
+        let target_kad_id = KadId::from_hash_hex(file_hash_hex)
+            .ok_or_else(|| format!("Invalid target file hash hex: {file_hash_hex}"))?;
+        if comment.len() > 512 || file_name.len() > 255 {
+            return Err("comment exceeds 512 bytes or file_name exceeds 255 bytes".to_string());
+        }
+
+        let mut tags = vec![
+            Ed2kTag {
+                name: TagName::Id(TAG_NOTE_FILENAME),
+                value: TagValue::String(file_name.to_string()),
+            },
+            Ed2kTag {
+                name: TagName::Id(TAG_NOTE_FILESIZE),
+                value: TagValue::UInt64(file_size),
+            },
+            Ed2kTag {
+                name: TagName::Id(TAG_NOTE_DESCRIPTION),
+                value: TagValue::String(comment.to_string()),
+            },
+        ];
+        if let Some(r) = rating {
+            tags.push(Ed2kTag {
+                name: TagName::Id(TAG_NOTE_FILERATING),
+                value: TagValue::UInt8(r.min(5)),
+            });
+        }
+
+        let closest = {
+            let table = self.routing_table.lock().await;
+            table.find_closest(&target_kad_id, 20)
+        };
+        let total_queried = closest.len();
+        if total_queried == 0 {
+            return Ok(0);
+        }
+
+        let mut success = 0;
+        for contact in closest {
+            let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
+            if self
+                .udp
+                .send_publish_notes(addr, &target_kad_id.0, &self.local_id.0, &tags)
+                .await
+                .is_ok()
+            {
+                success += 1;
+            }
+        }
+        tracing::info!(
+            "Kad publish_note for {}: accepted by {}/{} closest nodes",
+            file_hash_hex,
+            success,
+            total_queried
+        );
+        Ok(success)
+    }
 }
