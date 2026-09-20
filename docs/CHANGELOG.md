@@ -22,6 +22,25 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 - **UI desktop (harnais de test)** : troisième cible de recherche « Global UDP » (`udpOnly`), bandeau d'info sans connexion requise, et résumé `UDP: n×REQ3, m×REQ2` affiché dans la notification de statut après envoi.
 - Tests : wire REQ3 (tag NewEd2k + payload verbatim), décodage `GLOBSERVSTATRES` complet et forme courte, sélection REQ3/REQ2/probe par socket UDP réelle en loopback.
 
+### Corrigé — Recherche globale UDP
+
+- **Sélection REQ1/REQ2/REQ3** : eMule envoie `OP_GLOBSEARCHREQ` (`0x98`) aux serveurs sans `SRV_UDPFLG_EXT_GETFILES` — ces serveurs ignoraient silencieusement le REQ2 qu'on leur adressait ; la sélection est désormais à trois niveaux (REQ3 → REQ2 → REQ1) et un serveur inconnu est probé par `GLOBSERVSTATREQ` puis reçoit REQ1.
+- **`OP_GLOBSEARCHRES` mal décodé** : le payload UDP `0x99` est un flux d'entrées nu (`[hash16][clientid][port][tagcount][tags]` répété), sans le préfixe `u32` count du `OP_SEARCHRESULT` TCP — les datagrammes reçus étaient rejetés par le décodeur TCP ; nouveau `decode_glob_search_res` validé sur un datagramme réel capturé.
+- **Observabilité** : pacing 50 ms entre envois UDP (eMule espace ses requêtes) et logs `unknown opcode`/`decode error` relevés en INFO sur le socket server-UDP.
+
+### Ajouté — Disponibilité par part (carte eMule)
+
+- `downloads.getDetails` expose `availableSourceCount` par part : nombre de sources connues dont le `PartAvailabilityMask` couvre la part (`0` = part introuvable → téléchargement bloqué).
+- `downloads.list` retourne désormais les `DownloadDetail` complets (shape aplatie compatible) afin que la liste affiche la barre de disponibilité par part sans appel dédié.
+- UI : `PartAvailabilityBar` (segment par part positionné à l'échelle des offsets) sous chaque ligne de téléchargement — rouge = aucune source, nuances de bleu = rare → commun, teal = vérifié ; tooltip `Part N · état · Sources: X`. Couleurs partagées avec la carte Part Map du détail.
+
+### Modifié — Couche events RPC (pour `packages/mule_client`)
+
+- `DaemonEvent` devient la source unique du format wire (`services/events.rs`) : chaque variante porte sa `method`, son `topic` de souscription et sérialise via `to_wire_json()` ; tous les émetteurs passent par `DaemonEvent::send` (`DownloadUpdatedEvent` supprimé).
+- `events.subscribe` est réellement fonctionnel : intercepté dans `handle_socket`, il mut le filtre de topics **par session** (`downloads`, `peers`, `servers`, `search`, `network`, `other` ; `null` = tout, rétro-compat). Non authentifié → `-32000` comme toute autre méthode.
+- `RecvError::Lagged` sur le broadcast n'est plus ignoré : le daemon émet `event.snapshotRequired {skipped}` pour forcer une resynchronisation complète côté client.
+- Doc : `docs/architecture/rpc_protocol.md` §6 documente le tableau méthode → topic, la sémantique de `events.subscribe` et `snapshotRequired` ; §9 décrit `packages/mule_client` (reconnexion auto, keep-alive, resync).
+
 ## [0.1.9] - 2026-09-20
 
 ### Ajouté — Interopérabilité eMule 0.72a (fonctions essentielles du réseau eD2K/Kad)

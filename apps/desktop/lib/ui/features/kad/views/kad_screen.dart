@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../../domain/models/server_models.dart';
-import '../../../core/theme.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 import '../../downloads/view_models/downloads_view_model.dart';
 
 class KadView extends StatefulWidget {

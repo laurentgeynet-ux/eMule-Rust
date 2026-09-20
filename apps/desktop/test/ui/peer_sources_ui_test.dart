@@ -2,18 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/domain/models/category_item.dart';
-import 'package:desktop/domain/models/download_item.dart';
-import 'package:desktop/domain/models/filter_models.dart';
-import 'package:desktop/domain/models/history_entry.dart';
-import 'package:desktop/domain/models/history_stats.dart';
-import 'package:desktop/domain/models/lab_models.dart';
-import 'package:desktop/domain/models/network_policy_models.dart';
-import 'package:desktop/domain/models/part_met_models.dart';
-import 'package:desktop/domain/models/server_models.dart';
-import 'package:desktop/domain/services/mule_daemon_client.dart';
-import 'package:desktop/domain/models/daemon_info.dart';
-import 'package:desktop/domain/models/daemon_event.dart';
+import 'package:mule_client/mule_client.dart';
 import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
 import 'package:desktop/ui/features/downloads/widgets/download_detail_dialog.dart';
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use super::types::ServerSessionSnapshot;
+use crate::services::DaemonEvent;
 use mule_protocol::ed2k::{FoundSources, FoundSourcesObfu, SearchResult};
 use serde_json::json;
 
@@ -12,17 +13,11 @@ pub fn emit_event(
     snapshot: &ServerSessionSnapshot,
 ) {
     let seq = sequence.fetch_add(1, Ordering::SeqCst);
-    let notif = json!({
-        "jsonrpc": "2.0",
-        "method": "server.sessionUpdated",
-        "params": {
-            "sequence": seq,
-            "session": snapshot,
-        }
-    });
-    if let Ok(json) = serde_json::to_string(&notif) {
-        let _ = event_tx.send(json);
+    DaemonEvent::ServerSessionUpdated {
+        sequence: seq,
+        session: snapshot.clone(),
     }
+    .send(event_tx);
 }
 
 pub fn emit_search_results(
@@ -44,17 +39,14 @@ pub fn emit_search_results(
         })
         .collect();
 
-    let notif = json!({
-        "jsonrpc": "2.0",
-        "method": "server.searchResult",
-        "params": {
+    DaemonEvent::Custom {
+        method: "server.searchResult".to_string(),
+        payload: json!({
             "sequence": seq,
             "files": files,
-        }
-    });
-    if let Ok(json) = serde_json::to_string(&notif) {
-        let _ = event_tx.send(json);
+        }),
     }
+    .send(event_tx);
 }
 
 pub fn emit_found_sources(
@@ -63,30 +55,12 @@ pub fn emit_found_sources(
     fs: &FoundSources,
 ) {
     let seq = sequence.fetch_add(1, Ordering::SeqCst);
-    let sources: Vec<serde_json::Value> = fs
-        .sources
-        .iter()
-        .map(|s| {
-            json!({
-                "address": s.to_address_string(),
-                "ip": s.ip,
-                "port": s.port,
-            })
-        })
-        .collect();
-
-    let notif = json!({
-        "jsonrpc": "2.0",
-        "method": "server.foundSources",
-        "params": {
-            "sequence": seq,
-            "fileHash": hex::encode(fs.file_hash),
-            "sources": sources,
-        }
-    });
-    if let Ok(json) = serde_json::to_string(&notif) {
-        let _ = event_tx.send(json);
-    }
+    emit_found_sources_payload(
+        event_tx,
+        seq,
+        &fs.file_hash,
+        fs.sources.iter().map(source_to_json).collect(),
+    );
 }
 
 pub fn emit_found_sources_obfu(
@@ -95,28 +69,67 @@ pub fn emit_found_sources_obfu(
     fs: &FoundSourcesObfu,
 ) {
     let seq = sequence.fetch_add(1, Ordering::SeqCst);
-    let sources: Vec<serde_json::Value> = fs
-        .sources
-        .iter()
-        .map(|s| {
-            json!({
-                "address": s.to_address_string(),
-                "ip": s.ip,
-                "port": s.port,
-            })
-        })
-        .collect();
+    emit_found_sources_payload(
+        event_tx,
+        seq,
+        &fs.file_hash,
+        fs.sources.iter().map(source_to_json).collect(),
+    );
+}
 
-    let notif = json!({
-        "jsonrpc": "2.0",
-        "method": "server.foundSources",
-        "params": {
-            "sequence": seq,
-            "fileHash": hex::encode(fs.file_hash),
-            "sources": sources,
-        }
-    });
-    if let Ok(json) = serde_json::to_string(&notif) {
-        let _ = event_tx.send(json);
+fn source_to_json<S: FoundSourceLike>(s: &S) -> serde_json::Value {
+    json!({
+        "address": s.to_address_string(),
+        "ip": s.ip_u32(),
+        "port": s.port_u16(),
+    })
+}
+
+/// Common surface of `FoundSourcePeer` / `FoundSourcePeerObfu` for the
+/// `server.foundSources` payload.
+trait FoundSourceLike {
+    fn to_address_string(&self) -> String;
+    fn ip_u32(&self) -> u32;
+    fn port_u16(&self) -> u16;
+}
+
+impl FoundSourceLike for mule_protocol::ed2k::FoundSourcePeer {
+    fn to_address_string(&self) -> String {
+        self.to_address_string()
     }
+    fn ip_u32(&self) -> u32 {
+        self.ip
+    }
+    fn port_u16(&self) -> u16 {
+        self.port
+    }
+}
+
+impl FoundSourceLike for mule_protocol::ed2k::FoundSourcePeerObfu {
+    fn to_address_string(&self) -> String {
+        self.to_address_string()
+    }
+    fn ip_u32(&self) -> u32 {
+        self.ip
+    }
+    fn port_u16(&self) -> u16 {
+        self.port
+    }
+}
+
+fn emit_found_sources_payload(
+    event_tx: &broadcast::Sender<String>,
+    seq: u64,
+    file_hash: &[u8; 16],
+    sources: Vec<serde_json::Value>,
+) {
+    DaemonEvent::Custom {
+        method: "server.foundSources".to_string(),
+        payload: json!({
+            "sequence": seq,
+            "fileHash": hex::encode(file_hash),
+            "sources": sources,
+        }),
+    }
+    .send(event_tx);
 }

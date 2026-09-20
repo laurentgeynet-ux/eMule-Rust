@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/theme.dart';
-import '../../../../domain/models/network_policy_models.dart';
+import 'package:ui_kit/ui_kit.dart';
+import 'package:mule_client/mule_client.dart';
 import '../../../../services/work_directory_resolver.dart';
 import '../view_models/downloads_view_model.dart';
 import 'lab_guide_dialog.dart';

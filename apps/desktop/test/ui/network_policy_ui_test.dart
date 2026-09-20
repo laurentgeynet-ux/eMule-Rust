@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/fake_daemon_client.dart';
-import 'package:desktop/domain/models/network_policy_models.dart';
+import 'package:mule_client/mule_client.dart';
 import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
 import 'package:desktop/ui/features/downloads/views/downloads_screen.dart';
 

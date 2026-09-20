@@ -147,6 +147,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.18.3"
+  mule_client:
+    dependency: "direct main"
+    description:
+      path: "../../packages/mule_client"
+      relative: true
+    source: path
+    version: "0.1.0"
   path:
     dependency: transitive
     description:
@@ -216,6 +223,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  ui_kit:
+    dependency: "direct main"
+    description:
+      path: "../../packages/ui_kit"
+      relative: true
+    source: path
+    version: "0.1.0"
   vector_math:
     dependency: transitive
     description:

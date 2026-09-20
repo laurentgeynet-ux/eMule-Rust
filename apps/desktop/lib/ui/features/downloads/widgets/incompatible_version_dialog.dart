@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 class IncompatibleVersionBanner extends StatelessWidget {
   final String errorMessage;

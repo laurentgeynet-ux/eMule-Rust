@@ -30,7 +30,16 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | Fichier | Fonction |
 |---|---|
 | `lib/main.dart` | Point d'entrée de l'application Flutter |
-| `lib/data/rpc_daemon_client.dart` | Client RPC réel communiquant avec le daemon |
+
+> ℹ️ Le client daemon, les modèles et les DTO ont été extraits vers
+> `packages/mule_client/` (package Dart partagé par toutes les apps).
+
+### packages/mule_client/ — Client daemon partagé
+
+| Fichier | Fonction |
+|---|---|
+| `lib/mule_client.dart` | Barrel : export unique du package |
+| `lib/data/rpc_daemon_client.dart` | Client RPC réel communiquant avec le daemon (WebSocket/JSON-RPC) |
 | `lib/data/fake_daemon_client.dart` | Client daemon simulé pour tests/dev sans daemon |
 | `lib/data/dto/rpc_dto.dart` | Objets de transfert de données pour le protocole RPC |
 | `lib/domain/services/mule_daemon_client.dart` | Interface abstraite du client daemon (contrat) |
@@ -529,6 +538,8 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | Fichier | Fonction |
 |---|---|
 | `docs/architecture/rapport_architecture_et_avancement.md` | Rapport détaillé d'architecture logicielle, Clean Architecture et état d'avancement |
+| `docs/architecture/rpc_protocol.md` | Contrat JSON-RPC 2.0/WebSocket daemon↔clients : transport, auth, méthodes, events, codes d'erreur, versioning |
+| `docs/architecture/plan_ui_multiplateforme.md` | Plan UI/UX multiplateforme (desktop, mobile, web) : phases, packages, architecture |
 
 ### docs/walkthroughs/ — Guides d'Exécution & Interopérabilité par Phase
 | Fichier | Fonction |

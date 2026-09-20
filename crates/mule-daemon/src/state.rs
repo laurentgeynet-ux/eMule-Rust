@@ -6,9 +6,8 @@ use uuid::Uuid;
 use mule_network_policy::{NetworkPolicyManager, ResourceBudgets};
 
 use crate::config::DaemonConfig;
-use crate::rpc::events::DownloadUpdatedEvent;
-use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::types::DownloadSnapshot;
+use crate::services::DaemonEvent;
 use crate::services::downloads::DownloadService;
 use crate::services::peer_session::PeerSessionManager;
 use crate::services::server_session::ServerSessionManager;
@@ -196,18 +195,10 @@ impl AppState {
     /// Emits a sequenced download update event to all active WebSocket subscribers.
     pub fn broadcast_download_update(&self, snapshot: DownloadSnapshot) {
         let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
-        let event = DownloadUpdatedEvent {
+        DaemonEvent::DownloadUpdated {
             sequence: seq,
             download: snapshot,
-        };
-
-        let notification = JsonRpcNotification::new(
-            "event.downloadUpdated",
-            serde_json::to_value(event).unwrap_or_default(),
-        );
-
-        if let Ok(payload) = serde_json::to_string(&notification) {
-            let _ = self.event_tx.send(payload);
         }
+        .send(&self.event_tx);
     }
 }

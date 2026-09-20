@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../../../domain/models/category_item.dart';
-import '../../../../domain/models/daemon_info.dart';
+import 'package:mule_client/mule_client.dart';
 import '../../../../services/daemon_supervisor.dart';
-import '../../../core/strings.dart';
-import '../../../core/theme.dart';
+import 'package:ui_kit/ui_kit.dart';
 import '../view_models/downloads_view_model.dart';
 import 'category_edit_dialog.dart';
 import 'diagnostic_dialog.dart';

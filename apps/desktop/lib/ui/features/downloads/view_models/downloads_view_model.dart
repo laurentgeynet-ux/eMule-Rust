@@ -3,18 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-import '../../../../domain/models/category_item.dart';
-import '../../../../domain/models/daemon_event.dart';
-import '../../../../domain/models/daemon_info.dart';
-import '../../../../domain/models/download_item.dart';
-import '../../../../domain/models/filter_models.dart';
-import '../../../../domain/models/history_entry.dart';
-import '../../../../domain/models/history_stats.dart';
-import '../../../../domain/models/lab_models.dart';
-import '../../../../domain/models/network_policy_models.dart';
-import '../../../../domain/models/part_met_models.dart';
-import '../../../../domain/models/server_models.dart';
-import '../../../../domain/services/mule_daemon_client.dart';
+import 'package:mule_client/mule_client.dart';
 
 import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
@@ -146,6 +135,8 @@ class DownloadsViewModel extends ChangeNotifier {
       }
       _searchEpoch++;
       _isSearching = false;
+      // Results arrived — the no-answer watchdog is no longer needed.
+      _searchTimeout?.cancel();
       notifyListeners();
     });
 

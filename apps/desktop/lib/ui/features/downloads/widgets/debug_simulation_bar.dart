@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme.dart';
+import 'package:ui_kit/ui_kit.dart';
 import '../view_models/downloads_view_model.dart';
 
 class DebugSimulationBar extends StatelessWidget {

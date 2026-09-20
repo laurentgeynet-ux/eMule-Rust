@@ -2,11 +2,9 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import 'data/fake_daemon_client.dart';
-import 'data/rpc_daemon_client.dart';
-import 'domain/services/mule_daemon_client.dart';
+import 'package:mule_client/mule_client.dart';
 import 'services/daemon_supervisor.dart';
-import 'ui/core/theme.dart';
+import 'package:ui_kit/ui_kit.dart';
 import 'ui/features/downloads/view_models/downloads_view_model.dart';
 import 'ui/features/downloads/views/downloads_screen.dart';
 

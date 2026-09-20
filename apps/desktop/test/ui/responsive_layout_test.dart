@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/fake_daemon_client.dart';
+import 'package:mule_client/mule_client.dart';
 import 'package:desktop/main.dart';
 import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
 import 'package:desktop/ui/features/downloads/widgets/downloads_sidebar.dart';

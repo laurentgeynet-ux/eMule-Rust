@@ -2,8 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import '../data/rpc_daemon_client.dart';
-import '../domain/models/daemon_info.dart';
+import 'package:mule_client/mule_client.dart';
 import 'work_directory_resolver.dart';
 
 enum SupervisorState {

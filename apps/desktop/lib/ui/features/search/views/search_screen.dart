@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../../domain/models/download_item.dart';
-import '../../../../domain/models/server_models.dart';
-import '../../../core/theme.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 import '../../downloads/view_models/downloads_view_model.dart';
 
 enum SearchTarget {
@@ -448,36 +447,40 @@ class _SearchViewState extends State<SearchView> {
                 // Target selector on first row
                 Row(
                   children: [
-                    SegmentedButton<SearchTarget>(
-                      segments: const [
-                        ButtonSegment(
-                          value: SearchTarget.server,
-                          icon: Icon(Icons.dns_rounded, size: 16),
-                          label: Text('Serveur eD2K', style: TextStyle(fontSize: 12)),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SegmentedButton<SearchTarget>(
+                          segments: const [
+                            ButtonSegment(
+                              value: SearchTarget.server,
+                              icon: Icon(Icons.dns_rounded, size: 16),
+                              label: Text('Serveur eD2K', style: TextStyle(fontSize: 12)),
+                            ),
+                            ButtonSegment(
+                              value: SearchTarget.global,
+                              icon: Icon(Icons.public_rounded, size: 16),
+                              label: Text('Global UDP', style: TextStyle(fontSize: 12)),
+                            ),
+                            ButtonSegment(
+                              value: SearchTarget.kad,
+                              icon: Icon(Icons.hub_rounded, size: 16),
+                              label: Text('Kad DHT', style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                          selected: {_searchTarget},
+                          onSelectionChanged: (set) {
+                            setState(() {
+                              _searchTarget = set.first;
+                            });
+                          },
+                          style: ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                         ),
-                        ButtonSegment(
-                          value: SearchTarget.global,
-                          icon: Icon(Icons.public_rounded, size: 16),
-                          label: Text('Global UDP', style: TextStyle(fontSize: 12)),
-                        ),
-                        ButtonSegment(
-                          value: SearchTarget.kad,
-                          icon: Icon(Icons.hub_rounded, size: 16),
-                          label: Text('Kad DHT', style: TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                      selected: {_searchTarget},
-                      onSelectionChanged: (set) {
-                        setState(() {
-                          _searchTarget = set.first;
-                        });
-                      },
-                      style: ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
-                    const Spacer(),
                     IconButton(
                       icon: Icon(
                         _showFilters ? Icons.filter_alt_off_rounded : Icons.filter_alt_rounded,
@@ -535,14 +538,14 @@ class _SearchViewState extends State<SearchView> {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: _buildQueryTextField(isSearchReady, vm),
                     ),
-                    const SizedBox(width: 10),
-                    _buildSearchButton(isSearchReady, vm),
                     const SizedBox(width: 8),
+                    _buildSearchButton(isSearchReady, vm),
                     IconButton(
+                      visualDensity: VisualDensity.compact,
                       icon: Icon(
                         _showFilters ? Icons.filter_alt_off_rounded : Icons.filter_alt_rounded,
                         color: _showFilters ? AppTheme.primary : Colors.white54,
@@ -694,7 +697,7 @@ class _SearchViewState extends State<SearchView> {
       style: ElevatedButton.styleFrom(
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       onPressed: (isSearchReady && !vm.isSearching && _queryController.text.trim().isNotEmpty)

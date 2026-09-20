@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mule_client/mule_client.dart';
-import '../../../core/formatters.dart';
-import '../../../core/theme.dart';
+import 'package:ui_kit/ui_kit.dart';
 import '../view_models/downloads_view_model.dart';
 import 'download_detail_dialog.dart';
-import 'part_availability_bar.dart';
 
 class DownloadRow extends StatelessWidget {
   final DownloadItem item;

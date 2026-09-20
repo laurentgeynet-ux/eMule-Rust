@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/domain/models/download_item.dart';
-import 'package:desktop/ui/core/formatters.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 void main() {
   group('DownloadItem and Status Domain Tests', () {

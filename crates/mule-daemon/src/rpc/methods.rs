@@ -127,7 +127,8 @@ pub async fn handle_request(
         "kad.searchNotes" => handle_kad_search_notes(state, req.params).await,
         "kad.publishNote" => handle_kad_publish_note(state, req.params).await,
         "kad.bootstrapFromUrl" => handle_kad_bootstrap_from_url(state, req.params).await,
-        "events.subscribe" => Ok(json!({ "subscribed": true })),
+        // "events.subscribe" is intercepted in rpc::server::handle_socket —
+        // it mutates the per-session topic filter, not daemon state.
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
         "downloads.getSources" | "ed2k.getSources" => handle_get_sources(state, req.params).await,

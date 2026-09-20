@@ -1,4 +1,4 @@
-import 'package:desktop/data/fake_daemon_client.dart';
+import 'package:mule_client/mule_client.dart';
 import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
 import 'package:desktop/ui/features/downloads/views/downloads_screen.dart';
 import 'package:desktop/ui/features/downloads/widgets/ip_filter_dialog.dart';

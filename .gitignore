@@ -24,3 +24,10 @@ apps/desktop/.flutter-plugins-dependencies
 Thumbs.db
 *.log
 scratch/
+
+# Shared Dart packages
+packages/*/.dart_tool/
+packages/*/.pub-cache/
+packages/*/build/
+packages/*/pubspec.lock
+packages/*/.flutter-plugins-dependencies

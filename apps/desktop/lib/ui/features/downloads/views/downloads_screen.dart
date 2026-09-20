@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../../domain/models/download_item.dart';
-import '../../../core/formatters.dart';
-import '../../../core/strings.dart';
-import '../../../core/theme.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 import '../view_models/downloads_view_model.dart';
 import '../widgets/add_link_dialog.dart';
 import '../widgets/debug_simulation_bar.dart';

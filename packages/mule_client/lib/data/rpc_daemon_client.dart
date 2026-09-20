@@ -27,6 +27,14 @@ class RpcDaemonClient implements MuleDaemonClient {
   DaemonConnectionState _state = DaemonConnectionState.disconnected;
   DaemonInfo? _daemonInfo;
 
+  Uri? _url;
+  String? _token;
+  bool _explicitDisconnect = false;
+  int _connectGeneration = 0;
+  Timer? _reconnectTimer;
+  Timer? _keepAliveTimer;
+  int _reconnectAttempts = 0;
+
   final Map<int, Completer<dynamic>> _pendingRequests = {};
   final StreamController<DaemonConnectionState> _connectionController =
       StreamController<DaemonConnectionState>.broadcast();
@@ -44,7 +52,21 @@ class RpcDaemonClient implements MuleDaemonClient {
   // Factory constructor or provider callback for custom channel (useful for testing)
   final WebSocketChannel Function(Uri uri)? channelFactory;
 
-  RpcDaemonClient({this.channelFactory});
+  /// When true, the client retries the last `connect()` automatically on
+  /// connection loss (exponential backoff, capped at 10 s). Desktop leaves
+  /// this off because `DaemonSupervisor` already orchestrates reconnects and
+  /// daemon relaunch; remote clients (mobile/web) should enable it.
+  final bool autoReconnect;
+
+  /// Periodic `system.status` ping that detects dead connections whose TCP
+  /// close frame never arrived (NAT timeouts, suspend/resume). Null disables.
+  final Duration keepAliveInterval;
+
+  RpcDaemonClient({
+    this.channelFactory,
+    this.autoReconnect = false,
+    this.keepAliveInterval = const Duration(seconds: 20),
+  });
 
   @override
   DaemonConnectionState get currentConnectionState => _state;
@@ -78,6 +100,10 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Future<DaemonInfo> connect({required Uri url, String? token}) async {
+    _url = url;
+    _token = token;
+    _explicitDisconnect = false;
+    final generation = ++_connectGeneration;
     _setConnectionState(DaemonConnectionState.connecting);
 
     try {
@@ -90,10 +116,10 @@ class RpcDaemonClient implements MuleDaemonClient {
       _subscription = channel.stream.listen(
         _handleIncomingMessage,
         onError: (err) {
-          _setConnectionState(DaemonConnectionState.error);
+          _handleConnectionLost(generation, errored: true);
         },
         onDone: () {
-          _setConnectionState(DaemonConnectionState.disconnected);
+          _handleConnectionLost(generation, errored: false);
         },
       );
 
@@ -114,12 +140,116 @@ class RpcDaemonClient implements MuleDaemonClient {
       await _call('events.subscribe', {});
 
       _setConnectionState(DaemonConnectionState.connected);
+      _reconnectAttempts = 0;
+      _startKeepAlive(generation);
+
+      // After a reconnect, the daemon may have emitted events we missed:
+      // pull a fresh snapshot so the UI catches up.
+      if (_lastSequence > 0) {
+        unawaited(_resync());
+      }
       return _daemonInfo!;
     } catch (e) {
+      if (generation != _connectGeneration || _explicitDisconnect) rethrow;
       _setConnectionState(DaemonConnectionState.error);
-      await disconnect();
+      await _teardownChannel();
+      // Preserve pre-reconnect semantics: a failed connect ends disconnected.
+      _setConnectionState(DaemonConnectionState.disconnected);
       rethrow;
     }
+  }
+
+  /// Connection dropped or failed. With [autoReconnect], schedules a retry
+  /// against the last `connect()` target; otherwise surfaces the state.
+  void _handleConnectionLost(int generation, {required bool errored}) {
+    if (generation != _connectGeneration) return; // stale socket
+    _keepAliveTimer?.cancel();
+    for (final c in _pendingRequests.values) {
+      if (!c.isCompleted) {
+        c.completeError(StateError('Connection lost'));
+      }
+    }
+    _pendingRequests.clear();
+
+    if (_explicitDisconnect) {
+      _setConnectionState(DaemonConnectionState.disconnected);
+      return;
+    }
+    _setConnectionState(
+      errored ? DaemonConnectionState.error : DaemonConnectionState.disconnected,
+    );
+    if (autoReconnect) _scheduleReconnect(generation);
+  }
+
+  void _scheduleReconnect(int generation) {
+    _reconnectTimer?.cancel();
+    _reconnectAttempts++;
+    final delayMs =
+        _reconnectAttempts <= 4 ? 500 * (1 << (_reconnectAttempts - 1)) : 10000;
+    _reconnectTimer = Timer(Duration(milliseconds: delayMs), () async {
+      if (generation != _connectGeneration || _explicitDisconnect) return;
+      final url = _url;
+      if (url == null) return;
+      try {
+        await connect(url: url, token: _token);
+      } catch (_) {
+        // connect() already surfaced the error state; the next retry is
+        // scheduled only on socket loss, so retry here.
+        if (autoReconnect && !_explicitDisconnect) {
+          _scheduleReconnect(generation);
+        }
+      }
+    });
+  }
+
+  void _startKeepAlive(int generation) {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(keepAliveInterval, (_) async {
+      if (generation != _connectGeneration) return;
+      try {
+        await _call('system.status');
+      } catch (_) {
+        // Ping failed: close the socket to trigger the onDone → reconnect path.
+        try {
+          await _channel?.sink.close();
+        } catch (_) {}
+      }
+    });
+  }
+
+  /// Refreshes the download snapshot and replays it as update events so
+  /// listeners rebuild their state (used after gaps and reconnects).
+  Future<void> _resync() async {
+    try {
+      final items = await listDownloads();
+      for (final item in items) {
+        if (!_eventsController.isClosed) {
+          _eventsController.add(
+            DownloadUpdatedEvent(sequence: _lastSequence, download: item),
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Closes the socket and fails pending requests without marking the
+  /// disconnect as explicit (used by keepalive failure and reconnect).
+  Future<void> _teardownChannel() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    try {
+      await _channel?.sink.close().timeout(
+        const Duration(milliseconds: 500),
+        onTimeout: () {},
+      );
+    } catch (_) {}
+    _channel = null;
+    for (final c in _pendingRequests.values) {
+      if (!c.isCompleted) {
+        c.completeError(StateError('Client disconnected'));
+      }
+    }
+    _pendingRequests.clear();
   }
 
   void _setConnectionState(DaemonConnectionState state) {
@@ -219,6 +349,9 @@ class RpcDaemonClient implements MuleDaemonClient {
             );
           }
         }
+      } else if (method == 'event.snapshotRequired') {
+        // Server broadcast buffer lagged — events were dropped.
+        unawaited(_resync());
       }
     } catch (_) {
       // Ignore unparseable frames
@@ -343,24 +476,11 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Future<void> disconnect() async {
-    await _subscription?.cancel();
-    _subscription = null;
-
-    try {
-      await _channel?.sink.close().timeout(
-        const Duration(milliseconds: 500),
-        onTimeout: () {},
-      );
-    } catch (_) {}
-    _channel = null;
-
-    for (final c in _pendingRequests.values) {
-      if (!c.isCompleted) {
-        c.completeError(StateError('Client disconnected'));
-      }
-    }
-    _pendingRequests.clear();
-
+    _explicitDisconnect = true;
+    _connectGeneration++;
+    _reconnectTimer?.cancel();
+    _keepAliveTimer?.cancel();
+    await _teardownChannel();
     _setConnectionState(DaemonConnectionState.disconnected);
   }
 
@@ -1161,6 +1281,10 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   void dispose() {
+    _explicitDisconnect = true;
+    _connectGeneration++;
+    _reconnectTimer?.cancel();
+    _keepAliveTimer?.cancel();
     disconnect();
     _connectionController.close();
     _eventsController.close();

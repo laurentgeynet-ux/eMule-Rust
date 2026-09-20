@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../domain/models/download_item.dart';
+import 'package:mule_client/mule_client.dart';
 
 class AppTheme {
   // Brand colors

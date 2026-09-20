@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/rpc_daemon_client.dart';
+import 'package:mule_client/mule_client.dart';
 import 'package:desktop/services/daemon_supervisor.dart';
 
 void main() {
