@@ -1,0 +1,81 @@
+import 'package:flutter/foundation.dart';
+
+import '../ui/features/downloads/view_models/downloads_view_model.dart';
+
+/// App-shell UI state: current nav section, downloads filter & search
+/// query, debug bar visibility, and the global status/error banners.
+///
+/// [onSectionSelected] is invoked when the section changes so the host can
+/// trigger per-section refreshes. [isDevToolsAvailable] gates the debug bar.
+class ShellController extends ChangeNotifier {
+  /// Whether dev tools (debug bar) are available.
+  final bool isDevToolsAvailable;
+
+  /// Called after the section changes (e.g. to fetch that section's data).
+  final void Function(AppNavSection section)? onSectionSelected;
+
+  ShellController({
+    this.isDevToolsAvailable = false,
+    this.onSectionSelected,
+  });
+
+  AppNavSection _section = AppNavSection.downloads;
+  DownloadFilter _filter = DownloadFilter.all;
+  String _searchQuery = '';
+  bool _debugBarVisible = false;
+  String? _errorMessage;
+  String? _protocolMismatchError;
+  String? _statusNotification;
+
+  AppNavSection get section => _section;
+  DownloadFilter get filter => _filter;
+  String get searchQuery => _searchQuery;
+  String? get errorMessage => _errorMessage;
+  String? get protocolMismatchError => _protocolMismatchError;
+  String? get statusNotification => _statusNotification;
+  bool get isDebugBarVisible =>
+      isDevToolsAvailable && _debugBarVisible;
+
+  void setSection(AppNavSection section) {
+    _section = section;
+    onSectionSelected?.call(section);
+    notifyListeners();
+  }
+
+  void setFilter(DownloadFilter filter) {
+    _section = AppNavSection.downloads;
+    _filter = filter;
+    notifyListeners();
+  }
+
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
+
+  void toggleDebugBar() {
+    if (!isDevToolsAvailable) return;
+    _debugBarVisible = !_debugBarVisible;
+    notifyListeners();
+  }
+
+  void setStatus(String message) {
+    _statusNotification = message;
+    notifyListeners();
+  }
+
+  void setError(String? message) {
+    _errorMessage = message;
+    notifyListeners();
+  }
+
+  void setProtocolMismatch(String? message) {
+    _protocolMismatchError = message;
+    notifyListeners();
+  }
+
+  void clearStatusNotification() {
+    _statusNotification = null;
+    notifyListeners();
+  }
+}

@@ -7,6 +7,7 @@ import '../ui/features/downloads/view_models/downloads_view_model.dart';
 import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/downloads_store_controller.dart';
+import 'shell_controller.dart';
 import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/settings/view_models/settings_controller.dart';
@@ -93,3 +94,8 @@ final downloadsStoreControllerProvider =
     ChangeNotifierProvider<DownloadsStoreController>(
       (ref) => ref.watch(downloadsViewModelProvider).downloadsCtl,
     );
+
+/// App-shell UI state (section, filter, banners). Provider-owned disposal.
+final shellControllerProvider = ChangeNotifierProvider<ShellController>(
+  (ref) => ref.watch(downloadsViewModelProvider).shellCtl,
+);

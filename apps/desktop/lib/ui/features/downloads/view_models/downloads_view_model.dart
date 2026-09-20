@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../app/shell_controller.dart';
 import '../../../../services/daemon_supervisor.dart';
 import '../../../../services/work_directory_resolver.dart';
 import '../../history/view_models/history_controller.dart';
@@ -51,19 +52,11 @@ class DownloadsViewModel extends ChangeNotifier {
   DaemonConnectionState _connectionState = DaemonConnectionState.disconnected;
   SupervisorState _supervisorState = SupervisorState.idle;
   DaemonInfo? _daemonInfo;
-  String? _errorMessage;
-  String? _protocolMismatchError;
-
-  AppNavSection _currentSection = AppNavSection.downloads;
+  /// Shell UI state (section, filter, banners) — extracted controller.
+  late final ShellController shellCtl;
   /// Downloads store sub-domain (extracted controller, see
   /// `downloads_store_controller.dart`).
   late final DownloadsStoreController downloadsCtl;
-  DownloadFilter _currentFilter = DownloadFilter.all;
-  String _searchQuery = '';
-
-  bool _isDebugBarVisible = false;
-  String? _statusNotification;
-
   /// Categories sub-domain (extracted controller).
   late final CategoriesController categoriesCtl;
 
@@ -105,61 +98,74 @@ class DownloadsViewModel extends ChangeNotifier {
     this.supervisor,
     this.isDevToolsAvailable = false,
   }) {
+    shellCtl = ShellController(
+      isDevToolsAvailable: isDevToolsAvailable,
+      onSectionSelected: (section) {
+        if (section == AppNavSection.history) {
+          history.fetch();
+        } else if (section == AppNavSection.servers) {
+          serversController.fetch();
+        } else if (section == AppNavSection.kad) {
+          kad.fetchStatus();
+          kad.fetchContacts();
+        }
+      },
+    )..addListener(notifyListeners);
     downloadsCtl = DownloadsStoreController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
       onRefresh: refresh,
     )..addListener(notifyListeners);
     history = HistoryController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
     )..addListener(notifyListeners);
     kad = KadController(
       client: client,
-      isSectionActive: () => _currentSection == AppNavSection.kad,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      isSectionActive: () => shellCtl.section == AppNavSection.kad,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
     )..addListener(notifyListeners);
     search = SearchController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
     )..addListener(notifyListeners);
     serversController = ServersController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
     )..addListener(notifyListeners);
     peerSources = PeerSourcesController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
     )..addListener(notifyListeners);
     categoriesCtl = CategoriesController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
       onRefreshDownloads: refresh,
       onDownloadUpdated: downloadsCtl.upsert,
     )..addListener(notifyListeners);
     networkPolicyCtl = NetworkPolicyController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
       onAllDisconnected: serversController.markDisconnected,
     )..addListener(notifyListeners);
     settingsCtl = SettingsController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
       onSettingsLoaded: history.syncRetentionFromSettings,
     )..addListener(notifyListeners);
     labCtl = LabController(
       client: client,
-      onStatus: (m) => _statusNotification = m,
-      onError: (m) => _errorMessage = m,
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
       onDownloadUpdated: downloadsCtl.upsert,
       onRefreshDownloads: refresh,
     )..addListener(notifyListeners);
@@ -175,11 +181,11 @@ class DownloadsViewModel extends ChangeNotifier {
       _supervisorSub = supervisor!.stateStream.listen((sState) {
         _supervisorState = sState;
         if (sState == SupervisorState.connected) {
-          _protocolMismatchError = null;
+          shellCtl.setProtocolMismatch(null);
           _daemonInfo = client.daemonInfo;
           refresh();
         } else if (sState == SupervisorState.protocolMismatch) {
-          _protocolMismatchError = supervisor!.lastError;
+          shellCtl.setProtocolMismatch(supervisor!.lastError);
         }
         notifyListeners();
       });
@@ -196,19 +202,19 @@ class DownloadsViewModel extends ChangeNotifier {
   // Getters
   DaemonConnectionState get connectionState => _connectionState;
   SupervisorState get supervisorState => _supervisorState;
-  String? get protocolMismatchError => _protocolMismatchError;
+  String? get protocolMismatchError => shellCtl.protocolMismatchError;
   DaemonInfo? get daemonInfo => _daemonInfo ?? client.daemonInfo;
-  String? get errorMessage => _errorMessage;
+  String? get errorMessage => shellCtl.errorMessage;
   bool get isLoading => downloadsCtl.isLoading;
-  DownloadFilter get currentFilter => _currentFilter;
-  AppNavSection get currentSection => _currentSection;
-  String get searchQuery => _searchQuery;
+  DownloadFilter get currentFilter => shellCtl.filter;
+  AppNavSection get currentSection => shellCtl.section;
+  String get searchQuery => shellCtl.searchQuery;
   String? get selectedDownloadId => downloadsCtl.selectedId;
-  bool get isDebugBarVisible => isDevToolsAvailable && _isDebugBarVisible;
-  String? get statusNotification => _statusNotification;
+  bool get isDebugBarVisible => shellCtl.isDebugBarVisible;
+  String? get statusNotification => shellCtl.statusNotification;
 
   void clearStatusNotification() {
-    _statusNotification = null;
+    shellCtl.clearStatusNotification();
     notifyListeners();
   }
 
@@ -303,10 +309,10 @@ class DownloadsViewModel extends ChangeNotifier {
       downloadsCtl.getDownloadByHash(hash);
 
   List<DownloadItem> get filteredDownloads {
-    final query = _searchQuery.trim().toLowerCase();
+    final query = shellCtl.searchQuery.trim().toLowerCase();
     return allDownloads.where((item) {
       // Filter tab check
-      switch (_currentFilter) {
+      switch (shellCtl.filter) {
         case DownloadFilter.all:
           break;
         case DownloadFilter.active:
@@ -344,7 +350,7 @@ class DownloadsViewModel extends ChangeNotifier {
   // Actions
   Future<void> initialize({Uri? url, String? token}) async {
     downloadsCtl.setLoading(true);
-    _errorMessage = null;
+    shellCtl.setError(null);
     notifyListeners();
 
     try {
@@ -352,7 +358,7 @@ class DownloadsViewModel extends ChangeNotifier {
       _daemonInfo = await client.connect(url: targetUrl, token: token);
       await refresh();
     } catch (e) {
-      _errorMessage = e.toString();
+      shellCtl.setError(e.toString());
     } finally {
       downloadsCtl.setLoading(false);
       notifyListeners();
@@ -370,46 +376,24 @@ class DownloadsViewModel extends ChangeNotifier {
       await fetchNetworkPolicy();
       await fetchKadStatus();
       await downloadsCtl.reload();
-      _errorMessage = null;
+      shellCtl.setError(null);
     } catch (e) {
-      _errorMessage = 'Refresh failed: $e';
+      shellCtl.setError("Refresh failed: $e");
     }
     notifyListeners();
   }
 
-  void setSection(AppNavSection section) {
-    _currentSection = section;
-    if (section == AppNavSection.history) {
-      fetchHistory();
-    } else if (section == AppNavSection.servers) {
-      fetchServers();
-    } else if (section == AppNavSection.kad) {
-      fetchKadStatus();
-      fetchKadContacts();
-    }
-    notifyListeners();
-  }
+  void setSection(AppNavSection section) => shellCtl.setSection(section);
 
-  void setFilter(DownloadFilter filter) {
-    _currentSection = AppNavSection.downloads;
-    _currentFilter = filter;
-    notifyListeners();
-  }
+  void setFilter(DownloadFilter filter) => shellCtl.setFilter(filter);
 
-  void setSearchQuery(String query) {
-    _searchQuery = query;
-    notifyListeners();
-  }
+  void setSearchQuery(String query) => shellCtl.setSearchQuery(query);
 
   void selectDownload(String? id) {
     downloadsCtl.select(id);
   }
 
-  void toggleDebugBar() {
-    if (!isDevToolsAvailable) return;
-    _isDebugBarVisible = !_isDebugBarVisible;
-    notifyListeners();
-  }
+  void toggleDebugBar() => shellCtl.toggleDebugBar();
 
   // ── Download actions (delegated to DownloadsStoreController) ──────────────
 
