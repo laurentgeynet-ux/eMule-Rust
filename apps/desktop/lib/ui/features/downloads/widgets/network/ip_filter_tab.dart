@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'ip_filter_report_card.dart';
 import 'ip_filter_status_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// First tab of the IP filter dialog: status card + local ipfilter.dat
 /// import/clear + last import report.
@@ -34,8 +35,7 @@ class IpFilterTab extends StatelessWidget {
         children: [
           IpFilterStatusCard(status: status, onToggle: onToggle),
           const SizedBox(height: 16),
-          const Text(
-            'Import ipfilter.dat',
+          Text(context.l10n.importIpfilterDat,
             style: TextStyle(
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
@@ -43,8 +43,7 @@ class IpFilterTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Load a local PeerGuardian / eMule formatted ipfilter.dat file. Remote URL download is disallowed for safety.',
+          Text(context.l10n.loadALocalPeerguardianEmule,
             style: TextStyle(fontSize: 11, color: AppColors.textSoft),
           ),
           const SizedBox(height: 10),
@@ -92,8 +91,7 @@ class IpFilterTab extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.file_upload, size: 16),
-                label: const Text(
-                  'Import',
+                label: Text(context.l10n.import,
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -105,7 +103,7 @@ class IpFilterTab extends StatelessWidget {
                     foregroundColor: AppColors.danger,
                     side: const BorderSide(color: AppColors.danger),
                   ),
-                  child: const Text('Clear'),
+                  child: Text(context.l10n.clear),
                 ),
               ],
             ],

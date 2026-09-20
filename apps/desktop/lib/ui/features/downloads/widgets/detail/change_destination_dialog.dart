@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Dialog: change the final destination directory of a download. The
 /// .part data stays confined in data/temp/ until verification completes.
@@ -19,24 +20,23 @@ void showChangeDestinationDialog(
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Change Target Destination'),
+      title: Text(context.l10n.changeTargetDestination),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Select target destination folder for "${item.fileName}":'),
+          Text(context.l10n.selectTargetDestinationFolderFor(item.fileName)),
           const SizedBox(height: 12),
           TextField(
             controller: controller,
-            decoration: const InputDecoration(
-              labelText: 'Target Directory Path',
-              hintText: 'e.g. downloads or C:\\TargetDir',
+            decoration: InputDecoration(
+              labelText: context.l10n.targetDirectoryPath,
+              hintText: context.l10n.eGDownloadsOrC,
               border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'The folder must exist and be writable. Active .part data remains in data/temp/ until completed.',
+          Text(context.l10n.theFolderMustExistAnd,
             style: TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
         ],
@@ -44,7 +44,7 @@ void showChangeDestinationDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
@@ -57,7 +57,7 @@ void showChangeDestinationDialog(
               }
             }
           },
-          child: const Text('Save Destination'),
+          child: Text(context.l10n.saveDestination),
         ),
       ],
     ),

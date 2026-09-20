@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'network_policy_helpers.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Radio-style list to switch the active connectivity profile.
 class NetworkProfileSelector extends StatelessWidget {
@@ -27,8 +28,7 @@ class NetworkProfileSelector extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Active Connectivity Profile',
+          Text(context.l10n.activeConnectivityProfile,
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),

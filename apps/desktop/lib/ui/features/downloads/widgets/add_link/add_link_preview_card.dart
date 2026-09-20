@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Green preview card shown once the pasted ed2k link parses correctly.
 class AddLinkPreviewCard extends StatelessWidget {
@@ -57,8 +58,7 @@ class AddLinkPreviewCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            'Hash: $hash',
+          Text(context.l10n.hash(hash),
             style: const TextStyle(
               fontSize: 11,
               color: AppColors.textMuted,

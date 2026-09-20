@@ -7,6 +7,7 @@ import 'category_badge.dart';
 import 'download_actions_bar.dart';
 import 'download_file_icons.dart';
 import 'download_status_pill.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Full (wide) layout of a download row: icon, name + id + category,
 /// size + progress, percent, status pill, rate/sources and actions.
@@ -76,10 +77,9 @@ class DownloadRowFull extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Tooltip(
-                        message: 'Full ID: ${item.id}',
+                        message: context.l10n.fullId(item.id),
                         preferBelow: false,
-                        child: Text(
-                          'ID: ${abbreviateId(item.id)}',
+                        child: Text(context.l10n.id(abbreviateId(item.id)),
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppColors.textFaint,
@@ -95,9 +95,8 @@ class DownloadRowFull extends StatelessWidget {
                             ClipboardData(text: item.id),
                           );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Download ID copied to clipboard',
+                            SnackBar(
+                              content: Text(context.l10n.downloadIdCopiedToClipboard,
                               ),
                               duration: Duration(seconds: 1),
                             ),
@@ -127,8 +126,7 @@ class DownloadRowFull extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${Formatters.formatBytes(item.receivedBytes)} / ${Formatters.formatBytes(item.totalBytes)}',
+              Text('${Formatters.formatBytes(item.receivedBytes)} / ${Formatters.formatBytes(item.totalBytes)}',
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -182,8 +180,7 @@ class DownloadRowFull extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                '${item.sourceCount} sources',
+              Text(context.l10n.sources2('${item.sourceCount}'),
                 style: const TextStyle(
                   fontSize: 11,
                   color: AppColors.textMuted,

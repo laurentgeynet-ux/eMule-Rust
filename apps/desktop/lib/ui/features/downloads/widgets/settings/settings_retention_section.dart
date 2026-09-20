@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Section 2: history retention policy dropdown.
 class SettingsRetentionSection extends StatelessWidget {
@@ -34,8 +35,7 @@ class SettingsRetentionSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'History Retention Policy',
+              Text(context.l10n.historyRetentionPolicy,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -43,8 +43,7 @@ class SettingsRetentionSection extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Historical transition events older than the retention period are automatically pruned on daemon startup.',
+              Text(context.l10n.historicalTransitionEventsOlderThan,
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.textMuted,
@@ -57,15 +56,14 @@ class SettingsRetentionSection extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  const Text(
-                    'Keep history for: ',
+                  Text(context.l10n.keepHistoryFor,
                     style: TextStyle(
                       fontSize: 13,
                       color: AppColors.textSecondary,
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    padding: EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
                       color: AppTheme.darkCard,
                       borderRadius: BorderRadius.circular(6),
@@ -78,27 +76,27 @@ class SettingsRetentionSection extends StatelessWidget {
                       child: DropdownButton<int>(
                         value: retentionDays,
                         dropdownColor: AppTheme.darkCard,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           color: AppColors.textPrimary,
                         ),
-                        items: const [
+                        items: [
                           DropdownMenuItem(
                             value: 7,
-                            child: Text('7 Days'),
+                            child: Text(context.l10n.sevenDays),
                           ),
                           DropdownMenuItem(
                             value: 30,
-                            child: Text('30 Days (Default)'),
+                            child: Text(context.l10n.thirtyDaysDefault),
                           ),
                           DropdownMenuItem(
                             value: 90,
-                            child: Text('90 Days'),
+                            child: Text(context.l10n.ninetyDays),
                           ),
                           DropdownMenuItem(
                             value: 0,
                             child:
-                                Text('Indefinitely (No pruning)'),
+                                Text(context.l10n.indefinitelyNoPruning),
                           ),
                         ],
                         onChanged: (days) {

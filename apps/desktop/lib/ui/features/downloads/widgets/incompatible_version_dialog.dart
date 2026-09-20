@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 class IncompatibleVersionBanner extends StatelessWidget {
   final String errorMessage;
@@ -30,8 +31,7 @@ class IncompatibleVersionBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Compatibility Alert',
+                Text(context.l10n.compatibilityAlert,
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -50,7 +50,7 @@ class IncompatibleVersionBanner extends StatelessWidget {
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
             icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Retry'),
+            label: Text(context.l10n.retry),
             onPressed: onRetry,
           ),
         ],

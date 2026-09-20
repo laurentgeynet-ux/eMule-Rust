@@ -11,6 +11,7 @@ import 'detail/download_part_map_card.dart';
 import 'detail/download_paths_card.dart';
 import 'detail/download_remove_dialog.dart';
 import 'detail/download_sources_card.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Download detail dialog — composition only. Every section is a dedicated
 /// widget under `widgets/detail/`; domain calls go through the view-model
@@ -55,14 +56,13 @@ class _DownloadDetailDialogState extends State<DownloadDetailDialog> {
 
         if (item == null) {
           return AlertDialog(
-            title: const Text('Download Not Found'),
-            content: const Text(
-              'The requested download is no longer available.',
+            title: Text(context.l10n.downloadNotFound),
+            content: Text(context.l10n.theRequestedDownloadIsNo,
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
+                child: Text(context.l10n.close),
               ),
             ],
           );

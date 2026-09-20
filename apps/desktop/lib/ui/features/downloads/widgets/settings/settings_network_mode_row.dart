@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Section 4: shortcut row opening the network mode / UPnP dialog.
 class SettingsNetworkModeRow extends StatelessWidget {
@@ -12,12 +13,11 @@ class SettingsNetworkModeRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Mode Réseau & Traversée Box (UPnP)',
+              Text(context.l10n.modeReseauTraverseeBoxUpnp,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
@@ -25,8 +25,7 @@ class SettingsNetworkModeRow extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 4),
-              Text(
-                'Bascule entre laboratoire local et réseau public mondial.',
+              Text(context.l10n.basculeEntreLaboratoireLocalEt,
                 style: TextStyle(
                   fontSize: 11,
                   color: AppColors.textMuted,
@@ -38,7 +37,7 @@ class SettingsNetworkModeRow extends StatelessWidget {
         const SizedBox(width: 10),
         FilledButton.icon(
           icon: const Icon(Icons.public, size: 16),
-          label: const Text('Configurer'),
+          label: Text(context.l10n.configurer),
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.warningShade800,
           ),

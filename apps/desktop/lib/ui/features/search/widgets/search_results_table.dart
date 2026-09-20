@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'search_result_row.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Virtualized results table with sortable columns (name, size, sources).
 /// Minimum table width 950 px with horizontal scroll below that.
@@ -110,31 +111,31 @@ class _TableHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _headerCell(label: 'Nom du fichier', columnIndex: 0, flex: 4),
+          _headerCell(label: context.l10n.nomDuFichier, columnIndex: 0, flex: 4),
           const SizedBox(width: 12),
           _headerCell(
-            label: 'Taille',
+            label: context.l10n.taille,
             columnIndex: 1,
             width: 95,
             numeric: true,
           ),
           const SizedBox(width: 12),
           _headerCell(
-            label: 'Sources',
+            label: context.l10n.sources,
             columnIndex: 2,
             width: 100,
             numeric: true,
           ),
           const SizedBox(width: 12),
           _headerCell(
-            label: 'Hachage eD2K',
+            label: context.l10n.hachageEd2k,
             columnIndex: 3,
             width: 220,
             sortable: false,
           ),
           const SizedBox(width: 12),
           _headerCell(
-            label: 'Actions',
+            label: context.l10n.actions,
             columnIndex: 4,
             width: 280,
             sortable: false,

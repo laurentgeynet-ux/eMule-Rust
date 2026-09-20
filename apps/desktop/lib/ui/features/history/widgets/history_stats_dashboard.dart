@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Statistics dashboard: four KPI cards (totals, activity windows,
 /// resumes/retries, integrity health) laid out in a responsive wrap.
@@ -20,7 +21,7 @@ class HistoryStatsDashboard extends StatelessWidget {
           children: [
             HistoryStatCard(
               width: cardWidth,
-              title: 'Total Completed',
+              title: context.l10n.totalCompleted,
               mainValue: '${stats.totalCompletedCount} files',
               subtitle: Formatters.formatBytes(stats.totalCompletedBytes),
               icon: Icons.check_circle_outline_rounded,
@@ -28,27 +29,27 @@ class HistoryStatsDashboard extends StatelessWidget {
             ),
             HistoryStatCard(
               width: cardWidth,
-              title: 'Activity Windows',
+              title: context.l10n.activityWindows,
               mainValue:
                   '${stats.sessionCompletedCount} session '
                   '(${Formatters.formatBytes(stats.sessionCompletedBytes)})',
-              subtitle:
-                  '24h: ${stats.last24hCompletedCount} | '
-                  '7d: ${stats.last7dCompletedCount}',
+              subtitle: context.l10n.twentyFourHours(
+                  '${stats.last24hCompletedCount}',
+                  '${stats.last7dCompletedCount}'),
               icon: Icons.access_time_rounded,
               color: AppColors.accentCyan,
             ),
             HistoryStatCard(
               width: cardWidth,
-              title: 'Resumes & Retries',
+              title: context.l10n.resumesRetries,
               mainValue: '${stats.totalResumesCount} resumes',
-              subtitle: '${stats.totalFailedCount} failures logged',
+              subtitle: context.l10n.failuresLogged('${stats.totalFailedCount}'),
               icon: Icons.replay_rounded,
               color: AppTheme.statusDownloading,
             ),
             HistoryStatCard(
               width: cardWidth,
-              title: 'Integrity Health',
+              title: context.l10n.integrityHealth,
               mainValue: '${stats.totalIntegrityFailures} hash mismatch',
               subtitle: stats.totalIntegrityFailures == 0
                   ? '100% hash verified'

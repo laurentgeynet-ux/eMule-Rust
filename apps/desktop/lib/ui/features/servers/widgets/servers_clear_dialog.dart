@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/servers_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Destructive confirmation: wipe the local server list.
 Future<void> showServersClearDialog(
@@ -11,19 +12,18 @@ Future<void> showServersClearDialog(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Effacer tous les serveurs ?'),
-      content: const Text(
-        'Cette operation supprime la liste des serveurs enregistres dans votre base locale.',
+      title: Text(context.l10n.effacerTousLesServeurs),
+      content: Text(context.l10n.cetteOperationSupprimeLaListe,
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Annuler'),
+          child: Text(context.l10n.annuler),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
           onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Effacer'),
+          child: Text(context.l10n.effacer),
         ),
       ],
     ),

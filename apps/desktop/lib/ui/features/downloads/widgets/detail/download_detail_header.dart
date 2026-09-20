@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Dialog header: file icon tinted by status, file name, status badge,
 /// received/total bytes and close button.
@@ -80,10 +81,10 @@ class DownloadDetailHeader extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      '${Formatters.formatBytes(item.receivedBytes)} of '
-                      '${Formatters.formatBytes(item.totalBytes)} '
-                      '(${Formatters.formatPercent(item.progress)})',
+                    Text(context.l10n.receivedOfTotal(
+                      Formatters.formatBytes(item.receivedBytes),
+                      Formatters.formatBytes(item.totalBytes),
+                      Formatters.formatPercent(item.progress)),
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSoft,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Informational banner: managing the server list opens no outbound
 /// connection; IP-filtered addresses are flagged. Shortcut to the network
@@ -44,8 +45,7 @@ class ServersSafetyBanner extends StatelessWidget {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             icon: const Icon(Icons.security_rounded, size: 14),
-            label: const Text(
-              'Sécurité / Profil',
+            label: Text(context.l10n.securiteProfil,
               style: TextStyle(fontSize: 11),
             ),
             onPressed: onShowPolicy,

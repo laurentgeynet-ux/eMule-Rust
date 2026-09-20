@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Sidebar category row: color dot (or icon), name, count pill and an
 /// optional edit/delete popup menu on user categories.
@@ -85,8 +86,7 @@ class SidebarCategoryItem extends StatelessWidget {
                         : AppColors.fillSubtle,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
-                    '$count',
+                  child: Text('$count',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
@@ -105,19 +105,19 @@ class SidebarCategoryItem extends StatelessWidget {
                       color: AppColors.textFaint,
                     ),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
+                    constraints: BoxConstraints(
                       minWidth: 20,
                       minHeight: 20,
                     ),
-                    tooltip: 'Category Options',
-                    itemBuilder: (ctx) => const [
+                    tooltip: context.l10n.categoryOptions,
+                    itemBuilder: (ctx) => [
                       PopupMenuItem(
                         value: 'edit',
                         child: Row(
                           children: [
                             Icon(Icons.edit_outlined, size: 16),
                             SizedBox(width: 8),
-                            Text('Edit Category'),
+                            Text(context.l10n.editCategory),
                           ],
                         ),
                       ),
@@ -131,8 +131,7 @@ class SidebarCategoryItem extends StatelessWidget {
                               color: AppTheme.statusFailed,
                             ),
                             SizedBox(width: 8),
-                            Text(
-                              'Delete Category',
+                            Text(context.l10n.deleteCategory,
                               style: TextStyle(
                                 color: AppTheme.statusFailed,
                               ),

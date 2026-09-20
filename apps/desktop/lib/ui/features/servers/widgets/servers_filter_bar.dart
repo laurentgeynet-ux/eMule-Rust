@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Server list filter field + destructive "clear all" action (hidden when
 /// the list is empty).
@@ -24,7 +25,7 @@ class ServersFilterBar extends StatelessWidget {
           Expanded(
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Rechercher un serveur (nom, IP, port)...',
+                hintText: context.l10n.rechercherUnServeurNomIp,
                 prefixIcon: const Icon(Icons.search, size: 18),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -47,8 +48,7 @@ class ServersFilterBar extends StatelessWidget {
                 color: AppColors.danger,
                 size: 16,
               ),
-              label: const Text(
-                'Tout effacer',
+              label: Text(context.l10n.toutEffacer,
                 style: TextStyle(color: AppColors.danger),
               ),
               onPressed: onClear,

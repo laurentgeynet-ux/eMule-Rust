@@ -6,6 +6,7 @@ import '../../../../app/app_controller.dart';
 import 'anti_ssrf_notice.dart';
 import 'network_mode_status_card.dart';
 import 'upnp_status_card.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Network mode switch (confined lab ↔ public WAN/Kad) with UPnP
 /// traversal status and refresh.
@@ -170,9 +171,8 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Mode Réseau & Traversée Box (UPnP)',
+                  Expanded(
+                    child: Text(context.l10n.modeReseauTraverseeBoxUpnp,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -254,8 +254,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text(
-                      'Fermer',
+                    child: Text(context.l10n.fermer,
                       style:
                           TextStyle(color: AppColors.textSecondary),
                     ),
@@ -263,8 +262,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                   if (isPublic)
                     FilledButton.icon(
                       icon: const Icon(Icons.lock_outline, size: 16),
-                      label: const Text(
-                        'Revenir en Mode Confiné (Lab 127.0.0.1)',
+                      label: Text(context.l10n.revenirEnModeConfineLab,
                       ),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.labDim,
@@ -277,8 +275,7 @@ class _NetworkModeDialogState extends State<NetworkModeDialog> {
                   else
                     FilledButton.icon(
                       icon: const Icon(Icons.public, size: 16),
-                      label: const Text(
-                        'Activer le Mode Réseau Public (WAN)',
+                      label: Text(context.l10n.activerLeModeReseauPublic,
                       ),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.warningShade800,

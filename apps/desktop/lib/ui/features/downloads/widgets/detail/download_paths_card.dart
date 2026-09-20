@@ -5,6 +5,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'change_destination_dialog.dart';
 import 'detail_copy_row.dart';
 import 'detail_section_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Storage card: confined temp .part path, final destination and the
 /// "Change Destination" action.
@@ -21,13 +22,13 @@ class DownloadPathsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DetailSectionCard(
-      title: 'Storage & Target Destination',
+      title: context.l10n.storageTargetDestination,
       icon: Icons.folder_open_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           DetailCopyRow(
-            label: 'Temporary Part Path (Confined)',
+            label: context.l10n.temporaryPartPathConfined,
             value: item.tempPath ?? 'data/temp/${item.id}.part',
             monospace: true,
           ),
@@ -36,7 +37,7 @@ class DownloadPathsCard extends StatelessWidget {
             children: [
               Expanded(
                 child: DetailCopyRow(
-                  label: 'Final Target Destination',
+                  label: context.l10n.finalTargetDestination,
                   value: item.targetPath ?? 'Pending destination...',
                   monospace: true,
                 ),
@@ -44,7 +45,7 @@ class DownloadPathsCard extends StatelessWidget {
               const SizedBox(width: 12),
               OutlinedButton.icon(
                 icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
-                label: const Text('Change Destination'),
+                label: Text(context.l10n.changeDestination),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.primary,
                   side: const BorderSide(color: AppTheme.primary),
@@ -62,9 +63,7 @@ class DownloadPathsCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Note: Changing destination redirects where the completed file is assembled. '
-            'Ongoing .part chunks remain safely confined to data/temp/ until final verification.',
+          Text(context.l10n.noteChangingDestinationRedirectsWhere,
             style: TextStyle(
               fontSize: 11,
               color: AppColors.textFaint,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/kad_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Dialog: download a remote nodes.dat over HTTP(S) and bootstrap Kad.
 /// Public URLs only — local/loopback targets are rejected by the daemon
@@ -22,7 +23,7 @@ Future<void> showKadBootstrapFromUrlDialog(
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
       ),
-      title: const Row(
+      title: Row(
         children: [
           Icon(
             Icons.cloud_download_outlined,
@@ -30,7 +31,7 @@ Future<void> showKadBootstrapFromUrlDialog(
             size: 20,
           ),
           SizedBox(width: 8),
-          Text('Amorcer Kad depuis une URL'),
+          Text(context.l10n.amorcerKadDepuisUneUrl),
         ],
       ),
       content: SizedBox(
@@ -39,8 +40,7 @@ Future<void> showKadBootstrapFromUrlDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Téléchargez un fichier nodes.dat distant pour amorcer votre table de routage Kad Kademlia (ex: https://upd.emule-security.org/nodes.dat) :',
+            Text(context.l10n.telechargezUnFichierNodesDat,
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
@@ -49,7 +49,7 @@ Future<void> showKadBootstrapFromUrlDialog(
               autofocus: true,
               style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
               decoration: InputDecoration(
-                labelText: 'URL du nodes.dat',
+                labelText: context.l10n.urlDuNodesDat,
                 hintText: 'https://upd.emule-security.org/nodes.dat',
                 isDense: true,
                 filled: true,
@@ -61,8 +61,7 @@ Future<void> showKadBootstrapFromUrlDialog(
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'Note : Seuls les protocoles HTTP/HTTPS publics sont acceptés. Le trafic vers les réseaux locaux (RFC1918) et loopback est rejeté par sécurité (anti-SSRF).',
+            Text(context.l10n.noteSeulsLesProtocolesHttp,
               style: TextStyle(fontSize: 11, color: AppColors.textFaint),
             ),
           ],
@@ -71,14 +70,13 @@ Future<void> showKadBootstrapFromUrlDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(null),
-          child: const Text(
-            'Annuler',
+          child: Text(context.l10n.annuler,
             style: TextStyle(color: AppColors.textSoft),
           ),
         ),
         FilledButton.icon(
           icon: const Icon(Icons.download_rounded, size: 16),
-          label: const Text('Télécharger et Amorcer'),
+          label: Text(context.l10n.telechargerEtAmorcer),
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.labShade700,
             foregroundColor: AppColors.textPrimary,

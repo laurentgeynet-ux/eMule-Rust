@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Destructive confirmation: remove a download entry, optionally deleting
 /// the .part/.part.met temporary files (the completed file is kept).
@@ -15,12 +16,12 @@ void showDownloadRemoveDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setDialogState) => AlertDialog(
-        title: const Text('Remove Download?'),
+        title: Text(context.l10n.removeDownload),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Remove "${item.fileName}" from the downloads manager?'),
+            Text(context.l10n.removeFromTheDownloadsManager(item.fileName)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -29,13 +30,10 @@ void showDownloadRemoveDialog(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppTheme.darkBorder),
               ),
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '• The download entry in SQLite will be permanently deleted.\n'
-                    '• Temporary files (.part and .part.met) in data/temp/ will be removed if selected below.\n'
-                    '• The final completed file in destination (if completed) will NOT be deleted.',
+                  Text(context.l10n.theDownloadEntryInSqlite,
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
@@ -49,8 +47,7 @@ void showDownloadRemoveDialog(
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text(
-                'Delete temporary .part file from data/temp/',
+              title: Text(context.l10n.deleteTemporaryPartFileFrom,
                 style: TextStyle(fontSize: 13),
               ),
               value: deleteFilesOnDisk,
@@ -65,7 +62,7 @@ void showDownloadRemoveDialog(
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -76,7 +73,7 @@ void showDownloadRemoveDialog(
               Navigator.of(ctx).pop(); // pop confirm dialog
               Navigator.of(context).pop(); // pop detail dialog
             },
-            child: const Text('Confirm Remove'),
+            child: Text(context.l10n.confirmRemove),
           ),
         ],
       ),

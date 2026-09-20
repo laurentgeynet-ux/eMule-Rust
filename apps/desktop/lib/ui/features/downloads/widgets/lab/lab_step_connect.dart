@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'lab_step_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Step 4: pick a queued download and connect it to the loopback source.
 class LabStepConnect extends StatelessWidget {
@@ -32,13 +33,12 @@ class LabStepConnect extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (downloads.isEmpty) {
-      return const LabStepCard(
+      return LabStepCard(
         stepNumber: 4,
-        title: 'Connect Download to Loopback Source',
+        title: context.l10n.connectDownloadToLoopbackSource,
         description:
             'Instructs the client to connect to 127.0.0.1 source to transfer chunks.',
-        content: Text(
-          'No downloads in queue. Add an eD2K link in Step 2.',
+        content: Text(context.l10n.noDownloadsInQueueAdd,
           style: TextStyle(fontSize: 12, color: AppColors.textFaint),
         ),
       );
@@ -62,7 +62,7 @@ class LabStepConnect extends StatelessWidget {
 
     return LabStepCard(
       stepNumber: 4,
-      title: 'Connect Download to Loopback Source',
+      title: context.l10n.connectDownloadToLoopbackSource,
       description:
           'Instructs the client to connect to 127.0.0.1 source to transfer chunks.',
       isCompleted: isCompleted,
@@ -71,8 +71,8 @@ class LabStepConnect extends StatelessWidget {
         children: [
           DropdownButtonFormField<String>(
             initialValue: selectedDownload.id,
-            decoration: const InputDecoration(
-              labelText: 'Target Download Task',
+            decoration: InputDecoration(
+              labelText: context.l10n.targetDownloadTask,
               isDense: true,
               contentPadding:
                   EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -81,8 +81,7 @@ class LabStepConnect extends StatelessWidget {
                 .map(
                   (d) => DropdownMenuItem<String>(
                     value: d.id,
-                    child: Text(
-                      '${d.fileName} (${Formatters.formatPercent(d.progress)})',
+                    child: Text('${d.fileName} (${Formatters.formatPercent(d.progress)})',
                       style: const TextStyle(fontSize: 12),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -114,9 +113,9 @@ class LabStepConnect extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'Warning: Download size (${Formatters.formatBytes(selectedDownload.totalBytes)}) '
-                      'does not match fixture (${Formatters.formatBytes(fixture.sizeBytes)}).',
+                    child: Text(context.l10n.warningDownloadSize(
+                      Formatters.formatBytes(selectedDownload.totalBytes),
+                      Formatters.formatBytes(fixture.sizeBytes)),
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.accentAmber,
@@ -199,9 +198,8 @@ class LabStepConnect extends StatelessWidget {
               ),
               if (!isPeerRunning) ...[
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Start loopback peer in Step 3 before connecting.',
+                Expanded(
+                  child: Text(context.l10n.startLoopbackPeerInStep,
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.accentAmber,
@@ -234,8 +232,7 @@ class LabStepConnect extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'Final file: $downloadsDir\\${selectedDownload.fileName}',
+                    child: Text(context.l10n.finalFile(selectedDownload.fileName, downloadsDir),
                       style: const TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
@@ -247,8 +244,7 @@ class LabStepConnect extends StatelessWidget {
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.folder_open, size: 14),
-                    label: const Text(
-                      'Open Folder',
+                    label: Text(context.l10n.openFolder,
                       style: TextStyle(fontSize: 11),
                     ),
                     style: OutlinedButton.styleFrom(

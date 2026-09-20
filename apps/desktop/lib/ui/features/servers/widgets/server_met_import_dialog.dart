@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/servers_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Flow: pick a server.met path → inspect (report of allowed/blocked
 /// servers) → confirm import.
@@ -15,11 +16,11 @@ Future<void> showServerMetImportDialog(
   final path = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
           Icon(Icons.file_upload_outlined, color: AppTheme.primary),
           SizedBox(width: 8),
-          Text('Importer un fichier server.met local'),
+          Text(context.l10n.importerUnFichierServerMet),
         ],
       ),
       content: SizedBox(
@@ -28,16 +29,15 @@ Future<void> showServerMetImportDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Indiquez le chemin absolu vers votre fichier server.met local :',
+            Text(context.l10n.indiquezLeCheminAbsoluVers,
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: pathController,
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Chemin du fichier server.met',
+              decoration: InputDecoration(
+                labelText: context.l10n.cheminDuFichierServerMet,
                 hintText: 'C:\\path\\to\\server.met ou /path/to/server.met',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.description_outlined, size: 18),
@@ -49,11 +49,11 @@ Future<void> showServerMetImportDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(null),
-          child: const Text('Annuler'),
+          child: Text(context.l10n.annuler),
         ),
         ElevatedButton.icon(
           icon: const Icon(Icons.preview_rounded, size: 16),
-          label: const Text('Inspecter'),
+          label: Text(context.l10n.inspecter),
           onPressed: () {
             final text = pathController.text.trim();
             if (text.isNotEmpty) {
@@ -90,11 +90,11 @@ class _ServerMetInspectDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
           Icon(Icons.preview_rounded, color: AppTheme.primary),
           SizedBox(width: 8),
-          Text('Apercu du fichier server.met'),
+          Text(context.l10n.apercuDuFichierServerMet),
         ],
       ),
       content: SizedBox(
@@ -103,35 +103,33 @@ class _ServerMetInspectDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Fichier : ${report.filePath}',
+            Text(context.l10n.fichier(report.filePath),
               style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
             const SizedBox(height: 14),
             Row(
               children: [
                 _SummaryStat(
-                  label: 'Total',
+                  label: context.l10n.total,
                   value: '${report.totalCount}',
                   color: AppColors.textPrimary,
                 ),
                 const SizedBox(width: 12),
                 _SummaryStat(
-                  label: 'Autorises',
+                  label: context.l10n.autorises,
                   value: '${report.allowedCount}',
                   color: AppColors.positive,
                 ),
                 const SizedBox(width: 12),
                 _SummaryStat(
-                  label: 'Bloques (Filtre IP)',
+                  label: context.l10n.bloquesFiltreIp,
                   value: '${report.blockedCount}',
                   color: AppColors.danger,
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Les serveurs marques en rouge correspondent a des plages de votre filtre IP local. Ils seront importes avec le statut bloque.',
+            Text(context.l10n.lesServeursMarquesEnRouge,
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
@@ -163,16 +161,14 @@ class _ServerMetInspectDialog extends StatelessWidget {
                       ),
                     ),
                     trailing: isBlocked
-                        ? const Text(
-                            'Bloque',
+                        ? Text(context.l10n.bloque,
                             style: TextStyle(
                               color: AppColors.danger,
                               fontWeight: FontWeight.bold,
                               fontSize: 11,
                             ),
                           )
-                        : const Text(
-                            'Autorise',
+                        : Text(context.l10n.autorise,
                             style: TextStyle(
                               color: AppColors.positive,
                               fontSize: 11,
@@ -188,11 +184,11 @@ class _ServerMetInspectDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Annuler'),
+          child: Text(context.l10n.annuler),
         ),
         ElevatedButton.icon(
           icon: const Icon(Icons.download_done_rounded, size: 16),
-          label: const Text('Confirmer importation'),
+          label: Text(context.l10n.confirmerImportation),
           onPressed: () => Navigator.of(context).pop(true),
         ),
       ],

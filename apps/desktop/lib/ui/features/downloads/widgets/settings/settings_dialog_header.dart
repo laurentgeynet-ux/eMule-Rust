@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Header bar of the settings dialog (icon, title, close).
 class SettingsDialogHeader extends StatelessWidget {
@@ -31,9 +32,8 @@ class SettingsDialogHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Download Settings & Storage',
+          Expanded(
+            child: Text(context.l10n.downloadSettingsStorage,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

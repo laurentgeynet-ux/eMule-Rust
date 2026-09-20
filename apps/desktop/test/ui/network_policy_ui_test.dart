@@ -29,6 +29,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
         locale: const Locale('fr'),
+        
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
           home: DownloadsScreen(viewModel: viewModel),
@@ -53,6 +54,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
         locale: const Locale('fr'),
+        
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
           home: DownloadsScreen(viewModel: viewModel),
@@ -88,6 +90,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
         locale: const Locale('fr'),
+        
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
           home: DownloadsScreen(viewModel: viewModel),

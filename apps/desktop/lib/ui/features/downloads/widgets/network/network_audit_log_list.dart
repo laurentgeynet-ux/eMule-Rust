@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Scrollable list of redacted network audit decisions.
 class NetworkAuditLogList extends StatelessWidget {
@@ -24,9 +25,8 @@ class NetworkAuditLogList extends StatelessWidget {
       child: isLoading
           ? const Center(child: CircularProgressIndicator())
           : entries.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No network events recorded yet.',
+              ? Center(
+                  child: Text(context.l10n.noNetworkEventsRecordedYet,
                     style: TextStyle(
                       color: AppColors.textFaint,
                       fontSize: 12,

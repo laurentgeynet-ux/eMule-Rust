@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../app/app_controller.dart';
 import 'download_detail_dialog.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Collapsible summary panel shown at the bottom of the downloads workspace
 /// when a download is selected. Offers a shortcut to the full detail dialog.
@@ -32,8 +33,7 @@ class DownloadDetailsPanel extends StatelessWidget {
               const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.accent),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
-                child: Text(
-                  'Details: ${item.fileName}',
+                child: Text(context.l10n.details(item.fileName),
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -41,14 +41,14 @@ class DownloadDetailsPanel extends StatelessWidget {
               if (isSmall)
                 IconButton(
                   icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                  tooltip: 'Inspect Full Details',
+                  tooltip: context.l10n.inspectFullDetails,
                   style: IconButton.styleFrom(foregroundColor: AppColors.accent),
                   onPressed: () => _openDetails(context),
                 )
               else
                 OutlinedButton.icon(
                   icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                  label: const Text('Inspect Full Details', style: TextStyle(fontSize: 12)),
+                  label: Text(context.l10n.inspectFullDetails, style: TextStyle(fontSize: 12)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.accent,
                     side: const BorderSide(color: AppColors.accent, width: 0.8),
@@ -68,11 +68,11 @@ class DownloadDetailsPanel extends StatelessWidget {
             spacing: AppSpacing.xxxl,
             runSpacing: AppSpacing.md,
             children: [
-              _Metric(label: 'Download ID', value: item.id),
-              _Metric(label: 'Total Size', value: Formatters.formatBytes(item.totalBytes)),
-              _Metric(label: 'Verified Bytes', value: Formatters.formatBytes(item.verifiedBytes)),
-              _Metric(label: 'Status', value: item.status.label),
-              _Metric(label: 'Sources', value: '${item.sourceCount}'),
+              _Metric(label: context.l10n.downloadId, value: item.id),
+              _Metric(label: context.l10n.totalSize, value: Formatters.formatBytes(item.totalBytes)),
+              _Metric(label: context.l10n.verifiedBytes, value: Formatters.formatBytes(item.verifiedBytes)),
+              _Metric(label: context.l10n.status, value: item.status.label),
+              _Metric(label: context.l10n.sources, value: '${item.sourceCount}'),
             ],
           ),
         ],

@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/servers_controller.dart';
 import 'servers_format.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Live eD2K server session bar: connection status, HighID/LowID badge,
 /// server name, user/file metrics, welcome message, disconnect action.
@@ -124,15 +125,14 @@ class ServerSessionBar extends StatelessWidget {
                   ),
                   overflow: TextOverflow.ellipsis,
                 )
-              : const Text(
-                  'Aucun serveur connecté',
+              : Text(context.l10n.aucunServeurConnecte,
                   style: TextStyle(fontSize: 12, color: AppColors.textFaint),
                 );
 
           final userMetrics = isConnected && session.currentUsers != null
-              ? Text(
-                  '${formatCompactCount(session.currentUsers!)} utilisateurs • '
-                  '${formatCompactCount(session.currentFiles ?? 0)} fichiers',
+              ? Text(context.l10n.utilisateurs(
+                  formatCompactCount(session.currentUsers!),
+                  formatCompactCount(session.currentFiles ?? 0)),
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textMuted,

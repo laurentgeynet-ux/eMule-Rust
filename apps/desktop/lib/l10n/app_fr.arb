@@ -1,14 +1,13 @@
 {
   "@@locale": "fr",
-
   "appName": "Emule-Sion",
-  "@appName": {"description": "Application brand name."},
+  "@appName": {
+    "description": "Application brand name."
+  },
   "appTagline": "Modern eD2K Client",
-
   "loopbackLabMode": "Loopback Lab Mode",
   "tooltipLoopbackLabMode": "Laboratory mode.\nConnections are restricted to 127.0.0.1.\n\nNo public eD2K servers, Kad nodes,\nor external peers are contacted.",
   "devModeBadge": "DEV",
-
   "sectionDownloads": "DOWNLOADS",
   "sectionCategories": "CATEGORIES",
   "sectionAuditActivity": "AUDIT & ACTIVITY",
@@ -16,14 +15,12 @@
   "navServers": "Serveurs eD2K",
   "navSearch": "Recherche eD2K",
   "navKad": "Kad DHT",
-
   "filterAll": "All Downloads",
   "filterActive": "Active",
   "filterPaused": "Paused",
   "filterCompleted": "Completed",
   "filterFailed": "Failed",
   "uncategorized": "Sans catégorie",
-
   "searchPlaceholder": "Search downloads...",
   "btnAddLink": "Add Link",
   "btnAddEd2kLink": "Add eD2K Link",
@@ -44,12 +41,9 @@
   "tooltipResume": "Resume",
   "tooltipPause": "Pause",
   "tooltipDelete": "Delete",
-
   "emptyStateTitle": "No downloads in this view",
   "emptyStateSubtitle": "Add an eD2K link to create a local download entry.\nThis lab build operates in loopback-only mode.",
-
   "zeroSpeedDual": "↓ 0 B/s   ↑ 0 B/s",
-
   "daemonConnected": "Daemon Connected",
   "daemonConnecting": "Connecting to daemon...",
   "daemonReconnecting": "Reconnecting...",
@@ -58,17 +52,19 @@
   "daemonVersionLine": "Daemon v{version} (proto v{protocol})",
   "@daemonVersionLine": {
     "placeholders": {
-      "version": {"type": "String"},
-      "protocol": {"type": "String"}
+      "version": {
+        "type": "String"
+      },
+      "protocol": {
+        "type": "String"
+      }
     }
   },
-
   "dialogAddTitle": "Add eD2K Download",
   "dialogFieldLabel": "eD2K Link URL",
   "dialogFieldHint": "ed2k://|file|name|size|hash|/",
   "dialogValidationPrefix": "Must start with \"ed2k://|file|\"",
   "dialogValidationParts": "Must contain: name, size, and hash",
-
   "diagnosticsBadge": "Diagnostics",
   "tooltipDiagnostics": "Click to inspect system & workdir diagnostics.",
   "tooltipSystemDiagnostics": "System Diagnostics & Confinement (127.0.0.1)",
@@ -79,11 +75,896 @@
   "tooltipPolicyInfo": "Network Policy: {profile}\nStatus: {status}\nClick to inspect policy, quotas, and audit log.",
   "@tooltipPolicyInfo": {
     "placeholders": {
-      "profile": {"type": "String"},
-      "status": {"type": "String"}
+      "profile": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
     }
   },
   "tooltipKillSwitchEnable": "Re-enable Network Subsystem",
   "tooltipKillSwitchDisable": "Kill Switch: Disconnect All Sockets Immediately",
-  "tooltipIpFilter": "IP Filter & Rate Limits"
+  "tooltipIpFilter": "IP Filter & Rate Limits",
+  "addEd2kDownload": "Add eD2K Download",
+  "ed2kLink": "eD2K Link",
+  "category": "Category",
+  "targetDirectory": "Target Directory",
+  "defaultDownloadsFolder": "Default downloads folder",
+  "browse": "Browse...",
+  "diskAllocation": "Disk Allocation",
+  "cancel": "Cancel",
+  "addDownload": "Add Download",
+  "eGMoviesMusicLinux": "e.g. Movies, Music, Linux ISOs",
+  "inheritGlobalDestination": "Inherit global destination",
+  "devSimulationTools": "Dev Simulation Tools:",
+  "selected": "Selected: \"{fileName}\"",
+  "@selected": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "inject256KbChunk": "Inject 256 KB Chunk",
+  "inject1MbChunk": "Inject 1 MB Chunk",
+  "clickAnyDownloadRowAbove": "Click any download row above to select it for data injection tests.",
+  "closeDebugBar": "Close Debug Bar",
+  "systemLabDiagnostics": "System & Lab Diagnostics",
+  "workingDirectoryMode": "Working Directory & Mode",
+  "mode": "Mode",
+  "isolatedDataFolder": "(Isolated data folder)",
+  "internalData": "Internal Data",
+  "downloads": "Downloads",
+  "daemonProcess": "Daemon & Process",
+  "processPid": "Process PID",
+  "rpcEndpoint": "RPC Endpoint",
+  "daemonVersion": "Daemon Version",
+  "instanceId": "Instance ID",
+  "sessionId": "Session ID",
+  "daemonLog": "Daemon Log",
+  "capabilities": "Capabilities",
+  "none": "None",
+  "copyShareableSanitized": "Copy Shareable (Sanitized)",
+  "sanitizedShareableDiagnosticsCopied": "Sanitized shareable diagnostics copied",
+  "copyFullLocalDev": "Copy Full (Local Dev)",
+  "fullDiagnosticsCopiedToClipboard": "Full diagnostics copied to clipboard",
+  "openLabGuide": "Open Lab Guide",
+  "close": "Close",
+  "details": "Details: {fileName}",
+  "@details": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "inspectFullDetails": "Inspect Full Details",
+  "downloadId": "Download ID",
+  "totalSize": "Total Size",
+  "verifiedBytes": "Verified Bytes",
+  "status": "Status",
+  "sources": "Sources",
+  "downloadNotFound": "Download Not Found",
+  "theRequestedDownloadIsNo": "The requested download is no longer available.",
+  "importPartMetExperimental": "Import .part.met (Experimental)",
+  "importAnExistingPartialOr": "Import an existing partial or completed eMule download safely.",
+  "pathToPartMetFile": "Path to .part.met file",
+  "inspect": "Inspect",
+  "associatedPartFilePathOptional": "Associated .part file path (optional, auto-detected)",
+  "autoDetectedNextToMet": "Auto-detected next to .met file",
+  "targetDownloadDirectory": "Target Download Directory",
+  "targetDirectory2": "Target directory",
+  "categoryOptional": "Category (Optional)",
+  "importDownload": "Import Download",
+  "compatibilityAlert": "Compatibility Alert",
+  "retry": "Retry",
+  "ipFilterRateLimiters": "IP Filter & Rate Limiters",
+  "localDefensiveIpFilterIpfilter": "Local defensive IP filter (ipfilter.dat) and Token Bucket bandwidth quotas",
+  "connectedDownloadToLoopbackSource": "Connected download to loopback source ({peerAddr})",
+  "@connectedDownloadToLoopbackSource": {
+    "placeholders": {
+      "peerAddr": {
+        "type": "String"
+      }
+    }
+  },
+  "cleanupCompletedFileSDeleted": "Cleanup completed: {deletedFilesCount} file(s) deleted across {folders} ({freedBytes} freed).",
+  "@cleanupCompletedFileSDeleted": {
+    "placeholders": {
+      "deletedFilesCount": {
+        "type": "String"
+      },
+      "folders": {
+        "type": "String"
+      },
+      "freedBytes": {
+        "type": "String"
+      }
+    }
+  },
+  "guidedLocalLoopbackTestFlow": "Guided Local Loopback Test Flow",
+  "fullEndToEndEd2k": "Full end-to-end eD2K testing on 127.0.0.1 without touching a terminal.",
+  "networkPolicyDefenseGuard": "Network Policy & Defense Guard",
+  "defensiveSocketAuthorizationAntiSsrf": "Defensive socket authorization, anti-SSRF isolation, and resource quotas",
+  "redactedNetworkAuditLogRecent": "Redacted Network Audit Log (Recent Decisions)",
+  "sparseInstantGrowsDynamically": "Sparse (Instant, grows dynamically)",
+  "preallocateFullSizeAvoidsFragmentation": "Preallocate (Full size, avoids fragmentation)",
+  "noneMinimalInitialDiskUse": "None (Minimal initial disk use)",
+  "sansCategorieNone": "Sans catégorie (None)",
+  "hash": "Hash: {hash}",
+  "@hash": {
+    "placeholders": {
+      "hash": {
+        "type": "String"
+      }
+    }
+  },
+  "rrggbb": "#RRGGBB",
+  "normalDefault": "Normal (Default)",
+  "low": "Low",
+  "normal": "Normal",
+  "high": "High",
+  "changeTargetDestination": "Change Target Destination",
+  "selectTargetDestinationFolderFor": "Select target destination folder for \"{fileName}\":",
+  "@selectTargetDestinationFolderFor": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "targetDirectoryPath": "Target Directory Path",
+  "eGDownloadsOrC": "e.g. downloads or C:\\TargetDir",
+  "theFolderMustExistAnd": "The folder must exist and be writable. Active .part data remains in data/temp/ until completed.",
+  "saveDestination": "Save Destination",
+  "copiedToClipboard": "{label} copied to clipboard",
+  "@copiedToClipboard": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "resume": "Resume",
+  "pause": "Pause",
+  "retryLoopbackSource": "Retry Loopback Source",
+  "openCompletedFile": "Open Completed File",
+  "remove": "Remove...",
+  "diagnosticsRedactedExport": "Diagnostics & Redacted Export",
+  "exportSanitizedDiagnosticsZeroAuth": "Export sanitized diagnostics (zero auth token secrets, loopback 127.0.0.1 confinement verification, redacted user directories).",
+  "copyRedactedDiagnostic": "Copy Redacted Diagnostic",
+  "downloadDiagnosticCopiedToClipboard": "Download diagnostic copied to clipboard (sanitized: no secrets)",
+  "identityEd2kLinks": "Identity & eD2K Links",
+  "downloadUuid": "Download UUID",
+  "ed2kHashMd4": "eD2K Hash (MD4)",
+  "canonicalEd2kLink": "Canonical eD2K Link",
+  "transferMetricsSpeed": "Transfer Metrics & Speed",
+  "received": "Received",
+  "remaining": "Remaining",
+  "verified": "Verified",
+  "currentRate": "Current Rate",
+  "averageRate": "Average Rate",
+  "eta": "ETA",
+  "attempts": "Attempts",
+  "lastError": "Last Error: {lastError}",
+  "@lastError": {
+    "placeholders": {
+      "lastError": {
+        "type": "String"
+      }
+    }
+  },
+  "ed2kPartMapPartsOf": "eD2K Part Map ({length} parts of 9.28 MB)",
+  "@ed2kPartMapPartsOf": {
+    "placeholders": {
+      "length": {
+        "type": "String"
+      }
+    }
+  },
+  "partBreakdownIsInitializing": "Part breakdown is initializing...",
+  "part": "Part #{partIndex}\nRange: {startOffset} - {endOffset}\nSize: {size}\nReceived: {receivedBytes}\nStatus: {status}\nSources: {availableSourceCount}",
+  "@part": {
+    "placeholders": {
+      "partIndex": {
+        "type": "String"
+      },
+      "startOffset": {
+        "type": "String"
+      },
+      "endOffset": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      },
+      "receivedBytes": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "availableSourceCount": {
+        "type": "String"
+      }
+    }
+  },
+  "verified2": "Verified ({verifiedCount})",
+  "@verified2": {
+    "placeholders": {
+      "verifiedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "completed": "Completed ({completedCount})",
+  "@completed": {
+    "placeholders": {
+      "completedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "downloading": "Downloading ({downloadingCount})",
+  "@downloading": {
+    "placeholders": {
+      "downloadingCount": {
+        "type": "String"
+      }
+    }
+  },
+  "missing": "Missing ({missingCount})",
+  "@missing": {
+    "placeholders": {
+      "missingCount": {
+        "type": "String"
+      }
+    }
+  },
+  "noSource": "No source ({unavailableCount})",
+  "@noSource": {
+    "placeholders": {
+      "unavailableCount": {
+        "type": "String"
+      }
+    }
+  },
+  "storageTargetDestination": "Storage & Target Destination",
+  "temporaryPartPathConfined": "Temporary Part Path (Confined)",
+  "finalTargetDestination": "Final Target Destination",
+  "changeDestination": "Change Destination",
+  "noteChangingDestinationRedirectsWhere": "Note: Changing destination redirects where the completed file is assembled. Ongoing .part chunks remain safely confined to data/temp/ until final verification.",
+  "removeDownload": "Remove Download?",
+  "removeFromTheDownloadsManager": "Remove \"{fileName}\" from the downloads manager?",
+  "@removeFromTheDownloadsManager": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "theDownloadEntryInSqlite": "• The download entry in SQLite will be permanently deleted.\n• Temporary files (.part and .part.met) in data/temp/ will be removed if selected below.\n• The final completed file in destination (if completed) will NOT be deleted.",
+  "deleteTemporaryPartFileFrom": "Delete temporary .part file from data/temp/",
+  "confirmRemove": "Confirm Remove",
+  "sourcesEd2kSessionPeer": "SOURCES ED2K & SESSION PEER",
+  "ajouterSourceIpPortEx": "Ajouter source IP:port (ex: 127.0.0.1:39735)",
+  "ajouter": "Ajouter",
+  "demanderAuServeur": "Demander au serveur",
+  "demanderAuReseauKad": "Demander au réseau Kad",
+  "actualiserLaListe": "Actualiser la liste",
+  "sessionActive": "Session active : {peerAddress}",
+  "@sessionActive": {
+    "placeholders": {
+      "peerAddress": {
+        "type": "String"
+      }
+    }
+  },
+  "recu": "Reçu : {transferredBytes} ({transferRateBps})",
+  "@recu": {
+    "placeholders": {
+      "transferredBytes": {
+        "type": "String"
+      },
+      "transferRateBps": {
+        "type": "String"
+      }
+    }
+  },
+  "deconnecter": "Déconnecter",
+  "cooldownS": "Cooldown {cooldownSecondsRemaining}s",
+  "@cooldownS": {
+    "placeholders": {
+      "cooldownSecondsRemaining": {
+        "type": "String"
+      }
+    }
+  },
+  "forcer": "Forcer",
+  "noCategory": "No Category",
+  "totalSize2": "Total Size:",
+  "estAcquiredGapsComplement": "Est. Acquired / Gaps Complement:",
+  "partCount": "Part Count:",
+  "ed2kHash": "eD2K Hash",
+  "importSuccessfulTheDownloadIs": "Import successful! The download is paused and verified parts have been staged.",
+  "auditReport": "Audit Report",
+  "auditReportCopiedToClipboard": "Audit report copied to clipboard",
+  "copyReport": "Copy Report",
+  "done": "Done",
+  "theDownloadWillBeStaged": "The download will be staged into data/temp/ and initialized in Paused state. L’import ne contacte aucun peer et le téléchargement restera en pause.",
+  "confirmCleanup": "Confirm Cleanup",
+  "thisWillRemoveFixtureFile": "This will remove {fixtureCount} fixture file(s) in <workdir>/fixtures/ and clean temporary download part files. Incoming and finished downloads will never be touched.\n\nAre you sure you want to proceed?",
+  "@thisWillRemoveFixtureFile": {
+    "placeholders": {
+      "fixtureCount": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteTestData": "Delete Test Data",
+  "storageDataInternalStateVs": "Storage: data/ (Internal State) vs downloads/ (Completed Files)",
+  "openFolder": "Open Folder",
+  "internalDataDbTempPart": "• Internal data (DB, temp .part, fixtures): {workdir}",
+  "@internalDataDbTempPart": {
+    "placeholders": {
+      "workdir": {
+        "type": "String"
+      }
+    }
+  },
+  "completedDownloads": "• Completed downloads: {downloadsDir}",
+  "@completedDownloads": {
+    "placeholders": {
+      "downloadsDir": {
+        "type": "String"
+      }
+    }
+  },
+  "cleanTestDataFixturesIncomplete": "Clean Test Data (Fixtures & Incomplete Parts)",
+  "cleanupTestData": "Cleanup Test Data",
+  "connectDownloadToLoopbackSource": "Connect Download to Loopback Source",
+  "noDownloadsInQueueAdd": "No downloads in queue. Add an eD2K link in Step 2.",
+  "targetDownloadTask": "Target Download Task",
+  "warningDownloadSize": "Warning: Download size ({totalBytes}) does not match fixture ({fixtureSize}).",
+  "@warningDownloadSize": {
+    "placeholders": {
+      "totalBytes": {
+        "type": "String"
+      },
+      "fixtureSize": {
+        "type": "String"
+      }
+    }
+  },
+  "startLoopbackPeerInStep": "Start loopback peer in Step 3 before connecting.",
+  "finalFile": "Final file: {downloadsDir}\\{fileName}",
+  "@finalFile": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      },
+      "downloadsDir": {
+        "type": "String"
+      }
+    }
+  },
+  "generateLocalTestFixture": "Generate Local Test Fixture",
+  "obtainCanonicalEd2kLinkAdd": "Obtain Canonical eD2K Link & Add to Downloads",
+  "copyLink": "Copy Link",
+  "ed2kLinkCopiedToClipboard": "eD2K Link copied to clipboard",
+  "downloadTaskCreatedInUi": "Download task created in UI",
+  "completeStep1ToGenerate": "Complete Step 1 to generate an eD2K fixture first.",
+  "loopbackTestPeer1270": "Loopback Test Peer (127.0.0.1)",
+  "lastImportReport": "Last Import Report",
+  "invalidLinesSkipped": "Invalid lines skipped: {invalidLines}",
+  "@invalidLinesSkipped": {
+    "placeholders": {
+      "invalidLines": {
+        "type": "String"
+      }
+    }
+  },
+  "rangesLoaded": "{rangeCount} ranges loaded",
+  "@rangesLoaded": {
+    "placeholders": {
+      "rangeCount": {
+        "type": "String"
+      }
+    }
+  },
+  "totalBlockedConnectionAttempts": "Total blocked connection attempts: {hitsCount}",
+  "@totalBlockedConnectionAttempts": {
+    "placeholders": {
+      "hitsCount": {
+        "type": "String"
+      }
+    }
+  },
+  "importIpfilterDat": "Import ipfilter.dat",
+  "loadALocalPeerguardianEmule": "Load a local PeerGuardian / eMule formatted ipfilter.dat file. Remote URL download is disallowed for safety.",
+  "import": "Import",
+  "clear": "Clear",
+  "noNetworkEventsRecordedYet": "No network events recorded yet.",
+  "activeConnectivityProfile": "Active Connectivity Profile",
+  "activeConnectionsLimits": "Active Connections & Limits",
+  "peerSockets": "Peer Sockets",
+  "serverSockets": "Server Sockets",
+  "listeners": "Listeners",
+  "connectTimeout": "Connect Timeout",
+  "maxFrameSize": "Max Frame Size",
+  "maxBufferMemory": "Max Buffer Memory",
+  "status2": "Status: {label}",
+  "@status2": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "reEnable": "Re-enable",
+  "disconnectAll": "Disconnect All",
+  "bandwidthTokenBucketQuotas": "Bandwidth & Token Bucket Quotas",
+  "limitsAreEnforcedAsynchronouslyUsing": "Limits are enforced asynchronously using Token Buckets. 0 means unlimited.",
+  "downloadLimitKbS0": "Download Limit (KB/s) [0 = unlimited]",
+  "uploadLimitKbS0": "Upload Limit (KB/s) [0 = unlimited]",
+  "maxNewConnectionsMinute": "Max New Connections / Minute",
+  "saveLimits": "Save Limits",
+  "inspectDetailsPartMap": "Inspect Details & Part Map",
+  "remove2": "Remove",
+  "removeFromDownloads": "Remove \"{fileName}\" from downloads?",
+  "@removeFromDownloads": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteDownloadedPartTempFiles": "Delete downloaded part/temp files from disk",
+  "id": "ID: {id}",
+  "@id": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "src": "{sourceCount} src",
+  "@src": {
+    "placeholders": {
+      "sourceCount": {
+        "type": "String"
+      }
+    }
+  },
+  "fullId": "Full ID: {id}",
+  "@fullId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "downloadIdCopiedToClipboard": "Download ID copied to clipboard",
+  "sources2": "{sourceCount} sources",
+  "@sources2": {
+    "placeholders": {
+      "sourceCount": {
+        "type": "String"
+      }
+    }
+  },
+  "downloadSettingsStorage": "Download Settings & Storage",
+  "globalDefaultDownloadDirectory": "Global Default Download Directory",
+  "thisPathIsUsedAs": "This path is used as the default target destination when adding new downloads. Temporary .part files remain strictly confined in data/temp/ until completed.",
+  "destinationDirectoryPath": "Destination Directory Path",
+  "eGCDownloadsOr": "e.g. C:\\Downloads or downloads",
+  "save": "Save",
+  "resetToPortableDefault": "Reset to Portable Default",
+  "modeReseauTraverseeBoxUpnp": "Mode Réseau & Traversée Box (UPnP)",
+  "basculeEntreLaboratoireLocalEt": "Bascule entre laboratoire local et réseau public mondial.",
+  "configurer": "Configurer",
+  "historyRetentionPolicy": "History Retention Policy",
+  "historicalTransitionEventsOlderThan": "Historical transition events older than the retention period are automatically pruned on daemon startup.",
+  "keepHistoryFor": "Keep history for: ",
+  "indefinitelyNoPruning": "Indefinitely (No pruning)",
+  "delete": "Delete \"{name}\"?",
+  "@delete": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deletingThisCategoryWillMove": "Deleting this category will move all associated downloads to \"Sans catégorie\" (Uncategorized).\n\nNo downloads or files will be deleted.",
+  "deleteCategory": "Delete Category",
+  "categoryOptions": "Category Options",
+  "editCategory": "Edit Category",
+  "clearDownloadHistory": "Clear Download History?",
+  "areYouSureYouWant": "Are you sure you want to permanently delete all download history and statistics records?\n\nThis action is irreversible.",
+  "clearAllHistory": "Clear All History",
+  "noDownloadHistoryRecordedYet": "No download history recorded yet",
+  "completedResumedFailedAndRemoved": "Completed, resumed, failed, and removed transfer events will appear here.",
+  "eventDetail": "Event Detail: {fileName}",
+  "@eventDetail": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "viewDetails": "View details",
+  "of2": "{transferredBytes} of {totalBytes}",
+  "@of2": {
+    "placeholders": {
+      "transferredBytes": {
+        "type": "String"
+      },
+      "totalBytes": {
+        "type": "String"
+      }
+    }
+  },
+  "hash2": "Hash: {ed2kHash}",
+  "@hash2": {
+    "placeholders": {
+      "ed2kHash": {
+        "type": "String"
+      }
+    }
+  },
+  "of3": "of {totalBytes}",
+  "@of3": {
+    "placeholders": {
+      "totalBytes": {
+        "type": "String"
+      }
+    }
+  },
+  "res": "{resumeCount} res. / {connectionAttempts} att.",
+  "@res": {
+    "placeholders": {
+      "resumeCount": {
+        "type": "String"
+      },
+      "connectionAttempts": {
+        "type": "String"
+      }
+    }
+  },
+  "exportHistory": "Export History ({toUpperCase})",
+  "@exportHistory": {
+    "placeholders": {
+      "toUpperCase": {
+        "type": "String"
+      }
+    }
+  },
+  "reportIsSanitizedAllLocal": "Report is sanitized: all local usernames and filesystem paths are redacted.",
+  "copyToClipboard": "Copy to Clipboard",
+  "exportCopiedToClipboard": "Export copied to clipboard",
+  "filterByEvent": "Filter by Event:",
+  "allEvents": "All Events",
+  "completed2": "Completed",
+  "failed": "Failed",
+  "resumed": "Resumed",
+  "verifying": "Verifying",
+  "removed": "Removed",
+  "recordS": "{length} record(s)",
+  "@recordS": {
+    "placeholders": {
+      "length": {
+        "type": "String"
+      }
+    }
+  },
+  "totalCompleted": "Total Completed",
+  "activityWindows": "Activity Windows",
+  "resumesRetries": "Resumes & Retries",
+  "failuresLogged": "{totalFailedCount} failures logged",
+  "@failuresLogged": {
+    "placeholders": {
+      "totalFailedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "integrityHealth": "Integrity Health",
+  "historyLocalStatistics": "History & Local Statistics",
+  "exportHistoryReport": "Export history report",
+  "exportAsJsonSanitized": "Export as JSON (Sanitized)",
+  "exportAsCsvSanitized": "Export as CSV (Sanitized)",
+  "exportReport": "Export Report",
+  "clearHistory": "Clear History",
+  "refresh": "Refresh",
+  "amorcerLeReseauKadBootstrap": "Amorcer le réseau Kad (Bootstrap)",
+  "adresseIp": "Adresse IP",
+  "portUdp": "Port UDP",
+  "annuler": "Annuler",
+  "lancerLAmorcage": "Lancer l'amorçage",
+  "amorcerKadDepuisUneUrl": "Amorcer Kad depuis une URL",
+  "telechargezUnFichierNodesDat": "Téléchargez un fichier nodes.dat distant pour amorcer votre table de routage Kad Kademlia (ex: https://upd.emule-security.org/nodes.dat) :",
+  "urlDuNodesDat": "URL du nodes.dat",
+  "noteSeulsLesProtocolesHttp": "Note : Seuls les protocoles HTTP/HTTPS publics sont acceptés. Le trafic vers les réseaux locaux (RFC1918) et loopback est rejeté par sécurité (anti-SSRF).",
+  "telechargerEtAmorcer": "Télécharger et Amorcer",
+  "effacerLaTableDeRoutage": "Effacer la table de routage Kad ?",
+  "tousLesContactsKadEn": "Tous les contacts Kad en mémoire et dans la base SQLite locale seront supprimés.\nAucun paquet réseau ne sera envoyé.",
+  "effacer": "Effacer",
+  "kadId128BitXor": "Kad ID (128-bit XOR)",
+  "adresseIpPorts": "Adresse IP & Ports",
+  "version": "Version",
+  "statut": "Statut",
+  "echecs": "Échecs",
+  "derniereVue": "Dernière vue",
+  "actions": "Actions",
+  "v": "v{version}",
+  "@v": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "envoyerKadPing0x60": "Envoyer Kad Ping (0x60)",
+  "aucunContactKad": "Aucun contact Kad",
+  "importezUnFichierNodesDat": "Importez un fichier nodes.dat pour amorcer la table de routage K-buckets.",
+  "importerNodesDat": "Importer nodes.dat",
+  "filtrerParKadIdIp": "Filtrer par Kad ID, IP ou Port...",
+  "effacerLaTable": "Effacer la table",
+  "importerUnFichierNodesDat": "Importer un fichier nodes.dat",
+  "specifiezLeCheminAbsoluVers": "Spécifiez le chemin absolu vers un fichier nodes.dat (v0, v1 ou v2).",
+  "inspecter": "Inspecter",
+  "formatNodesDatVDetecte": "Format nodes.dat v{version} détecté",
+  "@formatNodesDatVDetecte": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "contactsDeclares": "• Contacts déclarés : {declaredCount}",
+  "@contactsDeclares": {
+    "placeholders": {
+      "declaredCount": {
+        "type": "String"
+      }
+    }
+  },
+  "contactsValidesAdmissibles": "• Contacts valides & admissibles : {validContactsCount}",
+  "@contactsValidesAdmissibles": {
+    "placeholders": {
+      "validContactsCount": {
+        "type": "String"
+      }
+    }
+  },
+  "rejetesParLaPolitiqueReseau": "• Rejetés par la politique réseau : {rejectedByPolicyCount}",
+  "@rejetesParLaPolitiqueReseau": {
+    "placeholders": {
+      "rejectedByPolicyCount": {
+        "type": "String"
+      }
+    }
+  },
+  "rejetesParLeFiltreIp": "• Rejetés par le filtre IP : {rejectedByFilterCount}",
+  "@rejetesParLeFiltreIp": {
+    "placeholders": {
+      "rejectedByFilterCount": {
+        "type": "String"
+      }
+    }
+  },
+  "importerLesContacts": "Importer les contacts",
+  "idKadLocal": "ID Kad Local :",
+  "arreterUdp": "Arrêter UDP",
+  "socketUdp": "Socket UDP",
+  "paquetsTxRx": "Paquets TX / RX",
+  "contactsActifs": "Contacts actifs",
+  "bucketsActifs": "Buckets actifs",
+  "contactsEnBase": "Contacts en base",
+  "profil": "Profil",
+  "reseauKadDhtKademlia": "Réseau Kad DHT (Kademlia)",
+  "actualiser": "Actualiser",
+  "amorcerBootstrap": "Amorcer (Bootstrap)",
+  "amorcerDepuisUrl": "Amorcer depuis URL",
+  "allerAKad": "Aller à Kad",
+  "allerAuxServeurs": "Aller aux Serveurs",
+  "nonConnecteAUnServeur": "Non connecté à un serveur eD2K.",
+  "connectezVousDAbordPour": "Connectez-vous d'abord pour effectuer une recherche.",
+  "vousNEtesActuellementPas": "Vous n'êtes actuellement pas connecté à un serveur eD2K. Connectez-vous d'abord pour effectuer une recherche.",
+  "extensionExIsoZipAvi": "Extension (ex: iso, zip, avi)",
+  "tailleMinMo": "Taille Min (Mo)",
+  "tailleMaxMo": "Taille Max (Mo)",
+  "effacerFiltres": "Effacer filtres",
+  "serveurEd2k": "Serveur eD2K",
+  "globalUdp": "Global UDP",
+  "nomDuFichier": "Nom du fichier",
+  "taille": "Taille",
+  "hachageEd2k": "Hachage eD2K",
+  "cliquerPourCopierLeHash": "Cliquer pour copier le hash : {fileHash}",
+  "@cliquerPourCopierLeHash": {
+    "placeholders": {
+      "fileHash": {
+        "type": "String"
+      }
+    }
+  },
+  "hachageCopie": "Hachage copié : {fileHash}",
+  "@hachageCopie": {
+    "placeholders": {
+      "fileHash": {
+        "type": "String"
+      }
+    }
+  },
+  "termine": "Terminé",
+  "telecharger": "Télécharger",
+  "demanderSourcesAuServeur": "Demander sources au serveur",
+  "copierLienEd2k": "Copier lien eD2K",
+  "lienEd2kCopieDansLe": "Lien eD2K copié dans le presse-papier",
+  "afficher": "Afficher",
+  "rechercheEnCoursSur": "Recherche en cours sur {targetLabel}...",
+  "@rechercheEnCoursSur": {
+    "placeholders": {
+      "targetLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "rechercheSurLeReseauEd2k": "Recherche sur le Réseau eD2K",
+  "resultatS": "{resultCount} résultat(s)",
+  "@resultatS": {
+    "placeholders": {
+      "resultCount": {
+        "type": "String"
+      }
+    }
+  },
+  "effacerLesResultats": "Effacer les résultats",
+  "effacerLesResultats2": "Effacer les résultats ({resultCount})",
+  "@effacerLesResultats2": {
+    "placeholders": {
+      "resultCount": {
+        "type": "String"
+      }
+    }
+  },
+  "effacerTousLesServeurs": "Effacer tous les serveurs ?",
+  "cetteOperationSupprimeLaListe": "Cette operation supprime la liste des serveurs enregistres dans votre base locale.",
+  "aucunServeurEd2kEnregistre": "Aucun serveur eD2K enregistre",
+  "importezUnFichierServerMet": "Importez un fichier server.met local pour inspecter et gerer vos serveurs.",
+  "selectionnerServerMet": "Selectionner server.met",
+  "parDefautEmuleSionEst": "Par défaut, Emule-Sion est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.",
+  "modifierLeProfil": "Modifier le profil",
+  "rechercherUnServeurNomIp": "Rechercher un serveur (nom, IP, port)...",
+  "toutEffacer": "Tout effacer",
+  "securiteProfil": "Sécurité / Profil",
+  "etatFiltre": "Etat / Filtre",
+  "nomDuServeur": "Nom du Serveur",
+  "ipPort": "IP : Port",
+  "ping": "Ping",
+  "description": "Description",
+  "preference": "Preference",
+  "seConnecter": "Se connecter",
+  "supprimer": "Supprimer",
+  "gestionLocaleDesServeursEd2k": "Gestion Locale des Serveurs eD2K",
+  "importerServerMet": "Importer server.met",
+  "mettreAJourDepuisUrl": "Mettre à jour depuis URL",
+  "mettreAJourDepuisUne": "Mettre à jour depuis une URL",
+  "indiquezLAdresseHttpOu": "Indiquez l'adresse HTTP ou HTTPS d'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs :",
+  "urlDuServerMet": "URL du server.met",
+  "noteLesAdressesIpDe": "Note : Les adresses IP de réseaux privés (LAN/RFC1918) et loopback sont rejetées par sécurité (anti-SSRF).",
+  "telechargerEtMettreAJour": "Télécharger et Mettre à jour",
+  "ms": "{ping} ms",
+  "@ms": {
+    "placeholders": {
+      "ping": {
+        "type": "String"
+      }
+    }
+  },
+  "v2": "v{version}",
+  "@v2": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "importerUnFichierServerMet": "Importer un fichier server.met local",
+  "indiquezLeCheminAbsoluVers": "Indiquez le chemin absolu vers votre fichier server.met local :",
+  "cheminDuFichierServerMet": "Chemin du fichier server.met",
+  "apercuDuFichierServerMet": "Apercu du fichier server.met",
+  "fichier": "Fichier : {filePath}",
+  "@fichier": {
+    "placeholders": {
+      "filePath": {
+        "type": "String"
+      }
+    }
+  },
+  "total": "Total",
+  "autorises": "Autorises",
+  "bloquesFiltreIp": "Bloques (Filtre IP)",
+  "lesServeursMarquesEnRouge": "Les serveurs marques en rouge correspondent a des plages de votre filtre IP local. Ils seront importes avec le statut bloque.",
+  "bloque": "Bloque",
+  "autorise": "Autorise",
+  "confirmerImportation": "Confirmer importation",
+  "aucunServeurConnecte": "Aucun serveur connecté",
+  "utilisateurs": "{currentUsers} utilisateurs • {currentFiles} fichiers",
+  "@utilisateurs": {
+    "placeholders": {
+      "currentUsers": {
+        "type": "String"
+      },
+      "currentFiles": {
+        "type": "String"
+      }
+    }
+  },
+  "garantieDeSecuriteAntiSsrf": "Garantie de Sécurité Anti-SSRF",
+  "memeEnModePublicLa": "Même en mode public, la politique réseau d'Emule-Sion bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.",
+  "fermer": "Fermer",
+  "revenirEnModeConfineLab": "Revenir en Mode Confiné (Lab 127.0.0.1)",
+  "activerLeModeReseauPublic": "Activer le Mode Réseau Public (WAN)",
+  "profilReseauActuel": "Profil Réseau Actuel : ",
+  "statutUpnpIgdBoxRouteur": "Statut UPnP IGD (Box / Routeur NAT)",
+  "passerelleBoxDetectee": "Passerelle / Box détectée :",
+  "adresseIpExterneWan": "Adresse IP Externe (WAN) :",
+  "portTcpEd2k": "Port TCP eD2K ({tcpPort}) :",
+  "@portTcpEd2k": {
+    "placeholders": {
+      "tcpPort": {
+        "type": "String"
+      }
+    }
+  },
+  "portUdpKad": "Port UDP Kad ({udpPort}) :",
+  "@portUdpKad": {
+    "placeholders": {
+      "udpPort": {
+        "type": "String"
+      }
+    }
+  },
+  "testerRafraichirUpnp": "Tester / Rafraîchir UPnP",
+  "sevenDays": "7 Days",
+  "thirtyDaysDefault": "30 Days (Default)",
+  "ninetyDays": "90 Days",
+  "twentyFourHours": "24h: {last24hCompletedCount} | 7d: {last7dCompletedCount}",
+  "@twentyFourHours": {
+    "placeholders": {
+      "last24hCompletedCount": {
+        "type": "String"
+      },
+      "last7dCompletedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "receivedOfTotal": "{receivedBytes} of {totalBytes} ({progress})",
+  "@receivedOfTotal": {
+    "placeholders": {
+      "receivedBytes": {
+        "type": "String"
+      },
+      "totalBytes": {
+        "type": "String"
+      },
+      "progress": {
+        "type": "String"
+      }
+    }
+  },
+  "serverEnable": "Activer",
+  "serverDisable": "Desactiver",
+  "eventType": "Event Type",
+  "statusLabel": "Status",
+  "transferred": "Transferred",
+  "duration": "Duration",
+  "resumes": "Resumes",
+  "verificationResult": "Verification Result",
+  "sanitizedPath": "Sanitized Path",
+  "timestamp": "Timestamp",
+  "errorMessage": "Error Message"
 }

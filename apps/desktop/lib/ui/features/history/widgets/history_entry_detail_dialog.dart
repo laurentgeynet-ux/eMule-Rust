@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Read-only detail dialog for a single history entry.
 void showHistoryEntryDetailDialog(BuildContext context, HistoryEntry entry) {
@@ -21,8 +22,7 @@ void showHistoryEntryDetailDialog(BuildContext context, HistoryEntry entry) {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              'Event Detail: ${entry.fileName}',
+            child: Text(context.l10n.eventDetail(entry.fileName),
               style: const TextStyle(
                 fontSize: 16,
                 color: AppColors.textPrimary,
@@ -38,29 +38,29 @@ void showHistoryEntryDetailDialog(BuildContext context, HistoryEntry entry) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _row('Event Type', entry.eventType),
-            _row('Status', entry.status),
-            _row('Total Size', Formatters.formatBytes(entry.totalBytes)),
+            _row(ctx.l10n.eventType, entry.eventType),
+            _row(ctx.l10n.statusLabel, entry.status),
+            _row(ctx.l10n.totalSize, Formatters.formatBytes(entry.totalBytes)),
             _row(
-              'Transferred',
+              ctx.l10n.transferred,
               Formatters.formatBytes(entry.transferredBytes),
             ),
-            _row('Duration', Formatters.formatDuration(entry.durationSecs)),
-            _row('Attempts', '${entry.connectionAttempts}'),
-            _row('Resumes', '${entry.resumeCount}'),
-            _row('Verification Result', entry.verificationResult),
-            _row('eD2K Hash', entry.ed2kHash),
-            _row('Sanitized Path', '[DOWNLOAD_DIR]/${entry.fileName}'),
-            _row('Timestamp', entry.timestamp.toIso8601String()),
+            _row(ctx.l10n.duration, Formatters.formatDuration(entry.durationSecs)),
+            _row(ctx.l10n.attempts, '${entry.connectionAttempts}'),
+            _row(ctx.l10n.resumes, '${entry.resumeCount}'),
+            _row(ctx.l10n.verificationResult, entry.verificationResult),
+            _row(ctx.l10n.ed2kHash, entry.ed2kHash),
+            _row(ctx.l10n.sanitizedPath, '[DOWNLOAD_DIR]/${entry.fileName}'),
+            _row(ctx.l10n.timestamp, entry.timestamp.toIso8601String()),
             if (entry.errorMessage != null)
-              _row('Error Message', entry.errorMessage!, isError: true),
+              _row(ctx.l10n.errorMessage, entry.errorMessage!, isError: true),
           ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Close'),
+          child: Text(context.l10n.close),
         ),
       ],
     ),
@@ -75,8 +75,7 @@ Widget _row(String label, String value, {bool isError = false}) {
       children: [
         SizedBox(
           width: 140,
-          child: Text(
-            '$label:',
+          child: Text('$label:',
             style: const TextStyle(
               fontSize: 12,
               color: AppColors.textMuted,

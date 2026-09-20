@@ -6,6 +6,7 @@ import 'category_badge.dart';
 import 'download_actions_bar.dart';
 import 'download_file_icons.dart';
 import 'download_status_pill.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Compact (narrow) layout of a download row: stacked name + status +
 /// progress + stats for widths below ~850px.
@@ -73,8 +74,7 @@ class DownloadRowCompact extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 2,
                     children: [
-                      Text(
-                        'ID: ${abbreviateId(item.id)}',
+                      Text(context.l10n.id(abbreviateId(item.id)),
                         style: const TextStyle(
                           fontSize: 10,
                           color: AppColors.textFaint,
@@ -123,8 +123,7 @@ class DownloadRowCompact extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '${Formatters.formatBytes(item.receivedBytes)} / ${Formatters.formatBytes(item.totalBytes)} (${Formatters.formatPercent(item.progress)})',
+            Text('${Formatters.formatBytes(item.receivedBytes)} / ${Formatters.formatBytes(item.totalBytes)} (${Formatters.formatPercent(item.progress)})',
               style: const TextStyle(
                 fontSize: 11,
                 color: AppColors.textSecondary,
@@ -144,8 +143,7 @@ class DownloadRowCompact extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '${item.sourceCount} src',
+                Text(context.l10n.src('${item.sourceCount}'),
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textFaint,

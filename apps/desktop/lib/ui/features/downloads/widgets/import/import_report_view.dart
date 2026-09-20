@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Success view shown after a .part.met import: banner, scrollable audit
 /// report (selectable + copyable) and a Done action.
@@ -23,7 +24,7 @@ class ImportReportView extends StatelessWidget {
               color: AppTheme.statusCompleted.withValues(alpha: 0.3),
             ),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(
                 Icons.check_circle_outline,
@@ -32,8 +33,7 @@ class ImportReportView extends StatelessWidget {
               ),
               SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  'Import successful! The download is paused and verified parts have been staged.',
+                child: Text(context.l10n.importSuccessfulTheDownloadIs,
                   style: TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 13,
@@ -45,8 +45,7 @@ class ImportReportView extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(
-          'Audit Report',
+        Text(context.l10n.auditReport,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.bold,
@@ -86,15 +85,14 @@ class ImportReportView extends StatelessWidget {
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: report));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content:
-                        Text('Audit report copied to clipboard'),
+                  SnackBar(
+                    content: Text(context.l10n.auditReportCopiedToClipboard),
                     duration: Duration(seconds: 2),
                   ),
                 );
               },
               icon: const Icon(Icons.copy, size: 16),
-              label: const Text('Copy Report'),
+              label: Text(context.l10n.copyReport),
             ),
             const SizedBox(width: 12),
             ElevatedButton(
@@ -104,7 +102,7 @@ class ImportReportView extends StatelessWidget {
                 backgroundColor: AppTheme.primary,
                 foregroundColor: AppColors.textPrimary,
               ),
-              child: const Text('Done'),
+              child: Text(context.l10n.done),
             ),
           ],
         ),

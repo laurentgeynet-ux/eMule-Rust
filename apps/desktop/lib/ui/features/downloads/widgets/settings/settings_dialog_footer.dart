@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Footer bar of the settings dialog (Close button).
 class SettingsDialogFooter extends StatelessWidget {
@@ -25,7 +26,7 @@ class SettingsDialogFooter extends StatelessWidget {
               foregroundColor: AppColors.textPrimary,
             ),
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(context.l10n.close),
           ),
         ],
       ),

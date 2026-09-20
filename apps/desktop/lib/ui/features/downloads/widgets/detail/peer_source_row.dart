@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'peer_source_status_badge.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// One peer-source row: status icon, address, status/origin/cooldown
 /// badges, last error, and the connect / force / disconnect action.
@@ -96,8 +97,7 @@ class PeerSourceRow extends StatelessWidget {
                             width: 0.5,
                           ),
                         ),
-                        child: Text(
-                          'Cooldown ${cooldownSecondsRemaining}s',
+                        child: Text(context.l10n.cooldownS('$cooldownSecondsRemaining'),
                           style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
@@ -107,8 +107,7 @@ class PeerSourceRow extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(width: 6),
-                    Text(
-                      '(${src.origin.toApiString()})',
+                    Text('(${src.origin.toApiString()})',
                       style: const TextStyle(
                         fontSize: 10,
                         color: AppColors.textFaint,
@@ -141,8 +140,7 @@ class PeerSourceRow extends StatelessWidget {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 onPressed: () => onDisconnect(src.address),
-                child: const Text(
-                  'Déconnecter',
+                child: Text(context.l10n.deconnecter,
                   style: TextStyle(fontSize: 10),
                 ),
               )
@@ -164,7 +162,7 @@ class PeerSourceRow extends StatelessWidget {
                 onPressed: isPeerConnecting
                     ? null
                     : () => onConnect(src.address, force: true),
-                child: const Text('Forcer', style: TextStyle(fontSize: 10)),
+                child: Text(context.l10n.forcer, style: TextStyle(fontSize: 10)),
               )
             else
               ElevatedButton(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Destructive confirmation: delete a category — downloads move back to
 /// "Sans catégorie", no files are deleted.
@@ -28,19 +29,16 @@ void showCategoryDeleteDialog(
             ),
           ),
           const SizedBox(width: 8),
-          Text('Delete "${category.name}"?'),
+          Text(context.l10n.delete(category.name)),
         ],
       ),
-      content: const Text(
-        'Deleting this category will move all associated downloads to "Sans catégorie" (Uncategorized).\n\n'
-        'No downloads or files will be deleted.',
+      content: Text(context.l10n.deletingThisCategoryWillMove,
         style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text(
-            'Cancel',
+          child: Text(context.l10n.cancel,
             style: TextStyle(color: AppColors.textSoft),
           ),
         ),
@@ -52,7 +50,7 @@ void showCategoryDeleteDialog(
             Navigator.of(ctx).pop();
             onDelete(category.id);
           },
-          child: const Text('Delete Category'),
+          child: Text(context.l10n.deleteCategory),
         ),
       ],
     ),

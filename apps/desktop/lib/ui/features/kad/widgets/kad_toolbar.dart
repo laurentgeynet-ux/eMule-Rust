@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/kad_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Kad section toolbar: refresh, bootstrap, nodes.dat import and
 /// bootstrap-from-URL actions — icon buttons on narrow layouts, labelled
@@ -37,9 +38,8 @@ class KadToolbar extends StatelessWidget {
             children: [
               const Icon(Icons.hub_rounded, color: AppTheme.primary, size: 22),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Réseau Kad DHT (Kademlia)',
+              Expanded(
+                child: Text(context.l10n.reseauKadDhtKademlia,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -51,12 +51,12 @@ class KadToolbar extends StatelessWidget {
               const SizedBox(width: 12),
               if (isNarrow) ...[
                 IconButton(
-                  tooltip: 'Actualiser',
+                  tooltip: context.l10n.actualiser,
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   onPressed: _refresh,
                 ),
                 IconButton(
-                  tooltip: 'Amorcer (Bootstrap)',
+                  tooltip: context.l10n.amorcerBootstrap,
                   icon: const Icon(
                     Icons.rocket_launch_outlined,
                     size: 18,
@@ -65,7 +65,7 @@ class KadToolbar extends StatelessWidget {
                   onPressed: onBootstrap,
                 ),
                 IconButton(
-                  tooltip: 'Importer nodes.dat',
+                  tooltip: context.l10n.importerNodesDat,
                   icon: const Icon(
                     Icons.file_upload_outlined,
                     size: 18,
@@ -74,7 +74,7 @@ class KadToolbar extends StatelessWidget {
                   onPressed: onImportNodesDat,
                 ),
                 IconButton(
-                  tooltip: 'Amorcer depuis URL',
+                  tooltip: context.l10n.amorcerDepuisUrl,
                   icon: const Icon(
                     Icons.cloud_download_outlined,
                     size: 18,
@@ -85,7 +85,7 @@ class KadToolbar extends StatelessWidget {
               ] else ...[
                 OutlinedButton.icon(
                   icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Actualiser'),
+                  label: Text(context.l10n.actualiser),
                   onPressed: _refresh,
                 ),
                 const SizedBox(width: 10),
@@ -95,8 +95,7 @@ class KadToolbar extends StatelessWidget {
                     size: 16,
                     color: AppColors.accentPurple,
                   ),
-                  label: const Text(
-                    'Amorcer (Bootstrap)',
+                  label: Text(context.l10n.amorcerBootstrap,
                     style: TextStyle(color: AppColors.accentPurple),
                   ),
                   onPressed: onBootstrap,
@@ -104,7 +103,7 @@ class KadToolbar extends StatelessWidget {
                 const SizedBox(width: 10),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.file_upload_outlined, size: 16),
-                  label: const Text('Importer nodes.dat'),
+                  label: Text(context.l10n.importerNodesDat),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     foregroundColor: AppColors.textPrimary,
@@ -114,7 +113,7 @@ class KadToolbar extends StatelessWidget {
                 const SizedBox(width: 10),
                 FilledButton.icon(
                   icon: const Icon(Icons.cloud_download_outlined, size: 16),
-                  label: const Text('Amorcer depuis URL'),
+                  label: Text(context.l10n.amorcerDepuisUrl),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.labShade700,
                     foregroundColor: AppColors.textPrimary,

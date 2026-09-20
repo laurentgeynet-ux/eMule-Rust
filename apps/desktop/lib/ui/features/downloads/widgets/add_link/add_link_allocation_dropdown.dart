@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Disk allocation policy picker (sparse / preallocate / none).
 class AddLinkAllocationDropdown extends StatelessWidget {
@@ -15,7 +16,7 @@ class AddLinkAllocationDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: AppTheme.darkSurface,
         borderRadius: BorderRadius.circular(8),
@@ -26,25 +27,22 @@ class AddLinkAllocationDropdown extends StatelessWidget {
           value: value,
           isExpanded: true,
           dropdownColor: AppTheme.darkCard,
-          items: const [
+          items: [
             DropdownMenuItem(
               value: 'sparse',
-              child: Text(
-                'Sparse (Instant, grows dynamically)',
+              child: Text(context.l10n.sparseInstantGrowsDynamically,
                 style: TextStyle(fontSize: 12),
               ),
             ),
             DropdownMenuItem(
               value: 'preallocate',
-              child: Text(
-                'Preallocate (Full size, avoids fragmentation)',
+              child: Text(context.l10n.preallocateFullSizeAvoidsFragmentation,
                 style: TextStyle(fontSize: 12),
               ),
             ),
             DropdownMenuItem(
               value: 'none',
-              child: Text(
-                'None (Minimal initial disk use)',
+              child: Text(context.l10n.noneMinimalInitialDiskUse,
                 style: TextStyle(fontSize: 12),
               ),
             ),

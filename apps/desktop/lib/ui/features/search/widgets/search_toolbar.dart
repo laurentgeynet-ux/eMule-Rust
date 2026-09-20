@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Search section toolbar: title, result count and "clear results" action.
 /// Icon-only buttons below 650 px.
@@ -35,9 +36,8 @@ class SearchToolbar extends StatelessWidget {
                 size: 22,
               ),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Recherche sur le Réseau eD2K',
+              Expanded(
+                child: Text(context.l10n.rechercheSurLeReseauEd2k,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -48,8 +48,7 @@ class SearchToolbar extends StatelessWidget {
               ),
               if (resultCount > 0) ...[
                 if (!isCompact) ...[
-                  Text(
-                    '$resultCount résultat(s)',
+                  Text(context.l10n.resultatS('$resultCount'),
                     style: const TextStyle(
                       color: AppColors.textMuted,
                       fontSize: 13,
@@ -58,12 +57,12 @@ class SearchToolbar extends StatelessWidget {
                   const SizedBox(width: 12),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.clear_all_rounded, size: 16),
-                    label: const Text('Effacer les résultats'),
+                    label: Text(context.l10n.effacerLesResultats),
                     onPressed: onClear,
                   ),
                 ] else ...[
                   IconButton(
-                    tooltip: 'Effacer les résultats ($resultCount)',
+                    tooltip: context.l10n.effacerLesResultats2('$resultCount'),
                     icon: const Icon(Icons.clear_all_rounded, size: 18),
                     onPressed: onClear,
                   ),

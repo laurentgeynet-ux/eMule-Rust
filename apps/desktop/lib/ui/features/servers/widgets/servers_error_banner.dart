@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Error banner for the servers section. Network-policy errors get an extra
 /// hint and a shortcut to the network profile dialog.
@@ -50,8 +51,7 @@ class ServersErrorBanner extends StatelessWidget {
                 ),
                 if (isPolicyError) ...[
                   const SizedBox(height: 2),
-                  const Text(
-                    'Par défaut, Emule-Sion est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.',
+                  Text(context.l10n.parDefautEmuleSionEst,
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.textSecondary,
@@ -75,8 +75,7 @@ class ServersErrorBanner extends StatelessWidget {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: onEditProfile,
-              child: const Text(
-                'Modifier le profil',
+              child: Text(context.l10n.modifierLeProfil,
                 style: TextStyle(fontSize: 11),
               ),
             ),

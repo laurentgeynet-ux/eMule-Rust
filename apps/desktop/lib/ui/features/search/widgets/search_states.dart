@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'search_target.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Spinner shown while a search is in flight and no results have arrived.
 class SearchSearchingState extends StatelessWidget {
@@ -22,8 +23,7 @@ class SearchSearchingState extends StatelessWidget {
         children: [
           const CircularProgressIndicator(color: AppTheme.primary),
           const SizedBox(height: 16),
-          Text(
-            'Recherche en cours sur $targetLabel...',
+          Text(context.l10n.rechercheEnCoursSur(targetLabel),
             style: TextStyle(
               fontSize: 14,
               color: AppColors.textPrimary.withAlpha(180),

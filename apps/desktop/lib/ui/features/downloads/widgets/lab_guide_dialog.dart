@@ -11,6 +11,7 @@ import 'lab/lab_step_connect.dart';
 import 'lab/lab_step_fixture.dart';
 import 'lab/lab_step_link.dart';
 import 'lab/lab_step_peer.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Guided end-to-end loopback test flow: fixture generation, ed2k link,
 /// loopback peer, download connect, and test-data cleanup.
@@ -185,8 +186,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text('Connected download to loopback source ($peerAddr)'),
+            content: Text(context.l10n.connectedDownloadToLoopbackSource(peerAddr)),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -226,9 +226,10 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Cleanup completed: ${report.deletedFilesCount} file(s) deleted across '
-              '${report.cleanedFolders.join(', ')} (${Formatters.formatBytes(report.freedBytes)} freed).',
+            content: Text(context.l10n.cleanupCompletedFileSDeleted(
+              '${report.deletedFilesCount}',
+              report.cleanedFolders.join(', '),
+              Formatters.formatBytes(report.freedBytes)),
             ),
             duration: const Duration(seconds: 4),
           ),
@@ -279,20 +280,18 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Guided Local Loopback Test Flow',
+                        Text(context.l10n.guidedLocalLoopbackTestFlow,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         SizedBox(height: 2),
-                        Text(
-                          'Full end-to-end eD2K testing on 127.0.0.1 without touching a terminal.',
+                        Text(context.l10n.fullEndToEndEd2k,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSoft,
@@ -385,7 +384,7 @@ class _LabGuideDialogState extends State<LabGuideDialog> {
                 alignment: Alignment.centerRight,
                 child: FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
+                  child: Text(context.l10n.close),
                 ),
               ),
             ],

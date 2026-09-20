@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Category picker for the add-link form — shows each category's default
 /// destination when set.
@@ -31,10 +32,9 @@ class AddLinkCategoryDropdown extends StatelessWidget {
           isExpanded: true,
           dropdownColor: AppTheme.darkCard,
           items: [
-            const DropdownMenuItem<String?>(
+            DropdownMenuItem<String?>(
               value: null,
-              child: Text(
-                'Sans catégorie (None)',
+              child: Text(context.l10n.sansCategorieNone,
                 style: TextStyle(
                   fontSize: 13,
                   color: AppColors.textSecondary,
@@ -64,8 +64,7 @@ class AddLinkCategoryDropdown extends StatelessWidget {
                     ),
                     if (c.defaultDestination != null &&
                         c.defaultDestination!.isNotEmpty)
-                      Text(
-                        ' (${c.defaultDestination})',
+                      Text('${c.defaultDestination}',
                         style: const TextStyle(
                           fontSize: 11,
                           color: AppColors.textFaint,

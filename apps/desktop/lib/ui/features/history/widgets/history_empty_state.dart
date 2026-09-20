@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Empty history placeholder.
 class HistoryEmptyState extends StatelessWidget {
@@ -17,8 +18,7 @@ class HistoryEmptyState extends StatelessWidget {
             color: AppColors.textPrimary.withValues(alpha: 0.15),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'No download history recorded yet',
+          Text(context.l10n.noDownloadHistoryRecordedYet,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -26,8 +26,7 @@ class HistoryEmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Completed, resumed, failed, and removed transfer events will appear here.',
+          Text(context.l10n.completedResumedFailedAndRemoved,
             style: TextStyle(fontSize: 13, color: AppColors.textFaint),
           ),
         ],

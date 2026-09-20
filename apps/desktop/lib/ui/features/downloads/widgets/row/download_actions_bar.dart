@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Per-row action cluster: assign category, inspect details,
 /// pause/resume, remove.
@@ -51,9 +52,9 @@ class DownloadActionsBar extends StatelessWidget {
           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
           onSelected: onCategorySelected,
           itemBuilder: (ctx) => [
-            const PopupMenuItem<String?>(
+            PopupMenuItem<String?>(
               value: null,
-              child: Text('Sans catégorie (None)'),
+              child: Text(context.l10n.sansCategorieNone),
             ),
             ...categories.map(
               (c) => PopupMenuItem<String?>(
@@ -82,7 +83,7 @@ class DownloadActionsBar extends StatelessWidget {
             color: AppColors.textSecondary,
             size: compact ? 16 : 20,
           ),
-          tooltip: 'Inspect Details & Part Map',
+          tooltip: context.l10n.inspectDetailsPartMap,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
           onPressed: onDetails,
@@ -94,7 +95,7 @@ class DownloadActionsBar extends StatelessWidget {
               color: AppTheme.statusCompleted,
               size: compact ? 18 : 24,
             ),
-            tooltip: 'Resume',
+            tooltip: context.l10n.resume,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
             onPressed: onResume,
@@ -106,7 +107,7 @@ class DownloadActionsBar extends StatelessWidget {
               color: AppTheme.statusPaused,
               size: compact ? 18 : 24,
             ),
-            tooltip: 'Pause',
+            tooltip: context.l10n.pause,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
             onPressed: onPause,
@@ -117,7 +118,7 @@ class DownloadActionsBar extends StatelessWidget {
             color: AppColors.textMuted,
             size: compact ? 16 : 20,
           ),
-          tooltip: 'Remove',
+          tooltip: context.l10n.remove2,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
           onPressed: onRemove,

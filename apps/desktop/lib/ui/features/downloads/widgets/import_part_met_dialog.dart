@@ -10,6 +10,7 @@ import 'import/import_inspection_card.dart';
 import 'import/import_path_field.dart';
 import 'import/import_report_view.dart';
 import 'import/import_safety_notice.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Import an existing eMule `.part.met` (inspect → preview → stage paused).
 class ImportPartMetDialog extends StatefulWidget {
@@ -206,12 +207,11 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Import .part.met (Experimental)',
+                        Text(context.l10n.importPartMetExperimental,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -219,8 +219,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                           ),
                         ),
                         SizedBox(height: 2),
-                        Text(
-                          'Import an existing partial or completed eMule download safely.',
+                        Text(context.l10n.importAnExistingPartialOr,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -251,8 +250,8 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const ImportFieldLabel(
-                          label: 'Path to .part.met file',
+                        ImportFieldLabel(
+                          label: context.l10n.pathToPartMetFile,
                         ),
                         Row(
                           children: [
@@ -286,7 +285,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                       Icons.search,
                                       size: 16,
                                     ),
-                              label: const Text('Inspect'),
+                              label: Text(context.l10n.inspect),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.darkCard,
                                 foregroundColor:
@@ -301,15 +300,13 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        const ImportFieldLabel(
-                          label:
-                              'Associated .part file path (optional, auto-detected)',
+                        ImportFieldLabel(
+                          label: context.l10n.associatedPartFilePathOptional,
                         ),
                         ImportPathField(
                           key: const Key('part_path_input'),
                           controller: _partPathController,
-                          hintText:
-                              'Auto-detected next to .met file',
+                          hintText: context.l10n.autoDetectedNextToMet,
                         ),
                         const SizedBox(height: 16),
                         if (_inspection != null)
@@ -321,17 +318,17 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                             message: _inspectError!,
                           ),
                         const SizedBox(height: 16),
-                        const ImportFieldLabel(
-                          label: 'Target Download Directory',
+                        ImportFieldLabel(
+                          label: context.l10n.targetDownloadDirectory,
                         ),
                         ImportPathField(
                           key: const Key('target_dir_input'),
                           controller: _targetDirController,
-                          hintText: 'Target directory',
+                          hintText: context.l10n.targetDirectory2,
                         ),
                         const SizedBox(height: 16),
-                        const ImportFieldLabel(
-                          label: 'Category (Optional)',
+                        ImportFieldLabel(
+                          label: context.l10n.categoryOptional,
                         ),
                         ImportCategoryDropdown(
                           categories: widget.viewModel.categories,
@@ -357,7 +354,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                       onPressed: _isImporting
                           ? null
                           : () => Navigator.of(context).pop(false),
-                      child: const Text('Cancel'),
+                      child: Text(context.l10n.cancel),
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton(
@@ -381,7 +378,7 @@ class _ImportPartMetDialogState extends State<ImportPartMetDialog> {
                                 color: AppColors.textPrimary,
                               ),
                             )
-                          : const Text('Import Download'),
+                          : Text(context.l10n.importDownload),
                     ),
                   ],
                 ),

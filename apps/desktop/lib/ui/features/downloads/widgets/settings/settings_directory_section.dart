@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Section 1: default download directory — path field + save, reset to
 /// portable default and open folder shortcuts.
@@ -26,8 +27,7 @@ class SettingsDirectorySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Global Default Download Directory',
+        Text(context.l10n.globalDefaultDownloadDirectory,
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -35,9 +35,7 @@ class SettingsDirectorySection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'This path is used as the default target destination when adding new downloads. '
-          'Temporary .part files remain strictly confined in data/temp/ until completed.',
+        Text(context.l10n.thisPathIsUsedAs,
           style: TextStyle(
             fontSize: 12,
             color: AppColors.textSoft,
@@ -54,8 +52,8 @@ class SettingsDirectorySection extends StatelessWidget {
                 style: const TextStyle(fontSize: 13),
                 decoration: InputDecoration(
                   isDense: true,
-                  labelText: 'Destination Directory Path',
-                  hintText: 'e.g. C:\\Downloads or downloads',
+                  labelText: context.l10n.destinationDirectoryPath,
+                  hintText: context.l10n.eGCDownloadsOr,
                   filled: true,
                   fillColor: AppTheme.darkCard,
                   border: OutlineInputBorder(
@@ -94,7 +92,7 @@ class SettingsDirectorySection extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ),
                     )
-                  : const Text('Save'),
+                  : Text(context.l10n.save),
             ),
           ],
         ),
@@ -103,7 +101,7 @@ class SettingsDirectorySection extends StatelessWidget {
           children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.restart_alt_rounded, size: 16),
-              label: const Text('Reset to Portable Default'),
+              label: Text(context.l10n.resetToPortableDefault),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textSecondary,
                 side: const BorderSide(color: AppTheme.darkBorder),
@@ -113,7 +111,7 @@ class SettingsDirectorySection extends StatelessWidget {
             const SizedBox(width: 12),
             TextButton.icon(
               icon: const Icon(Icons.folder_open_rounded, size: 16),
-              label: const Text('Open Folder'),
+              label: Text(context.l10n.openFolder),
               onPressed: onOpenFolder,
             ),
           ],

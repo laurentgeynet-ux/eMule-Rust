@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Kill-switch status banner with the Disconnect All / Re-enable action.
 class NetworkStateBanner extends StatelessWidget {
@@ -48,8 +49,7 @@ class NetworkStateBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Status: ${state.label}',
+                Text(context.l10n.status2(state.label),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
@@ -74,7 +74,7 @@ class NetworkStateBanner extends StatelessWidget {
             FilledButton.icon(
               key: const Key('reenable_network_button'),
               icon: const Icon(Icons.play_arrow_rounded, size: 16),
-              label: const Text('Re-enable'),
+              label: Text(context.l10n.reEnable),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.positiveShade700,
                 padding: const EdgeInsets.symmetric(
@@ -91,7 +91,7 @@ class NetworkStateBanner extends StatelessWidget {
                 Icons.power_settings_new_rounded,
                 size: 16,
               ),
-              label: const Text('Disconnect All'),
+              label: Text(context.l10n.disconnectAll),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.dangerShade700,
                 padding: const EdgeInsets.symmetric(

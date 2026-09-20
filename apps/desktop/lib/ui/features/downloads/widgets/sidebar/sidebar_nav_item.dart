@@ -103,8 +103,7 @@ class SidebarNavItem extends StatelessWidget {
                             : AppColors.fillSubtle,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text(
-                        '$count',
+                      child: Text('$count',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,

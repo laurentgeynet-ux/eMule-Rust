@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 import '../view_models/history_controller.dart';
 import 'history_clear_dialog.dart';
 import 'history_export_dialog.dart';
+import '../../../../l10n/l10n.dart';
 
 /// History section toolbar: title, export menu (JSON/CSV), clear-all and
 /// refresh actions.
@@ -34,9 +35,8 @@ class HistoryToolbar extends StatelessWidget {
                 size: 22,
               ),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'History & Local Statistics',
+              Expanded(
+                child: Text(context.l10n.historyLocalStatistics,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -47,11 +47,11 @@ class HistoryToolbar extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               PopupMenuButton<String>(
-                tooltip: 'Export history report',
+                tooltip: context.l10n.exportHistoryReport,
                 color: AppTheme.darkCard,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
-                  side: const BorderSide(
+                  side: BorderSide(
                     color: AppTheme.darkBorder,
                     width: 0.5,
                   ),
@@ -62,7 +62,7 @@ class HistoryToolbar extends StatelessWidget {
                     showHistoryExportDialog(context, format, content);
                   }
                 },
-                itemBuilder: (ctx) => const [
+                itemBuilder: (ctx) => [
                   PopupMenuItem(
                     value: 'json',
                     child: Row(
@@ -74,8 +74,7 @@ class HistoryToolbar extends StatelessWidget {
                         ),
                         SizedBox(width: 8),
                         Flexible(
-                          child: Text(
-                            'Export as JSON (Sanitized)',
+                          child: Text(context.l10n.exportAsJsonSanitized,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -93,8 +92,7 @@ class HistoryToolbar extends StatelessWidget {
                         ),
                         SizedBox(width: 8),
                         Flexible(
-                          child: Text(
-                            'Export as CSV (Sanitized)',
+                          child: Text(context.l10n.exportAsCsvSanitized,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -121,8 +119,7 @@ class HistoryToolbar extends StatelessWidget {
                       ),
                       if (!isCompact) ...[
                         const SizedBox(width: 6),
-                        const Text(
-                          'Export Report',
+                        Text(context.l10n.exportReport,
                           style: TextStyle(
                             fontSize: 13,
                             color: AppColors.textSecondary,
@@ -146,7 +143,7 @@ class HistoryToolbar extends StatelessWidget {
                     foregroundColor: AppTheme.statusFailed,
                   ),
                   icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                  tooltip: 'Clear History',
+                  tooltip: context.l10n.clearHistory,
                   onPressed: () =>
                       showHistoryClearDialog(context, controller),
                 )
@@ -163,7 +160,7 @@ class HistoryToolbar extends StatelessWidget {
                     ),
                   ),
                   icon: const Icon(Icons.delete_sweep_outlined, size: 16),
-                  label: const Text('Clear History'),
+                  label: Text(context.l10n.clearHistory),
                   onPressed: () =>
                       showHistoryClearDialog(context, controller),
                 ),
@@ -174,7 +171,7 @@ class HistoryToolbar extends StatelessWidget {
                   size: 20,
                   color: AppColors.textSecondary,
                 ),
-                tooltip: 'Refresh',
+                tooltip: context.l10n.refresh,
                 onPressed: () => controller.fetch(),
               ),
             ],

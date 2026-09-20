@@ -5,6 +5,7 @@ import 'package:desktop/app/providers.dart';
 import 'package:desktop/app/app_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:desktop/ui/features/kad/views/kad_screen.dart';
+import 'package:desktop/l10n/generated/app_localizations.dart';
 
 void main() {
   group('KadView UI Tests (Phase 12.0a)', () {
@@ -33,6 +34,9 @@ void main() {
             appControllerProvider.overrideWith((ref) => viewModel, disposeNotifier: false),
           ],
           child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(body: const KadView()),
           ),
         ),
@@ -68,6 +72,9 @@ void main() {
             appControllerProvider.overrideWith((ref) => viewModel, disposeNotifier: false),
           ],
           child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(body: const KadView()),
           ),
         ),

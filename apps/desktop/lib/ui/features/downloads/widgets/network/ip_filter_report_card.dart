@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Last ipfilter.dat import report (lines read, coalesced ranges, skipped
 /// invalid lines).
@@ -21,8 +22,7 @@ class IpFilterReportCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Last Import Report',
+          Text(context.l10n.lastImportReport,
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 12,
@@ -35,8 +35,7 @@ class IpFilterReportCard extends StatelessWidget {
           _line('Coalesced (merged) ranges: ${report.coalescedCount}'),
           _line('Final active intervals: ${report.finalRangeCount}'),
           if (report.invalidLines > 0)
-            Text(
-              'Invalid lines skipped: ${report.invalidLines}',
+            Text(context.l10n.invalidLinesSkipped('${report.invalidLines}'),
               style: const TextStyle(
                 fontSize: 11,
                 color: AppColors.accentOrange,

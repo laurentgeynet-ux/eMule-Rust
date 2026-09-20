@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/kad_controller.dart';
 import 'kad_format.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Scrollable data table of Kad routing contacts (id, address, version,
 /// verification status, failures, last seen, ping action).
@@ -28,19 +29,19 @@ class KadContactsTable extends StatelessWidget {
           headingRowHeight: 38,
           dataRowMinHeight: 40,
           dataRowMaxHeight: 44,
-          headingTextStyle: const TextStyle(
+          headingTextStyle: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
             color: AppColors.textSecondary,
           ),
-          columns: const [
-            DataColumn(label: Text('Kad ID (128-bit XOR)')),
-            DataColumn(label: Text('Adresse IP & Ports')),
-            DataColumn(label: Text('Version')),
-            DataColumn(label: Text('Statut')),
-            DataColumn(label: Text('Échecs')),
-            DataColumn(label: Text('Dernière vue')),
-            DataColumn(label: Text('Actions')),
+          columns: [
+            DataColumn(label: Text(context.l10n.kadId128BitXor)),
+            DataColumn(label: Text(context.l10n.adresseIpPorts)),
+            DataColumn(label: Text(context.l10n.version)),
+            DataColumn(label: Text(context.l10n.statut)),
+            DataColumn(label: Text(context.l10n.echecs)),
+            DataColumn(label: Text(context.l10n.derniereVue)),
+            DataColumn(label: Text(context.l10n.actions)),
           ],
           rows: contacts.map((c) {
             return DataRow(
@@ -67,8 +68,7 @@ class KadContactsTable extends StatelessWidget {
                   ),
                 ),
                 DataCell(
-                  Text(
-                    'v${c.version}',
+                  Text(context.l10n.v('${c.version}'),
                     style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
                 ),
@@ -103,8 +103,7 @@ class KadContactsTable extends StatelessWidget {
                   ),
                 ),
                 DataCell(
-                  Text(
-                    '${c.failCount}',
+                  Text('${c.failCount}',
                     style: TextStyle(
                       fontSize: 12,
                       color: c.failCount > 0
@@ -126,7 +125,7 @@ class KadContactsTable extends StatelessWidget {
                       size: 16,
                       color: AppColors.accentCyan,
                     ),
-                    tooltip: 'Envoyer Kad Ping (0x60)',
+                    tooltip: context.l10n.envoyerKadPing0x60,
                     onPressed: () => controller.pingContact(
                       ip: c.ip,
                       port: c.udpPort,

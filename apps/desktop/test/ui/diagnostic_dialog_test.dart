@@ -5,6 +5,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:desktop/app/app_controller.dart';
 import 'package:desktop/ui/features/downloads/widgets/diagnostic_dialog.dart';
 import 'package:desktop/ui/features/downloads/widgets/lab_guide_dialog.dart';
+import 'package:desktop/l10n/generated/app_localizations.dart';
 
 void main() {
   group('DiagnosticDialog Widget Tests', () {
@@ -29,6 +30,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: DiagnosticDialog(viewModel: viewModel),
           ),
@@ -65,6 +69,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
@@ -111,6 +118,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: DiagnosticDialog(viewModel: viewModel),
           ),
@@ -148,6 +158,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: DiagnosticDialog(viewModel: viewModel),
           ),

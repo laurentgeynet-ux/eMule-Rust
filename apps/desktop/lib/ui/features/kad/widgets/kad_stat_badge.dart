@@ -26,8 +26,7 @@ class KadStatBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '$label: ',
+          Text('$label: ',
             style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
           Text(

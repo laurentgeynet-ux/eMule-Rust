@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/history_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Event-type filter dropdown + record count.
 class HistoryFilterBar extends StatelessWidget {
@@ -13,13 +14,12 @@ class HistoryFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Text(
-          'Filter by Event:',
+        Text(context.l10n.filterByEvent,
           style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: AppTheme.darkCard,
             borderRadius: BorderRadius.circular(6),
@@ -29,31 +29,30 @@ class HistoryFilterBar extends StatelessWidget {
             child: DropdownButton<String?>(
               value: controller.eventTypeFilter,
               dropdownColor: AppTheme.darkCard,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: AppColors.textPrimary,
               ),
-              items: const [
-                DropdownMenuItem(value: null, child: Text('All Events')),
+              items: [
+                DropdownMenuItem(value: null, child: Text(context.l10n.allEvents)),
                 DropdownMenuItem(
                   value: 'completed',
-                  child: Text('Completed'),
+                  child: Text(context.l10n.completed2),
                 ),
-                DropdownMenuItem(value: 'failed', child: Text('Failed')),
-                DropdownMenuItem(value: 'resumed', child: Text('Resumed')),
+                DropdownMenuItem(value: 'failed', child: Text(context.l10n.failed)),
+                DropdownMenuItem(value: 'resumed', child: Text(context.l10n.resumed)),
                 DropdownMenuItem(
                   value: 'verified_pending_promotion',
-                  child: Text('Verifying'),
+                  child: Text(context.l10n.verifying),
                 ),
-                DropdownMenuItem(value: 'removed', child: Text('Removed')),
+                DropdownMenuItem(value: 'removed', child: Text(context.l10n.removed)),
               ],
               onChanged: (val) => controller.setEventTypeFilter(val),
             ),
           ),
         ),
         const Spacer(),
-        Text(
-          '${controller.entries.length} record(s)',
+        Text(context.l10n.recordS('${controller.entries.length}'),
           style: const TextStyle(fontSize: 12, color: AppColors.textFaint),
         ),
       ],

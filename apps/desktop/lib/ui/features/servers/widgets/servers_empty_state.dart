@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Empty server list placeholder with a server.met import call-to-action.
 class ServersEmptyState extends StatelessWidget {
@@ -19,8 +20,7 @@ class ServersEmptyState extends StatelessWidget {
             color: AppColors.textPrimary.withAlpha(40),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Aucun serveur eD2K enregistre',
+          Text(context.l10n.aucunServeurEd2kEnregistre,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -28,14 +28,13 @@ class ServersEmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Importez un fichier server.met local pour inspecter et gerer vos serveurs.',
+          Text(context.l10n.importezUnFichierServerMet,
             style: TextStyle(fontSize: 13, color: AppColors.textFaint),
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
             icon: const Icon(Icons.file_upload_outlined),
-            label: const Text('Selectionner server.met'),
+            label: Text(context.l10n.selectionnerServerMet),
             onPressed: onImport,
           ),
         ],

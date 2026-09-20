@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Header strip showing where internal daemon data vs completed downloads
 /// live on disk, with a shortcut to open the downloads folder.
@@ -36,9 +37,8 @@ class LabDirectoryOverview extends StatelessWidget {
                 size: 16,
               ),
               const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Storage: data/ (Internal State) vs downloads/ (Completed Files)',
+              Expanded(
+                child: Text(context.l10n.storageDataInternalStateVs,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -50,8 +50,7 @@ class LabDirectoryOverview extends StatelessWidget {
               const SizedBox(width: 8),
               OutlinedButton.icon(
                 icon: const Icon(Icons.folder_open, size: 13),
-                label: const Text(
-                  'Open Folder',
+                label: Text(context.l10n.openFolder,
                   style: TextStyle(fontSize: 11),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -67,8 +66,7 @@ class LabDirectoryOverview extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            '• Internal data (DB, temp .part, fixtures): $workdir',
+          Text(context.l10n.internalDataDbTempPart(workdir),
             style: const TextStyle(
               fontSize: 10,
               fontFamily: 'monospace',
@@ -76,8 +74,7 @@ class LabDirectoryOverview extends StatelessWidget {
             ),
             overflow: TextOverflow.ellipsis,
           ),
-          Text(
-            '• Completed downloads: $downloadsDir',
+          Text(context.l10n.completedDownloads(downloadsDir),
             style: const TextStyle(
               fontSize: 10,
               fontFamily: 'monospace',

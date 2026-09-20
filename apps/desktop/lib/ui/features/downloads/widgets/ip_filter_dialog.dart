@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 import '../../../../app/app_controller.dart';
 import 'network/ip_filter_tab.dart';
 import 'network/rate_limits_tab.dart';
+import '../../../../l10n/l10n.dart';
 
 /// IP filter (ipfilter.dat) + token-bucket rate limiters dialog.
 class IpFilterDialog extends StatefulWidget {
@@ -142,12 +143,11 @@ class _IpFilterDialogState extends State<IpFilterDialog>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'IP Filter & Rate Limiters',
+                        Text(context.l10n.ipFilterRateLimiters,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -155,8 +155,7 @@ class _IpFilterDialogState extends State<IpFilterDialog>
                           ),
                         ),
                         SizedBox(height: 2),
-                        Text(
-                          'Local defensive IP filter (ipfilter.dat) and Token Bucket bandwidth quotas',
+                        Text(context.l10n.localDefensiveIpFilterIpfilter,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSoft,

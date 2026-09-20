@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Second tab of the IP filter dialog: token-bucket bandwidth quotas.
 class RateLimitsTab extends StatelessWidget {
@@ -22,8 +23,7 @@ class RateLimitsTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Bandwidth & Token Bucket Quotas',
+          Text(context.l10n.bandwidthTokenBucketQuotas,
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: AppColors.textPrimary,
@@ -31,24 +31,23 @@ class RateLimitsTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Limits are enforced asynchronously using Token Buckets. 0 means unlimited.',
+          Text(context.l10n.limitsAreEnforcedAsynchronouslyUsing,
             style: TextStyle(fontSize: 11, color: AppColors.textSoft),
           ),
           const SizedBox(height: 16),
           _LimitField(
             controller: downloadLimitController,
-            label: 'Download Limit (KB/s) [0 = unlimited]',
+            label: context.l10n.downloadLimitKbS0,
           ),
           const SizedBox(height: 12),
           _LimitField(
             controller: uploadLimitController,
-            label: 'Upload Limit (KB/s) [0 = unlimited]',
+            label: context.l10n.uploadLimitKbS0,
           ),
           const SizedBox(height: 12),
           _LimitField(
             controller: connLimitController,
-            label: 'Max New Connections / Minute',
+            label: context.l10n.maxNewConnectionsMinute,
           ),
           const SizedBox(height: 20),
           Align(
@@ -60,8 +59,7 @@ class RateLimitsTab extends StatelessWidget {
                 foregroundColor: Colors.black,
               ),
               icon: const Icon(Icons.save, size: 16),
-              label: const Text(
-                'Save Limits',
+              label: Text(context.l10n.saveLimits,
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),

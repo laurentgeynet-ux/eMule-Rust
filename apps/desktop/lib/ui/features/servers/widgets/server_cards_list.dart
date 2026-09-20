@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/servers_controller.dart';
 import 'server_status_badge.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Mobile layout (< 650 px): one card per server with status badge,
 /// address, connect action and enable/delete icon buttons.
@@ -80,8 +81,7 @@ class ServerCardsList extends StatelessWidget {
                         color: AppColors.textPrimary.withAlpha(10),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text(
-                        '${server.ping} ms',
+                      child: Text(context.l10n.ms('${server.ping}'),
                         style: const TextStyle(
                           fontSize: 11,
                           color: AppColors.textSecondary,
@@ -112,8 +112,7 @@ class ServerCardsList extends StatelessWidget {
                   if (server.version != null &&
                       server.version!.isNotEmpty) ...[
                     const SizedBox(width: 10),
-                    Text(
-                      'v${server.version}',
+                    Text(context.l10n.v2('${server.version}'),
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textFaint,
@@ -163,8 +162,7 @@ class ServerCardsList extends StatelessWidget {
                     ] else ...[
                       ElevatedButton.icon(
                         icon: const Icon(Icons.power_rounded, size: 13),
-                        label: const Text(
-                          'Se connecter',
+                        label: Text(context.l10n.seConnecter,
                           style: TextStyle(fontSize: 11),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -206,7 +204,7 @@ class ServerCardsList extends StatelessWidget {
                       size: 18,
                       color: AppColors.textMuted,
                     ),
-                    tooltip: 'Supprimer',
+                    tooltip: context.l10n.supprimer,
                     onPressed: () => controller.delete(server.address),
                   ),
                 ],

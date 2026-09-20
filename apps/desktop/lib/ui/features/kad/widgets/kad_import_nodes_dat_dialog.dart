@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/kad_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Dialog: pick a nodes.dat path, inspect it (version, declared/valid/
 /// rejected counts), then import valid contacts.
@@ -24,7 +25,7 @@ Future<void> showKadImportNodesDatDialog(
             borderRadius: BorderRadius.circular(12),
             side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
           ),
-          title: const Row(
+          title: Row(
             children: [
               Icon(
                 Icons.file_upload_outlined,
@@ -32,7 +33,7 @@ Future<void> showKadImportNodesDatDialog(
                 size: 20,
               ),
               SizedBox(width: 8),
-              Text('Importer un fichier nodes.dat'),
+              Text(context.l10n.importerUnFichierNodesDat),
             ],
           ),
           content: SizedBox(
@@ -41,8 +42,7 @@ Future<void> showKadImportNodesDatDialog(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Spécifiez le chemin absolu vers un fichier nodes.dat (v0, v1 ou v2).',
+                Text(context.l10n.specifiezLeCheminAbsoluVers,
                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 12),
@@ -100,7 +100,7 @@ Future<void> showKadImportNodesDatDialog(
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Text('Inspecter'),
+                          : Text(context.l10n.inspecter),
                     ),
                   ],
                 ),
@@ -119,8 +119,7 @@ Future<void> showKadImportNodesDatDialog(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Format nodes.dat v${report!.version} détecté',
+                        Text(context.l10n.formatNodesDatVDetecte('${report!.version}'),
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -128,15 +127,13 @@ Future<void> showKadImportNodesDatDialog(
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          '• Contacts déclarés : ${report!.declaredCount}',
+                        Text(context.l10n.contactsDeclares('${report!.declaredCount}'),
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
                           ),
                         ),
-                        Text(
-                          '• Contacts valides & admissibles : ${report!.validContactsCount}',
+                        Text(context.l10n.contactsValidesAdmissibles('${report!.validContactsCount}'),
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -144,16 +141,14 @@ Future<void> showKadImportNodesDatDialog(
                           ),
                         ),
                         if (report!.rejectedByPolicyCount > 0)
-                          Text(
-                            '• Rejetés par la politique réseau : ${report!.rejectedByPolicyCount}',
+                          Text(context.l10n.rejetesParLaPolitiqueReseau('${report!.rejectedByPolicyCount}'),
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.accentOrange,
                             ),
                           ),
                         if (report!.rejectedByFilterCount > 0)
-                          Text(
-                            '• Rejetés par le filtre IP : ${report!.rejectedByFilterCount}',
+                          Text(context.l10n.rejetesParLeFiltreIp('${report!.rejectedByFilterCount}'),
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.danger,
@@ -169,8 +164,7 @@ Future<void> showKadImportNodesDatDialog(
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text(
-                'Annuler',
+              child: Text(context.l10n.annuler,
                 style: TextStyle(color: AppColors.textSoft),
               ),
             ),
@@ -185,7 +179,7 @@ Future<void> showKadImportNodesDatDialog(
                       Navigator.of(ctx).pop();
                       await controller.importNodesDat(p);
                     },
-              child: const Text('Importer les contacts'),
+              child: Text(context.l10n.importerLesContacts),
             ),
           ],
         );

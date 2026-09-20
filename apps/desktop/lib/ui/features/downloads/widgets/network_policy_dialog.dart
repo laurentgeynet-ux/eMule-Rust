@@ -5,6 +5,7 @@ import 'network/network_audit_log_list.dart';
 import 'network/network_profile_selector.dart';
 import 'network/network_quotas_card.dart';
 import 'network/network_state_banner.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Network policy & defense guard: kill switch, connectivity profile,
 /// socket budgets and the redacted audit log.
@@ -78,16 +79,14 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Network Policy & Defense Guard',
+                        Text(context.l10n.networkPolicyDefenseGuard,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          'Defensive socket authorization, anti-SSRF isolation, and resource quotas',
+                        Text(context.l10n.defensiveSocketAuthorizationAntiSsrf,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textPrimary
@@ -140,8 +139,7 @@ class _NetworkPolicyDialogState extends State<NetworkPolicyDialog> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Redacted Network Audit Log (Recent Decisions)',
+              Text(context.l10n.redactedNetworkAuditLogRecent,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,

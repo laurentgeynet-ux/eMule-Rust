@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'detail_legend_item.dart';
 import 'detail_section_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// eD2K part-map card: one colored block per 9.28 MB part (state via
 /// `partColorFor`) plus the counts legend.
@@ -26,16 +27,15 @@ class DownloadPartMapCard extends StatelessWidget {
         .length;
 
     return DetailSectionCard(
-      title: 'eD2K Part Map (${parts.length} parts of 9.28 MB)',
+      title: context.l10n.ed2kPartMapPartsOf('${parts.length}'),
       icon: Icons.grid_view_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (parts.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'Part breakdown is initializing...',
+              child: Text(context.l10n.partBreakdownIsInitializing,
                 style: TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
             )
@@ -46,13 +46,14 @@ class DownloadPartMapCard extends StatelessWidget {
               children: parts.map((part) {
                 final color = partColorFor(part);
                 return Tooltip(
-                  message:
-                      'Part #${part.partIndex + 1}\n'
-                      'Range: ${Formatters.formatBytes(part.startOffset)} - ${Formatters.formatBytes(part.endOffset)}\n'
-                      'Size: ${Formatters.formatBytes(part.size)}\n'
-                      'Received: ${Formatters.formatBytes(part.receivedBytes)}\n'
-                      'Status: ${part.isVerified ? "Verified (Hash valid)" : part.state}\n'
-                      'Sources: ${part.availableSourceCount}',
+                  message: context.l10n.part(
+                      '${part.partIndex + 1}',
+                      Formatters.formatBytes(part.startOffset),
+                      Formatters.formatBytes(part.endOffset),
+                      Formatters.formatBytes(part.size),
+                      Formatters.formatBytes(part.receivedBytes),
+                      part.isVerified ? "Verified (Hash valid)" : part.state,
+                      '${part.availableSourceCount}'),
                   child: Container(
                     width: 32.0,
                     height: 24,
@@ -65,8 +66,7 @@ class DownloadPartMapCard extends StatelessWidget {
                       ),
                     ),
                     alignment: Alignment.center,
-                    child: Text(
-                      '${part.partIndex + 1}',
+                    child: Text('${part.partIndex + 1}',
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
@@ -86,23 +86,23 @@ class DownloadPartMapCard extends StatelessWidget {
               children: [
                 DetailLegendItem(
                   color: AppColors.accentTeal,
-                  label: 'Verified ($verifiedCount)',
+                  label: context.l10n.verified2('$verifiedCount'),
                 ),
                 DetailLegendItem(
                   color: AppColors.accentBlue,
-                  label: 'Completed ($completedCount)',
+                  label: context.l10n.completed('$completedCount'),
                 ),
                 DetailLegendItem(
                   color: AppColors.accentAmber,
-                  label: 'Downloading ($downloadingCount)',
+                  label: context.l10n.downloading('$downloadingCount'),
                 ),
                 DetailLegendItem(
                   color: AppColors.fillMedium,
-                  label: 'Missing ($missingCount)',
+                  label: context.l10n.missing('$missingCount'),
                 ),
                 DetailLegendItem(
                   color: AppColors.danger,
-                  label: 'No source ($unavailableCount)',
+                  label: context.l10n.noSource('$unavailableCount'),
                 ),
               ],
             ),

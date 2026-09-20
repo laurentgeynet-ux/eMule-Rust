@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Parses a `#RRGGBB` hex string, falling back to the primary accent.
 Color parseCategoryColor(String hex) {
@@ -108,8 +109,8 @@ class CategoryColorPicker extends StatelessWidget {
                   fontSize: 12,
                   fontFamily: 'monospace',
                 ),
-                decoration: const InputDecoration(
-                  hintText: '#RRGGBB',
+                decoration: InputDecoration(
+                  hintText: context.l10n.rrggbb,
                   isDense: true,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 10,

@@ -5,6 +5,7 @@ import '../../../../core/folder_picker.dart';
 import '../../../../app/app_controller.dart';
 import 'category/category_color_picker.dart';
 import 'category/category_priority_dropdown.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Create or edit a download category (name, color, default destination
 /// and priority).
@@ -205,8 +206,8 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 controller: _nameController,
                 autofocus: true,
                 style: const TextStyle(fontSize: 13),
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Movies, Music, Linux ISOs',
+                decoration: InputDecoration(
+                  hintText: context.l10n.eGMoviesMusicLinux,
                   isDense: true,
                 ),
               ),
@@ -224,8 +225,8 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                     child: TextField(
                       controller: _destController,
                       style: const TextStyle(fontSize: 13),
-                      decoration: const InputDecoration(
-                        hintText: 'Inherit global destination',
+                      decoration: InputDecoration(
+                        hintText: context.l10n.inheritGlobalDestination,
                         isDense: true,
                       ),
                     ),
@@ -233,8 +234,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.folder_open, size: 16),
-                    label: const Text(
-                      'Browse...',
+                    label: Text(context.l10n.browse,
                       style: TextStyle(fontSize: 12),
                     ),
                     style: OutlinedButton.styleFrom(
@@ -265,8 +265,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                     onPressed: _isSaving
                         ? null
                         : () => Navigator.of(context).pop(),
-                    child: const Text(
-                      'Cancel',
+                    child: Text(context.l10n.cancel,
                       style: TextStyle(color: AppColors.textSoft),
                     ),
                   ),

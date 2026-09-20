@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Shows a sanitized history export (JSON/CSV) with copy-to-clipboard.
 void showHistoryExportDialog(
@@ -24,8 +25,7 @@ void showHistoryExportDialog(
             size: 20,
           ),
           const SizedBox(width: 10),
-          Text(
-            'Export History (${format.toUpperCase()})',
+          Text(context.l10n.exportHistory(format.toUpperCase()),
             style: const TextStyle(
               fontSize: 16,
               color: AppColors.textPrimary,
@@ -39,8 +39,7 @@ void showHistoryExportDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Report is sanitized: all local usernames and filesystem paths are redacted.',
+            Text(context.l10n.reportIsSanitizedAllLocal,
               style: TextStyle(fontSize: 12, color: AppColors.accentTeal),
             ),
             const SizedBox(height: 10),
@@ -73,18 +72,18 @@ void showHistoryExportDialog(
       actions: [
         OutlinedButton.icon(
           icon: const Icon(Icons.copy_rounded, size: 16),
-          label: const Text('Copy to Clipboard'),
+          label: Text(context.l10n.copyToClipboard),
           onPressed: () {
             Clipboard.setData(ClipboardData(text: content));
             Navigator.of(ctx).pop();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Export copied to clipboard')),
+              SnackBar(content: Text(context.l10n.exportCopiedToClipboard)),
             );
           },
         ),
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Close'),
+          child: Text(context.l10n.close),
         ),
       ],
     ),

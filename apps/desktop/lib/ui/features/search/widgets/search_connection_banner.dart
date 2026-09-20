@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'search_target.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Contextual banner above the search form: Kad status summary, global-UDP
 /// info, connected-server summary, or a "connect first" warning with a
@@ -59,7 +60,7 @@ class SearchConnectionBanner extends StatelessWidget {
         textColor: AppColors.accentAmber,
         action: _navButton(
           icon: Icons.hub_rounded,
-          label: 'Aller à Kad',
+          label: context.l10n.allerAKad,
           onPressed: onGoToKad,
         ),
       );
@@ -115,7 +116,7 @@ class SearchConnectionBanner extends StatelessWidget {
           final isNarrow = constraints.maxWidth < 650;
           final navBtn = _navButton(
             icon: Icons.dns_rounded,
-            label: 'Aller aux Serveurs',
+            label: context.l10n.allerAuxServeurs,
             onPressed: onGoToServers,
           );
 
@@ -123,7 +124,7 @@ class SearchConnectionBanner extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
                     Icon(
                       Icons.warning_amber_rounded,
@@ -132,8 +133,7 @@ class SearchConnectionBanner extends StatelessWidget {
                     ),
                     SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        'Non connecté à un serveur eD2K.',
+                      child: Text(context.l10n.nonConnecteAUnServeur,
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -144,8 +144,7 @@ class SearchConnectionBanner extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Connectez-vous d\'abord pour effectuer une recherche.',
+                Text(context.l10n.connectezVousDAbordPour,
                   style: TextStyle(fontSize: 12, color: AppColors.accentAmber),
                 ),
                 const SizedBox(height: 8),
@@ -162,9 +161,8 @@ class SearchConnectionBanner extends StatelessWidget {
                 size: 20,
               ),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Vous n\'êtes actuellement pas connecté à un serveur eD2K. Connectez-vous d\'abord pour effectuer une recherche.',
+              Expanded(
+                child: Text(context.l10n.vousNEtesActuellementPas,
                   style: TextStyle(fontSize: 13, color: AppColors.accentAmber),
                 ),
               ),

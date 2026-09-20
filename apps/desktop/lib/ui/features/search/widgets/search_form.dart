@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'search_target.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Search form: target selector (server / global UDP / Kad), keyword field,
 /// search button and the collapsible advanced filters row (extension,
@@ -96,7 +97,7 @@ class SearchForm extends StatelessWidget {
               ],
               if (showFilters) ...[
                 const SizedBox(height: 10),
-                _filtersPanel(),
+                _filtersPanel(context),
               ],
             ],
           );
@@ -199,7 +200,7 @@ class SearchForm extends StatelessWidget {
     );
   }
 
-  Widget _filtersPanel() {
+  Widget _filtersPanel(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -214,7 +215,7 @@ class SearchForm extends StatelessWidget {
               flex: 2,
               child: _filterField(
                 controller: extController,
-                label: 'Extension (ex: iso, zip, avi)',
+                label: context.l10n.extensionExIsoZipAvi,
               ),
             ),
             const SizedBox(width: 12),
@@ -222,7 +223,7 @@ class SearchForm extends StatelessWidget {
           Expanded(
             child: _filterField(
               controller: minSizeController,
-              label: 'Taille Min (Mo)',
+              label: context.l10n.tailleMinMo,
               numeric: true,
             ),
           ),
@@ -230,14 +231,14 @@ class SearchForm extends StatelessWidget {
           Expanded(
             child: _filterField(
               controller: maxSizeController,
-              label: 'Taille Max (Mo)',
+              label: context.l10n.tailleMaxMo,
               numeric: true,
             ),
           ),
           const SizedBox(width: 12),
           TextButton.icon(
             icon: const Icon(Icons.clear_rounded, size: 14),
-            label: const Text('Effacer filtres', style: TextStyle(fontSize: 12)),
+            label: Text(context.l10n.effacerFiltres, style: TextStyle(fontSize: 12)),
             onPressed: onClearFilters,
           ),
         ],
@@ -294,12 +295,12 @@ class _TargetSelector extends StatelessWidget {
         ButtonSegment(
           value: SearchTarget.server,
           icon: const Icon(Icons.dns_rounded, size: 16),
-          label: Text('Serveur eD2K', style: TextStyle(fontSize: fontSize)),
+          label: Text(context.l10n.serveurEd2k, style: TextStyle(fontSize: fontSize)),
         ),
         ButtonSegment(
           value: SearchTarget.global,
           icon: const Icon(Icons.public_rounded, size: 16),
-          label: Text('Global UDP', style: TextStyle(fontSize: fontSize)),
+          label: Text(context.l10n.globalUdp, style: TextStyle(fontSize: fontSize)),
         ),
         ButtonSegment(
           value: SearchTarget.kad,

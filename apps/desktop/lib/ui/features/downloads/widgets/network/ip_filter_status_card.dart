@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Status card for the ipfilter.dat engine: enabled switch, loaded range
 /// count and total blocked hits.
@@ -55,8 +56,7 @@ class IpFilterStatusCard extends StatelessWidget {
                             .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text(
-                        '$rangeCount ranges loaded',
+                      child: Text(context.l10n.rangesLoaded('$rangeCount'),
                         style: const TextStyle(
                           fontSize: 11,
                           color: AppColors.textSecondary,
@@ -66,8 +66,7 @@ class IpFilterStatusCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'Total blocked connection attempts: $hitsCount',
+                Text(context.l10n.totalBlockedConnectionAttempts('$hitsCount'),
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSoft,

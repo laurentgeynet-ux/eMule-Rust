@@ -4,6 +4,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'lab_step_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Step 2: display/copy the fixture's canonical ed2k link and add it as a
 /// tracked download task.
@@ -26,7 +27,7 @@ class LabStepLink extends StatelessWidget {
     final fixture = this.fixture;
     return LabStepCard(
       stepNumber: 2,
-      title: 'Obtain Canonical eD2K Link & Add to Downloads',
+      title: context.l10n.obtainCanonicalEd2kLinkAdd,
       description:
           'Use the hash to create a tracked download task inside the client.',
       isCompleted: addedSuccess,
@@ -62,15 +63,14 @@ class LabStepLink extends StatelessWidget {
                           size: 16,
                           color: AppColors.textSecondary,
                         ),
-                        tooltip: 'Copy Link',
+                        tooltip: context.l10n.copyLink,
                         onPressed: () {
                           Clipboard.setData(
                             ClipboardData(text: fixture.ed2kLink),
                           );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'eD2K Link copied to clipboard',
+                            SnackBar(
+                              content: Text(context.l10n.ed2kLinkCopiedToClipboard,
                               ),
                               duration: Duration(seconds: 2),
                             ),
@@ -104,8 +104,7 @@ class LabStepLink extends StatelessWidget {
                       onPressed: isAdding ? null : onAdd,
                     ),
                     if (addedSuccess)
-                      const Text(
-                        'Download task created in UI',
+                      Text(context.l10n.downloadTaskCreatedInUi,
                         style: TextStyle(
                           color: AppTheme.statusCompleted,
                           fontSize: 12,
@@ -116,8 +115,7 @@ class LabStepLink extends StatelessWidget {
                 ),
               ],
             )
-          : const Text(
-              'Complete Step 1 to generate an eD2K fixture first.',
+          : Text(context.l10n.completeStep1ToGenerate,
               style: TextStyle(fontSize: 12, color: AppColors.textFaint),
             ),
     );

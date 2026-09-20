@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/kad_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Dialog: bootstrap the Kad routing table from a single node (IP + UDP
 /// port). In `local-lab` profile only 127.0.0.1 is allowed.
@@ -23,7 +24,7 @@ Future<void> showKadBootstrapDialog(
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
       ),
-      title: const Row(
+      title: Row(
         children: [
           Icon(
             Icons.rocket_launch_outlined,
@@ -31,7 +32,7 @@ Future<void> showKadBootstrapDialog(
             size: 20,
           ),
           SizedBox(width: 8),
-          Text('Amorcer le réseau Kad (Bootstrap)'),
+          Text(context.l10n.amorcerLeReseauKadBootstrap),
         ],
       ),
       content: SizedBox(
@@ -51,7 +52,7 @@ Future<void> showKadBootstrapDialog(
               controller: ipController,
               style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
               decoration: InputDecoration(
-                labelText: 'Adresse IP',
+                labelText: context.l10n.adresseIp,
                 hintText: isPublic ? 'ex: 212.83.184.225' : '127.0.0.1',
                 isDense: true,
                 filled: true,
@@ -67,7 +68,7 @@ Future<void> showKadBootstrapDialog(
               keyboardType: TextInputType.number,
               style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
               decoration: InputDecoration(
-                labelText: 'Port UDP',
+                labelText: context.l10n.portUdp,
                 hintText: '39737',
                 isDense: true,
                 filled: true,
@@ -83,8 +84,7 @@ Future<void> showKadBootstrapDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text(
-            'Annuler',
+          child: Text(context.l10n.annuler,
             style: TextStyle(color: AppColors.textSoft),
           ),
         ),
@@ -96,7 +96,7 @@ Future<void> showKadBootstrapDialog(
             Navigator.of(ctx).pop();
             await controller.bootstrap(ip: ip, port: port);
           },
-          child: const Text('Lancer l\'amorçage'),
+          child: Text(context.l10n.lancerLAmorcage),
         ),
       ],
     ),

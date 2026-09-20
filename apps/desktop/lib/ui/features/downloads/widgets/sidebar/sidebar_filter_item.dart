@@ -76,8 +76,7 @@ class SidebarFilterItem extends StatelessWidget {
                             color: color ?? AppTheme.primary,
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(
-                            '$count',
+                          child: Text('$count',
                             style: const TextStyle(
                               fontSize: 8,
                               fontWeight: FontWeight.bold,
@@ -115,8 +114,7 @@ class SidebarFilterItem extends StatelessWidget {
                           : AppColors.fillSubtle,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text(
-                      '$count',
+                    child: Text('$count',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,

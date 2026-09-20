@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// One search result row: file name, size, source count badge, copyable
 /// eD2K hash, and actions (download / existing-download status, query
@@ -114,8 +115,7 @@ class SearchResultRow extends StatelessWidget {
                             : AppColors.fillSubtle,
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text(
-                        '${file.sourceCount}',
+                      child: Text('${file.sourceCount}',
                         style: TextStyle(
                           color: file.sourceCount > 0
                               ? AppColors.positive
@@ -133,8 +133,7 @@ class SearchResultRow extends StatelessWidget {
                 SizedBox(
                   width: 220,
                   child: Tooltip(
-                    message:
-                        'Cliquer pour copier le hash : ${file.fileHash}',
+                    message: context.l10n.cliquerPourCopierLeHash(file.fileHash),
                     waitDuration: const Duration(milliseconds: 400),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(4),
@@ -144,8 +143,7 @@ class SearchResultRow extends StatelessWidget {
                         );
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(
-                              'Hachage copié : ${file.fileHash}',
+                            content: Text(context.l10n.hachageCopie(file.fileHash),
                             ),
                             duration: const Duration(seconds: 2),
                           ),
@@ -185,8 +183,7 @@ class SearchResultRow extends StatelessWidget {
                             size: 14,
                             color: AppTheme.statusCompleted,
                           ),
-                          label: const Text(
-                            'Terminé',
+                          label: Text(context.l10n.termine,
                             style: TextStyle(
                               fontSize: 12,
                               color: AppTheme.statusCompleted,
@@ -231,8 +228,7 @@ class SearchResultRow extends StatelessWidget {
                       else
                         ElevatedButton.icon(
                           icon: const Icon(Icons.download_rounded, size: 14),
-                          label: const Text(
-                            'Télécharger',
+                          label: Text(context.l10n.telecharger,
                             style: TextStyle(fontSize: 12),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -249,7 +245,7 @@ class SearchResultRow extends StatelessWidget {
                       const SizedBox(width: 4),
                       IconButton(
                         icon: const Icon(Icons.hub_outlined, size: 16),
-                        tooltip: 'Demander sources au serveur',
+                        tooltip: context.l10n.demanderSourcesAuServeur,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(
                           minWidth: 28,
@@ -259,7 +255,7 @@ class SearchResultRow extends StatelessWidget {
                       ),
                       IconButton(
                         icon: const Icon(Icons.copy_rounded, size: 16),
-                        tooltip: 'Copier lien eD2K',
+                        tooltip: context.l10n.copierLienEd2k,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(
                           minWidth: 28,
@@ -270,9 +266,8 @@ class SearchResultRow extends StatelessWidget {
                             ClipboardData(text: file.ed2kLink),
                           );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Lien eD2K copié dans le presse-papier',
+                            SnackBar(
+                              content: Text(context.l10n.lienEd2kCopieDansLe,
                               ),
                               duration: Duration(seconds: 2),
                             ),
@@ -305,7 +300,7 @@ class SearchResultRow extends StatelessWidget {
               success ? null : AppColors.accentOrangeShade700,
           action: success
               ? SnackBarAction(
-                  label: 'Afficher',
+                  label: context.l10n.afficher,
                   onPressed: onGoToDownloads,
                 )
               : null,

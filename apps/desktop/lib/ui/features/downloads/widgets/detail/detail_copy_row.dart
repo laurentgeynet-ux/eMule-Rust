@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Label + selectable value row with a copy-to-clipboard affordance.
 class DetailCopyRow extends StatelessWidget {
@@ -47,7 +48,7 @@ class DetailCopyRow extends StatelessWidget {
             Clipboard.setData(ClipboardData(text: value));
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('$label copied to clipboard'),
+                content: Text(context.l10n.copiedToClipboard(label)),
                 duration: const Duration(seconds: 1),
               ),
             );

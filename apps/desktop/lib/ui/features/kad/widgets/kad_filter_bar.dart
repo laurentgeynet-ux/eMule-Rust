@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Contacts filter field + destructive "clear routing table" action.
 class KadFilterBar extends StatelessWidget {
@@ -22,7 +23,7 @@ class KadFilterBar extends StatelessWidget {
             child: TextField(
               style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
               decoration: InputDecoration(
-                hintText: 'Filtrer par Kad ID, IP ou Port...',
+                hintText: context.l10n.filtrerParKadIdIp,
                 hintStyle: const TextStyle(fontSize: 13, color: AppColors.textFaint),
                 prefixIcon: const Icon(
                   Icons.search_rounded,
@@ -61,8 +62,7 @@ class KadFilterBar extends StatelessWidget {
               size: 16,
               color: AppColors.danger,
             ),
-            label: const Text(
-              'Effacer la table',
+            label: Text(context.l10n.effacerLaTable,
               style: TextStyle(color: AppColors.danger, fontSize: 12),
             ),
             onPressed: onClearContacts,

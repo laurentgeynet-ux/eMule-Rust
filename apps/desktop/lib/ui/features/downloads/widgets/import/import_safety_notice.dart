@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Shield notice explaining the import is staged + paused and never
 /// contacts peers.
@@ -17,7 +18,7 @@ class ImportSafetyNotice extends StatelessWidget {
           color: AppTheme.primary.withValues(alpha: 0.3),
         ),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
@@ -27,8 +28,7 @@ class ImportSafetyNotice extends StatelessWidget {
           ),
           SizedBox(width: 10),
           Expanded(
-            child: Text(
-              'The download will be staged into data/temp/ and initialized in Paused state. L’import ne contacte aucun peer et le téléchargement restera en pause.',
+            child: Text(context.l10n.theDownloadWillBeStaged,
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.textPrimary,

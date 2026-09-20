@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// UPnP IGD status card: detected gateway, WAN IP and TCP/UDP mapping
 /// state for the eD2K/Kad ports.
@@ -21,8 +22,7 @@ class UpnpStatusCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Statut UPnP IGD (Box / Routeur NAT)',
+        Text(context.l10n.statutUpnpIgdBoxRouteur,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.bold,
@@ -40,7 +40,7 @@ class UpnpStatusCard extends StatelessWidget {
           child: Column(
             children: [
               _UpnpRow(
-                label: 'Passerelle / Box détectée :',
+                label: context.l10n.passerelleBoxDetectee,
                 child: Text(
                   status.available
                       ? (status.gatewayAddr ?? 'Connectée')
@@ -56,7 +56,7 @@ class UpnpStatusCard extends StatelessWidget {
               ),
               const Divider(color: AppTheme.darkBorder, height: 16),
               _UpnpRow(
-                label: 'Adresse IP Externe (WAN) :',
+                label: context.l10n.adresseIpExterneWan,
                 child: Text(
                   status.externalIp ?? 'Inconnue',
                   style: const TextStyle(
@@ -68,7 +68,7 @@ class UpnpStatusCard extends StatelessWidget {
               ),
               const Divider(color: AppTheme.darkBorder, height: 16),
               _UpnpRow(
-                label: 'Port TCP eD2K (${status.tcpPort}) :',
+                label: context.l10n.portTcpEd2k('${status.tcpPort}'),
                 child: _MappedValue(
                   mapped: status.tcpMapped,
                   mappedLabel: 'Mappé (HighID)',
@@ -76,7 +76,7 @@ class UpnpStatusCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               _UpnpRow(
-                label: 'Port UDP Kad (${status.udpPort}) :',
+                label: context.l10n.portUdpKad('${status.udpPort}'),
                 child: _MappedValue(
                   mapped: status.udpMapped,
                   mappedLabel: 'Mappé (Ouvert)',
@@ -91,7 +91,7 @@ class UpnpStatusCard extends StatelessWidget {
           children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.refresh, size: 14),
-              label: const Text('Tester / Rafraîchir UPnP'),
+              label: Text(context.l10n.testerRafraichirUpnp),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textSecondary,
                 side: const BorderSide(color: AppTheme.darkBorder),

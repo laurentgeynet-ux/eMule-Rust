@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'detail_metric_tile.dart';
 import 'detail_section_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Transfer metrics card: progress bar, received/remaining/verified/rates/
 /// ETA/sources/attempts tiles and the last-error banner.
@@ -20,7 +21,7 @@ class DownloadMetricsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DetailSectionCard(
-      title: 'Transfer Metrics & Speed',
+      title: context.l10n.transferMetricsSpeed,
       icon: Icons.speed_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,27 +41,27 @@ class DownloadMetricsCard extends StatelessWidget {
             runSpacing: 12,
             children: [
               DetailMetricTile(
-                label: 'Received',
+                label: context.l10n.received,
                 value: Formatters.formatBytes(item.receivedBytes),
               ),
               DetailMetricTile(
-                label: 'Remaining',
+                label: context.l10n.remaining,
                 value: Formatters.formatBytes(item.remainingBytes),
               ),
               DetailMetricTile(
-                label: 'Verified',
+                label: context.l10n.verified,
                 value: Formatters.formatBytes(item.verifiedBytes),
               ),
               DetailMetricTile(
-                label: 'Current Rate',
+                label: context.l10n.currentRate,
                 value: Formatters.formatSpeed(item.downloadRateBps),
               ),
               DetailMetricTile(
-                label: 'Average Rate',
+                label: context.l10n.averageRate,
                 value: Formatters.formatSpeed(item.averageRateBps),
               ),
               DetailMetricTile(
-                label: 'ETA',
+                label: context.l10n.eta,
                 value: item.etaSeconds != null
                     ? Formatters.formatEta(
                         item.remainingBytes,
@@ -69,11 +70,11 @@ class DownloadMetricsCard extends StatelessWidget {
                     : 'N/A',
               ),
               DetailMetricTile(
-                label: 'Sources',
+                label: context.l10n.sources,
                 value: '${item.sourceCount} loopback',
               ),
               DetailMetricTile(
-                label: 'Attempts',
+                label: context.l10n.attempts,
                 value: '${item.connectionAttempts}',
               ),
             ],
@@ -98,8 +99,7 @@ class DownloadMetricsCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'Last Error: ${item.lastError}',
+                    child: Text(context.l10n.lastError('${item.lastError}'),
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppTheme.statusFailed,

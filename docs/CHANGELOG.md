@@ -40,12 +40,18 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   `DownloadsList`, `DownloadsEmptyState`, `DownloadDetailsPanel`,
   `StatusNotificationBanner`) ; conventions dans
   `docs/architecture/conventions_ui.md`.
-- **i18n (P5, infrastructure)** : `gen_l10n` activé — `l10n.yaml`, ARB
+- **i18n (P5)** : `gen_l10n` activé — `l10n.yaml`, ARB
   `lib/l10n/app_fr.arb` (template = libellés actuels) + `app_en.arb`
   (traduction), sortie `lib/l10n/generated/`. `MaterialApp.router` épinglé
   en `fr` en attendant le sélecteur de langue. Extension `context.l10n`
-  (+ `DownloadFilterL10n`). Sidebar, top bar et empty state migrés ;
-  `AppStrings` (ui_kit) est deprecated.
+  (+ `DownloadFilterL10n`). `AppStrings` (ui_kit) est deprecated.
+  **Passe complète** : ~400 littéraux visibles migrés vers `context.l10n`
+  dans ~90 fichiers (dialogs, tables, toolbars, bannières, empty states),
+  avec placeholders `{param}` pour les textes dynamiques. Les littéraux
+  techniques (URLs `ed2k://`, chemins, formats purs interpolés) restent en
+  dur volontairement. Les tests qui montent un `MaterialApp` brut doivent
+  fournir `AppLocalizations.localizationsDelegates` + `supportedLocales`
+  (+ `locale: Locale('fr')` quand ils assertent des libellés FR).
 - **Migration Riverpod (P4, découpage du VM terminé)** : `ProviderScope`
   dans `EmuleSionApp` (`muleDaemonClientProvider`,
   `daemonSupervisorProvider`, `devToolsEnabledProvider`,

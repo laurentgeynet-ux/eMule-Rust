@@ -5,6 +5,7 @@ import 'package:ui_kit/ui_kit.dart';
 import '../view_models/servers_controller.dart';
 import 'server_status_badge.dart';
 import 'server_cards_list.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Sortable servers data table (desktop / medium widths). Below 650 px the
 /// layout switches to [ServerCardsList].
@@ -64,76 +65,66 @@ class ServersTable extends StatelessWidget {
                 columnSpacing: isMedium ? 14 : 18,
                 columns: isMedium
                     ? [
-                        const DataColumn(
-                          label: Text(
-                            'Etat / Filtre',
+                        DataColumn(
+                          label: Text(context.l10n.etatFiltre,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                         DataColumn(
-                          label: const Text(
-                            'Nom du Serveur',
+                          label: Text(context.l10n.nomDuServeur,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           onSort: (columnIndex, ascending) =>
                               onSort(1, ascending),
                         ),
                         DataColumn(
-                          label: const Text(
-                            'IP : Port',
+                          label: Text(context.l10n.ipPort,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           onSort: (columnIndex, ascending) =>
                               onSort(2, ascending),
                         ),
                         DataColumn(
-                          label: const Text(
-                            'Ping',
+                          label: Text(context.l10n.ping,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           numeric: true,
                           onSort: (columnIndex, ascending) =>
                               onSort(4, ascending),
                         ),
-                        const DataColumn(
-                          label: Text(
-                            'Actions',
+                        DataColumn(
+                          label: Text(context.l10n.actions,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                       ]
                     : [
-                        const DataColumn(
-                          label: Text(
-                            'Etat / Filtre',
+                        DataColumn(
+                          label: Text(context.l10n.etatFiltre,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                         DataColumn(
-                          label: const Text(
-                            'Nom du Serveur',
+                          label: Text(context.l10n.nomDuServeur,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           onSort: (columnIndex, ascending) =>
                               onSort(columnIndex, ascending),
                         ),
                         DataColumn(
-                          label: const Text(
-                            'IP : Port',
+                          label: Text(context.l10n.ipPort,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           onSort: (columnIndex, ascending) =>
                               onSort(columnIndex, ascending),
                         ),
-                        const DataColumn(
-                          label: Text(
-                            'Description',
+                        DataColumn(
+                          label: Text(context.l10n.description,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                         DataColumn(
-                          label: const Text(
-                            'Ping',
+                          label: Text(context.l10n.ping,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           numeric: true,
@@ -141,23 +132,20 @@ class ServersTable extends StatelessWidget {
                               onSort(columnIndex, ascending),
                         ),
                         DataColumn(
-                          label: const Text(
-                            'Preference',
+                          label: Text(context.l10n.preference,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           numeric: true,
                           onSort: (columnIndex, ascending) =>
                               onSort(columnIndex, ascending),
                         ),
-                        const DataColumn(
-                          label: Text(
-                            'Version',
+                        DataColumn(
+                          label: Text(context.l10n.version,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
-                        const DataColumn(
-                          label: Text(
-                            'Actions',
+                        DataColumn(
+                          label: Text(context.l10n.actions,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -165,6 +153,7 @@ class ServersTable extends StatelessWidget {
                 rows: servers
                     .map(
                       (s) => _buildRow(
+                        context,
                         s,
                         hasServerConnectionCap: hasServerConnectionCap,
                         isMedium: isMedium,
@@ -180,6 +169,7 @@ class ServersTable extends StatelessWidget {
   }
 
   DataRow _buildRow(
+    BuildContext context,
     Ed2kServerModel server, {
     required bool hasServerConnectionCap,
     bool isMedium = false,
@@ -216,7 +206,7 @@ class ServersTable extends StatelessWidget {
           height: 30,
           child: ElevatedButton.icon(
             icon: const Icon(Icons.power_rounded, size: 14),
-            label: const Text('Se connecter', style: TextStyle(fontSize: 12)),
+            label: Text(context.l10n.seConnecter, style: TextStyle(fontSize: 12)),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary.withAlpha(200),
               foregroundColor: AppColors.textPrimary,
@@ -249,7 +239,8 @@ class ServersTable extends StatelessWidget {
               size: 18,
               color: isDisabled ? AppColors.positive : AppColors.accentAmber,
             ),
-            tooltip: isDisabled ? 'Activer' : 'Desactiver',
+            tooltip:
+                isDisabled ? context.l10n.serverEnable : context.l10n.serverDisable,
             onPressed: () =>
                 controller.setEnabled(server.address, isDisabled),
           ),
@@ -259,7 +250,7 @@ class ServersTable extends StatelessWidget {
               size: 18,
               color: AppColors.textMuted,
             ),
-            tooltip: 'Supprimer',
+            tooltip: context.l10n.supprimer,
             onPressed: () => controller.delete(server.address),
           ),
         ],

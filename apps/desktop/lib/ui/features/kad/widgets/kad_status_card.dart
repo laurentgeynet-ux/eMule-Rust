@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/kad_controller.dart';
 import 'kad_stat_badge.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Local Kad identity + UDP socket control + metrics (packets, contacts,
 /// buckets, profile).
@@ -39,8 +40,7 @@ class KadStatusCard extends StatelessWidget {
                 color: AppColors.textSecondary,
               ),
               const SizedBox(width: 6),
-              const Text(
-                'ID Kad Local :',
+              Text(context.l10n.idKadLocal,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
@@ -69,8 +69,7 @@ class KadStatusCard extends StatelessWidget {
                     size: 14,
                     color: AppColors.danger,
                   ),
-                  label: const Text(
-                    'Arrêter UDP',
+                  label: Text(context.l10n.arreterUdp,
                     style: TextStyle(fontSize: 11, color: AppColors.danger),
                   ),
                   style: OutlinedButton.styleFrom(
@@ -110,7 +109,7 @@ class KadStatusCard extends StatelessWidget {
             child: Row(
               children: [
                 KadStatBadge(
-                  label: 'Socket UDP',
+                  label: context.l10n.socketUdp,
                   value: status.isUdpActive
                       ? 'Actif (${status.udpBindAddress ?? (isPublic ? "0.0.0.0:39737" : "127.0.0.1:39737")})'
                       : 'Inactif',
@@ -120,31 +119,31 @@ class KadStatusCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 KadStatBadge(
-                  label: 'Paquets TX / RX',
+                  label: context.l10n.paquetsTxRx,
                   value: '${status.packetsSent} / ${status.packetsReceived}',
                   color: AppColors.accentCyan,
                 ),
                 const SizedBox(width: 12),
                 KadStatBadge(
-                  label: 'Contacts actifs',
+                  label: context.l10n.contactsActifs,
                   value: '${status.totalContacts}',
                   color: AppColors.accentTeal,
                 ),
                 const SizedBox(width: 12),
                 KadStatBadge(
-                  label: 'Buckets actifs',
+                  label: context.l10n.bucketsActifs,
                   value: '${status.activeBuckets} / 128',
                   color: AppColors.positive,
                 ),
                 const SizedBox(width: 12),
                 KadStatBadge(
-                  label: 'Contacts en base',
+                  label: context.l10n.contactsEnBase,
                   value: '${status.dbContactsCount}',
                   color: AppColors.textSecondary,
                 ),
                 const SizedBox(width: 12),
                 KadStatBadge(
-                  label: 'Profil',
+                  label: context.l10n.profil,
                   value: status.networkProfile,
                   color: AppColors.accentPurple,
                 ),

@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'lab_step_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Step 1: pick a fixture type and generate the deterministic test file.
 class LabStepFixture extends StatelessWidget {
@@ -33,7 +34,7 @@ class LabStepFixture extends StatelessWidget {
     final fixture = lastCreatedFixture;
     return LabStepCard(
       stepNumber: 1,
-      title: 'Generate Local Test Fixture',
+      title: context.l10n.generateLocalTestFixture,
       description:
           'Creates a deterministic file in <workdir>/fixtures/ and computes its eD2K hash.',
       isCompleted: fixture != null,
@@ -80,8 +81,7 @@ class LabStepFixture extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    '${fixture.fileName} (${Formatters.formatBytes(fixture.sizeBytes)})',
+                  child: Text('${fixture.fileName} (${Formatters.formatBytes(fixture.sizeBytes)})',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,

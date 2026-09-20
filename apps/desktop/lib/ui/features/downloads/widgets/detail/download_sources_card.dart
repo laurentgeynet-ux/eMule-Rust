@@ -5,6 +5,7 @@ import 'package:ui_kit/ui_kit.dart';
 import '../../view_models/peer_sources_controller.dart';
 import 'detail_section_card.dart';
 import 'peer_source_row.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// eD2K peer sources card: active peer-session banner, manual-source input,
 /// "ask server / ask Kad" actions and the per-source list with connect /
@@ -48,7 +49,7 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
         session.status != PeerConnectionStatus.disconnected;
 
     return DetailSectionCard(
-      title: 'SOURCES ED2K & SESSION PEER',
+      title: context.l10n.sourcesEd2kSessionPeer,
       icon: Icons.hub_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,8 +75,7 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
                       color: AppColors.textPrimary,
                     ),
                     decoration: InputDecoration(
-                      hintText:
-                          'Ajouter source IP:port (ex: 127.0.0.1:39735)',
+                      hintText: context.l10n.ajouterSourceIpPortEx,
                       hintStyle: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textFaint,
@@ -116,8 +116,7 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
                     size: 14,
                     color: AppColors.textPrimary,
                   ),
-                  label: const Text(
-                    'Ajouter',
+                  label: Text(context.l10n.ajouter,
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.textPrimary,
@@ -147,8 +146,7 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
                     size: 14,
                     color: AppColors.textSecondary,
                   ),
-                  label: const Text(
-                    'Demander au serveur',
+                  label: Text(context.l10n.demanderAuServeur,
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.textSecondary,
@@ -176,8 +174,7 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
                     size: 14,
                     color: AppColors.accentAmber,
                   ),
-                  label: const Text(
-                    'Demander au réseau Kad',
+                  label: Text(context.l10n.demanderAuReseauKad,
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.accentAmber,
@@ -198,7 +195,7 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
                   size: 16,
                   color: AppColors.textMuted,
                 ),
-                tooltip: 'Actualiser la liste',
+                tooltip: context.l10n.actualiserLaListe,
                 onPressed: hash.isNotEmpty
                     ? () => ctl.loadSourcesForHash(hash)
                     : null,
@@ -287,8 +284,7 @@ class _PeerSessionBanner extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      'Session active : ${session.peerAddress ?? ""}',
+                    Text(context.l10n.sessionActive(session.peerAddress ?? ""),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -317,9 +313,9 @@ class _PeerSessionBanner extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  'Reçu : ${Formatters.formatBytes(session.transferredBytes)} '
-                  '(${Formatters.formatSpeed(session.transferRateBps)})',
+                Text(context.l10n.recu(
+                  Formatters.formatBytes(session.transferredBytes),
+                  Formatters.formatSpeed(session.transferRateBps)),
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textSecondary,
@@ -338,7 +334,7 @@ class _PeerSessionBanner extends StatelessWidget {
               ),
             ),
             icon: const Icon(Icons.link_off, size: 14),
-            label: const Text('Déconnecter', style: TextStyle(fontSize: 11)),
+            label: Text(context.l10n.deconnecter, style: TextStyle(fontSize: 11)),
             onPressed: onDisconnect,
           ),
         ],

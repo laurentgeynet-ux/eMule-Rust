@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'detail_copy_row.dart';
 import 'detail_section_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Identity card: download UUID, eD2K hash, canonical ed2k link and the
 /// category dropdown.
@@ -22,24 +23,24 @@ class DownloadIdentityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DetailSectionCard(
-      title: 'Identity & eD2K Links',
+      title: context.l10n.identityEd2kLinks,
       icon: Icons.fingerprint_rounded,
       child: Column(
         children: [
           DetailCopyRow(
-            label: 'Download UUID',
+            label: context.l10n.downloadUuid,
             value: item.id,
             monospace: true,
           ),
           const Divider(color: AppTheme.darkBorder, height: 16),
           DetailCopyRow(
-            label: 'eD2K Hash (MD4)',
+            label: context.l10n.ed2kHashMd4,
             value: item.ed2kHash ?? 'Pending calculation...',
             monospace: true,
           ),
           const Divider(color: AppTheme.darkBorder, height: 16),
           DetailCopyRow(
-            label: 'Canonical eD2K Link',
+            label: context.l10n.canonicalEd2kLink,
             value:
                 item.ed2kLink ??
                 'ed2k://|file|${item.fileName}|${item.totalBytes}|${item.ed2kHash ?? ""}|/',
@@ -49,10 +50,9 @@ class DownloadIdentityCard extends StatelessWidget {
           const Divider(color: AppTheme.darkBorder, height: 16),
           Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 140,
-                child: Text(
-                  'Category',
+                child: Text(context.l10n.category,
                   style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                 ),
               ),
@@ -63,10 +63,9 @@ class DownloadIdentityCard extends StatelessWidget {
                     isDense: true,
                     dropdownColor: AppTheme.darkCard,
                     items: [
-                      const DropdownMenuItem<String?>(
+                      DropdownMenuItem<String?>(
                         value: null,
-                        child: Text(
-                          'Sans catégorie (None)',
+                        child: Text(context.l10n.sansCategorieNone,
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 13,

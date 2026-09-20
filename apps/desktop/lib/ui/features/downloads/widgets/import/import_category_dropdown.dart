@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Optional category picker for the import form — selecting a category
 /// with a default destination also suggests it as the target directory.
@@ -36,9 +37,9 @@ class ImportCategoryDropdown extends StatelessWidget {
         ),
       ),
       items: [
-        const DropdownMenuItem<String?>(
+        DropdownMenuItem<String?>(
           value: null,
-          child: Text('No Category'),
+          child: Text(context.l10n.noCategory),
         ),
         ...categories.map(
           (c) => DropdownMenuItem<String?>(

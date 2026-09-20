@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'lab_step_card.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Step 3: start/stop the loopback eD2K peer serving the test fixtures.
 class LabStepPeer extends StatelessWidget {
@@ -23,7 +24,7 @@ class LabStepPeer extends StatelessWidget {
     final isRunning = activePeer != null;
     return LabStepCard(
       stepNumber: 3,
-      title: 'Loopback Test Peer (127.0.0.1)',
+      title: context.l10n.loopbackTestPeer1270,
       description:
           'Spawns a local eD2K protocol peer hosting the test fixtures.',
       isCompleted: isRunning,

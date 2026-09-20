@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/l10n.dart';
 
 /// Preview card summarizing a `downloads.inspectPartMet` result before the
 /// user confirms the import.
@@ -48,12 +49,12 @@ class ImportInspectionCard extends StatelessWidget {
           ),
           const Divider(color: AppTheme.darkBorder, height: 16),
           _MetricRow(
-            label: 'Total Size:',
+            label: context.l10n.totalSize2,
             value: Formatters.formatBytes(inspection.totalSize),
           ),
           const SizedBox(height: 4),
           _MetricRow(
-            label: 'Est. Acquired / Gaps Complement:',
+            label: context.l10n.estAcquiredGapsComplement,
             value: Formatters.formatBytes(
               inspection.estimatedTransferredBytes,
             ),
@@ -61,7 +62,7 @@ class ImportInspectionCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _MetricRow(
-            label: 'Part Count:',
+            label: context.l10n.partCount,
             value: '${inspection.partCount} part(s)',
           ),
           const SizedBox(height: 4),
@@ -77,8 +78,7 @@ class ImportInspectionCard extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              const Text(
-                'eD2K Hash: ',
+              Text(context.l10n.ed2kHash,
                 style: TextStyle(
                   fontSize: 11,
                   color: AppColors.textSecondary,

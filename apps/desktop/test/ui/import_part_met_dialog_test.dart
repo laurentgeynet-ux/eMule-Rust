@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:desktop/app/app_controller.dart';
 import 'package:desktop/ui/features/downloads/widgets/import_part_met_dialog.dart';
+import 'package:desktop/l10n/generated/app_localizations.dart';
 
 void main() {
   group('ImportPartMetDialog Widget Tests', () {
@@ -27,6 +28,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ImportPartMetDialog(viewModel: viewModel),
           ),
@@ -61,6 +65,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ImportPartMetDialog(viewModel: viewModel),
           ),
@@ -97,6 +104,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ImportPartMetDialog(viewModel: viewModel),
           ),

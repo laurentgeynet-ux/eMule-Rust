@@ -7,6 +7,7 @@ import 'add_link/add_link_category_dropdown.dart';
 import 'add_link/add_link_field_label.dart';
 import 'add_link/add_link_preview_card.dart';
 import 'add_link/ed2k_link_parser.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Dialog adding a download from an `ed2k://|file|…` link with category,
 /// target directory and disk allocation options.
@@ -109,8 +110,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text(
-                    'Add eD2K Download',
+                  Text(context.l10n.addEd2kDownload,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -128,7 +128,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                 ],
               ),
               const SizedBox(height: 20),
-              const AddLinkFieldLabel(label: 'eD2K Link'),
+              AddLinkFieldLabel(label: context.l10n.ed2kLink),
               TextField(
                 controller: _linkController,
                 autofocus: true,
@@ -158,7 +158,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const AddLinkFieldLabel(label: 'Category'),
+                  AddLinkFieldLabel(label: context.l10n.category),
                   AddLinkCategoryDropdown(
                     categories: widget.viewModel.categories,
                     selectedId: _selectedCategoryId,
@@ -175,8 +175,8 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const AddLinkFieldLabel(
-                          label: 'Target Directory',
+                        AddLinkFieldLabel(
+                          label: context.l10n.targetDirectory,
                         ),
                         Row(
                           children: [
@@ -184,10 +184,9 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                               child: TextField(
                                 controller: _targetDirController,
                                 style: const TextStyle(fontSize: 13),
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   isDense: true,
-                                  hintText:
-                                      'Default downloads folder',
+                                  hintText: context.l10n.defaultDownloadsFolder,
                                 ),
                               ),
                             ),
@@ -197,8 +196,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                                 Icons.folder_open,
                                 size: 16,
                               ),
-                              label: const Text(
-                                'Browse...',
+                              label: Text(context.l10n.browse,
                                 style: TextStyle(fontSize: 12),
                               ),
                               style: OutlinedButton.styleFrom(
@@ -224,8 +222,8 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const AddLinkFieldLabel(
-                          label: 'Disk Allocation',
+                        AddLinkFieldLabel(
+                          label: context.l10n.diskAllocation,
                         ),
                         AddLinkAllocationDropdown(
                           value: _allocationPolicy,
@@ -244,15 +242,14 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text(
-                      'Cancel',
+                    child: Text(context.l10n.cancel,
                       style: TextStyle(color: AppColors.textSoft),
                     ),
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
                     icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Add Download'),
+                    label: Text(context.l10n.addDownload),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppTheme.primary,
                     ),

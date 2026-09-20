@@ -12,6 +12,7 @@ import 'diagnostic/diagnostic_row_divider.dart';
 import 'diagnostic/diagnostic_section_title.dart';
 import 'diagnostic/network_profile_banner.dart';
 import 'lab_guide_dialog.dart';
+import '../../../../l10n/l10n.dart';
 
 /// System & lab diagnostics: workdir mode/paths, daemon process info,
 /// capabilities, and sanitized/full copy actions.
@@ -86,9 +87,8 @@ class DiagnosticDialog extends StatelessWidget {
                     size: 24,
                   ),
                   const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'System & Lab Diagnostics',
+                  Expanded(
+                    child: Text(context.l10n.systemLabDiagnostics,
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -115,14 +115,14 @@ class DiagnosticDialog extends StatelessWidget {
                         profile: viewModel.currentNetworkProfile,
                       ),
                       const SizedBox(height: 16),
-                      const DiagnosticSectionTitle(
-                        title: 'Working Directory & Mode',
+                      DiagnosticSectionTitle(
+                        title: context.l10n.workingDirectoryMode,
                       ),
                       const SizedBox(height: 8),
                       DiagnosticCard(
                         children: [
                           DiagnosticInfoRow(
-                            label: 'Mode',
+                            label: context.l10n.mode,
                             content: Row(
                               children: [
                                 _WorkdirModeBadge(
@@ -132,8 +132,7 @@ class DiagnosticDialog extends StatelessWidget {
                                 ),
                                 if (isPortable) ...[
                                   const SizedBox(width: 8),
-                                  const Text(
-                                    '(Isolated data folder)',
+                                  Text(context.l10n.isolatedDataFolder,
                                     style: TextStyle(
                                       color: AppColors.textMuted,
                                       fontSize: 11,
@@ -145,7 +144,7 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticCopyRow(
-                            label: 'Internal Data',
+                            label: context.l10n.internalData,
                             path: workdirPath,
                             copyTooltip: 'Copy full path',
                             copiedMessage:
@@ -153,7 +152,7 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticCopyRow(
-                            label: 'Downloads',
+                            label: context.l10n.downloads,
                             path: downloadsPath,
                             copyTooltip:
                                 'Copy downloads directory path',
@@ -163,14 +162,14 @@ class DiagnosticDialog extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      const DiagnosticSectionTitle(
-                        title: 'Daemon & Process',
+                      DiagnosticSectionTitle(
+                        title: context.l10n.daemonProcess,
                       ),
                       const SizedBox(height: 8),
                       DiagnosticCard(
                         children: [
                           DiagnosticInfoRow(
-                            label: 'Process PID',
+                            label: context.l10n.processPid,
                             content: Text(
                               pidText,
                               style: const TextStyle(
@@ -181,7 +180,7 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticInfoRow(
-                            label: 'RPC Endpoint',
+                            label: context.l10n.rpcEndpoint,
                             content: SelectableText(
                               rpcEndpoint,
                               style: const TextStyle(
@@ -192,7 +191,7 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticInfoRow(
-                            label: 'Daemon Version',
+                            label: context.l10n.daemonVersion,
                             content: Text(
                               daemonVersion,
                               style: const TextStyle(fontSize: 12),
@@ -200,7 +199,7 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticInfoRow(
-                            label: 'Instance ID',
+                            label: context.l10n.instanceId,
                             content: SelectableText(
                               instanceId,
                               style: const TextStyle(
@@ -212,7 +211,7 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticInfoRow(
-                            label: 'Session ID',
+                            label: context.l10n.sessionId,
                             content: SelectableText(
                               sessionId,
                               style: const TextStyle(
@@ -224,7 +223,7 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticCopyRow(
-                            label: 'Daemon Log',
+                            label: context.l10n.daemonLog,
                             path: '$workdirPath\\daemon.log',
                             copyTooltip: 'Copy daemon log path',
                             copiedMessage:
@@ -232,14 +231,13 @@ class DiagnosticDialog extends StatelessWidget {
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticInfoRow(
-                            label: 'Capabilities',
+                            label: context.l10n.capabilities,
                             content: Wrap(
                               spacing: 4,
                               runSpacing: 4,
                               children: capabilities.isEmpty
                                   ? [
-                                      const Text(
-                                        'None',
+                                      Text(context.l10n.none,
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: AppColors.textMuted,
@@ -268,7 +266,7 @@ class DiagnosticDialog extends StatelessWidget {
                   children: [
                     OutlinedButton.icon(
                       icon: const Icon(Icons.share_outlined, size: 16),
-                      label: const Text('Copy Shareable (Sanitized)'),
+                      label: Text(context.l10n.copyShareableSanitized),
                       onPressed: () {
                         final sanitized = formatShareableDiagnostics(
                           daemonVersion: daemonVersion,
@@ -286,9 +284,8 @@ class DiagnosticDialog extends StatelessWidget {
                           ClipboardData(text: sanitized),
                         );
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Sanitized shareable diagnostics copied',
+                          SnackBar(
+                            content: Text(context.l10n.sanitizedShareableDiagnosticsCopied,
                             ),
                             duration: Duration(seconds: 2),
                           ),
@@ -297,7 +294,7 @@ class DiagnosticDialog extends StatelessWidget {
                     ),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.code_rounded, size: 16),
-                      label: const Text('Copy Full (Local Dev)'),
+                      label: Text(context.l10n.copyFullLocalDev),
                       onPressed: () {
                         final full = formatFullDiagnostics(
                           daemonVersion: daemonVersion,
@@ -315,9 +312,8 @@ class DiagnosticDialog extends StatelessWidget {
                         );
                         Clipboard.setData(ClipboardData(text: full));
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Full diagnostics copied to clipboard',
+                          SnackBar(
+                            content: Text(context.l10n.fullDiagnosticsCopiedToClipboard,
                             ),
                             duration: Duration(seconds: 2),
                           ),
@@ -327,7 +323,7 @@ class DiagnosticDialog extends StatelessWidget {
                     if (viewModel.isLabModeAvailable)
                       FilledButton.tonalIcon(
                         icon: const Icon(Icons.science, size: 16),
-                        label: const Text('Open Lab Guide'),
+                        label: Text(context.l10n.openLabGuide),
                         style: FilledButton.styleFrom(
                           backgroundColor:
                               AppColors.lab.withValues(alpha: 0.2),
@@ -344,7 +340,7 @@ class DiagnosticDialog extends StatelessWidget {
                       ),
                     FilledButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Close'),
+                      child: Text(context.l10n.close),
                     ),
                   ],
                 ),

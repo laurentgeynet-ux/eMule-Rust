@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Card describing the currently active network profile
 /// (public WAN vs confined lab).
@@ -26,8 +27,7 @@ class NetworkModeStatusCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                'Profil Réseau Actuel : ',
+              Text(context.l10n.profilReseauActuel,
                 style: TextStyle(
                   color: AppColors.textPrimary.withValues(alpha: 0.7),
                   fontSize: 13,

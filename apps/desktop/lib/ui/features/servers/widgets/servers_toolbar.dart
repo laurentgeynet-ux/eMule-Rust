@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Servers section toolbar: refresh, server.met import and update-from-URL.
 /// Icon buttons below 1150 px, labelled buttons otherwise.
@@ -36,9 +37,8 @@ class ServersToolbar extends StatelessWidget {
                 size: 22,
               ),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Gestion Locale des Serveurs eD2K',
+              Expanded(
+                child: Text(context.l10n.gestionLocaleDesServeursEd2k,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -50,12 +50,12 @@ class ServersToolbar extends StatelessWidget {
               const SizedBox(width: 12),
               if (isCompact) ...[
                 IconButton(
-                  tooltip: 'Actualiser',
+                  tooltip: context.l10n.actualiser,
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   onPressed: onRefresh,
                 ),
                 IconButton(
-                  tooltip: 'Importer server.met',
+                  tooltip: context.l10n.importerServerMet,
                   icon: const Icon(
                     Icons.file_upload_outlined,
                     size: 18,
@@ -64,7 +64,7 @@ class ServersToolbar extends StatelessWidget {
                   onPressed: onImportMet,
                 ),
                 IconButton(
-                  tooltip: 'Mettre à jour depuis URL',
+                  tooltip: context.l10n.mettreAJourDepuisUrl,
                   icon: const Icon(
                     Icons.cloud_download_outlined,
                     size: 18,
@@ -75,13 +75,13 @@ class ServersToolbar extends StatelessWidget {
               ] else ...[
                 OutlinedButton.icon(
                   icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Actualiser'),
+                  label: Text(context.l10n.actualiser),
                   onPressed: onRefresh,
                 ),
                 const SizedBox(width: 10),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.file_upload_outlined, size: 16),
-                  label: const Text('Importer server.met'),
+                  label: Text(context.l10n.importerServerMet),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     foregroundColor: AppColors.textPrimary,
@@ -91,7 +91,7 @@ class ServersToolbar extends StatelessWidget {
                 const SizedBox(width: 10),
                 FilledButton.icon(
                   icon: const Icon(Icons.cloud_download_outlined, size: 16),
-                  label: const Text('Mettre à jour depuis URL'),
+                  label: Text(context.l10n.mettreAJourDepuisUrl),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.labShade700,
                     foregroundColor: AppColors.textPrimary,

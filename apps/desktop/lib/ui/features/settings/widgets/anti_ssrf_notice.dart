@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Security notice: LAN/private-range traffic stays blocked even in
 /// public mode (anti-SSRF).
@@ -17,15 +18,14 @@ class AntiSsrfNotice extends StatelessWidget {
           color: AppColors.warning.withValues(alpha: 0.3),
         ),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(Icons.security, color: AppColors.warning, size: 16),
               SizedBox(width: 8),
-              Text(
-                'Garantie de Sécurité Anti-SSRF',
+              Text(context.l10n.garantieDeSecuriteAntiSsrf,
                 style: TextStyle(
                   color: AppColors.warning,
                   fontWeight: FontWeight.bold,
@@ -35,8 +35,7 @@ class AntiSsrfNotice extends StatelessWidget {
             ],
           ),
           SizedBox(height: 6),
-          Text(
-            'Même en mode public, la politique réseau d\'Emule-Sion bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.',
+          Text(context.l10n.memeEnModePublicLa,
             style: TextStyle(
               fontSize: 11,
               color: AppColors.textSecondary,

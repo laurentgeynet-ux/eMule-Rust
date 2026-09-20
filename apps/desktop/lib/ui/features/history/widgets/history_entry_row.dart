@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'history_colors.dart';
 import 'history_entry_detail_dialog.dart';
+import '../../../../l10n/l10n.dart';
 
 /// One history entry row — stacked layout below 700 px, columns above.
 class HistoryEntryRow extends StatelessWidget {
@@ -64,7 +65,7 @@ class HistoryEntryRow extends StatelessWidget {
                         minWidth: 24,
                         minHeight: 24,
                       ),
-                      tooltip: 'View details',
+                      tooltip: context.l10n.viewDetails,
                       onPressed: () =>
                           showHistoryEntryDetailDialog(context, entry),
                     ),
@@ -74,9 +75,9 @@ class HistoryEntryRow extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '${Formatters.formatBytes(entry.transferredBytes)} of '
-                      '${Formatters.formatBytes(entry.totalBytes)}',
+                    Text(context.l10n.of2(
+                      Formatters.formatBytes(entry.transferredBytes),
+                      Formatters.formatBytes(entry.totalBytes)),
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -121,8 +122,7 @@ class HistoryEntryRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      'Hash: ${entry.ed2kHash}',
+                    Text(context.l10n.hash2(entry.ed2kHash),
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textFaint,
@@ -145,8 +145,7 @@ class HistoryEntryRow extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    Text(
-                      'of ${Formatters.formatBytes(entry.totalBytes)}',
+                    Text(context.l10n.of3(Formatters.formatBytes(entry.totalBytes)),
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textFaint,
@@ -167,9 +166,8 @@ class HistoryEntryRow extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    Text(
-                      '${entry.resumeCount} res. / '
-                      '${entry.connectionAttempts} att.',
+                    Text(context.l10n.res('${entry.resumeCount}',
+                      '${entry.connectionAttempts}'),
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textFaint,
@@ -194,7 +192,7 @@ class HistoryEntryRow extends StatelessWidget {
                   size: 18,
                   color: AppColors.textMuted,
                 ),
-                tooltip: 'View details',
+                tooltip: context.l10n.viewDetails,
                 onPressed: () =>
                     showHistoryEntryDetailDialog(context, entry),
               ),

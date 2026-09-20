@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/servers_controller.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Dialog: download a remote server.met over HTTP(S) and update the local
 /// server directory. Private/loopback targets are rejected (anti-SSRF).
@@ -16,11 +17,11 @@ Future<void> showServersUpdateUrlDialog(
   final url = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
           Icon(Icons.cloud_download_outlined, color: AppColors.accentTeal),
           SizedBox(width: 8),
-          Text('Mettre à jour depuis une URL'),
+          Text(context.l10n.mettreAJourDepuisUne),
         ],
       ),
       content: SizedBox(
@@ -29,8 +30,7 @@ Future<void> showServersUpdateUrlDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs :',
+            Text(context.l10n.indiquezLAdresseHttpOu,
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
@@ -38,16 +38,15 @@ Future<void> showServersUpdateUrlDialog(
               controller: urlController,
               autofocus: true,
               style: const TextStyle(fontSize: 13),
-              decoration: const InputDecoration(
-                labelText: 'URL du server.met',
+              decoration: InputDecoration(
+                labelText: context.l10n.urlDuServerMet,
                 hintText: 'http://upd.emule-security.org/server.met',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.link_rounded, size: 18),
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'Note : Les adresses IP de réseaux privés (LAN/RFC1918) et loopback sont rejetées par sécurité (anti-SSRF).',
+            Text(context.l10n.noteLesAdressesIpDe,
               style: TextStyle(fontSize: 11, color: AppColors.textFaint),
             ),
           ],
@@ -56,11 +55,11 @@ Future<void> showServersUpdateUrlDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(null),
-          child: const Text('Annuler'),
+          child: Text(context.l10n.annuler),
         ),
         FilledButton.icon(
           icon: const Icon(Icons.download_rounded, size: 16),
-          label: const Text('Télécharger et Mettre à jour'),
+          label: Text(context.l10n.telechargerEtMettreAJour),
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.labShade700,
             foregroundColor: AppColors.textPrimary,

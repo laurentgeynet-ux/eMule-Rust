@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/l10n.dart';
 
 /// Empty routing-table placeholder with a nodes.dat import call-to-action.
 class KadEmptyState extends StatelessWidget {
@@ -15,8 +16,7 @@ class KadEmptyState extends StatelessWidget {
         children: [
           const Icon(Icons.hub_outlined, size: 48, color: AppColors.fillMedium),
           const SizedBox(height: 12),
-          const Text(
-            'Aucun contact Kad',
+          Text(context.l10n.aucunContactKad,
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.bold,
@@ -24,14 +24,13 @@ class KadEmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Importez un fichier nodes.dat pour amorcer la table de routage K-buckets.',
+          Text(context.l10n.importezUnFichierNodesDat,
             style: TextStyle(fontSize: 12, color: AppColors.textFaint),
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
             icon: const Icon(Icons.file_upload_outlined, size: 16),
-            label: const Text('Importer nodes.dat'),
+            label: Text(context.l10n.importerNodesDat),
             onPressed: onImport,
           ),
         ],
