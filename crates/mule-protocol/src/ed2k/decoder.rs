@@ -5,7 +5,9 @@ use bytes::Bytes;
 use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
-    OP_AICHFILEHASHREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_AICH_REQUEST, OP_EMULE_INFO,
+    OP_AICHFILEHASHREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_AICH_REQUEST,
+    OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_REQUESTPARTS_I64,
+    OP_SENDINGPART_I64,
     OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ, OP_HASHSETANSWER, OP_HASHSETREQUEST,
     OP_HELLO, OP_HELLO_ANSWER, OP_PUBLICKEY, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
     OP_SECIDENTSTATE, OP_SENDINGPART, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
@@ -36,8 +38,9 @@ pub use status::{
     decode_file_req_ans_no_file, decode_file_status, decode_file_status_req_with_profile,
 };
 pub use transfers::{
-    decode_hashset_answer, decode_hashset_request, decode_request_parts_with_profile,
-    decode_sending_part,
+    decode_compressed_part_i64, decode_hashset_answer, decode_hashset_request,
+    decode_request_parts_i64, decode_request_parts_with_profile, decode_sending_part,
+    decode_sending_part_i64,
 };
 
 /// Read-only wire decoder for eD2K protocol frames.
@@ -275,9 +278,23 @@ impl Ed2kDecoder {
                     }
                 }
             }
+            (PR_ED2K, OP_REQUESTPARTS_I64) => {
+                let req = decode_request_parts_i64(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::RequestPartsI64(req))
+            }
             (PR_ED2K, OP_SENDINGPART) => {
                 let part = self.decode_sending_part(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::SendingPart(part))
+            }
+            (PR_ED2K, OP_SENDINGPART_I64) => {
+                let part =
+                    decode_sending_part_i64(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::SendingPartI64(part))
+            }
+            (_, OP_COMPRESSEDPART_I64) => {
+                let part =
+                    decode_compressed_part_i64(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::CompressedPartI64(part))
             }
             (PR_ED2K, OP_HASHSETREQUEST) => {
                 let req = self.decode_hashset_request(protocol, opcode, payload, HEADER_SIZE + 1)?;
@@ -287,7 +304,7 @@ impl Ed2kDecoder {
                 let ans = self.decode_hashset_answer(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::HashSetAnswer(ans))
             }
-            (PR_EMULE, OP_EMULE_INFO) => {
+            (PR_EMULE, OP_EMULE_INFO) | (PR_EMULE, OP_EMULE_INFO_ANSWER) => {
                 let info = self.decode_emule_info(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::EmuleInfo(info))
             }
@@ -485,6 +502,15 @@ impl Ed2kDecoder {
                     }
                 }
             }
+            (PR_ED2K, OP_REQUESTPARTS_I64) => {
+                let req = decode_request_parts_i64(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::RequestPartsI64(req))
+            }
             (PR_ED2K, OP_SENDINGPART) => {
                 let part = self.decode_sending_part(
                     packet.protocol,
@@ -493,6 +519,24 @@ impl Ed2kDecoder {
                     0,
                 )?;
                 Ok(Ed2kMessage::SendingPart(part))
+            }
+            (PR_ED2K, OP_SENDINGPART_I64) => {
+                let part = decode_sending_part_i64(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::SendingPartI64(part))
+            }
+            (_, OP_COMPRESSEDPART_I64) => {
+                let part = decode_compressed_part_i64(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::CompressedPartI64(part))
             }
             (PR_ED2K, OP_HASHSETREQUEST) => {
                 let req = self.decode_hashset_request(
@@ -512,7 +556,7 @@ impl Ed2kDecoder {
                 )?;
                 Ok(Ed2kMessage::HashSetAnswer(ans))
             }
-            (PR_EMULE, OP_EMULE_INFO) => {
+            (PR_EMULE, OP_EMULE_INFO) | (PR_EMULE, OP_EMULE_INFO_ANSWER) => {
                 let info = self.decode_emule_info(
                     packet.protocol,
                     packet.opcode,

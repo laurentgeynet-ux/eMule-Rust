@@ -234,6 +234,23 @@ pub const OP_KAD_FWTCPCHECK_ACK: u8 = 0xA8;
 /// Compressed data block payload (`0x40`).
 pub const OP_COMPRESSEDPART: u8 = 0x40;
 
+// ---------------------------------------------------------------------------
+// 64-bit (large file) transfer opcodes — eMule `*_I64` variants.
+// Wire layout replaces u32 offsets with u64 (opcodes.h).
+// ---------------------------------------------------------------------------
+
+/// Compressed data block with 64-bit start offset (`0xA1`,
+/// `<HASH 16><von 8><size 4><data size>`).
+pub const OP_COMPRESSEDPART_I64: u8 = 0xA1;
+
+/// Uncompressed data block with 64-bit offsets (`0xA2`,
+/// `<HASH 16><von 8><bis 8><data von-bis>`).
+pub const OP_SENDINGPART_I64: u8 = 0xA2;
+
+/// Block request with 64-bit offsets (`0xA3`,
+/// `<HASH 16><von[3] 8*3><bis[3] 8*3>`).
+pub const OP_REQUESTPARTS_I64: u8 = 0xA3;
+
 /// Returns a human-readable symbolic name for an opcode under a given protocol.
 pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
     match protocol {
@@ -269,6 +286,8 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_OUTOFPARTS => "OP_OUTOFPARTS",
             OP_REQFILENAME => "OP_REQFILENAME",
             OP_REQFILENAME_ANSWER => "OP_REQFILENAME_ANSWER",
+            OP_SENDINGPART_I64 => "OP_SENDINGPART_I64",
+            OP_REQUESTPARTS_I64 => "OP_REQUESTPARTS_I64",
             _ => "OP_UNKNOWN_ED2K",
         },
         super::protocol::PR_EMULE => match opcode {
@@ -288,6 +307,7 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
         },
         super::protocol::PR_EMULE_COMPRESSED => match opcode {
             OP_COMPRESSEDPART => "OP_COMPRESSEDPART",
+            OP_COMPRESSEDPART_I64 => "OP_COMPRESSEDPART_I64",
             OP_ANSWERSOURCES => "OP_ANSWERSOURCES",
             OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
             _ => "OP_UNKNOWN_COMPRESSED",

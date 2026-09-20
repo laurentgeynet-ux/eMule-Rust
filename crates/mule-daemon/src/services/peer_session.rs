@@ -576,6 +576,7 @@ impl PeerSessionManager {
         peer_supports_sx2: bool,
         peer_supports_aich: bool,
         peer_sec_ident: u8,
+        peer_ext_req: u8,
         downloads: Arc<Mutex<DownloadService>>,
         cancel_token: mule_network_policy::CancellationToken,
     ) -> Result<PeerSessionSnapshot, DaemonError> {
@@ -658,6 +659,7 @@ impl PeerSessionManager {
                 peer_supports_sx2,
                 peer_supports_aich,
                 peer_sec_ident,
+                peer_ext_req,
                 Arc::clone(&downloads),
                 cancel_token,
                 Arc::clone(&inner_clone),

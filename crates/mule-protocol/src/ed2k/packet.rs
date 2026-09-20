@@ -355,6 +355,77 @@ impl Ed2kBlockRange {
     }
 }
 
+/// A contiguous byte range with 64-bit offsets (`OP_REQUESTPARTS_I64` family).
+///
+/// eMule `0xA3` wire layout: `<HASH 16><start[3] u64><end[3] u64>` (64 bytes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ed2kBlockRange64 {
+    /// Start byte offset.
+    pub start: u64,
+    /// End byte offset (exclusive).
+    pub end: u64,
+}
+
+impl Ed2kBlockRange64 {
+    /// Creates a new `Ed2kBlockRange64`.
+    pub fn new(start: u64, end: u64) -> Self {
+        Self { start, end }
+    }
+
+    /// Length of the range in bytes.
+    #[inline]
+    pub fn len(&self) -> u64 {
+        self.end.saturating_sub(self.start)
+    }
+
+    /// Returns true if start >= end.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.start >= self.end
+    }
+
+    /// Returns the canonical wire bounds `(start, end)` (exclusive end).
+    #[inline]
+    pub fn to_wire_bounds(&self) -> (u64, u64) {
+        (self.start, self.end)
+    }
+}
+
+/// 64-bit block request (`OP_REQUESTPARTS_I64`, `0xA3`) for files >4 GiB.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kRequestPartsI64 {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// Requested ranges (up to 3 in standard eMule wire format).
+    pub ranges: Vec<Ed2kBlockRange64>,
+}
+
+/// 64-bit data payload delivery (`OP_SENDINGPART_I64`, `0xA2`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kSendingPartI64 {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// Block start byte offset.
+    pub start_offset: u64,
+    /// Block end byte offset.
+    pub end_offset: u64,
+    /// Raw block data bytes.
+    pub data: bytes::Bytes,
+}
+
+/// 64-bit zlib-compressed block delivery (`OP_COMPRESSEDPART_I64`, `0xA1`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kCompressedPartI64 {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// Uncompressed stream start offset.
+    pub start_offset: u64,
+    /// Compressed payload size.
+    pub compressed_size: u32,
+    /// Zlib-compressed block data.
+    pub data: bytes::Bytes,
+}
+
 /// Request for file part blocks (`0x4B`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ed2kRequestParts {
@@ -543,8 +614,14 @@ pub enum Ed2kMessage {
     FileReqAnsNoFile(Ed2kFileReqAnsNoFile),
     /// Request for block data.
     RequestParts(Ed2kRequestParts),
+    /// Request for block data with 64-bit offsets (`OP_REQUESTPARTS_I64`).
+    RequestPartsI64(Ed2kRequestPartsI64),
     /// Delivery of block data.
     SendingPart(Ed2kSendingPart),
+    /// Delivery of block data with 64-bit offsets (`OP_SENDINGPART_I64`).
+    SendingPartI64(Ed2kSendingPartI64),
+    /// Delivery of zlib-compressed block data with 64-bit offset (`OP_COMPRESSEDPART_I64`).
+    CompressedPartI64(Ed2kCompressedPartI64),
     /// Request for the per-part hashset.
     HashSetReq(Ed2kHashSetReq),
     /// Per-part hashset answer.

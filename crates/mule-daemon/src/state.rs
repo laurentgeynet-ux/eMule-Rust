@@ -115,6 +115,7 @@ impl AppState {
         kad.udp().set_buddy_tcp_info(config.ed2k_port, connect_opts);
         inbound_listener.set_kad_udp(Arc::clone(kad.udp()));
         inbound_listener.set_kad(Arc::clone(&kad));
+        inbound_listener.set_kad_udp_port(config.kad_port);
         let client_udp = crate::services::ClientUdpService::new();
         client_udp.set_downloads(Arc::clone(&dl_arc));
         client_udp.set_upload_manager(inbound_listener.upload_manager().clone());

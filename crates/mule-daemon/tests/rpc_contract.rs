@@ -107,11 +107,14 @@ async fn test_full_rpc_contract_and_event_streaming() {
         .await
         .unwrap();
 
-    // Might receive either the response or the broadcast event
+    // Might receive the response plus lifecycle/update events in any order
     let mut add_resp: Option<Value> = None;
     let mut add_event: Option<Value> = None;
 
-    for _ in 0..2 {
+    for _ in 0..8 {
+        if add_resp.is_some() && add_event.is_some() {
+            break;
+        }
         let msg = read.next().await.unwrap().unwrap();
         let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
         if val.get("id").is_some() {
@@ -169,7 +172,10 @@ async fn test_full_rpc_contract_and_event_streaming() {
         let mut inject_resp: Option<Value> = None;
         let mut inject_event: Option<Value> = None;
 
-        for _ in 0..2 {
+        for _ in 0..8 {
+            if inject_resp.is_some() && inject_event.is_some() {
+                break;
+            }
             let msg = read.next().await.unwrap().unwrap();
             let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
             if val.get("id").is_some() {
@@ -200,7 +206,7 @@ async fn test_full_rpc_contract_and_event_streaming() {
         .unwrap();
 
     let mut pause_resp = None;
-    for _ in 0..2 {
+    for _ in 0..8 {
         let msg = read.next().await.unwrap().unwrap();
         let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
         if val.get("id").is_some() {
@@ -223,7 +229,7 @@ async fn test_full_rpc_contract_and_event_streaming() {
         .unwrap();
 
     let mut stop_resp = None;
-    for _ in 0..2 {
+    for _ in 0..8 {
         let msg = read.next().await.unwrap().unwrap();
         let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
         if val.get("id").is_some() {

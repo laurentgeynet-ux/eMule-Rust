@@ -2,9 +2,10 @@
 
 use super::packet::{Ed2kEmuleInfo, Ed2kHello, Ed2kHelloAnswer};
 use super::tags::{
-    Ed2kTag, RawTag, TagName, TagValue, TAG_SPECIAL_EMULE_MISCOPTIONS1,
-    TAG_SPECIAL_EMULE_MISCOPTIONS2, TAG_SPECIAL_EMULE_UDPPORTS, TAG_SPECIAL_EMULE_VERSION,
-    TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_MISCOPTIONS2, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+    Ed2kTag, RawTag, TagName, TagValue, TAG_SPECIAL_CT_EMULE_VERSION,
+    TAG_SPECIAL_EMULE_MISCOPTIONS1, TAG_SPECIAL_EMULE_MISCOPTIONS2, TAG_SPECIAL_EMULE_UDPPORTS,
+    TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_MISCOPTIONS2,
+    TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
 };
 
 /// Consolidated information and capabilities for a connected eD2K remote peer.
@@ -95,7 +96,10 @@ impl Ed2kPeerInfo {
                         version = Some(*v);
                     }
                 }
-                TagName::Id(TAG_SPECIAL_EMULE_VERSION) => {
+                // eMule clients announce their version under CT_EMULE_VERSION
+                // (0xFB); the legacy 0x5A id (SO_EMULEVERSION) is kept as a
+                // fallback for older dialects.
+                TagName::Id(TAG_SPECIAL_EMULE_VERSION | TAG_SPECIAL_CT_EMULE_VERSION) => {
                     if let TagValue::UInt32(v) = &tag.value {
                         emule_version = Some(*v);
                     }
@@ -154,6 +158,64 @@ impl Ed2kPeerInfo {
     /// Returns true if this peer identified itself as an eMule client.
     pub fn is_emule(&self) -> bool {
         self.emule_version.is_some()
+    }
+
+    /// Client software identifier from the high byte of `CT_EMULE_VERSION`
+    /// (eMule `CompatibleClientID`: 0 = eMule, 1 = cDonkey, 2 = xMule/lxMule,
+    /// 3 = aMule, 4 = Shareaza, 5 = eMule Plus, 6 = HydraNode).
+    pub fn software_id(&self) -> Option<u8> {
+        self.emule_version.map(|v| (v >> 24) as u8)
+    }
+
+    /// Human-readable client software name derived from `software_id`.
+    pub fn software_name(&self) -> &'static str {
+        match self.software_id() {
+            Some(0) => "eMule",
+            Some(1) => "cDonkey",
+            Some(2) => "xMule",
+            Some(3) => "aMule",
+            Some(4) => "Shareaza",
+            Some(5) => "eMule Plus",
+            Some(6) => "HydraNode",
+            Some(0xAA) => "eMule-compat",
+            Some(_) => "unknown",
+            None => "ed2k",
+        }
+    }
+
+    /// Decoded eMule-scale version string from the low 24 bits of
+    /// `CT_EMULE_VERSION` (`(mjr<<17)|(min<<10)|(upd<<7)`), e.g. `"0.72a"`.
+    pub fn emule_version_string(&self) -> Option<String> {
+        self.emule_version.map(|v| {
+            let v = v & 0x00FF_FFFF;
+            let mjr = (v >> 17) & 0x7F;
+            let min = (v >> 10) & 0x7F;
+            let upd = (v >> 7) & 0x07;
+            format!("{mjr}.{min}{}", (b'a' + upd as u8) as char)
+        })
+    }
+
+    /// eMule `m_byExtendedRequestsVer` — CT_EMULE_MISCOPTIONS1 bits 8-11
+    /// (0 = none, 1 = extended requests, 2 = 64-bit large-file requests).
+    pub fn extended_requests_version(&self) -> u8 {
+        self.misc_options1
+            .map(|m| ((m >> 8) & 0x0F) as u8)
+            .unwrap_or(0)
+    }
+
+    /// Kad protocol version announced in CT_EMULE_MISCOPTIONS2 bits 0-4.
+    pub fn kad_version(&self) -> u8 {
+        self.misc_options2
+            .map(|m| (m & 0x0F) as u8)
+            .unwrap_or(0)
+    }
+
+    /// Returns true if this peer announced >4 GiB file support
+    /// (bit 4 of misc_options2, eMule `m_fLargeFiles`).
+    pub fn supports_large_files(&self) -> bool {
+        self.misc_options2
+            .map(|m| (m & (1 << 4)) != 0)
+            .unwrap_or(false)
     }
 
     /// Returns true if compression capability was announced in OP_EMULEINFO

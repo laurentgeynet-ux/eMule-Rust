@@ -11,10 +11,10 @@ use tracing::info;
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatus, Ed2kRequestParts,
-    InFlightBlock, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CANCELTRANSFER, OP_COMPRESSEDPART,
-    OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SENDINGPART,
-    PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
+    Ed2kBlockRange64, Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatus,
+    Ed2kRequestParts, Ed2kRequestPartsI64, InFlightBlock, OP_ANSWERSOURCES, OP_ANSWERSOURCES2,
+    OP_CANCELTRANSFER, OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES,
+    OP_REQUESTSOURCES2, OP_SENDINGPART, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
 };
 use mule_protocol::framing::PacketCodec;
 
@@ -26,8 +26,43 @@ use super::types::{
 use crate::services::downloads::DownloadService;
 use crate::services::obfuscation_stream::ObfuscatedStream;
 
-pub const OP_COMPRESSEDPART_I64: u8 = 0xA1;
-pub const OP_SENDINGPART_I64: u8 = 0xA2;
+pub use mule_protocol::ed2k::{OP_COMPRESSEDPART_I64, OP_SENDINGPART_I64};
+
+/// Builds a block-request packet for `range`, choosing the 64-bit wire format
+/// (`OP_REQUESTPARTS_I64`) when offsets exceed the 32-bit boundary. I64
+/// requests require the peer's `ExtendedRequestsVer >= 2` (eMule
+/// `GetExtendedRequestsVersion`); returns `None` when the peer cannot serve
+/// the requested range.
+fn encode_block_request(
+    encoder: &Ed2kEncoder,
+    file_hash: [u8; 16],
+    range: Ed2kBlockRange64,
+    peer_ext_req: u8,
+) -> Option<mule_protocol::framing::RawPacket> {
+    if range.end <= u32::MAX as u64 {
+        encoder
+            .encode_request_parts(&Ed2kRequestParts::single(
+                file_hash,
+                range.start as u32,
+                range.end as u32,
+            ))
+            .ok()
+    } else if peer_ext_req >= 2 {
+        encoder
+            .encode_request_parts_i64(&Ed2kRequestPartsI64 {
+                file_hash,
+                ranges: vec![range],
+            })
+            .ok()
+    } else {
+        tracing::warn!(
+            "Block range [{}, {}) exceeds 4 GiB but peer does not support extended requests (ext_req={peer_ext_req}) — cannot request",
+            range.start,
+            range.end
+        );
+        None
+    }
+}
 
 async fn sync_transfer_rates(
     inner: &Arc<Mutex<SwarmInnerState>>,
@@ -75,6 +110,7 @@ pub(crate) async fn run_transfer_loop(
     address_str: &str,
     file_status: Ed2kFileStatus,
     peer_supports_aich: bool,
+    peer_ext_req: u8,
     timeouts: &PeerTimeouts,
     cancel_token: &mule_network_policy::CancellationToken,
     inner: &Arc<Mutex<SwarmInnerState>>,
@@ -134,7 +170,7 @@ pub(crate) async fn run_transfer_loop(
     let planned_block_opt = {
         let mut g = inner.lock().await;
         let block_opt = sequencer
-            .plan_next_block_for_peer(address_str, &completed_ranges, &g.in_flight_blocks, now_ms)
+            .plan_next_block_for_peer64(address_str, &completed_ranges, &g.in_flight_blocks, now_ms)
             .map_err(|e| {
                 PeerError::new(
                     PeerFailureReason::InvalidRange,
@@ -146,8 +182,8 @@ pub(crate) async fn run_transfer_loop(
             let ifb = InFlightBlock::new(
                 address_str.to_string(),
                 part_idx,
-                block.start as u64,
-                block.end as u64,
+                block.start,
+                block.end,
                 now_ms,
                 30_000,
             );
@@ -177,18 +213,16 @@ pub(crate) async fn run_transfer_loop(
         }
     };
 
-    // Send OP_REQUESTPARTS
-    let req_parts = Ed2kRequestParts {
-        file_hash: dl_hash_bytes,
-        ranges: vec![req_range],
-    };
-
-    let req_pkt = encoder.encode_request_parts(&req_parts).map_err(|e| {
-        PeerError::new(
-            PeerFailureReason::CorruptedData,
-            format!("Failed to encode OP_REQUESTPARTS: {e}"),
-        )
-    })?;
+    // Send OP_REQUESTPARTS (or OP_REQUESTPARTS_I64 for >4 GiB files when the
+    // peer announced extended requests v2, eMule GetExtendedRequestsVersion).
+    let req_pkt = encode_block_request(&encoder, dl_hash_bytes, req_range, peer_ext_req)
+        .ok_or_else(|| {
+            PeerError::new(
+                PeerFailureReason::CorruptedData,
+                "Failed to encode OP_REQUESTPARTS (unsupported range or peer capability)"
+                    .to_string(),
+            )
+        })?;
 
     out_wire.clear();
     out_wire.push(req_pkt.protocol);
@@ -229,7 +263,7 @@ pub(crate) async fn run_transfer_loop(
     let mut last_rate_check = std::time::Instant::now();
     let mut bytes_since_rate_check = 0u64;
     let mut decompressor: Option<Decompress> = None;
-    let mut decompressed_offset = req_range.start as u64;
+    let mut decompressed_offset = req_range.start;
     let mut current_part_idx = part_idx;
     let mut current_req_range = req_range;
     let mut last_dl_progress_log = std::time::Instant::now();
@@ -332,24 +366,33 @@ pub(crate) async fn run_transfer_loop(
                                 continue;
                             }
                             let mut block_finished = false;
-                            if packet.protocol == PR_ED2K && packet.opcode == OP_SENDINGPART {
+                            if packet.protocol == PR_ED2K
+                                && (packet.opcode == OP_SENDINGPART || packet.opcode == OP_SENDINGPART_I64)
+                            {
                                 first_data_received = true;
-                                let part = decoder.decode_sending_part(packet.protocol, packet.opcode, &packet.payload, 0)
-                                    .map_err(|e| PeerError::new(PeerFailureReason::CorruptedData, format!("Malformed OP_SENDINGPART: {e}")))?;
+                                let (part_hash, part_start, part_end, part_data) = if packet.opcode == OP_SENDINGPART_I64 {
+                                    let part = mule_protocol::ed2k::decoder::decode_sending_part_i64(packet.protocol, packet.opcode, &packet.payload, 0)
+                                        .map_err(|e| PeerError::new(PeerFailureReason::CorruptedData, format!("Malformed OP_SENDINGPART_I64: {e}")))?;
+                                    (part.file_hash, part.start_offset, part.end_offset, part.data)
+                                } else {
+                                    let part = decoder.decode_sending_part(packet.protocol, packet.opcode, &packet.payload, 0)
+                                        .map_err(|e| PeerError::new(PeerFailureReason::CorruptedData, format!("Malformed OP_SENDINGPART: {e}")))?;
+                                    (part.file_hash, part.start_offset as u64, part.end_offset as u64, part.data)
+                                };
 
-                                if part.file_hash != dl_hash_bytes {
+                                if part_hash != dl_hash_bytes {
                                     return Err(PeerError::new(PeerFailureReason::HashMismatch, "OP_SENDINGPART returned mismatched file hash"));
                                 }
 
-                                if part.start_offset < current_req_range.start || part.end_offset > current_req_range.end || part.start_offset >= part.end_offset {
-                                    return Err(PeerError::new(PeerFailureReason::InvalidRange, format!("OP_SENDINGPART range out of bounds: [{}, {}) vs [{}, {})", part.start_offset, part.end_offset, current_req_range.start, current_req_range.end)));
+                                if part_start < current_req_range.start || part_end > current_req_range.end || part_start >= part_end {
+                                    return Err(PeerError::new(PeerFailureReason::InvalidRange, format!("OP_SENDINGPART range out of bounds: [{}, {}) vs [{}, {})", part_start, part_end, current_req_range.start, current_req_range.end)));
                                 }
 
-                                if part.end_offset >= current_req_range.end {
+                                if part_end >= current_req_range.end {
                                     block_finished = true;
                                 }
 
-                                let data_len = part.data.len() as u64;
+                                let data_len = part_data.len() as u64;
                                 // Global download bandwidth scheduler: pace
                                 // received data through the shared token bucket.
                                 if let Some(rl) = rate_limiters {
@@ -372,8 +415,8 @@ pub(crate) async fn run_transfer_loop(
                                     if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
                                         if let Ok(snap) = dl_svc.inject_range(
                                             &dl.id,
-                                            part.start_offset as u64,
-                                            &part.data,
+                                            part_start,
+                                            &part_data,
                                         ) {
                                             let s = snap.status.to_lowercase();
                                             s == "verifying" || s == "completed" || snap.progress >= 1.0
@@ -531,7 +574,7 @@ pub(crate) async fn run_transfer_loop(
 
                                     match res {
                                         Ok(Status::StreamEnd) => {
-                                            if decompressed_offset < current_req_range.end as u64 {
+                                            if decompressed_offset < current_req_range.end {
                                                 tracing::warn!(
                                                     "Peer {target_addr}: Zlib stream ended at offset {} before reaching sub-block boundary {}",
                                                     decompressed_offset,
@@ -544,11 +587,11 @@ pub(crate) async fn run_transfer_loop(
                                                 );
                                             }
                                             decompressor = None;
-                                            block_finished = decompressed_offset >= current_req_range.end as u64;
+                                            block_finished = decompressed_offset >= current_req_range.end;
                                             break;
                                         }
                                         Ok(Status::Ok) => {
-                                            if decompressed_offset >= current_req_range.end as u64 {
+                                            if decompressed_offset >= current_req_range.end {
                                                 tracing::debug!(
                                                     "Peer {target_addr}: sub-block reached requested boundary {}",
                                                     decompressed_offset
@@ -629,7 +672,7 @@ pub(crate) async fn run_transfer_loop(
                             if block_finished {
                                 {
                                     let mut g = inner.lock().await;
-                                    g.in_flight_blocks.retain(|b| !(b.peer_id == address_str && b.part_index == current_part_idx && b.start == current_req_range.start as u64));
+                                    g.in_flight_blocks.retain(|b| !(b.peer_id == address_str && b.part_index == current_part_idx && b.start == current_req_range.start));
                                 }
 
                                 let completed = {
@@ -644,13 +687,13 @@ pub(crate) async fn run_transfer_loop(
 
                                 let next_block = {
                                     let mut g = inner.lock().await;
-                                    match sequencer.plan_next_block_for_peer(address_str, &completed, &g.in_flight_blocks, now_ms) {
+                                    match sequencer.plan_next_block_for_peer64(address_str, &completed, &g.in_flight_blocks, now_ms) {
                                         Ok(Some((next_p, next_r))) => {
                                             let ifb = InFlightBlock::new(
                                                 address_str.to_string(),
                                                 next_p,
-                                                next_r.start as u64,
-                                                next_r.end as u64,
+                                                next_r.start,
+                                                next_r.end,
                                                 now_ms,
                                                 30_000,
                                             );
@@ -665,13 +708,9 @@ pub(crate) async fn run_transfer_loop(
                                     current_part_idx = next_p;
                                     current_req_range = next_r;
                                     decompressor = None;
-                                    decompressed_offset = next_r.start as u64;
+                                    decompressed_offset = next_r.start;
 
-                                    let req_parts = Ed2kRequestParts {
-                                        file_hash: dl_hash_bytes,
-                                        ranges: vec![next_r],
-                                    };
-                                    if let Ok(req_pkt) = encoder.encode_request_parts(&req_parts) {
+                                    if let Some(req_pkt) = encode_block_request(&encoder, dl_hash_bytes, next_r, peer_ext_req) {
                                         let mut out_wire = Vec::with_capacity(6 + req_pkt.payload.len());
                                         out_wire.push(req_pkt.protocol);
                                         out_wire.extend_from_slice(&(req_pkt.frame_len() as u32).to_le_bytes());

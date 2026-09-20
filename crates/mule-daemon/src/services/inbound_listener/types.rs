@@ -85,4 +85,8 @@ pub struct InboundListenerService {
     /// Kad service — inbound peers advertising a Kad UDP port can seed a
     /// routing-table bootstrap (eMule "bootstrap from clients").
     pub(crate) kad: Arc<std::sync::RwLock<Option<Arc<crate::services::kad::KadService>>>>,
+
+    /// Our Kad UDP port, announced in `CT_EMULE_UDPPORTS` (high word) and in
+    /// `OP_EMULEINFO` `ET_UDPPORT` on inbound handshake answers.
+    pub(crate) kad_udp_port: u16,
 }

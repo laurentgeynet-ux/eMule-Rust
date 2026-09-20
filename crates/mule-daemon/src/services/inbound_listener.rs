@@ -55,7 +55,13 @@ impl InboundListenerService {
             client_udp: Arc::new(std::sync::RwLock::new(None)),
             kad_udp: Arc::new(std::sync::RwLock::new(None)),
             kad: Arc::new(std::sync::RwLock::new(None)),
+            kad_udp_port: 0,
         }
+    }
+
+    /// Sets the Kad UDP port announced to inbound peers in handshake answers.
+    pub fn set_kad_udp_port(&mut self, port: u16) {
+        self.kad_udp_port = port;
     }
 
     /// Injects the client UDP service (inbound UDP version bookkeeping).

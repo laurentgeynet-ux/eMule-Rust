@@ -116,8 +116,62 @@ impl InboundListenerService {
         let callback_hello: Option<mule_protocol::ed2k::Ed2kHello>;
         match handshake_res {
             Ok(Ok(hello)) => {
+                let peer_info = mule_protocol::ed2k::Ed2kPeerInfo::from_hello(&hello);
+                tracing::info!(
+                    "Inbound peer {remote_str} handshake: software={} version={:?} emule_version={:?} client_id={} misc1={:?} misc2={:?} \
+                     caps: sx={} sx2={} aich={} sec_ident={} crypt(sup/req/reqd)={}/{}/{} udp_ver={} udp_port={:?} ext_req={} kad_ver={} large_files={} compression={} \
+                     unknown_tags={}",
+                    peer_info.software_name(),
+                    peer_info.version,
+                    peer_info.emule_version_string(),
+                    peer_info.client_id,
+                    peer_info.misc_options1.map(|m| format!("0x{m:08X}")),
+                    peer_info.misc_options2.map(|m| format!("0x{m:08X}")),
+                    peer_info.supports_source_exchange(),
+                    peer_info.supports_source_exchange2(),
+                    peer_info.supports_aich(),
+                    peer_info.secure_ident_support(),
+                    peer_info.supports_crypt_layer(),
+                    peer_info.requests_crypt_layer(),
+                    peer_info.requires_crypt_layer(),
+                    peer_info.udp_version(),
+                    peer_info.emule_udp_port,
+                    peer_info.extended_requests_version(),
+                    peer_info.kad_version(),
+                    peer_info.supports_large_files(),
+                    peer_info.has_compression_capability(),
+                    peer_info.unknown_tags.len()
+                );
                 callback_hello = Some(hello);
                 let mut tags = Vec::new();
+
+                // Mirror the outbound OP_HELLO tag set: eMule expects name,
+                // ed2k version, UDP ports and eMule version in HELLOANSWER too.
+                use mule_protocol::ed2k::tags::{
+                    Ed2kTag, TagName, TagValue, TAG_SPECIAL_CT_EMULE_VERSION,
+                    TAG_SPECIAL_EMULE_MISCOPTIONS1, TAG_SPECIAL_EMULE_MISCOPTIONS2,
+                    TAG_SPECIAL_EMULE_UDPPORTS, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+                };
+                tags.push(Ed2kTag {
+                    name: TagName::Id(TAG_SPECIAL_NAME),
+                    value: TagValue::String("Emule-Sion".to_string()),
+                });
+                tags.push(Ed2kTag {
+                    name: TagName::Id(TAG_SPECIAL_VERSION),
+                    value: TagValue::UInt32(0x3C),
+                });
+                let udp_ports =
+                    ((self.kad_udp_port as u32) << 16) | (actual_listen_addr.port() as u32);
+                tags.push(Ed2kTag {
+                    name: TagName::Id(TAG_SPECIAL_EMULE_UDPPORTS),
+                    value: TagValue::UInt32(udp_ports),
+                });
+                // Announced as eMule 0.70a (software ID 0, CT_EMULE_VERSION).
+                tags.push(Ed2kTag {
+                    name: TagName::Id(TAG_SPECIAL_CT_EMULE_VERSION),
+                    value: TagValue::UInt32(70 << 10),
+                });
+
                 // eMule MiscOptions1 — SecIdent=3 (v1|v2) in bits 16-19 when a
                 // usable RSA key is loaded, mirroring the outbound HELLO.
                 let sec_ident: u32 = if self.sui_pubkey_der.is_some() { 3 } else { 0 };
@@ -127,31 +181,27 @@ impl InboundListenerService {
                     | (1 << 20)
                     | ((sec_ident & 0x0F) << 16)
                     | (4 << 12)
-                    | (0 << 8)
+                    | (2 << 8)
                     | (1 << 4)
-                    | (0 << 1)
                     | 1;
-                tags.push(mule_protocol::ed2k::tags::Ed2kTag {
-                    name: mule_protocol::ed2k::tags::TagName::Id(
-                        mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS1,
-                    ),
-                    value: mule_protocol::ed2k::tags::TagValue::UInt32(misc1),
+                tags.push(Ed2kTag {
+                    name: TagName::Id(TAG_SPECIAL_EMULE_MISCOPTIONS1),
+                    value: TagValue::UInt32(misc1),
                 });
-                let mut misc2: u32 = 0;
+                // MiscOptions2 — same layout as the outbound HELLO:
+                // SrcExch2<<10 | CryptReq<<9 | CryptWants<<8 | CryptSup<<7 |
+                // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0 (6).
+                let mut misc2: u32 = (1 << 10) | (1 << 5) | (1 << 4) | 6;
                 if self.obfuscation_enabled {
                     misc2 |= (1 << 7) | (1 << 8); // CryptLayerSupported | CryptLayerRequested
                 }
                 if self.obfuscation_required {
                     misc2 |= 1 << 9; // CryptLayerRequires
                 }
-                if misc2 > 0 {
-                    tags.push(mule_protocol::ed2k::tags::Ed2kTag {
-                        name: mule_protocol::ed2k::tags::TagName::Id(
-                            mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS2,
-                        ),
-                        value: mule_protocol::ed2k::tags::TagValue::UInt32(misc2),
-                    });
-                }
+                tags.push(Ed2kTag {
+                    name: TagName::Id(TAG_SPECIAL_EMULE_MISCOPTIONS2),
+                    value: TagValue::UInt32(misc2),
+                });
 
                 let ans = Ed2kHelloAnswer {
                     user_hash: self.user_hash,
@@ -169,6 +219,21 @@ impl InboundListenerService {
                     out.push(ans_pkt.opcode);
                     out.extend_from_slice(&ans_pkt.payload);
                     let _ = stream.write_all(&out).await;
+
+                    // eMule ProcessHelloPacket sends OP_EMULEINFOANSWER right
+                    // after the hello answer (SendMuleInfoPacket(true)).
+                    let info = crate::services::peer_session::handshake::build_emule_info(
+                        self.kad_udp_port,
+                        sec_ident as u8,
+                    );
+                    if let Ok(info_pkt) = encoder.encode_emule_info_answer(&info) {
+                        let mut out = Vec::with_capacity(6 + info_pkt.payload.len());
+                        out.push(info_pkt.protocol);
+                        out.extend_from_slice(&(info_pkt.frame_len() as u32).to_le_bytes());
+                        out.push(info_pkt.opcode);
+                        out.extend_from_slice(&info_pkt.payload);
+                        let _ = stream.write_all(&out).await;
+                    }
                 }
             }
             _ => {
@@ -257,6 +322,7 @@ impl InboundListenerService {
                     peer_info.supports_source_exchange2(),
                     peer_info.supports_aich(),
                     peer_info.secure_ident_support(),
+                    peer_info.extended_requests_version(),
                     self.downloads.clone(),
                     cancel_token.clone(),
                 )
@@ -307,6 +373,10 @@ impl InboundListenerService {
                     peer_info
                         .as_ref()
                         .map(|p| p.secure_ident_support())
+                        .unwrap_or(0),
+                    peer_info
+                        .as_ref()
+                        .map(|p| p.extended_requests_version())
                         .unwrap_or(0),
                     self.downloads.clone(),
                     cancel_token.clone(),

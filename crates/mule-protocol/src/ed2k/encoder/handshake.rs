@@ -4,7 +4,9 @@ use bytes::Bytes;
 
 use super::super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::super::limits::Ed2kLimits;
-use super::super::opcodes::{OP_EMULE_INFO, OP_HELLO, OP_HELLO_ANSWER};
+use super::super::opcodes::{
+    OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_HELLO, OP_HELLO_ANSWER,
+};
 use super::super::packet::{Ed2kEmuleInfo, Ed2kHello, Ed2kHelloAnswer};
 use super::super::profile::Ed2kCompatibilityProfile;
 use super::super::protocol::{PR_ED2K, PR_EMULE};
@@ -121,10 +123,29 @@ pub fn encode_emule_info(
     limits: &Ed2kLimits,
     info: &Ed2kEmuleInfo,
 ) -> Result<RawPacket, Ed2kEncodeError> {
+    encode_emule_info_with_opcode(limits, info, OP_EMULE_INFO)
+}
+
+/// Encodes an `OP_EMULE_INFO_ANSWER` (`0xC5 0x02`) payload.
+///
+/// eMule `CUpDownClient::SendMuleInfoPacket(true)` sends the identical tag
+/// payload as `OP_EMULE_INFO` under the answer opcode.
+pub fn encode_emule_info_answer(
+    limits: &Ed2kLimits,
+    info: &Ed2kEmuleInfo,
+) -> Result<RawPacket, Ed2kEncodeError> {
+    encode_emule_info_with_opcode(limits, info, OP_EMULE_INFO_ANSWER)
+}
+
+fn encode_emule_info_with_opcode(
+    limits: &Ed2kLimits,
+    info: &Ed2kEmuleInfo,
+    opcode: u8,
+) -> Result<RawPacket, Ed2kEncodeError> {
     let total_tags = info.tags.len() + info.unknown_tags.len();
     if total_tags > limits.max_tags {
         return Err(Ed2kEncodeError::new(
-            OP_EMULE_INFO,
+            opcode,
             "emule_info_tag_count",
             Ed2kErrorKind::TooManyTags {
                 count: total_tags,
@@ -139,17 +160,17 @@ pub fn encode_emule_info(
     payload.extend_from_slice(&(total_tags as u32).to_le_bytes());
 
     for tag in &info.tags {
-        encode_tag(limits, OP_EMULE_INFO, tag, &mut payload)?;
+        encode_tag(limits, opcode, tag, &mut payload)?;
     }
     for raw in &info.unknown_tags {
-        encode_raw_tag(limits, OP_EMULE_INFO, raw, &mut payload)?;
+        encode_raw_tag(limits, opcode, raw, &mut payload)?;
     }
 
     let frame_len = 1 + payload.len();
-    let max_frame = limits.max_frame_for_opcode(OP_EMULE_INFO);
+    let max_frame = limits.max_frame_for_opcode(opcode);
     if frame_len > max_frame {
         return Err(Ed2kEncodeError::new(
-            OP_EMULE_INFO,
+            opcode,
             "emule_info_frame_len",
             Ed2kErrorKind::FrameTooLarge {
                 size: frame_len,
@@ -158,9 +179,5 @@ pub fn encode_emule_info(
         ));
     }
 
-    Ok(RawPacket::new(
-        PR_EMULE,
-        OP_EMULE_INFO,
-        Bytes::from(payload),
-    ))
+    Ok(RawPacket::new(PR_EMULE, opcode, Bytes::from(payload)))
 }

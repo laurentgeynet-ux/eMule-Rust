@@ -7,8 +7,9 @@ use super::limits::Ed2kLimits;
 use super::packet::{
     Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
     Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq,
-    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
-    Ed2kSendingPart, Ed2kSignature,
+    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey,
+    Ed2kRequestParts, Ed2kRequestPartsI64, Ed2kSecIdentState, Ed2kSendingPart,
+    Ed2kSendingPartI64, Ed2kSignature,
 };
 use super::profile::Ed2kCompatibilityProfile;
 use super::tags::{Ed2kTag, RawTag, TagName};
@@ -29,13 +30,16 @@ pub mod transfers;
 pub use aich::{
     encode_aich_answer, encode_aich_file_hash_req, encode_aich_file_hash_res, encode_aich_request,
 };
-pub use handshake::{encode_emule_info, encode_hello, encode_hello_answer};
+pub use handshake::{
+    encode_emule_info, encode_emule_info_answer, encode_hello, encode_hello_answer,
+};
 pub use security::{encode_public_key, encode_secident_state, encode_signature};
 pub use tags::{encode_raw_tag, encode_tag, encode_tag_name};
 pub use transfers::{
     encode_file_req_ans_no_file, encode_file_status, encode_file_status_req,
     encode_file_status_req_with_opcode, encode_hashset_answer, encode_hashset_request,
-    encode_request_parts, encode_request_parts_with_opcode, encode_sending_part,
+    encode_compressed_part_i64, encode_request_parts, encode_request_parts_i64,
+    encode_request_parts_with_opcode, encode_sending_part, encode_sending_part_i64,
 };
 
 /// Deterministic wire encoder for historical eD2K protocol messages.
@@ -167,12 +171,28 @@ impl Ed2kEncoder {
         encode_request_parts_with_opcode(&self.limits, req, opcode)
     }
 
+    /// Encodes an `Ed2kRequestPartsI64` message (`OP_REQUESTPARTS_I64`, `0xA3`).
+    pub fn encode_request_parts_i64(
+        &self,
+        req: &Ed2kRequestPartsI64,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_request_parts_i64(&self.limits, req)
+    }
+
     /// Encodes an `Ed2kSendingPart` message (`0x46`).
     pub fn encode_sending_part(
         &self,
         part: &Ed2kSendingPart,
     ) -> Result<RawPacket, Ed2kEncodeError> {
         encode_sending_part(&self.limits, part)
+    }
+
+    /// Encodes an `Ed2kSendingPartI64` message (`OP_SENDINGPART_I64`, `0xA2`).
+    pub fn encode_sending_part_i64(
+        &self,
+        part: &Ed2kSendingPartI64,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_sending_part_i64(&self.limits, part)
     }
 
     /// Encodes an `Ed2kHashSetReq` message (`0x51`).
@@ -222,6 +242,14 @@ impl Ed2kEncoder {
         encode_emule_info(&self.limits, info)
     }
 
+    /// Encodes an `OP_EMULE_INFO_ANSWER` (`0xC5 0x02`) payload.
+    pub fn encode_emule_info_answer(
+        &self,
+        info: &Ed2kEmuleInfo,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_emule_info_answer(&self.limits, info)
+    }
+
     /// Encodes an `OP_PUBLICKEY` (`0x85`) message into a `RawPacket`.
     pub fn encode_public_key(&self, key: &Ed2kPublicKey) -> Result<RawPacket, Ed2kEncodeError> {
         encode_public_key(&self.limits, key)
@@ -250,7 +278,14 @@ impl Ed2kEncoder {
             Ed2kMessage::FileStatus(status) => self.encode_file_status(status),
             Ed2kMessage::FileReqAnsNoFile(ans) => self.encode_file_req_ans_no_file(ans),
             Ed2kMessage::RequestParts(req) => self.encode_request_parts(req),
+            Ed2kMessage::RequestPartsI64(req) => {
+                encode_request_parts_i64(&self.limits, req)
+            }
             Ed2kMessage::SendingPart(part) => self.encode_sending_part(part),
+            Ed2kMessage::SendingPartI64(part) => encode_sending_part_i64(&self.limits, part),
+            Ed2kMessage::CompressedPartI64(part) => {
+                encode_compressed_part_i64(&self.limits, part)
+            }
             Ed2kMessage::HashSetReq(req) => self.encode_hashset_request(req),
             Ed2kMessage::HashSetAnswer(ans) => self.encode_hashset_answer(ans),
             Ed2kMessage::AichFileHashReq(req) => self.encode_aich_file_hash_req(req),

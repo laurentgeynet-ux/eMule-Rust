@@ -18,7 +18,10 @@ pub use sink::{Ed2kBlockSink, MAX_MEMORY_SINK_SIZE};
 pub use types::{Ed2kSequencerError, InFlightBlock};
 
 use super::encoder::Ed2kEncoder;
-use super::packet::{Ed2kBlockRange, Ed2kFileStatus, Ed2kRequestParts, Ed2kSendingPart};
+use super::packet::{
+    Ed2kBlockRange, Ed2kBlockRange64, Ed2kFileStatus, Ed2kRequestParts, Ed2kRequestPartsI64,
+    Ed2kSendingPart,
+};
 use super::session::Ed2kSessionError;
 
 /// Standard size of an eD2K part in bytes (9,500 KiB = 9,728,000 bytes).
@@ -182,6 +185,136 @@ impl Ed2kDownloadSequencer {
         }
 
         Ok(blocks)
+    }
+
+    /// 64-bit variant of `plan_part_blocks` for files larger than 4 GiB —
+    /// offsets past `u32::MAX` are preserved instead of being truncated.
+    pub fn plan_part_blocks64(
+        &self,
+        part_index: u16,
+    ) -> Result<Vec<Ed2kBlockRange64>, Ed2kSequencerError> {
+        self.select_part(part_index)?;
+        let (part_start, part_end) = self.part_byte_bounds(part_index)?;
+
+        let mut blocks = Vec::new();
+        let mut curr = part_start;
+        while curr < part_end {
+            let block_end = std::cmp::min(curr + ED2K_BLOCK_SIZE as u64, part_end);
+            blocks.push(Ed2kBlockRange64::new(curr, block_end));
+            curr = block_end;
+        }
+
+        Ok(blocks)
+    }
+
+    /// Validates an arbitrary 64-bit block range `[start, end)` against all
+    /// protocol and file invariants (same rules as `validate_block_range`).
+    pub fn validate_block_range64(
+        &self,
+        start: u64,
+        end: u64,
+    ) -> Result<Ed2kBlockRange64, Ed2kSequencerError> {
+        if start >= end {
+            return Err(Ed2kSequencerError::InvalidBlockRange {
+                start,
+                end,
+                reason: format!("start offset {start} must be strictly less than end offset {end}"),
+            });
+        }
+        if end > self.file_size {
+            return Err(Ed2kSequencerError::InvalidBlockRange {
+                start,
+                end,
+                reason: format!("end offset {end} exceeds file size {}", self.file_size),
+            });
+        }
+        let len = end - start;
+        if len > ED2K_BLOCK_SIZE as u64 {
+            return Err(Ed2kSequencerError::InvalidBlockRange {
+                start,
+                end,
+                reason: format!(
+                    "block length {len} exceeds maximum allowed {ED2K_BLOCK_SIZE} bytes"
+                ),
+            });
+        }
+
+        let p_start = (start / ED2K_PART_SIZE as u64) as u16;
+        let p_end = ((end - 1) / ED2K_PART_SIZE as u64) as u16;
+        if p_start != p_end {
+            let part_boundary = (p_start as u64 + 1) * ED2K_PART_SIZE as u64;
+            return Err(Ed2kSequencerError::CrossPartBoundary {
+                start,
+                end,
+                part_boundary,
+            });
+        }
+
+        if !self.is_part_available(p_start) {
+            return Err(Ed2kSequencerError::PartNotAvailable {
+                part_index: p_start,
+                total_parts: self.total_parts,
+            });
+        }
+
+        Ok(Ed2kBlockRange64::new(start, end))
+    }
+
+    /// Constructs a validated `Ed2kRequestPartsI64` (`OP_REQUESTPARTS_I64`)
+    /// message from 1 to 3 64-bit block ranges.
+    pub fn build_request_parts_i64(
+        &self,
+        ranges: &[Ed2kBlockRange64],
+    ) -> Result<Ed2kRequestPartsI64, Ed2kSequencerError> {
+        if ranges.is_empty() {
+            return Err(Ed2kSequencerError::EmptyRanges);
+        }
+        if ranges.len() > MAX_REQUEST_RANGES_PER_PACKET {
+            return Err(Ed2kSequencerError::TooManyRanges {
+                count: ranges.len(),
+                max: MAX_REQUEST_RANGES_PER_PACKET,
+            });
+        }
+        for range in ranges {
+            self.validate_block_range64(range.start, range.end)?;
+        }
+        Ok(Ed2kRequestPartsI64 {
+            file_hash: self.file_hash,
+            ranges: ranges.to_vec(),
+        })
+    }
+
+    /// 64-bit variant of `plan_next_block_for_peer` — required for downloads
+    /// whose blocks extend past the 4 GiB boundary.
+    pub fn plan_next_block_for_peer64(
+        &self,
+        _peer_id: &str,
+        completed_ranges: &[(u64, u64)],
+        in_flight_blocks: &[InFlightBlock],
+        now_unix_ms: i64,
+    ) -> Result<Option<(u16, Ed2kBlockRange64)>, Ed2kSequencerError> {
+        for part_idx in 0..self.total_parts {
+            if !self.is_part_available(part_idx) {
+                continue;
+            }
+
+            let blocks = self.plan_part_blocks64(part_idx)?;
+            for block in blocks {
+                if Self::is_range_in_list(block.start, block.end, completed_ranges) {
+                    continue;
+                }
+
+                let is_in_flight = in_flight_blocks.iter().any(|ifb| {
+                    !ifb.is_expired(now_unix_ms) && ifb.overlaps(block.start, block.end)
+                });
+
+                if !is_in_flight {
+                    return Ok(Some((part_idx, block)));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     /// Plans the sequence of block ranges for a part, filtering out any blocks

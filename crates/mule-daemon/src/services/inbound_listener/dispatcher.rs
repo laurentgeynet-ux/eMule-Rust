@@ -15,8 +15,11 @@ use mule_protocol::ed2k::{
     Ed2kAichAnswer, Ed2kAichFileHashRes, Ed2kAichRecovery, Ed2kDecoder, Ed2kEncoder,
     Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kPublicKey, Ed2kSecIdentState, Ed2kSendingPart,
     Ed2kSignature, PartAvailabilityMask, OP_ACCEPTUPLOADREQ, OP_AICHFILEHASHREQ, OP_AICH_REQUEST,
-    OP_CANCELTRANSFER, OP_COMPRESSEDPART, OP_FILESTATUSREQ, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST,
+    OP_CANCELTRANSFER, OP_COMPRESSEDPART, OP_COMPRESSEDPART_I64, OP_EMULE_INFO,
+    OP_EMULE_INFO_ANSWER,
+    OP_FILESTATUSREQ, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST,
     OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    OP_REQUESTPARTS_I64,
     OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE, OP_SIGNATURE, OP_STARTUPLOADREQ,
     PR_ED2K, PR_EMULE,
 };
@@ -453,6 +456,65 @@ impl InboundListenerService {
                                         }
                                     }
                                 }
+                                OP_EMULE_INFO | OP_EMULE_INFO_ANSWER => {
+                                    // eMule ProcessMuleInfoPacket: decode the
+                                    // extended capability announcement and
+                                    // reply OP_EMULEINFOANSWER to OP_EMULEINFO.
+                                    match decoder.decode_emule_info(
+                                        pkt.protocol,
+                                        pkt.opcode,
+                                        &pkt.payload,
+                                        0,
+                                    ) {
+                                        Ok(info) => {
+                                            let tag_desc: Vec<String> = info
+                                                .tags
+                                                .iter()
+                                                .map(|t| t.name.display_name())
+                                                .collect();
+                                            tracing::info!(
+                                                "Inbound peer {} sent {} (client_ver=0x{:02X}, proto_ver=0x{:02X}, tags=[{}], unknown_tags={})",
+                                                remote_str,
+                                                if pkt.opcode == OP_EMULE_INFO {
+                                                    "OP_EMULEINFO"
+                                                } else {
+                                                    "OP_EMULEINFO_ANSWER"
+                                                },
+                                                info.client_version,
+                                                info.protocol_version,
+                                                tag_desc.join(","),
+                                                info.unknown_tags.len()
+                                            );
+                                            if pkt.opcode == OP_EMULE_INFO {
+                                                let answer =
+                                                    crate::services::peer_session::handshake::build_emule_info(
+                                                        self.kad_udp_port,
+                                                        if self.sui_pubkey_der.is_some() { 3 } else { 0 },
+                                                    );
+                                                if let Ok(ans_pkt) =
+                                                    encoder.encode_emule_info_answer(&answer)
+                                                {
+                                                    let mut out = Vec::with_capacity(
+                                                        6 + ans_pkt.payload.len(),
+                                                    );
+                                                    out.push(ans_pkt.protocol);
+                                                    out.extend_from_slice(
+                                                        &(ans_pkt.frame_len() as u32).to_le_bytes(),
+                                                    );
+                                                    out.push(ans_pkt.opcode);
+                                                    out.extend_from_slice(&ans_pkt.payload);
+                                                    let _ = stream.write_all(&out).await;
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::debug!(
+                                                "Inbound peer {} sent malformed OP_EMULEINFO, ignored: {e}",
+                                                remote_str
+                                            );
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
                             continue;
@@ -659,9 +721,35 @@ impl InboundListenerService {
                                     }
                                 }
                             }
-                            OP_REQUESTPARTS | OP_REQUESTPARTS_EMULE => {
-                                 if let Ok(req_parts) = decoder.decode_request_parts(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
-                                     let hash_hex = hex::encode(req_parts.file_hash);
+                            OP_REQUESTPARTS | OP_REQUESTPARTS_EMULE | OP_REQUESTPARTS_I64 => {
+                                 // Decode 32-bit (0x47/0x4B) or 64-bit (0xA3) block
+                                 // requests into a common (hash, u64 ranges) shape.
+                                 let decoded_req = if pkt.opcode == OP_REQUESTPARTS_I64 {
+                                     mule_protocol::ed2k::decoder::decode_request_parts_i64(
+                                         pkt.protocol, pkt.opcode, &pkt.payload, 0,
+                                     )
+                                     .map(|r| {
+                                         (
+                                             r.file_hash,
+                                             r.ranges.iter().map(|rg| (rg.start, rg.end)).collect::<Vec<_>>(),
+                                         )
+                                     })
+                                 } else {
+                                     decoder
+                                         .decode_request_parts(pkt.protocol, pkt.opcode, &pkt.payload, 0)
+                                         .map(|r| {
+                                             (
+                                                 r.file_hash,
+                                                 r.ranges
+                                                     .iter()
+                                                     .map(|rg| (rg.start as u64, rg.end as u64))
+                                                     .collect::<Vec<_>>(),
+                                             )
+                                         })
+                                 };
+                                 let is_i64_req = pkt.opcode == OP_REQUESTPARTS_I64;
+                                 if let Ok((req_file_hash, req_ranges)) = decoded_req {
+                                     let hash_hex = hex::encode(req_file_hash);
 
                                      let shared_file = {
                                          let dl_svc = self.downloads.lock().await;
@@ -677,9 +765,8 @@ impl InboundListenerService {
 
                                      match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier).await {
                                          Ok((UploadSlotState::Uploading, _)) => {
-                                             if let Some(target_range) = req_parts.ranges.first() {
-                                                 let start = target_range.start;
-                                                 let end = target_range.end;
+                                             if let Some(target_range) = req_ranges.first() {
+                                                 let (start, end) = *target_range;
                                                  let length = (end.saturating_sub(start)).min(184320);
 
                                                  tracing::info!(
@@ -694,7 +781,7 @@ impl InboundListenerService {
                                                  let upload_bucket = &self.network_policy.rate_limiters().upload_bucket;
                                                  let is_cancelled = || cancel_token.is_cancelled();
                                                  let mut throttled_ok = true;
-                                                 let mut remaining = length as u64;
+                                                 let mut remaining = length;
                                                  while remaining > 0 {
                                                      let quantum = remaining.min(10240);
                                                      if upload_bucket.acquire_tokens(quantum, is_cancelled).await.is_err() {
@@ -714,7 +801,7 @@ impl InboundListenerService {
                                                      if p.is_file() {
                                                          if let Ok(mut f) = tokio::fs::File::open(p).await {
                                                              use tokio::io::AsyncSeekExt;
-                                                             if f.seek(std::io::SeekFrom::Start(start as u64)).await.is_ok() {
+                                                             if f.seek(std::io::SeekFrom::Start(start)).await.is_ok() {
                                                                  let mut buf = vec![0u8; length as usize];
                                                                  if let Ok(read_bytes) = f.read_exact(&mut buf).await {
                                                                      if read_bytes == length as usize {
@@ -768,14 +855,20 @@ impl InboundListenerService {
                                                      // OP_COMPRESSEDPART (0x40, OP_EMULEPROT):
                                                      // hash16 + u32 block_start + u32 total
                                                      // compressed size + <=10240-byte chunks.
+                                                     // I64 variant (0xA1): u64 block_start.
                                                      let mut sent = false;
                                                      for chunk in compressed.chunks(10240) {
-                                                         let mut out = Vec::with_capacity(6 + 24 + chunk.len());
+                                                         let hdr_len = if is_i64_req { 28 } else { 24 };
+                                                         let mut out = Vec::with_capacity(6 + hdr_len + chunk.len());
                                                          out.push(PR_EMULE);
-                                                         out.extend_from_slice(&((24 + chunk.len()) as u32).to_le_bytes());
-                                                         out.push(OP_COMPRESSEDPART);
-                                                         out.extend_from_slice(&req_parts.file_hash);
-                                                         out.extend_from_slice(&start.to_le_bytes());
+                                                         out.extend_from_slice(&((hdr_len + chunk.len()) as u32).to_le_bytes());
+                                                         out.push(if is_i64_req { OP_COMPRESSEDPART_I64 } else { OP_COMPRESSEDPART });
+                                                         out.extend_from_slice(&req_file_hash);
+                                                         if is_i64_req {
+                                                             out.extend_from_slice(&start.to_le_bytes());
+                                                         } else {
+                                                             out.extend_from_slice(&(start as u32).to_le_bytes());
+                                                         }
                                                          out.extend_from_slice(&(compressed.len() as u32).to_le_bytes());
                                                          out.extend_from_slice(chunk);
                                                          if stream.write_all(&out).await.is_err() {
@@ -789,14 +882,14 @@ impl InboundListenerService {
                                                              "[UPLOAD_BLOCK] Sent compressed block ({} -> {} bytes) to {} for file '{}' (offset {}..{})",
                                                              payload.len(), compressed.len(), remote_str, shared_file.file_name, start, start + length
                                                          );
-                                                         let reported_rate = upload_bucket.rate_per_sec().max(length as u64);
-                                                         self.upload_manager.update_progress(&client_key, length as u64, reported_rate).await;
-                                                         if shared_file.file_size > 0 && u64::from(start + length) <= shared_file.file_size {
+                                                         let reported_rate = upload_bucket.rate_per_sec().max(length);
+                                                         self.upload_manager.update_progress(&client_key, length, reported_rate).await;
+                                                         if shared_file.file_size > 0 && (start + length) <= shared_file.file_size {
                                                              if let (Some(ref ph), Some(ref pk_der)) = (&remote_pubkey_hash, &remote_pubkey_der) {
                                                                  let pk_hex = hex::encode(pk_der);
                                                                  let mut dl_svc = self.downloads.lock().await;
-                                                                 if dl_svc.record_credit_upload(ph, &pk_hex, length as u64).is_ok() {
-                                                                     let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length as u64);
+                                                                 if dl_svc.record_credit_upload(ph, &pk_hex, length).is_ok() {
+                                                                     let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length);
                                                                      tracing::info!(
                                                                          "[CREDITS_AWARDED] Awarded {} uploaded bytes to verified peer {} (pubkey hash: {}, total: {} bytes)",
                                                                          length, remote_str, ph, total_up
@@ -808,14 +901,27 @@ impl InboundListenerService {
                                                      continue;
                                                  }
 
-                                                 let sending_part = Ed2kSendingPart::new(
-                                                     req_parts.file_hash,
-                                                     start,
-                                                     start + length,
-                                                     Bytes::from(payload),
-                                                 );
+                                                 let send_pkt = if is_i64_req {
+                                                     encoder.encode_sending_part_i64(
+                                                         &mule_protocol::ed2k::Ed2kSendingPartI64 {
+                                                             file_hash: req_file_hash,
+                                                             start_offset: start,
+                                                             end_offset: start + length,
+                                                             data: Bytes::from(payload),
+                                                         },
+                                                     )
+                                                 } else {
+                                                     encoder.encode_sending_part(
+                                                         &Ed2kSendingPart::new(
+                                                             req_file_hash,
+                                                             start as u32,
+                                                             (start + length) as u32,
+                                                             Bytes::from(payload),
+                                                         ),
+                                                     )
+                                                 };
 
-                                                 if let Ok(send_pkt) = encoder.encode_sending_part(&sending_part) {
+                                                 if let Ok(send_pkt) = send_pkt {
                                                      let mut out = Vec::new();
                                                      out.push(send_pkt.protocol);
                                                      out.extend_from_slice(&(send_pkt.frame_len() as u32).to_le_bytes());
@@ -828,15 +934,15 @@ impl InboundListenerService {
                                                          length, remote_str, shared_file.file_name, start, start + length
                                                      );
 
-                                                     let reported_rate = upload_bucket.rate_per_sec().max(length as u64);
-                                                     self.upload_manager.update_progress(&client_key, length as u64, reported_rate).await;
+                                                     let reported_rate = upload_bucket.rate_per_sec().max(length);
+                                                     self.upload_manager.update_progress(&client_key, length, reported_rate).await;
 
-                                                    if shared_file.file_size > 0 && u64::from(start + length) <= shared_file.file_size {
+                                                    if shared_file.file_size > 0 && (start + length) <= shared_file.file_size {
                                                         if let (Some(ref ph), Some(ref pk_der)) = (&remote_pubkey_hash, &remote_pubkey_der) {
                                                         let pk_hex = hex::encode(pk_der);
                                                             let mut dl_svc = self.downloads.lock().await;
-                                                            if dl_svc.record_credit_upload(ph, &pk_hex, length as u64).is_ok() {
-                                                                let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length as u64);
+                                                            if dl_svc.record_credit_upload(ph, &pk_hex, length).is_ok() {
+                                                                let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length);
                                                                 tracing::info!(
                                                                     "[CREDITS_AWARDED] Awarded {} uploaded bytes to verified peer {} (pubkey hash: {}, total: {} bytes)",
                                                                     length, remote_str, ph, total_up

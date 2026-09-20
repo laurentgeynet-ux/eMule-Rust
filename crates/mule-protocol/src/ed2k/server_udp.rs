@@ -239,8 +239,12 @@ pub fn decode_server_udp(data: &[u8]) -> Result<ServerUdpMessage, String> {
                 }
                 let mut sources = Vec::with_capacity(count);
                 for _ in 0..count {
-                    let ip = u32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap());
-                    let port = u16::from_le_bytes(payload[pos + 4..pos + 6].try_into().unwrap());
+                    let mut ip_bytes = [0u8; 4];
+                    ip_bytes.copy_from_slice(&payload[pos..pos + 4]);
+                    let mut port_bytes = [0u8; 2];
+                    port_bytes.copy_from_slice(&payload[pos + 4..pos + 6]);
+                    let ip = u32::from_le_bytes(ip_bytes);
+                    let port = u16::from_le_bytes(port_bytes);
                     pos += 6;
                     sources.push((ip, port));
                 }
@@ -259,10 +263,16 @@ pub fn decode_server_udp(data: &[u8]) -> Result<ServerUdpMessage, String> {
             if payload.len() < 12 {
                 return Err("truncated OP_GLOBSERVSTATRES".into());
             }
-            let read_u32 =
-                |off: usize| u32::from_le_bytes(payload[off..off + 4].try_into().unwrap());
-            let read_u16 =
-                |off: usize| u16::from_le_bytes(payload[off..off + 2].try_into().unwrap());
+            let read_u32 = |off: usize| {
+                let mut b = [0u8; 4];
+                b.copy_from_slice(&payload[off..off + 4]);
+                u32::from_le_bytes(b)
+            };
+            let read_u16 = |off: usize| {
+                let mut b = [0u8; 2];
+                b.copy_from_slice(&payload[off..off + 2]);
+                u16::from_le_bytes(b)
+            };
             Ok(ServerUdpMessage::GlobServStatRes {
                 challenge: read_u32(0),
                 users: read_u32(4),
