@@ -36,6 +36,7 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
 
   AppController? _controller;
   String? _suggestedUrl;
+  String? _currentUrl;
   bool _loading = true;
 
   @override
@@ -79,7 +80,22 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
     final client = RpcDaemonClient();
     final controller = AppController(client: client);
     controller.initialize(url: Uri.parse(url));
-    if (mounted) setState(() => _controller = controller);
+    if (mounted) {
+      setState(() {
+        _controller = controller;
+        _currentUrl = url;
+      });
+    }
+  }
+
+  /// Disconnect from the current daemon and return to the connect form,
+  /// pre-filled with the URL that was in use.
+  void _disconnect() {
+    _controller?.dispose();
+    setState(() {
+      _controller = null;
+      _suggestedUrl = _currentUrl ?? _suggestedUrl;
+    });
   }
 
   @override
@@ -91,7 +107,7 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
   @override
   Widget build(BuildContext context) {
     if (_controller != null) {
-      return EmuleSionApp(viewModel: _controller!);
+      return EmuleSionApp(viewModel: _controller!, onChangeDaemon: _disconnect);
     }
     return MaterialApp(
       title: 'Emule-Sion',

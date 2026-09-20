@@ -213,6 +213,10 @@ final defaultDownloadDirectoryProvider = Provider<String>((ref) {
       '';
 });
 
+/// Optional "change daemon" action — non-null only for remote clients
+/// (web) that can disconnect and return to a connect form.
+final onChangeDaemonProvider = Provider<void Function()?>((ref) => null);
+
 /// Lab/fixture features gate: dev tools OR portable daemon with
 /// `lab-tools` capability.
 final isLabModeAvailableProvider = Provider<bool>((ref) {

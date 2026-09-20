@@ -5,6 +5,13 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Web : bouton "Changer de daemon"** : nouveau provider
+  `onChangeDaemonProvider` (null par défaut — desktop/mobile). La sidebar
+  affiche une action `link_off` quand il est défini ; `EmuleSionApp`
+  accepte `onChangeDaemon`. `apps/web` implémente `_disconnect()` :
+  dispose le controller et revient au formulaire de connexion pré-rempli
+  avec l'URL courante.
+
 - **Migration AppController → providers (fin)** : les ~18 widgets restants
   (dialogs add-link/import/settings/network-policy/ip-filter/lab-guide/
   diagnostic/category/network-mode/download-detail, sidebar, top bar, list,

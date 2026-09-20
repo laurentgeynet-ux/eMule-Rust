@@ -255,6 +255,14 @@ class DownloadsSidebar extends ConsumerWidget {
               builder: (ctx) => const DiagnosticDialog(),
             ),
           ),
+          if (ref.watch(onChangeDaemonProvider) != null)
+            SidebarActionButton(
+              icon: Icons.link_off,
+              label: context.l10n.changeDaemon,
+              iconColor: AppColors.accentCyan,
+              isCompact: isCompact,
+              onTap: () => ref.read(onChangeDaemonProvider)!(),
+            ),
         ],
       ),
     );

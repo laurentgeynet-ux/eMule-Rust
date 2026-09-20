@@ -16,10 +16,15 @@ class EmuleSionApp extends StatefulWidget {
   final AppController viewModel;
   final DaemonLifecycle? supervisor;
 
+  /// When non-null (remote web client), the sidebar exposes a
+  /// "Change daemon" action that invokes this callback.
+  final VoidCallback? onChangeDaemon;
+
   const EmuleSionApp({
     super.key,
     required this.viewModel,
     this.supervisor,
+    this.onChangeDaemon,
   });
 
   @override
@@ -66,6 +71,7 @@ class _EmuleSionAppState extends State<EmuleSionApp> {
           (ref) => widget.viewModel,
           disposeNotifier: false,
         ),
+        onChangeDaemonProvider.overrideWithValue(widget.onChangeDaemon),
       ],
       child: Consumer(
         builder: (context, ref, _) => MaterialApp.router(
