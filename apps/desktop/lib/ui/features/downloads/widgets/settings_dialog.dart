@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
 import 'package:ui_kit/ui_kit.dart';
-import 'package:mule_client/mule_client.dart';
 import '../view_models/downloads_view_model.dart';
 import '../../settings/widgets/network_mode_dialog.dart';
+import 'settings/settings_dialog_footer.dart';
+import 'settings/settings_dialog_header.dart';
+import 'settings/settings_directory_section.dart';
+import 'settings/settings_inline_message.dart';
+import 'settings/settings_network_card.dart';
+import 'settings/settings_network_mode_row.dart';
+import 'settings/settings_retention_section.dart';
 
+/// Download settings: default directory, history retention, network
+/// profile summary and network mode shortcut.
 class SettingsDialog extends StatefulWidget {
   final DownloadsViewModel viewModel;
 
@@ -48,7 +56,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
           backgroundColor: AppTheme.darkSurface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: AppTheme.darkBorder, width: 0.5),
+            side:
+                const BorderSide(color: AppTheme.darkBorder, width: 0.5),
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
@@ -56,371 +65,62 @@ class _SettingsDialogState extends State<SettingsDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: const BoxDecoration(
-                    color: AppTheme.darkCard,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                    border: Border(
-                      bottom: BorderSide(color: AppTheme.darkBorder, width: 0.5),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.settings_outlined, color: AppTheme.primary, size: 20),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Download Settings & Storage',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Body
+                const SettingsDialogHeader(),
                 Flexible(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                      // Section 1: Default Download Directory
-                      const Text(
-                        'Global Default Download Directory',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'This path is used as the default target destination when adding new downloads. '
-                        'Temporary .part files remain strictly confined in data/temp/ until completed.',
-                        style: TextStyle(fontSize: 12, color: AppColors.textSoft, height: 1.4),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Input Field & Save Button
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _dirController,
-                              style: const TextStyle(fontSize: 13),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                labelText: 'Destination Directory Path',
-                                hintText: 'e.g. C:\\Downloads or downloads',
-                                filled: true,
-                                fillColor: AppTheme.darkCard,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: AppTheme.darkBorder),
-                                ),
-                                helperText: isCustom
-                                    ? 'Using customized directory (stored in database)'
-                                    : 'Using default portable directory (<bundleRoot>/downloads)',
-                                helperStyle: TextStyle(
-                                  color: isCustom ? AppColors.accentTeal : AppColors.textFaint,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
+                        SettingsDirectorySection(
+                          dirController: _dirController,
+                          isCustom: isCustom,
+                          isSaving: _isSaving,
+                          onSave: () => _saveDefaultDir(context),
+                          onReset: () => _resetDefaultDir(context),
+                          onOpenFolder:
+                              widget.viewModel.openDownloadsFolder,
+                        ),
+                        if (_inlineError != null)
+                          SettingsInlineMessage(
+                            message: _inlineError!,
+                            isError: true,
                           ),
-                          const SizedBox(width: 10),
-                          FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppTheme.primary,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            ),
-                            onPressed: _isSaving ? null : () => _saveDefaultDir(context),
-                            child: _isSaving
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
-                                  )
-                                : const Text('Save'),
+                        if (_inlineSuccess != null)
+                          SettingsInlineMessage(
+                            message: _inlineSuccess!,
+                            isError: false,
                           ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      // Reset to Portable Default Button
-                      Row(
-                        children: [
-                          OutlinedButton.icon(
-                            icon: const Icon(Icons.restart_alt_rounded, size: 16),
-                            label: const Text('Reset to Portable Default'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.textSecondary,
-                              side: const BorderSide(color: AppTheme.darkBorder),
-                            ),
-                            onPressed: _isSaving ? null : () => _resetDefaultDir(context),
-                          ),
-                          const SizedBox(width: 12),
-                          TextButton.icon(
-                            icon: const Icon(Icons.folder_open_rounded, size: 16),
-                            label: const Text('Open Folder'),
-                            onPressed: () => widget.viewModel.openDownloadsFolder(),
-                          ),
-                        ],
-                      ),
-
-                      if (_inlineError != null) ...[
+                        const SizedBox(height: 16),
+                        const Divider(color: AppTheme.darkBorder),
                         const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppTheme.statusFailed.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppTheme.statusFailed.withValues(alpha: 0.3)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.error_outline, color: AppTheme.statusFailed, size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _inlineError!,
-                                  style: const TextStyle(fontSize: 12, color: AppTheme.statusFailed),
-                                ),
-                              ),
-                            ],
+                        SettingsRetentionSection(
+                          retentionDays:
+                              widget.viewModel.historyRetentionDays,
+                          onChanged:
+                              widget.viewModel.setHistoryRetentionDays,
+                        ),
+                        const SizedBox(height: 20),
+                        const Divider(color: AppTheme.darkBorder),
+                        const SizedBox(height: 12),
+                        SettingsNetworkCard(
+                          profile:
+                              widget.viewModel.currentNetworkProfile,
+                        ),
+                        const SizedBox(height: 16),
+                        SettingsNetworkModeRow(
+                          onConfigure: () => showDialog(
+                            context: context,
+                            builder: (_) => NetworkModeDialog(
+                              viewModel: widget.viewModel,
+                            ),
                           ),
                         ),
                       ],
-
-                      if (_inlineSuccess != null) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.lab.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppColors.lab.withValues(alpha: 0.3)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.check_circle_outline, color: AppColors.accentTeal, size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _inlineSuccess!,
-                                  style: const TextStyle(fontSize: 12, color: AppColors.accentTeal),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 16),
-                      const Divider(color: AppTheme.darkBorder),
-                      const SizedBox(height: 12),
-
-                      // Section 2: History Retention Policy
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(Icons.history_rounded, size: 18, color: AppTheme.primary),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'History Retention Policy',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'Historical transition events older than the retention period are automatically pruned on daemon startup.',
-                                  style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.3),
-                                ),
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    const Text('Keep history for: ', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.darkCard,
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: AppTheme.darkBorder, width: 0.5),
-                                      ),
-                                      child: DropdownButtonHideUnderline(
-                                        child: DropdownButton<int>(
-                                          value: widget.viewModel.historyRetentionDays,
-                                          dropdownColor: AppTheme.darkCard,
-                                          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-                                          items: const [
-                                            DropdownMenuItem(value: 7, child: Text('7 Days')),
-                                            DropdownMenuItem(value: 30, child: Text('30 Days (Default)')),
-                                            DropdownMenuItem(value: 90, child: Text('90 Days')),
-                                            DropdownMenuItem(value: 0, child: Text('Indefinitely (No pruning)')),
-                                          ],
-                                          onChanged: (days) {
-                                            if (days != null) {
-                                              widget.viewModel.setHistoryRetentionDays(days);
-                                            }
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 20),
-                      const Divider(color: AppTheme.darkBorder),
-                      const SizedBox(height: 12),
-
-                      // Section 3: Network Architecture & Policy Status
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.darkCard,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.darkBorder, width: 0.5),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.shield_outlined, color: AppColors.accentTeal, size: 18),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    widget.viewModel.currentNetworkProfile != NetworkProfile.localLab
-                                        ? 'Mode Réseau Public Ouvert (WAN & Kad)'
-                                        : 'Mode Laboratoire Confiné (127.0.0.1)',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    widget.viewModel.currentNetworkProfile != NetworkProfile.localLab
-                                        ? 'Emule-Sion est connecté aux réseaux eD2K et Kademlia mondiaux avec ports ouverts et protection Anti-SSRF active. Les transferts actifs sont sécurisés dans data/temp/.'
-                                        : 'Emule-Sion fonctionne exclusivement sur la boucle locale (127.0.0.1). Aucune connexion publique entrante ou sortante n\'est effectuée.',
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.4),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Section 4: Network Mode & UPnP
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
-                                Text(
-                                  'Mode Réseau & Traversée Box (UPnP)',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Bascule entre laboratoire local et réseau public mondial.',
-                                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          FilledButton.icon(
-                            icon: const Icon(Icons.public, size: 16),
-                            label: const Text('Configurer'),
-                            style: FilledButton.styleFrom(backgroundColor: AppColors.warningShade800),
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => NetworkModeDialog(viewModel: widget.viewModel),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-                // Footer
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  decoration: const BoxDecoration(
-                    color: AppTheme.darkCard,
-                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
-                    border: Border(
-                      top: BorderSide(color: AppTheme.darkBorder, width: 0.5),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.fillLight,
-                          foregroundColor: AppColors.textPrimary,
-                        ),
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Close'),
-                      ),
-                    ],
-                  ),
                 ),
+                const SettingsDialogFooter(),
               ],
             ),
           ),
@@ -445,15 +145,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
       return;
     }
 
-    final success = await widget.viewModel.setDefaultDownloadDirectory(newDir);
+    final success =
+        await widget.viewModel.setDefaultDownloadDirectory(newDir);
     if (mounted) {
       setState(() {
         _isSaving = false;
         if (success) {
-          _inlineSuccess = 'Default download directory updated successfully.';
+          _inlineSuccess =
+              'Default download directory updated successfully.';
           _inlineError = null;
         } else {
-          _inlineError = widget.viewModel.errorMessage ?? 'Directory write probe failed.';
+          _inlineError = widget.viewModel.errorMessage ??
+              'Directory write probe failed.';
           _inlineSuccess = null;
         }
       });
@@ -467,16 +170,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
       _inlineSuccess = null;
     });
 
-    final success = await widget.viewModel.resetDefaultDownloadDirectory();
+    final success =
+        await widget.viewModel.resetDefaultDownloadDirectory();
     if (mounted) {
       setState(() {
         _isSaving = false;
         if (success) {
-          _dirController.text = widget.viewModel.defaultDownloadDirectory.path;
+          _dirController.text =
+              widget.viewModel.defaultDownloadDirectory.path;
           _inlineSuccess = 'Reset to portable default directory.';
           _inlineError = null;
         } else {
-          _inlineError = widget.viewModel.errorMessage ?? 'Failed to reset download directory.';
+          _inlineError = widget.viewModel.errorMessage ??
+              'Failed to reset download directory.';
           _inlineSuccess = null;
         }
       });

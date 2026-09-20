@@ -1,0 +1,59 @@
+import 'package:flutter/material.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
+
+/// Last ipfilter.dat import report (lines read, coalesced ranges, skipped
+/// invalid lines).
+class IpFilterReportCard extends StatelessWidget {
+  final FilterReportModel report;
+
+  const IpFilterReportCard({super.key, required this.report});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.darkBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.darkBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Last Import Report',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: AppColors.warning,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _line('Total lines read: ${report.totalLines}'),
+          _line('Valid entries: ${report.validEntriesParsed}'),
+          _line('Coalesced (merged) ranges: ${report.coalescedCount}'),
+          _line('Final active intervals: ${report.finalRangeCount}'),
+          if (report.invalidLines > 0)
+            Text(
+              'Invalid lines skipped: ${report.invalidLines}',
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.accentOrange,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _line(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 11,
+        color: AppColors.textSecondary,
+      ),
+    );
+  }
+}

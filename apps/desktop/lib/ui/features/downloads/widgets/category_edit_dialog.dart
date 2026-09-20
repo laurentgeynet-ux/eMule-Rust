@@ -1,9 +1,13 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../core/folder_picker.dart';
 import '../view_models/downloads_view_model.dart';
+import 'category/category_color_picker.dart';
+import 'category/category_priority_dropdown.dart';
 
+/// Create or edit a download category (name, color, default destination
+/// and priority).
 class CategoryEditDialog extends StatefulWidget {
   final DownloadsViewModel viewModel;
   final CategoryItem? category; // null when creating
@@ -26,25 +30,17 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   bool _isSaving = false;
   String? _error;
 
-  static const List<String> _presetColors = [
-    '#2196F3', // Blue
-    '#4CAF50', // Green
-    '#9C27B0', // Purple
-    '#FF9800', // Orange
-    '#E91E63', // Pink
-    '#00BCD4', // Cyan
-    '#009688', // Teal
-    '#FF5722', // Deep Orange
-    '#3F51B5', // Indigo
-    '#607D8B', // Blue Grey
-  ];
-
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.category?.name ?? '');
-    _colorController = TextEditingController(text: widget.category?.color ?? '#2196F3');
-    _destController = TextEditingController(text: widget.category?.defaultDestination ?? '');
+    _nameController =
+        TextEditingController(text: widget.category?.name ?? '');
+    _colorController = TextEditingController(
+      text: widget.category?.color ?? '#2196F3',
+    );
+    _destController = TextEditingController(
+      text: widget.category?.defaultDestination ?? '',
+    );
     _selectedPriority = widget.category?.defaultPriority;
   }
 
@@ -56,30 +52,14 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     super.dispose();
   }
 
-  Color _parseColor(String hex) {
-    final clean = hex.replaceAll('#', '').trim();
-    if (clean.length == 6) {
-      final val = int.tryParse('FF$clean', radix: 16);
-      if (val != null) return Color(val);
-    }
-    return AppTheme.primary;
-  }
-
   Future<void> _browseFolder() async {
-    if (Platform.isWindows) {
-      try {
-        final result = await Process.run('powershell', [
-          '-NoProfile',
-          '-Command',
-          r'''Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Default Category Download Directory'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }'''
-        ]);
-        final chosen = result.stdout.toString().trim();
-        if (chosen.isNotEmpty && Directory(chosen).existsSync()) {
-          setState(() {
-            _destController.text = chosen;
-          });
-        }
-      } catch (_) {}
+    final chosen = await pickFolder(
+      description: 'Select Default Category Download Directory',
+    );
+    if (chosen != null && mounted) {
+      setState(() {
+        _destController.text = chosen;
+      });
     }
   }
 
@@ -91,7 +71,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     }
 
     final color = _colorController.text.trim();
-    final dest = _destController.text.trim().isNotEmpty ? _destController.text.trim() : null;
+    final dest = _destController.text.trim().isNotEmpty
+        ? _destController.text.trim()
+        : null;
     final prio = _selectedPriority;
 
     setState(() {
@@ -123,14 +105,15 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     if (success) {
       Navigator.of(context).pop();
     } else {
-      setState(() => _error = widget.viewModel.errorMessage ?? 'Operation failed');
+      setState(() =>
+          _error = widget.viewModel.errorMessage ?? 'Operation failed');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.category != null;
-    final currentColor = _parseColor(_colorController.text);
+    final currentColor = parseCategoryColor(_colorController.text);
 
     return Dialog(
       backgroundColor: AppTheme.darkSurface,
@@ -146,7 +129,6 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
               Row(
                 children: [
                   Container(
@@ -156,7 +138,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
-                      isEditing ? Icons.edit_rounded : Icons.category_rounded,
+                      isEditing
+                          ? Icons.edit_rounded
+                          : Icons.category_rounded,
                       color: currentColor,
                       size: 20,
                     ),
@@ -172,29 +156,43 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
-
               if (_error != null) ...[
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppTheme.statusFailed.withValues(alpha: 0.15),
+                    color:
+                        AppTheme.statusFailed.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppTheme.statusFailed.withValues(alpha: 0.4)),
+                    border: Border.all(
+                      color:
+                          AppTheme.statusFailed.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline, color: AppTheme.statusFailed, size: 16),
+                      const Icon(
+                        Icons.error_outline,
+                        color: AppTheme.statusFailed,
+                        size: 16,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _error!,
-                          style: const TextStyle(color: AppTheme.statusFailed, fontSize: 12),
+                          style: const TextStyle(
+                            color: AppTheme.statusFailed,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -202,13 +200,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 ),
                 const SizedBox(height: 16),
               ],
-
-              // Name Field
-              const Text(
-                'Category Name *',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 6),
+              const _FieldLabel('Category Name *'),
               TextField(
                 controller: _nameController,
                 autofocus: true,
@@ -219,87 +211,13 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Color Palette & Hex Input
-              const Text(
-                'Color Tag',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _presetColors.map((hex) {
-                  final c = _parseColor(hex);
-                  final isSelected = _colorController.text.trim().toUpperCase() == hex.toUpperCase();
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () {
-                      setState(() {
-                        _colorController.text = hex;
-                      });
-                    },
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: c,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSelected ? AppColors.textPrimary : AppColors.fillMedium,
-                          width: isSelected ? 2.5 : 1.0,
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: c.withValues(alpha: 0.5),
-                                  blurRadius: 6,
-                                  spreadRadius: 1,
-                                )
-                              ]
-                            : null,
-                      ),
-                      child: isSelected
-                          ? const Icon(Icons.check, size: 16, color: AppColors.textPrimary)
-                          : null,
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: currentColor,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _colorController,
-                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                      decoration: const InputDecoration(
-                        hintText: '#RRGGBB',
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
+              const _FieldLabel('Color Tag'),
+              CategoryColorPicker(
+                colorController: _colorController,
+                onChanged: () => setState(() {}),
               ),
               const SizedBox(height: 16),
-
-              // Default Destination Field (Optional)
-              const Text(
-                'Default Destination (Optional)',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 6),
+              const _FieldLabel('Default Destination (Optional)'),
               Row(
                 children: [
                   Expanded(
@@ -315,66 +233,42 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.folder_open, size: 16),
-                    label: const Text('Browse...', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'Browse...',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                      side: const BorderSide(color: AppTheme.darkBorder),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 12,
+                      ),
+                      side: const BorderSide(
+                        color: AppTheme.darkBorder,
+                      ),
                     ),
                     onPressed: _browseFolder,
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-
-              // Default Priority Dropdown (Optional)
-              const Text(
-                'Default Priority (Optional)',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: AppTheme.darkSurface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.darkBorder),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String?>(
-                    value: _selectedPriority,
-                    isExpanded: true,
-                    dropdownColor: AppTheme.darkCard,
-                    items: const [
-                      DropdownMenuItem(
-                        value: null,
-                        child: Text('Normal (Default)', style: TextStyle(fontSize: 12)),
-                      ),
-                      DropdownMenuItem(
-                        value: 'low',
-                        child: Text('Low', style: TextStyle(fontSize: 12)),
-                      ),
-                      DropdownMenuItem(
-                        value: 'normal',
-                        child: Text('Normal', style: TextStyle(fontSize: 12)),
-                      ),
-                      DropdownMenuItem(
-                        value: 'high',
-                        child: Text('High', style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
-                    onChanged: (val) => setState(() => _selectedPriority = val),
-                  ),
-                ),
+              const _FieldLabel('Default Priority (Optional)'),
+              CategoryPriorityDropdown(
+                value: _selectedPriority,
+                onChanged: (val) =>
+                    setState(() => _selectedPriority = val),
               ),
               const SizedBox(height: 24),
-
-              // Actions
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: AppColors.textSoft)),
+                    onPressed: _isSaving
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: AppColors.textSoft),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
@@ -382,17 +276,52 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                         ? const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.textPrimary,
+                            ),
                           )
-                        : Icon(isEditing ? Icons.save_rounded : Icons.add_rounded, size: 18),
-                    label: Text(isEditing ? 'Save Changes' : 'Create Category'),
-                    style: FilledButton.styleFrom(backgroundColor: currentColor),
+                        : Icon(
+                            isEditing
+                                ? Icons.save_rounded
+                                : Icons.add_rounded,
+                            size: 18,
+                          ),
+                    label: Text(
+                      isEditing
+                          ? 'Save Changes'
+                          : 'Create Category',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: currentColor,
+                    ),
                     onPressed: _isSaving ? null : _save,
                   ),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String label;
+
+  const _FieldLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
         ),
       ),
     );

@@ -1,8 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../core/folder_picker.dart';
 import '../view_models/downloads_view_model.dart';
+import 'add_link/add_link_allocation_dropdown.dart';
+import 'add_link/add_link_category_dropdown.dart';
+import 'add_link/add_link_field_label.dart';
+import 'add_link/add_link_preview_card.dart';
+import 'add_link/ed2k_link_parser.dart';
 
+/// Dialog adding a download from an `ed2k://|file|…` link with category,
+/// target directory and disk allocation options.
 class AddLinkDialog extends StatefulWidget {
   final DownloadsViewModel viewModel;
 
@@ -18,10 +25,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
   String _allocationPolicy = 'sparse';
   String? _selectedCategoryId;
 
-  String? _parsedFileName;
-  int? _parsedSize;
-  String? _parsedHash;
-  String? _parseError;
+  Ed2kLinkParseResult _parsed = const Ed2kLinkParseResult.empty();
 
   @override
   void initState() {
@@ -29,9 +33,14 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     final initialCatId = widget.viewModel.selectedCategoryId;
     if (initialCatId != null && initialCatId != 'uncategorized') {
       _selectedCategoryId = initialCatId;
-      final cat = widget.viewModel.categories.where((c) => c.id == initialCatId).firstOrNull;
-      if (cat != null && cat.defaultDestination != null && cat.defaultDestination!.isNotEmpty) {
-        _targetDirController = TextEditingController(text: cat.defaultDestination!);
+      final cat = widget.viewModel.categories
+          .where((c) => c.id == initialCatId)
+          .firstOrNull;
+      if (cat != null &&
+          cat.defaultDestination != null &&
+          cat.defaultDestination!.isNotEmpty) {
+        _targetDirController =
+            TextEditingController(text: cat.defaultDestination!);
       } else {
         _targetDirController = TextEditingController(
           text: widget.viewModel.defaultDownloadDirectory.path,
@@ -46,72 +55,21 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
   }
 
   void _validateLink() {
-    final text = _linkController.text.trim();
-    if (text.isEmpty) {
-      setState(() {
-        _parsedFileName = null;
-        _parsedSize = null;
-        _parsedHash = null;
-        _parseError = null;
-      });
-      return;
+    var result = parseEd2kLink(_linkController.text);
+
+    if (result.isValid) {
+      final existing = widget.viewModel.getDownloadByHash(result.hash!);
+      if (existing != null) {
+        result = Ed2kLinkParseResult.error(
+          'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}")',
+        );
+      }
     }
 
-    if (!text.startsWith('ed2k://|file|')) {
-      setState(() {
-        _parsedFileName = null;
-        _parsedSize = null;
-        _parsedHash = null;
-        _parseError = 'Must start with "ed2k://|file|"';
-      });
-      return;
-    }
-
-    final parts = text.split('|');
-    if (parts.length < 5) {
-      setState(() {
-        _parsedFileName = null;
-        _parsedSize = null;
-        _parsedHash = null;
-        _parseError = 'Incomplete eD2K link format';
-      });
-      return;
-    }
-
-    final name = Uri.decodeComponent(parts[2]);
-    final size = int.tryParse(parts[3]);
-    final hash = parts[4];
-
-    if (name.isEmpty || size == null || size <= 0 || hash.length != 32) {
-      setState(() {
-        _parsedFileName = null;
-        _parsedSize = null;
-        _parsedHash = null;
-        _parseError = 'Invalid filename, size, or 32-character hex hash';
-      });
-      return;
-    }
-
-    final existing = widget.viewModel.getDownloadByHash(hash);
-    if (existing != null) {
-      setState(() {
-        _parsedFileName = null;
-        _parsedSize = null;
-        _parsedHash = null;
-        _parseError = 'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}")';
-      });
-      return;
-    }
-
-    setState(() {
-      _parsedFileName = name;
-      _parsedSize = size;
-      _parsedHash = hash;
-      _parseError = null;
-    });
+    setState(() => _parsed = result);
   }
 
-  bool get _isValid => _parsedFileName != null && _parsedSize != null && _parseError == null;
+  bool get _isValid => _parsed.isValid;
 
   @override
   void dispose() {
@@ -136,7 +94,6 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
               Row(
                 children: [
                   Container(
@@ -161,136 +118,55 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-
-              // Link input
-              const Text(
-                'eD2K Link',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 6),
+              const AddLinkFieldLabel(label: 'eD2K Link'),
               TextField(
                 controller: _linkController,
                 autofocus: true,
-                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                ),
                 decoration: InputDecoration(
-                  hintText: 'ed2k://|file|example.zip|104857600|0123456789abcdef0123456789abcdef|/',
-                  hintStyle: const TextStyle(fontSize: 12, color: AppColors.iconFaint),
-                  errorText: _parseError,
+                  hintText:
+                      'ed2k://|file|example.zip|104857600|0123456789abcdef0123456789abcdef|/',
+                  hintStyle: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.iconFaint,
+                  ),
+                  errorText: _parsed.error,
                 ),
               ),
-
-              // Parsed Link Preview Card
               if (_isValid) ...[
                 const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.darkCard,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.check_circle_outline, color: AppTheme.statusCompleted, size: 16),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _parsedFileName!,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            Formatters.formatBytes(_parsedSize!),
-                            style: const TextStyle(color: AppTheme.statusDownloading, fontWeight: FontWeight.w600, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Hash: $_parsedHash',
-                        style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontFamily: 'monospace'),
-                      ),
-                    ],
-                  ),
+                AddLinkPreviewCard(
+                  fileName: _parsed.fileName!,
+                  sizeBytes: _parsed.size!,
+                  hash: _parsed.hash!,
                 ),
               ],
-
               const SizedBox(height: 16),
-
-              // Category Selection
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Category',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.darkSurface,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.darkBorder),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        value: _selectedCategoryId,
-                        isExpanded: true,
-                        dropdownColor: AppTheme.darkCard,
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('Sans catégorie (None)', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                          ),
-                          ...widget.viewModel.categories.map((c) => DropdownMenuItem<String?>(
-                            value: c.id,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(color: c.parsedColor, shape: BoxShape.circle),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(c.name, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
-                                if (c.defaultDestination != null && c.defaultDestination!.isNotEmpty)
-                                  Text(' (${c.defaultDestination})', style: const TextStyle(fontSize: 11, color: AppColors.textFaint)),
-                              ],
-                            ),
-                          )),
-                        ],
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedCategoryId = val;
-                            if (val != null) {
-                              final cat = widget.viewModel.categories.where((c) => c.id == val).firstOrNull;
-                              if (cat != null && cat.defaultDestination != null && cat.defaultDestination!.isNotEmpty) {
-                                _targetDirController.text = cat.defaultDestination!;
-                              }
-                            }
-                          });
-                        },
-                      ),
-                    ),
+                  const AddLinkFieldLabel(label: 'Category'),
+                  AddLinkCategoryDropdown(
+                    categories: widget.viewModel.categories,
+                    selectedId: _selectedCategoryId,
+                    onChanged: _onCategoryChanged,
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
-
-              // Target directory & Allocation policy
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -299,11 +175,9 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Target Directory',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                        const AddLinkFieldLabel(
+                          label: 'Target Directory',
                         ),
-                        const SizedBox(height: 6),
                         Row(
                           children: [
                             Expanded(
@@ -312,17 +186,30 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                                 style: const TextStyle(fontSize: 13),
                                 decoration: const InputDecoration(
                                   isDense: true,
-                                  hintText: 'Default downloads folder',
+                                  hintText:
+                                      'Default downloads folder',
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             OutlinedButton.icon(
-                              icon: const Icon(Icons.folder_open, size: 16),
-                              label: const Text('Browse...', style: TextStyle(fontSize: 12)),
+                              icon: const Icon(
+                                Icons.folder_open,
+                                size: 16,
+                              ),
+                              label: const Text(
+                                'Browse...',
+                                style: TextStyle(fontSize: 12),
+                              ),
                               style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                side: const BorderSide(color: AppTheme.darkBorder),
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 12,
+                                ),
+                                side: const BorderSide(
+                                  color: AppTheme.darkBorder,
+                                ),
                               ),
                               onPressed: _browseFolder,
                             ),
@@ -337,43 +224,13 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Disk Allocation',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                        const AddLinkFieldLabel(
+                          label: 'Disk Allocation',
                         ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.darkSurface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.darkBorder),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _allocationPolicy,
-                              isExpanded: true,
-                              dropdownColor: AppTheme.darkCard,
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'sparse',
-                                  child: Text('Sparse (Instant, grows dynamically)', style: TextStyle(fontSize: 12)),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'preallocate',
-                                  child: Text('Preallocate (Full size, avoids fragmentation)', style: TextStyle(fontSize: 12)),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'none',
-                                  child: Text('None (Minimal initial disk use)', style: TextStyle(fontSize: 12)),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setState(() => _allocationPolicy = val);
-                                }
-                              },
-                            ),
+                        AddLinkAllocationDropdown(
+                          value: _allocationPolicy,
+                          onChanged: (val) => setState(
+                            () => _allocationPolicy = val,
                           ),
                         ),
                       ],
@@ -381,22 +238,24 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
-
-              // Action buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: AppColors.textSoft)),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: AppColors.textSoft),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
                     icon: const Icon(Icons.add_rounded, size: 18),
                     label: const Text('Add Download'),
-                    style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                    ),
                     onPressed: _isValid ? _submit : null,
                   ),
                 ],
@@ -408,21 +267,29 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     );
   }
 
-  Future<void> _browseFolder() async {
-    if (Platform.isWindows) {
-      try {
-        final result = await Process.run('powershell', [
-          '-NoProfile',
-          '-Command',
-          r'''Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Download Directory'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }'''
-        ]);
-        final chosen = result.stdout.toString().trim();
-        if (chosen.isNotEmpty && Directory(chosen).existsSync()) {
-          setState(() {
-            _targetDirController.text = chosen;
-          });
+  void _onCategoryChanged(String? val) {
+    setState(() {
+      _selectedCategoryId = val;
+      if (val != null) {
+        final cat = widget.viewModel.categories
+            .where((c) => c.id == val)
+            .firstOrNull;
+        if (cat != null &&
+            cat.defaultDestination != null &&
+            cat.defaultDestination!.isNotEmpty) {
+          _targetDirController.text = cat.defaultDestination!;
         }
-      } catch (_) {}
+      }
+    });
+  }
+
+  Future<void> _browseFolder() async {
+    final chosen =
+        await pickFolder(description: 'Select Download Directory');
+    if (chosen != null && mounted) {
+      setState(() {
+        _targetDirController.text = chosen;
+      });
     }
   }
 
@@ -446,7 +313,10 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.viewModel.errorMessage ?? 'Erreur lors de l\'ajout du téléchargement'),
+          content: Text(
+            widget.viewModel.errorMessage ??
+                'Erreur lors de l\'ajout du téléchargement',
+          ),
           backgroundColor: AppColors.accentOrangeShade700,
           duration: const Duration(seconds: 4),
         ),
