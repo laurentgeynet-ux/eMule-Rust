@@ -5,6 +5,30 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+### Ajouté — Refonte UI multiplateforme (branche `ui-ux`)
+
+- **`packages/mule_client`** : extraction du client daemon dans un package
+  Dart partagé (interface `MuleDaemonClient`, transport `RpcDaemonClient`
+  WS/JSON-RPC, `FakeMuleDaemonClient`, modèles de domaine, DTOs). Nouveau :
+  reconnexion automatique opt-in (`autoReconnect`, backoff 0,5 s→10 s +
+  re-`hello` + resync), keep-alive `system.status` toutes les 20 s
+  (détection des connexions zombies), gestion `event.snapshotRequired`,
+  tests client déplacés dans le package.
+- **`packages/ui_kit`** : design system partagé — `AppTheme`,
+  `Formatters`, `AppStrings`, `PartAvailabilityBar`.
+- **Daemon — events RPC durcis** : `DaemonEvent` devient la source unique
+  du format wire (`method()`, `topic()`, `send()` — utilisé par tous les
+  émetteurs) ; `events.subscribe {topics}` filtre par session
+  (`downloads`/`peers`/`servers`/`search`/`network`) ; un client qui lag
+  reçoit `event.snapshotRequired {skipped}` au lieu de perdre des events
+  silencieusement ; `DownloadUpdatedEvent` (doublon) supprimé.
+- **UI desktop** : correction du débordement du sélecteur de cible de
+  recherche (scroll horizontal en mode compact, espacements resserrés) ;
+  watchdog de recherche 30 s annulé dès réception de résultats.
+- **Docs** : `docs/architecture/rpc_protocol.md` (contrat JSON-RPC complet)
+  et `docs/architecture/plan_ui_multiplateforme.md` (roadmap desktop/
+  mobile/web en 10 phases).
+
 ### Ajouté — Notes Kad (commentaires/évaluations de fichiers) et outillage MCP
 
 - **Kad notes — modèle wire et codec bornés** (`crates/mule-protocol/src/kad`) : `KadNoteWire` (entrée `CEntry` avec `m_bSource = false`), décodeurs/encodeurs pour `KADEMLIA2_SEARCH_NOTES_REQ` (`0x35`, `[target:16][file_size:u64]`), `KADEMLIA2_PUBLISH_NOTES_REQ` (`0x45`, `[target][source:16][tag_count:u8][tags]`), les réponses notes sur le `KADEMLIA2_SEARCH_RES` unifié (`0x3B`, forme émise par `CIndexed::SendValidNoteResult`) et le `KADEMLIA_SEARCH_NOTES_RES` legacy (`0x3A`). Listes de tags génériques bornées : tags connus décodés en `Ed2kTag`, inconnus préservés en `RawTag`, compteur plafonné à 32 — les commentaires restent des données d'affichage non fiables.

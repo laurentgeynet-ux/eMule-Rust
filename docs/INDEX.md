@@ -54,6 +54,18 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `lib/domain/models/network_policy_models.dart` | Modèles : politique réseau |
 | `lib/domain/models/part_met_models.dart` | Modèles : métadonnées de fichiers .part.met |
 | `lib/domain/models/server_models.dart` | Modèles : serveurs eD2k |
+| `README.md` | Usage, protocole et comportements transport du client |
+
+### packages/ui_kit/ — Design system partagé
+
+| Fichier | Fonction |
+|---|---|
+| `lib/ui_kit.dart` | Barrel : export unique du package |
+| `lib/src/theme.dart` | `AppTheme` : couleurs brand/status, `dark()` ThemeData |
+| `lib/src/formatters.dart` | `Formatters` : bytes, vitesses, ETA, pourcentages |
+| `lib/src/strings.dart` | `AppStrings` : chaînes UI centralisées (base i18n) |
+| `lib/src/part_availability_bar.dart` | Bandeau eMule par part (rouge/bleu/teal) |
+| `README.md` | Contenu et règles du design system |
 | `lib/services/daemon_supervisor.dart` | Supervision du cycle de vie du daemon (démarrage/arrêt) |
 | `lib/services/work_directory_resolver.dart` | Résolution du répertoire de travail du daemon |
 | `lib/ui/core/formatters.dart` | Fonctions de formatage (tailles, vitesses, dates) |

@@ -64,6 +64,8 @@ docs/
 
 ### 1. Architecture Système & Démon
 * **[Rapport Global d'Architecture & d'Avancement](architecture/rapport_architecture_et_avancement.md)** : Vue d'ensemble détaillée des 7 crates Rust, du superviseur Flutter et de la Clean Architecture.
+* **[Protocole RPC du daemon](architecture/rpc_protocol.md)** : Contrat JSON-RPC 2.0/WebSocket — handshake, méthodes, events, codes d'erreur, versioning.
+* **[Plan UI multiplateforme](architecture/plan_ui_multiplateforme.md)** : Roadmap desktop/mobile/web en 10 phases (packages partagés, Riverpod, i18n).
 * **[Cartographie Globale des Fichiers](INDEX.md)** : Répertoire exhaustif de chaque fichier du dépôt.
 * **[Journal des Changements](CHANGELOG.md)** : Historique des versions et évolutions.
 
