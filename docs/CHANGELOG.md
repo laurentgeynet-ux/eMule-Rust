@@ -26,6 +26,12 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
     `windows/ed2k_protocol.reg` (ou l'installeur), `.desktop`
     `x-scheme-handler/ed2k` pour Linux, intent-filter/URL types pour
     Android/iOS.
+  - Runners **Android** et **iOS** générés (`com.emulesion.app`) :
+    `AndroidManifest.xml` avec permission `INTERNET` + intent-filter
+    `ed2k`, `Info.plist` avec `CFBundleURLSchemes` `ed2k`, nom d'app
+    `Emule-Sion`. Les services desktop (`WindowSetup`, `TraySetup`) sont
+    déjà no-op hors desktop ; `pickFolder` exclut iOS (pas de picker de
+    dossier natif).
 
 ### Ajouté — Refonte UI multiplateforme (branche `ui-ux`)
 
