@@ -350,3 +350,28 @@ fn sending_part_i64_roundtrip_beyond_4gib() {
     assert_eq!(decoded.end_offset, start + 1024);
     assert_eq!(decoded.data, data);
 }
+
+/// Real peer on the live network (observed: LowID client announcing
+/// `emule_version 2.7c`) sends OP_FILESTATUS with `part_count = 0` (complete
+/// file) plus one trailing padding byte. eMule ignores trailing bytes —
+/// strict rejection used to drop the whole session.
+#[test]
+fn filestatus_complete_file_tolerates_trailing_bytes() {
+    let decoder = Ed2kDecoder::default();
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&[0x33u8; 16]); // file hash
+    payload.extend_from_slice(&0u16.to_le_bytes()); // part_count = 0 → complete
+    payload.push(0x00); // trailing byte sent by the real client
+
+    let mut frame = vec![PR_ED2K];
+    frame.extend_from_slice(&((payload.len() + 1) as u32).to_le_bytes());
+    frame.push(0x50); // OP_FILESTATUS
+    frame.extend_from_slice(&payload);
+
+    let msg = decoder.decode_packet(&frame).expect("decode filestatus");
+    let Ed2kMessage::FileStatus(status) = msg else {
+        panic!("expected FileStatus");
+    };
+    assert_eq!(status.file_hash, [0x33u8; 16]);
+    assert_eq!(status.part_count, 0);
+}

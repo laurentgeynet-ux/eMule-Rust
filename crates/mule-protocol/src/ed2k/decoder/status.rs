@@ -161,7 +161,11 @@ pub fn decode_file_status(
         &[]
     };
 
-    if (part_count == 0 && reader.remaining() > 0) || reader.remaining() > 1024 {
+    // eMule ignores bytes trailing the bitfield (CUpDownClient::
+    // ProcessFileStatus): complete files are announced with part_count = 0
+    // and some clients still append padding/flag bytes. Tolerate them up to
+    // a bounded slack to avoid dropping real peers.
+    if reader.remaining() > 1024 {
         return Err(Ed2kParseError::new(
             protocol,
             Some(opcode),
