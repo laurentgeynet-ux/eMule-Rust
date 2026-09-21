@@ -103,10 +103,6 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
 
     let portable_default =
         crate::workdir::WorkDirectoryResolver::resolve(None, None).default_download_dir;
-    state.emit_event(|sequence| crate::services::DaemonEvent::SettingsChanged {
-        sequence,
-        keys: vec!["defaultDownloadDir".to_string()],
-    });
     Ok(json!({
         "defaultDownloadDir": current_dir.to_string_lossy(),
         "portableDownloadDir": portable_default.to_string_lossy(),

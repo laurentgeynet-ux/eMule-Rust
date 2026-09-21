@@ -7,7 +7,8 @@ pub struct ResourceBudgets {
     pub max_active_peer_connections: usize,
     /// Maximum concurrent server TCP connections (default: 2).
     pub max_active_server_connections: usize,
-    /// Maximum concurrent listener sockets (default: 2).
+    /// Maximum concurrent listener sockets (default: 4 — inbound TCP,
+    /// server UDP and Kad UDP each consume one slot).
     pub max_active_listeners: usize,
     /// Timeout in milliseconds for initiating a TCP connection (default: 10,000 ms).
     pub connect_timeout_ms: u64,
@@ -26,7 +27,7 @@ impl Default for ResourceBudgets {
         Self {
             max_active_peer_connections: 500,
             max_active_server_connections: 2,
-            max_active_listeners: 2,
+            max_active_listeners: 4,
             connect_timeout_ms: 10_000,
             handshake_timeout_ms: 15_000,
             max_frame_size_bytes: 10 * 1024 * 1024,   // 10 MiB
