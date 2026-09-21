@@ -61,6 +61,7 @@ pub fn add_ed2k_link(
             .as_millis() as i64,
         category_id,
         priority: "normal".to_string(),
+        max_sources: None,
     };
 
     let part_file = PartFile::open_or_create(&temp_path, link.size, policy)

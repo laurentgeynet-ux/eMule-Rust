@@ -229,6 +229,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_ports(ed2k_port, kad_port);
     let state = AppState::new(config, downloads);
 
+    // eMule "Incoming" folder sharing: hash every file sitting in the
+    // download directory and register it as shared (background task —
+    // hashing can be slow on large files). Opt-out via the
+    // `share_download_dir` setting.
+    {
+        let dl = std::sync::Arc::clone(&state.downloads);
+        let dir = state.config.default_download_dir.clone();
+        tokio::spawn(async move {
+            mule_daemon::services::incoming_share::scan_download_dir_shares(&dl, dir).await;
+        });
+    }
+
     // 4. Atomically write session file
     let session = DaemonSession::new(1, state.instance_id, &endpoint);
     session.write_atomic(&data_dir)?;

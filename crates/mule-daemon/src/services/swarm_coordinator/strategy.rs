@@ -310,18 +310,52 @@ impl SwarmCoordinator {
         };
         let quotas = SwarmAllocator::compute_quotas(&demands, &alloc_config);
 
+        // Per-file source caps (eMule `.part.met` FT_MAXSOURCES /
+        // `CPartFile::GetMaxSources`): when present, the per-file limit
+        // overrides the global `max_peers_per_file` for quota, requery and
+        // purge-threshold decisions.
+        let file_max_sources: std::collections::HashMap<String, usize> = active_downloads
+            .iter()
+            .filter_map(|d| {
+                if d.ed2k_hash.is_empty() {
+                    return None;
+                }
+                let cap = d
+                    .max_sources
+                    .map(|v| v as usize)
+                    .unwrap_or(alloc_config.max_peers_per_file);
+                Some((d.ed2k_hash.clone(), cap))
+            })
+            .collect();
+
         // A4AF ("Ask For Another File"): a starved download may reclaim a
         // peer address currently connected to a lower-priority file that is
         // already above its minimum peer count. eMule multiplexes files per
         // connection; our sessions are mono-file, so we release the session
         // and let the starved file dial the address on the next tick.
-        self.a4af_rebalance(&demands, &alloc_config, now_ms)
-            .await;
+        // A4AF event pass every tick: sources that just reported NNP are
+        // candidates for immediate swap to other files (eMule triggers
+        // `SwapToAnotherFile` on NNP/FNF, not only on the periodic pass).
+        self.a4af_event_pass(&active_downloads, now_ms).await;
+
+        // Full A4AF rebalance at eMule's `ProcessA4AFClients` cadence (~8 min).
+        if self.last_a4af_full.elapsed() >= super::types::A4AF_FULL_INTERVAL {
+            self.last_a4af_full = Instant::now();
+            self.a4af_rebalance(&demands, &alloc_config, now_ms)
+                .await;
+        }
 
         // Client-UDP keep-alives: OP_REASKFILEPING toward sources queued on
         // a remote peer that announced an eMule UDP port — deduplicated at
-        // ~21 min cadence (CUpDownClient::UDPReaskForDownload).
+        // ~21 min cadence (CUpDownClient::UDPReaskForDownload). eMule only
+        // spends a UDP reask when the last connection attempt is old
+        // (> ~20 min): skip freshly-queued sessions to avoid UDP noise.
         for target in self.state.peer_session.queued_udp_targets().await {
+            if let Some(connected_at) = target.connected_at_unix_ms {
+                if now_ms.saturating_sub(connected_at) < 20 * 60 * 1000 {
+                    continue;
+                }
+            }
             self.state.client_udp.send_reask_file_ping(&target, 0).await;
         }
 
@@ -362,9 +396,14 @@ impl SwarmCoordinator {
                 None => true,
             };
 
-            // Match official eMule: if file has already reached its max sources limit,
-            // do not waste server and Kad bandwidth re-querying.
-            if should_query && candidate_sources.len() < alloc_config.max_peers_per_file {
+            // Match official eMule: if file has already reached its max sources
+            // limit (per-file FT_MAXSOURCES or the global cap), do not waste
+            // server and Kad bandwidth re-querying.
+            let file_max = file_max_sources
+                .get(&hash_hex)
+                .copied()
+                .unwrap_or(alloc_config.max_peers_per_file);
+            if should_query && candidate_sources.len() < file_max {
                 self.last_source_query.insert(hash_hex.clone(), now);
 
                 if self.state.server_session.snapshot().await.status
@@ -444,6 +483,28 @@ impl SwarmCoordinator {
                 }
             };
 
+            // eMule `CPartFile::Process`: near the per-file source cap
+            // (>= 80%), periodically drop sources that cannot serve us —
+            // unreachable LowIDs, NNP-flagged and repeatedly failed sources.
+            if self
+                .last_source_purge
+                .get(&hash_hex)
+                .is_none_or(|t| t.elapsed() >= super::types::SOURCE_PURGE_INTERVAL)
+            {
+                self.last_source_purge.insert(hash_hex.clone(), now);
+                self.purge_excess_sources(
+                    &hash_hex,
+                    &candidate_sources,
+                    file_max_sources
+                        .get(&hash_hex)
+                        .copied()
+                        .unwrap_or(alloc_config.max_peers_per_file),
+                    server_is_high_id,
+                    now_ms,
+                )
+                .await;
+            }
+
             let swarm_snap = self
                 .state
                 .peer_session
@@ -451,7 +512,11 @@ impl SwarmCoordinator {
                 .await;
             let active_count = swarm_snap.active_peer_count;
 
-            let target_quota = *quotas.get(&hash_hex).unwrap_or(&0);
+            let target_quota = quotas
+                .get(&hash_hex)
+                .copied()
+                .unwrap_or(0)
+                .min(file_max_sources.get(&hash_hex).copied().unwrap_or(usize::MAX));
             if active_count >= target_quota {
                 continue;
             }
@@ -951,6 +1016,172 @@ impl SwarmCoordinator {
                     .disconnect_peer(Some(peer_addr))
                     .await;
                 return; // One swap per tick.
+            }
+        }
+    }
+
+    /// Conditional source purge (eMule `CPartFile::Process` slow timers).
+    ///
+    /// Only runs when the file's known-source count reaches ~80% of its
+    /// `maxSources` (`FT_MAXSOURCES` or the global per-file cap). Purged:
+    /// - `lowid:` sources we cannot call back (we are LowID ourselves);
+    /// - `kadcb:` sources without a buddy id (unreachable);
+    /// - sources flagged "no needed parts" (NNP) — their part mask covers
+    ///   nothing we still need;
+    /// - sources that failed repeatedly (fail_count >= 3).
+    ///
+    /// Purge removes at most `count - threshold` rows per pass.
+    async fn purge_excess_sources(
+        &mut self,
+        file_hash: &str,
+        sources: &[mule_core::model::PeerSource],
+        file_max: usize,
+        server_is_high_id: bool,
+        now_ms: i64,
+    ) {
+        if file_max == 0 || sources.len() < file_max * 4 / 5 {
+            return;
+        }
+        let budget = sources.len() - file_max * 4 / 5;
+        if budget == 0 {
+            return;
+        }
+
+        let mut removed = 0usize;
+        for s in sources {
+            if removed >= budget {
+                break;
+            }
+            if s.status == PeerSourceStatus::Connected {
+                continue;
+            }
+            let nnp = s
+                .last_error
+                .as_deref()
+                .map(|e| e.to_lowercase().contains("no needed parts"))
+                .unwrap_or(false);
+            let unreachable_lowid = (s.address.starts_with("lowid:") && !server_is_high_id)
+                || (s.address.starts_with("kadcb:") && s.buddy_id.is_none());
+            let repeatedly_failed =
+                s.status == PeerSourceStatus::Failed && s.fail_count >= 3;
+            if !(nnp || unreachable_lowid || repeatedly_failed) {
+                continue;
+            }
+            let why = if nnp {
+                "NNP"
+            } else if unreachable_lowid {
+                "unreachable LowID"
+            } else {
+                "repeated failures"
+            };
+            let mut dl_guard = self.state.downloads.lock().await;
+            match dl_guard.delete_peer_source(file_hash, &s.address) {
+                Ok(true) => {
+                    removed += 1;
+                    tracing::info!(
+                        "[SOURCE_PURGE] {file_hash}: dropped {why} source {} (swarm over 80% of maxSources={file_max})",
+                        s.address
+                    );
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::debug!("[SOURCE_PURGE] delete {} failed: {e}", s.address)
+                }
+            }
+        }
+        if removed > 0 {
+            tracing::info!(
+                "[SOURCE_PURGE] {file_hash}: removed {removed} sources at {}% of maxSources ({}/{})",
+                sources.len() * 100 / file_max.max(1),
+                sources.len(),
+                file_max
+            );
+        }
+        let _ = now_ms;
+    }
+
+    /// Event-driven A4AF (eMule `CUpDownClient` NNP/FNF swap triggers).
+    ///
+    /// Scans sources recently flagged "no needed parts" (NNP): the source is
+    /// useless for the file it served but may hold parts for another active
+    /// download. When the same address is a viable candidate of another
+    /// file, its cooldown is cleared so the dialer picks it up immediately
+    /// (bounded to one address per file per tick).
+    async fn a4af_event_pass(&mut self, downloads: &[DownloadSnapshot], now_ms: i64) {
+        let hashes: Vec<String> = downloads
+            .iter()
+            .filter(|d| !d.ed2k_hash.is_empty())
+            .map(|d| d.ed2k_hash.clone())
+            .collect();
+        if hashes.len() < 2 {
+            return;
+        }
+
+        // Sources per file, loaded once.
+        let mut per_file: std::collections::HashMap<String, Vec<mule_core::model::PeerSource>> =
+            std::collections::HashMap::new();
+        {
+            let dl_guard = self.state.downloads.lock().await;
+            for h in &hashes {
+                per_file.insert(h.clone(), dl_guard.list_peer_sources(h).unwrap_or_default());
+            }
+        }
+
+        // Addresses that just reported NNP/FNF for a file.
+        let mut nnp_addrs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for srcs in per_file.values() {
+            for s in srcs {
+                let flagged = s
+                    .last_error
+                    .as_deref()
+                    .map(|e| {
+                        let e = e.to_lowercase();
+                        e.contains("no needed parts") || e.contains("file not found")
+                    })
+                    .unwrap_or(false);
+                if flagged {
+                    nnp_addrs.insert(s.address.clone());
+                }
+            }
+        }
+        if nnp_addrs.is_empty() {
+            return;
+        }
+
+        // Clear the cooldown of the same address on *other* files so the
+        // scheduler can dial it right away (eMule `SwapToAnotherFile`).
+        for (hash, srcs) in &per_file {
+            for s in srcs {
+                if !nnp_addrs.contains(&s.address) {
+                    continue;
+                }
+                let viable = matches!(
+                    s.status,
+                    PeerSourceStatus::Candidate
+                        | PeerSourceStatus::Tried
+                        | PeerSourceStatus::Allowed
+                ) || (s.status == PeerSourceStatus::Failed
+                    && s.cooldown_until_unix_ms.is_some_and(|c| c <= now_ms));
+                if !viable {
+                    continue;
+                }
+                let cooling = s
+                    .cooldown_until_unix_ms
+                    .is_some_and(|c| c > now_ms);
+                if !cooling {
+                    continue;
+                }
+                let mut dl_guard = self.state.downloads.lock().await;
+                if dl_guard
+                    .reset_peer_source_cooldown(hash, &s.address)
+                    .unwrap_or(false)
+                {
+                    tracing::info!(
+                        "[A4AF] Event swap: source {} freed by another file, reactivating for {hash}",
+                        s.address
+                    );
+                }
+                break; // one event swap per file per tick
             }
         }
     }

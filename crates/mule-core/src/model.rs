@@ -66,6 +66,9 @@ pub struct Download {
     /// Download priority: "low", "normal", "high" (eMule file priority —
     /// biases the swarm allocator slot quota for this file).
     pub priority: String,
+    /// Per-file source limit imported from `.part.met` `FT_MAXSOURCES`
+    /// (eMule `CPartFile::GetMaxSources`). `None` = use the global limit.
+    pub max_sources: Option<u32>,
 }
 
 impl Download {
@@ -95,6 +98,7 @@ impl Download {
             updated_at: now,
             category_id: None,
             priority: "normal".to_string(),
+            max_sources: None,
         }
     }
 }
@@ -465,6 +469,15 @@ pub struct SharedFile {
     pub aich_root: Option<[u8; 20]>,
     pub shared_at_unix_ms: i64,
     pub enabled: bool,
+    /// Upload priority (eMule `PR_*` of the shared file): "verylow", "low",
+    /// "normal", "high", "veryhigh" (= powershare). Used as a score factor
+    /// in the upload queue (`GetFilePrioAsNumber` semantics).
+    #[serde(default = "default_up_priority")]
+    pub up_priority: String,
+}
+
+fn default_up_priority() -> String {
+    "normal".to_string()
 }
 
 impl SharedFile {
@@ -486,6 +499,7 @@ impl SharedFile {
             aich_root: None,
             shared_at_unix_ms: now,
             enabled: true,
+            up_priority: "normal".to_string(),
         }
     }
 }
@@ -524,20 +538,40 @@ impl PeerCredit {
         }
     }
 
-    /// Computes the eMule canonical credit multiplier (clamped between 1.0 and 10.0).
+    /// Computes the eMule 0.72a canonical credit multiplier
+    /// (`CClientCredits::GetScoreRatio`, `ClientCredits.cpp`), clamped to
+    /// [1.0, 10.0].
     ///
-    /// Multiplier formula:
-    /// min(10.0, max(1.0, 2.0 * (downloaded_bytes) / (uploaded_bytes + 1)))
+    /// Three candidate values, the *smallest* wins:
+    /// - `2 * downloaded / uploaded` (ratio, or 10.0 when nothing uploaded)
+    /// - `sqrt(downloaded / 1 MiB + 2)` (exponential cap: 9.2 MiB → ~3.34,
+    ///   100 MiB → ~10.0)
+    /// - linear cap for the first chunks: `(downloaded - 1 MiB) / 8 598 323
+    ///   * 2.34 + 1.0` below ~9.2 MiB, else 10.0
+    ///
+    /// Peers that never sent us anything (< 1 MiB) get exactly 1.0.
     ///
     /// Semantic definitions:
-    /// - `downloaded_bytes`: Bytes received by us from this peer (peer uploaded to us).
-    /// - `uploaded_bytes`: Bytes sent by us to this peer.
+    /// - `downloaded_bytes`: bytes received by us from this peer.
+    /// - `uploaded_bytes`: bytes sent by us to this peer.
     pub fn credit_multiplier(&self) -> f64 {
-        if self.downloaded_bytes == 0 {
+        const ONE_MIB: f64 = 1_048_576.0;
+        if self.downloaded_bytes < ONE_MIB as u64 {
             return 1.0;
         }
-        let ratio = (2.0 * self.downloaded_bytes as f64) / (self.uploaded_bytes as f64 + 1.0);
-        ratio.clamp(1.0, 10.0)
+        let dl = self.downloaded_bytes as f64;
+        let ratio = if self.uploaded_bytes > 0 {
+            (dl * 2.0) / self.uploaded_bytes as f64
+        } else {
+            10.0
+        };
+        let sqrt_cap = (dl / ONE_MIB + 2.0).sqrt();
+        let linear_cap = if dl < 9_646_899.0 {
+            (dl - ONE_MIB) / 8_598_323.0 * 2.34 + 1.0
+        } else {
+            10.0
+        };
+        ratio.min(sqrt_cap.min(linear_cap)).clamp(1.0, 10.0)
     }
 }
 
@@ -557,31 +591,31 @@ mod tests {
             "Expected floor 1.0 for 0/0"
         );
 
-        // Vector 2: Received 5,000, Sent 0 => 10.0 (capped at 10.0)
-        // 2 * 5000 / (0 + 1) = 10000 -> clamped to 10.0
-        credit.downloaded_bytes = 5000;
+        // Vector 2 (eMule formula): Received 5 MiB, Sent 0 →
+        // min(10.0, sqrt(5+2)≈2.65, linear≈2.14) = ~2.14 — the linear cap
+        // dominates below ~9.2 MiB. NOT 10.0 like the naive ratio.
+        credit.downloaded_bytes = 5 * 1_048_576;
         credit.uploaded_bytes = 0;
-        assert_eq!(
-            credit.credit_multiplier(),
-            10.0,
-            "Expected cap 10.0 for 5000/0"
-        );
+        let m = credit.credit_multiplier();
+        assert!((m - 2.1415).abs() < 0.01, "Expected ~2.14 for 5MiB/0, got {m}");
 
-        // Vector 3: Received 1,000, Sent 2,000 => 1.0 (floor)
-        // 2 * 1000 / (2000 + 1) = 2000 / 2001 < 1.0 -> clamped to 1.0
+        // Vector 3: Received < 1 MiB => 1.0 floor regardless of ratio.
         credit.downloaded_bytes = 1000;
         credit.uploaded_bytes = 2000;
-        assert_eq!(
-            credit.credit_multiplier(),
-            1.0,
-            "Expected floor 1.0 for 1000/2000"
-        );
+        assert_eq!(credit.credit_multiplier(), 1.0);
 
-        // Vector 4: Intermediate ratio (e.g. Received 3,000, Sent 1,000 => ~5.99)
-        // 2 * 3000 / (1000 + 1) = 6000 / 1001 = 5.994...
-        credit.downloaded_bytes = 3000;
-        credit.uploaded_bytes = 999;
-        assert!((credit.credit_multiplier() - 6.0).abs() < 0.01);
+        // Vector 4: 100 MiB received, 5 MiB sent →
+        // ratio = 2*100/5 = 40 → capped by sqrt(100+2)≈10.1 → min = 10.0
+        credit.downloaded_bytes = 100 * 1_048_576;
+        credit.uploaded_bytes = 5 * 1_048_576;
+        assert_eq!(credit.credit_multiplier(), 10.0);
+
+        // Vector 5: symmetric exchange 10 MiB / 10 MiB →
+        // min(2.0, sqrt(12)≈3.46, 10.0) = 2.0
+        credit.downloaded_bytes = 10 * 1_048_576;
+        credit.uploaded_bytes = 10 * 1_048_576;
+        let m = credit.credit_multiplier();
+        assert!((m - 2.0).abs() < 0.01, "Expected ~2.0 for 10MiB/10MiB, got {m}");
     }
 }
 

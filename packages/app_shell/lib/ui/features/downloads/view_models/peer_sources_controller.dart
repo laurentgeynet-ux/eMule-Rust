@@ -169,6 +169,21 @@ class PeerSourcesController extends ChangeNotifier {
     }
   }
 
+  /// Per-file source cap (eMule FT_MAXSOURCES); `null` restores global.
+  Future<void> setDownloadMaxSources(String downloadId, int? maxSources) async {
+    try {
+      await client.setDownloadMaxSources(downloadId, maxSources);
+      onStatus?.call(
+        maxSources == null
+            ? 'Limite de sources réinitialisée'
+            : 'Limite de sources : $maxSources',
+      );
+      notifyListeners();
+    } catch (e) {
+      onError?.call('Échec du changement de limite : $e');
+    }
+  }
+
   Future<void> clearSourcesForHash(String fileHash) async {
     try {
       await client.clearSources(fileHash);

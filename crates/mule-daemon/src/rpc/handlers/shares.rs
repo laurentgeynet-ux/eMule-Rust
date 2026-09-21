@@ -72,6 +72,38 @@ pub async fn handle_shares_set_enabled(
     }
 }
 
+/// `shares.setUploadPriority` — eMule upload priority (powershare) for a
+/// shared file: "verylow" | "low" | "normal" | "high" | "veryhigh".
+/// Weighted into the upload queue score (`GetFilePrioAsNumber` semantics).
+pub async fn handle_shares_set_upload_priority(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+    let priority = params["priority"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'priority'"))?
+        .to_lowercase();
+    match priority.as_str() {
+        "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare" => {}
+        _ => return Err(JsonRpcError::invalid_params("Invalid priority")),
+    }
+    let updated = state
+        .downloads
+        .lock()
+        .await
+        .set_shared_up_priority(file_hash, &priority)?;
+    if updated {
+        Ok(json!({ "ok": true, "fileHash": file_hash, "upPriority": priority }))
+    } else {
+        Err(JsonRpcError::business("Shared file not found"))
+    }
+}
+
 pub async fn handle_listener_start(
     state: &AppState,
     params: Option<Value>,

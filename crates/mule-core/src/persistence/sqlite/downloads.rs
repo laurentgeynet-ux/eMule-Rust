@@ -8,8 +8,8 @@ use crate::ranges::RangeSet;
 
 pub fn insert_download(conn: &mut Connection, dl: &Download) -> Result<(), CoreError> {
     conn.execute(
-        "INSERT INTO downloads (id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO downloads (id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority, max_sources)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             dl.id.to_string(),
             dl.display_name,
@@ -23,6 +23,7 @@ pub fn insert_download(conn: &mut Connection, dl: &Download) -> Result<(), CoreE
             dl.updated_at,
             dl.category_id,
             dl.priority,
+            dl.max_sources.map(|v| v as i64),
         ],
     )?;
     Ok(())
@@ -37,6 +38,20 @@ pub fn update_priority(
     conn.execute(
         "UPDATE downloads SET priority = ?1 WHERE id = ?2",
         params![priority, download_id.to_string()],
+    )?;
+    Ok(())
+}
+
+/// Persists the per-file source limit (eMule FT_MAXSOURCES). `None` clears
+/// it back to the global default.
+pub fn update_max_sources(
+    conn: &mut Connection,
+    download_id: &Uuid,
+    max_sources: Option<u32>,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE downloads SET max_sources = ?1 WHERE id = ?2",
+        params![max_sources.map(|v| v as i64), download_id.to_string()],
     )?;
     Ok(())
 }
@@ -211,7 +226,7 @@ pub fn update_status(
 
 pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority FROM downloads ORDER BY created_at ASC",
+        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority, max_sources FROM downloads ORDER BY created_at ASC",
     )?;
     let mut rows = stmt.query([])?;
     let mut downloads = Vec::new();
@@ -230,6 +245,7 @@ pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> 
         let updated_at: i64 = row.get(9)?;
         let category_id: Option<String> = row.get(10)?;
         let priority: String = row.get(11).unwrap_or_else(|_| "normal".to_string());
+        let max_sources: Option<i64> = row.get(12).unwrap_or(None);
 
         if ed2k_blob.len() != 16 {
             return Err(CoreError::Database("Invalid ed2k_hash length in DB".into()));
@@ -264,6 +280,7 @@ pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> 
             updated_at,
             category_id,
             priority,
+            max_sources: max_sources.and_then(|v| u32::try_from(v).ok()),
         });
     }
     Ok(downloads)
@@ -271,7 +288,7 @@ pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> 
 
 pub fn get_download(conn: &Connection, id: &Uuid) -> Result<Option<Download>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority FROM downloads WHERE id = ?1",
+        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority, max_sources FROM downloads WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id.to_string()])?;
     if let Some(row) = rows.next()? {
@@ -289,6 +306,7 @@ pub fn get_download(conn: &Connection, id: &Uuid) -> Result<Option<Download>, Co
         let updated_at: i64 = row.get(9)?;
         let category_id: Option<String> = row.get(10)?;
         let priority: String = row.get(11).unwrap_or_else(|_| "normal".to_string());
+        let max_sources: Option<i64> = row.get(12).unwrap_or(None);
 
         if ed2k_blob.len() != 16 {
             return Err(CoreError::Database("Invalid ed2k_hash length in DB".into()));
@@ -323,6 +341,7 @@ pub fn get_download(conn: &Connection, id: &Uuid) -> Result<Option<Download>, Co
             updated_at,
             category_id,
             priority,
+            max_sources: max_sources.and_then(|v| u32::try_from(v).ok()),
         }))
     } else {
         Ok(None)

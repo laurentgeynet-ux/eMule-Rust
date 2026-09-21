@@ -184,6 +184,16 @@ impl Database {
         downloads::update_priority(&mut self.conn, download_id, priority)
     }
 
+    /// Persists the per-file source limit (eMule FT_MAXSOURCES).
+    /// `None` restores the global default limit.
+    pub fn update_max_sources(
+        &mut self,
+        download_id: &Uuid,
+        max_sources: Option<u32>,
+    ) -> Result<(), CoreError> {
+        downloads::update_max_sources(&mut self.conn, download_id, max_sources)
+    }
+
     /// Retrieves all persisted downloads from the database.
     pub fn get_all_downloads(&self) -> Result<Vec<Download>, CoreError> {
         downloads::get_all_downloads(&self.conn)
@@ -402,6 +412,15 @@ impl Database {
         enabled: bool,
     ) -> Result<bool, CoreError> {
         shares::set_shared_file_enabled(&mut self.conn, file_hash, enabled)
+    }
+
+    /// Sets the upload priority (`up_priority`) of a shared file.
+    pub fn set_shared_up_priority(
+        &mut self,
+        file_hash: &str,
+        up_priority: &str,
+    ) -> Result<bool, CoreError> {
+        shares::set_shared_up_priority(&mut self.conn, file_hash, up_priority)
     }
 
     /// Caches the computed AICH root hash of a shared file.

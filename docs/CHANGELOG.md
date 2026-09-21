@@ -37,6 +37,54 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
     log `[A4AF]`). Nos sessions restent mono-fichier : le swap se fait par
     reconnexion, pas par multiplexage `OP_REQFILENAME`.
 
+- **Dossier « Incoming » partagé** (`incoming_share.rs`) : au démarrage,
+  chaque fichier régulier du répertoire de téléchargement est hashé en eD2K
+  (MD4 + hashset persisté) et enregistré comme fichier partagé — même
+  comportement que le dossier Incoming d'eMule. Les entrées existantes
+  conservent leur priorité/état ; désactivable via le setting
+  `share_download_dir = "0"`. Artefacts de téléchargement exclus
+  (`.part`, `.met`, `.tmp`…). Log `[INCOMING_SHARE]`.
+
+- **Alignement fin eMule 0.72a — file d'upload et gestion des sources** :
+  - **Formule de crédit exacte** (`ClientCredits::GetScoreRatio`) :
+    `min(2·DL/UL, √(DL/1Mio + 2), cap linéaire ~3,34 @ 9,2 Mio)` bornée
+    `[1.0, 10.0]` — remplace le `2·DL/UL` seul qui sur-créditait les petits
+    downloaders ; identités invalides/non vérifiées → 1.0.
+  - **Priorité du fichier demandé dans le score de queue** : `file_prio_num`
+    par fichier partagé (`veryhigh/powershare`=18, `high`=9, `normal`=7,
+    `low`=6, `verylow`=2) appliqué au score d'attente ; colonne
+    `shared_files.up_priority` + RPC `shares.setUploadPriority`.
+  - **Bonus « downloading »** : un client en cours d'upload qui re-file
+    reçoit ~+15 min de temps d'attente (`GetScore(isdownloading)`), ce qui
+    stabilise les sessions actives.
+  - **Score 0 bad-guy** : les clients bannis ou à identification rejetée
+    (`IS_IDBADGUY`) restent en queue avec score 0 — jamais promus.
+  - **Purge conditionnelle à 80 %** (`CPartFile::Process`) : quand le nombre
+    de sources connues atteint 80 % du `maxSources` du fichier, purge à
+    cadence 60 s des LowID non rappelables, des sources NNP (« no needed
+    parts ») et des sources en échec répété (`fail_count ≥ 3`), log
+    `[SOURCE_PURGE]`.
+  - **UDP re-ask conditionné** : `OP_REASKFILEPING` n'est émis que si la
+    session en file distante a plus de ~20 min (dernier essai de connexion
+    ancien), en plus de la déduplication 21 min existante.
+  - **`maxSources` par fichier** : `FT_MAXSOURCES` (0x13) lu à l'import
+    `.part.met` et réécrit à la sauvegarde ; colonne `downloads.max_sources`,
+    champ `maxSources` dans les snapshots, RPC `downloads.setMaxSources` ;
+    plafonne le quota de pairs, le gate de re-requête et le seuil de purge.
+  - **UI câblée** : champ « Src max » (dialog d'édition `FT_MAXSOURCES`)
+    dans l'expansion Sources ; chip de priorité `DownloadPriorityChip`
+    directement sur chaque ligne de download (layouts full et compact —
+    plus besoin de déplier) ; onglet **« Partages »** dédié (`/shares`,
+    `SharesView`) avec sélecteur de priorité d'upload (powershare) et
+    switch activé/suspendu par fichier ; section « Amis » dans Paramètres
+    (ajout/suppression de userhash → friend slot) ; colonnes « Score » et
+    « Crédit ×n.nn » + badge « banni » dans la file d'upload.
+  - **A4AF événementiel + périodique** : `a4af_event_pass` à chaque tick —
+    une source marquée NNP/FNF voit son cooldown effacé sur les autres
+    fichiers où elle est candidate (équiv. `SwapToAnotherFile` immédiat) ;
+    le rebalance complet passe à la cadence eMule de 8 min
+    (`A4AF_FULL_INTERVAL`).
+
 - **Alignement protocolaire eMule 0.72a** (`mule-protocol`, `mule-daemon`) :
   - **Référence de vérité** : `D:\eMule0.72a-Sources\eMule0.72a-Sources\srchybrid`
     remplace eMule 0.50a comme référence normative (docs `docs/ed2k/`,

@@ -58,6 +58,57 @@ class _DownloadSourcesExpansionState
     super.dispose();
   }
 
+  /// Small dialog to edit the per-file source cap (eMule FT_MAXSOURCES).
+  /// Empty input clears the override and restores the global limit.
+  Future<void> _editMaxSources(
+    BuildContext context,
+    WidgetRef ref,
+    DownloadItem detail,
+  ) async {
+    final controller = TextEditingController(
+      text: detail.maxSources?.toString() ?? '',
+    );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.darkSurface,
+        title: const Text('Sources max (FT_MAXSOURCES)'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Vide = limite globale',
+            helperText: 'Nombre max de sources pour ce fichier (1-10000)',
+          ),
+          onSubmitted: (_) => Navigator.of(ctx).pop(true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Appliquer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final raw = controller.text.trim();
+    final value = raw.isEmpty ? null : int.tryParse(raw);
+    if (raw.isNotEmpty && (value == null || value < 1 || value > 10000)) {
+      return;
+    }
+    await ref
+        .read(peerSourcesControllerProvider)
+        .setDownloadMaxSources(widget.item.id, value);
+    await ref
+        .read(peerSourcesControllerProvider)
+        .loadDetailForId(widget.item.id);
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctl = ref.watch(peerSourcesControllerProvider);
@@ -169,6 +220,28 @@ class _DownloadSourcesExpansionState
                   ),
                 ),
                 const SizedBox(width: 4),
+                // eMule per-file source cap (FT_MAXSOURCES).
+                Tooltip(
+                  message: 'Sources max pour ce fichier (FT_MAXSOURCES)',
+                  child: InkWell(
+                    onTap: () => _editMaxSources(context, ref, detail),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        detail.maxSources == null
+                            ? 'Src max: ∞'
+                            : 'Src max: ${detail.maxSources}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 InkWell(
                   onTap: hash.isEmpty
                       ? null

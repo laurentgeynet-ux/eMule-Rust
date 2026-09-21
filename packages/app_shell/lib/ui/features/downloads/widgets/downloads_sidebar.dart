@@ -163,6 +163,14 @@ class DownloadsSidebar extends ConsumerWidget {
                         : null,
                     isCompact: isCompact,
                   ),
+                  SidebarNavItem(
+                    title: 'Partages',
+                    icon: Icons.folder_shared_outlined,
+                    isSelected:
+                        ref.watch(shellControllerProvider).section == AppNavSection.shares,
+                    onTap: () => ref.read(shellControllerProvider).setSection(AppNavSection.shares),
+                    isCompact: isCompact,
+                  ),
                   if (!isCompact)
                     SidebarSectionLabel(
                       label: context.l10n.sectionAuditActivity,

@@ -13,6 +13,7 @@ import '../widgets/incompatible_version_dialog.dart';
 import '../widgets/status_notification_banner.dart';
 import '../../history/views/history_view.dart';
 import '../../servers/views/servers_screen.dart';
+import '../../shares/views/shares_view.dart';
 import '../../search/views/search_screen.dart';
 import '../../kad/views/kad_screen.dart';
 import '../../uploads/views/uploads_view.dart';
@@ -97,6 +98,7 @@ class DownloadsScreen extends ConsumerWidget {
       AppNavSection.search => const SearchView(),
       AppNavSection.kad => const KadView(),
       AppNavSection.uploads => const UploadsView(),
+      AppNavSection.shares => const SharesView(),
       AppNavSection.downloads => const DownloadsView(),
     };
   }

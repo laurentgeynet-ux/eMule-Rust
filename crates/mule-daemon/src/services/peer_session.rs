@@ -244,6 +244,7 @@ impl PeerSessionManager {
                 Some(crate::services::client_udp::UdpReaskTarget {
                     addr: std::net::SocketAddr::new(sock_addr.ip(), *udp_port),
                     file_hash,
+                    connected_at_unix_ms: s.snapshot.connected_at_unix_ms,
                 })
             })
             .collect()

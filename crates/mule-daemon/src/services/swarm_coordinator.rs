@@ -29,6 +29,8 @@ impl SwarmCoordinator {
                 server_attempts: HashMap::new(),
                 last_server_reconnect: None,
                 last_connected_server: None,
+                last_source_purge: HashMap::new(),
+                last_a4af_full: Instant::now(),
             };
             coordinator.run_loop().await;
         })

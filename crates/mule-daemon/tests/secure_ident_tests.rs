@@ -1703,6 +1703,8 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         file_name: "file.bin".to_string(),
         enqueued_at_unix_ms: now_ms - (300 * 1000), // 300s ago
         credit_multiplier_bps: 100,                 // 1.0x
+        file_prio_num: 7,
+        banned: false,
     };
 
     let peer_b = QueuedUpload {
@@ -1712,15 +1714,18 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         file_name: "file.bin".to_string(),
         enqueued_at_unix_ms: now_ms - (10 * 1000), // 10s ago
         credit_multiplier_bps: 1000,               // 10.0x
+        file_prio_num: 7,
+        banned: false,
     };
 
     let score_a = peer_a.effective_score(now_ms);
     let score_b = peer_b.effective_score(now_ms);
 
-    // Score A = 300 * 100 = 30,000
-    // Score B = 10 * 1000 = 10,000
-    assert_eq!(score_a, 30000);
-    assert_eq!(score_b, 10000);
+    // eMule score = wait_secs * credit_bps * file_prio / 1000
+    // Score A = 300 * 100 * 7 / 1000 = 210
+    // Score B = 10 * 1000 * 7 / 1000 = 70
+    assert_eq!(score_a, 210);
+    assert_eq!(score_b, 70);
 
     // Invariant: Long waiting uncredited peer beats newly arrived high-credit peer (no starvation)
     assert!(

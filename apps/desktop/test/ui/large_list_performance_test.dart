@@ -513,6 +513,29 @@ class LargeListMockClient implements MuleDaemonClient {
   );
 
   @override
+  Future<void> setSharedFileUploadPriority(
+    String fileHash,
+    String priority,
+  ) async {}
+
+  @override
+  Future<DownloadItem> setDownloadPriority(String id, String priority) =>
+      throw UnimplementedError();
+
+  @override
+  Future<DownloadItem> setDownloadMaxSources(String id, int? maxSources) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<FriendModel>> listFriends() async => [];
+
+  @override
+  Future<void> addFriend(String userHash, {String name = ''}) async {}
+
+  @override
+  Future<void> removeFriend(String userHash) async {}
+
+  @override
   Future<InboundListenerStatusModel> startListener({int port = 0}) async =>
       InboundListenerStatusModel.idle;
 

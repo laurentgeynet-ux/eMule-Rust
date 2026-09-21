@@ -39,6 +39,10 @@ pub struct DownloadSnapshot {
     /// parts verified); `downloads.get` reports the authoritative flags.
     #[serde(default)]
     pub parts: Vec<PartProgressSummary>,
+    /// Per-file source cap imported from `.part.met` FT_MAXSOURCES
+    /// (eMule `CPartFile::GetMaxSources`); `None` = global limit.
+    #[serde(default)]
+    pub max_sources: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -310,5 +314,6 @@ pub fn make_snapshot(
         eta_seconds,
         ed2k_hash: dl.ed2k_hash.to_string(),
         parts: Vec::new(),
+        max_sources: dl.max_sources,
     }
 }

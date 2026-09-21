@@ -600,6 +600,8 @@ class SharedFileModel {
   final String filePath;
   final int sharedAtUnixMs;
   final bool enabled;
+  /// eMule upload priority: verylow|low|normal|high|veryhigh|powershare.
+  final String upPriority;
 
   const SharedFileModel({
     required this.fileHash,
@@ -608,6 +610,7 @@ class SharedFileModel {
     required this.filePath,
     required this.sharedAtUnixMs,
     this.enabled = true,
+    this.upPriority = 'normal',
   });
 
   factory SharedFileModel.fromJson(Map<String, dynamic> json) {
@@ -627,6 +630,31 @@ class SharedFileModel {
           (json['shared_at_unix_ms'] as num?)?.toInt() ??
           0,
       enabled: json['enabled'] as bool? ?? true,
+      upPriority: json['upPriority'] as String? ??
+          json['up_priority'] as String? ??
+          'normal',
+    );
+  }
+}
+
+/// Friend entry (eMule `friends.met`) — a userhash granted a dedicated
+/// upload slot bypassing the queue.
+class FriendModel {
+  final String userHash;
+  final String name;
+  final int addedAtUnixMs;
+
+  const FriendModel({
+    required this.userHash,
+    this.name = '',
+    this.addedAtUnixMs = 0,
+  });
+
+  factory FriendModel.fromJson(Map<String, dynamic> json) {
+    return FriendModel(
+      userHash: json['userHash'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      addedAtUnixMs: (json['addedAtUnixMs'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -640,6 +668,14 @@ class UploadSessionModel {
   final String state;
   final int? queueRank;
   final int startedAtUnixMs;
+  /// Queue entries only: eMule credit multiplier × 100 (100 = 1.0x).
+  final int creditMultiplierBps;
+  /// Queue entries only: eMule file-priority weight (veryhigh=18 … verylow=2).
+  final int filePrioNum;
+  /// Queue entries only: bad-guy/banned client — score always 0.
+  final bool banned;
+  /// Queue entries only: when the client joined the upload queue.
+  final int enqueuedAtUnixMs;
 
   const UploadSessionModel({
     required this.clientAddress,
@@ -650,7 +686,20 @@ class UploadSessionModel {
     required this.state,
     this.queueRank,
     required this.startedAtUnixMs,
+    this.creditMultiplierBps = 100,
+    this.filePrioNum = 7,
+    this.banned = false,
+    this.enqueuedAtUnixMs = 0,
   });
+
+  /// eMule queue score: `wait_secs * credit_bps * file_prio / 1000`
+  /// (0 for banned clients).
+  int effectiveScore(int nowMs) {
+    if (banned) return 0;
+    final waitSecs = ((nowMs - enqueuedAtUnixMs) ~/ 1000).clamp(1, 1 << 62);
+    final mult = creditMultiplierBps < 100 ? 100 : creditMultiplierBps;
+    return waitSecs * mult * filePrioNum ~/ 1000;
+  }
 
   factory UploadSessionModel.fromJson(Map<String, dynamic> json) {
     return UploadSessionModel(
@@ -677,6 +726,19 @@ class UploadSessionModel {
       startedAtUnixMs:
           (json['startedAtUnixMs'] as num?)?.toInt() ??
           (json['started_at_unix_ms'] as num?)?.toInt() ??
+          0,
+      creditMultiplierBps:
+          (json['creditMultiplierBps'] as num?)?.toInt() ??
+          (json['credit_multiplier_bps'] as num?)?.toInt() ??
+          100,
+      filePrioNum:
+          (json['filePrioNum'] as num?)?.toInt() ??
+          (json['file_prio_num'] as num?)?.toInt() ??
+          7,
+      banned: json['banned'] as bool? ?? false,
+      enqueuedAtUnixMs:
+          (json['enqueuedAtUnixMs'] as num?)?.toInt() ??
+          (json['enqueued_at_unix_ms'] as num?)?.toInt() ??
           0,
     );
   }

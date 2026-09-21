@@ -42,6 +42,7 @@ pub async fn handle_request(
         "downloads.remove" => handle_remove(state, req.params).await,
         "downloads.setDestination" => handle_set_destination(state, req.params).await,
         "downloads.setPriority" => handle_set_priority(state, req.params).await,
+        "downloads.setMaxSources" => handle_set_max_sources(state, req.params).await,
         "downloads.inspectPartMet" => handle_inspect_part_met(state, req.params).await,
         "downloads.importPartMet" => handle_import_part_met(state, req.params).await,
         "downloads.retryConnection" | "downloads.retry" => {
@@ -97,6 +98,9 @@ pub async fn handle_request(
         "shares.add" => handle_shares_add(state, req.params).await,
         "shares.remove" => handle_shares_remove(state, req.params).await,
         "shares.setEnabled" => handle_shares_set_enabled(state, req.params).await,
+        "shares.setUploadPriority" => {
+            handle_shares_set_upload_priority(state, req.params).await
+        }
         "listener.start" => handle_listener_start(state, req.params).await,
         "listener.stop" => handle_listener_stop(state).await,
         "listener.status" => handle_listener_status(state).await,

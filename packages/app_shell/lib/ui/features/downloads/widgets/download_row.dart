@@ -33,6 +33,7 @@ class DownloadRow extends ConsumerWidget {
     final categories = ref.watch(categoriesControllerProvider).categories;
     final downloads = ref.read(downloadsStoreControllerProvider);
     final categoriesCtl = ref.read(categoriesControllerProvider);
+    final peerSourcesCtl = ref.read(peerSourcesControllerProvider);
     final category = item.categoryId != null
         ? categories.where((c) => c.id == item.categoryId).firstOrNull
         : null;
@@ -72,6 +73,8 @@ class DownloadRow extends ConsumerWidget {
                         onPause: () => downloads.pause(item.id),
                         onResume: () => downloads.resume(item.id),
                         onRemove: () => _confirmRemove(context, ref),
+                        onPrioritySelected: (p) => peerSourcesCtl
+                            .setDownloadPriority(item.id, p.name),
                       );
                     }
                     return DownloadRowFull(
@@ -84,6 +87,8 @@ class DownloadRow extends ConsumerWidget {
                       onPause: () => downloads.pause(item.id),
                       onResume: () => downloads.resume(item.id),
                       onRemove: () => _confirmRemove(context, ref),
+                      onPrioritySelected: (p) => peerSourcesCtl
+                          .setDownloadPriority(item.id, p.name),
                     );
                   },
                 ),

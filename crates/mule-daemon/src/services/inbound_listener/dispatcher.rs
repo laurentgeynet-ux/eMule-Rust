@@ -57,6 +57,9 @@ impl InboundListenerService {
         let mut remote_pubkey_hash: Option<String> = None;
         let mut remote_pubkey_der: Option<Vec<u8>> = None;
         let mut credit_multiplier = 1.0f64;
+        // eMule IS_IDBADGUY: a peer whose SUI signature was explicitly
+        // rejected gets score 0 in the upload queue (never promoted).
+        let mut sui_rejected = false;
         let mut active_challenge: Option<u32> = None;
         let mut pending_peer_challenge: Option<(u8, u32)> = None;
         let mut answered_peer_challenge = false;
@@ -294,6 +297,7 @@ impl InboundListenerService {
                                         remote_pubkey_hash = None;
                                         remote_pubkey_der = None;
                                         credit_multiplier = 1.0;
+                                        sui_rejected = true;
                                         let sec_state = Ed2kSecIdentState {
                                             state: 0,
                                             challenge: 0,
@@ -699,7 +703,7 @@ impl InboundListenerService {
                                         remote_str, shared_file.file_name, hash_hex
                                     );
 
-                                    match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier).await {
+                                    match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected).await {
                                         Ok((UploadSlotState::Uploading, _)) => {
                                             let mut out = Vec::new();
                                             out.push(PR_ED2K);
@@ -761,7 +765,7 @@ impl InboundListenerService {
                                          }
                                      };
 
-                                     match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier).await {
+                                     match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected).await {
                                          Ok((UploadSlotState::Uploading, _)) => {
                                              if let Some(target_range) = req_ranges.first() {
                                                  let (start, end) = *target_range;

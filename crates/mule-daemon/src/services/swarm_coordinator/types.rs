@@ -22,6 +22,14 @@ pub const SERVER_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
 /// Per-address backoff before retrying a server that failed to connect.
 pub const SERVER_FAIL_COOLDOWN: Duration = Duration::from_secs(300);
 
+/// Minimum interval between excess-source purge passes per file
+/// (eMule `CPartFile::Process` slow timers run every ~30-60s).
+pub const SOURCE_PURGE_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Full A4AF rebalance cadence (eMule `ProcessA4AFClients` ~8 min).
+/// Event-driven NNP swaps still run on every tick.
+pub const A4AF_FULL_INTERVAL: Duration = Duration::from_secs(8 * 60);
+
 /// Swarm coordinator orchestrating peer connections and background downloads.
 pub struct SwarmCoordinator {
     pub(crate) state: AppState,
@@ -34,4 +42,8 @@ pub struct SwarmCoordinator {
     /// Server address that was connected before the last drop (excluded
     /// from the immediate failover pick).
     pub(crate) last_connected_server: Option<String>,
+    /// Last excess-source purge pass per file hash (eMule 80% rule).
+    pub(crate) last_source_purge: HashMap<String, Instant>,
+    /// Last full A4AF rebalance pass (~8 min eMule cadence).
+    pub(crate) last_a4af_full: Instant,
 }

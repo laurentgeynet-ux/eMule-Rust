@@ -6,6 +6,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'category_badge.dart';
 import 'download_actions_bar.dart';
 import 'download_file_icons.dart';
+import 'download_priority_chip.dart';
 import 'download_status_pill.dart';
 import '../../../../../l10n/l10n.dart';
 
@@ -20,6 +21,7 @@ class DownloadRowFull extends StatelessWidget {
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onRemove;
+  final ValueChanged<DownloadPriority>? onPrioritySelected;
 
   const DownloadRowFull({
     super.key,
@@ -31,6 +33,7 @@ class DownloadRowFull extends StatelessWidget {
     required this.onPause,
     required this.onResume,
     required this.onRemove,
+    this.onPrioritySelected,
   });
 
   @override
@@ -115,6 +118,10 @@ class DownloadRowFull extends StatelessWidget {
                   ),
                   if (category != null)
                     CategoryBadge(category: category!),
+                  DownloadPriorityChip(
+                    value: item.priority,
+                    onChanged: (p) => onPrioritySelected?.call(p),
+                  ),
                 ],
               ),
             ],

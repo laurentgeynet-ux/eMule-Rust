@@ -42,6 +42,7 @@ flowchart TB
         UI_Kad["Module Kad DHT & Buckets"]
         UI_Search["Module Recherche Unifiée (Serveurs & Kad)"]
         UI_History["Module Historique & Stats"]
+        UI_Shares["Module Partages (priorités d'upload)"]
         UI_Settings["Module Paramètres & Politiques"]
         Supervisor["DaemonSupervisor (Process & Session Watcher)"]
         RpcClient["RpcDaemonClient (WebSocket JSON-RPC 2.0)"]
@@ -93,7 +94,7 @@ flowchart TB
         FinalDir["downloads/* (Fichiers promus atomiquement)"]
     end
 
-    FlutterApp --> UI_Downloads & UI_Servers & UI_Kad & UI_Search & UI_History & UI_Settings
+    FlutterApp --> UI_Downloads & UI_Servers & UI_Kad & UI_Search & UI_History & UI_Shares & UI_Settings
     FlutterApp --> Supervisor
     Supervisor --> RpcClient
     RpcClient -.->|Mode Dégradé/Dev| MockClient
@@ -185,7 +186,7 @@ Ce composant contient la logique filaire pure et garantit l'intégrité de l'ana
 ### 3.6 `crates/mule-daemon` — Démon Asynchrone Tokio & Serveur RPC
 Refactorisé selon une architecture modulaire propre :
 * **Découpage des Handlers RPC (`rpc/handlers/`)** :
-  * Handlers spécialisés par domaine : `downloads.rs`, `servers.rs`, `kad.rs`, `sources.rs`, `shares.rs`, `history.rs`, `categories.rs`, `network.rs`, `settings.rs`, `upnp.rs`, `lab.rs`.
+  * Handlers spécialisés par domaine : `downloads.rs`, `servers.rs`, `kad.rs`, `sources.rs`, `shares.rs`, `friends.rs`, `history.rs`, `categories.rs`, `network.rs`, `settings.rs`, `upnp.rs`, `lab.rs`.
 * **Services Découpés (`services/`)** :
   * `swarm_allocator.rs` : algorithme **Weighted Max-Min Fair-Share Water-filling** distribuant dynamiquement les connexions pairs entre fichiers selon leur priorité et rareté.
   * `swarm_coordinator/` : orchestration d'essaim multi-sources, auto-découverte cadencée (30s / 60s / 300s), calcul dynamique du débit global agrégé par fichier.
@@ -264,7 +265,7 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
   * *Priorités de fichiers* : `downloads.priority` persisté (low/normal/high/release), RPC `downloads.setPriority`, pondération du quota de slots (×1/×2/×4/×8).
   * *A4AF* : `a4af_rebalance` swappe une source depuis un fichier saturé de priorité inférieure vers un fichier affamé (sessions mono-fichier → reconnexion, 1 swap/tick).
 * **Upload (`upload_queue.rs`, `dispatcher.rs`, `transfer.rs`)** :
-  * *Crédits persistés* : les octets téléchargés depuis un pair vérifié SUI sont crédités sous `Md4(pubkey)` — la formule `min(10, 2·DL/UL)` s'applique dans les deux sens.
+  * *Crédits persistés* : les octets téléchargés depuis un pair vérifié SUI sont crédités sous `Md4(pubkey)` — formule eMule exacte `min(2·DL/UL, √(DL/1Mio+2), cap linéaire)` bornée `[1.0, 10.0]` appliquée dans les deux sens.
   * *Trickle slots* : un slot < 1 Kio/s après 60 s est rétrogradé (`Trickle`, hors quota) et le meilleur client en file est promu.
   * *Friend slots* : table `friends` + RPC `friends.*` → slot dédié (`uh:<userhash>`).
   * *Anti-leecher minimal* : rejet des clients sans `user_hash` quand la file est ≥ 90 % pleine.

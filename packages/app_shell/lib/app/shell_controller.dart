@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-enum AppNavSection { downloads, uploads, history, servers, search, kad }
+enum AppNavSection { downloads, uploads, shares, history, servers, search, kad }
 
 enum DownloadFilter {
   all,

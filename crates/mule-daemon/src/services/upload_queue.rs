@@ -61,14 +61,49 @@ pub struct QueuedUpload {
     pub file_name: String,
     pub enqueued_at_unix_ms: i64,
     pub credit_multiplier_bps: u32, // Multiplier * 100 (e.g. 100 for 1.0x, 1000 for 10.0x)
+    /// eMule `GetFilePrioAsNumber` of the requested shared file:
+    /// veryhigh=18, high=9, normal=7, low=6, verylow=2.
+    #[serde(default = "default_file_prio_num")]
+    pub file_prio_num: u32,
+    /// eMule `IS_IDBADGUY`/`IsBanned` semantics: score is always 0, the entry
+    /// waits forever at the tail (never promoted, still listed).
+    #[serde(default)]
+    pub banned: bool,
 }
 
+fn default_file_prio_num() -> u32 {
+    7
+}
+
+/// Maps an upload priority string to the eMule `GetFilePrioAsNumber` weight
+/// (`UploadClient.cpp`): veryhigh=18, high=9, normal=7, low=6, verylow=2.
+pub fn file_prio_num(priority: &str) -> u32 {
+    match priority.to_lowercase().as_str() {
+        "veryhigh" | "powershare" => 18,
+        "high" => 9,
+        "low" => 6,
+        "verylow" => 2,
+        _ => 7,
+    }
+}
+
+/// eMule downloading-client bonus: an actively uploading client that
+/// re-queues gets its upload time counted as waiting time plus a 15 min
+/// bonus (`GetScore(isdownloading)`), so short sessions cannot churn the
+/// queue.
+const DOWNLOADING_BONUS_MS: i64 = 15 * 60 * 1000;
+
 impl QueuedUpload {
-    /// Computes effective waiting score = wait_time_sec * multiplier.
+    /// Computes the eMule waiting score:
+    /// `wait_secs * credit_multiplier * (file_prio / 10)`, 0 when banned.
+    /// Stored in centi-units (`*_bps` fields keep two decimals).
     pub fn effective_score(&self, now_ms: i64) -> u64 {
+        if self.banned {
+            return 0;
+        }
         let wait_secs = ((now_ms.saturating_sub(self.enqueued_at_unix_ms)) / 1000).max(1) as u64;
         let mult = (self.credit_multiplier_bps as u64).max(100);
-        wait_secs * mult
+        wait_secs * mult * self.file_prio_num as u64 / 1000
     }
 }
 
@@ -218,6 +253,8 @@ impl UploadManager {
         file_hash: &str,
         file_name: &str,
         credit_multiplier: f64,
+        file_prio: &str,
+        banned: bool,
     ) -> Result<(UploadSlotState, Option<u32>), String> {
         let mut active = self.active_uploads.lock().await;
 
@@ -318,13 +355,24 @@ impl UploadManager {
             .unwrap_or_default()
             .as_millis() as i64;
 
+        // eMule downloading-client bonus: a client currently uploading in
+        // another slot re-queues with its upload time + 15 min counted as
+        // waiting time (prevents "20-second downloads" churn).
+        let enqueued_at = if active.contains_key(client_key) {
+            now - DOWNLOADING_BONUS_MS
+        } else {
+            now
+        };
+
         q.push_back(QueuedUpload {
             client_key: client_key.to_string(),
             client_address: client_address.to_string(),
             file_hash: file_hash.to_string(),
             file_name: file_name.to_string(),
-            enqueued_at_unix_ms: now,
+            enqueued_at_unix_ms: enqueued_at,
             credit_multiplier_bps: mult_bps,
+            file_prio_num: file_prio_num(file_prio),
+            banned,
         });
 
         // Sort queue by effective score descending
@@ -563,14 +611,14 @@ mod tests {
         mgr.set_max_active(3);
         for i in 0..3 {
             let (state, _) = mgr
-                .request_upload_slot(&format!("c{i}"), &format!("c{i}"), "h", "f", 1.0)
+                .request_upload_slot(&format!("c{i}"), &format!("c{i}"), "h", "f", 1.0, "normal", false)
                 .await
                 .unwrap();
             assert_eq!(state, UploadSlotState::Uploading);
         }
         // 4th client queues
         let (state, rank) = mgr
-            .request_upload_slot("c3", "c3", "h", "f", 1.0)
+            .request_upload_slot("c3", "c3", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -582,16 +630,16 @@ mod tests {
     async fn release_promotes_until_slots_full() {
         let mgr = UploadManager::new();
         mgr.set_max_active(2);
-        mgr.request_upload_slot("a", "a", "h", "f", 1.0)
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
-        mgr.request_upload_slot("b", "b", "h", "f", 1.0)
+        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
-        mgr.request_upload_slot("c", "c", "h", "f", 1.0)
+        mgr.request_upload_slot("c", "c", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
-        mgr.request_upload_slot("d", "d", "h", "f", 1.0)
+        mgr.request_upload_slot("d", "d", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
 
@@ -615,11 +663,11 @@ mod tests {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
         // Same userhash reconnecting from a different IP is the same client.
-        mgr.request_upload_slot("uh:AA", "1.1.1.1:4662", "h", "f", 1.0)
+        mgr.request_upload_slot("uh:AA", "1.1.1.1:4662", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         let (state, _) = mgr
-            .request_upload_slot("uh:AA", "2.2.2.2:4662", "h", "f", 1.0)
+            .request_upload_slot("uh:AA", "2.2.2.2:4662", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
@@ -634,13 +682,13 @@ mod tests {
         mgr.set_max_active(1);
         // c1 takes the only slot.
         let (state, _) = mgr
-            .request_upload_slot("c1", "c1", "h", "f", 1.0)
+            .request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
         // c2 waits.
         let (state, _) = mgr
-            .request_upload_slot("c2", "c2", "h", "f", 1.0)
+            .request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -667,7 +715,7 @@ mod tests {
     async fn fast_slot_within_grace_is_not_demoted() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0)
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         // Slow rate but still within grace period → stays Uploading.
@@ -683,7 +731,7 @@ mod tests {
         mgr.set_uss_gate(flag.clone());
         // Gate closed: free slots exist but the client must queue.
         let (state, rank) = mgr
-            .request_upload_slot("a", "a", "h", "f", 1.0)
+            .request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -692,7 +740,7 @@ mod tests {
         // Gate open: next request is granted immediately.
         flag.store(true, Ordering::SeqCst);
         let (state, _) = mgr
-            .request_upload_slot("b", "b", "h", "f", 1.0)
+            .request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
@@ -705,14 +753,14 @@ mod tests {
         mgr.set_event_channel(tx, Arc::new(AtomicU64::new(1)));
 
         mgr.set_max_active(1);
-        mgr.request_upload_slot("a", "a", "h", "f", 1.0)
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         let ev = rx.recv().await.unwrap();
         assert!(ev.contains("upload.uploadsUpdated"));
         assert!(ev.contains("\"uploadRateBps\""));
 
-        mgr.request_upload_slot("b", "b", "h", "f", 1.0)
+        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         let ev = rx.recv().await.unwrap();
@@ -727,10 +775,10 @@ mod tests {
     #[tokio::test]
     async fn progress_tracked_per_client() {
         let mgr = UploadManager::new();
-        mgr.request_upload_slot("a", "a", "h", "f", 1.0)
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
-        mgr.request_upload_slot("b", "b", "h", "f", 1.0)
+        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
         mgr.update_progress("a", 100, 10).await;

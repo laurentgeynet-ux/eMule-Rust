@@ -54,6 +54,10 @@ pub struct UdpReaskTarget {
     pub addr: SocketAddr,
     /// File hash of the queued session.
     pub file_hash: [u8; 16],
+    /// When the underlying TCP session was established — used to apply
+    /// eMule's "last connection attempt older than ~20 min" condition
+    /// before spending a UDP reask.
+    pub connected_at_unix_ms: Option<i64>,
 }
 
 #[derive(Default)]

@@ -320,6 +320,29 @@ impl DownloadService {
         Ok(act.snapshot())
     }
 
+    /// Updates the per-file source limit (eMule FT_MAXSOURCES). `None`
+    /// restores the global `max_peers_per_file` default.
+    pub fn set_max_sources(
+        &mut self,
+        id: &Uuid,
+        max_sources: Option<u32>,
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        let act = self
+            .active
+            .get_mut(id)
+            .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
+        if let Some(v) = max_sources {
+            if v == 0 || v > 10_000 {
+                return Err(DaemonError::Business(format!(
+                    "Invalid maxSources '{v}' (expected 1..=10000 or null)"
+                )));
+            }
+        }
+        act.download.max_sources = max_sources;
+        self.db.update_max_sources(id, max_sources)?;
+        Ok(act.snapshot())
+    }
+
     pub fn get_missing_ranges(&self, id: &Uuid) -> Option<Vec<std::ops::Range<u64>>> {
         self.active
             .get(id)
@@ -888,6 +911,17 @@ impl DownloadService {
 
     pub fn remove_shared_file(&mut self, file_hash: &str) -> Result<bool, DaemonError> {
         peers_servers::remove_shared_file(&mut self.db, file_hash)
+    }
+
+    /// Sets the upload priority of a shared file ("verylow".."veryhigh").
+    pub fn set_shared_up_priority(
+        &mut self,
+        file_hash: &str,
+        up_priority: &str,
+    ) -> Result<bool, DaemonError> {
+        self.db
+            .set_shared_up_priority(file_hash, up_priority)
+            .map_err(Into::into)
     }
 
     pub fn get_shared_file(

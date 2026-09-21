@@ -235,6 +235,23 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
         )?;
     }
 
+    // Migration: per-file source limit (eMule `.part.met` FT_MAXSOURCES).
+    let mut stmt_dl3 = conn.prepare("PRAGMA table_info(downloads)")?;
+    let mut rows_dl3 = stmt_dl3.query([])?;
+    let mut has_max_sources = false;
+    while let Some(row) = rows_dl3.next()? {
+        let col_name: String = row.get(1)?;
+        if col_name == "max_sources" {
+            has_max_sources = true;
+            break;
+        }
+    }
+    drop(rows_dl3);
+    drop(stmt_dl3);
+    if !has_max_sources {
+        conn.execute_batch("ALTER TABLE downloads ADD COLUMN max_sources INTEGER;")?;
+    }
+
     let mut stmt_peer = conn.prepare("PRAGMA table_info(peer_sources)")?;
     let mut rows_peer = stmt_peer.query([])?;
     let mut has_cooldown = false;
@@ -298,15 +315,23 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     let mut stmt_sf = conn.prepare("PRAGMA table_info(shared_files)")?;
     let mut rows_sf = stmt_sf.query([])?;
     let mut has_aich_root = false;
+    let mut has_up_priority = false;
     while let Some(row) = rows_sf.next()? {
         let col_name: String = row.get(1)?;
         if col_name == "aich_root" {
             has_aich_root = true;
-            break;
+        }
+        if col_name == "up_priority" {
+            has_up_priority = true;
         }
     }
     if !has_aich_root {
         conn.execute_batch("ALTER TABLE shared_files ADD COLUMN aich_root BLOB;")?;
+    }
+    if !has_up_priority {
+        conn.execute_batch(
+            "ALTER TABLE shared_files ADD COLUMN up_priority TEXT NOT NULL DEFAULT 'normal';",
+        )?;
     }
 
     Ok(())

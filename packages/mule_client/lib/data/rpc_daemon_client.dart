@@ -655,6 +655,15 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<DownloadItem> setDownloadMaxSources(String id, int? maxSources) async {
+    final resp = await _call('downloads.setMaxSources', {
+      'id': id,
+      'maxSources': maxSources,
+    });
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
   Future<DownloadItem> retryDownloadConnection(String id) async {
     final resp = await _call('downloads.retryConnection', {'id': id});
     return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
@@ -1127,6 +1136,37 @@ class RpcDaemonClient implements MuleDaemonClient {
       'enabled': enabled,
     });
     return SharedFileModel.fromJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> setSharedFileUploadPriority(
+    String fileHash,
+    String priority,
+  ) async {
+    await _call('shares.setUploadPriority', {
+      'fileHash': fileHash,
+      'priority': priority,
+    });
+  }
+
+  @override
+  Future<List<FriendModel>> listFriends() async {
+    final resp = await _call('friends.list', {});
+    final list = (resp as Map<String, dynamic>)['friends'] as List? ?? const [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(FriendModel.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<void> addFriend(String userHash, {String name = ''}) async {
+    await _call('friends.add', {'userHash': userHash, 'name': name});
+  }
+
+  @override
+  Future<void> removeFriend(String userHash) async {
+    await _call('friends.remove', {'userHash': userHash});
   }
 
   @override

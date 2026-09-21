@@ -128,12 +128,12 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `widgets/import/` (7 fichiers) + `import_part_met_dialog.dart` | Import défensif `.part.met` : inspection, rapport, notice de sécurité |
 | `widgets/lab/` (9 fichiers) + `lab_guide_dialog.dart` | Assistant lab : étapes fixture/lien/pair/connexion/nettoyage |
 | `widgets/network/` (9 fichiers) + `network_policy_dialog.dart`, `ip_filter_dialog.dart` | Onglets IP filter et rate limits, quotas, profil réseau, audit log |
-| `widgets/row/` (7 fichiers) | Ligne de download : variantes compacte/complète, badges, icônes, barre d'actions, pill de statut |
-| `widgets/settings/` (8 fichiers) + `settings_dialog.dart` | Dialogue de paramètres : sections dossiers, langue, réseau, rétention |
+| `widgets/row/` (8 fichiers) | Ligne de download : variantes compacte/complète, badges, icônes, barre d'actions, pill de statut, chip de priorité (`download_priority_chip.dart`) |
+| `widgets/settings/` (9 fichiers) + `settings_dialog.dart` | Dialogue de paramètres : sections dossiers, langue, réseau, rétention, amis (`settings_friends_section.dart`) |
 | `widgets/sidebar/` (9 fichiers) | Sidebar : header brand, items nav/catégorie/filtre, carte de statut, suppression de catégorie |
 | `widgets/incompatible_version_dialog.dart` | Avertissement de version daemon incompatible |
 
-### Features `history`, `kad`, `search`, `servers`, `settings`, `uploads`
+### Features `history`, `kad`, `search`, `servers`, `settings`, `shares`, `uploads`
 
 | Fichier | Fonction |
 |---|---|
@@ -142,6 +142,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `search/view_models/search_controller.dart` + `views/search_screen.dart` + `widgets/` (7 fichiers) | Recherche : formulaire, table de résultats, bannière connexion, états |
 | `servers/view_models/servers_controller.dart` + `views/servers_screen.dart` + `widgets/` (12 fichiers) | Serveurs : table et cartes, import server.met, session bar, badges, dialogues clear/update |
 | `settings/view_models/settings_controller.dart` + `widgets/` (4 fichiers) | Paramètres réseau : mode, notice anti-SSRF, statut UPnP |
+| `shares/views/shares_view.dart` | Onglet « Partages » (`/shares`) : liste des fichiers servis, priorité d'upload (powershare), switch activé/suspendu |
 | `uploads/view_models/uploads_controller.dart` + `views/uploads_view.dart` + `widgets/uploads_table.dart` | Uploads : vue et table des envois |
 
 ## packages/mule_client/ — Client daemon partagé
@@ -304,6 +305,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | Fichier | Fonction |
 |---|---|
 | `src/services/mod.rs` | Module des services |
+| `src/services/incoming_share.rs` | Scan du dossier Incoming au démarrage : hash eD2K + partage automatique des fichiers (opt-out `share_download_dir`) |
 | `src/services/downloads.rs` | Service de gestion des téléchargements |
 | `src/services/downloads/history_categories.rs` | Historique et catégories des downloads |
 | `src/services/downloads/operations.rs` | Opérations sur les téléchargements (pause, reprise…) |

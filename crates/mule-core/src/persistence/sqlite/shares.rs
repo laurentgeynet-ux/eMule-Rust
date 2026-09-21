@@ -24,18 +24,20 @@ fn shared_file_from_row(row: &rusqlite::Row) -> rusqlite::Result<SharedFile> {
         aich_root,
         shared_at_unix_ms: row.get(4)?,
         enabled: enabled_int != 0,
+        up_priority: row.get::<_, Option<String>>(7)?.unwrap_or_else(|| "normal".into()),
     })
 }
 
 pub fn upsert_shared_file(conn: &mut Connection, file: &SharedFile) -> Result<(), CoreError> {
     conn.execute(
-        "INSERT INTO shared_files (file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "INSERT INTO shared_files (file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(file_hash) DO UPDATE SET
             file_name = excluded.file_name,
             file_size = excluded.file_size,
             file_path = excluded.file_path,
             enabled = excluded.enabled,
+            up_priority = excluded.up_priority,
             aich_root = COALESCE(excluded.aich_root, shared_files.aich_root)",
         params![
             file.file_hash,
@@ -45,6 +47,7 @@ pub fn upsert_shared_file(conn: &mut Connection, file: &SharedFile) -> Result<()
             file.shared_at_unix_ms,
             if file.enabled { 1 } else { 0 },
             file.aich_root.map(|a| a.to_vec()),
+            file.up_priority,
         ],
     )?;
     Ok(())
@@ -65,7 +68,7 @@ pub fn set_shared_aich_root(
 
 pub fn list_shared_files(conn: &Connection) -> Result<Vec<SharedFile>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root
+        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority
          FROM shared_files
          ORDER BY shared_at_unix_ms DESC",
     )?;
@@ -83,7 +86,7 @@ pub fn get_shared_file(
     file_hash: &str,
 ) -> Result<Option<SharedFile>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root
+        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority
          FROM shared_files
          WHERE file_hash = ?1",
     )?;
@@ -99,6 +102,20 @@ pub fn delete_shared_file(conn: &mut Connection, file_hash: &str) -> Result<bool
     let rows = conn.execute(
         "DELETE FROM shared_files WHERE file_hash = ?1",
         params![file_hash],
+    )?;
+    Ok(rows > 0)
+}
+
+/// Updates the eMule upload priority (`PR_*`) of a shared file:
+/// "verylow" | "low" | "normal" | "high" | "veryhigh" (= powershare).
+pub fn set_shared_up_priority(
+    conn: &mut Connection,
+    file_hash: &str,
+    up_priority: &str,
+) -> Result<bool, CoreError> {
+    let rows = conn.execute(
+        "UPDATE shared_files SET up_priority = ?1 WHERE file_hash = ?2",
+        params![up_priority, file_hash],
     )?;
     Ok(rows > 0)
 }

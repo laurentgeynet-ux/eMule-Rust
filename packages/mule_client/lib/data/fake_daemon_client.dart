@@ -746,6 +746,18 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<DownloadItem> setDownloadMaxSources(String id, int? maxSources) async {
+    final existing = _downloads[id];
+    if (existing == null) throw Exception('Download $id not found');
+    final updated = maxSources == null
+        ? existing.copyWith(clearMaxSources: true, updatedAt: DateTime.now())
+        : existing.copyWith(maxSources: maxSources, updatedAt: DateTime.now());
+    _downloads[id] = updated;
+    _emitUpdate(updated);
+    return updated;
+  }
+
+  @override
   Future<DownloadItem> retryDownloadConnection(String id) async {
     final existing = _downloads[id];
     if (existing == null) throw Exception('Download $id not found');
@@ -1522,11 +1534,55 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         filePath: cur.filePath,
         sharedAtUnixMs: cur.sharedAtUnixMs,
         enabled: enabled,
+        upPriority: cur.upPriority,
       );
       _fakeSharedFiles[idx] = updated;
       return updated;
     }
     throw Exception('File not found in shares');
+  }
+
+  @override
+  Future<void> setSharedFileUploadPriority(
+    String fileHash,
+    String priority,
+  ) async {
+    final idx = _fakeSharedFiles.indexWhere((f) => f.fileHash == fileHash);
+    if (idx == -1) throw Exception('File not found in shares');
+    final cur = _fakeSharedFiles[idx];
+    _fakeSharedFiles[idx] = SharedFileModel(
+      fileHash: cur.fileHash,
+      fileName: cur.fileName,
+      fileSize: cur.fileSize,
+      filePath: cur.filePath,
+      sharedAtUnixMs: cur.sharedAtUnixMs,
+      enabled: cur.enabled,
+      upPriority: priority,
+    );
+  }
+
+  final List<FriendModel> _fakeFriends = [];
+
+  @override
+  Future<List<FriendModel>> listFriends() async {
+    return List.unmodifiable(_fakeFriends);
+  }
+
+  @override
+  Future<void> addFriend(String userHash, {String name = ''}) async {
+    _fakeFriends.removeWhere((f) => f.userHash == userHash);
+    _fakeFriends.add(
+      FriendModel(
+        userHash: userHash,
+        name: name,
+        addedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+  }
+
+  @override
+  Future<void> removeFriend(String userHash) async {
+    _fakeFriends.removeWhere((f) => f.userHash == userHash);
   }
 
   @override

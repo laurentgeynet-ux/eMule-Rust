@@ -117,7 +117,18 @@ pub fn save_part_met(db: &Database, act: &ActiveDownload) -> Result<PathBuf, Dae
         transferred: act.ranges.covered_len(),
         aich_hash: act.download.aich_root,
         gaps,
-        tags: Vec::new(),
+        // Persist the per-file source limit as eMule FT_MAXSOURCES so a
+        // re-imported .part.met (or eMule itself) restores the cap.
+        tags: act
+            .download
+            .max_sources
+            .map(|ms| {
+                vec![mule_format::met::tags::Tag::new_id(
+                    mule_format::met::tags::FT_MAXSOURCES,
+                    mule_format::met::tags::TagValue::Uint64(ms as u64),
+                )]
+            })
+            .unwrap_or_default(),
     };
 
     met.save(&met_path)
@@ -268,6 +279,15 @@ pub fn import_part_met(
         }
     }
 
+    // eMule per-file source limit tag (FT_MAXSOURCES / CPartFile::GetMaxSources).
+    let max_sources = met
+        .tags
+        .iter()
+        .find(|t| t.name_id == mule_format::met::tags::FT_MAXSOURCES)
+        .and_then(|t| t.as_u64())
+        .and_then(|v| u32::try_from(v).ok())
+        .filter(|&v| v > 0);
+
     let now = now_ms();
     let download = Download {
         id,
@@ -282,6 +302,7 @@ pub fn import_part_met(
         updated_at: now,
         category_id: category_id.clone(),
         priority: "normal".to_string(),
+        max_sources,
     };
 
     db.insert_download(&download)

@@ -5,6 +5,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'category_badge.dart';
 import 'download_actions_bar.dart';
 import 'download_file_icons.dart';
+import 'download_priority_chip.dart';
 import 'download_status_pill.dart';
 import '../../../../../l10n/l10n.dart';
 
@@ -19,6 +20,7 @@ class DownloadRowCompact extends StatelessWidget {
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onRemove;
+  final ValueChanged<DownloadPriority>? onPrioritySelected;
 
   const DownloadRowCompact({
     super.key,
@@ -30,6 +32,7 @@ class DownloadRowCompact extends StatelessWidget {
     required this.onPause,
     required this.onResume,
     required this.onRemove,
+    this.onPrioritySelected,
   });
 
   @override
@@ -83,6 +86,11 @@ class DownloadRowCompact extends StatelessWidget {
                       ),
                       if (category != null)
                         CategoryBadge(category: category!, compact: true),
+                      DownloadPriorityChip(
+                        value: item.priority,
+                        compact: true,
+                        onChanged: (p) => onPrioritySelected?.call(p),
+                      ),
                     ],
                   ),
                 ],

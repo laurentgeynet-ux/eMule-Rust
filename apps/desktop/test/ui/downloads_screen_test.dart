@@ -133,8 +133,10 @@ void main() {
       // Details panel should not be visible initially
       expect(find.textContaining('Details:'), findsNothing);
 
-      // Tap on Debian row
+      // Tap on Debian row — the InkWell has onDoubleTap (inline expansion),
+      // so the single-tap callback only fires after the double-tap timeout.
       await tester.tap(find.text('Debian_12_netinst.iso'));
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
 
       // Details panel is now shown

@@ -91,6 +91,10 @@ abstract class MuleDaemonClient {
   /// The daemon swarm allocator biases its peer slot quota accordingly.
   Future<DownloadItem> setDownloadPriority(String id, String priority);
 
+  /// Per-file source cap (eMule FT_MAXSOURCES). `null` restores the
+  /// global per-file limit.
+  Future<DownloadItem> setDownloadMaxSources(String id, int? maxSources);
+
   /// Retry connecting loopback sources for a download.
   Future<DownloadItem> retryDownloadConnection(String id);
 
@@ -299,6 +303,20 @@ abstract class MuleDaemonClient {
 
   /// Enable or disable sharing for a file.
   Future<SharedFileModel> setSharedFileEnabled(String fileHash, bool enabled);
+
+  /// eMule upload priority for a shared file (powershare):
+  /// "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare".
+  Future<void> setSharedFileUploadPriority(String fileHash, String priority);
+
+  /// List configured friends (eMule `friends.met`) — userhashes granted a
+  /// dedicated upload slot bypassing the queue.
+  Future<List<FriendModel>> listFriends();
+
+  /// Grant a dedicated upload slot to [userHash] (hex).
+  Future<void> addFriend(String userHash, {String name = ''});
+
+  /// Revoke a friend slot.
+  Future<void> removeFriend(String userHash);
 
   /// Start inbound eD2K TCP listener.
   Future<InboundListenerStatusModel> startListener({int port = 0});

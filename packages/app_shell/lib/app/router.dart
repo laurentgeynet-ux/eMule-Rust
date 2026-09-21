@@ -8,6 +8,7 @@ import '../ui/features/downloads/widgets/settings_dialog.dart';
 import 'app_controller.dart';
 import '../ui/features/history/views/history_view.dart';
 import '../ui/features/kad/views/kad_screen.dart';
+import '../ui/features/shares/views/shares_view.dart';
 import '../ui/features/uploads/views/uploads_view.dart';
 import '../ui/features/search/views/search_screen.dart';
 import '../ui/features/servers/views/servers_screen.dart';
@@ -16,6 +17,7 @@ import '../ui/features/servers/views/servers_screen.dart';
 String sectionToPath(AppNavSection section) => switch (section) {
       AppNavSection.downloads => '/downloads',
       AppNavSection.uploads => '/uploads',
+      AppNavSection.shares => '/shares',
       AppNavSection.history => '/history',
       AppNavSection.servers => '/servers',
       AppNavSection.search => '/search',
@@ -34,6 +36,7 @@ AppNavSection? pathToSection(String path) {
   return switch (path) {
     '/downloads' => AppNavSection.downloads,
     '/uploads' => AppNavSection.uploads,
+    '/shares' => AppNavSection.shares,
     '/history' => AppNavSection.history,
     '/servers' => AppNavSection.servers,
     '/search' => AppNavSection.search,
@@ -153,6 +156,12 @@ GoRouter createAppRouter(AppController viewModel) {
             path: '/uploads',
             pageBuilder: (context, state) => NoTransitionPage(
               child: const UploadsView(),
+            ),
+          ),
+          GoRoute(
+            path: '/shares',
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: const SharesView(),
             ),
           ),
           GoRoute(

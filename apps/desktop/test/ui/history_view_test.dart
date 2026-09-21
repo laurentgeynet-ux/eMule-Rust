@@ -36,6 +36,10 @@ void main() {
       final historyNav = find.text('History & Statistics');
       expect(historyNav, findsOneWidget);
 
+      // The nav item may sit below the sidebar fold — scroll it into view.
+      await tester.ensureVisible(historyNav);
+      await tester.pumpAndSettle();
+
       // Tap to navigate to History & Statistics
       await tester.tap(historyNav);
       await tester.pumpAndSettle();
@@ -65,7 +69,9 @@ void main() {
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
-      // Navigate to History & Statistics
+      // Navigate to History & Statistics (may be below the sidebar fold)
+      await tester.ensureVisible(find.text('History & Statistics'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('History & Statistics'));
       await tester.pumpAndSettle();
 
@@ -93,7 +99,9 @@ void main() {
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
-      // Navigate to History & Statistics
+      // Navigate to History & Statistics (may be below the sidebar fold)
+      await tester.ensureVisible(find.text('History & Statistics'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('History & Statistics'));
       await tester.pumpAndSettle();
 
@@ -127,7 +135,9 @@ void main() {
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
-      // Navigate to History & Statistics
+      // Navigate to History & Statistics (may be below the sidebar fold)
+      await tester.ensureVisible(find.text('History & Statistics'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('History & Statistics'));
       await tester.pumpAndSettle();
 

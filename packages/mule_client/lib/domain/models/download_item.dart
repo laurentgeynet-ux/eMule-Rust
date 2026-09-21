@@ -178,6 +178,8 @@ class DownloadItem {
   final DateTime? lastStatusChange;
   final List<DownloadPartInfo> parts;
   final String? categoryId;
+  /// Per-file source cap (eMule FT_MAXSOURCES); null = global limit.
+  final int? maxSources;
 
   const DownloadItem({
     required this.id,
@@ -205,6 +207,7 @@ class DownloadItem {
     this.lastStatusChange,
     this.parts = const [],
     this.categoryId,
+    this.maxSources,
   });
 
   factory DownloadItem.fromJson(Map<String, dynamic> json) {
@@ -251,6 +254,7 @@ class DownloadItem {
           : null,
       parts: parts,
       categoryId: json['categoryId'] as String?,
+      maxSources: (json['maxSources'] as num?)?.toInt(),
     );
   }
 
@@ -283,6 +287,8 @@ class DownloadItem {
     List<DownloadPartInfo>? parts,
     String? categoryId,
     bool clearCategoryId = false,
+    int? maxSources,
+    bool clearMaxSources = false,
   }) {
     return DownloadItem(
       id: id ?? this.id,
@@ -310,6 +316,7 @@ class DownloadItem {
       lastStatusChange: lastStatusChange ?? this.lastStatusChange,
       parts: parts ?? this.parts,
       categoryId: clearCategoryId ? null : (categoryId ?? this.categoryId),
+      maxSources: clearMaxSources ? null : (maxSources ?? this.maxSources),
     );
   }
 

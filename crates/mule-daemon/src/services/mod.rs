@@ -3,6 +3,7 @@ pub mod downloads;
 pub mod events;
 pub mod identity;
 pub mod inbound_listener;
+pub mod incoming_share;
 pub mod kad;
 pub mod kad_udp;
 pub mod obfuscation_stream;

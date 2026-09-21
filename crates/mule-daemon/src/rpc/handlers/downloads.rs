@@ -280,6 +280,32 @@ pub async fn handle_set_priority(
     Ok(serde_json::to_value(snapshot).unwrap_or_default())
 }
 
+/// `downloads.setMaxSources` — per-file source limit (eMule FT_MAXSOURCES).
+/// Params: `{id, maxSources}` — `maxSources` null/omitted restores global.
+pub async fn handle_set_max_sources(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    let max_sources = params
+        .get("maxSources")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
+
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .set_max_sources(&id, max_sources)?;
+    state.broadcast_download_update(snapshot.clone());
+
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
 pub async fn handle_inspect_part_met(
     state: &AppState,
     params: Option<Value>,

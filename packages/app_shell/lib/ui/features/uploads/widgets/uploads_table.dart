@@ -21,6 +21,7 @@ class UploadsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
@@ -37,9 +38,12 @@ class UploadsTable extends StatelessWidget {
           DataColumn(label: Text(context.l10n.uploadsClient)),
           DataColumn(label: Text(context.l10n.uploadsFile)),
           DataColumn(label: Text(context.l10n.transferred)),
-          if (isQueue)
-            DataColumn(label: Text(context.l10n.uploadsRank))
-          else
+          if (isQueue) ...[
+            DataColumn(label: Text(context.l10n.uploadsRank)),
+            // eMule queue score: wait × credit × file priority.
+            const DataColumn(label: Text('Score')),
+            const DataColumn(label: Text('Crédit')),
+          ] else
             DataColumn(label: Text(context.l10n.uploadsRate)),
           DataColumn(label: Text(context.l10n.statut)),
           if (!isQueue) DataColumn(label: Text(context.l10n.actions)),
@@ -86,13 +90,51 @@ class UploadsTable extends StatelessWidget {
                     ),
                   ),
                 ),
-                DataCell(
-                  Text(
-                    s.state,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
+                if (isQueue) ...[
+                  DataCell(
+                    Text(
+                      '${s.effectiveScore(nowMs)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: s.banned
+                            ? AppTheme.statusFailed
+                            : AppColors.textSecondary,
+                      ),
                     ),
+                  ),
+                  DataCell(
+                    Text(
+                      'x${(s.creditMultiplierBps / 100).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+                DataCell(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        s.state,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      if (s.banned) ...[
+                        const SizedBox(width: 4),
+                        const Tooltip(
+                          message: 'Client banni (score 0)',
+                          child: Icon(
+                            Icons.block,
+                            size: 12,
+                            color: AppTheme.statusFailed,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (!isQueue)
