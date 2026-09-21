@@ -74,6 +74,17 @@ pub fn update_peer_source_status(
         .map_err(|e| DaemonError::Business(format!("DB error updating peer source status: {e}")))
 }
 
+pub fn update_peer_source_details(
+    db: &mut Database,
+    file_hash: &str,
+    address: &str,
+    software: Option<&str>,
+    availability: Option<&[u8]>,
+) -> Result<bool, DaemonError> {
+    db.update_peer_source_details(file_hash, address, software, availability)
+        .map_err(|e| DaemonError::Business(format!("DB error updating peer source details: {e}")))
+}
+
 pub fn reset_peer_source_cooldown(
     db: &mut Database,
     file_hash: &str,

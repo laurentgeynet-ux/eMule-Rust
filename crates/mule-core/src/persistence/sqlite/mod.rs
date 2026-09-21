@@ -323,6 +323,23 @@ impl Database {
         )
     }
 
+    /// Updates the learned software name and/or availability bitmask of a peer source.
+    pub fn update_peer_source_details(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        software: Option<&str>,
+        availability: Option<&[u8]>,
+    ) -> Result<bool, CoreError> {
+        sources::update_peer_source_details(
+            &mut self.conn,
+            file_hash,
+            address,
+            software,
+            availability,
+        )
+    }
+
     /// Resets the cooldown and fail count for a peer source.
     pub fn reset_peer_source_cooldown(
         &mut self,

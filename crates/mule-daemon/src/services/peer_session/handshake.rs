@@ -492,6 +492,13 @@ pub(crate) async fn perform_peer_handshake(
                                         if peer_info.requires_crypt_layer() { peer_opts |= 0x04; }
 
                                         let hex_user_hash = hex::encode(ans.user_hash);
+                                        let software = format!(
+                                            "{} {}",
+                                            peer_info.software_name(),
+                                            peer_info
+                                                .emule_version_string()
+                                                .unwrap_or_default()
+                                        );
                                         let updated_src = mule_core::model::PeerSource {
                                             file_hash: file_hash_str.to_string(),
                                             address: address_str.to_string(),
@@ -510,6 +517,8 @@ pub(crate) async fn perform_peer_handshake(
                                             user_hash: Some(hex_user_hash),
                                             crypt_options: peer_opts,
                                             buddy_id: None,
+                                            software: Some(software.trim().to_string()),
+                                            availability: None,
                                         };
                                         let _ = downloads.lock().await.upsert_peer_sources(file_hash_str, &[updated_src]);
 

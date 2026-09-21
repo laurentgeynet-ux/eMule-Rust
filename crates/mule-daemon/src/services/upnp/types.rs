@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Snapshot of UPnP status and active port mappings.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct UpnpStatusSnapshot {
     /// Whether UPnP is enabled in settings.
     pub enabled: bool,
@@ -34,23 +35,6 @@ pub struct UpnpStatusSnapshot {
     pub updated_at_unix_ms: u64,
 }
 
-impl Default for UpnpStatusSnapshot {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            available: false,
-            gateway_addr: None,
-            external_ip: None,
-            tcp_mapped: false,
-            udp_mapped: false,
-            tcp_port: 0,
-            udp_port: 0,
-            cgnat_detected: false,
-            last_error: None,
-            updated_at_unix_ms: 0,
-        }
-    }
-}
 
 /// Returns current unix milliseconds.
 pub fn current_unix_ms() -> u64 {

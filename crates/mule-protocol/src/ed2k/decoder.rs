@@ -10,6 +10,10 @@ use super::opcodes::{
     OP_HASHSETANSWER, OP_HASHSETREQUEST, OP_HELLO, OP_HELLO_ANSWER, OP_PUBLICKEY, OP_REQUESTPARTS,
     OP_REQUESTPARTS_EMULE, OP_REQUESTPARTS_I64, OP_SECIDENTSTATE, OP_SENDINGPART,
     OP_SENDINGPART_I64, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
+    OP_CHANGE_SLOT, OP_CHATCAPTCHAREQ, OP_CHATCAPTCHARES, OP_FILEDESC, OP_HASHSETANSWER2,
+    OP_HASHSETREQUEST2, OP_MESSAGE, OP_MULTIPACKET, OP_MULTIPACKETANSWER,
+    OP_MULTIPACKETANSWER_EXT2, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_PORTTEST,
+    OP_QUEUERANK, OP_QUEUERANKING,
 };
 use super::packet::{
     Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
@@ -23,6 +27,7 @@ use crate::framing::RawPacket;
 use crate::limits::HEADER_SIZE;
 
 pub mod aich;
+pub mod extended;
 pub mod handshake;
 pub mod security;
 pub mod status;
@@ -30,6 +35,11 @@ pub mod transfers;
 
 pub use aich::{
     decode_aich_answer, decode_aich_file_hash_req, decode_aich_file_hash_res, decode_aich_request,
+};
+pub use extended::{
+    decode_captcha_request, decode_captcha_response, decode_change_slot, decode_file_desc,
+    decode_hashset_answer2, decode_hashset_request2, decode_message, decode_multipacket_answer,
+    decode_multipacket_request, decode_port_test, decode_queue_rank, decode_queue_ranking,
 };
 pub use handshake::{decode_emule_info, decode_hello, decode_hello_answer};
 pub use security::{decode_public_key, decode_secident_state, decode_signature};
@@ -43,16 +53,35 @@ pub use transfers::{
 };
 
 /// Read-only wire decoder for eD2K protocol frames.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Ed2kDecoder {
     /// Safety limits and resource bounds.
     pub limits: Ed2kLimits,
     /// Active compatibility profile for wire opcode and layout disambiguation.
     pub profile: Ed2kCompatibilityProfile,
+    /// Negotiated `ExtendedRequestsVersion` of the remote peer
+    /// (eMule `m_byExtendedRequestsVer`, exchanged via `OP_EMULEINFO`).
+    ///
+    /// Drives deterministic parsing of the `OP_REQFILENAME` (`0x58`)
+    /// sub-request ext info inside `MULTIPACKET*` bodies:
+    /// `0` = absent, `1` = part-status bitfield, `>=2` = bitfield + complete
+    /// sources count. Defaults to `2` (eMule 0.72a capability); set to `0` to
+    /// decode captures from peers that did not negotiate extended requests.
+    pub extended_requests_version: u8,
+}
+
+impl Default for Ed2kDecoder {
+    fn default() -> Self {
+        Self {
+            limits: Ed2kLimits::default(),
+            profile: Ed2kCompatibilityProfile::default(),
+            extended_requests_version: 2,
+        }
+    }
 }
 
 impl Ed2kDecoder {
-    /// Creates a new decoder with default limits and default profile (`Emule050a`).
+    /// Creates a new decoder with default limits and default profile (`Emule072a`).
     pub fn new() -> Self {
         Self::default()
     }
@@ -62,6 +91,7 @@ impl Ed2kDecoder {
         Self {
             limits: Ed2kLimits::default(),
             profile,
+            extended_requests_version: 2,
         }
     }
 
@@ -70,12 +100,24 @@ impl Ed2kDecoder {
         Self {
             limits,
             profile: Ed2kCompatibilityProfile::default(),
+            extended_requests_version: 2,
         }
     }
 
     /// Creates a new decoder with customized limits and an explicit compatibility profile.
     pub fn with_limits_and_profile(limits: Ed2kLimits, profile: Ed2kCompatibilityProfile) -> Self {
-        Self { limits, profile }
+        Self {
+            limits,
+            profile,
+            extended_requests_version: 2,
+        }
+    }
+
+    /// Sets the negotiated `ExtendedRequestsVersion` used for `MULTIPACKET*`
+    /// ext-info parsing (`0`, `1` or `2`).
+    pub fn with_extended_requests_version(mut self, version: u8) -> Self {
+        self.extended_requests_version = version;
+        self
     }
 
     /// Decodes a framed byte slice into a typed `Ed2kMessage`.
@@ -186,7 +228,7 @@ impl Ed2kDecoder {
                             },
                         ))
                     }
-                    Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
+                    Ed2kCompatibilityProfile::Emule072a | Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
                         if opcode == OP_SETREQFILEID_EMULE {
                             let req = self.decode_file_status_req_with_profile(
                                 self.profile,
@@ -243,7 +285,7 @@ impl Ed2kDecoder {
                             },
                         ))
                     }
-                    Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
+                    Ed2kCompatibilityProfile::Emule072a | Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
                         if opcode == OP_REQUESTPARTS_EMULE {
                             let req = self.decode_request_parts_with_profile(
                                 self.profile,
@@ -335,6 +377,72 @@ impl Ed2kDecoder {
                 let state = self.decode_secident_state(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::SecIdentState(state))
             }
+            (PR_ED2K, OP_MESSAGE) => {
+                let msg = decode_message(protocol, opcode, payload, HEADER_SIZE + 1, &self.limits)?;
+                Ok(Ed2kMessage::Message(msg))
+            }
+            (PR_ED2K, OP_QUEUERANK) => {
+                let qr = decode_queue_rank(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::QueueRank(qr))
+            }
+            (PR_ED2K, OP_CHANGE_SLOT) => {
+                let cs = decode_change_slot(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::ChangeSlot(cs))
+            }
+            (PR_ED2K, OP_PORTTEST) => {
+                let pt = decode_port_test(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::PortTest(pt))
+            }
+            (PR_EMULE, OP_QUEUERANKING) => {
+                let qr = decode_queue_ranking(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::QueueRanking(qr))
+            }
+            (PR_EMULE, OP_FILEDESC) => {
+                let fd = decode_file_desc(protocol, opcode, payload, HEADER_SIZE + 1, &self.limits)?;
+                Ok(Ed2kMessage::FileDesc(fd))
+            }
+            (PR_EMULE, OP_MULTIPACKET)
+            | (PR_EMULE, OP_MULTIPACKET_EXT)
+            | (PR_EMULE, OP_MULTIPACKET_EXT2) => {
+                let req = decode_multipacket_request(
+                    protocol,
+                    opcode,
+                    payload,
+                    HEADER_SIZE + 1,
+                    &self.limits,
+                    self.extended_requests_version,
+                )?;
+                Ok(Ed2kMessage::MultiPacketRequest(req))
+            }
+            (PR_EMULE, OP_MULTIPACKETANSWER) | (PR_EMULE, OP_MULTIPACKETANSWER_EXT2) => {
+                let ans = decode_multipacket_answer(
+                    protocol,
+                    opcode,
+                    payload,
+                    HEADER_SIZE + 1,
+                    &self.limits,
+                )?;
+                Ok(Ed2kMessage::MultiPacketAnswer(ans))
+            }
+            (PR_EMULE, OP_CHATCAPTCHAREQ) => {
+                let req =
+                    decode_captcha_request(protocol, opcode, payload, HEADER_SIZE + 1, &self.limits)?;
+                Ok(Ed2kMessage::CaptchaRequest(req))
+            }
+            (PR_EMULE, OP_CHATCAPTCHARES) => {
+                let res = decode_captcha_response(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::CaptchaResponse(res))
+            }
+            (PR_EMULE, OP_HASHSETREQUEST2) => {
+                let req =
+                    decode_hashset_request2(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::HashSetReq2(req))
+            }
+            (PR_EMULE, OP_HASHSETANSWER2) => {
+                let ans =
+                    decode_hashset_answer2(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::HashSetAnswer2(ans))
+            }
             _ => {
                 let raw_packet = RawPacket::new(protocol, opcode, Bytes::copy_from_slice(payload));
                 Ok(Ed2kMessage::Raw(raw_packet))
@@ -408,7 +516,7 @@ impl Ed2kDecoder {
                             },
                         ))
                     }
-                    Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
+                    Ed2kCompatibilityProfile::Emule072a | Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
                         if packet.opcode == OP_SETREQFILEID_EMULE {
                             let req = self.decode_file_status_req_with_profile(
                                 self.profile,
@@ -471,7 +579,7 @@ impl Ed2kDecoder {
                             },
                         ))
                     }
-                    Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
+                    Ed2kCompatibilityProfile::Emule072a | Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
                         if packet.opcode == OP_REQUESTPARTS_EMULE {
                             let req = self.decode_request_parts_with_profile(
                                 self.profile,
@@ -627,6 +735,85 @@ impl Ed2kDecoder {
                 )?;
                 Ok(Ed2kMessage::SecIdentState(state))
             }
+            (PR_ED2K, OP_MESSAGE) => {
+                let msg =
+                    decode_message(packet.protocol, packet.opcode, &packet.payload, 0, &self.limits)?;
+                Ok(Ed2kMessage::Message(msg))
+            }
+            (PR_ED2K, OP_QUEUERANK) => {
+                let qr = decode_queue_rank(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::QueueRank(qr))
+            }
+            (PR_ED2K, OP_CHANGE_SLOT) => {
+                let cs = decode_change_slot(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::ChangeSlot(cs))
+            }
+            (PR_ED2K, OP_PORTTEST) => {
+                let pt = decode_port_test(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::PortTest(pt))
+            }
+            (PR_EMULE, OP_QUEUERANKING) => {
+                let qr = decode_queue_ranking(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::QueueRanking(qr))
+            }
+            (PR_EMULE, OP_FILEDESC) => {
+                let fd = decode_file_desc(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                    &self.limits,
+                )?;
+                Ok(Ed2kMessage::FileDesc(fd))
+            }
+            (PR_EMULE, OP_MULTIPACKET)
+            | (PR_EMULE, OP_MULTIPACKET_EXT)
+            | (PR_EMULE, OP_MULTIPACKET_EXT2) => {
+                let req = decode_multipacket_request(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                    &self.limits,
+                    self.extended_requests_version,
+                )?;
+                Ok(Ed2kMessage::MultiPacketRequest(req))
+            }
+            (PR_EMULE, OP_MULTIPACKETANSWER) | (PR_EMULE, OP_MULTIPACKETANSWER_EXT2) => {
+                let ans = decode_multipacket_answer(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                    &self.limits,
+                )?;
+                Ok(Ed2kMessage::MultiPacketAnswer(ans))
+            }
+            (PR_EMULE, OP_CHATCAPTCHAREQ) => {
+                let req = decode_captcha_request(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                    &self.limits,
+                )?;
+                Ok(Ed2kMessage::CaptchaRequest(req))
+            }
+            (PR_EMULE, OP_CHATCAPTCHARES) => {
+                let res =
+                    decode_captcha_response(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::CaptchaResponse(res))
+            }
+            (PR_EMULE, OP_HASHSETREQUEST2) => {
+                let req =
+                    decode_hashset_request2(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::HashSetReq2(req))
+            }
+            (PR_EMULE, OP_HASHSETANSWER2) => {
+                let ans =
+                    decode_hashset_answer2(packet.protocol, packet.opcode, &packet.payload, 0)?;
+                Ok(Ed2kMessage::HashSetAnswer2(ans))
+            }
             _ => Ok(Ed2kMessage::Raw(packet.clone())),
         }
     }
@@ -771,7 +958,7 @@ impl Ed2kDecoder {
         decode_hashset_answer(protocol, opcode, payload, base_offset)
     }
 
-    /// Decodes an `OP_AICHFILEHASHREQ` (eMule `0x14`) payload.
+    /// Decodes an `OP_AICHFILEHASHREQ` (eMule `0x9E`) payload.
     pub fn decode_aich_file_hash_req(
         &self,
         protocol: u8,
@@ -782,7 +969,7 @@ impl Ed2kDecoder {
         decode_aich_file_hash_req(protocol, opcode, payload, base_offset)
     }
 
-    /// Decodes an `OP_AICHFILEHASHANS` (eMule `0x15`) payload.
+    /// Decodes an `OP_AICHFILEHASHANS` (eMule `0x9D`) payload.
     pub fn decode_aich_file_hash_res(
         &self,
         protocol: u8,
@@ -793,7 +980,7 @@ impl Ed2kDecoder {
         decode_aich_file_hash_res(protocol, opcode, payload, base_offset)
     }
 
-    /// Decodes an `OP_AICHREQUEST` (eMule `0x12`) payload.
+    /// Decodes an `OP_AICHREQUEST` (eMule `0x9B`) payload.
     pub fn decode_aich_request(
         &self,
         protocol: u8,
@@ -804,7 +991,7 @@ impl Ed2kDecoder {
         decode_aich_request(protocol, opcode, payload, base_offset)
     }
 
-    /// Decodes an `OP_AICHANSWER` (eMule `0x13`) payload.
+    /// Decodes an `OP_AICHANSWER` (eMule `0x9C`) payload.
     pub fn decode_aich_answer(
         &self,
         protocol: u8,

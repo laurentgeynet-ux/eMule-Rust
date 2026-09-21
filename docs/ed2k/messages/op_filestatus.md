@@ -96,7 +96,8 @@ Lorsque $N \pmod 8 \neq 0$, le dernier octet du masque contient $8 - (N \pmod 8)
 
 ## 7. Références Historiques
 
-- **eMule 0.50a** : `srchybrid/UpDownClient.cpp` : `CUpDownClient::SendFileStatus()`, `CUpDownClient::ProcessFileStatus()`
+- **eMule 0.72a** : envoi inline dans `srchybrid/ListenSocket.cpp:404` (réponse `OP_FILESTATUS` à `OP_SETREQFILEID`), réception `srchybrid/DownloadClient.cpp:509` : `CUpDownClient::ProcessFileStatus()`
+- **eMule 0.50a** *(historique)* : `srchybrid/UpDownClient.cpp` : `CUpDownClient::SendFileStatus()`, `CUpDownClient::ProcessFileStatus()`
   ```cpp
   Packet* packet = new Packet(OP_FILESTATUS, 16 + 2 + reqfile->GetPartCount());
   // Remplit le hash MD4, partCount en uint16 LE, et le bitfield

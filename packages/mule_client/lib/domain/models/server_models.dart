@@ -359,6 +359,8 @@ class PeerSourceModel {
   final int failCount;
   final String? lastError;
   final int? cooldownUntilUnixMs;
+  final String? software;
+  final List<int>? availability;
 
   const PeerSourceModel({
     required this.fileHash,
@@ -372,6 +374,8 @@ class PeerSourceModel {
     this.failCount = 0,
     this.lastError,
     this.cooldownUntilUnixMs,
+    this.software,
+    this.availability,
   });
 
   factory PeerSourceModel.fromJson(Map<String, dynamic> json) {
@@ -399,6 +403,10 @@ class PeerSourceModel {
       cooldownUntilUnixMs:
           (json['cooldownUntilUnixMs'] as num?)?.toInt() ??
           (json['cooldown_until_unix_ms'] as num?)?.toInt(),
+      software: json['software'] as String?,
+      availability: (json['availability'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList(),
     );
   }
 }

@@ -9,13 +9,15 @@ use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, error, info, warn};
 
+type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
+
 #[derive(Clone)]
 pub struct DaemonClient {
     _endpoint: String,
     _token: String,
     next_id: Arc<AtomicU64>,
     write_tx: mpsc::Sender<Message>,
-    pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
+    pending: PendingRequests,
     search_events_tx: broadcast::Sender<Value>,
 }
 

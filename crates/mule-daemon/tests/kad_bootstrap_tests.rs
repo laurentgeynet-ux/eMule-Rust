@@ -102,11 +102,13 @@ async fn test_kad_bootstrap_and_find_node_flow() {
         .await
         .expect("bootstrap should succeed");
 
-    assert_eq!(imported, 1);
+    // eMule 0.72a insère le nœud répondeur lui-même dans la routing table en
+    // plus des contacts listés dans BOOTSTRAP_RES → 2 contacts importés.
+    assert_eq!(imported, 2);
 
     let status = state.kad.get_status().await;
-    assert_eq!(status.total_contacts, 1);
-    assert_eq!(status.db_contacts_count, 1);
+    assert_eq!(status.total_contacts, 2);
+    assert_eq!(status.db_contacts_count, 2);
 
     // 4. Trigger Find Node
     let target_key = KadId([0x99u8; 16]);

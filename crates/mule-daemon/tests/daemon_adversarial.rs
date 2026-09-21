@@ -19,6 +19,29 @@ use tokio_tungstenite::tungstenite::Message;
 
 const AUTH_TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+/// Lit la prochaine réponse JSON-RPC portant `id` sur le flux WS, en ignorant
+/// les notifications d'événements broadcast intercalées (le serveur multiplexe
+/// réponses et events via `select!` — l'ordre n'est pas garanti).
+async fn read_response<S>(read: &mut S, id: u64) -> serde_json::Value
+where
+    S: futures_util::Stream<
+            Item = Result<tokio_tungstenite::tungstenite::Message, tokio_tungstenite::tungstenite::Error>,
+        > + Unpin,
+{
+    for _ in 0..64 {
+        let msg = tokio::time::timeout(Duration::from_secs(10), read.next())
+            .await
+            .expect("timeout waiting for RPC response")
+            .expect("stream closed")
+            .expect("ws error");
+        let v: serde_json::Value = serde_json::from_str(&msg.to_string()).unwrap();
+        if v.get("id").and_then(|i| i.as_u64()) == Some(id) {
+            return v;
+        }
+    }
+    panic!("no JSON-RPC response with id={id} after 64 messages");
+}
+
 struct RunningDaemon {
     addr: SocketAddr,
     state: AppState,
@@ -144,15 +167,11 @@ async fn test_concurrent_downloads_no_crosstalk() {
         .send(Message::Text(add1_req.to_string().into()))
         .await
         .unwrap();
-    let add1_resp: serde_json::Value =
-        serde_json::from_str(&read.next().await.unwrap().unwrap().to_string()).unwrap();
+    let add1_resp: serde_json::Value = read_response(&mut read, 2).await;
     let id1_str = add1_resp["result"]["downloadId"]
         .as_str()
         .unwrap()
         .to_string();
-
-    // Consume the queued event
-    let _ = read.next().await.unwrap().unwrap();
 
     // Add File 2
     let link2 = format!("ed2k://|file|concurrent_2.txt|552960|{}|/", hash2_hex);
@@ -169,15 +188,11 @@ async fn test_concurrent_downloads_no_crosstalk() {
         .send(Message::Text(add2_req.to_string().into()))
         .await
         .unwrap();
-    let add2_resp: serde_json::Value =
-        serde_json::from_str(&read.next().await.unwrap().unwrap().to_string()).unwrap();
+    let add2_resp: serde_json::Value = read_response(&mut read, 3).await;
     let id2_str = add2_resp["result"]["downloadId"]
         .as_str()
         .unwrap()
         .to_string();
-
-    // Consume the queued event
-    let _ = read.next().await.unwrap().unwrap();
 
     // Start both transfers simultaneously
     let src_add1_req = json!({

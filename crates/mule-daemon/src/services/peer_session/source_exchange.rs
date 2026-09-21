@@ -52,6 +52,8 @@ pub async fn handle_sx_answer(
                                 user_hash: hex_user_hash,
                                 crypt_options: src.crypt_options,
                                 buddy_id: None,
+software: None,
+                                availability: None,
                             });
                         }
                     }

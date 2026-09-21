@@ -109,19 +109,17 @@ pub async fn search_keywords_iterative(
         let find_results = futures_util::future::join_all(find_futs).await;
         let mut new_contacts = Vec::new();
         let profile = policy_mgr.profile();
-        for res in find_results {
-            if let Ok(contacts) = res {
-                for mut c in contacts {
-                    let cat = classify_ip(IpAddr::V4(c.ip));
-                    let policy_allowed = match profile {
-                        NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                        NetworkProfile::PublicEd2kPreview
-                        | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
-                    };
-                    if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                        c.verified = true;
-                        new_contacts.push(c);
-                    }
+        for contacts in find_results.into_iter().flatten() {
+            for mut c in contacts {
+                let cat = classify_ip(IpAddr::V4(c.ip));
+                let policy_allowed = match profile {
+                    NetworkProfile::LocalLab => cat == IpCategory::Loopback,
+                    NetworkProfile::PublicEd2kPreview
+                    | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
+                };
+                if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
+                    c.verified = true;
+                    new_contacts.push(c);
                 }
             }
         }

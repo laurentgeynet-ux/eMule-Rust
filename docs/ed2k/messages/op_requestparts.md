@@ -23,7 +23,7 @@ Dans l'architecture Emule-Sion, ce message est **exclusivement utilisé pour les
 
 ## 3. Wire Format (Format sur le Fil)
 
-Le format canonique d'eMule v0.50a structure la demande de jusqu'à 3 blocs simultanés dans une même trame de 40 octets de payload :
+Le format canonique d'eMule 0.72a structure la demande de jusqu'à 3 blocs simultanés dans une même trame de 40 octets de payload :
 
 ```text
 Offset  Type          Champ                  Description
@@ -66,7 +66,7 @@ Offset  Type          Champ                  Description
 ---
 
 ## 6. Références Historiques
-- eMule 0.50a : `opcodes.h` : `#define OP_REQUESTPARTS 0x47`
-- eMule 0.50a : `DownloadClient.cpp:CDownloadClient::SendBlockRequests()`
-- eMule 0.50a : `ListenSocket.cpp:CListenSocket::ProcessPacket()` (case `OP_REQUESTPARTS`)
+- eMule 0.72a : `srchybrid/opcodes.h:213` : `#define OP_REQUESTPARTS 0x47`
+- eMule 0.72a : `srchybrid/DownloadClient.cpp:812` : `CUpDownClient::SendBlockRequests()`
+- eMule 0.72a : `srchybrid/ListenSocket.cpp:510` : `CListenSocket::ProcessPacket()` (case `OP_REQUESTPARTS`)
 - aMule : `src/UploadClient.cpp:CUploadClient::ProcessBlockRequests()`

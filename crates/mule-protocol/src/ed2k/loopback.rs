@@ -38,7 +38,7 @@ pub fn decode_test_file_status_req(
     payload: &[u8],
 ) -> Result<Ed2kFileStatusReq, Ed2kParseError> {
     let profile = if opcode == OP_SETREQFILEID_EMULE {
-        Ed2kCompatibilityProfile::Emule050a
+        Ed2kCompatibilityProfile::Emule072a
     } else {
         Ed2kCompatibilityProfile::LegacyEdonkey
     };
@@ -53,7 +53,7 @@ pub fn decode_test_request_parts(
     payload: &[u8],
 ) -> Result<Ed2kRequestParts, Ed2kParseError> {
     let profile = if opcode == OP_REQUESTPARTS_EMULE {
-        Ed2kCompatibilityProfile::Emule050a
+        Ed2kCompatibilityProfile::Emule072a
     } else {
         Ed2kCompatibilityProfile::LegacyEdonkey
     };
@@ -88,7 +88,8 @@ pub enum TestPeerMode {
     FileStatusMismatchHash,
     /// Responds with a truncated bitfield mask (shorter than expected).
     FileStatusShortMask,
-    /// Responds with extraneous trailing bytes after the bitfield mask.
+    /// Responds with extraneous trailing bytes beyond the tolerated slack
+    /// (>1024) after the bitfield mask.
     FileStatusLongMask,
     /// Responds with part_count exceeding safety limits.
     FileStatusExcessiveParts,
@@ -1219,10 +1220,18 @@ impl Ed2kTestPeer {
                         &req_packet.payload,
                     )?;
 
-                    let mut frame = vec![PR_ED2K, 22, 0, 0, 0, OP_FILESTATUS];
+                    // bitfield attendu : ceil(10/8) = 2 octets ; on en envoie
+                    // 2 + 1025 de remplissage pour dépasser le slack toléré
+                    // (1024) de decode_file_status et forcer le rejet.
+                    let trailing_len = 2 + 1025usize;
+                    let payload_len = 1u32 + 16 + 2 + trailing_len as u32;
+                    let mut frame = vec![PR_ED2K];
+                    frame.extend_from_slice(&payload_len.to_le_bytes());
+                    frame.push(OP_FILESTATUS);
                     frame.extend_from_slice(&req.file_hash);
                     frame.extend_from_slice(&10u16.to_le_bytes());
-                    frame.extend_from_slice(&[0x01, 0x02, 0x03]);
+                    frame.extend_from_slice(&[0x01, 0x02]);
+                    frame.extend(std::iter::repeat_n(0xAB, 1025));
                     stream.write_all(&frame).await.map_err(|e| {
                         Ed2kSessionError::Io(format!("Failed to write long mask frame: {e}"))
                     })?;

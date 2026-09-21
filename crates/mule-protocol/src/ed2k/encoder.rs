@@ -17,6 +17,8 @@ use crate::limits::HEADER_SIZE;
 
 /// AICH message encoders (AichFileHashReq/Res, AichRequest/Answer).
 pub mod aich;
+/// eMule 0.72a extended encoders (HashSet2, MultiPacket*, queue, chat, CAPTCHA…).
+pub mod extended;
 /// Handshake message encoders (Hello, HelloAnswer, EmuleInfo).
 pub mod handshake;
 /// Security message encoders (PublicKey, Signature, SecIdentState).
@@ -28,6 +30,11 @@ pub mod transfers;
 
 pub use aich::{
     encode_aich_answer, encode_aich_file_hash_req, encode_aich_file_hash_res, encode_aich_request,
+};
+pub use extended::{
+    encode_captcha_request, encode_captcha_response, encode_change_slot, encode_file_desc,
+    encode_hashset_answer2, encode_hashset_request2, encode_message, encode_multipacket_answer,
+    encode_multipacket_request, encode_port_test, encode_queue_rank, encode_queue_ranking,
 };
 pub use handshake::{
     encode_emule_info, encode_emule_info_answer, encode_hello, encode_hello_answer,
@@ -51,7 +58,7 @@ pub struct Ed2kEncoder {
 }
 
 impl Ed2kEncoder {
-    /// Creates a new encoder with default production limits and default profile (`Emule050a`).
+    /// Creates a new encoder with default production limits and default profile (`Emule072a`).
     pub fn new() -> Self {
         Self::default()
     }
@@ -290,6 +297,20 @@ impl Ed2kEncoder {
             Ed2kMessage::PublicKey(key) => self.encode_public_key(key),
             Ed2kMessage::Signature(sig) => self.encode_signature(sig),
             Ed2kMessage::SecIdentState(state) => self.encode_secident_state(state),
+            Ed2kMessage::Message(msg) => encode_message(&self.limits, msg),
+            Ed2kMessage::QueueRank(qr) => encode_queue_rank(&self.limits, qr),
+            Ed2kMessage::QueueRanking(qr) => encode_queue_ranking(&self.limits, qr),
+            Ed2kMessage::ChangeSlot(cs) => encode_change_slot(&self.limits, cs),
+            Ed2kMessage::FileDesc(fd) => encode_file_desc(&self.limits, fd),
+            Ed2kMessage::PortTest(pt) => encode_port_test(&self.limits, pt),
+            Ed2kMessage::CaptchaRequest(req) => encode_captcha_request(&self.limits, req),
+            Ed2kMessage::CaptchaResponse(res) => encode_captcha_response(&self.limits, res),
+            Ed2kMessage::HashSetReq2(req) => encode_hashset_request2(&self.limits, req),
+            Ed2kMessage::HashSetAnswer2(ans) => encode_hashset_answer2(&self.limits, ans),
+            Ed2kMessage::MultiPacketRequest(req) => {
+                encode_multipacket_request(&self.limits, req)
+            }
+            Ed2kMessage::MultiPacketAnswer(ans) => encode_multipacket_answer(&self.limits, ans),
             Ed2kMessage::Raw(raw) => {
                 let frame_len = raw.frame_len();
                 let max_frame = self.limits.max_frame_for_opcode(raw.opcode);

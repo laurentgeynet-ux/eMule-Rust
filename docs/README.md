@@ -85,7 +85,7 @@ docs/
 
 ### 3. Assurance Qualité & Spécifications Filaire
 * **[Protocole de Réception QA](qa/QA_RECEPTION_PROTOCOL.md)** : Guide de test pour la qualification d'une release.
-* **[Matrice de Compatibilité Protocolaires](qa/compatibility-matrix.md)** : Synthèse des profils `Emule050a`, `Amule233`, etc.
+* **[Matrice de Compatibilité Protocolaires](qa/compatibility-matrix.md)** : Synthèse des profils `Emule072a`, `Emule050a` (historique), `Amule233`, etc.
 * **[Spécifications eD2K & ADRs](ed2k/compatibility-notes.md)** : Décisions de conception et encodage filaire.
 
 ---

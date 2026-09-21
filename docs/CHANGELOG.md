@@ -5,6 +5,34 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Alignement protocolaire eMule 0.72a** (`mule-protocol`, `mule-daemon`) :
+  - **Référence de vérité** : `D:\eMule0.72a-Sources\eMule0.72a-Sources\srchybrid`
+    remplace eMule 0.50a comme référence normative (docs `docs/ed2k/`,
+    `AGENTS.md`, README mis à jour ; les mentions 0.50a restantes sont de la
+    provenance historique assumée).
+  - **Profil `Emule072a`** : nouvelle variante `Ed2kCompatibilityProfile::Emule072a`,
+    désormais le **profil par défaut**. `Emule050a` est conservée comme variante
+    historique (assignations filaires identiques).
+  - **Opcodes AICH corrigés** : `0x12`–`0x15` (erronés) → `0x9B`–`0x9E`
+    (`opcodes.h:272-275`).
+  - **Nouveaux codecs** : `OP_HASHSETREQUEST2`/`ANSWER2` (`0xB1`/`0xB2`,
+    `FileIdentifier` + options), famille `OP_MULTIPACKET*` (`0x92`/`0x93`/`0xA4`/
+    `0xA9`/`0xB0`), `OP_QUEUERANK`/`QUEUERANKING`/`CHANGE_SLOT`, `OP_MESSAGE`,
+    `OP_FILEDESC`, `OP_PORTTEST`, `OP_CHATCAPTCHAREQ`/`RES`, `OP_PEERCACHE_*`
+    (raw/ignorés). `0x51`/`0x52` marqués *DEPRECATED* comme dans `opcodes.h:223-224`.
+  - **Ext-info `0x58` déterministe** : `Ed2kDecoder::extended_requests_version`
+    porte la version `ExtendedRequestsVersion` négociée via `OP_EMULEINFO`
+    (0 = absent, 1 = bitfield, ≥2 = bitfield + complete sources) au lieu de
+    l'ancienne heuristique par sous-opcode. Câblée dans `peer_session`
+    (`status_query`, `transfer`) avec la version du pair.
+  - **Kad** : `send_bootstrap` insère le nœud répondeur dans les contacts
+    (conforme eMule) ; `search_sources` déduplique les sources par `IP:port`
+    rapportées par plusieurs contacts.
+  - **Robustesse tests** : lecture des événements `downloadAdded`/
+    `downloadUpdated` tolérante à l'ordre ; fixtures `PeerSource`
+    (`software`/`availability`) ; masque `FILESTATUS` surdimensionné réellement
+    rejeté ; clippy workspace à zéro warning sous `-D warnings`.
+
 - **Façade AppController réduite** : ~31 membres délégués devenus
   inutilisés supprimés (getters history/kad/servers/search/netpol/
   settings exposés désormais via leurs providers). Restent : composition

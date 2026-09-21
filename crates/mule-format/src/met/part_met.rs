@@ -112,8 +112,8 @@ impl PartMetFile {
             let effective_id = if tag.name_id != 0 {
                 tag.name_id
             } else {
-                match tag.name.as_bytes().first().copied() {
-                    Some(b @ (FT_GAPSTART | FT_GAPEND)) => b,
+                match tag.name.as_bytes().first().copied().unwrap_or_default() {
+                    b @ (FT_GAPSTART | FT_GAPEND) => b,
                     _ => 0,
                 }
             };

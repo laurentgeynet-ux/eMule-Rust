@@ -86,6 +86,8 @@ pub async fn handle_sources_add_manual(
         user_hash: user_hash_param,
         crypt_options: crypt_options_param,
         buddy_id: None,
+software: None,
+        availability: None,
     };
 
     state
@@ -152,6 +154,8 @@ pub async fn handle_sources_connect(
             last_error: Some("Blocked by local IP filter".to_string()),
             cooldown_until_unix_ms: None,
             user_hash: user_hash_param.clone(),
+software: None,
+            availability: None,
             crypt_options: crypt_options_param.unwrap_or(0),
             buddy_id: None,
         };
@@ -204,6 +208,8 @@ pub async fn handle_sources_connect(
             status: mule_core::model::PeerSourceStatus::Candidate,
             fail_count: 0,
             last_error: None,
+software: None,
+            availability: None,
             cooldown_until_unix_ms: None,
             user_hash: user_hash_param,
             crypt_options: crypt_options_param.unwrap_or(0),

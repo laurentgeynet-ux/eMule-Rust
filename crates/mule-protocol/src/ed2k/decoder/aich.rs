@@ -43,7 +43,7 @@ fn malformed(
     )
 }
 
-/// Decodes an `OP_AICHFILEHASHREQ` (`0x14`) payload: bare 16-byte file hash.
+/// Decodes an `OP_AICHFILEHASHREQ` (`0x9E`, eMule 0.72a) payload: bare 16-byte file hash.
 pub fn decode_aich_file_hash_req(
     protocol: u8,
     opcode: u8,
@@ -74,7 +74,7 @@ pub fn decode_aich_file_hash_req(
     Ok(Ed2kAichFileHashReq { file_hash })
 }
 
-/// Decodes an `OP_AICHFILEHASHANS` (`0x15`) payload: `file_hash` + 20-byte AICH root.
+/// Decodes an `OP_AICHFILEHASHANS` (`0x9D`, eMule 0.72a) payload: `file_hash` + 20-byte AICH root.
 pub fn decode_aich_file_hash_res(
     protocol: u8,
     opcode: u8,
@@ -110,7 +110,7 @@ pub fn decode_aich_file_hash_res(
     })
 }
 
-/// Decodes an `OP_AICHREQUEST` (`0x12`) payload: `file_hash` + `u16 part` + `master_hash`.
+/// Decodes an `OP_AICHREQUEST` (`0x9B`, eMule 0.72a) payload: `file_hash` + `u16 part` + `master_hash`.
 pub fn decode_aich_request(
     protocol: u8,
     opcode: u8,
@@ -160,7 +160,7 @@ pub fn decode_aich_request(
     })
 }
 
-/// Decodes an `OP_AICHANSWER` (`0x13`) payload.
+/// Decodes an `OP_AICHANSWER` (`0x9C`, eMule 0.72a) payload.
 ///
 /// Bare 16-byte payload = failed answer. Otherwise:
 /// `file_hash` + `u16 part` + `master_hash` + `u16 count16` + entries +

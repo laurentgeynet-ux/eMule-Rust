@@ -97,7 +97,8 @@ class PeerSourceRow extends StatelessWidget {
                             width: 0.5,
                           ),
                         ),
-                        child: Text(context.l10n.cooldownS('$cooldownSecondsRemaining'),
+                        child: Text(
+                          context.l10n.cooldownS('$cooldownSecondsRemaining'),
                           style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
@@ -107,14 +108,33 @@ class PeerSourceRow extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(width: 6),
-                    Text('(${src.origin.toApiString()})',
+                    Text(
+                      '(${src.origin.toApiString()})',
                       style: const TextStyle(
                         fontSize: 10,
                         color: AppColors.textFaint,
                       ),
                     ),
+                    if (src.software != null && src.software!.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          src.software!,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
+                if (src.availability != null && src.availability!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: SourceAvailabilityBar(mask: src.availability!),
+                  ),
                 if (src.lastError != null && src.lastError!.isNotEmpty)
                   Text(
                     src.lastError!,
@@ -140,7 +160,8 @@ class PeerSourceRow extends StatelessWidget {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 onPressed: () => onDisconnect(src.address),
-                child: Text(context.l10n.deconnecter,
+                child: Text(
+                  context.l10n.deconnecter,
                   style: TextStyle(fontSize: 10),
                 ),
               )
@@ -162,7 +183,10 @@ class PeerSourceRow extends StatelessWidget {
                 onPressed: isPeerConnecting
                     ? null
                     : () => onConnect(src.address, force: true),
-                child: Text(context.l10n.forcer, style: TextStyle(fontSize: 10)),
+                child: Text(
+                  context.l10n.forcer,
+                  style: TextStyle(fontSize: 10),
+                ),
               )
             else
               ElevatedButton(
@@ -193,4 +217,49 @@ class PeerSourceRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Per-part availability bar for a peer source (eMule-style): one column per
+/// file part, highlighted when the source has it. `mask` is the OP_FILESTATUS
+/// bitfield (`ceil(part_count/8)` bytes, LSB-first per byte).
+class SourceAvailabilityBar extends StatelessWidget {
+  final List<int> mask;
+
+  const SourceAvailabilityBar({super.key, required this.mask});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 5,
+      width: double.infinity,
+      child: CustomPaint(painter: _AvailabilityPainter(mask)),
+    );
+  }
+}
+
+class _AvailabilityPainter extends CustomPainter {
+  final List<int> mask;
+
+  _AvailabilityPainter(this.mask);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final partCount = mask.length * 8;
+    if (partCount == 0 || size.width <= 0) return;
+    final partWidth = size.width / partCount;
+    final havePaint = Paint()..color = AppTheme.primary;
+    final missPaint = Paint()
+      ..color = AppTheme.darkBorder.withValues(alpha: 0.35);
+    for (var i = 0; i < partCount; i++) {
+      final has = (mask[i >> 3] & (1 << (i & 7))) != 0;
+      canvas.drawRect(
+        Rect.fromLTWH(i * partWidth, 0, partWidth, size.height),
+        has ? havePaint : missPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AvailabilityPainter oldDelegate) =>
+      oldDelegate.mask != mask;
 }

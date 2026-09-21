@@ -37,7 +37,10 @@ Ces messages constituent le socle d'interconnexion pair-à-pair originel défini
 | `0x57` | `OP_OUTOFPARTS` | Client $\rightarrow$ Pair | Indique que le client ne recherche plus de parts auprès de ce pair |
 | `0x58` | `OP_REQFILENAME` | Client $\rightarrow$ Pair | Demande du nom de fichier associé au hash |
 | `0x59` | `OP_REQFILENAME_ANSWER` | Pair $\rightarrow$ Client | Réponse avec le nom de fichier |
-| `0x60` | `OP_QUEUERANKING` | Pair $\rightarrow$ Client | Position `u32` dans la file d'attente d'upload du pair distant |
+| `0x4E` | `OP_MESSAGE` | Bidirectionnel | Chat pair-à-pair : `u16 len` + message |
+| `0x5B` | `OP_CHANGE_SLOT` | Bidirectionnel | Requête de changement de slot (`hash16`) — toléré/ignoré par eMule 0.72a |
+| `0x5C` | `OP_QUEUERANK` | Pair $\rightarrow$ Client | Rang de file d'attente `u32` (forme eD2K legacy) |
+| `0xFE` | `OP_PORTTEST` | Bidirectionnel | Test de connectivité TCP : `u8` statut (eMule répond `0x12`) |
 
 ---
 
@@ -49,10 +52,10 @@ Introduit par les versions d'eMule pour ajouter des capacités avancées (compre
 | :---: | :--- | :--- | :--- |
 | `0x01` | `OP_EMULEINFO` | Bidirectionnel | Négociation des fonctionnalités modernes eMule (versions, options réseau) |
 | `0x02` | `OP_EMULEINFOANSWER` | Pair $\rightarrow$ Client | Réponse à la négociation des fonctionnalités eMule |
-| `0x12` | `OP_AICH_REQUEST` | Client $\rightarrow$ Pair | Demande de données de récupération AICH d'une part corrompue (`hash16 + u16 part + master_hash20`) |
-| `0x13` | `OP_AICH_ANSWER` | Pair $\rightarrow$ Client | Données de récupération : entrées `(ident, hash SHA-1)` 16-bit/32-bit — ou `hash16` seul en cas d'échec |
-| `0x14` | `OP_AICHFILEHASHREQ` | Client $\rightarrow$ Pair | Demande du hash racine AICH (SHA-1) d'un fichier |
-| `0x15` | `OP_AICHFILEHASHRES` | Pair $\rightarrow$ Client | Réponse : hash de fichier + hash racine AICH (`hash16 + sha1_20`) |
+| `0x9B` | `OP_AICH_REQUEST` | Client $\rightarrow$ Pair | Demande de données de récupération AICH d'une part corrompue (`hash16 + u16 part + master_hash20`) |
+| `0x9C` | `OP_AICH_ANSWER` | Pair $\rightarrow$ Client | Données de récupération : entrées `(ident, hash SHA-1)` 16-bit/32-bit — ou `hash16` seul en cas d'échec |
+| `0x9E` | `OP_AICHFILEHASHREQ` | Client $\rightarrow$ Pair | Demande du hash racine AICH (SHA-1) d'un fichier |
+| `0x9D` | `OP_AICHFILEHASHRES` | Pair $\rightarrow$ Client | Réponse : hash de fichier + hash racine AICH (`hash16 + sha1_20`) |
 | `0x40` | `OP_COMPRESSEDPART` | Pair $\rightarrow$ Client | Bloc zlib (`hash16 + u32 start + u32 taille compressée + chunk ≤ 10 240 o`), envoyé sous `OP_EMULEPROT` |
 | `0x90` | `OP_REASKFILEPING` | Client $\rightarrow$ Pair (UDP) | Keep-alive vers une source en file : `hash16` + info étendue (`u16` part-status + `u16` complete sources pour UDP ver > 3) |
 | `0x91` | `OP_REASKACK` | Pair $\rightarrow$ Client (UDP) | Rang de file d'attente : `[u16 count + bitfield]` (UDP ver > 3) + `u16` rang |
@@ -60,6 +63,22 @@ Introduit par les versions d'eMule pour ajouter des capacités avancées (compre
 | `0x93` | `OP_QUEUEFULL` | Pair $\rightarrow$ Client (UDP) | File d'attente du pair saturée (payload vide) |
 | `0x21` | `OP_SOURCESREQUEST` | Client $\rightarrow$ Pair | Demande de sources connues pour un fichier (Source Exchange) |
 | `0x22` | `OP_SOURCESANSWER` | Pair $\rightarrow$ Client | Réponse contenant la liste de pairs pour un fichier |
+| `0x60` | `OP_QUEUERANKING` | Pair $\rightarrow$ Client | Position dans la file d'upload eMule : exactement 12 octets (`u16` rang + 10 réservés, `ProcessEmuleQueueRank`) |
+| `0x61` | `OP_FILEDESC` | Pair $\rightarrow$ Client | Notation/commentaire du fichier : `u8` rating + `u16 len` + description |
+| `0x92` | `OP_MULTIPACKET` | Client $\rightarrow$ Pair | Requête groupée (*deprecated* en 0.72a, remplacée par `0xA9`) : `hash16` + sous-opcodes |
+| `0x93` | `OP_MULTIPACKETANSWER` | Pair $\rightarrow$ Client | Réponse groupée : `hash16` + sous-réponses (`0x59` nom, `0x50` statut, `0x9D` racine AICH) |
+| `0x94`–`0x96` | `OP_PEERCACHE_*` | Bidirectionnel | Cache de pairs obfusqué (*defunct* en 0.72a — décodés en raw, ignorés) |
+| `0xA4` | `OP_MULTIPACKET_EXT` | Client $\rightarrow$ Pair | Multipacket étendu (*deprecated* en 0.72a) : `hash16 + u64 taille` + sous-opcodes |
+| `0xA5`/`0xA6` | `OP_CHATCAPTCHAREQ`/`RES` | Bidirectionnel | Anti-spam chat : requête (tags + bitmap BMP 128–4096 o) / réponse `u8` statut |
+| `0xA9` | `OP_MULTIPACKET_EXT2` | Client $\rightarrow$ Pair | Multipacket actif 0.72a : `FileIdentifier` + sous-opcodes (`0x58`+ext-info, `0x4F`, `0x81`, `0x83`, `0x9E`) |
+| `0xB0` | `OP_MULTIPACKETANSWER_EXT2` | Pair $\rightarrow$ Client | Réponse groupée EXT2 : `FileIdentifier` + sous-réponses |
+| `0xB1`/`0xB2` | `OP_HASHSETREQUEST2`/`ANSWER2` | Client $\leftrightarrow$ Pair | Hashsets via `FileIdentifier` + `u8` options (bit0 MD4, bit1 AICH) — remplace `0x51`/`0x52` deprecated |
+
+> [!NOTE]
+> L'ext-info accolé au sous-opcode `0x58` des `MULTIPACKET*` dépend de la
+> `ExtendedRequestsVersion` **négociée** (`OP_EMULEINFO`) : `0` = absent,
+> `1` = `u16` part count + bitfield, `>=2` = + `u16` complete sources.
+> Portée par `Ed2kDecoder::extended_requests_version` (défaut `2`, eMule 0.72a).
 
 ---
 

@@ -34,14 +34,14 @@ pub fn derive_initiator_peer_raw_keys(
     mat_send[..16].copy_from_slice(target_user_hash);
     mat_send[16] = MAGICVALUE_REQUESTER;
     mat_send[17..21].copy_from_slice(&random_key_part.to_le_bytes());
-    let send_key: [u8; 16] = Md5::digest(&mat_send).into();
+    let send_key: [u8; 16] = Md5::digest(mat_send).into();
 
     // RecvKey = MD5(target_user_hash[16] || 203 || random_key_part[4])
     let mut mat_recv = [0u8; 21];
     mat_recv[..16].copy_from_slice(target_user_hash);
     mat_recv[16] = MAGICVALUE_SERVER;
     mat_recv[17..21].copy_from_slice(&random_key_part.to_le_bytes());
-    let recv_key: [u8; 16] = Md5::digest(&mat_recv).into();
+    let recv_key: [u8; 16] = Md5::digest(mat_recv).into();
 
     (send_key, recv_key)
 }
@@ -70,14 +70,14 @@ pub fn derive_responder_peer_raw_keys(
     mat_send[..16].copy_from_slice(local_user_hash);
     mat_send[16] = MAGICVALUE_SERVER;
     mat_send[17..21].copy_from_slice(&random_key_part.to_le_bytes());
-    let send_key: [u8; 16] = Md5::digest(&mat_send).into();
+    let send_key: [u8; 16] = Md5::digest(mat_send).into();
 
     // Responder RecvKey = MD5(local_user_hash[16] || 34 || random_key_part[4])
     let mut mat_recv = [0u8; 21];
     mat_recv[..16].copy_from_slice(local_user_hash);
     mat_recv[16] = MAGICVALUE_REQUESTER;
     mat_recv[17..21].copy_from_slice(&random_key_part.to_le_bytes());
-    let recv_key: [u8; 16] = Md5::digest(&mat_recv).into();
+    let recv_key: [u8; 16] = Md5::digest(mat_recv).into();
 
     (send_key, recv_key)
 }
@@ -89,12 +89,12 @@ pub fn derive_server_ciphers(shared_secret: &[u8; 96]) -> (Rc4Cipher, Rc4Cipher)
     let mut mat_send = [0u8; 97];
     mat_send[..96].copy_from_slice(shared_secret);
     mat_send[96] = MAGICVALUE_REQUESTER;
-    let send_key: [u8; 16] = Md5::digest(&mat_send).into();
+    let send_key: [u8; 16] = Md5::digest(mat_send).into();
 
     let mut mat_recv = [0u8; 97];
     mat_recv[..96].copy_from_slice(shared_secret);
     mat_recv[96] = MAGICVALUE_SERVER;
-    let recv_key: [u8; 16] = Md5::digest(&mat_recv).into();
+    let recv_key: [u8; 16] = Md5::digest(mat_recv).into();
 
     (
         Rc4Cipher::new_drop1024(&send_key),

@@ -107,7 +107,9 @@ async fn test_kad_keyword_publish_and_search_flow() {
         .bootstrap_from_node(&mock_addr.ip().to_string(), mock_addr.port())
         .await
         .expect("bootstrap should succeed");
-    assert_eq!(imported, 1);
+    // eMule 0.72a insère le nœud répondeur lui-même en plus des contacts de
+    // BOOTSTRAP_RES → 2 contacts importés.
+    assert_eq!(imported, 2);
 
     // 4. Publish keyword for a file
     let published_count = state

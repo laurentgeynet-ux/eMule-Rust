@@ -30,7 +30,7 @@ pub struct ServerLoginRequest {
 impl ServerLoginRequest {
     /// Creates a new default login request with user hash, port, and standard modern nickname and version tags (eMule 0.60d compatible).
     pub fn new(user_hash: [u8; 16], tcp_port: u16, nickname: &str, version: u32) -> Self {
-        let emule_ver_packed: u32 = (0 << 17) | (60 << 10) | (4 << 7);
+        let emule_ver_packed: u32 = (60 << 10) | (4 << 7);
         let emule_ver_ext: u32 = (0x3c << 24) | (60 << 17) | 4;
 
         let tags = vec![

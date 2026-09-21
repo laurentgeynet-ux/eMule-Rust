@@ -62,9 +62,10 @@ impl Ed2kLimits {
 
     /// Creates limits tuned for eD2K server communication, allowing larger MOTD / server ident strings.
     pub fn for_server() -> Self {
-        let mut limits = Self::default();
-        limits.max_string_bytes = ED2K_MAX_SERVER_STRING_BYTES;
-        limits
+        Self {
+            max_string_bytes: ED2K_MAX_SERVER_STRING_BYTES,
+            ..Self::default()
+        }
     }
 
     /// Returns the maximum permitted frame size for a specific opcode.

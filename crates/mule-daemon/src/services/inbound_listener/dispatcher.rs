@@ -270,7 +270,7 @@ impl InboundListenerService {
                                             let mut dl_svc = self.downloads.lock().await;
                                             let pub_hex = remote_pubkey_der
                                                 .as_ref()
-                                                .map(|d| hex::encode(d))
+                                                .map(hex::encode)
                                                 .unwrap_or_default();
                                             if let Ok(Some(credit)) = dl_svc.get_peer_credit(ph) {
                                                 credit_multiplier = credit.credit_multiplier();
@@ -556,7 +556,7 @@ impl InboundListenerService {
                                              let part_count = if sf.file_size == 0 {
                                                  1
                                              } else {
-                                                 ((sf.file_size + 9727999) / 9728000).max(1) as u16
+                                                 sf.file_size.div_ceil(9728000).max(1) as u16
                                              };
                                              let all_parts: Vec<u16> = (0..part_count).collect();
                                              Ed2kFileStatus {

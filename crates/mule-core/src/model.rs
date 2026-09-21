@@ -388,6 +388,14 @@ pub struct PeerSource {
     /// callback (`KADEMLIA_CALLBACK_REQ` relayed by this buddy node).
     #[serde(default)]
     pub buddy_id: Option<String>,
+    /// Client software + version learned from the eD2K/eMule hello
+    /// (e.g. "eMule 0.70b", "aMule 3.0b").
+    #[serde(default)]
+    pub software: Option<String>,
+    /// Per-part availability bitmask received via `OP_FILESTATUS`
+    /// (`ceil(part_count/8)` bytes, bit set = source has the part).
+    #[serde(default)]
+    pub availability: Option<Vec<u8>>,
 }
 
 impl PeerSource {

@@ -132,6 +132,8 @@ async fn test_adversarial_cooldown_rejection_and_force_bypass() {
             user_hash: None,
             crypt_options: 0,
             buddy_id: None,
+            software: None,
+            availability: None,
         };
         let _ = dl_svc.upsert_peer_sources(&hash, &[src]);
     }

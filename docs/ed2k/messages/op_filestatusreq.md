@@ -65,7 +65,8 @@ Offset  Type          Champ                  Description
 
 ## 7. Références Historiques
 
-- **eMule 0.50a** : `srchybrid/UpDownClient.cpp` : `CUpDownClient::SendFileStatusRequest()`
+- **eMule 0.72a** : `CUpDownClient::SendFileStatusRequest()` n'existe plus — `0x49` y est `OP_END_OF_DOWNLOAD` (`opcodes.h:215`). L'état fichier s'obtient via `OP_SETREQFILEID`, réponse `OP_FILESTATUS` (`ListenSocket.cpp:404`), traitée dans `DownloadClient.cpp:509` (`CUpDownClient::ProcessFileStatus`).
+- **eMule 0.50a** *(historique)* : `srchybrid/UpDownClient.cpp` : `CUpDownClient::SendFileStatusRequest()`
   ```cpp
   Packet* packet = new Packet(OP_FILESTATUSREQ, 16);
   md4cpy(packet->pBuffer, reqfile->GetFileHash());

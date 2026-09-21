@@ -158,18 +158,29 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
         .await
         .unwrap();
 
-    let resp_add = read.next().await.unwrap().unwrap();
-    let add_val: Value = serde_json::from_str(resp_add.to_text().unwrap()).unwrap();
+    // Réponses et events broadcast sont multiplexés via select! : lire jusqu'à
+    // obtenir la réponse id=3 puis le premier event.downloadUpdated.
+    let mut add_val: Option<Value> = None;
+    let mut evt_val: Option<Value> = None;
+    for _ in 0..16 {
+        if add_val.is_some() && evt_val.is_some() {
+            break;
+        }
+        let msg = read.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 3 {
+            add_val = Some(val);
+        } else if val["method"] == "event.downloadUpdated" {
+            evt_val = Some(val);
+        }
+    }
+    let add_val = add_val.expect("add response not received");
+    let evt_val = evt_val.expect("initial downloadUpdated event not received");
     let download_id = add_val["result"]["downloadId"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(add_val["result"]["status"], "queued");
-
-    // Read initial event
-    let evt_msg = read.next().await.unwrap().unwrap();
-    let evt_val: Value = serde_json::from_str(evt_msg.to_text().unwrap()).unwrap();
-    assert_eq!(evt_val["method"], "event.downloadUpdated");
     assert_eq!(evt_val["params"]["download"]["status"], "queued");
 
     // 4. Start eD2K transfer via ed2k.startDownload
@@ -186,8 +197,16 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
         .send(Message::Text(req_start.to_string().into()))
         .await
         .unwrap();
-    let resp_start = read.next().await.unwrap().unwrap();
-    let start_val: Value = serde_json::from_str(resp_start.to_text().unwrap()).unwrap();
+    let mut start_val: Option<Value> = None;
+    for _ in 0..16 {
+        let msg = read.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 4 {
+            start_val = Some(val);
+            break;
+        }
+    }
+    let start_val = start_val.expect("start response not received");
     assert_eq!(start_val["result"]["started"], true);
 
     // 5. Monitor transfer progress until ~50% (at least 4.5 MB = ~25 blocks)
@@ -534,15 +553,20 @@ async fn test_ed2k_transfer_residual_part_file_completion() {
         .await
         .unwrap();
 
-    let resp_add = read.next().await.unwrap().unwrap();
-    let add_val: Value = serde_json::from_str(resp_add.to_text().unwrap()).unwrap();
+    let mut add_val: Option<Value> = None;
+    for _ in 0..16 {
+        let msg = read.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 3 {
+            add_val = Some(val);
+            break;
+        }
+    }
+    let add_val = add_val.expect("add response not received");
     let download_id = add_val["result"]["downloadId"]
         .as_str()
         .unwrap()
         .to_string();
-
-    // Read initial event
-    let _ = read.next().await.unwrap().unwrap();
 
     // 4. Start eD2K transfer
     let req_start = json!({

@@ -153,7 +153,7 @@ Ce composant contient la logique filaire pure et garantit l'intégrité de l'ana
   * Échange de clés Diffie-Hellman 768 bits (RFC 2409 groupe MODP 1) pour serveurs et pairs.
   * Chiffrement par flux RC4 (`drop_bytes(1024)`) et dérivation de clés MD5 conforme aux spécifications officielles eMule.
 * **Profils de Compatibilité Explicites** :
-  * `Emule050a`, `Amule233`, `LegacyEdonkey`, `UnknownStrict`.
+  * `Emule072a` (défaut), `Emule050a` (historique, wire identique), `Amule233`, `LegacyEdonkey`, `UnknownStrict`.
 
 ### 3.3 `crates/mule-core` — Modèle de Domaine, Stockage Éparse & Persistance
 * **Moteur de Stockage (`storage/part_file.rs`, `storage/finalizer.rs`)** :

@@ -249,6 +249,27 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
         conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN buddy_id TEXT;")?;
     }
 
+    let mut stmt_peer3 = conn.prepare("PRAGMA table_info(peer_sources)")?;
+    let mut rows_peer3 = stmt_peer3.query([])?;
+    let (mut has_software, mut has_availability) = (false, false);
+    while let Some(row) = rows_peer3.next()? {
+        let col: String = row.get(1)?;
+        if col == "software" {
+            has_software = true;
+        }
+        if col == "availability" {
+            has_availability = true;
+        }
+    }
+    drop(rows_peer3);
+    drop(stmt_peer3);
+    if !has_software {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN software TEXT;")?;
+    }
+    if !has_availability {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN availability BLOB;")?;
+    }
+
     let mut stmt_sf = conn.prepare("PRAGMA table_info(shared_files)")?;
     let mut rows_sf = stmt_sf.query([])?;
     let mut has_aich_root = false;

@@ -49,8 +49,7 @@ async fn test_kad_source_publish_and_search_flow() {
 
     let mock_task = tokio::spawn(async move {
         let mut buf = vec![0u8; 1024];
-        let mut loop_count = 0;
-        while loop_count < 3 {
+        loop {
             let (len, from_addr) = mock_socket.recv_from(&mut buf).await.expect("recv");
             let decoded = KadCodec::decode(&buf[..len]).expect("decode");
             match decoded {
@@ -68,7 +67,6 @@ async fn test_kad_source_publish_and_search_flow() {
                         .send_to(&res, from_addr)
                         .await
                         .expect("send boot res");
-                    loop_count += 1;
                 }
                 KadMessage::PublishSourceReq(p) => {
                     let res = KadCodec::encode_publish_source_res(&p.target_file_hash, 0);
@@ -76,7 +74,6 @@ async fn test_kad_source_publish_and_search_flow() {
                         .send_to(&res, from_addr)
                         .await
                         .expect("send pub res");
-                    loop_count += 1;
                 }
                 KadMessage::SearchSourceReq(s) => {
                     let sources = vec![KadSourceWire {
@@ -92,7 +89,6 @@ async fn test_kad_source_publish_and_search_flow() {
                         .send_to(&res, from_addr)
                         .await
                         .expect("send search res");
-                    loop_count += 1;
                 }
                 _ => {}
             }
@@ -105,7 +101,9 @@ async fn test_kad_source_publish_and_search_flow() {
         .bootstrap_from_node(&mock_addr.ip().to_string(), mock_addr.port())
         .await
         .expect("bootstrap should succeed");
-    assert_eq!(imported, 1);
+    // eMule 0.72a insère le nœud répondeur lui-même en plus des contacts de
+    // BOOTSTRAP_RES → 2 contacts importés.
+    assert_eq!(imported, 2);
 
     // 4. Publish a source
     let published = state
@@ -135,5 +133,5 @@ async fn test_kad_source_publish_and_search_flow() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].origin, PeerSourceOrigin::Kad);
 
-    let _ = mock_task.await;
+    mock_task.abort();
 }

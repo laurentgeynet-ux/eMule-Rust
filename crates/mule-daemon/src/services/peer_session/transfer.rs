@@ -121,7 +121,7 @@ pub(crate) async fn run_transfer_loop(
     rate_limiters: Option<&mule_network_policy::PolicyRateLimiters>,
 ) -> Result<u64, PeerError> {
     let encoder = Ed2kEncoder::default();
-    let decoder = Ed2kDecoder::default();
+    let decoder = Ed2kDecoder::default().with_extended_requests_version(peer_ext_req);
     let codec = PacketCodec::new();
     let mut out_wire = Vec::with_capacity(64);
     let mut read_buf = BytesMut::with_capacity(65536);

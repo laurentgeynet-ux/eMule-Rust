@@ -187,7 +187,7 @@ async fn test_udp_firewall_check_succeeds_via_mock_peer() {
         let mut key_data = [0u8; 6];
         key_data[..4].copy_from_slice(&receiver_key.to_le_bytes());
         key_data[4..6].copy_from_slice(&rand_part.to_le_bytes());
-        let md5_key: [u8; 16] = Md5::digest(&key_data).into();
+        let md5_key: [u8; 16] = Md5::digest(key_data).into();
         let mut cipher = Rc4Cipher::new(&md5_key, true);
         let mut out = vec![0x46u8]; // random proto byte (not a valid Kad proto)
         out.extend_from_slice(&rand_part.to_le_bytes());

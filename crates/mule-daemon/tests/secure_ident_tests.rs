@@ -1179,10 +1179,10 @@ async fn test_inbound_sui_tier1_malformed_replay_and_wrong_challenge() {
     // A. Oversized public key (>80 bytes) is ignored → no challenge issued;
     //    a signature then hits "no active challenge" → state 0.
     let mut oversized = vec![200u8];
-    oversized.extend(std::iter::repeat(0x77u8).take(200));
+    oversized.extend(std::iter::repeat_n(0x77u8, 200));
     send_frame(&mut client, PR_EMULE, OP_PUBLICKEY, &oversized).await;
     let mut sig_payload = vec![48u8];
-    sig_payload.extend(std::iter::repeat(0xEEu8).take(48));
+    sig_payload.extend(std::iter::repeat_n(0xEEu8, 48));
     send_frame(&mut client, PR_EMULE, OP_SIGNATURE, &sig_payload).await;
     assert_eq!(
         read_state(&mut client, &mut read_buf, &mut raw_buf, &codec, &decoder).await,

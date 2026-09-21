@@ -136,7 +136,7 @@ pub fn decode_client_udp(data: &[u8]) -> Result<ClientUdpMessage, String> {
             // UDP ver > 3 form: u16 bitfield count + ceil(count/8) bytes.
             let part_status = if rank_off >= 2 {
                 let count = u16::from_le_bytes([payload[0], payload[1]]) as usize;
-                let bitfield_len = (count + 7) / 8;
+                let bitfield_len = count.div_ceil(8);
                 if 2 + bitfield_len == rank_off {
                     Some(payload[2..rank_off].to_vec())
                 } else {
@@ -244,7 +244,7 @@ mod tests {
             }
             m => panic!("unexpected {m:?}"),
         }
-        raw.truncate(0);
+        raw.clear();
     }
 
     #[test]

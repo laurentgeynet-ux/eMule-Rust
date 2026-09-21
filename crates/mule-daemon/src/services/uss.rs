@@ -316,14 +316,11 @@ impl UssService {
                     if cancel.is_cancelled() || !self.config().enabled {
                         break;
                     }
-                    match probe_rtt(target).await {
-                        Some(ms) => {
-                            successes += 1;
-                            if ms > 0 && ms < best {
-                                best = ms.max(LOWEST_INITIAL_PING_MS);
-                            }
+                    if let Some(ms) = probe_rtt(target).await {
+                        successes += 1;
+                        if ms > 0 && ms < best {
+                            best = ms.max(LOWEST_INITIAL_PING_MS);
                         }
-                        None => {}
                     }
                     tokio::select! {
                         _ = cancel.cancelled() => return,
@@ -365,11 +362,9 @@ impl UssService {
             // --- Control loop ---
             // eMule: ticksBetweenPings = 100*64/upload*1000 ms, clamped
             // [125ms, 1s] — probes use ~1% of upload bandwidth.
-            let interval_ms = if upload_bps > 0 {
-                ((100 * 64 * 1000) / upload_bps).clamp(125, 1000)
-            } else {
-                1000
-            };
+            let interval_ms = 6_400_000u64
+                .checked_div(upload_bps)
+                .map_or(1000, |v| v.clamp(125, 1000));
             tokio::select! {
                 _ = cancel.cancelled() => return,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(interval_ms)) => {}
@@ -566,6 +561,6 @@ mod tests {
         let snap = svc.snapshot();
         assert_eq!(snap.state, "disabled");
         assert!(snap.accept_new_client);
-        assert_eq!(svc.accept_flag().load(Ordering::Relaxed), true);
+        assert!(svc.accept_flag().load(Ordering::Relaxed));
     }
 }

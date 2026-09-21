@@ -144,7 +144,7 @@ mod tests {
         verify_sui_signature(&public, &payload, &sig).unwrap();
 
         // Wrong signature / wrong payload must fail
-        assert!(verify_sui_signature(&public, &payload, &vec![0u8; 48]).is_err());
+        assert!(verify_sui_signature(&public, &payload, &[0u8; 48]).is_err());
         let mut bad = payload.clone();
         bad[0] ^= 1;
         assert!(verify_sui_signature(&public, &bad, &sig).is_err());

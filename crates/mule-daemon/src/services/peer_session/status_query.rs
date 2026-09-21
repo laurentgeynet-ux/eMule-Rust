@@ -143,7 +143,7 @@ pub(crate) async fn send_pending_aich_requests(
     }
 }
 
-/// Handles `OP_AICHFILEHASHANS` (0x15): records a master-hash vote. Once the
+/// Handles `OP_AICHFILEHASHANS` (0x9D): records a master-hash vote. Once the
 /// root reaches consensus, pending recovery requests are sent to this peer.
 /// Returns true if the packet was consumed.
 #[allow(clippy::too_many_arguments)]
@@ -212,7 +212,7 @@ pub(crate) async fn handle_aich_file_hash_res(
     }
 }
 
-/// Handles `OP_AICHANSWER` (0x13): applies recovery data to the corrupted
+/// Handles `OP_AICHANSWER` (0x9C): applies recovery data to the corrupted
 /// part (block-level eviction) or requeues the part on a failed answer.
 /// Returns true if the packet was consumed.
 #[allow(clippy::too_many_arguments)]
@@ -315,6 +315,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
     peer_supports_sx: bool,
     peer_supports_sx2: bool,
     peer_supports_aich: bool,
+    peer_ext_req: u8,
     timeouts: &PeerTimeouts,
     cancel_token: &mule_network_policy::CancellationToken,
     inner: &Arc<Mutex<SwarmInnerState>>,
@@ -324,7 +325,9 @@ pub(crate) async fn query_file_status_and_enter_queue(
     sui: &mut super::sui::OutboundSui,
 ) -> Result<Ed2kFileStatus, PeerError> {
     let encoder = Ed2kEncoder::default();
-    let decoder = Ed2kDecoder::default();
+    // ExtendedRequestsVersion négociée au handshake (OP_EMULEINFO) — pilote le
+    // parsing déterministe de l'ext-info `0x58` dans les MULTIPACKET*.
+    let decoder = Ed2kDecoder::default().with_extended_requests_version(peer_ext_req);
     let codec = PacketCodec::new();
     let mut out_wire = Vec::with_capacity(64);
     let mut read_buf = BytesMut::with_capacity(65536);
@@ -536,6 +539,15 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                                     PeerFailureReason::HashMismatch,
                                                     "OP_FILESTATUS returned unexpected file hash".to_string(),
                                                 ));
+                                            }
+                                            let mask = status.availability_mask.raw_bytes();
+                                            if !mask.is_empty() {
+                                                let _ = downloads.lock().await.update_peer_source_details(
+                                                    file_hash_str,
+                                                    address_str,
+                                                    None,
+                                                    Some(mask),
+                                                );
                                             }
                                             file_status_opt = Some(status);
                                             break;

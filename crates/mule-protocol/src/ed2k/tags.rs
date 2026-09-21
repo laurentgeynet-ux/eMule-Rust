@@ -207,6 +207,18 @@ impl<'a> TagReader<'a> {
         self.pos
     }
 
+    /// Returns the protocol byte this reader was created for.
+    #[inline]
+    pub fn protocol(&self) -> u8 {
+        self.protocol
+    }
+
+    /// Returns the opcode context this reader was created for, if any.
+    #[inline]
+    pub fn opcode(&self) -> Option<u8> {
+        self.opcode
+    }
+
     /// Returns the number of remaining bytes.
     #[inline]
     pub fn remaining(&self) -> usize {

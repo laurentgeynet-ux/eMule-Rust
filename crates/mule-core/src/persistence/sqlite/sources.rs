@@ -15,15 +15,17 @@ pub fn upsert_peer_sources(
             "INSERT INTO peer_sources (
                 file_hash, address, ip, port, origin,
                 discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
-                user_hash, crypt_options, buddy_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                user_hash, crypt_options, buddy_id, software, availability
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             ON CONFLICT(file_hash, address) DO UPDATE SET
                 last_seen_unix_ms = excluded.last_seen_unix_ms,
                 ip = excluded.ip,
                 port = excluded.port,
                 user_hash = COALESCE(excluded.user_hash, peer_sources.user_hash),
                 crypt_options = CASE WHEN excluded.crypt_options != 0 THEN excluded.crypt_options ELSE peer_sources.crypt_options END,
-                buddy_id = COALESCE(excluded.buddy_id, peer_sources.buddy_id)"
+                buddy_id = COALESCE(excluded.buddy_id, peer_sources.buddy_id),
+                software = COALESCE(excluded.software, peer_sources.software),
+                availability = COALESCE(excluded.availability, peer_sources.availability)"
         )?;
 
         for s in sources {
@@ -42,6 +44,8 @@ pub fn upsert_peer_sources(
                 s.user_hash,
                 s.crypt_options as i32,
                 s.buddy_id,
+                s.software,
+                s.availability,
             ])?;
             count += 1;
         }
@@ -54,7 +58,7 @@ pub fn list_peer_sources(conn: &Connection, file_hash: &str) -> Result<Vec<PeerS
     let mut stmt = conn.prepare(
         "SELECT file_hash, address, ip, port, origin,
                 discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
-                user_hash, crypt_options, buddy_id
+                user_hash, crypt_options, buddy_id, software, availability
          FROM peer_sources
          WHERE file_hash = ?1
          ORDER BY status ASC, last_seen_unix_ms DESC"
@@ -85,6 +89,8 @@ pub fn list_peer_sources(conn: &Connection, file_hash: &str) -> Result<Vec<PeerS
             user_hash: row.get(11)?,
             crypt_options: crypt_options_i32 as u8,
             buddy_id: row.get(13)?,
+            software: row.get(14)?,
+            availability: row.get(15)?,
         })
     })?;
 
@@ -161,4 +167,23 @@ pub fn clear_peer_sources(conn: &mut Connection, file_hash: &str) -> Result<usiz
         params![file_hash],
     )?;
     Ok(rows)
+}
+
+/// Updates the learned software name and/or the per-part availability bitmask
+/// of a peer source (filled from the eD2K hello and OP_FILESTATUS).
+pub fn update_peer_source_details(
+    conn: &mut Connection,
+    file_hash: &str,
+    address: &str,
+    software: Option<&str>,
+    availability: Option<&[u8]>,
+) -> Result<bool, CoreError> {
+    let rows = conn.execute(
+        "UPDATE peer_sources SET
+            software = COALESCE(?1, software),
+            availability = COALESCE(?2, availability)
+         WHERE file_hash = ?3 AND address = ?4",
+        params![software, availability, file_hash, address],
+    )?;
+    Ok(rows > 0)
 }

@@ -102,7 +102,7 @@ fn emule072a_hello_answer() -> Vec<u8> {
 // --- aMule 3.0.1 fixture ----------------------------------------------------
 //
 // CT_EMULE_VERSION = (SO_AMULE=3 << 24) | (3<<17)|(0<<10)|(1<<7)
-const AMULE301_VERSION: u32 = (3 << 24) | (3 << 17) | (0 << 10) | (1 << 7);
+const AMULE301_VERSION: u32 = ((3 << 24) | (3 << 17)) | (1 << 7);
 // aMule MiscOptions1: SrcExch3<<12 (not 4), ExtReq2, no preview bit
 const AMULE301_MISC1: u32 = 0x3413_3212;
 // aMule MiscOptions2 with KadVer 8 (KADEMLIA_VERSION = 0x08)

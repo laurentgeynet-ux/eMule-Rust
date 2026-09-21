@@ -1087,6 +1087,7 @@ fn test_multi_profile_invariance_matrix() {
     assert_eq!(pkt_49.opcode, 0x49);
 
     let profiles = [
+        Ed2kCompatibilityProfile::Emule072a,
         Ed2kCompatibilityProfile::Emule050a,
         Ed2kCompatibilityProfile::Amule233,
         Ed2kCompatibilityProfile::LegacyEdonkey,
@@ -1097,7 +1098,9 @@ fn test_multi_profile_invariance_matrix() {
         let dec = Ed2kDecoder::with_profile(profile);
 
         match profile {
-            Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
+            Ed2kCompatibilityProfile::Emule072a
+            | Ed2kCompatibilityProfile::Emule050a
+            | Ed2kCompatibilityProfile::Amule233 => {
                 // 0x47 -> RequestParts
                 let res_47 = dec.decode_raw_packet(&pkt_47).expect("decodes 0x47");
                 assert_eq!(res_47, Ed2kMessage::RequestParts(req_parts.clone()));
@@ -1921,17 +1924,34 @@ fn test_tier3_op_file_status_complete_file_zero_parts_emule050a() {
         other => panic!("expected FileStatus, got: {other:?}"),
     }
 
-    // Trailing bytes rejection on 18-byte complete file status
-    let mut corrupt_payload = Vec::new();
-    corrupt_payload.extend_from_slice(&hash);
-    corrupt_payload.extend_from_slice(&0u16.to_le_bytes());
-    corrupt_payload.push(0x01); // 19th byte
-    let corrupt_raw = mule_protocol::RawPacket::with_vec(
+    // Trailing bytes after a complete-file status are tolerated (eMule 0.72a
+    // ProcessFileStatus ignores bytes past the bitfield; real peers send a
+    // padding byte here — see commit b84eb24). Rejection only applies beyond
+    // the bounded slack (1024 bytes).
+    let mut padded_payload = Vec::new();
+    padded_payload.extend_from_slice(&hash);
+    padded_payload.extend_from_slice(&0u16.to_le_bytes());
+    padded_payload.push(0x01); // 19th byte
+    let padded_raw = mule_protocol::RawPacket::with_vec(
         mule_protocol::types::PR_ED2K,
         mule_protocol::ed2k::OP_FILESTATUS,
-        corrupt_payload,
+        padded_payload,
     );
-    let err = decoder.decode_raw_packet(&corrupt_raw).unwrap_err();
+    let decoded_padded = decoder
+        .decode_raw_packet(&padded_raw)
+        .expect("trailing padding byte tolerated");
+    assert!(matches!(decoded_padded, Ed2kMessage::FileStatus(_)));
+
+    let mut bloated_payload = Vec::new();
+    bloated_payload.extend_from_slice(&hash);
+    bloated_payload.extend_from_slice(&0u16.to_le_bytes());
+    bloated_payload.extend(std::iter::repeat_n(0xAB, 1025));
+    let bloated_raw = mule_protocol::RawPacket::with_vec(
+        mule_protocol::types::PR_ED2K,
+        mule_protocol::ed2k::OP_FILESTATUS,
+        bloated_payload,
+    );
+    let err = decoder.decode_raw_packet(&bloated_raw).unwrap_err();
     assert!(matches!(
         err.kind,
         mule_protocol::ed2k::Ed2kErrorKind::MalformedField { .. }
@@ -2033,26 +2053,26 @@ fn test_secure_ident_decoders_reject_malformed() {
         .decode_public_key(p, op_pk, &[200, 1, 2, 3], 0)
         .is_err()); // nSize < 10
     let mut nine = vec![9u8];
-    nine.extend(std::iter::repeat(0xAB).take(9));
+    nine.extend(std::iter::repeat_n(0xAB, 9));
     assert!(decoder.decode_public_key(p, op_pk, &nine, 0).is_ok()); // nSize = 10, minimum
     let mut oversized = vec![249u8];
-    oversized.extend(std::iter::repeat(0xAB).take(249));
+    oversized.extend(std::iter::repeat_n(0xAB, 249));
     assert!(decoder.decode_public_key(p, op_pk, &oversized, 0).is_ok()); // nSize = 250, maximum
     let mut over_limit = vec![250u8];
-    over_limit.extend(std::iter::repeat(0xAB).take(250));
+    over_limit.extend(std::iter::repeat_n(0xAB, 250));
     assert!(decoder.decode_public_key(p, op_pk, &over_limit, 0).is_err()); // nSize = 251
     let mut trailing = vec![48u8];
-    trailing.extend(std::iter::repeat(0xAB).take(49)); // declared 48, present 49
+    trailing.extend(std::iter::repeat_n(0xAB, 49)); // declared 48, present 49
     assert!(decoder.decode_public_key(p, op_pk, &trailing, 0).is_err()); // exact length required
 
     // OP_SIGNATURE: nSize in [10..250], V1 = 1+len, V2 = 2+len.
     assert!(decoder.decode_signature(p, op_sig, &[], 0).is_err());
     let mut too_small = vec![6u8];
-    too_small.extend(std::iter::repeat(0x11).take(6));
+    too_small.extend(std::iter::repeat_n(0x11, 6));
     assert!(decoder.decode_signature(p, op_sig, &too_small, 0).is_err()); // nSize = 7 < 10
     assert!(decoder.decode_signature(p, op_sig, &[48], 0).is_err()); // declared, no bytes
     let mut v1 = vec![48u8];
-    v1.extend(std::iter::repeat(0x11).take(48));
+    v1.extend(std::iter::repeat_n(0x11, 48));
     assert!(decoder.decode_signature(p, op_sig, &v1, 0).is_ok());
     let mut v2 = v1.clone();
     v2.push(20u8); // kind byte
@@ -2061,6 +2081,6 @@ fn test_secure_ident_decoders_reject_malformed() {
     trailing.push(0xFF); // 3 extra bytes → malformed
     assert!(decoder.decode_signature(p, op_sig, &trailing, 0).is_err());
     let mut truncated = vec![64u8];
-    truncated.extend(std::iter::repeat(0x11).take(48)); // claims 64, has 48
+    truncated.extend(std::iter::repeat_n(0x11, 48)); // claims 64, has 48
     assert!(decoder.decode_signature(p, op_sig, &truncated, 0).is_err());
 }

@@ -140,7 +140,7 @@ impl KadService {
                     // when error_code == 0 and the probed port is a port we
                     // actually advertised (intern or known extern).
                     let valid_port = res.port_tested == intern_port
-                        || extern_port.map_or(false, |e| res.port_tested == e);
+                        || (extern_port == Some(res.port_tested));
                     if res.error_code == 0 && valid_port {
                         let mut fw = tracker.lock().await;
                         if res.port_tested != intern_port {

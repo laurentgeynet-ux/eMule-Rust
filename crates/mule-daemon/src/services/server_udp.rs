@@ -42,19 +42,22 @@ struct ServerUdpInner {
     pending_statreq: std::collections::HashMap<SocketAddr, u32>,
 }
 
+/// Canal d'événements broadcast + compteur de séquence partagé.
+type EventChannel = Arc<
+    std::sync::RwLock<
+        Option<(
+            tokio::sync::broadcast::Sender<String>,
+            Arc<std::sync::atomic::AtomicU64>,
+        )>,
+    >,
+>;
+
 /// Shared server UDP service (cloneable handle).
 #[derive(Clone)]
 pub struct ServerUdpService {
     policy_mgr: NetworkPolicyManager,
     downloads: Arc<std::sync::RwLock<Option<Arc<Mutex<DownloadService>>>>>,
-    event_channel: Arc<
-        std::sync::RwLock<
-            Option<(
-                tokio::sync::broadcast::Sender<String>,
-                Arc<std::sync::atomic::AtomicU64>,
-            )>,
-        >,
-    >,
+    event_channel: EventChannel,
     inner: Arc<RwLock<ServerUdpInner>>,
 }
 
@@ -291,9 +294,7 @@ impl ServerUdpService {
     ) -> Option<&'static str> {
         let (socket, flags) = {
             let inner = self.inner.read().await;
-            let Some(socket) = inner.socket.clone() else {
-                return None;
-            };
+            let socket = inner.socket.clone()?;
             (
                 socket,
                 inner.server_udp_flags.get(&server_udp_addr).copied(),
@@ -413,6 +414,8 @@ async fn handle_glob_found_sources(
                 user_hash: None,
                 crypt_options: 0,
                 buddy_id: None,
+software: None,
+                availability: None,
             });
         }
 

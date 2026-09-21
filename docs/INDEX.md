@@ -12,6 +12,10 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `Cargo.toml` | Manifeste du workspace Rust (membres, dépendances partagées) |
 | `Cargo.lock` | Verrouillage des versions des dépendances Rust |
 | `README.md` | Présentation générale du projet et portail vers docs/ |
+| `AGENTS.md` | Règles pour agents IA (cartographie, validation, règles critiques) |
+| `CLAUDE.md` | Lien physique vers `AGENTS.md` (compatibilité Claude Code) |
+| `GEMINI.md` | Lien physique vers `AGENTS.md` (compatibilité Gemini CLI) |
+| `.github/copilot-instructions.md` | Lien physique vers `AGENTS.md` (compatibilité GitHub Copilot) |
 | `deny.toml` | Configuration cargo-deny (audit des licences/vulnérabilités) |
 | `search_mgr.cpp` | Fichier C++ de référence (code eMule original, gestionnaire de recherche) |
 
@@ -23,18 +27,124 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `.agents/plugins/emule-sion/mcp_config.json` | Configuration MCP du plugin emule-sion |
 | `.agents/plugins/emule-sion/plugin.json` | Manifeste du plugin agent |
 
-## apps/desktop/ — Application Flutter
+## apps/desktop/ — Application Flutter (Windows)
 
 ### Cœur de l'application (`lib/`)
 
 | Fichier | Fonction |
 |---|---|
-| `lib/main.dart` | Point d'entrée de l'application Flutter |
+| `lib/main.dart` | Point d'entrée : compose `app_shell` + `mule_client` |
+| `lib/core/deep_link_handler.dart` | Liens `ed2k://` entrants |
+| `lib/core/download_notifier.dart` | Notifications système sur événements de téléchargement |
+| `lib/core/tray_setup.dart` | Icône et menu de la zone de notification |
+| `lib/core/window_setup.dart` | Configuration de la fenêtre native |
+| `lib/services/daemon_supervisor.dart` | Supervision du cycle de vie du daemon (démarrage/arrêt) |
+| `lib/services/work_directory_resolver.dart` | Résolution du répertoire de travail du daemon |
 
-> ℹ️ Le client daemon, les modèles et les DTO ont été extraits vers
-> `packages/mule_client/` (package Dart partagé par toutes les apps).
+### Configuration Flutter / plateformes
 
-### packages/mule_client/ — Client daemon partagé
+| Fichier | Fonction |
+|---|---|
+| `pubspec.yaml` | Manifeste du package Flutter (dépendances) |
+| `pubspec.lock` | Verrouillage des dépendances Dart/Flutter |
+| `analysis_options.yaml` | Règles d'analyse statique Dart |
+| `.metadata` | Métadonnées du projet Flutter |
+| `README.md` | Documentation de l'app desktop |
+| `assets/app_icon.ico` | Icône de l'application |
+| `android/`, `ios/`, `linux/`, `macos/`, `windows/` | Runners natifs générés par Flutter (seul `windows/` est la cible supportée : `windows/ed2k_protocol.reg` enregistre le protocole `ed2k://`, `runner/` contient le code Win32) |
+
+### Tests Flutter (`test/`)
+
+| Fichier | Fonction |
+|---|---|
+| `test/domain/download_item_test.dart` | Tests du modèle DownloadItem |
+| `test/integration/live_daemon_e2e_test.dart` | Test E2E contre un daemon réel |
+| `test/services/daemon_supervisor_test.dart` | Tests du superviseur de daemon |
+| `test/services/work_directory_resolver_test.dart` | Tests du résolveur de répertoire de travail |
+| `test/ui/*.dart` (17 fichiers) | Tests UI : catégories, diagnostics, détails, écrans downloads/history/Kad/search/servers, import part.met, IP filter, politique réseau, sources de pairs, responsive, performance grandes listes, settings |
+
+## apps/web/ — Application Flutter Web
+
+| Fichier | Fonction |
+|---|---|
+| `lib/main.dart` | Point d'entrée de l'app web |
+| `lib/daemon_connect_screen.dart` | Écran de connexion au daemon |
+| `pubspec.yaml` / `pubspec.lock` / `analysis_options.yaml` | Configuration Flutter |
+| `web/` | Boilerplate web (index.html, manifest, icônes) |
+
+## packages/app_shell/ — Shell UI partagé (MVVM)
+
+Package Dart contenant toute l'interface : composition applicative (`lib/app/`), services transverses (`lib/core/`), localisation (`lib/l10n/`) et écrans par feature (`lib/ui/features/`).
+
+### Configuration et composition
+
+| Fichier | Fonction |
+|---|---|
+| `pubspec.yaml` / `analysis_options.yaml` / `l10n.yaml` | Configuration du package (dont génération i18n) |
+| `lib/emule_sion_app.dart` | Widget racine de l'application |
+| `lib/app/app_controller.dart` | Racine de composition : session daemon + wiring des contrôleurs |
+| `lib/app/providers.dart` | Providers Riverpod de l'application |
+| `lib/app/router.dart` | Routage/navigation entre écrans |
+| `lib/app/shell_controller.dart` | Contrôleur du shell (état global UI) |
+| `lib/app/locale_controller.dart` | Contrôleur de langue (FR/EN) |
+| `lib/app/stats_controller.dart` | Contrôleur des statistiques globales |
+| `lib/app/transfer_rate_tracker.dart` | Suivi des débits de transfert |
+
+### Services transverses (`lib/core/`)
+
+| Fichier | Fonction |
+|---|---|
+| `lib/core/daemon_lifecycle.dart` | Cycle de vie de la connexion daemon |
+| `lib/core/folder_picker.dart` (+`_io`, `_stub`) | Sélecteur de dossier (abstraction + impl natif/stub) |
+| `lib/core/system_actions.dart` (+`_io`, `_stub`) | Actions système (ouvrir dossier, révéler fichier…) |
+| `lib/core/work_dirs.dart` | Répertoires de travail (downloads, incoming…) |
+
+### Localisation (`lib/l10n/`)
+
+| Fichier | Fonction |
+|---|---|
+| `lib/l10n/l10n.dart` | Point d'accès aux localisations |
+| `lib/l10n/app_fr.arb` / `app_en.arb` | Ressources de traduction FR/EN |
+| `lib/l10n/generated/` | Localisations générées (`app_localizations*.dart`) |
+
+### Feature `downloads` (`lib/ui/features/downloads/`)
+
+| Fichier | Fonction |
+|---|---|
+| `view_models/downloads_store_controller.dart` | Store principal des téléchargements |
+| `view_models/categories_controller.dart` | Contrôleur des catégories |
+| `view_models/lab_controller.dart` | Contrôleur du lab |
+| `view_models/network_policy_controller.dart` | Contrôleur de la politique réseau |
+| `view_models/peer_sources_controller.dart` | Contrôleur des sources de pairs |
+| `views/downloads_screen.dart` | Écran principal des téléchargements |
+| `widgets/downloads_list.dart`, `downloads_top_bar.dart`, `downloads_sidebar.dart`, `downloads_empty_state.dart` | Liste, barre d'outils, sidebar et état vide |
+| `widgets/download_row.dart`, `download_details_panel.dart`, `download_detail_dialog.dart` | Ligne de download et panneau/dialogue de détail |
+| `widgets/download_sources_expansion.dart` | Expansion des sources d'un download |
+| `widgets/speed_sparkline.dart`, `status_notification_banner.dart`, `debug_simulation_bar.dart` | Sparkline de débit, bannière de statut, barre de simulation |
+| `widgets/add_link_dialog.dart` + `widgets/add_link/` | Dialogue d'ajout de lien ed2k (`ed2k_link_parser`, dropdowns catégorie/allocation, preview) |
+| `widgets/category_edit_dialog.dart` + `widgets/category/` | Édition de catégorie (color picker, dropdown priorité) |
+| `widgets/detail/` (16 fichiers) | Cartes du détail : header, action bar, identité, métriques, part map, chemins, sources, diagnostics, dialogues destination/suppression, `peer_source_row` |
+| `widgets/diagnostic_dialog.dart` + `widgets/diagnostic/` (8 fichiers) | Carte de diagnostic : chips de capacités, lignes d'info, formatage, bannière profil réseau |
+| `widgets/import/` (7 fichiers) + `import_part_met_dialog.dart` | Import défensif `.part.met` : inspection, rapport, notice de sécurité |
+| `widgets/lab/` (9 fichiers) + `lab_guide_dialog.dart` | Assistant lab : étapes fixture/lien/pair/connexion/nettoyage |
+| `widgets/network/` (9 fichiers) + `network_policy_dialog.dart`, `ip_filter_dialog.dart` | Onglets IP filter et rate limits, quotas, profil réseau, audit log |
+| `widgets/row/` (7 fichiers) | Ligne de download : variantes compacte/complète, badges, icônes, barre d'actions, pill de statut |
+| `widgets/settings/` (8 fichiers) + `settings_dialog.dart` | Dialogue de paramètres : sections dossiers, langue, réseau, rétention |
+| `widgets/sidebar/` (9 fichiers) | Sidebar : header brand, items nav/catégorie/filtre, carte de statut, suppression de catégorie |
+| `widgets/incompatible_version_dialog.dart` | Avertissement de version daemon incompatible |
+
+### Features `history`, `kad`, `search`, `servers`, `settings`, `uploads`
+
+| Fichier | Fonction |
+|---|---|
+| `history/view_models/history_controller.dart` + `views/history_view.dart` + `widgets/` (9 fichiers) | Historique : vue, toolbar, filtre, stats dashboard, lignes d'entrée, dialogues détail/export/effacement |
+| `kad/view_models/kad_controller.dart` + `views/kad_screen.dart` + `widgets/` (12 fichiers) | Kad : table de contacts, bootstrap (dialogue + URL), import nodes.dat, badges/statuts, bannière sécurité |
+| `search/view_models/search_controller.dart` + `views/search_screen.dart` + `widgets/` (7 fichiers) | Recherche : formulaire, table de résultats, bannière connexion, états |
+| `servers/view_models/servers_controller.dart` + `views/servers_screen.dart` + `widgets/` (12 fichiers) | Serveurs : table et cartes, import server.met, session bar, badges, dialogues clear/update |
+| `settings/view_models/settings_controller.dart` + `widgets/` (4 fichiers) | Paramètres réseau : mode, notice anti-SSRF, statut UPnP |
+| `uploads/view_models/uploads_controller.dart` + `views/uploads_view.dart` + `widgets/uploads_table.dart` | Uploads : vue et table des envois |
+
+## packages/mule_client/ — Client daemon partagé
 
 | Fichier | Fonction |
 |---|---|
@@ -54,76 +164,23 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `lib/domain/models/network_policy_models.dart` | Modèles : politique réseau |
 | `lib/domain/models/part_met_models.dart` | Modèles : métadonnées de fichiers .part.met |
 | `lib/domain/models/server_models.dart` | Modèles : serveurs eD2k |
+| `pubspec.yaml` | Manifeste du package |
+| `test/fake_daemon_client_test.dart` | Tests du client simulé |
+| `test/rpc_daemon_client_test.dart` | Tests du client RPC |
 | `README.md` | Usage, protocole et comportements transport du client |
 
-### packages/ui_kit/ — Design system partagé
+## packages/ui_kit/ — Design system partagé
 
 | Fichier | Fonction |
 |---|---|
 | `lib/ui_kit.dart` | Barrel : export unique du package |
 | `lib/src/theme.dart` | `AppTheme` : couleurs brand/status, `dark()` ThemeData |
+| `lib/src/tokens.dart` | Design tokens (espacements, rayons, couleurs) |
 | `lib/src/formatters.dart` | `Formatters` : bytes, vitesses, ETA, pourcentages |
 | `lib/src/strings.dart` | `AppStrings` : chaînes UI centralisées (base i18n) |
 | `lib/src/part_availability_bar.dart` | Bandeau eMule par part (rouge/bleu/teal) |
+| `pubspec.yaml` | Manifeste du package |
 | `README.md` | Contenu et règles du design system |
-| `lib/services/daemon_supervisor.dart` | Supervision du cycle de vie du daemon (démarrage/arrêt) |
-| `lib/services/work_directory_resolver.dart` | Résolution du répertoire de travail du daemon |
-| `lib/ui/core/formatters.dart` | Fonctions de formatage (tailles, vitesses, dates) |
-| `lib/ui/core/strings.dart` | Chaînes de texte de l'UI |
-| `lib/ui/core/theme.dart` | Thème visuel de l'application |
-
-### UI — Écran Téléchargements
-
-| Fichier | Fonction |
-|---|---|
-| `lib/app/app_controller.dart` | Racine de composition : session daemon + wiring des contrôleurs |
-| `lib/ui/features/downloads/views/downloads_screen.dart` | Écran principal des téléchargements |
-| `lib/ui/features/downloads/widgets/add_link_dialog.dart` | Dialogue d'ajout de lien ed2k |
-| `lib/ui/features/downloads/widgets/category_edit_dialog.dart` | Dialogue d'édition de catégorie |
-| `lib/ui/features/downloads/widgets/debug_simulation_bar.dart` | Barre d'outils de simulation/debug |
-| `lib/ui/features/downloads/widgets/diagnostic_dialog.dart` | Dialogue de diagnostic |
-| `lib/ui/features/downloads/widgets/download_detail_dialog.dart` | Dialogue de détails d'un téléchargement |
-| `lib/ui/features/downloads/widgets/download_row.dart` | Widget ligne d'un téléchargement |
-| `lib/ui/features/downloads/widgets/downloads_sidebar.dart` | Barre latérale (catégories, filtres) |
-| `lib/ui/features/downloads/widgets/import_part_met_dialog.dart` | Dialogue d'import de fichiers .part.met |
-| `lib/ui/features/downloads/widgets/incompatible_version_dialog.dart` | Dialogue d'avertissement version incompatible |
-| `lib/ui/features/downloads/widgets/ip_filter_dialog.dart` | Dialogue de gestion du filtrage IP |
-| `lib/ui/features/downloads/widgets/lab_guide_dialog.dart` | Guide des fonctionnalités lab |
-| `lib/ui/features/downloads/widgets/network_policy_dialog.dart` | Dialogue de politique réseau |
-| `lib/ui/features/downloads/widgets/settings_dialog.dart` | Dialogue de paramètres |
-
-### UI — Autres écrans
-
-| Fichier | Fonction |
-|---|---|
-| `lib/ui/features/history/views/history_view.dart` | Vue de l'historique des téléchargements |
-| `lib/ui/features/kad/views/kad_screen.dart` | Écran du réseau Kad (Kademlia) |
-| `lib/ui/features/search/views/search_screen.dart` | Écran de recherche de fichiers |
-| `lib/ui/features/servers/views/servers_screen.dart` | Écran de gestion des serveurs |
-| `lib/ui/features/settings/widgets/network_mode_dialog.dart` | Dialogue de choix du mode réseau |
-
-### Configuration Flutter / plateformes
-
-| Fichier | Fonction |
-|---|---|
-| `pubspec.yaml` | Manifeste du package Flutter (dépendances) |
-| `pubspec.lock` | Verrouillage des dépendances Dart/Flutter |
-| `analysis_options.yaml` | Règles d'analyse statique Dart |
-| `.metadata` | Métadonnées du projet Flutter |
-| `README.md` | Documentation de l'app desktop |
-| `linux/` , `macos/`, `windows/` | Runners natifs par plateforme : CMakeLists, registrars de plugins générés, code du runner (main, fenêtre, manifeste, icônes, entitlements, xcconfigs, projet Xcode, Info.plist, tests natifs) |
-
-### Tests Flutter (`test/`)
-
-| Fichier | Fonction |
-|---|---|
-| `test/data/fake_daemon_client_test.dart` | Tests du client daemon simulé |
-| `test/data/rpc_daemon_client_test.dart` | Tests du client RPC |
-| `test/domain/download_item_test.dart` | Tests du modèle DownloadItem |
-| `test/integration/live_daemon_e2e_test.dart` | Test E2E contre un daemon réel |
-| `test/services/daemon_supervisor_test.dart` | Tests du superviseur de daemon |
-| `test/services/work_directory_resolver_test.dart` | Tests du résolveur de répertoire de travail |
-| `test/ui/*.dart` | Tests UI : catégories, diagnostics, détails, écrans downloads/history/Kad/search/servers, import part.met, IP filter, politique réseau, sources de pairs, responsive, performance grandes listes, settings |
 
 ## crates/ — Crates Rust
 
@@ -152,6 +209,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `src/kad/keyword_index.rs` | Index des mots-clés Kad |
 | `src/kad/routing_table.rs` | Table de routage Kad (k-buckets) |
 | `src/kad/source_index.rs` | Index des sources Kad |
+| `src/kad/note_index.rs` | Index des notes Kad |
 | `src/persistence/mod.rs` | Module de persistance |
 | `src/persistence/traits.rs` | Traits des magasins de données |
 | `src/persistence/sqlite/mod.rs` | Implémentation SQLite |
@@ -189,6 +247,15 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `tests/sqlite_peer_sources_tests.rs` | Tests SQLite sources de pairs |
 | `tests/sqlite_servers_tests.rs` | Tests SQLite serveurs |
 | `tests/sqlite_settings_tests.rs` | Tests SQLite paramètres |
+
+### `mule-crypto` — Cryptographie legacy eMule
+
+| Fichier | Fonction |
+|---|---|
+| `Cargo.toml` | Manifeste du crate |
+| `src/lib.rs` | Racine du crate (MD4, identifiants) |
+| `src/cryptkey.rs` | Format `cryptkey.dat` (DER + Base64 Crypto++) |
+| `src/legacy_sui.rs` | Secure User Identification (RSA-384 PKCS#1 v1.5 + SHA-1) |
 
 ### `mule-daemon` — Daemon principal
 
@@ -252,6 +319,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `src/services/kad/search_keywords.rs` | Recherche par mots-clés Kad |
 | `src/services/kad/search_sources.rs` | Recherche de sources Kad |
 | `src/services/kad/types.rs` | Types du service Kad |
+| `src/services/kad/firewall.rs` | Gestion du pare-feu Kad (FIREWALLED_UDP, tests de connectivité) |
 | `src/services/kad_udp.rs` | Service Kad UDP |
 | `src/services/kad_udp/handlers.rs` | Handlers des paquets Kad UDP |
 | `src/services/kad_udp/routing_client.rs` | Client de routage Kad |
@@ -268,6 +336,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `src/services/peer_session/handshake.rs` | Handshake eD2k avec le pair |
 | `src/services/peer_session/source_exchange.rs` | Échange de sources entre pairs |
 | `src/services/peer_session/status_query.rs` | Requêtes de statut de fichier |
+| `src/services/peer_session/sui.rs` | Secure User Identification dans la session pair |
 | `src/services/peer_session/transfer.rs` | Transfert de blocs avec le pair |
 | `src/services/peer_session/types.rs` | Types de session pair |
 | `src/services/server_session.rs` | Session avec un serveur eD2k |
@@ -407,6 +476,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 
 | Fichier | Fonction |
 |---|---|
+| `AGENTS.md` | Règles agents spécifiques à la crate (référence eMule 0.72a `srchybrid`, bornes `limits.rs`, déterminisme wire) |
 | `src/lib.rs` | Racine du crate |
 | `src/error.rs` | Erreurs de protocole |
 | `src/limits.rs` | Limites globales du protocole |
@@ -433,16 +503,21 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `src/ed2k/limits.rs` | Limites spécifiques eD2k |
 | `src/ed2k/loopback.rs` | Transport loopback pour tests locaux |
 | `src/ed2k/error.rs` | Erreurs eD2k |
-| `src/ed2k/decoder.rs` | Décodeur eD2k |
+| `src/ed2k/decoder.rs` | Décodeur eD2k (profil `Emule072a` par défaut, `extended_requests_version` négocié) |
 | `src/ed2k/decoder/handshake.rs` | Décodage des messages de handshake |
 | `src/ed2k/decoder/security.rs` | Décodage des messages de sécurité |
 | `src/ed2k/decoder/status.rs` | Décodage des messages de statut |
 | `src/ed2k/decoder/transfers.rs` | Décodage des messages de transfert |
+| `src/ed2k/decoder/aich.rs` | Décodage AICH (`0x9B`–`0x9E`) |
+| `src/ed2k/decoder/extended.rs` | Décodage eMule 0.72a étendu (HashSet2, MultiPacket*, queue, chat, CAPTCHA) |
 | `src/ed2k/encoder.rs` | Encodeur eD2k |
 | `src/ed2k/encoder/handshake.rs` | Encodage du handshake |
 | `src/ed2k/encoder/security.rs` | Encodage sécurité |
 | `src/ed2k/encoder/tags.rs` | Encodage des tags |
 | `src/ed2k/encoder/transfers.rs` | Encodage des transferts |
+| `src/ed2k/encoder/aich.rs` | Encodage AICH |
+| `src/ed2k/encoder/extended.rs` | Encodage eMule 0.72a étendu |
+| `src/ed2k/file_identifier.rs` | `Ed2kFileIdentifier` (référence fichier eMule 0.72a : hash, taille, AICH) |
 
 #### eD2k — obfuscation
 
@@ -487,6 +562,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `src/kad/decoder/routing.rs` | Décodage des messages de routage |
 | `src/kad/decoder/search.rs` | Décodage des messages de recherche |
 | `src/kad/encoder.rs` | Encodeur Kad |
+| `src/kad/udp_crypt.rs` | Chiffrement des paquets Kad UDP |
 
 #### Lab (protocole expérimental)
 
@@ -504,9 +580,11 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 |---|---|
 | `tests/common/mod.rs` | Utilitaires de test partagés |
 | `tests/common/sha256.rs` | SHA-256 pour les tests |
-| `tests/ed2k_aich_tests.rs` | Tests codec AICH (opcodes 0x12-0x15) |
+| `tests/ed2k_aich_tests.rs` | Tests codec AICH (opcodes 0x9B-0x9E) |
 | `tests/ed2k_block_transfer_tests.rs` | Tests de transfert de blocs eD2k |
 | `tests/ed2k_corpus_tests.rs` | Tests sur corpus de paquets |
+| `tests/ed2k_emule_compat_tests.rs` | Tests de compatibilité filaire eMule |
+| `tests/ed2k_extended_tests.rs` | Tests codecs eMule 0.72a étendus (HashSet2, MultiPacket*, ext-info par version négociée, CAPTCHA…) |
 | `tests/ed2k_file_status_tests.rs` | Tests des statuts de fichier |
 | `tests/ed2k_hashset_tests.rs` | Tests codec hashset (0x51/0x52) |
 | `tests/ed2k_isolation_guard.rs` | Garde d'isolation des tests eD2k |
@@ -596,6 +674,8 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `ed2k/opcodes_matrix.md` | Matrice des opcodes |
 | `ed2k/references.md` | Références externes |
 | `ed2k/scope.md` | Périmètre de l'implémentation eD2k |
+| `ed2k/SUI_WIRE_FORMAT.md` | Format filaire SUI (Secure User Identification), citations eMule 0.72a vérifiées |
+| `ed2k/SUI_SESSION_RECAP.md` | Récapitulatif des sessions de travail SUI |
 | `ed2k/messages/op_filestatus.md` | Spec du message OP_FILESTATUS |
 | `ed2k/messages/op_filestatusreq.md` | Spec du message OP_FILESTATUSREQ |
 | `ed2k/messages/op_requestparts.md` | Spec du message OP_REQUESTPARTS |

@@ -17,9 +17,9 @@ Status: **Phase A1 implémentée** — SUI bidirectionnel complet : vérificatio
 
 **Status:** Confirmed (eMule + aMule concordants)
 
-- `m_pSignkey = new CryptoPP::RSASSA_PKCS1v15_SHA_Signer(filesource)` (eMule `ClientCredits.cpp:449`, aMule `ClientCreditsList.cpp:InitalizeCrypting`)
+- `m_pSignkey = new CryptoPP::RSASSA_PKCS1v15_SHA_Signer(filesource)` (eMule 0.72a `ClientCredits.cpp:404`, aMule `ClientCreditsList.cpp:InitalizeCrypting`)
 - `CryptoPP::RSASSA_PKCS1v15_SHA_Verifier` pour la vérification.
-- Taille de clé : `RSAKEYSIZE = 384` bits (eMule `opcodes.h:94`, aMule `Constants.h:49`).
+- Taille de clé : `RSAKEYSIZE = 384` bits (eMule 0.72a `opcodes.h:96`, aMule `Constants.h:49`).
 - Longueur de signature = longueur du module = **48 octets** pour RSA-384. La validation de taille doit être dérivée du module du pair (`modulus_len_bytes`), jamais une plage fixe `48..=96`.
 
 **Implication Emule-Sion :** la crate `rsa` de RustCrypto supporte `Pkcs1v15Sign` + `Sha1`. ✅ Spike validé : `rsa 0.9.10` génère des clés 384 bits (`RsaPrivateKey::new`) et accepte `from_components` ; `Pkcs1v15Sign::new::<Sha1>()` exige l'entrée **pré-hachée** (20 octets) — voir `mule-crypto::legacy_sui`.
@@ -28,7 +28,7 @@ Status: **Phase A1 implémentée** — SUI bidirectionnel complet : vérificatio
 
 **Status:** Confirmed
 
-Contrairement à l'hypothèse "challenge + IP", le buffer signé est (`ClientCredits.cpp:491-533` / aMule `ClientCreditsList.cpp:331-375`) :
+Contrairement à l'hypothèse "challenge + IP", le buffer signé est (eMule 0.72a `ClientCredits.cpp:447` `CClientCreditsList::CreateSignature` / aMule `ClientCreditsList.cpp:331-375`) :
 
 ```
 V1 :  pubkey_challenger[keylen] || challenge u32 LE            → keylen + 4 octets
@@ -44,7 +44,7 @@ V2 :  pubkey_challenger[keylen] || challenge u32 LE
 
 ### Finding: format `cryptkey.dat` — DER + Base64, pas un blob binaire
 
-**Status:** Confirmed (eMule `ClientCredits.cpp:474-475`, aMule `ClientCreditsList.cpp:CreateKeyPair`)
+**Status:** Confirmed (eMule 0.72a `ClientCredits.cpp:422` `CClientCreditsList::CreateKeyPair`, aMule `ClientCreditsList.cpp:CreateKeyPair`)
 
 - Génération : `InvertibleRSAFunction::Initialize(rng, 384)` puis `privkey.DEREncode()` dans un `Base64Encoder` → **le fichier est du texte Base64 contenant le DER Crypto++ de la clé privée** (`RSASSA_PKCS1v15_SHA_Signer` = `InvertibleRSAFunction` sérialisée : n, e, d, p, q, dp, dq, u en BER).
 - Lecture : `FileSource(..., true, new Base64Decoder)` → decode Base64 puis parse BER/DER.
@@ -53,7 +53,7 @@ V2 :  pubkey_challenger[keylen] || challenge u32 LE
 
 ### Finding: `OP_SECIDENTSTATE` — sémantique du byte `state`
 
-**Status:** Confirmed (eMule `BaseClient.cpp:2184-2238`)
+**Status:** Confirmed (eMule 0.72a `BaseClient.cpp:2076-2143` `SendSecIdentStatePacket`/`ProcessSecIdentStatePacket`)
 
 Wire : `<state u8><challenge u32 LE>` — **nSize doit être exactement 5**, sinon rejet silencieux.
 
@@ -68,7 +68,7 @@ Wire : `<state u8><challenge u32 LE>` — **nSize doit être exactement 5**, sin
 
 ### Finding: `OP_SIGNATURE` V2 — byte `byChaIPKind` en queue
 
-**Status:** Confirmed (eMule `BaseClient.cpp:2070-2076, 2117-2130`)
+**Status:** Confirmed (eMule 0.72a `BaseClient.cpp:1949-1980` envoi, `:2016-2035` vérification dont `:2028` pour la forme V2)
 
 ```
 OP_SIGNATURE : <siglen u8><signature[siglen]>            ← V1 : pBuffer[0] == nSize-1
@@ -98,7 +98,7 @@ OP_SIGNATURE : <siglen u8><signature[siglen]><kind u8>   ← V2 : pBuffer[0] == 
 
 ## 3. Bug interop corrigé
 
-~~`crates/mule-protocol/src/ed2k/opcodes.rs` inverse les deux opcodes officiels~~ — **corrigé** : `OP_SIGNATURE = 0x86`, `OP_SECIDENTSTATE = 0x87`, alignés sur `opcodes.h:256-258`. Constantes, commentaires encodeur/décodeur et tests roundtrip mis à jour (46/46 verts).
+~~`crates/mule-protocol/src/ed2k/opcodes.rs` inverse les deux opcodes officiels~~ — **corrigé** : `OP_SIGNATURE = 0x86`, `OP_SECIDENTSTATE = 0x87`, alignés sur `opcodes.h:259-260` (eMule 0.72a). Constantes, commentaires encodeur/décodeur et tests roundtrip mis à jour (46/46 verts).
 
 ## 4. Format des messages wire (confirmé)
 
@@ -157,7 +157,7 @@ Compteurs atomiques partagés (`mule-daemon::services::identity::SuiStats`), inc
 
 ## 6. Pending / à compléter en A0
 
-- [ ] Vecteurs hexadécimaux : capture Tier 3 eMule 0.50a (V1 + V2, HighID et LowID).
+- [ ] Vecteurs hexadécimaux : capture Tier 3 eMule 0.72a (V1 + V2, HighID et LowID).
 - [ ] Fixture `cryptkey.dat` réel produit par eMule, parsée octet par octet (ordre exact des composantes BER dans `InvertibleRSAFunction::DEREncode`).
 - [x] Tag de capacité `m_bySupportSecIdent` : MiscOptions1 bits 16-19, valeur `3` (v1|v2) — annoncé et parsé (`Ed2kPeerInfo::secure_ident_support`). Reste : n'accepter les signatures V2 entrantes que si le pair a annoncé `& 2` (BaseClient.cpp:2028).
 - [ ] Comportement `ProcessSecIdentStatePacket` pour `state > 2` (non géré → challenge lu quand même) — à trancher.

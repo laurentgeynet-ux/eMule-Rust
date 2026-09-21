@@ -265,7 +265,7 @@ impl SwarmCoordinator {
                 };
 
                 let remaining_bytes = dl.total_bytes.saturating_sub(dl.received_bytes);
-                let remaining_parts = ((remaining_bytes + 9_727_999) / 9_728_000) as usize;
+                let remaining_parts = remaining_bytes.div_ceil(9_728_000) as usize;
                 let active_peers = self
                     .state
                     .peer_session
@@ -385,7 +385,7 @@ impl SwarmCoordinator {
                         udp_addr.set_port(udp_addr.port().saturating_add(4));
                         self.state
                             .server_udp
-                            .send_glob_get_sources(udp_addr, &hash.0, size as u64)
+                            .send_glob_get_sources(udp_addr, &hash.0, size)
                             .await;
                     }
                 }

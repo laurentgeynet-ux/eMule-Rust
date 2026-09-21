@@ -317,6 +317,21 @@ impl InboundListenerService {
             tracing::info!(
                 "Inbound connection from {remote_str} matched pending LowID callback (client_id={lowid}, file={file_hash}) — adopting as download session"
             );
+            let software = format!(
+                "{} {}",
+                peer_info.software_name(),
+                peer_info.emule_version_string().unwrap_or_default()
+            );
+            let _ = self
+                .downloads
+                .lock()
+                .await
+                .update_peer_source_details(
+                    &file_hash,
+                    &source_address,
+                    Some(software.trim()),
+                    None,
+                );
             if ps
                 .accept_callback(
                     stream,
@@ -357,6 +372,23 @@ impl InboundListenerService {
             tracing::info!(
                 "Inbound connection from {remote_str} matched pending Kad buddy callback (file={file_hash}) — adopting as download session"
             );
+            if let Some(p) = peer_info.as_ref() {
+                let software = format!(
+                    "{} {}",
+                    p.software_name(),
+                    p.emule_version_string().unwrap_or_default()
+                );
+                let _ = self
+                    .downloads
+                    .lock()
+                    .await
+                    .update_peer_source_details(
+                        &file_hash,
+                        &source_address,
+                        Some(software.trim()),
+                        None,
+                    );
+            }
             let _ = ps
                 .accept_callback(
                     stream,

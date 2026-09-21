@@ -11,6 +11,7 @@ pub mod client_udp;
 pub mod decoder;
 pub mod encoder;
 pub mod error;
+pub mod file_identifier;
 pub mod limits;
 pub mod obfuscation;
 pub mod opcodes;
@@ -50,6 +51,15 @@ pub use opcodes::{
     OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SECIDENTSTATE,
     OP_SENDINGPART, OP_SENDINGPART_I64, OP_SERVERIDENT, OP_SERVERLIST, OP_SERVERMESSAGE,
     OP_SERVERSTATUS, OP_SETREQFILEID, OP_SETREQFILEID_EMULE, OP_SIGNATURE, OP_STARTUPLOADREQ,
+    OP_CHANGE_SLOT, OP_CHATCAPTCHAREQ, OP_CHATCAPTCHARES, OP_FILEDESC, OP_HASHSETANSWER2,
+    OP_HASHSETREQUEST2, OP_MESSAGE, OP_MULTIPACKET, OP_MULTIPACKETANSWER,
+    OP_MULTIPACKETANSWER_EXT2, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_PEERCACHE_ACK,
+    OP_PEERCACHE_ANSWER, OP_PEERCACHE_QUERY, OP_PORTTEST, OP_QUEUERANK,
+};
+pub use file_identifier::{
+    Ed2kFileIdentifier, AICH_HASH_LEN, FILE_IDENTIFIER_OPT_AICH, FILE_IDENTIFIER_OPT_MD4,
+    FILE_IDENTIFIER_OPT_SIZE, FILE_IDENTIFIER_OPTIONAL_MASK, FILE_IDENTIFIER_REQUIRED_MASK,
+    MD4_HASH_LEN,
 };
 pub use packet::{
     expected_mask_bytes, Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes,
@@ -57,6 +67,10 @@ pub use packet::{
     Ed2kEmuleInfo, Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer,
     Ed2kHashSetReq, Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts,
     Ed2kRequestPartsI64, Ed2kSecIdentState, Ed2kSendingPart, Ed2kSendingPartI64, Ed2kSignature,
+    Ed2kAichPartHashSet, Ed2kCaptchaRequest, Ed2kCaptchaResponse, Ed2kChangeSlot, Ed2kChatMessage,
+    Ed2kFileDesc, Ed2kHashSetAnswer2, Ed2kHashSetReq2, Ed2kMultiPacketAnswer,
+    Ed2kMultiPacketFileRef, Ed2kMultiPacketRequest, Ed2kMultiPacketSubAnswer,
+    Ed2kMultiPacketSubRequest, Ed2kPortTest, Ed2kQueueRank, Ed2kQueueRanking, Ed2kRequestExtInfo,
     PartAvailabilityMask,
 };
 pub use peer_info::Ed2kPeerInfo;

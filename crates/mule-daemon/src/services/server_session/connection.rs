@@ -37,6 +37,12 @@ pub struct ActiveSession {
     pub obf_failed: std::collections::HashSet<String>,
 }
 
+impl Default for ActiveSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ActiveSession {
     pub fn new() -> Self {
         Self {
@@ -464,6 +470,8 @@ pub fn spawn_connection_task(
                                                                     user_hash: None,
                                                                     crypt_options: 0,
                                                                     buddy_id: None,
+software: None,
+                                                                    availability: None,
                                                                 });
                                                             }
 
@@ -536,7 +544,9 @@ pub fn spawn_connection_task(
                                                                     fail_count: 0,
                                                                     last_error: None,
                                                                     cooldown_until_unix_ms: None,
-                                                                    user_hash: src.user_hash.map(|h| hex::encode(h)),
+                                                                    user_hash: src.user_hash.map(hex::encode),
+software: None,
+                                                                    availability: None,
                                                                     crypt_options: src.obf_settings,
                                                                     buddy_id: None,
                                                                 });

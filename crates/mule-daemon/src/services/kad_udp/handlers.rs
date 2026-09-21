@@ -190,7 +190,7 @@ pub async fn handle_incoming_message(
                 let ip_match = tx.target == peer_addr || tx.target.ip() == peer_addr.ip();
                 let hash_match = tx
                     .expected_target_hash
-                    .map_or(true, |h| h == search_res.target_file_hash);
+                    .is_none_or(|h| h == search_res.target_file_hash);
                 let resp_match = tx.expected_response == KadExpectedResponse::SearchSourceRes;
                 if ip_match && hash_match && resp_match {
                     matched_tx = Some(*id);
@@ -257,7 +257,7 @@ pub async fn handle_incoming_message(
                 let ip_match = tx.target == peer_addr || tx.target.ip() == peer_addr.ip();
                 let hash_match = tx
                     .expected_target_hash
-                    .map_or(true, |h| h == pub_res.target_file_hash);
+                    .is_none_or(|h| h == pub_res.target_file_hash);
                 let resp_match = tx.expected_response == KadExpectedResponse::PublishSourceRes
                     || tx.expected_response == KadExpectedResponse::PublishKeywordRes
                     || tx.expected_response == KadExpectedResponse::PublishNotesRes;
@@ -312,7 +312,7 @@ pub async fn handle_incoming_message(
                 let ip_match = tx.target == peer_addr || tx.target.ip() == peer_addr.ip();
                 let hash_match = tx
                     .expected_target_hash
-                    .map_or(true, |h| h == search_res.keyword_hash);
+                    .is_none_or(|h| h == search_res.keyword_hash);
                 let resp_match = tx.expected_response == KadExpectedResponse::SearchKeywordRes;
                 if ip_match && hash_match && resp_match {
                     matched_tx = Some(*id);
@@ -519,7 +519,7 @@ pub async fn handle_incoming_message(
                 let ip_match = tx.target == peer_addr || tx.target.ip() == peer_addr.ip();
                 let hash_match = tx
                     .expected_target_hash
-                    .map_or(true, |h| h == res.target_file_hash);
+                    .is_none_or(|h| h == res.target_file_hash);
                 let resp_match = tx.expected_response == KadExpectedResponse::SearchNotesRes;
                 if ip_match && hash_match && resp_match {
                     matched_tx = Some(*id);

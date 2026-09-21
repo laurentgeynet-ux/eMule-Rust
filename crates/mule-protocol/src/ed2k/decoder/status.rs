@@ -21,7 +21,7 @@ pub fn decode_file_status_req_with_profile(
     base_offset: usize,
 ) -> Result<Ed2kFileStatusReq, Ed2kParseError> {
     match profile {
-        Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
+        Ed2kCompatibilityProfile::Emule072a | Ed2kCompatibilityProfile::Emule050a | Ed2kCompatibilityProfile::Amule233 => {
             if opcode == OP_FILESTATUSREQ {
                 return Err(Ed2kParseError::new(
                     protocol,

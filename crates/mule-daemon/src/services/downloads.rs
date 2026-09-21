@@ -664,6 +664,22 @@ impl DownloadService {
         )
     }
 
+    pub fn update_peer_source_details(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        software: Option<&str>,
+        availability: Option<&[u8]>,
+    ) -> Result<bool, DaemonError> {
+        peers_servers::update_peer_source_details(
+            &mut self.db,
+            file_hash,
+            address,
+            software,
+            availability,
+        )
+    }
+
     pub fn reset_peer_source_cooldown(
         &mut self,
         file_hash: &str,
@@ -869,7 +885,7 @@ impl DownloadService {
                 && act.download.status == mule_core::DownloadStatus::Completed
             {
                 let mut sf = mule_core::model::SharedFile::new(
-                    &act.download.ed2k_hash.to_hex(),
+                    act.download.ed2k_hash.to_hex(),
                     &act.download.display_name,
                     act.download.total_size,
                     act.download.target_path.to_string_lossy().as_ref(),

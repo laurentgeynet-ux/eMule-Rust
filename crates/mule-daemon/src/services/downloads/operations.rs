@@ -472,7 +472,7 @@ pub fn inject_range(
     let mut met_dirty = false;
     if part_is_complete && !part_was_complete {
         met_dirty = true;
-        let total_parts = ((act.download.total_size + ED2K_PART_SIZE - 1) / ED2K_PART_SIZE).max(1);
+        let total_parts = act.download.total_size.div_ceil(ED2K_PART_SIZE).max(1);
         let progress =
             (act.ranges.covered_len() as f64 / act.download.total_size.max(1) as f64) * 100.0;
         tracing::info!(
@@ -494,7 +494,7 @@ pub fn inject_range(
             // part hash. For exact multiples of PART_SIZE eMule appends an
             // MD4(empty) trailing part, so part 0 hash != file hash there —
             // never fall back to the file hash in that case.
-            let expected = part_hashes.get(part_idx as usize).copied().or_else(|| {
+            let expected = part_hashes.get(part_idx as usize).copied().or({
                 if part_hashes.is_empty() && act.download.total_size < ED2K_PART_SIZE {
                     Some(act.download.ed2k_hash.0)
                 } else {
@@ -1064,7 +1064,7 @@ pub fn finalize_download(
     );
 
     let shared = mule_core::model::SharedFile::new(
-        &finalized_dl.ed2k_hash.to_hex(),
+        finalized_dl.ed2k_hash.to_hex(),
         &finalized_dl.display_name,
         finalized_dl.total_size,
         target_path.to_string_lossy().as_ref(),

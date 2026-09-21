@@ -137,19 +137,17 @@ pub async fn search_sources_iterative(
         let find_results = futures_util::future::join_all(find_futs).await;
         let mut new_contacts = Vec::new();
         let profile = policy_mgr.profile();
-        for res in find_results {
-            if let Ok(contacts) = res {
-                for mut c in contacts {
-                    let cat = classify_ip(IpAddr::V4(c.ip));
-                    let policy_allowed = match profile {
-                        NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                        NetworkProfile::PublicEd2kPreview
-                        | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
-                    };
-                    if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                        c.verified = true;
-                        new_contacts.push(c);
-                    }
+        for contacts in find_results.into_iter().flatten() {
+            for mut c in contacts {
+                let cat = classify_ip(IpAddr::V4(c.ip));
+                let policy_allowed = match profile {
+                    NetworkProfile::LocalLab => cat == IpCategory::Loopback,
+                    NetworkProfile::PublicEd2kPreview
+                    | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
+                };
+                if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
+                    c.verified = true;
+                    new_contacts.push(c);
                 }
             }
         }
@@ -258,6 +256,15 @@ pub async fn search_sources_iterative(
                     };
                     let ip_u32 = u32::from_le_bytes(w.ip);
 
+                    // eMule déduplique les sources par adresse IP:port : la même
+                    // source peut être rapportée par plusieurs contacts Kad.
+                    if discovered_sources
+                        .iter()
+                        .any(|s: &PeerSource| s.address == peer_addr_str)
+                    {
+                        continue;
+                    }
+
                     discovered_sources.push(PeerSource {
                         file_hash: file_hash_hex.to_lowercase(),
                         address: peer_addr_str,
@@ -273,6 +280,8 @@ pub async fn search_sources_iterative(
                         user_hash: Some(KadId(w.kad_id).to_hash_hex()),
                         crypt_options: w.encryption,
                         buddy_id: buddy_hex,
+                        software: None,
+                        availability: None,
                     });
                 }
             }
