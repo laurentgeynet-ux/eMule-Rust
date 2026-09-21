@@ -4,9 +4,7 @@ use bytes::Bytes;
 
 use super::super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::super::limits::Ed2kLimits;
-use super::super::opcodes::{
-    OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_HELLO, OP_HELLO_ANSWER,
-};
+use super::super::opcodes::{OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_HELLO, OP_HELLO_ANSWER};
 use super::super::packet::{Ed2kEmuleInfo, Ed2kHello, Ed2kHelloAnswer};
 use super::super::profile::Ed2kCompatibilityProfile;
 use super::super::protocol::{PR_ED2K, PR_EMULE};

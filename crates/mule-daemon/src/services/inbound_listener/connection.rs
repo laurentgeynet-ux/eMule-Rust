@@ -190,8 +190,11 @@ impl InboundListenerService {
                 });
                 // MiscOptions2 — same layout as the outbound HELLO:
                 // SrcExch2<<10 | CryptReq<<9 | CryptWants<<8 | CryptSup<<7 |
-                // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0 (6).
-                let mut misc2: u32 = (1 << 10) | (1 << 5) | (1 << 4) | 6;
+                // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0 (8).
+                let mut misc2: u32 = (1 << 10)
+                    | (1 << 5)
+                    | (1 << 4)
+                    | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
                 if self.obfuscation_enabled {
                     misc2 |= (1 << 7) | (1 << 8); // CryptLayerSupported | CryptLayerRequested
                 }

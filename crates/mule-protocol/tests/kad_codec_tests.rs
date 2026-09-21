@@ -34,10 +34,23 @@ fn test_kad_ping_pong_roundtrip() {
 fn test_kad_hello_roundtrip() {
     let kad_id = [0xAAu8; 16];
     let udp_port = 39737;
-    let version = 2;
+    let version = 8;
     let tcp_port = 39735;
 
-    let encoded_hello_req = KadCodec::encode_hello_req(&kad_id, udp_port, version, tcp_port);
+    // eMule SendMyDetails layout: [kadID 16][tcp_port u16][version u8]
+    // [tag_count u8][tags] — UDP port inside TAG_SOURCEUPORT.
+    let encoded_hello_req =
+        KadCodec::encode_hello_req(&kad_id, udp_port, version, tcp_port, Some(0x04));
+    assert_eq!(encoded_hello_req[0], PR_KADEMLIA);
+    assert_eq!(encoded_hello_req[1], KADEMLIA2_HELLO_REQ);
+    assert_eq!(&encoded_hello_req[2..18], &kad_id);
+    assert_eq!(
+        u16::from_le_bytes([encoded_hello_req[18], encoded_hello_req[19]]),
+        tcp_port
+    );
+    assert_eq!(encoded_hello_req[20], version);
+    assert_eq!(encoded_hello_req[21], 2); // SOURCEUPORT + KADMISCOPTIONS
+
     let decoded_hello_req = KadCodec::decode(&encoded_hello_req).expect("should decode hello req");
     match decoded_hello_req {
         KadMessage::HelloReq(h) => {
@@ -45,12 +58,15 @@ fn test_kad_hello_roundtrip() {
             assert_eq!(h.udp_port, udp_port);
             assert_eq!(h.version, version);
             assert_eq!(h.tcp_port, tcp_port);
+            assert_eq!(h.misc_options, Some(0x04));
+            assert!(h.requests_ack());
         }
         _ => panic!("expected HelloReq message"),
     }
 
     let responder_id = [0xBBu8; 16];
-    let encoded_hello_res = KadCodec::encode_hello_res(&responder_id, udp_port, version, tcp_port);
+    let encoded_hello_res =
+        KadCodec::encode_hello_res(&responder_id, udp_port, version, tcp_port, None);
     let decoded_hello_res = KadCodec::decode(&encoded_hello_res).expect("should decode hello res");
     match decoded_hello_res {
         KadMessage::HelloRes(h) => {
@@ -58,9 +74,109 @@ fn test_kad_hello_roundtrip() {
             assert_eq!(h.udp_port, udp_port);
             assert_eq!(h.version, version);
             assert_eq!(h.tcp_port, tcp_port);
+            assert_eq!(h.misc_options, None);
+            assert!(!h.requests_ack());
         }
         _ => panic!("expected HelloRes message"),
     }
+}
+
+/// Synthetic eMule 0.72a `KADEMLIA2_HELLO_RES` as produced by `SendMyDetails`:
+/// tags are written in the *old* tag format `[type][u16 name_len][name][value]`
+/// with `TAG_SOURCEUPORT` (0xFC, uint16) and `TAG_KADMISCOPTIONS` (0xF2, uint8).
+#[test]
+fn test_emule072a_hello_res_decode() {
+    let kad_id = [
+        0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x07, 0x18, 0x29, 0x3A, 0x4B, 0x5C, 0x6D, 0x7E, 0x8F,
+        0x90,
+    ];
+    let mut raw = vec![PR_KADEMLIA, KADEMLIA2_HELLO_RES];
+    raw.extend_from_slice(&kad_id);
+    raw.extend_from_slice(&4662u16.to_le_bytes()); // tcp_port
+    raw.push(10); // KADEMLIA_VERSION8_49b+ -> 0.72a announces 0x0A
+    raw.push(2); // tag count
+                 // TAG_SOURCEUPORT (old format, uint16)
+    raw.extend_from_slice(&[0x08, 0x01, 0x00, TAG_SOURCEUPORT]);
+    raw.extend_from_slice(&4672u16.to_le_bytes());
+    // TAG_KADMISCOPTIONS (uint8): bit2 = request HELLO_RES_ACK
+    raw.extend_from_slice(&[0x09, 0x01, 0x00, TAG_KADMISCOPTIONS, 0x04]);
+
+    match KadCodec::decode(&raw).expect("decode eMule hello res") {
+        KadMessage::HelloRes(h) => {
+            assert_eq!(h.kad_id, kad_id);
+            assert_eq!(h.tcp_port, 4662);
+            assert_eq!(h.udp_port, 4672);
+            assert_eq!(h.version, 10);
+            assert_eq!(h.misc_options, Some(0x04));
+            assert!(h.requests_ack());
+        }
+        _ => panic!("expected HelloRes"),
+    }
+}
+
+#[test]
+fn test_kad_hello_res_ack_roundtrip() {
+    let kad_id = [0x77u8; 16];
+    let encoded = KadCodec::encode_hello_res_ack(&kad_id);
+    assert_eq!(encoded[0], PR_KADEMLIA);
+    assert_eq!(encoded[1], KADEMLIA2_HELLO_RES_ACK);
+    assert_eq!(encoded.len(), 2 + 16 + 1);
+
+    match KadCodec::decode(&encoded).expect("decode hello res ack") {
+        KadMessage::HelloResAck(a) => assert_eq!(a.kad_id, kad_id),
+        _ => panic!("expected HelloResAck"),
+    }
+}
+
+#[test]
+fn test_kad_firewalled_req_decode() {
+    // eMule KADEMLIA_FIREWALLED_REQ: [tcp_port u16]
+    let raw = [PR_KADEMLIA, KADEMLIA_FIREWALLED_REQ, 0x62, 0x12];
+    match KadCodec::decode(&raw).expect("decode firewalled req") {
+        KadMessage::FirewalledReq(r) => assert_eq!(r.tcp_port, 0x1262),
+        _ => panic!("expected FirewalledReq"),
+    }
+    assert!(KadCodec::decode(&raw[..3]).is_err());
+}
+
+#[test]
+fn test_kad_firewalled2_req_decode() {
+    // eMule KADEMLIA_FIREWALLED2_REQ: [tcp_port u16][user_hash 16][options u8]
+    let user_hash = [0xABu8; 16];
+    let mut raw = vec![PR_KADEMLIA, KADEMLIA_FIREWALLED2_REQ];
+    raw.extend_from_slice(&4662u16.to_le_bytes());
+    raw.extend_from_slice(&user_hash);
+    raw.push(0x09); // connect options
+
+    match KadCodec::decode(&raw).expect("decode firewalled2 req") {
+        KadMessage::FirewalledReq2(r) => {
+            assert_eq!(r.tcp_port, 4662);
+            assert_eq!(r.user_hash, user_hash);
+            assert_eq!(r.connect_options, 0x09);
+        }
+        _ => panic!("expected FirewalledReq2"),
+    }
+    assert!(KadCodec::decode(&raw[..15]).is_err());
+}
+
+#[test]
+fn test_kad_firewalled_res_roundtrip() {
+    // eMule KADEMLIA_FIREWALLED_RES: [requester_ip u32] (4 bytes exactly)
+    let encoded = KadCodec::encode_firewalled_res(0x7F000001);
+    assert_eq!(encoded.len(), 2 + 4);
+    match KadCodec::decode(&encoded).expect("decode firewalled res") {
+        KadMessage::FirewalledRes(r) => assert_eq!(r.ip, 0x7F000001),
+        _ => panic!("expected FirewalledRes"),
+    }
+
+    // Legacy FIREWALLED_ACK_RES (0x59): empty payload
+    let ack = [PR_KADEMLIA, KADEMLIA_FIREWALLED_ACK_RES];
+    match KadCodec::decode(&ack).expect("decode firewalled ack res") {
+        KadMessage::FirewalledAckRes => {}
+        _ => panic!("expected FirewalledAckRes"),
+    }
+    // Non-empty payload must be rejected
+    assert!(KadCodec::decode(&[PR_KADEMLIA, KADEMLIA_FIREWALLED_ACK_RES, 0x01]).is_err());
 }
 
 #[test]

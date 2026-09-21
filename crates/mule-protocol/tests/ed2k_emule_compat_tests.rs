@@ -19,12 +19,12 @@ use mule_protocol::ed2k::decoder::{
     decode_hello_answer, decode_request_parts_i64, decode_sending_part_i64,
 };
 use mule_protocol::ed2k::encoder::encode_emule_info;
+use mule_protocol::ed2k::limits::Ed2kLimits;
 use mule_protocol::ed2k::opcodes::{OP_EMULE_INFO, OP_HELLO_ANSWER, OP_REQUESTPARTS_I64};
 use mule_protocol::ed2k::packet::{Ed2kBlockRange64, Ed2kRequestPartsI64};
+use mule_protocol::ed2k::protocol::{PR_ED2K, PR_EMULE};
 use mule_protocol::ed2k::Ed2kPeerInfo;
 use mule_protocol::ed2k::{Ed2kDecoder, Ed2kEncoder, Ed2kMessage};
-use mule_protocol::ed2k::limits::Ed2kLimits;
-use mule_protocol::ed2k::protocol::{PR_ED2K, PR_EMULE};
 
 // --- newtags-format tag builders -------------------------------------------
 
@@ -89,12 +89,12 @@ fn emule072a_hello_answer() -> Vec<u8> {
         0x4D7F_0001, // HighID-ish client id
         4662,
         &[
-            t_str(0x01, "eMule peer"),              // CT_NAME
-            t_u32(0x11, 0x3C),                      // CT_VERSION = 0x3C
-            t_u32(0xF9, (4672 << 16) | 4662),       // CT_EMULE_UDPPORTS
-            t_u32(0xFB, EMULE072A_VERSION),         // CT_EMULE_VERSION
-            t_u32(0xFA, EMULE072A_MISC1),           // CT_EMULE_MISCOPTIONS1
-            t_u32(0xFE, EMULE072A_MISC2),           // CT_EMULE_MISCOPTIONS2
+            t_str(0x01, "eMule peer"),        // CT_NAME
+            t_u32(0x11, 0x3C),                // CT_VERSION = 0x3C
+            t_u32(0xF9, (4672 << 16) | 4662), // CT_EMULE_UDPPORTS
+            t_u32(0xFB, EMULE072A_VERSION),   // CT_EMULE_VERSION
+            t_u32(0xFA, EMULE072A_MISC1),     // CT_EMULE_MISCOPTIONS1
+            t_u32(0xFE, EMULE072A_MISC2),     // CT_EMULE_MISCOPTIONS2
         ],
     )
 }
@@ -113,13 +113,13 @@ fn amule301_hello_answer() -> Vec<u8> {
         0x4D7F_0002,
         4665,
         &[
-            t_str(0x01, "aMule 3.0.1"),             // CT_NAME
-            t_u32(0x11, 0x3C),                      // CT_VERSION
-            t_u32(0xF9, (4675 << 16) | 4665),       // CT_EMULE_UDPPORTS
-            t_u32(0xFB, AMULE301_VERSION),          // CT_EMULE_VERSION (SO_AMULE)
-            t_u32(0xFA, AMULE301_MISC1),            // CT_EMULE_MISCOPTIONS1
-            t_u32(0xFE, AMULE301_MISC2),            // CT_EMULE_MISCOPTIONS2
-            t_u32(0xEF, 0x0000_0001),               // CT_EMULECOMPAT_OPTIONS
+            t_str(0x01, "aMule 3.0.1"),       // CT_NAME
+            t_u32(0x11, 0x3C),                // CT_VERSION
+            t_u32(0xF9, (4675 << 16) | 4665), // CT_EMULE_UDPPORTS
+            t_u32(0xFB, AMULE301_VERSION),    // CT_EMULE_VERSION (SO_AMULE)
+            t_u32(0xFA, AMULE301_MISC1),      // CT_EMULE_MISCOPTIONS1
+            t_u32(0xFE, AMULE301_MISC2),      // CT_EMULE_MISCOPTIONS2
+            t_u32(0xEF, 0x0000_0001),         // CT_EMULECOMPAT_OPTIONS
         ],
     )
 }
@@ -129,8 +129,14 @@ fn amule301_hello_answer() -> Vec<u8> {
 #[test]
 fn emule072a_hello_answer_decodes_all_capabilities() {
     let payload = emule072a_hello_answer();
-    let ans = decode_hello_answer(&Ed2kLimits::default(), PR_ED2K, OP_HELLO_ANSWER, &payload, 0)
-        .expect("eMule 0.72a hello answer should decode");
+    let ans = decode_hello_answer(
+        &Ed2kLimits::default(),
+        PR_ED2K,
+        OP_HELLO_ANSWER,
+        &payload,
+        0,
+    )
+    .expect("eMule 0.72a hello answer should decode");
     let info = Ed2kPeerInfo::from_hello_answer(&ans);
 
     assert_eq!(info.name.as_deref(), Some("eMule peer"));
@@ -158,8 +164,14 @@ fn emule072a_hello_answer_decodes_all_capabilities() {
 #[test]
 fn amule301_hello_answer_identifies_software_and_preserves_compat_tag() {
     let payload = amule301_hello_answer();
-    let ans = decode_hello_answer(&Ed2kLimits::default(), PR_ED2K, OP_HELLO_ANSWER, &payload, 0)
-        .expect("aMule 3.0.1 hello answer should decode");
+    let ans = decode_hello_answer(
+        &Ed2kLimits::default(),
+        PR_ED2K,
+        OP_HELLO_ANSWER,
+        &payload,
+        0,
+    )
+    .expect("aMule 3.0.1 hello answer should decode");
     let info = Ed2kPeerInfo::from_hello_answer(&ans);
 
     assert_eq!(info.name.as_deref(), Some("aMule 3.0.1"));
@@ -271,7 +283,9 @@ fn emule_info_roundtrip_and_answer_dispatch() {
     frame.push(pkt.opcode);
     frame.extend_from_slice(&pkt.payload);
 
-    let msg = decoder.decode_packet(&frame).expect("decode framed EMULEINFO");
+    let msg = decoder
+        .decode_packet(&frame)
+        .expect("decode framed EMULEINFO");
     let Ed2kMessage::EmuleInfo(decoded) = msg else {
         panic!("expected EmuleInfo message");
     };
@@ -309,8 +323,7 @@ fn request_parts_i64_roundtrip_beyond_4gib() {
     assert_eq!(pkt.opcode, OP_REQUESTPARTS_I64);
     assert_eq!(pkt.payload.len(), 64); // hash16 + 3*u64 + 3*u64
 
-    let decoded =
-        decode_request_parts_i64(PR_ED2K, OP_REQUESTPARTS_I64, &pkt.payload, 0).unwrap();
+    let decoded = decode_request_parts_i64(PR_ED2K, OP_REQUESTPARTS_I64, &pkt.payload, 0).unwrap();
     assert_eq!(decoded.file_hash, hash);
     assert_eq!(decoded.ranges.len(), 1);
     assert_eq!(decoded.ranges[0].start, start);
@@ -332,8 +345,7 @@ fn sending_part_i64_roundtrip_beyond_4gib() {
     };
 
     let pkt = encoder.encode_sending_part_i64(&part).unwrap();
-    let decoded =
-        decode_sending_part_i64(PR_ED2K, pkt.opcode, &pkt.payload, 0).unwrap();
+    let decoded = decode_sending_part_i64(PR_ED2K, pkt.opcode, &pkt.payload, 0).unwrap();
     assert_eq!(decoded.start_offset, start);
     assert_eq!(decoded.end_offset, start + 1024);
     assert_eq!(decoded.data, data);

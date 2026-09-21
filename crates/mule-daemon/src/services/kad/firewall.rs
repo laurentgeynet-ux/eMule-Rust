@@ -31,9 +31,10 @@ const UDP_FW_CLIENTS_TO_ASK: usize = 2;
 /// Minimum Kad version a candidate must announce to serve a UDP firewall
 /// check (eMule `KADEMLIA_VERSION6_49aBETA`).
 const MIN_FW_TEST_KAD_VERSION: u8 = 6;
-/// Kad version we advertise in the test-connection hello so the remote peer
-/// accepts `OP_FWCHECKUDPREQ` (eMule requires `> KADEMLIA_VERSION5_48a`).
-pub(crate) const OUR_KAD_VERSION: u8 = 6;
+/// Kad version we advertise (eMule `KADEMLIA_VERSION8_49b`): supports
+/// `TAG_KADMISCOPTIONS`, `KADEMLIA2_HELLO_RES_ACK` and the Kad >= 7
+/// `FIREWALLED2_REQ` / `OP_KAD_FWTCPCHECK_ACK` TCP check flow.
+pub(crate) const OUR_KAD_VERSION: u8 = 8;
 
 const FW_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const FW_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);

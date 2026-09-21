@@ -308,8 +308,20 @@ fn test_get_pending_verifications_does_not_trigger_on_sparse_file_length() {
     std::fs::create_dir_all(&temp_dir).unwrap();
     std::fs::create_dir_all(&target_dir).unwrap();
 
+    // The file hash must match the injected data: the incremental part-hash
+    // check in inject_range uses the file hash as part hash for files smaller
+    // than one eD2K part, and evicts the range on mismatch.
+    let tail = vec![0xaa; 1000];
+    let head = vec![0xbb; 999_000];
+    let mut full = head.clone();
+    full.extend_from_slice(&tail);
+    let mut hasher = mule_format::ed2k::Ed2kHasher::new();
+    hasher.update(&full);
+    let file_hash = hasher.finalize().unwrap().root_hash.to_hex();
+
     let mut service = DownloadService::in_memory(temp_dir).unwrap();
-    let ed2k = "ed2k://|file|test.bin|1000000|0123456789abcdef0123456789abcdef|/";
+    let ed2k = format!("ed2k://|file|test.bin|1000000|{file_hash}|/");
+    let ed2k = ed2k.as_str();
     let snap = service
         .add_ed2k_link(
             ed2k,
@@ -321,8 +333,7 @@ fn test_get_pending_verifications_does_not_trigger_on_sparse_file_length() {
 
     // Simulate writing only the last 1,000 bytes (offset 999_000 to 1_000_000).
     // On NTFS/filesystems, this extends the file length on disk to 1_000_000 bytes!
-    let data = vec![0xaa; 1000];
-    let _ = service.inject_range(&snap.id, 999_000, &data).unwrap();
+    let _ = service.inject_range(&snap.id, 999_000, &tail).unwrap();
 
     // Verify that covered_len is only 1,000 bytes
     assert_eq!(service.get_covered_len(&snap.id), Some(1000));
@@ -336,8 +347,7 @@ fn test_get_pending_verifications_does_not_trigger_on_sparse_file_length() {
     );
 
     // Now inject the remaining 0..999_000 bytes
-    let rest = vec![0xbb; 999_000];
-    let _ = service.inject_range(&snap.id, 0, &rest).unwrap();
+    let _ = service.inject_range(&snap.id, 0, &head).unwrap();
     assert_eq!(service.get_covered_len(&snap.id), Some(1_000_000));
 
     // Now that all 1,000,000 bytes are covered, it MUST trigger verification!
@@ -390,7 +400,14 @@ fn test_inject_range_after_completed_does_not_regress_status() {
 
     let mut service = DownloadService::new(&dir.path().join("mule.db"), temp_dir).unwrap();
 
-    let ed2k = "ed2k://|file|packet_test.bin|50000|0123456789abcdef0123456789abcdef|/";
+    // File hash must match the injected bytes (single-part files verify the
+    // part against the file hash on completion).
+    let data = vec![0x42; 50000];
+    let mut hasher = mule_format::ed2k::Ed2kHasher::new();
+    hasher.update(&data);
+    let file_hash = hasher.finalize().unwrap().root_hash.to_hex();
+    let ed2k = format!("ed2k://|file|packet_test.bin|50000|{file_hash}|/");
+    let ed2k = ed2k.as_str();
     let snap = service
         .add_ed2k_link(
             ed2k,
@@ -401,7 +418,6 @@ fn test_inject_range_after_completed_does_not_regress_status() {
         .unwrap();
 
     // 1. Inject all 50,000 bytes -> reaches 100% and Verifying
-    let data = vec![0x42; 50000];
     let snap_verif = service.inject_range(&snap.id, 0, &data).unwrap();
     assert_eq!(snap_verif.status.to_lowercase(), "verifying");
 

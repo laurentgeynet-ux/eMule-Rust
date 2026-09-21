@@ -77,36 +77,118 @@ impl KadEncoder {
     }
 
     /// Encodes a Kad2 Hello request packet.
+    /// Shared encoder for `KADEMLIA2_HELLO_REQ`/`RES` (eMule `SendMyDetails`).
+    fn encode_hello(
+        opcode: u8,
+        kad_id: &KadIdBytes,
+        udp_port: u16,
+        version: u8,
+        tcp_port: u16,
+        misc_options: Option<u8>,
+    ) -> Bytes {
+        let tag_count = 1 + u8::from(misc_options.is_some());
+        let mut buf = BytesMut::with_capacity(22 + tag_count as usize * 6);
+        buf.put_u8(PR_KADEMLIA);
+        buf.put_u8(opcode);
+        buf.put_slice(kad_id);
+        buf.put_u16_le(tcp_port);
+        buf.put_u8(version);
+        buf.put_u8(tag_count);
+
+        // TAG_SOURCEUPORT (0xFC) -> TAGTYPE_UINT16 (0x08), old tag format:
+        // [type][u16 name_len=1][name byte][value]
+        buf.put_u8(0x08);
+        buf.put_u16_le(1);
+        buf.put_u8(TAG_SOURCEUPORT);
+        buf.put_u16_le(udp_port);
+
+        if let Some(misc) = misc_options {
+            // TAG_KADMISCOPTIONS (0xF2) -> TAGTYPE_UINT8 (0x09)
+            buf.put_u8(0x09);
+            buf.put_u16_le(1);
+            buf.put_u8(TAG_KADMISCOPTIONS);
+            buf.put_u8(misc);
+        }
+        buf.freeze()
+    }
+
+    /// Encodes a Kad2 Hello request packet.
+    ///
+    /// eMule layout (`SendMyDetails`): `[kadID 16][tcp_port u16][version u8]
+    /// [tag_count u8][tags]` — the UDP port travels inside the
+    /// `TAG_SOURCEUPORT` (0xFC, u16) tag, `TAG_KADMISCOPTIONS` (0xF2, u8)
+    /// carries firewall/ack-request bits for Kad >= 8.
     pub fn encode_hello_req(
         kad_id: &KadIdBytes,
         udp_port: u16,
         version: u8,
         tcp_port: u16,
+        misc_options: Option<u8>,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(23);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_HELLO_REQ);
-        buf.put_slice(kad_id);
-        buf.put_u16_le(udp_port);
-        buf.put_u8(version);
-        buf.put_u16_le(tcp_port);
-        buf.freeze()
+        Self::encode_hello(
+            KADEMLIA2_HELLO_REQ,
+            kad_id,
+            udp_port,
+            version,
+            tcp_port,
+            misc_options,
+        )
     }
 
-    /// Encodes a Kad2 Hello response packet.
+    /// Encodes a Kad2 Hello response packet (same layout as the request).
     pub fn encode_hello_res(
         kad_id: &KadIdBytes,
         udp_port: u16,
         version: u8,
         tcp_port: u16,
+        misc_options: Option<u8>,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(23);
+        Self::encode_hello(
+            KADEMLIA2_HELLO_RES,
+            kad_id,
+            udp_port,
+            version,
+            tcp_port,
+            misc_options,
+        )
+    }
+
+    /// Encodes a `KADEMLIA2_HELLO_RES_ACK` (0x22): `[kadID 16][tag_count u8]`.
+    ///
+    /// Sent after a HELLO_RES that requested it via `TAG_KADMISCOPTIONS` bit 2,
+    /// proving our IP is not spoofed (eMule Process_KADEMLIA2_HELLO_RES).
+    pub fn encode_hello_res_ack(kad_id: &KadIdBytes) -> Bytes {
+        let mut buf = BytesMut::with_capacity(19);
         buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_HELLO_RES);
+        buf.put_u8(KADEMLIA2_HELLO_RES_ACK);
         buf.put_slice(kad_id);
-        buf.put_u16_le(udp_port);
-        buf.put_u8(version);
+        buf.put_u8(0); // no tags
+        buf.freeze()
+    }
+
+    /// Encodes a `KADEMLIA_FIREWALLED2_REQ` (0x53):
+    /// `[tcp_port u16][user_hash 16][connect_options u8]` — 19 bytes.
+    pub fn encode_firewalled2_req(
+        tcp_port: u16,
+        user_hash: &[u8; 16],
+        connect_options: u8,
+    ) -> Bytes {
+        let mut buf = BytesMut::with_capacity(21);
+        buf.put_u8(PR_KADEMLIA);
+        buf.put_u8(KADEMLIA_FIREWALLED2_REQ);
         buf.put_u16_le(tcp_port);
+        buf.put_slice(user_hash);
+        buf.put_u8(connect_options);
+        buf.freeze()
+    }
+
+    /// Encodes a `KADEMLIA_FIREWALLED_RES` (0x58): `[ip u32]` echoing the
+    /// requester's public IPv4 address.
+    pub fn encode_firewalled_res(ip: u32) -> Bytes {
+        let mut buf = BytesMut::with_capacity(6);
+        buf.put_u8(PR_KADEMLIA);
+        buf.put_u8(KADEMLIA_FIREWALLED_RES);
+        buf.put_u32_le(ip);
         buf.freeze()
     }
 

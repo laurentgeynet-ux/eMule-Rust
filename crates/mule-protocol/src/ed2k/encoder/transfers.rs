@@ -5,8 +5,8 @@ use bytes::Bytes;
 use super::super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::super::limits::Ed2kLimits;
 use super::super::opcodes::{
-    OP_COMPRESSEDPART_I64, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER,
-    OP_HASHSETREQUEST, OP_REQUESTPARTS_I64, OP_SENDINGPART, OP_SENDINGPART_I64,
+    OP_COMPRESSEDPART_I64, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_HASHSETREQUEST,
+    OP_REQUESTPARTS_I64, OP_SENDINGPART, OP_SENDINGPART_I64,
 };
 use super::super::packet::{
     expected_mask_bytes, Ed2kCompressedPartI64, Ed2kFileReqAnsNoFile, Ed2kFileStatus,

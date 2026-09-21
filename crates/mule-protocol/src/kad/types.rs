@@ -47,12 +47,22 @@ pub struct KadPong {
 pub struct KadHelloReq {
     /// Sender Kad ID.
     pub kad_id: KadIdBytes,
-    /// Sender UDP port.
+    /// Sender UDP port announced via `TAG_SOURCEUPORT` (0 = use packet source).
     pub udp_port: u16,
-    /// Kad version (e.g., 2).
+    /// Kad version.
     pub version: u8,
-    /// Sender TCP port (optional, 0 if none).
+    /// Sender TCP port (0 if none).
     pub tcp_port: u16,
+    /// `TAG_KADMISCOPTIONS` byte if present (Kad >= 8): bit0 UDP firewalled,
+    /// bit1 TCP firewalled, bit2 = requesting `KADEMLIA2_HELLO_RES_ACK`.
+    pub misc_options: Option<u8>,
+}
+
+impl KadHelloReq {
+    /// True if the sender asked us to answer with `KADEMLIA2_HELLO_RES_ACK`.
+    pub fn requests_ack(&self) -> bool {
+        self.misc_options.is_some_and(|o| o & 0x04 != 0)
+    }
 }
 
 /// Kad2 Hello Response packet.
@@ -60,12 +70,60 @@ pub struct KadHelloReq {
 pub struct KadHelloRes {
     /// Responder Kad ID.
     pub kad_id: KadIdBytes,
-    /// Responder UDP port.
+    /// Responder UDP port announced via `TAG_SOURCEUPORT` (0 = packet source).
     pub udp_port: u16,
     /// Kad version.
     pub version: u8,
-    /// Responder TCP port (optional).
+    /// Responder TCP port (0 if none).
     pub tcp_port: u16,
+    /// `TAG_KADMISCOPTIONS` byte if present (Kad >= 8).
+    pub misc_options: Option<u8>,
+}
+
+impl KadHelloRes {
+    /// True if the responder asked us to send `KADEMLIA2_HELLO_RES_ACK`.
+    pub fn requests_ack(&self) -> bool {
+        self.misc_options.is_some_and(|o| o & 0x04 != 0)
+    }
+}
+
+/// Kad2 Hello response acknowledgement (`KADEMLIA2_HELLO_RES_ACK`, 0x22).
+///
+/// Sent after a `KADEMLIA2_HELLO_RES` whose `TAG_KADMISCOPTIONS` requests it —
+/// completes the three-way handshake proving our IP is not spoofed
+/// (eMule `CKademliaUDPListener::Process_KADEMLIA2_HELLO_RES_ACK`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadHelloResAck {
+    /// Sender Kad ID.
+    pub kad_id: KadIdBytes,
+}
+
+/// Legacy Kad TCP firewall check request (`KADEMLIA_FIREWALLED_REQ`, 0x50):
+/// the sender asks us to TCP-connect to `tcp_port` to test their reachability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadFirewalledReq {
+    /// TCP port the sender wants probed.
+    pub tcp_port: u16,
+}
+
+/// Kad TCP firewall check request v2 (`KADEMLIA_FIREWALLED2_REQ`, 0x53):
+/// `[tcp_port u16][user_hash 16][connect_options u8]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadFirewalledReq2 {
+    /// TCP port the sender wants probed.
+    pub tcp_port: u16,
+    /// Sender's eD2K user hash.
+    pub user_hash: [u8; 16],
+    /// Sender's connect options byte (`GetMyConnectOptions`).
+    pub connect_options: u8,
+}
+
+/// Kad firewall check response (`KADEMLIA_FIREWALLED_RES`, 0x58): echoes the
+/// requester's IPv4 address as seen by the responder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadFirewalledRes {
+    /// Requester's IPv4 address (little-endian on the wire).
+    pub ip: u32,
 }
 
 /// Kad2 Bootstrap Request packet (0x21).
@@ -415,6 +473,16 @@ pub enum KadMessage {
     HelloReq(KadHelloReq),
     /// Kad2 Hello response.
     HelloRes(KadHelloRes),
+    /// Kad2 Hello response acknowledgement (0x22, Kad >= 8).
+    HelloResAck(KadHelloResAck),
+    /// Legacy Kad TCP firewall check request (0x50).
+    FirewalledReq(KadFirewalledReq),
+    /// Kad TCP firewall check request v2 (0x53, Kad >= 7).
+    FirewalledReq2(KadFirewalledReq2),
+    /// Kad firewall check response (0x58) — echoes our public IP.
+    FirewalledRes(KadFirewalledRes),
+    /// Kad firewall check ack over UDP (0x59, deprecated since Kad 7).
+    FirewalledAckRes,
     /// Kad2 Bootstrap request.
     BootstrapReq(KadBootstrapReq),
     /// Kad2 Bootstrap / Find Node response.

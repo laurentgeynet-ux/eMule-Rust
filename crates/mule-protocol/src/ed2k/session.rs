@@ -388,15 +388,9 @@ impl Ed2kSession {
             Ed2kMessage::AichFileHashRes(res) => Ok(Some(Ed2kMessage::AichFileHashRes(res))),
             Ed2kMessage::AichRequest(req) => Ok(Some(Ed2kMessage::AichRequest(req))),
             Ed2kMessage::AichAnswer(ans) => Ok(Some(Ed2kMessage::AichAnswer(ans))),
-            Ed2kMessage::RequestPartsI64(req) => {
-                Ok(Some(Ed2kMessage::RequestPartsI64(req)))
-            }
-            Ed2kMessage::SendingPartI64(part) => {
-                Ok(Some(Ed2kMessage::SendingPartI64(part)))
-            }
-            Ed2kMessage::CompressedPartI64(part) => {
-                Ok(Some(Ed2kMessage::CompressedPartI64(part)))
-            }
+            Ed2kMessage::RequestPartsI64(req) => Ok(Some(Ed2kMessage::RequestPartsI64(req))),
+            Ed2kMessage::SendingPartI64(part) => Ok(Some(Ed2kMessage::SendingPartI64(part))),
+            Ed2kMessage::CompressedPartI64(part) => Ok(Some(Ed2kMessage::CompressedPartI64(part))),
             Ed2kMessage::Raw(raw) => {
                 if !self.is_ready() && raw.protocol != PR_EMULE {
                     let err = Ed2kSessionError::UnexpectedMessageInState {

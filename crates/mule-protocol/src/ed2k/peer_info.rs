@@ -205,9 +205,7 @@ impl Ed2kPeerInfo {
 
     /// Kad protocol version announced in CT_EMULE_MISCOPTIONS2 bits 0-4.
     pub fn kad_version(&self) -> u8 {
-        self.misc_options2
-            .map(|m| (m & 0x0F) as u8)
-            .unwrap_or(0)
+        self.misc_options2.map(|m| (m & 0x0F) as u8).unwrap_or(0)
     }
 
     /// Returns true if this peer announced >4 GiB file support

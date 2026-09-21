@@ -11,6 +11,7 @@ use super::types::{
     UdpFirewallStatus,
 };
 use crate::services::downloads::DownloadService;
+use crate::services::kad::firewall::OUR_KAD_VERSION;
 
 type DownloadsSlot = Arc<tokio::sync::RwLock<Option<Arc<tokio::sync::Mutex<DownloadService>>>>>;
 
@@ -54,12 +55,40 @@ pub async fn handle_incoming_message(
                 }
             }
         }
-        KadMessage::HelloReq(_hello) => {
-            tracing::info!("Kad UDP: received HelloReq from {peer_addr}, replying with HelloRes");
-            let hello_res = KadCodec::encode_hello_res(local_kad_id, local_port, 2, 0);
+        KadMessage::HelloReq(hello) => {
+            tracing::info!(
+                "Kad UDP: received HelloReq from {peer_addr} (kad_v{}, tcp={}, misc={:?}), replying with HelloRes",
+                hello.version,
+                hello.tcp_port,
+                hello.misc_options
+            );
+            // eMule KADMISCOPTIONS: bit0 = UDP firewalled, bit2 = ask the
+            // receiver to complete the handshake with HELLO_RES_ACK.
+            let mut misc = 0x04u8;
+            {
+                let fw = firewall.lock().await;
+                if fw.verified && fw.status == UdpFirewallStatus::Firewalled {
+                    misc |= 0x01;
+                }
+            }
+            let hello_res = KadCodec::encode_hello_res(
+                local_kad_id,
+                local_port,
+                OUR_KAD_VERSION,
+                buddy_tcp_port,
+                Some(misc),
+            );
             let _ = socket.send_to(&hello_res, peer_addr).await;
         }
         KadMessage::HelloRes(hello_res) => {
+            // Kad >= 8: the responder may ask us to prove our IP with a
+            // HELLO_RES_ACK (KADMISCOPTIONS bit 2).
+            let wants_ack = hello_res.requests_ack();
+            let peer_udp_port = if hello_res.udp_port != 0 {
+                hello_res.udp_port
+            } else {
+                peer_addr.port()
+            };
             let mut inf = in_flight.lock().await;
             let mut matched_tx = None;
             for (id, tx) in inf.iter() {
@@ -71,13 +100,46 @@ pub async fn handle_incoming_message(
                 }
             }
             tracing::info!(
-                "Kad UDP: received HelloRes from {peer_addr} (matched_tx={matched_tx:?})"
+                "Kad UDP: received HelloRes from {peer_addr} (kad_v{}, tcp={}, udp_tag={}, matched_tx={matched_tx:?})",
+                hello_res.version,
+                hello_res.tcp_port,
+                peer_udp_port
             );
             if let Some(id) = matched_tx {
                 if let Some(tx) = inf.remove(&id) {
                     let _ = tx.sender.send(Ok(KadMessage::HelloRes(hello_res)));
                 }
             }
+            if wants_ack {
+                let ack = KadCodec::encode_hello_res_ack(local_kad_id);
+                let _ = socket.send_to(&ack, peer_addr).await;
+            }
+        }
+        KadMessage::HelloResAck(ack) => {
+            // Completes the three-way hello we initiated — the peer proved it
+            // owns its advertised IP (eMule marks the contact verified).
+            tracing::info!(
+                "Kad UDP: received HelloResAck from {peer_addr} (kad_id={})",
+                hex::encode(ack.kad_id)
+            );
+        }
+        KadMessage::FirewalledReq(req) => {
+            handle_firewalled_check(socket, peer_addr, req.tcp_port, false).await;
+        }
+        KadMessage::FirewalledReq2(req) => {
+            handle_firewalled_check(socket, peer_addr, req.tcp_port, true).await;
+        }
+        KadMessage::FirewalledRes(res) => {
+            // Answer to a FIREWALLED_REQ we sent — carries our public IP as
+            // seen by the responder. We only log: no TCP-check requester flow
+            // is implemented yet, so unsolicited ones are dropped.
+            let ip = std::net::Ipv4Addr::from(res.ip.to_le_bytes());
+            tracing::info!("Kad UDP: received FirewalledRes from {peer_addr} (observed ip={ip})");
+        }
+        KadMessage::FirewalledAckRes => {
+            tracing::info!(
+                "Kad UDP: received FirewalledAckRes from {peer_addr} (TCP port reachable)"
+            );
         }
         KadMessage::BootstrapReq(_) | KadMessage::Req(_) => {
             tracing::info!(
@@ -535,6 +597,74 @@ pub async fn handle_incoming_message(
             // in-flight expected_response. Unreachable in practice.
         }
     }
+}
+
+/// Handles a `KADEMLIA_FIREWALLED_REQ` (0x50) / `KADEMLIA_FIREWALLED2_REQ`
+/// (0x53): eMule `Process_KADEMLIA_FIREWALLED{2}_REQ`. We immediately echo the
+/// sender's observed IPv4 back in `KADEMLIA_FIREWALLED_RES`, then TCP-connect
+/// to their advertised port. On success we acknowledge via
+/// `OP_KAD_FWTCPCHECK_ACK` on the TCP stream (Kad >= 7) or a UDP
+/// `KADEMLIA_FIREWALLED_ACK_RES` null packet (legacy).
+async fn handle_firewalled_check(
+    socket: &Arc<UdpSocket>,
+    peer_addr: SocketAddr,
+    tcp_port: u16,
+    kad7_plus: bool,
+) {
+    let IpAddr::V4(v4) = peer_addr.ip() else {
+        tracing::debug!("Kad UDP: ignoring firewalled check from non-IPv4 {peer_addr}");
+        return;
+    };
+    if tcp_port == 0 {
+        tracing::debug!("Kad UDP: ignoring firewalled check from {peer_addr} with tcp_port=0");
+        return;
+    }
+
+    // FIREWALLED_RES echoes the requester's observed IP (eMule sends it once
+    // RequestTCP is accepted — before the probe outcome is known).
+    let res = KadCodec::encode_firewalled_res(u32::from_le_bytes(v4.octets()));
+    let _ = socket.send_to(&res, peer_addr).await;
+
+    let socket2 = Arc::clone(socket);
+    tokio::spawn(async move {
+        let target = SocketAddr::new(IpAddr::V4(v4), tcp_port);
+        let probe = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            tokio::net::TcpStream::connect(target),
+        )
+        .await;
+        match probe {
+            Ok(Ok(mut stream)) => {
+                if kad7_plus {
+                    // Kad >= 7: OP_KAD_FWTCPCHECK_ACK (PR_EMULE, empty payload)
+                    // on the probe connection itself.
+                    let frame = frame_emule_packet(mule_protocol::ed2k::OP_KAD_FWTCPCHECK_ACK, &[]);
+                    use tokio::io::AsyncWriteExt;
+                    match stream.write_all(&frame).await {
+                        Ok(()) => tracing::info!(
+                            "Kad UDP: TCP firewall probe to {target} succeeded, sent OP_KAD_FWTCPCHECK_ACK"
+                        ),
+                        Err(e) => tracing::debug!(
+                            "Kad UDP: probe to {target} connected but ack send failed: {e}"
+                        ),
+                    }
+                } else {
+                    // Legacy (<7): empty UDP KADEMLIA_FIREWALLED_ACK_RES.
+                    let ack = [PR_KADEMLIA, KADEMLIA_FIREWALLED_ACK_RES];
+                    let _ = socket2.send_to(&ack, peer_addr).await;
+                    tracing::info!(
+                        "Kad UDP: TCP firewall probe to {target} succeeded, sent FIREWALLED_ACK_RES"
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                tracing::info!("Kad UDP: TCP firewall probe to {target} refused: {e}");
+            }
+            Err(_) => {
+                tracing::info!("Kad UDP: TCP firewall probe to {target} timed out");
+            }
+        }
+    });
 }
 
 /// Frames an eD2K/eMule TCP packet: `[proto][len:u32][opcode][payload]`

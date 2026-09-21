@@ -184,6 +184,9 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
     // Profile LocalLab allows 127.0.0.1
     state.network_policy.set_profile(NetworkProfile::LocalLab);
     state.network_policy.enable();
+    // The mock server speaks plaintext eD2K only — disable the obfuscated
+    // handshake attempt (which the daemon otherwise tries first).
+    state.server_session.set_obfuscation_preference(false, 0);
 
     // Start a mock eD2K TCP server on loopback
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -231,9 +234,16 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
         status_wire.extend_from_slice(&45000u32.to_le_bytes());
         socket.write_all(&status_wire).await.unwrap();
 
-        // Keep socket open until client disconnects
-        let mut buf = [0u8; 128];
-        let _ = socket.read(&mut buf).await;
+        // Keep socket open until client disconnects — must loop: the daemon
+        // sends OP_OFFERFILES right after connect (auto-publish), so a single
+        // read would return early and drop the socket.
+        let mut buf = [0u8; 4096];
+        loop {
+            match socket.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+        }
     });
 
     // 1. Connect via servers.connect
@@ -347,6 +357,9 @@ async fn test_server_search_and_query_sources() {
     state
         .network_policy
         .set_profile(mule_network_policy::NetworkProfile::LocalLab);
+    // The mock server speaks plaintext eD2K only — disable the obfuscated
+    // handshake attempt (which the daemon otherwise tries first).
+    state.server_session.set_obfuscation_preference(false, 0);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mock_addr = listener.local_addr().unwrap();
 
@@ -371,15 +384,19 @@ async fn test_server_search_and_query_sources() {
         id_pkt.extend_from_slice(&1u32.to_le_bytes());
         socket.write_all(&id_pkt).await.unwrap();
 
-        // B. Read OP_SEARCHREQUEST
-        let mut search_hdr = [0u8; 6];
-        socket.read_exact(&mut search_hdr).await.unwrap();
-        assert_eq!(search_hdr[0], PR_ED2K);
-        assert_eq!(search_hdr[5], OP_SEARCHREQUEST);
-        let search_payload_len =
-            u32::from_le_bytes(search_hdr[1..5].try_into().unwrap()) as usize - 1;
-        let mut search_payload = vec![0u8; search_payload_len];
-        socket.read_exact(&mut search_payload).await.unwrap();
+        // B. Read OP_SEARCHREQUEST — skip the automatic OP_OFFERFILES the
+        // daemon publishes right after OP_IDCHANGE (shared-files list).
+        loop {
+            let mut hdr = [0u8; 6];
+            socket.read_exact(&mut hdr).await.unwrap();
+            assert_eq!(hdr[0], PR_ED2K);
+            let payload_len = u32::from_le_bytes(hdr[1..5].try_into().unwrap()) as usize - 1;
+            let mut payload = vec![0u8; payload_len];
+            socket.read_exact(&mut payload).await.unwrap();
+            if hdr[5] == OP_SEARCHREQUEST {
+                break;
+            }
+        }
 
         // Send OP_SEARCH_RESULT (1 file)
         let mut res_payload = Vec::new();
@@ -411,15 +428,19 @@ async fn test_server_search_and_query_sources() {
         res_pkt.extend_from_slice(&res_payload);
         socket.write_all(&res_pkt).await.unwrap();
 
-        // C. Read OP_GETSOURCES or OP_GETSOURCES_OBFU
-        let mut get_src_hdr = [0u8; 6];
-        socket.read_exact(&mut get_src_hdr).await.unwrap();
-        assert_eq!(get_src_hdr[0], PR_ED2K);
-        assert!(get_src_hdr[5] == OP_GETSOURCES || get_src_hdr[5] == OP_GETSOURCES_OBFU);
-        let src_payload_len =
-            u32::from_le_bytes(get_src_hdr[1..5].try_into().unwrap()) as usize - 1;
-        let mut get_src_payload = vec![0u8; src_payload_len];
-        socket.read_exact(&mut get_src_payload).await.unwrap();
+        // C. Read OP_GETSOURCES or OP_GETSOURCES_OBFU — same skip loop for
+        // any interleaved housekeeping packet.
+        loop {
+            let mut hdr = [0u8; 6];
+            socket.read_exact(&mut hdr).await.unwrap();
+            assert_eq!(hdr[0], PR_ED2K);
+            let payload_len = u32::from_le_bytes(hdr[1..5].try_into().unwrap()) as usize - 1;
+            let mut payload = vec![0u8; payload_len];
+            socket.read_exact(&mut payload).await.unwrap();
+            if hdr[5] == OP_GETSOURCES || hdr[5] == OP_GETSOURCES_OBFU {
+                break;
+            }
+        }
 
         // Send OP_FOUNDSOURCES (1 source)
         let mut found_payload = Vec::new();
@@ -436,7 +457,14 @@ async fn test_server_search_and_query_sources() {
         found_pkt.extend_from_slice(&found_payload);
         socket.write_all(&found_pkt).await.unwrap();
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Keep the socket open until the client disconnects.
+        let mut buf = [0u8; 4096];
+        loop {
+            match socket.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+        }
     });
 
     // Connect
