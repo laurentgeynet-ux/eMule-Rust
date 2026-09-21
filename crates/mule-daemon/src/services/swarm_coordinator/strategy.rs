@@ -310,6 +310,14 @@ impl SwarmCoordinator {
         };
         let quotas = SwarmAllocator::compute_quotas(&demands, &alloc_config);
 
+        // A4AF ("Ask For Another File"): a starved download may reclaim a
+        // peer address currently connected to a lower-priority file that is
+        // already above its minimum peer count. eMule multiplexes files per
+        // connection; our sessions are mono-file, so we release the session
+        // and let the starved file dial the address on the next tick.
+        self.a4af_rebalance(&demands, &alloc_config, now_ms)
+            .await;
+
         // Client-UDP keep-alives: OP_REASKFILEPING toward sources queued on
         // a remote peer that announced an eMule UDP port — deduplicated at
         // ~21 min cadence (CUpDownClient::UDPReaskForDownload).
@@ -454,6 +462,9 @@ impl SwarmCoordinator {
             }
 
             let mut connected_this_tick = 0;
+            let mut skipped_cooldown = 0usize;
+            let mut skipped_connected = 0usize;
+            let total_candidates = candidate_sources.len();
             for src in candidate_sources {
                 if connected_this_tick >= needed {
                     break;
@@ -469,6 +480,7 @@ impl SwarmCoordinator {
 
                 if let Some(cooldown_until) = src.cooldown_until_unix_ms {
                     if cooldown_until > now_ms {
+                        skipped_cooldown += 1;
                         continue;
                     }
                 }
@@ -478,6 +490,7 @@ impl SwarmCoordinator {
                     .iter()
                     .any(|p| p.peer_address.as_deref() == Some(&src.address));
                 if already_connected {
+                    skipped_connected += 1;
                     continue;
                 }
 
@@ -652,6 +665,20 @@ impl SwarmCoordinator {
                 });
 
                 connected_this_tick += 1;
+            }
+
+            if connected_this_tick > 0 {
+                tracing::info!(
+                    "[SOURCE_SCHED] File {hash_hex}: dialed {connected_this_tick} new sources this tick \
+                     (candidates={total_candidates}, slots_needed={needed}, active={active_count}, \
+                     skipped: cooldown={skipped_cooldown}, already_connected={skipped_connected})"
+                );
+            } else if total_candidates > 0 {
+                tracing::debug!(
+                    "[SOURCE_SCHED] File {hash_hex}: no source dialed this tick \
+                     (candidates={total_candidates}, slots_needed={needed}, active={active_count}, \
+                     skipped: cooldown={skipped_cooldown}, already_connected={skipped_connected})"
+                );
             }
 
             if (active_count > 0 || connected_this_tick > 0) && dl.status.to_lowercase() == "queued"
@@ -835,5 +862,96 @@ impl SwarmCoordinator {
             dl_str,
             ul_str
         );
+    }
+
+    /// A4AF rebalance pass (eMule `CPartFile` source swapping semantics).
+    ///
+    /// For every download below `min_peers_per_file`, scan live sessions of
+    /// *lower-priority* files that sit above their minimum: if the connected
+    /// peer address is a viable candidate for the starved file, release the
+    /// session so the starved file can dial it on the next tick.
+    /// At most one swap per tick keeps the system stable.
+    async fn a4af_rebalance(
+        &mut self,
+        demands: &[FileDemand],
+        alloc_config: &SwarmAllocationConfig,
+        now_ms: i64,
+    ) {
+        for starved in demands {
+            if starved.current_active_peers >= alloc_config.min_peers_per_file {
+                continue;
+            }
+
+            // Candidate addresses for the starved file (viable sources only).
+            let wanted: std::collections::HashSet<String> = {
+                let dl_guard = self.state.downloads.lock().await;
+                dl_guard
+                    .list_peer_sources(&starved.file_hash)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|s| match s.status {
+                        PeerSourceStatus::Candidate
+                        | PeerSourceStatus::Tried
+                        | PeerSourceStatus::Allowed => true,
+                        PeerSourceStatus::Failed => s
+                            .cooldown_until_unix_ms
+                            .map(|c| c <= now_ms)
+                            .unwrap_or(true),
+                        _ => false,
+                    })
+                    .map(|s| s.address.clone())
+                    .collect()
+            };
+            if wanted.is_empty() {
+                continue;
+            }
+
+            // Live sessions connected to other files.
+            let swarm = self.state.peer_session.swarm_snapshot(None).await;
+            let donors: std::collections::HashMap<&str, u32> = demands
+                .iter()
+                .map(|d| (d.file_hash.as_str(), d.priority_weight))
+                .collect();
+
+            for peer in &swarm.peers {
+                let Some(donor_hash) = peer.file_hash.as_deref() else {
+                    continue;
+                };
+                let Some(peer_addr) = peer.peer_address.as_deref() else {
+                    continue;
+                };
+                if donor_hash == starved.file_hash || !wanted.contains(peer_addr) {
+                    continue;
+                }
+                let donor_weight = donors.get(donor_hash).copied().unwrap_or(2);
+                // Only steal from a strictly lower-priority donor that stays
+                // above its minimum peer count.
+                if donor_weight >= starved.priority_weight {
+                    continue;
+                }
+                let donor_active = self
+                    .state
+                    .peer_session
+                    .active_peer_count_for_hash(donor_hash)
+                    .await;
+                if donor_active <= alloc_config.min_peers_per_file {
+                    continue;
+                }
+                tracing::info!(
+                    "[A4AF] Swapping source {} from file {} (prio={}) to starved file {} (prio={})",
+                    peer_addr,
+                    donor_hash,
+                    donor_weight,
+                    starved.file_hash,
+                    starved.priority_weight
+                );
+                let _ = self
+                    .state
+                    .peer_session
+                    .disconnect_peer(Some(peer_addr))
+                    .await;
+                return; // One swap per tick.
+            }
+        }
     }
 }

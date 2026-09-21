@@ -42,6 +42,9 @@ pub(crate) struct OutboundSui {
     pending_challenge: Option<(u8, u32)>,
     /// Shared SUI anomaly counters (identity.status `sui` object).
     sui_stats: Option<Arc<crate::services::identity::SuiStats>>,
+    /// Peer signature verified — its pubkey identity may accrue download
+    /// credits (eMule only credits cryptographically verified clients).
+    peer_verified: bool,
 }
 
 impl OutboundSui {
@@ -55,6 +58,7 @@ impl OutboundSui {
             challenge_sent: false,
             pending_challenge: None,
             sui_stats: None,
+            peer_verified: false,
         }
     }
 
@@ -358,6 +362,7 @@ impl OutboundSui {
                 match result {
                     Ok(()) => {
                         self.bump(|s| &s.signatures_verified);
+                        self.peer_verified = true;
                         tracing::info!("[SUI] Peer {target_addr} signature VERIFIED ({version:?})");
                     }
                     Err(e) => {
@@ -369,5 +374,21 @@ impl OutboundSui {
             }
             _ => false,
         }
+    }
+
+    /// Returns the verified credit identity `(pubkey_md4_hex, pubkey_hex)` of
+    /// the remote peer, or `None` when the signature was not verified.
+    /// Callers persist download bytes under this identity (eMule credits the
+    /// *client key*, never the transient IP).
+    pub fn verified_credit_identity(&self) -> Option<(String, String)> {
+        if !self.peer_verified {
+            return None;
+        }
+        self.peer_pubkey_der.as_ref().map(|der| {
+            (
+                hex::encode(<md4::Md4 as md4::Digest>::digest(der)),
+                hex::encode(der),
+            )
+        })
     }
 }

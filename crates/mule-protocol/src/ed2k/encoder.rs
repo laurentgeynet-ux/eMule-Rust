@@ -44,7 +44,7 @@ pub use tags::{encode_raw_tag, encode_tag, encode_tag_name};
 pub use transfers::{
     encode_compressed_part_i64, encode_file_req_ans_no_file, encode_file_status,
     encode_file_status_req, encode_file_status_req_with_opcode, encode_hashset_answer,
-    encode_hashset_request, encode_request_parts, encode_request_parts_i64,
+    encode_hashset_request, encode_req_filename, encode_request_parts, encode_request_parts_i64,
     encode_request_parts_with_opcode, encode_sending_part, encode_sending_part_i64,
 };
 

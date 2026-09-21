@@ -815,3 +815,192 @@ fn test_tier3_block_sink_chunked_assembly_18_chunks() {
         }
     );
 }
+
+// ---------------------------------------------------------------------------
+// Preview part priority (eMule PR_VERYHIGH on first/last part)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_sequencer_least_received_part_selected_first() {
+    let hash = sample_hash();
+    // 4 parts; the peer offers all of them. Part 0 is fully received,
+    // part 1 is 50% done, parts 2-3 untouched → least-received picks part 2.
+    let file_size = 4 * 9_728_000u64;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0, // complete source
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).unwrap();
+
+    let completed = vec![
+        (0u64, 9_728_000u64),                    // part 0 done
+        (9_728_000u64, 9_728_000 + 4_864_000u64), // part 1 half done
+    ];
+    let (part, block) = seq
+        .plan_next_block_for_peer64("peer", &completed, &[], 0)
+        .unwrap()
+        .expect("a block must be planned");
+    assert_eq!(part, 2, "least-received part (2) wins over half-done part 1");
+    assert_eq!(block.start, 2 * 9_728_000);
+}
+
+#[test]
+fn test_sequencer_preview_priority_picks_edge_parts() {
+    let hash = sample_hash();
+    let file_size = 4 * 9_728_000u64;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status)
+        .unwrap()
+        .with_preview_priority(true);
+
+    // Middle parts already partially downloaded — preview still forces edges.
+    let completed = vec![(9_728_000u64, 2 * 9_728_000u64)]; // part 1 done
+    let (part, _) = seq
+        .plan_next_block_for_peer64("peer", &completed, &[], 0)
+        .unwrap()
+        .unwrap();
+    assert_eq!(part, 0, "preview mode: first part requested first");
+
+    // Once part 0 is done, the LAST part is next (not part 2).
+    let completed = vec![
+        (0u64, 9_728_000u64),
+        (9_728_000u64, 2 * 9_728_000u64),
+    ];
+    let (part, block) = seq
+        .plan_next_block_for_peer64("peer", &completed, &[], 0)
+        .unwrap()
+        .unwrap();
+    assert_eq!(part, 3, "preview mode: last part before middle parts");
+    assert_eq!(block.start, 3 * 9_728_000);
+}
+
+#[test]
+fn test_sequencer_preview_skips_edge_parts_not_offered_by_peer() {
+    let hash = sample_hash();
+    let file_size = 4 * 9_728_000u64;
+    // Partial source offering only parts 1-2.
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 4,
+        availability_mask: PartAvailabilityMask::from_parts(&[1, 2], 4),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status)
+        .unwrap()
+        .with_preview_priority(true);
+
+    let (part, _) = seq
+        .plan_next_block_for_peer64("peer", &[], &[], 0)
+        .unwrap()
+        .unwrap();
+    assert!(part == 1 || part == 2, "edge parts unavailable → normal selection");
+}
+
+// ---------------------------------------------------------------------------
+// End-game redundancy (eMule duplicates the last blocks across peers)
+// ---------------------------------------------------------------------------
+
+use mule_protocol::ed2k::InFlightBlock;
+
+/// Builds a sequencer for a file small enough to enter end-game once a single
+/// block remains (file size ≤ 1 part keeps part math trivial).
+fn endgame_sequencer(file_size: u64) -> Ed2kDownloadSequencer {
+    let hash = sample_hash();
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    Ed2kDownloadSequencer::new(hash, file_size, status).unwrap()
+}
+
+#[test]
+fn test_endgame_allows_duplicate_block_from_other_peer() {
+    // Single block remaining (≤ ENDGAME_REMAINING_BYTES = 3 blocks) already
+    // in-flight on peer A. Peer B must receive a duplicate request for the
+    // same block — the fastest source wins the last chunk.
+    let file_size = ED2K_BLOCK_SIZE as u64;
+    let seq = endgame_sequencer(file_size);
+    let in_flight = vec![InFlightBlock::new("peerA".into(), 0, 0, file_size, 0, 30_000)];
+
+    let (part, block) = seq
+        .plan_next_block_for_peer64("peerB", &[], &in_flight, 1_000)
+        .unwrap()
+        .expect("end-game must duplicate the in-flight block");
+    assert_eq!(part, 0);
+    assert_eq!((block.start, block.end), (0, file_size));
+}
+
+#[test]
+fn test_endgame_never_duplicates_block_for_same_peer() {
+    let file_size = 2 * ED2K_BLOCK_SIZE as u64;
+    let seq = endgame_sequencer(file_size);
+    // Peer A already owns the first block; the second is free → normal path
+    // assigns the free block. If BOTH blocks were already assigned to peer A,
+    // end-game must return None.
+    let in_flight = vec![
+        InFlightBlock::new("peerA".into(), 0, 0, ED2K_BLOCK_SIZE as u64, 0, 30_000),
+        InFlightBlock::new(
+            "peerA".into(),
+            0,
+            ED2K_BLOCK_SIZE as u64,
+            2 * ED2K_BLOCK_SIZE as u64,
+            0,
+            30_000,
+        ),
+    ];
+    let res = seq
+        .plan_next_block_for_peer64("peerA", &[], &in_flight, 1_000)
+        .unwrap();
+    assert!(res.is_none(), "same peer never gets a duplicate request");
+}
+
+#[test]
+fn test_endgame_respects_max_two_assignments_per_block() {
+    let file_size = ED2K_BLOCK_SIZE as u64; // single block remaining
+    let seq = endgame_sequencer(file_size);
+    let in_flight = vec![
+        InFlightBlock::new("peerA".into(), 0, 0, file_size, 0, 30_000),
+        InFlightBlock::new("peerB".into(), 0, 0, file_size, 0, 30_000),
+    ];
+    let res = seq
+        .plan_next_block_for_peer64("peerC", &[], &in_flight, 1_000)
+        .unwrap();
+    assert!(
+        res.is_none(),
+        "block already assigned twice → no third request"
+    );
+}
+
+#[test]
+fn test_no_endgame_when_remaining_exceeds_threshold() {
+    // 4 blocks > ENDGAME_REMAINING_BYTES (3 blocks) → in-flight overlap must
+    // still be rejected.
+    let file_size = 4 * ED2K_BLOCK_SIZE as u64;
+    let seq = endgame_sequencer(file_size);
+    // Blocks 0..2 in-flight on peerA; block 3 free → normal path picks it.
+    // Make ALL blocks in-flight to force the fallback path.
+    let in_flight: Vec<_> = (0..4u64)
+        .map(|i| {
+            InFlightBlock::new(
+                "peerA".into(),
+                0,
+                i * ED2K_BLOCK_SIZE as u64,
+                (i + 1) * ED2K_BLOCK_SIZE as u64,
+                0,
+                30_000,
+            )
+        })
+        .collect();
+    let res = seq
+        .plan_next_block_for_peer64("peerB", &[], &in_flight, 1_000)
+        .unwrap();
+    assert!(
+        res.is_none(),
+        "outside end-game no duplicate request is allowed"
+    );
+}

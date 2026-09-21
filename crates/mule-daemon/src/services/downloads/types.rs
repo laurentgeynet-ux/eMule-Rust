@@ -1,5 +1,5 @@
 use mule_core::{Download, DownloadStatus, PartFile, RangeSet};
-use mule_protocol::ed2k::PartAvailabilityMask;
+use mule_protocol::ed2k::{PartAvailabilityMask, ED2K_PART_SIZE};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -30,6 +30,15 @@ pub struct DownloadSnapshot {
     /// Seconds remaining at the current rate (None when stalled/done).
     #[serde(default)]
     pub eta_seconds: Option<u64>,
+    /// eD2K file hash (hex) — needed by clients to query peer sources
+    /// without an extra `downloads.get` round-trip.
+    #[serde(default)]
+    pub ed2k_hash: String,
+    /// Per-part progress summary for the UI availability bar. In list
+    /// snapshots `is_verified` is only exact for completed downloads (all
+    /// parts verified); `downloads.get` reports the authoritative flags.
+    #[serde(default)]
+    pub parts: Vec<PartProgressSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -156,13 +165,98 @@ impl ActiveDownload {
             0
         };
 
-        make_snapshot(
+        let mut snap = make_snapshot(
             &self.download,
             &self.ranges,
             self.source_count.max(self.sources.len() as u32),
             effective_rate,
-        )
+        );
+        // Verified part flags live in SQLite; the list snapshot only knows
+        // "all verified" for completed downloads. `downloads.get` re-reads
+        // the authoritative set for the detail view.
+        let verified_parts: HashSet<u32> =
+            if self.download.status == DownloadStatus::Completed {
+                let pc = self.download.total_size.div_ceil(ED2K_PART_SIZE as u64).max(1) as u32;
+                (0..pc).collect()
+            } else {
+                HashSet::new()
+            };
+        snap.parts = compute_part_summaries(
+            self.download.total_size,
+            &self.ranges,
+            self.sources.values().map(|s| &s.mask),
+            &verified_parts,
+        );
+        snap
     }
+}
+
+/// Computes the per-part progress summary shared by `downloads.list`
+/// snapshots and `downloads.get` details (eMule `CPartFile` part states).
+pub fn compute_part_summaries<'a>(
+    total_size: u64,
+    ranges: &RangeSet,
+    source_masks: impl Iterator<Item = &'a PartAvailabilityMask>,
+    verified_parts: &HashSet<u32>,
+) -> Vec<PartProgressSummary> {
+    let part_size_const = ED2K_PART_SIZE as u64;
+    let part_count = if total_size == 0 {
+        1
+    } else {
+        total_size.div_ceil(part_size_const) as u32
+    };
+
+    let all_ranges = ranges.ranges();
+    let masks: Vec<&PartAvailabilityMask> = source_masks.collect();
+    let mut parts = Vec::with_capacity(part_count as usize);
+
+    for i in 0..part_count {
+        let start_offset = i as u64 * part_size_const;
+        let end_offset = ((i as u64 + 1) * part_size_const).min(total_size);
+        let size = end_offset.saturating_sub(start_offset);
+
+        let received_in_part: u64 = all_ranges
+            .iter()
+            .filter_map(|r| {
+                let s = r.start.max(start_offset);
+                let e = r.end.min(end_offset);
+                if s < e {
+                    Some(e - s)
+                } else {
+                    None
+                }
+            })
+            .sum();
+
+        let is_verified = verified_parts.contains(&i);
+        let state = if is_verified {
+            "verified"
+        } else if received_in_part >= size && size > 0 {
+            "completed"
+        } else if received_in_part > 0 {
+            "downloading"
+        } else {
+            "missing"
+        };
+
+        let available_source_count = masks
+            .iter()
+            .filter(|m| u16::try_from(i).is_ok_and(|p| m.has_part(p)))
+            .count() as u32;
+
+        parts.push(PartProgressSummary {
+            part_index: i,
+            start_offset,
+            end_offset,
+            size,
+            received_bytes: received_in_part,
+            is_verified,
+            state: state.to_string(),
+            available_source_count,
+        });
+    }
+
+    parts
 }
 
 pub fn now_ms() -> i64 {
@@ -206,7 +300,7 @@ pub fn make_snapshot(
         verified_bytes,
         progress,
         status: dl.status.as_str().to_string(),
-        priority: "normal".to_string(),
+        priority: dl.priority.clone(),
         source_count,
         download_rate_bps,
         uploaded_bytes: 0,
@@ -214,5 +308,7 @@ pub fn make_snapshot(
         updated_at_unix_ms: dl.updated_at,
         category_id: dl.category_id.clone(),
         eta_seconds,
+        ed2k_hash: dl.ed2k_hash.to_string(),
+        parts: Vec::new(),
     }
 }

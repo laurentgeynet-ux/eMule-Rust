@@ -517,6 +517,12 @@ impl PeerSessionManager {
                 let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
+                        // eMule "No Needed Parts": keep the source allowed but
+                        // reask it only after a long cooldown (~30 min), its
+                        // advertised parts may become needed later.
+                        PeerFailureReason::NoNeededParts => {
+                            (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
+                        }
                         _ => {
                             if err_msg.as_deref() == Some("Disconnected in queue") {
                                 // Standard eMule queue behavior: remote peer returned queue rank and closed TCP socket.
@@ -722,6 +728,9 @@ impl PeerSessionManager {
                 let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
+                        PeerFailureReason::NoNeededParts => {
+                            (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
+                        }
                         _ => {
                             if err_msg.as_deref() == Some("Disconnected in queue") {
                                 (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))

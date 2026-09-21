@@ -733,6 +733,19 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<DownloadItem> setDownloadPriority(String id, String priority) async {
+    final existing = _downloads[id];
+    if (existing == null) throw Exception('Download $id not found');
+    final updated = existing.copyWith(
+      priority: DownloadPriority.fromString(priority),
+      updatedAt: DateTime.now(),
+    );
+    _downloads[id] = updated;
+    _emitUpdate(updated);
+    return updated;
+  }
+
+  @override
   Future<DownloadItem> retryDownloadConnection(String id) async {
     final existing = _downloads[id];
     if (existing == null) throw Exception('Download $id not found');

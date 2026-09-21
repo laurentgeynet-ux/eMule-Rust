@@ -41,6 +41,8 @@ class PeerSourcesController extends ChangeNotifier {
   }
 
   final Map<String, List<PeerSourceModel>> _sources = {};
+  final Map<String, SwarmStatusModel> _swarms = {};
+  final Map<String, DownloadItem> _details = {};
   bool _isLoading = false;
   PeerSessionModel _session = PeerSessionModel.disconnected;
   bool _isConnecting = false;
@@ -55,11 +57,41 @@ class PeerSourcesController extends ChangeNotifier {
     return _sources[fileHash] ?? [];
   }
 
+  /// Live swarm sessions (connected peers, rates, queue ranks) for a file.
+  SwarmStatusModel getSwarmForHash(String fileHash) {
+    return _swarms[fileHash] ?? SwarmStatusModel.empty;
+  }
+
+  /// Full download detail (includes the per-part progress map) for a row id.
+  DownloadItem? getDetailForId(String downloadId) => _details[downloadId];
+
+  Future<void> loadSwarmForHash(String fileHash) async {
+    try {
+      _swarms[fileHash] = await client.getSwarmStatus(fileHash: fileHash);
+      notifyListeners();
+    } catch (_) {
+      // Swarm status is best-effort live telemetry — ignore failures.
+    }
+  }
+
+  Future<void> loadDetailForId(String downloadId) async {
+    try {
+      final detail = await client.getDownload(downloadId);
+      if (detail != null) {
+        _details[downloadId] = detail;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Detail (part map) is best-effort — ignore failures.
+    }
+  }
+
   Future<void> loadSourcesForHash(String fileHash) async {
     _isLoading = true;
     notifyListeners();
     try {
       _sources[fileHash] = await client.listSources(fileHash);
+      unawaited(loadSwarmForHash(fileHash));
     } catch (e) {
       onError?.call('Échec du chargement des sources : $e');
     } finally {
@@ -122,6 +154,18 @@ class PeerSourcesController extends ChangeNotifier {
     } catch (e) {
       onError?.call('Échec de la déconnexion peer : $e');
       notifyListeners();
+    }
+  }
+
+  /// Changes the eMule-style file priority ("low" | "normal" | "high").
+  /// The daemon broadcasts the updated snapshot via `downloadEvents`.
+  Future<void> setDownloadPriority(String downloadId, String priority) async {
+    try {
+      await client.setDownloadPriority(downloadId, priority);
+      onStatus?.call('Priorité changée : $priority');
+      notifyListeners();
+    } catch (e) {
+      onError?.call('Échec du changement de priorité : $e');
     }
   }
 

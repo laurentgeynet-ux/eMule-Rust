@@ -334,22 +334,71 @@ pub(crate) async fn query_file_status_and_enter_queue(
     let mut raw_buf = [0u8; 8192];
 
     info!(
-        "Peer {} handshake completed. Requesting file status...",
+        "Peer {} handshake completed. Requesting file status for {file_hash_str}...",
         target_addr
     );
 
-    // 4a. Send OP_REQFILENAME
+    // 4a. Send OP_REQFILENAME. Quand le pair a négocié ExtendedRequestsVersion
+    // > 0, eMule lit l'ext-info (part status + complete sources) de façon
+    // inconditionnelle après le hash (UploadClient.cpp ProcessExtendedInfo) :
+    // un paquet nu provoque une exception filaire et la fermeture de connexion.
     let file_status_req = Ed2kFileStatusReq {
         file_hash: dl_hash_bytes,
     };
-    let req_filename_pkt = encoder
-        .encode_file_status_req_with_opcode(&file_status_req, OP_REQFILENAME)
+    let req_filename_pkt = if peer_ext_req > 0 {
+        // Notre propre part-status : parts dont la plage complète est déjà
+        // téléchargée (comme PartFile::WritePartStatus chez eMule).
+        let (total_bytes, completed_ranges) = {
+            let dl_svc = downloads.lock().await;
+            (
+                dl_svc
+                    .find_by_ed2k_hash(file_hash_str)
+                    .map(|d| d.total_bytes)
+                    .unwrap_or(0),
+                dl_svc.get_completed_ranges_by_hash(file_hash_str),
+            )
+        };
+        let part_size = mule_protocol::ed2k::ED2K_PART_SIZE as u64;
+        let part_count = if total_bytes > 0 {
+            total_bytes.div_ceil(part_size) as u16
+        } else {
+            0
+        };
+        let available: Vec<u16> = (0..part_count)
+            .filter(|&p| {
+                let start = u64::from(p) * part_size;
+                let end = (start + part_size).min(total_bytes);
+                completed_ranges
+                    .iter()
+                    .any(|&(rs, re)| rs <= start && re >= end)
+            })
+            .collect();
+        let part_status =
+            mule_protocol::ed2k::PartAvailabilityMask::from_parts(&available, part_count);
+        // Complete sources : non suivi par part ; 0 est licite (inconnu).
+        mule_protocol::ed2k::encoder::encode_req_filename(
+            &encoder.limits,
+            &dl_hash_bytes,
+            &part_status,
+            0,
+            peer_ext_req,
+        )
         .map_err(|e| {
             PeerError::new(
                 PeerFailureReason::InvalidHandshake,
                 format!("Failed to encode OP_REQFILENAME: {e}"),
             )
-        })?;
+        })?
+    } else {
+        encoder
+            .encode_file_status_req_with_opcode(&file_status_req, OP_REQFILENAME)
+            .map_err(|e| {
+                PeerError::new(
+                    PeerFailureReason::InvalidHandshake,
+                    format!("Failed to encode OP_REQFILENAME: {e}"),
+                )
+            })?
+    };
 
     out_wire.clear();
     out_wire.push(req_filename_pkt.protocol);
@@ -476,7 +525,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                 tracing::warn!("Failed to send SX request to {target_addr}: {e}");
             } else {
                 tracing::info!(
-                    "Sent OP_REQUESTSOURCES (version {}) to peer {target_addr}",
+                    "[SOURCE_EXCHANGE] Sent OP_REQUESTSOURCES (version {}) to peer {target_addr} for file {file_hash_str}",
                     sx_req.version
                 );
             }
@@ -612,6 +661,47 @@ pub(crate) async fn query_file_status_and_enter_queue(
     }
 
     let file_status = file_status_opt.unwrap();
+
+    // eMule "No Needed Parts": if the peer advertises a part mask but none
+    // of its parts is still missing locally, the source is useless for this
+    // download — drop it now instead of occupying an upload slot. Complete
+    // sources (part_count == 0) and queue-accepted sessions bypass the check.
+    if !file_status.is_complete() && file_status.part_count > 0 {
+        let has_needed_part = {
+            let dl_svc = downloads.lock().await;
+            let completed = dl_svc.get_completed_ranges_by_hash(file_hash_str);
+            let total_size = dl_svc
+                .find_by_ed2k_hash(file_hash_str)
+                .map(|d| d.total_bytes)
+                .unwrap_or(0);
+            let part_size = mule_protocol::ed2k::ED2K_PART_SIZE as u64;
+            let total_parts = if total_size == 0 {
+                0
+            } else {
+                total_size.div_ceil(part_size).max(1) as u32
+            };
+            (0..total_parts).any(|p| {
+                u16::try_from(p).is_ok_and(|pi| file_status.availability_mask.has_part(pi))
+                    && {
+                        let start = p as u64 * part_size;
+                        let end = ((p as u64 + 1) * part_size).min(total_size);
+                        completed.iter().fold(start, |acc, &(s, e)| {
+                            if s <= acc && e > acc {
+                                acc.max(e.min(end))
+                            } else {
+                                acc
+                            }
+                        }) < end
+                    }
+            })
+        };
+        if !has_needed_part {
+            return Err(PeerError::new(
+                PeerFailureReason::NoNeededParts,
+                "Peer has the file but no needed parts (eMule NNS)",
+            ));
+        }
+    }
 
     // Mark source as Connected
     {

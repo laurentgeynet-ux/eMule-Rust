@@ -257,6 +257,29 @@ pub async fn handle_set_destination(
     Ok(serde_json::to_value(detail).unwrap_or_default())
 }
 
+pub async fn handle_set_priority(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    let priority = params["priority"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'priority' parameter"))?;
+
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .set_priority(&id, priority)?;
+    state.broadcast_download_update(snapshot.clone());
+
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
 pub async fn handle_inspect_part_met(
     state: &AppState,
     params: Option<Value>,

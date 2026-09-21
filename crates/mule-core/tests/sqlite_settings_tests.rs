@@ -70,6 +70,7 @@ fn test_sqlite_update_target_path_persists() {
         created_at: 1000,
         updated_at: 1000,
         category_id: None,
+        priority: "normal".to_string(),
     };
 
     // 1. Insert download

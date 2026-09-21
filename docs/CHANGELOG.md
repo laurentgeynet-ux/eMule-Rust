@@ -5,6 +5,38 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Stratégies « smart » eMule 0.72a** (download + upload) :
+  - **Preview (first/last part)** : `Ed2kDownloadSequencer::with_preview_priority`
+    sert les parts 0 et N-1 en priorité (`PR_VERYHIGH` eMule) pour les fichiers
+    média/archives, permettant la prévisualisation pendant le téléchargement.
+  - **End-game redundancy** : quand ≤ 3 blocs (≈ 552 Kio) restent, un bloc
+    déjà en vol peut être re-demandé à un second pair (max 2 assignations,
+    jamais pour le même pair ; hors end-game l'overlap reste interdit) —
+    conforme `CPartFile::GetNextRequestedBlock`.
+  - **Drop NoNeededParts** : `PeerFailureReason::NoNeededParts` — un pair dont
+    le bitmask ne couvre aucun bloc manquant est libéré proprement et marqué
+    `Rejected` temporairement.
+  - **Priorités de fichiers** : `Download.priority` persisté (colonne SQLite
+    `downloads.priority`, défaut `normal`), RPC `downloads.setPriority`,
+    pondération de l'allocateur de slots (low×1/normal×2/high×4/release×8),
+    sélecteur de priorité dans l'expansion Sources de l'UI.
+  - **Crédits eMule persistés** : les octets téléchargés depuis un pair
+    vérifié SUI sont comptabilisés sous `Md4(pubkey)` (flush par 8 Mio +
+    fin de session) ; l'upload était déjà câblé — la formule canonique
+    `min(10, 2·DL/UL)` s'applique désormais dans les deux sens.
+  - **Trickle slots + slot focusing** : `UploadSlotState::Trickle` — un slot
+    < 1 Kio/s après 60 s de grâce est rétrogradé (ne compte plus dans
+    `max_active`) et le meilleur client en file est promu.
+  - **Friend slots + anti-leecher minimal** : table `friends` (équivalent
+    `friends.met`), RPC `friends.list`/`add`/`remove`, slot dédié bypassant
+    la file (`uh:<userhash>`), rejet des clients non identifiés quand la file
+    est ≥ 90 % pleine.
+  - **A4AF (swap inter-fichiers)** : `a4af_rebalance` à chaque tick du
+    coordinateur — un fichier sous `min_peers` réclame une adresse connectée
+    à un fichier de priorité strictement inférieure et saturé (1 swap/tick,
+    log `[A4AF]`). Nos sessions restent mono-fichier : le swap se fait par
+    reconnexion, pas par multiplexage `OP_REQFILENAME`.
+
 - **Alignement protocolaire eMule 0.72a** (`mule-protocol`, `mule-daemon`) :
   - **Référence de vérité** : `D:\eMule0.72a-Sources\eMule0.72a-Sources\srchybrid`
     remplace eMule 0.50a comme référence normative (docs `docs/ed2k/`,

@@ -63,6 +63,9 @@ pub struct Download {
     pub created_at: i64,
     pub updated_at: i64,
     pub category_id: Option<String>,
+    /// Download priority: "low", "normal", "high" (eMule file priority —
+    /// biases the swarm allocator slot quota for this file).
+    pub priority: String,
 }
 
 impl Download {
@@ -91,6 +94,7 @@ impl Download {
             created_at: now,
             updated_at: now,
             category_id: None,
+            priority: "normal".to_string(),
         }
     }
 }
@@ -335,6 +339,9 @@ pub enum PeerFailureReason {
     InvalidRange,
     CorruptedData,
     FileNotFound,
+    /// The peer shares the file but none of its advertised parts is needed
+    /// (eMule "No Needed Parts" source state — kept on a long cooldown).
+    NoNeededParts,
     KillSwitchAborted,
     MissingUserHashForObfuscation,
     ObfuscationNegotiationFailed,
@@ -358,6 +365,7 @@ impl PeerFailureReason {
             Self::InvalidRange => "invalid_range",
             Self::CorruptedData => "corrupted_data",
             Self::FileNotFound => "file_not_found",
+            Self::NoNeededParts => "no_needed_parts",
             Self::KillSwitchAborted => "kill_switch_aborted",
             Self::MissingUserHashForObfuscation => "missing_user_hash_for_obfuscation",
             Self::ObfuscationNegotiationFailed => "obfuscation_negotiation_failed",
@@ -575,6 +583,19 @@ mod tests {
         credit.uploaded_bytes = 999;
         assert!((credit.credit_multiplier() - 6.0).abs() < 0.01);
     }
+}
+
+/// Persisted friend identity (eMule `friends.met`): a user hash that is
+/// granted a dedicated upload slot regardless of queue pressure.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Friend {
+    /// eD2K user hash (hex, lowercase) of the friend.
+    pub user_hash: String,
+    /// Display name.
+    pub name: String,
+    /// Timestamp when the friend was added (unix ms).
+    pub added_at_unix_ms: i64,
 }
 
 /// Secure user identification state for a peer session.

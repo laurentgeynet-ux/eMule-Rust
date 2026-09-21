@@ -57,7 +57,11 @@ software: None,
                             });
                         }
                     }
-                    if !discovered_sources.is_empty() {
+                    if discovered_sources.is_empty() {
+                        tracing::debug!(
+                            "[SOURCE_EXCHANGE] SX answer from {target_addr} for file {file_hash_str} contained no usable source (all LowID or port 0)"
+                        );
+                    } else {
                         let mut dl_svc = downloads.lock().await;
                         let inserted = dl_svc
                             .upsert_peer_sources(file_hash_str, &discovered_sources)
@@ -75,6 +79,11 @@ software: None,
                             total_swarm
                         );
                     }
+                } else {
+                    tracing::debug!(
+                        "[SOURCE_EXCHANGE] Ignored SX answer from {target_addr}: file {} is not the requested download {file_hash_str}",
+                        hex::encode(ans.file_hash)
+                    );
                 }
             }
             Err(e) => {

@@ -281,6 +281,7 @@ pub fn import_part_met(
         created_at: now,
         updated_at: now,
         category_id: category_id.clone(),
+        priority: "normal".to_string(),
     };
 
     db.insert_download(&download)

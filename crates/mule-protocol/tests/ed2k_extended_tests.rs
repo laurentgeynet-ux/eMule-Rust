@@ -453,6 +453,43 @@ fn captcha_response_roundtrip() {
     let _ = OP_CHATCAPTCHARES;
 }
 
+// ---------- OP_REQFILENAME extended info (negotiated version) ----------
+
+/// eMule 0.72a `SendFileRequest`: `0x58` = hash16 + ext-info selon la
+/// `ExtendedRequestsVersion` négociée. Un paquet nu vers un pair ext_req>0
+/// provoque une exception filaire côté eMule (connexion fermée).
+#[test]
+fn req_filename_ext_info_matches_negotiated_version() {
+    use mule_protocol::ed2k::encoder::encode_req_filename;
+    use mule_protocol::ed2k::PartAvailabilityMask;
+
+    let hash = hash16(0x40);
+
+    // v0 : hash seul (legacy)
+    let pkt = encode_req_filename(
+        &limits(),
+        &hash,
+        &PartAvailabilityMask::empty(),
+        0,
+        0,
+    )
+    .unwrap();
+    assert_eq!(pkt.protocol, PR_ED2K);
+    assert_eq!(pkt.opcode, OP_REQFILENAME);
+    assert_eq!(pkt.payload.len(), 16);
+
+    // v1 : hash + u16 part_count + bitfield
+    let mask = PartAvailabilityMask::from_parts(&[0, 2], 3); // 0b00000101
+    let pkt = encode_req_filename(&limits(), &hash, &mask, 7, 1).unwrap();
+    assert_eq!(pkt.payload.len(), 16 + 2 + 1);
+    assert_eq!(&pkt.payload[16..], &[0x03, 0x00, 0x05]);
+
+    // v2 : + u16 complete_sources
+    let pkt = encode_req_filename(&limits(), &hash, &mask, 7, 2).unwrap();
+    assert_eq!(pkt.payload.len(), 16 + 2 + 1 + 2);
+    assert_eq!(&pkt.payload[19..], &[0x07, 0x00]);
+}
+
 // ---------- AICH opcode regression (0.72a values) ----------
 
 #[test]

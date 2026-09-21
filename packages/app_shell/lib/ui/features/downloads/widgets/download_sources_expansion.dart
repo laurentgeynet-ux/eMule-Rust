@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
@@ -5,45 +7,109 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/providers.dart';
 import 'detail/peer_source_row.dart';
+import 'detail/download_part_map_card.dart';
 
 /// Inline expansion shown under a download row (eMule-style double-click):
-/// lists the known peer sources for the file with connect controls.
-class DownloadSourcesExpansion extends ConsumerWidget {
+/// live connected peers (rate, queue rank), the part progress map and the
+/// known peer sources for the file with connect controls.
+class DownloadSourcesExpansion extends ConsumerStatefulWidget {
   final DownloadItem item;
 
   const DownloadSourcesExpansion({super.key, required this.item});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DownloadSourcesExpansion> createState() =>
+      _DownloadSourcesExpansionState();
+}
+
+class _DownloadSourcesExpansionState
+    extends ConsumerState<DownloadSourcesExpansion> {
+  Timer? _swarmTimer;
+  int _tick = 0;
+
+  String get _hash => widget.item.ed2kHash ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    final ctl = ref.read(peerSourcesControllerProvider);
+    if (_hash.isNotEmpty) {
+      unawaited(ctl.loadSourcesForHash(_hash));
+      unawaited(ctl.loadSwarmForHash(_hash));
+    }
+    unawaited(ctl.loadDetailForId(widget.item.id));
+
+    // Live telemetry: swarm sessions every 2 s, source list every 10 s.
+    _swarmTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted || _hash.isEmpty) return;
+      _tick++;
+      final ctl = ref.read(peerSourcesControllerProvider);
+      unawaited(ctl.loadSwarmForHash(_hash));
+      unawaited(ctl.loadDetailForId(widget.item.id));
+      if (_tick % 5 == 0) {
+        unawaited(ctl.loadSourcesForHash(_hash));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _swarmTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ctl = ref.watch(peerSourcesControllerProvider);
-    final hash = item.ed2kHash ?? '';
+    final hash = _hash;
     final sources = ctl.getSourcesForHash(hash);
+    final swarm = ctl.getSwarmForHash(hash);
+    final detail = ctl.getDetailForId(widget.item.id) ?? widget.item;
 
     Widget body;
     if (hash.isEmpty) {
       body = const _ExpansionPlaceholder('Pas de hash eD2K pour ce fichier.');
-    } else if (sources.isEmpty) {
+    } else if (sources.isEmpty && swarm.peers.isEmpty) {
       body = _ExpansionPlaceholder(
         ctl.isLoading
             ? 'Chargement des sources...'
             : 'Aucune source enregistrée pour ce fichier.',
       );
     } else {
-      body = ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: sources.length,
-        separatorBuilder: (context, index) =>
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (swarm.peers.isNotEmpty) ...[
+            _SectionHeader(
+              icon: Icons.download_rounded,
+              label: 'Connectés (${swarm.peers.length})',
+            ),
+            ...swarm.peers.map(
+              (p) => _ConnectedPeerRow(session: p, fileHash: hash),
+            ),
             const Divider(height: 1, color: AppTheme.darkBorder),
-        itemBuilder: (context, index) => PeerSourceRow(
-          source: sources[index],
-          fileHash: hash,
-          session: ctl.session,
-          isPeerConnecting: ctl.isConnecting,
-          onConnect: (address, {force = false}) =>
-              ctl.connect(hash, address, force: force),
-          onDisconnect: (address) => ctl.disconnect(address: address),
-        ),
+          ],
+          _SectionHeader(
+            icon: Icons.list_alt_rounded,
+            label: 'Sources connues (${sources.length})',
+          ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: sources.length,
+            separatorBuilder: (context, index) =>
+                const Divider(height: 1, color: AppTheme.darkBorder),
+            itemBuilder: (context, index) => PeerSourceRow(
+              source: sources[index],
+              fileHash: hash,
+              session: ctl.session,
+              isPeerConnecting: ctl.isConnecting,
+              onConnect: (address, {force = false}) =>
+                  ctl.connect(hash, address, force: force),
+              onDisconnect: (address) => ctl.disconnect(address: address),
+            ),
+          ),
+        ],
       );
     }
 
@@ -72,6 +138,37 @@ class DownloadSourcesExpansion extends ConsumerWidget {
                   ),
                 ),
                 const Spacer(),
+                // eMule-style file priority (biases the swarm slot quota).
+                SizedBox(
+                  height: 22,
+                  child: DropdownButton<DownloadPriority>(
+                    value: detail.priority,
+                    isDense: true,
+                    underline: const SizedBox.shrink(),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.textSecondary,
+                    ),
+                    dropdownColor: AppTheme.darkSurface,
+                    items: DownloadPriority.values
+                        .map(
+                          (p) => DropdownMenuItem(
+                            value: p,
+                            child: Text('Priorité : ${p.label}'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (p) {
+                      if (p != null) {
+                        ctl.setDownloadPriority(
+                          widget.item.id,
+                          p.name,
+                        );
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 4),
                 InkWell(
                   onTap: hash.isEmpty
                       ? null
@@ -89,6 +186,139 @@ class DownloadSourcesExpansion extends ConsumerWidget {
           ),
           const Divider(height: 1, color: AppTheme.darkBorder),
           body,
+          if (detail.parts.isNotEmpty) ...[
+            const Divider(height: 1, color: AppTheme.darkBorder),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: DownloadPartMapCard(item: detail),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _SectionHeader({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 12, color: AppColors.textFaint),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textFaint,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A live connected peer: address, connection state, queue rank, part in
+/// progress, bytes received and current rate.
+class _ConnectedPeerRow extends StatelessWidget {
+  final PeerSessionModel session;
+  final String fileHash;
+
+  const _ConnectedPeerRow({required this.session, required this.fileHash});
+
+  Color get _statusColor {
+    switch (session.status) {
+      case PeerConnectionStatus.transferring:
+        return AppColors.accentTeal;
+      case PeerConnectionStatus.queued:
+        return AppColors.accentAmber;
+      case PeerConnectionStatus.connecting:
+      case PeerConnectionStatus.handshaking:
+        return AppColors.accentBlue;
+      default:
+        return AppColors.textMuted;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rate = Formatters.formatSpeed(session.transferRateBps);
+    final received = Formatters.formatBytes(session.transferredBytes);
+    final queue = session.queueRank != null ? ' · QR #${session.queueRank}' : '';
+    final part = session.currentPart != null
+        ? ' · part ${session.currentPart! + 1}'
+        : '';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Row(
+        children: [
+          Icon(Icons.swap_vert_rounded, size: 14, color: _statusColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      session.peerAddress ?? '?',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _statusColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        session.status.toDisplayString(),
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: _statusColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  '$received reçus$queue$part',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            rate,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: session.transferRateBps > 0
+                  ? AppColors.accentTeal
+                  : AppColors.textMuted,
+            ),
+          ),
         ],
       ),
     );

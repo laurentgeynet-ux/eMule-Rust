@@ -11,12 +11,23 @@ pub const MAX_UPLOAD_QUEUE: usize = 500;
 /// Maximum number of concurrent active uploads.
 pub const MAX_ACTIVE_UPLOADS: usize = 10;
 
+/// eMule trickle threshold: an active slot whose measured rate stays below
+/// 1 KiB/s past the grace period is demoted to a trickle slot — it keeps a
+/// residual share of bandwidth but no longer occupies a full upload slot
+/// (`CUploadQueue` keeps slow clients alive while freeing the slot).
+const TRICKLE_RATE_BPS: u64 = 1024;
+/// Grace period before a slow slot may be demoted (60 s).
+const TRICKLE_GRACE_MS: i64 = 60_000;
+
 /// State of an upload slot or queue entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UploadSlotState {
     Waiting,
     Uploading,
+    /// Slow client kept alive on residual bandwidth; does not count against
+    /// `max_active` (eMule "trickle slot").
+    Trickle,
     Completed,
     Rejected,
     Aborted,
@@ -78,6 +89,9 @@ pub struct UploadManager {
     sequence: Arc<std::sync::RwLock<Option<Arc<AtomicU64>>>>,
     /// Throttle for progress-driven emissions (~500 ms).
     last_progress_emit_ms: Arc<AtomicI64>,
+    /// Friend client keys (`uh:<userhash>`) — granted a dedicated slot even
+    /// when `max_active` is reached (eMule friend slot).
+    friends: Arc<std::sync::RwLock<std::collections::HashSet<String>>>,
 }
 
 impl Default for UploadManager {
@@ -98,7 +112,28 @@ impl UploadManager {
             event_tx: Arc::new(std::sync::RwLock::new(None)),
             sequence: Arc::new(std::sync::RwLock::new(None)),
             last_progress_emit_ms: Arc::new(AtomicI64::new(0)),
+            friends: Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
         }
+    }
+
+    /// Installs the friend client-key set (`uh:<userhash>` entries).
+    pub fn set_friends(&self, friends: std::collections::HashSet<String>) {
+        *self.friends.write().unwrap() = friends;
+    }
+
+    /// Adds/removes a friend client key at runtime (RPC-driven).
+    pub fn set_friend(&self, client_key: &str, is_friend: bool) {
+        let mut f = self.friends.write().unwrap();
+        if is_friend {
+            f.insert(client_key.to_string());
+        } else {
+            f.remove(client_key);
+        }
+    }
+
+    /// True when `client_key` belongs to a configured friend.
+    fn is_friend(&self, client_key: &str) -> bool {
+        self.friends.read().unwrap().contains(client_key)
     }
 
     /// Installs the broadcast channel used to emit `upload.uploadsUpdated`.
@@ -195,7 +230,8 @@ impl UploadManager {
 
         // Grant a slot immediately while capacity remains and USS accepts
         // new clients (acceptNewClient=false when latency is too high).
-        if active.len() < self.max_active.load(Ordering::SeqCst)
+        // Trickle slots keep residual bandwidth but do not occupy a full slot.
+        if Self::uploading_count(&active) < self.max_active.load(Ordering::SeqCst)
             && self.uss_gate.read().unwrap().load(Ordering::SeqCst)
         {
             let now = std::time::SystemTime::now()
@@ -215,10 +251,39 @@ impl UploadManager {
                 started_at_unix_ms: now,
             };
             active.insert(client_key.to_string(), snap);
-            self.active_count.store(active.len(), Ordering::SeqCst);
+            self.active_count
+                .store(Self::uploading_count(&active), Ordering::SeqCst);
             tracing::info!(
                 "[UPLOAD_SLOT_GRANTED] Client {} granted active upload slot for file '{}' (hash: {}) ({}/{} slots used)",
-                client_address, file_name, file_hash, active.len(), self.max_active.load(Ordering::SeqCst)
+                client_address, file_name, file_hash, Self::uploading_count(&active), self.max_active.load(Ordering::SeqCst)
+            );
+            drop(active);
+            self.emit_uploads_updated().await;
+            return Ok((UploadSlotState::Uploading, None));
+        }
+
+        // eMule friend slot: a friend bypasses the full queue and receives a
+        // dedicated extra slot beyond `max_active`.
+        if self.is_friend(client_key) {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+            let snap = UploadSessionSnapshot {
+                client_key: client_key.to_string(),
+                client_address: client_address.to_string(),
+                file_hash: file_hash.to_string(),
+                file_name: file_name.to_string(),
+                transferred_bytes: 0,
+                upload_rate_bps: 0,
+                state: UploadSlotState::Uploading,
+                queue_rank: None,
+                started_at_unix_ms: now,
+            };
+            active.insert(client_key.to_string(), snap);
+            tracing::info!(
+                "[UPLOAD_FRIEND_SLOT] Friend {} granted dedicated upload slot for file '{}' ({} full slots)",
+                client_address, file_name, Self::uploading_count(&active)
             );
             drop(active);
             self.emit_uploads_updated().await;
@@ -234,6 +299,14 @@ impl UploadManager {
             .position(|entry| entry.client_key == client_key && entry.file_hash == file_hash)
         {
             return Ok((UploadSlotState::Waiting, Some((pos + 1) as u32)));
+        }
+
+        // Minimal anti-leecher: when the queue is ≥90% full, clients that
+        // never identified themselves with a user hash (`uh:` key) are
+        // rejected instead of queued — identifiable clients keep priority
+        // (eMule prefers accountable identities under contention).
+        if !client_key.starts_with("uh:") && q.len() >= MAX_UPLOAD_QUEUE * 9 / 10 {
+            return Err("Upload queue nearly full for unidentified clients".to_string());
         }
 
         if q.len() >= MAX_UPLOAD_QUEUE {
@@ -279,16 +352,95 @@ impl UploadManager {
         Ok((UploadSlotState::Waiting, Some(rank)))
     }
 
+    /// Number of slots currently occupying a full upload slot — trickle
+    /// slots are excluded (eMule counts only full-speed uploads).
+    fn uploading_count(
+        active: &std::collections::HashMap<String, UploadSessionSnapshot>,
+    ) -> usize {
+        active
+            .values()
+            .filter(|s| s.state == UploadSlotState::Uploading)
+            .count()
+    }
+
+    /// Promotes waiting clients while full slots remain. Caller must hold
+    /// the `active_uploads` lock and pass it in.
+    async fn promote_waiting(
+        &self,
+        active: &mut std::collections::HashMap<String, UploadSessionSnapshot>,
+    ) {
+        let mut q = self.queue.lock().await;
+        while Self::uploading_count(active) < self.max_active.load(Ordering::SeqCst) {
+            let Some(next) = q.pop_front() else {
+                break;
+            };
+            if active.contains_key(&next.client_key) {
+                continue;
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+
+            let snap = UploadSessionSnapshot {
+                client_key: next.client_key.clone(),
+                client_address: next.client_address.clone(),
+                file_hash: next.file_hash,
+                file_name: next.file_name,
+                transferred_bytes: 0,
+                upload_rate_bps: 0,
+                state: UploadSlotState::Uploading,
+                queue_rank: None,
+                started_at_unix_ms: now,
+            };
+            tracing::info!(
+                "[UPLOAD_PROMOTED] Client {} promoted from queue to active upload slot for file '{}' (hash: {})",
+                snap.client_address, snap.file_name, snap.file_hash
+            );
+            active.insert(next.client_key, snap);
+        }
+        self.active_count
+            .store(Self::uploading_count(active), Ordering::SeqCst);
+    }
+
     /// Updates active upload progress.
+    ///
+    /// Slot focusing (eMule semantics): an active slot whose rate stays under
+    /// `TRICKLE_RATE_BPS` past `TRICKLE_GRACE_MS` is demoted to `Trickle` —
+    /// it keeps residual bandwidth but frees its slot so the best queued
+    /// client is promoted. This concentrates bandwidth on fast clients.
     pub async fn update_progress(&self, client_key: &str, bytes_sent: u64, rate_bps: u64) {
+        let mut demoted = false;
         {
             let mut active = self.active_uploads.lock().await;
             if let Some(cur) = active.get_mut(client_key) {
                 cur.transferred_bytes = cur.transferred_bytes.saturating_add(bytes_sent);
                 cur.upload_rate_bps = rate_bps;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                if cur.state == UploadSlotState::Uploading
+                    && rate_bps < TRICKLE_RATE_BPS
+                    && now.saturating_sub(cur.started_at_unix_ms) > TRICKLE_GRACE_MS
+                {
+                    cur.state = UploadSlotState::Trickle;
+                    demoted = true;
+                    tracing::info!(
+                        "[UPLOAD_TRICKLE] Client {} demoted to trickle slot (rate {} B/s < {} B/s) — slot freed for queue",
+                        cur.client_address, rate_bps, TRICKLE_RATE_BPS
+                    );
+                }
+            }
+            if demoted {
+                self.promote_waiting(&mut active).await;
             }
         }
-        self.emit_uploads_updated_throttled().await;
+        if demoted {
+            self.emit_uploads_updated().await;
+        } else {
+            self.emit_uploads_updated_throttled().await;
+        }
     }
 
     /// Releases the client's active upload slot and promotes waiting clients
@@ -323,39 +475,7 @@ impl UploadManager {
         }
 
         // Promote from queue while free slots remain
-        {
-            let mut q = self.queue.lock().await;
-            while active.len() < self.max_active.load(Ordering::SeqCst) {
-                let Some(next) = q.pop_front() else {
-                    break;
-                };
-                if active.contains_key(&next.client_key) {
-                    continue;
-                }
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as i64;
-
-                let snap = UploadSessionSnapshot {
-                    client_key: next.client_key.clone(),
-                    client_address: next.client_address.clone(),
-                    file_hash: next.file_hash,
-                    file_name: next.file_name,
-                    transferred_bytes: 0,
-                    upload_rate_bps: 0,
-                    state: UploadSlotState::Uploading,
-                    queue_rank: None,
-                    started_at_unix_ms: now,
-                };
-                tracing::info!(
-                    "[UPLOAD_PROMOTED] Client {} promoted from queue to active upload slot for file '{}' (hash: {})",
-                    snap.client_address, snap.file_name, snap.file_hash
-                );
-                active.insert(next.client_key, snap);
-            }
-        }
-        self.active_count.store(active.len(), Ordering::SeqCst);
+        self.promote_waiting(&mut active).await;
         drop(active);
         self.emit_uploads_updated().await;
     }
@@ -506,6 +626,54 @@ mod tests {
         // release_slot by bare ip:port resolves via client_address.
         mgr.release_slot("1.1.1.1:4662").await;
         assert_eq!(mgr.active_len(), 0);
+    }
+
+    #[tokio::test]
+    async fn slow_slot_demoted_to_trickle_and_promotes_queue() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        // c1 takes the only slot.
+        let (state, _) = mgr
+            .request_upload_slot("c1", "c1", "h", "f", 1.0)
+            .await
+            .unwrap();
+        assert_eq!(state, UploadSlotState::Uploading);
+        // c2 waits.
+        let (state, _) = mgr
+            .request_upload_slot("c2", "c2", "h", "f", 1.0)
+            .await
+            .unwrap();
+        assert_eq!(state, UploadSlotState::Waiting);
+        // c1 stays slow past the grace period → trickle → c2 promoted.
+        {
+            let mut active = mgr.active_uploads.lock().await;
+            let s = active.get_mut("c1").unwrap();
+            s.started_at_unix_ms -= TRICKLE_GRACE_MS + 1;
+        }
+        mgr.update_progress("c1", 512, 512).await;
+        let actives = mgr.active_snapshots().await;
+        assert_eq!(
+            actives.iter().find(|s| s.client_key == "c1").unwrap().state,
+            UploadSlotState::Trickle
+        );
+        assert_eq!(
+            actives.iter().find(|s| s.client_key == "c2").unwrap().state,
+            UploadSlotState::Uploading
+        );
+        assert_eq!(mgr.active_len(), 1, "trickle does not occupy a full slot");
+    }
+
+    #[tokio::test]
+    async fn fast_slot_within_grace_is_not_demoted() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0)
+            .await
+            .unwrap();
+        // Slow rate but still within grace period → stays Uploading.
+        mgr.update_progress("c1", 512, 512).await;
+        let s = &mgr.active_snapshots().await[0];
+        assert_eq!(s.state, UploadSlotState::Uploading);
     }
 
     #[tokio::test]

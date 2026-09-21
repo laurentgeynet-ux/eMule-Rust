@@ -33,6 +33,20 @@ pub use mule_protocol::ed2k::{OP_COMPRESSEDPART_I64, OP_SENDINGPART_I64};
 /// requests require the peer's `ExtendedRequestsVer >= 2` (eMule
 /// `GetExtendedRequestsVersion`); returns `None` when the peer cannot serve
 /// the requested range.
+/// Extensions de fichiers prévisualisables — eMule n'applique la priorité
+/// première/dernière part (`PR_VERYHIGH`) qu'aux médias ouvrables en cours
+/// de téléchargement.
+fn is_previewable_media(file_name: &str) -> bool {
+    const PREVIEW_EXTS: &[&str] = &[
+        "avi", "mpg", "mpeg", "mp4", "mkv", "wmv", "mov", "flv", "ts", "vob", "mp3", "flac", "ogg",
+        "wav", "m4a", "aac",
+    ];
+    std::path::Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| PREVIEW_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
 fn encode_block_request(
     encoder: &Ed2kEncoder,
     file_hash: [u8; 16],
@@ -141,7 +155,7 @@ pub(crate) async fn run_transfer_loop(
     .await;
 
     // Multi-source block planner setup
-    let (file_size, completed_ranges) = {
+    let (file_size, completed_ranges, is_previewable) = {
         let dl_svc = downloads.lock().await;
         let dl = dl_svc.find_by_ed2k_hash(file_hash_str).ok_or_else(|| {
             PeerError::new(
@@ -150,16 +164,17 @@ pub(crate) async fn run_transfer_loop(
             )
         })?;
         let ranges = dl_svc.get_completed_ranges_by_hash(file_hash_str);
-        (dl.total_bytes, ranges)
+        (dl.total_bytes, ranges, is_previewable_media(&dl.file_name))
     };
 
-    let sequencer =
-        Ed2kDownloadSequencer::new(dl_hash_bytes, file_size, file_status).map_err(|e| {
+    let sequencer = Ed2kDownloadSequencer::new(dl_hash_bytes, file_size, file_status)
+        .map_err(|e| {
             PeerError::new(
                 PeerFailureReason::CorruptedData,
                 format!("Sequencer init error: {e}"),
             )
-        })?;
+        })?
+        .with_preview_priority(is_previewable);
 
     // Plan disjoint block
     let now_ms = std::time::SystemTime::now()
@@ -267,6 +282,9 @@ pub(crate) async fn run_transfer_loop(
     let mut current_part_idx = part_idx;
     let mut current_req_range = req_range;
     let mut last_dl_progress_log = std::time::Instant::now();
+    // eMule credits: received bytes accumulate here and are persisted under
+    // the peer's verified pubkey identity in batches (clients.met semantics).
+    let mut credit_pending_bytes = 0u64;
 
     struct RateResetGuard<'a> {
         downloads: &'a Arc<Mutex<DownloadService>>,
@@ -409,6 +427,10 @@ pub(crate) async fn run_transfer_loop(
                                 }
                                 total_received += data_len;
                                 bytes_since_rate_check += data_len;
+                                credit_pending_bytes += data_len;
+                                if credit_pending_bytes >= CREDIT_FLUSH_BYTES {
+                                    flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
+                                }
 
                                 let is_complete = {
                                     let mut dl_svc = downloads.lock().await;
@@ -530,6 +552,10 @@ pub(crate) async fn run_transfer_loop(
                                     if produced > 0 {
                                         total_received += produced as u64;
                                         bytes_since_rate_check += produced as u64;
+                                        credit_pending_bytes += produced as u64;
+                                        if credit_pending_bytes >= CREDIT_FLUSH_BYTES {
+                                            flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
+                                        }
                                         let is_complete = {
                                             let mut dl_svc = downloads.lock().await;
                                             if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
@@ -763,5 +789,39 @@ pub(crate) async fn run_transfer_loop(
         }
     }
 
+    // Persist any remaining credited bytes for this session.
+    flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
+
     Ok(total_received)
+}
+
+/// eMule credit accounting batch threshold (8 MiB) — bounds how many SQLite
+/// `peer_credits` updates a fast session performs.
+const CREDIT_FLUSH_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Persists accumulated downloaded bytes under the peer's *verified* SUI
+/// pubkey identity (eMule credits the client key, never the transient IP).
+/// Unverified peers accrue nothing — `peer_credits` is keyed by pubkey hash.
+async fn flush_download_credit(
+    downloads: &Arc<Mutex<DownloadService>>,
+    sui: &super::sui::OutboundSui,
+    pending: &mut u64,
+) {
+    if *pending == 0 {
+        return;
+    }
+    if let Some((pubkey_hash, pubkey_hex)) = sui.verified_credit_identity() {
+        let mut dl_svc = downloads.lock().await;
+        if dl_svc
+            .record_credit_download(&pubkey_hash, &pubkey_hex, *pending)
+            .is_ok()
+        {
+            tracing::debug!(
+                "[CREDITS] {} bytes downloaded credited to peer {}…",
+                pending,
+                &pubkey_hash[..16.min(pubkey_hash.len())]
+            );
+        }
+        *pending = 0;
+    }
 }

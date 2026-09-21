@@ -135,6 +135,20 @@ impl AppState {
         inbound_listener
             .upload_manager()
             .set_event_channel(event_tx.clone(), Arc::clone(&sequence));
+        // Friend slots: load persisted friends into the upload manager
+        // (eMule friends.met → dedicated slots for `uh:<userhash>` keys).
+        {
+            let friends = dl_arc
+                .try_lock()
+                .map(|dl| dl.list_friends().unwrap_or_default())
+                .unwrap_or_default();
+            inbound_listener.upload_manager().set_friends(
+                friends
+                    .iter()
+                    .map(|f| format!("uh:{}", f.user_hash))
+                    .collect(),
+            );
+        }
         let kad_udp = Arc::clone(kad.udp());
         let client_udp_for_kad = client_udp.clone();
         let kad_udp_dl = Arc::clone(&dl_arc);

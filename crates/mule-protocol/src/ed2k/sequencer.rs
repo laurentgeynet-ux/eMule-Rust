@@ -33,6 +33,18 @@ pub const ED2K_BLOCK_SIZE: usize = crate::limits::ED2K_BLOCK_SIZE;
 /// Maximum number of block ranges allowed per standard eD2K request packet (3).
 pub const MAX_REQUEST_RANGES_PER_PACKET: usize = 3;
 
+/// eMule end-game threshold: when the remaining download fits in a single
+/// request batch (≈ 3 blocks), a block already in-flight on *another* peer
+/// may be requested in parallel so the file finishes at the speed of the
+/// fastest source (`CPartFile::GetNextRequestedBlock` duplicates the last
+/// chunks near completion).
+const ENDGAME_REMAINING_BYTES: u64 =
+    ED2K_BLOCK_SIZE as u64 * MAX_REQUEST_RANGES_PER_PACKET as u64;
+
+/// Maximum concurrent in-flight assignments allowed for the same block range
+/// during end-game (the first arriving copy wins; the duplicate is discarded).
+const MAX_INFLIGHT_PER_BLOCK: usize = 2;
+
 /// Deterministic download sequencer and block request planner for an active eD2K peer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ed2kDownloadSequencer {
@@ -40,6 +52,10 @@ pub struct Ed2kDownloadSequencer {
     file_size: u64,
     total_parts: u16,
     status: Ed2kFileStatus,
+    /// eMule preview mode: the first and last parts are requested before all
+    /// others so the file can be previewed while downloading
+    /// (`CPartFile` gives them `PR_VERYHIGH` when preview is enabled).
+    preview_priority: bool,
 }
 
 impl Ed2kDownloadSequencer {
@@ -66,7 +82,15 @@ impl Ed2kDownloadSequencer {
             file_size,
             total_parts,
             status,
+            preview_priority: false,
         })
+    }
+
+    /// Enables the eMule preview part priority: the first and last parts are
+    /// planned before all others (used for previewable media files).
+    pub fn with_preview_priority(mut self, enabled: bool) -> Self {
+        self.preview_priority = enabled;
+        self
     }
 
     /// Creates a sequencer from the result of a file status request.
@@ -286,35 +310,145 @@ impl Ed2kDownloadSequencer {
 
     /// 64-bit variant of `plan_next_block_for_peer` — required for downloads
     /// whose blocks extend past the 4 GiB boundary.
+    ///
+    /// Part selection follows the eMule "rarest/progress-first" strategy:
+    /// instead of always draining the lowest part index (which concentrates
+    /// the whole swarm on the same chunks), the peer is assigned to the
+    /// needed part it offers that currently has the *fewest* completed
+    /// bytes. Ties resolve to the lowest index. This spreads sources across
+    /// distinct parts like `CPartFile::GetNextRequestedBlock` does.
     pub fn plan_next_block_for_peer64(
         &self,
-        _peer_id: &str,
+        peer_id: &str,
         completed_ranges: &[(u64, u64)],
         in_flight_blocks: &[InFlightBlock],
         now_unix_ms: i64,
     ) -> Result<Option<(u16, Ed2kBlockRange64)>, Ed2kSequencerError> {
+        // eMule preview: the first and last parts are served first so the
+        // file can be opened while downloading (`PR_VERYHIGH` on edges).
+        if self.preview_priority {
+            let last = self.total_parts - 1;
+            for edge in [0u16, last] {
+                if !self.is_part_available(edge) {
+                    continue;
+                }
+                if let Some(block) =
+                    self.next_free_block_in_part64(edge, completed_ranges, in_flight_blocks, now_unix_ms)?
+                {
+                    return Ok(Some((edge, block)));
+                }
+            }
+        }
+
+        let mut best: Option<(u16, Ed2kBlockRange64, u64)> = None;
+
         for part_idx in 0..self.total_parts {
             if !self.is_part_available(part_idx) {
                 continue;
             }
 
-            let blocks = self.plan_part_blocks64(part_idx)?;
-            for block in blocks {
-                if Self::is_range_in_list(block.start, block.end, completed_ranges) {
-                    continue;
-                }
+            // Received bytes already covering this part (progress metric).
+            let (part_start, part_end) = self.part_byte_bounds(part_idx)?;
+            let received_in_part: u64 = completed_ranges
+                .iter()
+                .filter_map(|&(s, e)| {
+                    let cs = s.max(part_start);
+                    let ce = e.min(part_end);
+                    (cs < ce).then(|| ce - cs)
+                })
+                .sum();
+            if received_in_part >= part_end - part_start {
+                continue;
+            }
 
-                let is_in_flight = in_flight_blocks.iter().any(|ifb| {
-                    !ifb.is_expired(now_unix_ms) && ifb.overlaps(block.start, block.end)
-                });
-
-                if !is_in_flight {
-                    return Ok(Some((part_idx, block)));
+            if let Some(block) =
+                self.next_free_block_in_part64(part_idx, completed_ranges, in_flight_blocks, now_unix_ms)?
+            {
+                let replace = match &best {
+                    None => true,
+                    Some((_, _, best_received)) => received_in_part < *best_received,
+                };
+                if replace {
+                    best = Some((part_idx, block, received_in_part));
                 }
             }
         }
 
+        if let Some((part_idx, block, _)) = best {
+            return Ok(Some((part_idx, block)));
+        }
+
+        self.endgame_block64(peer_id, completed_ranges, in_flight_blocks, now_unix_ms)
+    }
+
+    /// eMule end-game fallback: when fewer than `ENDGAME_REMAINING_BYTES`
+    /// remain, allows requesting a block already in-flight on a *different*
+    /// peer (max `MAX_INFLIGHT_PER_BLOCK` concurrent assignments per block).
+    /// Returns `None` outside end-game, when every missing block is already
+    /// doubly assigned, or when the only pending copies belong to this peer.
+    fn endgame_block64(
+        &self,
+        peer_id: &str,
+        completed_ranges: &[(u64, u64)],
+        in_flight_blocks: &[InFlightBlock],
+        now_unix_ms: i64,
+    ) -> Result<Option<(u16, Ed2kBlockRange64)>, Ed2kSequencerError> {
+        let covered: u64 = completed_ranges
+            .iter()
+            .map(|&(s, e)| e.saturating_sub(s))
+            .sum();
+        let remaining = self.file_size.saturating_sub(covered);
+        if remaining == 0 || remaining > ENDGAME_REMAINING_BYTES {
+            return Ok(None);
+        }
+        for part_idx in 0..self.total_parts {
+            if !self.is_part_available(part_idx) {
+                continue;
+            }
+            for block in self.plan_part_blocks64(part_idx)? {
+                if Self::is_range_in_list(block.start, block.end, completed_ranges) {
+                    continue;
+                }
+                let mut active = 0usize;
+                let mut same_peer = false;
+                for ifb in in_flight_blocks {
+                    if ifb.is_expired(now_unix_ms) || !ifb.overlaps(block.start, block.end) {
+                        continue;
+                    }
+                    if ifb.peer_id == peer_id {
+                        same_peer = true;
+                        break;
+                    }
+                    active += 1;
+                }
+                if same_peer || active == 0 || active >= MAX_INFLIGHT_PER_BLOCK {
+                    continue;
+                }
+                return Ok(Some((part_idx, block)));
+            }
+        }
         Ok(None)
+    }
+
+    /// Returns the first missing, non-in-flight block inside `part_idx`,
+    /// or `None` if the part is complete, fully in-flight, or not offered
+    /// by this peer.
+    fn next_free_block_in_part64(
+        &self,
+        part_idx: u16,
+        completed_ranges: &[(u64, u64)],
+        in_flight_blocks: &[InFlightBlock],
+        now_unix_ms: i64,
+    ) -> Result<Option<Ed2kBlockRange64>, Ed2kSequencerError> {
+        let blocks = self.plan_part_blocks64(part_idx)?;
+        Ok(blocks.into_iter().find(|block| {
+            if Self::is_range_in_list(block.start, block.end, completed_ranges) {
+                return false;
+            }
+            !in_flight_blocks.iter().any(|ifb| {
+                !ifb.is_expired(now_unix_ms) && ifb.overlaps(block.start, block.end)
+            })
+        }))
     }
 
     /// Plans the sequence of block ranges for a part, filtering out any blocks
@@ -480,37 +614,136 @@ impl Ed2kDownloadSequencer {
     }
 
     /// Plans the next unassigned and uncompleted block range for a specific peer.
+    ///
+    /// Same rarest/progress-first part selection as
+    /// `plan_next_block_for_peer64`: the peer is assigned to the needed part
+    /// it offers with the fewest completed bytes (ties → lowest index).
     pub fn plan_next_block_for_peer(
         &self,
-        _peer_id: &str,
+        peer_id: &str,
         completed_ranges: &[(u64, u64)],
         in_flight_blocks: &[InFlightBlock],
         now_unix_ms: i64,
     ) -> Result<Option<(u16, Ed2kBlockRange)>, Ed2kSequencerError> {
+        if self.preview_priority {
+            let last = self.total_parts - 1;
+            for edge in [0u16, last] {
+                if !self.is_part_available(edge) {
+                    continue;
+                }
+                if let Some(block) =
+                    self.next_free_block_in_part(edge, completed_ranges, in_flight_blocks, now_unix_ms)?
+                {
+                    return Ok(Some((edge, block)));
+                }
+            }
+        }
+
+        let mut best: Option<(u16, Ed2kBlockRange, u64)> = None;
+
         for part_idx in 0..self.total_parts {
             if !self.is_part_available(part_idx) {
                 continue;
             }
 
-            let blocks = self.plan_part_blocks(part_idx)?;
-            for block in blocks {
-                let b_start = block.start as u64;
-                let b_end = block.end as u64;
+            let (part_start, part_end) = self.part_byte_bounds(part_idx)?;
+            let received_in_part: u64 = completed_ranges
+                .iter()
+                .filter_map(|&(s, e)| {
+                    let cs = s.max(part_start);
+                    let ce = e.min(part_end);
+                    (cs < ce).then(|| ce - cs)
+                })
+                .sum();
+            if received_in_part >= part_end - part_start {
+                continue;
+            }
 
-                if Self::is_range_in_list(b_start, b_end, completed_ranges) {
-                    continue;
-                }
-
-                let is_in_flight = in_flight_blocks
-                    .iter()
-                    .any(|ifb| !ifb.is_expired(now_unix_ms) && ifb.overlaps(b_start, b_end));
-
-                if !is_in_flight {
-                    return Ok(Some((part_idx, block)));
+            if let Some(block) =
+                self.next_free_block_in_part(part_idx, completed_ranges, in_flight_blocks, now_unix_ms)?
+            {
+                let replace = match &best {
+                    None => true,
+                    Some((_, _, best_received)) => received_in_part < *best_received,
+                };
+                if replace {
+                    best = Some((part_idx, block, received_in_part));
                 }
             }
         }
 
+        if let Some((part_idx, block, _)) = best {
+            return Ok(Some((part_idx, block)));
+        }
+
+        self.endgame_block(peer_id, completed_ranges, in_flight_blocks, now_unix_ms)
+    }
+
+    /// 32-bit variant of `endgame_block64`.
+    fn endgame_block(
+        &self,
+        peer_id: &str,
+        completed_ranges: &[(u64, u64)],
+        in_flight_blocks: &[InFlightBlock],
+        now_unix_ms: i64,
+    ) -> Result<Option<(u16, Ed2kBlockRange)>, Ed2kSequencerError> {
+        let covered: u64 = completed_ranges
+            .iter()
+            .map(|&(s, e)| e.saturating_sub(s))
+            .sum();
+        let remaining = self.file_size.saturating_sub(covered);
+        if remaining == 0 || remaining > ENDGAME_REMAINING_BYTES {
+            return Ok(None);
+        }
+        for part_idx in 0..self.total_parts {
+            if !self.is_part_available(part_idx) {
+                continue;
+            }
+            for block in self.plan_part_blocks(part_idx)? {
+                let b_start = block.start as u64;
+                let b_end = block.end as u64;
+                if Self::is_range_in_list(b_start, b_end, completed_ranges) {
+                    continue;
+                }
+                let mut active = 0usize;
+                let mut same_peer = false;
+                for ifb in in_flight_blocks {
+                    if ifb.is_expired(now_unix_ms) || !ifb.overlaps(b_start, b_end) {
+                        continue;
+                    }
+                    if ifb.peer_id == peer_id {
+                        same_peer = true;
+                        break;
+                    }
+                    active += 1;
+                }
+                if same_peer || active == 0 || active >= MAX_INFLIGHT_PER_BLOCK {
+                    continue;
+                }
+                return Ok(Some((part_idx, block)));
+            }
+        }
         Ok(None)
+    }
+
+    /// 32-bit variant of `next_free_block_in_part64`.
+    fn next_free_block_in_part(
+        &self,
+        part_idx: u16,
+        completed_ranges: &[(u64, u64)],
+        in_flight_blocks: &[InFlightBlock],
+        now_unix_ms: i64,
+    ) -> Result<Option<Ed2kBlockRange>, Ed2kSequencerError> {
+        let blocks = self.plan_part_blocks(part_idx)?;
+        Ok(blocks.into_iter().find(|block| {
+            let b_start = block.start as u64;
+            let b_end = block.end as u64;
+            if Self::is_range_in_list(b_start, b_end, completed_ranges) {
+                return false;
+            }
+            !in_flight_blocks
+                .iter()
+                .any(|ifb| !ifb.is_expired(now_unix_ms) && ifb.overlaps(b_start, b_end))
+        }))
     }
 }

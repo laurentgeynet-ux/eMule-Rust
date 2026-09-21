@@ -24,7 +24,8 @@ param(
     [string]$TimestampServer = "http://timestamp.digicert.com",
     [switch]$AllowDirty = $false,
     [switch]$SkipZip = $false,
-    [switch]$LabMode = $false
+    [switch]$LabMode = $false,
+    [string]$DeployDir = "C:\Users\Lou\Desktop\EmuleSion"
 )
 
 $ErrorActionPreference = "Stop"
@@ -354,7 +355,18 @@ if (!$SkipZip) {
     Write-Host " -> Archive SHA-256: $ZipHash" -ForegroundColor Green
 }
 
+# -----------------------------------------------------------------------------
+# 10. Deploy Bundle to Desktop Directory
+# -----------------------------------------------------------------------------
+if (![string]::IsNullOrWhiteSpace($DeployDir)) {
+    Write-Host "`nDeploying bundle to $DeployDir..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $DeployDir -Force | Out-Null
+    Copy-Item -Path "$DestPath\*" -Destination $DeployDir -Recurse -Force
+    Write-Host " -> Deployed to: $DeployDir" -ForegroundColor Green
+}
+
 Write-Host "`n==================================================" -ForegroundColor Green
 Write-Host "  Release Candidate Packaging Succeeded!          " -ForegroundColor Green
 Write-Host "  Destination: $DestPath" -ForegroundColor Cyan
+Write-Host "  Deployed to: $DeployDir" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Green

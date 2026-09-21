@@ -6,12 +6,12 @@ use super::super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::super::limits::Ed2kLimits;
 use super::super::opcodes::{
     OP_COMPRESSEDPART_I64, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_HASHSETREQUEST,
-    OP_REQUESTPARTS_I64, OP_SENDINGPART, OP_SENDINGPART_I64,
+    OP_REQFILENAME, OP_REQUESTPARTS_I64, OP_SENDINGPART, OP_SENDINGPART_I64,
 };
 use super::super::packet::{
     expected_mask_bytes, Ed2kCompressedPartI64, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
     Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq, Ed2kRequestParts, Ed2kRequestPartsI64,
-    Ed2kSendingPart, Ed2kSendingPartI64,
+    Ed2kSendingPart, Ed2kSendingPartI64, PartAvailabilityMask,
 };
 use super::super::profile::Ed2kCompatibilityProfile;
 use super::super::protocol::PR_ED2K;
@@ -60,6 +60,48 @@ pub fn encode_file_status_req_with_opcode(
     }
 
     Ok(RawPacket::new(PR_ED2K, opcode, Bytes::from(payload)))
+}
+
+/// Encodes an `OP_REQFILENAME` (`0x58`) request with the negotiated extended
+/// info appended, matching eMule 0.72a `SendFileRequest`:
+/// `hash16` + (`ext_version >= 1`: `u16 part_count` + part-status bitfield
+/// LSB-first; `ext_version >= 2`: + `u16 complete_sources`).
+///
+/// Mandatory when the peer announced `ExtendedRequestsVersion > 0`: eMule reads
+/// the ext-info unconditionally and throws on a truncated payload, dropping the
+/// connection (`UploadClient.cpp` `ProcessExtendedInfo`). With `ext_version ==
+/// 0`, no ext-info is appended (bare hash16).
+pub fn encode_req_filename(
+    limits: &Ed2kLimits,
+    file_hash: &[u8; 16],
+    part_status: &PartAvailabilityMask,
+    complete_sources: u16,
+    ext_version: u8,
+) -> Result<RawPacket, Ed2kEncodeError> {
+    let mut payload = Vec::with_capacity(24 + part_status.raw_bytes().len());
+    payload.extend_from_slice(file_hash);
+    if ext_version >= 1 {
+        payload.extend_from_slice(&part_status.part_count().to_le_bytes());
+        payload.extend_from_slice(part_status.raw_bytes());
+    }
+    if ext_version >= 2 {
+        payload.extend_from_slice(&complete_sources.to_le_bytes());
+    }
+
+    let frame_len = 1 + payload.len();
+    let max_frame = limits.max_frame_for_opcode(OP_REQFILENAME);
+    if frame_len > max_frame {
+        return Err(Ed2kEncodeError::new(
+            OP_REQFILENAME,
+            "frame_len",
+            Ed2kErrorKind::FrameTooLarge {
+                size: frame_len,
+                limit: max_frame,
+            },
+        ));
+    }
+
+    Ok(RawPacket::new(PR_ED2K, OP_REQFILENAME, Bytes::from(payload)))
 }
 
 /// Encodes an `Ed2kFileStatus` message into a `RawPacket`.

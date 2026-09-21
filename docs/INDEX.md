@@ -217,6 +217,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/persistence/sqlite/categories.rs` | Persistance des catégories |
 | `src/persistence/sqlite/credits.rs` | Persistance des crédits (upload/download) |
 | `src/persistence/sqlite/downloads.rs` | Persistance des téléchargements |
+| `src/persistence/sqlite/friends.rs` | Persistance des amis (friends.met) |
 | `src/persistence/sqlite/history.rs` | Persistance de l'historique |
 | `src/persistence/sqlite/kad.rs` | Persistance des données Kad |
 | `src/persistence/sqlite/servers.rs` | Persistance des serveurs |
@@ -287,6 +288,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/rpc/handlers/mod.rs` | Module des handlers RPC |
 | `src/rpc/handlers/categories.rs` | Handler : catégories |
 | `src/rpc/handlers/downloads.rs` | Handler : téléchargements |
+| `src/rpc/handlers/friends.rs` | Handler : amis (friend slots) |
 | `src/rpc/handlers/history.rs` | Handler : historique |
 | `src/rpc/handlers/kad.rs` | Handler : Kad |
 | `src/rpc/handlers/lab.rs` | Handler : lab |
@@ -345,9 +347,9 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/services/server_session/types.rs` | Types de session serveur |
 | `src/services/swarm_allocator.rs` | Allocation des ressources dans l'essaim |
 | `src/services/swarm_coordinator.rs` | Coordination de l'essaim de pairs |
-| `src/services/swarm_coordinator/strategy.rs` | Stratégie de coordination |
+| `src/services/swarm_coordinator/strategy.rs` | Stratégie de coordination (A4AF rebalance inclus) |
 | `src/services/swarm_coordinator/types.rs` | Types du coordinateur |
-| `src/services/upload_queue.rs` | File d'attente d'upload |
+| `src/services/upload_queue.rs` | File d'attente d'upload (trickle slots, friend slots, anti-leecher) |
 | `src/services/upnp.rs` | Service UPnP |
 | `src/services/upnp/discovery.rs` | Découverte de la passerelle UPnP |
 | `src/services/upnp/mapping.rs` | Mappage de ports UPnP |
@@ -536,7 +538,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/ed2k/session.rs` | Session eD2k (machine à états) |
 | `src/ed2k/session/tracker.rs` | Suivi d'état de session |
 | `src/ed2k/session/types.rs` | Types de session |
-| `src/ed2k/sequencer.rs` | Séquenceur de blocs de transfert |
+| `src/ed2k/sequencer.rs` | Séquenceur de blocs (least-received, preview first/last, end-game redundancy) |
 | `src/ed2k/sequencer/sink.rs` | Récepteur de blocs séquencés |
 | `src/ed2k/sequencer/types.rs` | Types du séquenceur |
 | `src/ed2k/server.rs` | Protocole client↔serveur |

@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::error::CoreError;
 use crate::kad::{KadContact, KadIndexedNote, KadIndexedSource, KadKeywordEntry};
 use crate::model::{
-    Download, DownloadCategory, DownloadStatus, Ed2kServer, HistoryEntry, HistoryFilter,
+    Download, DownloadCategory, DownloadStatus, Ed2kServer, Friend, HistoryEntry, HistoryFilter,
     HistoryStats, PeerCredit, PeerSource, PeerSourceStatus, SharedFile,
 };
 use crate::persistence::traits::{
@@ -16,6 +16,7 @@ use crate::ranges::RangeSet;
 pub mod categories;
 pub mod credits;
 pub mod downloads;
+pub mod friends;
 pub mod history;
 pub mod kad;
 pub mod schema;
@@ -172,6 +173,15 @@ impl Database {
         status: DownloadStatus,
     ) -> Result<(), CoreError> {
         downloads::update_status(&mut self.conn, download_id, status)
+    }
+
+    /// Persists the per-download priority ("low" | "normal" | "high").
+    pub fn update_priority(
+        &mut self,
+        download_id: &Uuid,
+        priority: &str,
+    ) -> Result<(), CoreError> {
+        downloads::update_priority(&mut self.conn, download_id, priority)
     }
 
     /// Retrieves all persisted downloads from the database.
@@ -438,6 +448,23 @@ impl Database {
     /// Lists top peer credits.
     pub fn list_peer_credits(&self, limit: usize) -> Result<Vec<PeerCredit>, CoreError> {
         credits::list_peer_credits(&self.conn, limit)
+    }
+
+    // ── Friends ─────────────────────────────────────────────────────────────
+
+    /// Adds or updates a friend (eMule `friends.met` equivalent).
+    pub fn add_friend(&mut self, user_hash: &str, name: &str) -> Result<(), CoreError> {
+        friends::add_friend(&mut self.conn, user_hash, name)
+    }
+
+    /// Removes a friend by user hash.
+    pub fn remove_friend(&mut self, user_hash: &str) -> Result<(), CoreError> {
+        friends::remove_friend(&mut self.conn, user_hash)
+    }
+
+    /// Lists all friends.
+    pub fn list_friends(&self) -> Result<Vec<Friend>, CoreError> {
+        friends::list_friends(&self.conn)
     }
 
     // ── Kad Contacts & Routing ──────────────────────────────────────────────

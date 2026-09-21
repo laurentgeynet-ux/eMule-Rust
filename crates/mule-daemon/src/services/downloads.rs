@@ -299,6 +299,27 @@ impl DownloadService {
         Ok(snapshot)
     }
 
+    /// Updates the eMule-style file priority ("low" | "normal" | "high").
+    /// The swarm allocator uses it to bias the slot quota per file.
+    pub fn set_priority(
+        &mut self,
+        id: &Uuid,
+        priority: &str,
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        let act = self
+            .active
+            .get_mut(id)
+            .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
+        if !matches!(priority, "low" | "normal" | "high") {
+            return Err(DaemonError::Business(format!(
+                "Invalid priority '{priority}' (expected low|normal|high)"
+            )));
+        }
+        act.download.priority = priority.to_string();
+        self.db.update_priority(id, priority)?;
+        Ok(act.snapshot())
+    }
+
     pub fn get_missing_ranges(&self, id: &Uuid) -> Option<Vec<std::ops::Range<u64>>> {
         self.active
             .get(id)
@@ -927,6 +948,18 @@ impl DownloadService {
         limit: usize,
     ) -> Result<Vec<mule_core::model::PeerCredit>, DaemonError> {
         peers_servers::list_peer_credits(&self.db, limit)
+    }
+
+    pub fn add_friend(&mut self, user_hash: &str, name: &str) -> Result<(), DaemonError> {
+        self.db.add_friend(user_hash, name).map_err(Into::into)
+    }
+
+    pub fn remove_friend(&mut self, user_hash: &str) -> Result<(), DaemonError> {
+        self.db.remove_friend(user_hash).map_err(Into::into)
+    }
+
+    pub fn list_friends(&self) -> Result<Vec<mule_core::model::Friend>, DaemonError> {
+        self.db.list_friends().map_err(Into::into)
     }
 
     pub fn db_ref(&self) -> &Database {

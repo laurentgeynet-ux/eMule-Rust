@@ -115,7 +115,7 @@ pub async fn search_sources_iterative(
         }
 
         let mut find_futs = Vec::new();
-        for contact in unqueried {
+        for contact in &unqueried {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
             let receiver_id = contact.kad_id;
             queried_nodes.insert(addr);
@@ -135,6 +135,26 @@ pub async fn search_sources_iterative(
         }
 
         let find_results = futures_util::future::join_all(find_futs).await;
+        // eMule : un contact qui ne répond pas accumule des échecs et finit
+        // expiré ; à l'inverse une réponse le maintient vivant (mark_seen).
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        {
+            let mut table = routing_table.lock().await;
+            for (contact, res) in unqueried.iter().zip(find_results.iter()) {
+                if res.is_ok() {
+                    table.mark_seen(&contact.kad_id, now_ms);
+                } else if table.mark_failed(&contact.kad_id) {
+                    tracing::debug!(
+                        "Kad: contact {}:{} evicted after repeated unresponsive queries",
+                        contact.ip,
+                        contact.udp_port
+                    );
+                }
+            }
+        }
         let mut new_contacts = Vec::new();
         let profile = policy_mgr.profile();
         for contacts in find_results.into_iter().flatten() {
@@ -191,7 +211,7 @@ pub async fn search_sources_iterative(
         .as_millis() as u64;
 
     let mut futs = Vec::with_capacity(search_targets.len());
-    for contact in search_targets {
+    for contact in &search_targets {
         let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
         let udp_c = Arc::clone(udp);
         let target_hash = target_kad_id.0;
@@ -210,6 +230,18 @@ pub async fn search_sources_iterative(
     }
 
     let results = futures_util::future::join_all(futs).await;
+    {
+        // Les timeouts SearchSources ne comptent PAS comme échec du contact :
+        // eMule ne répond rien quand le nœud n'indexe pas le fichier
+        // (SendValidSourceResult silencieux) — le nœud peut être sain.
+        // Seule une réponse confirme la vivacité (mark_seen).
+        let mut table = routing_table.lock().await;
+        for (contact, (_, res)) in search_targets.iter().zip(results.iter()) {
+            if res.is_ok() {
+                table.mark_seen(&contact.kad_id, now_ms);
+            }
+        }
+    }
     for (addr, res) in results {
         match res {
             Ok(wires) => {

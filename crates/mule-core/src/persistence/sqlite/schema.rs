@@ -192,6 +192,12 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
 
         CREATE INDEX IF NOT EXISTS idx_kad_notes_lookup ON kad_notes_index(file_hash);
         CREATE INDEX IF NOT EXISTS idx_kad_notes_expires ON kad_notes_index(expires_at_unix_ms);
+
+        CREATE TABLE IF NOT EXISTS friends (
+            user_hash TEXT PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            added_at_unix_ms INTEGER NOT NULL
+        );
         ",
     )?;
 
@@ -208,6 +214,25 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     }
     if !has_category_id {
         conn.execute_batch("ALTER TABLE downloads ADD COLUMN category_id TEXT;")?;
+    }
+
+    // Migration: per-download eMule-style priority column.
+    let mut stmt_dl2 = conn.prepare("PRAGMA table_info(downloads)")?;
+    let mut rows_dl2 = stmt_dl2.query([])?;
+    let mut has_priority = false;
+    while let Some(row) = rows_dl2.next()? {
+        let col_name: String = row.get(1)?;
+        if col_name == "priority" {
+            has_priority = true;
+            break;
+        }
+    }
+    drop(rows_dl2);
+    drop(stmt_dl2);
+    if !has_priority {
+        conn.execute_batch(
+            "ALTER TABLE downloads ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal';",
+        )?;
     }
 
     let mut stmt_peer = conn.prepare("PRAGMA table_info(peer_sources)")?;

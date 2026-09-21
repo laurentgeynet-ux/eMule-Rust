@@ -646,6 +646,15 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<DownloadItem> setDownloadPriority(String id, String priority) async {
+    final resp = await _call('downloads.setPriority', {
+      'id': id,
+      'priority': priority,
+    });
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
   Future<DownloadItem> retryDownloadConnection(String id) async {
     final resp = await _call('downloads.retryConnection', {'id': id});
     return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);

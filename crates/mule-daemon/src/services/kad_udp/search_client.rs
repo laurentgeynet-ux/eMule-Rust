@@ -72,7 +72,10 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!(
+                // eMule ne répond rien quand le nœud n'indexe pas le fichier
+                // (CIndexed::SendValidSourceResult) : le silence vaut « 0 sources »,
+                // ce n'est pas une anomalie — niveau debug, pas warn.
+                tracing::debug!(
                     "Kad SearchSources to node {} timed out after {}s (file={}, tx_id={})",
                     target,
                     KAD_TRANSACTION_TIMEOUT_SECS,

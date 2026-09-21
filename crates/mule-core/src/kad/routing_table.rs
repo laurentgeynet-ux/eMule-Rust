@@ -158,6 +158,60 @@ impl KBucketTable {
         }
     }
 
+    /// Records a failed query against a contact. Like eMule (`CContact::Update`
+    /// / `Expire`), a contact that reaches 2 consecutive failures is evicted
+    /// from the bucket (and its replacement slot). Returns `true` if the
+    /// contact was evicted.
+    pub fn mark_failed(&mut self, kad_id: &KadId) -> bool {
+        let Some(idx) = self.bucket_index_for(kad_id) else {
+            return false;
+        };
+        let bucket = &mut self.buckets[idx];
+        let pos = bucket.contacts.iter().position(|c| &c.kad_id == kad_id);
+        match pos {
+            Some(pos) => {
+                let fails = {
+                    let c = &mut bucket.contacts[pos];
+                    c.mark_failed();
+                    c.fail_count
+                };
+                if fails >= 2 {
+                    self.remove(kad_id);
+                    true
+                } else {
+                    false
+                }
+            }
+            None => {
+                if let Some(rpos) = bucket
+                    .replacements
+                    .iter()
+                    .position(|c| &c.kad_id == kad_id)
+                {
+                    bucket.replacements.remove(rpos);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Records a successful response from a contact: refreshes `last_seen`,
+    /// resets `fail_count` and marks it verified (`KadContact::mark_seen`).
+    pub fn mark_seen(&mut self, kad_id: &KadId, now_ms: u64) {
+        let Some(idx) = self.bucket_index_for(kad_id) else {
+            return;
+        };
+        let bucket = &mut self.buckets[idx];
+        for c in bucket.contacts.iter_mut().chain(bucket.replacements.iter_mut()) {
+            if &c.kad_id == kad_id {
+                c.mark_seen(now_ms);
+                return;
+            }
+        }
+    }
+
     pub fn total_contacts(&self) -> usize {
         self.buckets.iter().map(|b| b.contacts.len()).sum()
     }

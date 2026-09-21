@@ -254,6 +254,21 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
 * **Écoute Entrante & Dispatcher (`inbound_listener/dispatcher.rs`)** :
   * Gestion complète et robuste des requêtes `OP_REQUESTSOURCES` et `OP_REQUESTSOURCES2` sur les connexions entrantes avec vérification des fichiers partagés et des téléchargements locaux.
 
+### 5.3 Stratégies « Smart » eMule 0.72a (Download & Upload)
+
+* **Download (`mule-protocol/src/ed2k/sequencer.rs`, `mule-daemon`)** :
+  * *Preview* : les parts 0 et N-1 sont servies en priorité (`PR_VERYHIGH` eMule) pour les fichiers prévisualisables.
+  * *Least-received* : le pair est assigné à la part la moins téléchargée qu'il offre (répartition du swarm, parts rares comblées tôt).
+  * *End-game* : ≤ 3 blocs restants → double requête autorisée vers un autre pair (max 2 assignations par bloc).
+  * *NoNeededParts* : fermeture propre des pairs dont le bitmask ne couvre aucun bloc manquant.
+  * *Priorités de fichiers* : `downloads.priority` persisté (low/normal/high/release), RPC `downloads.setPriority`, pondération du quota de slots (×1/×2/×4/×8).
+  * *A4AF* : `a4af_rebalance` swappe une source depuis un fichier saturé de priorité inférieure vers un fichier affamé (sessions mono-fichier → reconnexion, 1 swap/tick).
+* **Upload (`upload_queue.rs`, `dispatcher.rs`, `transfer.rs`)** :
+  * *Crédits persistés* : les octets téléchargés depuis un pair vérifié SUI sont crédités sous `Md4(pubkey)` — la formule `min(10, 2·DL/UL)` s'applique dans les deux sens.
+  * *Trickle slots* : un slot < 1 Kio/s après 60 s est rétrogradé (`Trickle`, hors quota) et le meilleur client en file est promu.
+  * *Friend slots* : table `friends` + RPC `friends.*` → slot dédié (`uh:<userhash>`).
+  * *Anti-leecher minimal* : rejet des clients sans `user_hash` quand la file est ≥ 90 % pleine.
+
 ---
 
 ## 6. Bilan de Sécurité & Robustesse Réseau

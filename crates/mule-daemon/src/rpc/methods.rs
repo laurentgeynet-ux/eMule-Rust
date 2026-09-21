@@ -2,8 +2,8 @@ use serde_json::{json, Value};
 
 use crate::error::JsonRpcError;
 use crate::rpc::handlers::{
-    categories::*, downloads::*, history::*, kad::*, lab::*, network::*, servers::*, settings::*,
-    shares::*, sources::*, upnp::*,
+    categories::*, downloads::*, friends::*, history::*, kad::*, lab::*, network::*, servers::*,
+    settings::*, shares::*, sources::*, upnp::*,
 };
 use crate::rpc::types::{JsonRpcRequest, JsonRpcResponse};
 use crate::state::AppState;
@@ -41,6 +41,7 @@ pub async fn handle_request(
         "downloads.resume" => handle_resume(state, req.params).await,
         "downloads.remove" => handle_remove(state, req.params).await,
         "downloads.setDestination" => handle_set_destination(state, req.params).await,
+        "downloads.setPriority" => handle_set_priority(state, req.params).await,
         "downloads.inspectPartMet" => handle_inspect_part_met(state, req.params).await,
         "downloads.importPartMet" => handle_import_part_met(state, req.params).await,
         "downloads.retryConnection" | "downloads.retry" => {
@@ -106,6 +107,9 @@ pub async fn handle_request(
         "identity.rotate" => handle_identity_rotate(state).await,
         "credits.list" => handle_credits_list(state, req.params).await,
         "credits.stats" => handle_credits_stats(state).await,
+        "friends.list" => handle_friends_list(state).await,
+        "friends.add" => handle_friends_add(state, req.params).await,
+        "friends.remove" => handle_friends_remove(state, req.params).await,
         "upnp.status" => handle_upnp_status(state).await,
         "upnp.mapPorts" => handle_upnp_map_ports(state, req.params).await,
         "upnp.unmapPorts" => handle_upnp_unmap_ports(state).await,

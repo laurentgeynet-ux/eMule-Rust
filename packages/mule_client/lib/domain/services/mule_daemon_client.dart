@@ -87,6 +87,10 @@ abstract class MuleDaemonClient {
     String targetDirectory,
   );
 
+  /// Change the eMule-style priority of a download ("low" | "normal" | "high").
+  /// The daemon swarm allocator biases its peer slot quota accordingly.
+  Future<DownloadItem> setDownloadPriority(String id, String priority);
+
   /// Retry connecting loopback sources for a download.
   Future<DownloadItem> retryDownloadConnection(String id);
 

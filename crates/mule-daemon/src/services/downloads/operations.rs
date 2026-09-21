@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use super::history_categories::record_history_event;
 use super::types::{
-    make_snapshot, now_ms, ActiveDownload, ActiveSource, DownloadDetail, DownloadSnapshot,
-    PartProgressSummary,
+    compute_part_summaries, make_snapshot, now_ms, ActiveDownload, ActiveSource, DownloadDetail,
+    DownloadSnapshot,
 };
 use crate::error::DaemonError;
 use std::time::{Duration, Instant};
@@ -60,6 +60,7 @@ pub fn add_ed2k_link(
             .unwrap_or_default()
             .as_millis() as i64,
         category_id,
+        priority: "normal".to_string(),
     };
 
     let part_file = PartFile::open_or_create(&temp_path, link.size, policy)
@@ -115,77 +116,23 @@ pub fn get_download_detail(
     let act = active.get(id)?;
     let snapshot = act.snapshot();
 
-    let total_size = act.download.total_size;
-    let part_size_const = mule_format::ed2k::hash::ED2K_PART_SIZE as u64;
-    let part_count = if total_size == 0 {
-        1
-    } else {
-        total_size.div_ceil(part_size_const) as u32
-    };
-
     let verified_parts_set: std::collections::HashSet<u32> = db
         .get_verified_parts(id)
         .unwrap_or_default()
         .into_iter()
         .collect();
 
-    let all_ranges = act.ranges.ranges();
-
-    let mut parts = Vec::with_capacity(part_count as usize);
-    let mut total_verified_bytes = 0u64;
-
-    for i in 0..part_count {
-        let start_offset = i as u64 * part_size_const;
-        let end_offset = ((i as u64 + 1) * part_size_const).min(total_size);
-        let size = end_offset.saturating_sub(start_offset);
-
-        let received_in_part: u64 = all_ranges
-            .iter()
-            .filter_map(|r| {
-                let s = r.start.max(start_offset);
-                let e = r.end.min(end_offset);
-                if s < e {
-                    Some(e - s)
-                } else {
-                    None
-                }
-            })
-            .sum();
-
-        let is_verified = verified_parts_set.contains(&i);
-        if is_verified {
-            total_verified_bytes += size;
-        }
-
-        let state = if is_verified {
-            "verified"
-        } else if received_in_part >= size && size > 0 {
-            "completed"
-        } else if received_in_part > 0 {
-            "downloading"
-        } else {
-            "missing"
-        };
-
-        // eMule's availability coloring: count sources advertising this part
-        // in their PartAvailabilityMask.
-        let available_source_count = act
-            .sources
-            .values()
-            .filter(|s| u16::try_from(i).is_ok_and(|p| s.mask.has_part(p)))
-            .count() as u32;
-
-        parts.push(PartProgressSummary {
-            part_index: i,
-            start_offset,
-            end_offset,
-            size,
-            received_bytes: received_in_part,
-            is_verified,
-            state: state.to_string(),
-            available_source_count,
-        });
-    }
+    let parts = compute_part_summaries(
+        act.download.total_size,
+        &act.ranges,
+        act.sources.values().map(|s| &s.mask),
+        &verified_parts_set,
+    );
+    let total_verified_bytes: u64 = parts
+        .iter()
+        .filter(|p| p.is_verified)
+        .map(|p| p.size)
+        .sum();
 
     let aich_part = act
         .download
