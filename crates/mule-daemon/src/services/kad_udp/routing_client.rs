@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
@@ -147,7 +147,27 @@ impl KadUdpService {
                             .unwrap_or_default()
                             .as_millis() as u64;
 
-                        let mut contacts = Vec::with_capacity(boot_res.contacts.len());
+                        let mut contacts = Vec::with_capacity(boot_res.contacts.len() + 1);
+                        // eMule inserts the responding node itself into the
+                        // routing table (BOOTSTRAP_RES header = its KadID and
+                        // TCP port; the UDP port is the socket we reached it on).
+                        if let IpAddr::V4(responder_ip) = target.ip() {
+                            contacts.push(KadContact {
+                                kad_id: mule_core::kad::KadId(boot_res.kad_id),
+                                ip: responder_ip,
+                                udp_port: target.port(),
+                                tcp_port: if boot_res.udp_port != 0 {
+                                    Some(boot_res.udp_port)
+                                } else {
+                                    None
+                                },
+                                version: boot_res.version,
+                                verified: true,
+                                fail_count: 0,
+                                first_seen_unix_ms: now_ms,
+                                last_seen_unix_ms: now_ms,
+                            });
+                        }
                         for c in boot_res.contacts {
                             let tcp_port = if c.tcp_port != 0 { Some(c.tcp_port) } else { None };
                             contacts.push(KadContact {

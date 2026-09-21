@@ -258,20 +258,32 @@ impl KadService {
     /// Bootstraps Kad from a connected eD2K peer that advertised a Kad UDP
     /// port (eMule "bootstrap from clients": any Kad-capable client can seed
     /// the routing table). Only runs while the routing table is thin
-    /// (< 50 contacts) and at most once per minute.
-    pub async fn maybe_bootstrap_from_peer(&self, ip: Ipv4Addr, kad_udp_port: u16) {
+    /// (< 50 contacts). Throttled: every 10 s while the table is empty,
+    /// every 60 s once it has contacts.
+    pub async fn maybe_bootstrap_from_peer(&self, ip: Ipv4Addr, kad_udp_port: u16, low_id: bool) {
         const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
-        let thin = {
-            let table = self.routing_table.lock().await;
-            table.total_contacts() < 50
-        };
-        if !thin {
+        const EMPTY_TABLE_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+        // A LowID peer is firewalled: its advertised Kad UDP port is not
+        // reachable, so a bootstrap request can only time out.
+        if low_id {
             return;
         }
+        let contacts = {
+            let table = self.routing_table.lock().await;
+            table.total_contacts()
+        };
+        if contacts >= 50 {
+            return;
+        }
+        let min_interval = if contacts == 0 {
+            EMPTY_TABLE_MIN_INTERVAL
+        } else {
+            PEER_BOOTSTRAP_MIN_INTERVAL
+        };
         {
             let mut last = self.last_peer_bootstrap.lock().unwrap();
             if last
-                .map(|t| t.elapsed() < PEER_BOOTSTRAP_MIN_INTERVAL)
+                .map(|t| t.elapsed() < min_interval)
                 .unwrap_or(false)
             {
                 return;
@@ -279,7 +291,7 @@ impl KadService {
             *last = Some(std::time::Instant::now());
         }
         tracing::info!(
-            "Kad: bootstrapping from connected peer {ip}:{kad_udp_port} (thin routing table)"
+            "Kad: bootstrapping from connected peer {ip}:{kad_udp_port} (routing table: {contacts} contacts)"
         );
         let _ = self
             .bootstrap_from_node(&ip.to_string(), kad_udp_port)

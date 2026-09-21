@@ -518,11 +518,12 @@ pub(crate) async fn perform_peer_handshake(
                                                 if let mule_protocol::ed2k::tags::TagValue::UInt32(ports) = tag.value {
                                                     let peer_kad_port = (ports >> 16) as u16;
                                                     if peer_kad_port > 0 {
+                                                        let low_id = ans.client_id < 16_777_216;
                                                         if let Some(ref kad) = kad_service {
                                                             let k_clone = Arc::clone(kad);
                                                             if let IpAddr::V4(ip4) = target_addr.ip() {
                                                                 tokio::spawn(async move {
-                                                                    k_clone.maybe_bootstrap_from_peer(ip4, peer_kad_port).await;
+                                                                    k_clone.maybe_bootstrap_from_peer(ip4, peer_kad_port, low_id).await;
                                                                 });
                                                             }
                                                         }
