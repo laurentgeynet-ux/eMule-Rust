@@ -1,3 +1,5 @@
+import '../../../../l10n/generated/app_localizations.dart';
+
 /// Search transport target: connected eD2K server, global UDP broadcast to
 /// known servers, or Kad DHT keyword index.
 enum SearchTarget {
@@ -5,14 +7,27 @@ enum SearchTarget {
   global,
   kad;
 
-  String get label {
+  /// Libellé localisé du sélecteur de cible.
+  String labelL10n(AppLocalizations l10n) {
     switch (this) {
       case SearchTarget.server:
-        return 'Serveur eD2K';
+        return l10n.searchTargetServer;
       case SearchTarget.global:
-        return 'Global (UDP)';
+        return l10n.globalUdp;
       case SearchTarget.kad:
-        return 'Réseau Kad DHT';
+        return l10n.searchTargetKad;
+    }
+  }
+
+  /// Forme article défini utilisée dans les phrases (« Activez … »).
+  String targetLabelL10n(AppLocalizations l10n) {
+    switch (this) {
+      case SearchTarget.server:
+        return l10n.searchTargetEnableServer;
+      case SearchTarget.global:
+        return l10n.searchTargetEnableGlobal;
+      case SearchTarget.kad:
+        return l10n.searchTargetLabelKad;
     }
   }
 }

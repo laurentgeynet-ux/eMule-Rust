@@ -99,6 +99,31 @@ enum DownloadPriority {
   }
 }
 
+/// Half-open byte range `[start, end)` — used for in-flight "pending" blocks.
+@immutable
+class ByteRange {
+  final int start;
+  final int end;
+
+  const ByteRange(this.start, this.end);
+
+  factory ByteRange.fromJson(dynamic json) {
+    if (json is List) {
+      return ByteRange(
+        (json[0] as num?)?.toInt() ?? 0,
+        (json[1] as num?)?.toInt() ?? 0,
+      );
+    }
+    if (json is Map) {
+      return ByteRange(
+        (json['start'] as num?)?.toInt() ?? 0,
+        (json['end'] as num?)?.toInt() ?? 0,
+      );
+    }
+    return const ByteRange(0, 0);
+  }
+}
+
 @immutable
 class DownloadPartInfo {
   final int partIndex;
@@ -109,6 +134,9 @@ class DownloadPartInfo {
   final bool isVerified;
   final String state; // 'verified', 'completed', 'downloading', 'missing'
   final int availableSourceCount; // sources advertising this part (eMule blue/red)
+  /// Intra-part received bitmap: 64 equal cells, bit i set when the cell is
+  /// fully downloaded (eMule chunk-bar gaps at ~152 KiB granularity).
+  final int receivedMask;
 
   const DownloadPartInfo({
     required this.partIndex,
@@ -119,6 +147,7 @@ class DownloadPartInfo {
     required this.isVerified,
     required this.state,
     this.availableSourceCount = 0,
+    this.receivedMask = 0,
   });
 
   factory DownloadPartInfo.fromJson(Map<String, dynamic> json) {
@@ -131,6 +160,7 @@ class DownloadPartInfo {
       isVerified: json['isVerified'] as bool? ?? false,
       state: json['state'] as String? ?? 'missing',
       availableSourceCount: (json['availableSourceCount'] as num?)?.toInt() ?? 0,
+      receivedMask: (json['receivedMask'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -144,11 +174,16 @@ class DownloadPartInfo {
           partIndex == other.partIndex &&
           receivedBytes == other.receivedBytes &&
           isVerified == other.isVerified &&
+          receivedMask == other.receivedMask &&
           state == other.state;
 
   @override
   int get hashCode =>
-      partIndex.hashCode ^ receivedBytes.hashCode ^ isVerified.hashCode ^ state.hashCode;
+      partIndex.hashCode ^
+      receivedBytes.hashCode ^
+      isVerified.hashCode ^
+      receivedMask.hashCode ^
+      state.hashCode;
 }
 
 @immutable
@@ -177,6 +212,9 @@ class DownloadItem {
   final String? lastError;
   final DateTime? lastStatusChange;
   final List<DownloadPartInfo> parts;
+  /// Byte ranges of blocks requested but not yet received (eMule
+  /// `requestedblocks_list` — painted yellow on the status bar).
+  final List<ByteRange> pendingRanges;
   final String? categoryId;
   /// Per-file source cap (eMule FT_MAXSOURCES); null = global limit.
   final int? maxSources;
@@ -206,6 +244,7 @@ class DownloadItem {
     this.lastError,
     this.lastStatusChange,
     this.parts = const [],
+    this.pendingRanges = const [],
     this.categoryId,
     this.maxSources,
   });
@@ -219,6 +258,11 @@ class DownloadItem {
     final parts = partsRaw != null
         ? partsRaw.map((e) => DownloadPartInfo.fromJson(e as Map<String, dynamic>)).toList()
         : const <DownloadPartInfo>[];
+
+    final pendingRaw = json['pendingRanges'] as List<dynamic>?;
+    final pendingRanges = pendingRaw != null
+        ? pendingRaw.map(ByteRange.fromJson).toList()
+        : const <ByteRange>[];
 
     final lastStatusChangeMs = (json['lastStatusChangeUnixMs'] as num?)?.toInt();
 
@@ -253,6 +297,7 @@ class DownloadItem {
           ? DateTime.fromMillisecondsSinceEpoch(lastStatusChangeMs)
           : null,
       parts: parts,
+      pendingRanges: pendingRanges,
       categoryId: json['categoryId'] as String?,
       maxSources: (json['maxSources'] as num?)?.toInt(),
     );
@@ -285,6 +330,7 @@ class DownloadItem {
     String? lastError,
     DateTime? lastStatusChange,
     List<DownloadPartInfo>? parts,
+    List<ByteRange>? pendingRanges,
     String? categoryId,
     bool clearCategoryId = false,
     int? maxSources,
@@ -315,6 +361,7 @@ class DownloadItem {
       lastError: lastError ?? this.lastError,
       lastStatusChange: lastStatusChange ?? this.lastStatusChange,
       parts: parts ?? this.parts,
+      pendingRanges: pendingRanges ?? this.pendingRanges,
       categoryId: clearCategoryId ? null : (categoryId ?? this.categoryId),
       maxSources: clearMaxSources ? null : (maxSources ?? this.maxSources),
     );

@@ -7,11 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../app/providers.dart';
 import '../../../../../l10n/l10n.dart';
-import '../../../downloads/widgets/network/network_profile_selector.dart';
 import '../../../downloads/widgets/network/network_quotas_card.dart';
 import '../../../downloads/widgets/network/network_state_banner.dart';
 import '../../widgets/anti_ssrf_notice.dart';
-import '../../widgets/network_mode_status_card.dart';
+import '../../widgets/network_toggles_card.dart';
 import '../../widgets/upnp_status_card.dart';
 import 'settings_section_scaffold.dart';
 
@@ -204,9 +203,7 @@ class _SettingsConnectionSectionState
           },
         ),
         const SizedBox(height: 16),
-        NetworkModeStatusCard(profile: ctl.currentProfile),
-        const SizedBox(height: 16),
-        NetworkProfileSelector(
+        NetworkTogglesCard(
           active: ctl.currentProfile,
           onSelected: _switchProfile,
         ),

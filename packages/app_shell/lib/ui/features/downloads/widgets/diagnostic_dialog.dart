@@ -13,6 +13,7 @@ import 'diagnostic/diagnostic_row_divider.dart';
 import 'diagnostic/diagnostic_section_title.dart';
 import 'diagnostic/network_profile_banner.dart';
 import 'lab_guide_dialog.dart';
+import '../../../../l10n/enum_labels.dart';
 import '../../../../l10n/l10n.dart';
 
 /// System & lab diagnostics: workdir mode/paths, daemon process info,
@@ -29,10 +30,10 @@ class DiagnosticDialog extends ConsumerWidget {
     final workdirMode = info?.workdirMode ??
         (resolvedLocal != null
             ? formatWorkDirMode(resolvedLocal.mode)
-            : 'Unknown');
+            : context.l10n.unknown);
     final workdirPath = info?.workdirPath ??
         resolvedLocal?.workDirPath ??
-        'Not available';
+        context.l10n.notAvailable;
     final String downloadsPath = info?.defaultDownloadDir ??
         resolvedLocal?.defaultDownloadDirPath ??
         ref.read(defaultDownloadDirectoryProvider);
@@ -43,7 +44,9 @@ class DiagnosticDialog extends ConsumerWidget {
         ? '${supervisor!.activeSession!.pid}'
         : (supervisor?.activePid != null
             ? '${supervisor!.activePid}'
-            : (ref.watch(daemonConnectionStateProvider).label));
+            : (ref
+                .watch(daemonConnectionStateProvider)
+                .labelL10n(context.l10n)));
 
     final rpcEndpoint = supervisor?.activeSession?.endpoint ??
         'ws://127.0.0.1:4660/rpc';
@@ -131,10 +134,13 @@ class DiagnosticDialog extends ConsumerWidget {
                                 ),
                                 if (isPortable) ...[
                                   const SizedBox(width: 8),
-                                  Text(context.l10n.isolatedDataFolder,
-                                    style: TextStyle(
-                                      color: AppColors.textMuted,
-                                      fontSize: 11,
+                                  Flexible(
+                                    child: Text(context.l10n.isolatedDataFolder,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: AppColors.textMuted,
+                                        fontSize: 11,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -145,18 +151,15 @@ class DiagnosticDialog extends ConsumerWidget {
                           DiagnosticCopyRow(
                             label: context.l10n.internalData,
                             path: workdirPath,
-                            copyTooltip: 'Copy full path',
-                            copiedMessage:
-                                'Internal data path copied to clipboard',
+                            copyTooltip: context.l10n.copyFullPath,
+                            copiedMessage: context.l10n.copiedPathInternal,
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticCopyRow(
                             label: context.l10n.downloads,
                             path: downloadsPath,
-                            copyTooltip:
-                                'Copy downloads directory path',
-                            copiedMessage:
-                                'Downloads path copied to clipboard',
+                            copyTooltip: context.l10n.copyDownloadsPath,
+                            copiedMessage: context.l10n.copiedDownloadsPath,
                           ),
                         ],
                       ),
@@ -224,9 +227,8 @@ class DiagnosticDialog extends ConsumerWidget {
                           DiagnosticCopyRow(
                             label: context.l10n.daemonLog,
                             path: '$workdirPath\\daemon.log',
-                            copyTooltip: 'Copy daemon log path',
-                            copiedMessage:
-                                'Daemon log path copied to clipboard',
+                            copyTooltip: context.l10n.copyDaemonLogPath,
+                            copiedMessage: context.l10n.copiedDaemonLogPath,
                           ),
                           const DiagnosticRowDivider(),
                           DiagnosticInfoRow(
@@ -282,13 +284,6 @@ class DiagnosticDialog extends ConsumerWidget {
                         Clipboard.setData(
                           ClipboardData(text: sanitized),
                         );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(context.l10n.sanitizedShareableDiagnosticsCopied,
-                            ),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
                       },
                     ),
                     OutlinedButton.icon(
@@ -310,13 +305,6 @@ class DiagnosticDialog extends ConsumerWidget {
                               ref.watch(networkPolicyControllerProvider).currentProfile,
                         );
                         Clipboard.setData(ClipboardData(text: full));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(context.l10n.fullDiagnosticsCopiedToClipboard,
-                            ),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
                       },
                     ),
                     if (ref.watch(isLabModeAvailableProvider))

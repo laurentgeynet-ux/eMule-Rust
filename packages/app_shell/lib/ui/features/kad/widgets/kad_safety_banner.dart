@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../l10n/l10n.dart';
+
 /// Contextual banner describing the Kad transport mode (public vs confined
 /// loopback lab) and the current UDP socket state.
 class KadSafetyBanner extends StatelessWidget {
@@ -35,11 +37,15 @@ class KadSafetyBanner extends StatelessWidget {
             child: Text(
               status.isUdpActive
                   ? (isPublic
-                        ? 'Réseau Kad DHT Mondial actif sur ${status.udpBindAddress ?? "0.0.0.0:39737"} | Routage Kademlia ouvert | Protection Anti-SSRF active.'
-                        : 'Socket UDP actif : ${status.udpBindAddress ?? "127.0.0.1:39737"} (Mode Laboratoire Confiné) | Kill switch instantané.')
+                        ? context.l10n.kadBannerPublic(
+                            status.udpBindAddress ?? "0.0.0.0:39737",
+                          )
+                        : context.l10n.kadBannerLab(
+                            status.udpBindAddress ?? "127.0.0.1:39737",
+                          ))
                   : (isPublic
-                        ? 'Transport UDP Kad : Cliquez sur "Démarrer UDP" pour vous connecter au réseau Kademlia mondial.'
-                        : 'Transport UDP Kad confiné : Seul le trafic loopback (127.0.0.1) est autorisé dans le profil LocalLab.'),
+                        ? context.l10n.kadBannerStartPublic
+                        : context.l10n.kadBannerStartLab),
               style: const TextStyle(
                 fontSize: 12,
                 color: AppColors.textSecondary,

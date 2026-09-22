@@ -246,8 +246,10 @@ impl DaemonClient {
         wait_seconds: u64,
     ) -> Result<Value, String> {
         let net = network.unwrap_or("kad");
-        let search_kad = net == "kad" || net == "all";
-        let search_server = net == "server" || net == "all";
+        // Le schéma MCP expose "both" ; "all" reste accepté pour
+        // compatibilité avec les clients existants.
+        let search_kad = matches!(net, "kad" | "all" | "both");
+        let search_server = matches!(net, "server" | "all" | "both");
 
         let mut collected_files: Vec<Value> = Vec::new();
         let mut seen_hashes = std::collections::HashSet::new();

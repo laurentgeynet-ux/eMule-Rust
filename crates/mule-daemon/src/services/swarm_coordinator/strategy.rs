@@ -34,7 +34,11 @@ impl SwarmCoordinator {
             let mut dl_guard = self.state.downloads.lock().await;
             dl_guard.decay_stale_rates()
         };
-        for snap in decayed_snapshots {
+        for mut snap in decayed_snapshots {
+            snap.pending_ranges = self
+                .state
+                .peer_session
+                .try_pending_ranges(&snap.ed2k_hash);
             crate::services::peer_session::emit_download_update(
                 &self.state.event_tx,
                 &self.state.sequence,
@@ -364,6 +368,12 @@ impl SwarmCoordinator {
             self.state.client_udp.send_reask_file_ping(&target, 0).await;
         }
 
+        // Réglages effectifs lus une fois par tick (persistés en base —
+        // eMule Preferences → Sécurité) : les valeurs `config.*` figées au
+        // boot ne reflètent pas les changements via `settings.set`.
+        let (obf_enabled, obf_required) = self.state.effective_obfuscation().await;
+        let nickname = self.state.current_nickname().await;
+
         for dl in active_downloads {
             let file_info = {
                 let dl_guard = self.state.downloads.lock().await;
@@ -414,17 +424,14 @@ impl SwarmCoordinator {
                 if self.state.server_session.snapshot().await.status
                     == ServerConnectionStatus::Connected
                 {
-                    let req = GetSourcesRequest::with_obfuscation(
-                        hash.0,
-                        size,
-                        self.state.config.obfuscation_enabled,
-                    );
+                    let req =
+                        GetSourcesRequest::with_obfuscation(hash.0, size, obf_enabled);
                     if let Err(e) = self.state.server_session.get_sources(req).await {
                         tracing::debug!("Swarm coordinator get_sources failed for {hash_hex}: {e}");
                     } else {
                         tracing::info!(
                             "Swarm coordinator requested sources from eD2K server for file {hash_hex} (obfuscated={})",
-                            self.state.config.obfuscation_enabled
+                            obf_enabled
                         );
                     }
                 }
@@ -481,10 +488,12 @@ impl SwarmCoordinator {
                     };
                     (cid, s_ip, s_port, s_snap.is_high_id)
                 } else {
-                    tracing::debug!(
-                        "Skipping peer connections for {hash_hex}: no eD2K server connection (client_id would be 0)"
-                    );
-                    continue;
+                    // eMule fonctionne en Kad-only : sans serveur le hello
+                    // annonce client_id = 0 (même convention que le chemin
+                    // manuel `sources.connect`). `server_is_high_id=false`
+                    // filtre d'office les callbacks serveur et les sources
+                    // LowID, injoignables sans serveur.
+                    (0u32, 0u32, 0u16, false)
                 }
             };
 
@@ -724,9 +733,8 @@ impl SwarmCoordinator {
 
                 let target_user_hash = src.user_hash_bytes();
                 let peer_crypt_options = src.crypt_options;
-                let obfu_enabled = self.state.config.obfuscation_enabled;
-                let obfu_required = self.state.config.obfuscation_required;
                 let obfu_pad_max = self.state.config.obfuscation_padding_max;
+                let nickname = nickname.clone();
 
                 tracing::info!(
                     "Swarm coordinator initiating peer connection to {peer_addr} for {file_hash_str} (quota={target_quota}, active={active_count}, obfu_target_hash={:?}, crypt_opts=0x{:02x})",
@@ -740,7 +748,7 @@ impl SwarmCoordinator {
                             peer_addr,
                             permit,
                             client_port,
-                            "Emule-Sion".to_string(),
+                            nickname,
                             user_hash,
                             dl_ref,
                             client_id,
@@ -749,8 +757,8 @@ impl SwarmCoordinator {
                             kad_port,
                             target_user_hash,
                             peer_crypt_options,
-                            obfu_enabled,
-                            obfu_required,
+                            obf_enabled,
+                            obf_required,
                             obfu_pad_max,
                             sx_env,
                         )
@@ -864,6 +872,7 @@ impl SwarmCoordinator {
 
         let user_hash = self.state.identity.lock().await.user_hash();
         let ed2k_port = self.state.ed2k_port();
+        let nickname = self.state.current_nickname().await;
         tracing::info!("Server failover: connecting to {name} ({addr})");
         self.last_server_reconnect = Some(Instant::now());
         self.server_attempts.insert(address.clone(), Instant::now());
@@ -877,7 +886,7 @@ impl SwarmCoordinator {
                 10000,
                 15000,
                 ed2k_port,
-                "http://emule-project.net".to_string(),
+                nickname,
                 user_hash,
             )
             .await;

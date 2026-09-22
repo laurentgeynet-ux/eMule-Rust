@@ -12,6 +12,7 @@ class DownloadActionsBar extends StatelessWidget {
   final bool compact;
   final ValueChanged<String?> onCategorySelected;
   final VoidCallback onDetails;
+  final VoidCallback onRename;
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onRemove;
@@ -23,6 +24,7 @@ class DownloadActionsBar extends StatelessWidget {
     required this.categories,
     required this.onCategorySelected,
     required this.onDetails,
+    required this.onRename,
     required this.onPause,
     required this.onResume,
     required this.onRemove,
@@ -46,8 +48,8 @@ class DownloadActionsBar extends StatelessWidget {
             size: compact ? 16 : 18,
           ),
           tooltip: category != null
-              ? 'Category: ${category.name}'
-              : 'Assign Category',
+              ? context.l10n.tooltipCategoryName(category.name)
+              : context.l10n.tooltipAssignCategory,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
           onSelected: onCategorySelected,
@@ -88,6 +90,20 @@ class DownloadActionsBar extends StatelessWidget {
           constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
           onPressed: onDetails,
         ),
+        IconButton(
+          icon: Icon(
+            Icons.edit_rounded,
+            color: AppColors.textSecondary,
+            size: compact ? 16 : 18,
+          ),
+          tooltip: context.l10n.renameFileTooltip,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+          onPressed: onRename,
+        ),
+        // L'emplacement pause/reprendre est toujours réservé : sans lui,
+        // les icônes info/poubelle se décaleraient d'une colonne sur les
+        // lignes terminées (alignement vertical constant entre statuts).
         if (item.status.isPaused)
           IconButton(
             icon: Icon(
@@ -111,7 +127,9 @@ class DownloadActionsBar extends StatelessWidget {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
             onPressed: onPause,
-          ),
+          )
+        else
+          const SizedBox(width: 24),
         IconButton(
           icon: Icon(
             Icons.delete_outline_rounded,

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../../l10n/enum_labels.dart';
+import '../../../../../l10n/l10n.dart';
+
 /// Top banner: strict loopback confinement vs public network profile.
 class NetworkProfileBanner extends StatelessWidget {
   final NetworkProfile profile;
@@ -18,11 +21,11 @@ class NetworkProfileBanner extends StatelessWidget {
     final iconColor =
         isLoopbackOnly ? const Color(0xFF10B981) : const Color(0xFF60A5FA);
     final title = isLoopbackOnly
-        ? 'Strict Loopback Confinement (127.0.0.1)'
-        : 'Network Profile: ${profile.label}';
+        ? context.l10n.diagLoopbackTitle
+        : context.l10n.diagNetworkProfile(profile.labelL10n(context.l10n));
     final subtitle = isLoopbackOnly
-        ? 'Zero WAN traffic. No public eD2K servers, Kad nodes, or external peers.'
-        : 'Public network traffic enabled under active network policy.';
+        ? context.l10n.diagLoopbackSubtitle
+        : context.l10n.diagPublicSubtitle;
 
     return Container(
       padding: const EdgeInsets.all(12),

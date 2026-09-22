@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../../l10n/enum_labels.dart';
+import '../../../../../l10n/l10n.dart';
+
 /// Colored status pill shown on download rows (compact and full layouts).
 class DownloadStatusPill extends StatelessWidget {
   final DownloadStatus status;
@@ -30,7 +33,7 @@ class DownloadStatusPill extends StatelessWidget {
         ),
       ),
       child: Text(
-        status.label,
+        status.labelL10n(context.l10n),
         style: TextStyle(
           fontSize: compact ? 10 : 11,
           fontWeight: FontWeight.w600,

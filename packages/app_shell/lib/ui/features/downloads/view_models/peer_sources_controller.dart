@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for peer sources and the peer session.
 ///
 /// Owns the per-hash source lists, the loading flag and the live peer
@@ -24,7 +26,7 @@ class PeerSourcesController extends ChangeNotifier {
       final rawSources = params['sources'] as List<dynamic>? ?? [];
       final hash = params['file_hash'] as String? ?? '';
       onStatus?.call(
-        '${rawSources.length} source(s) trouvée(s) pour $hash',
+        L10nLookup.current.msgSourcesFound(hash, rawSources.length),
       );
       if (hash.isNotEmpty) {
         loadSourcesForHash(hash);
@@ -93,7 +95,7 @@ class PeerSourcesController extends ChangeNotifier {
       _sources[fileHash] = await client.listSources(fileHash);
       unawaited(loadSwarmForHash(fileHash));
     } catch (e) {
-      onError?.call('Échec du chargement des sources : $e');
+      onError?.call(L10nLookup.current.msgErrLoadSources(e));
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -106,11 +108,11 @@ class PeerSourcesController extends ChangeNotifier {
       final list = _sources.putIfAbsent(fileHash, () => []);
       list.removeWhere((s) => s.address == address);
       list.insert(0, src);
-      onStatus?.call('Source $address ajoutée');
+      onStatus?.call(L10nLookup.current.msgSourceAdded(address));
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Échec de l\'ajout de la source : $e');
+      onError?.call(L10nLookup.current.msgErrAddSource(e));
       notifyListeners();
       return false;
     }
@@ -129,11 +131,11 @@ class PeerSourcesController extends ChangeNotifier {
         address,
         force: force,
       );
-      onStatus?.call('Connexion à $address initialisée');
+      onStatus?.call(L10nLookup.current.msgConnInitiated(address));
       await loadSourcesForHash(fileHash);
       return true;
     } catch (e) {
-      onError?.call('Échec de la connexion à la source : $e');
+      onError?.call(L10nLookup.current.msgErrConnectSource(e));
       await loadSourcesForHash(fileHash);
       return false;
     } finally {
@@ -147,12 +149,12 @@ class PeerSourcesController extends ChangeNotifier {
       _session = await client.disconnectPeerSource(address: address);
       onStatus?.call(
         address != null
-            ? 'Peer $address déconnecté'
-            : 'Session(s) peer déconnectée(s)',
+            ? L10nLookup.current.msgPeerDisconnected(address)
+            : L10nLookup.current.msgSessionsDisconnected,
       );
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec de la déconnexion peer : $e');
+      onError?.call(L10nLookup.current.msgErrDisconnectPeer(e));
       notifyListeners();
     }
   }
@@ -162,10 +164,10 @@ class PeerSourcesController extends ChangeNotifier {
   Future<void> setDownloadPriority(String downloadId, String priority) async {
     try {
       await client.setDownloadPriority(downloadId, priority);
-      onStatus?.call('Priorité changée : $priority');
+      onStatus?.call(L10nLookup.current.msgPriorityChanged(priority));
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec du changement de priorité : $e');
+      onError?.call(L10nLookup.current.msgErrPriority(e));
     }
   }
 
@@ -175,12 +177,12 @@ class PeerSourcesController extends ChangeNotifier {
       await client.setDownloadMaxSources(downloadId, maxSources);
       onStatus?.call(
         maxSources == null
-            ? 'Limite de sources réinitialisée'
-            : 'Limite de sources : $maxSources',
+            ? L10nLookup.current.msgSrcLimitReset
+            : L10nLookup.current.msgSrcLimitSet(maxSources),
       );
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec du changement de limite : $e');
+      onError?.call(L10nLookup.current.msgErrSrcLimit(e));
     }
   }
 
@@ -188,10 +190,10 @@ class PeerSourcesController extends ChangeNotifier {
     try {
       await client.clearSources(fileHash);
       _sources.remove(fileHash);
-      onStatus?.call('Sources effacées');
+      onStatus?.call(L10nLookup.current.msgSourcesCleared);
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec de l\'effacement des sources : $e');
+      onError?.call(L10nLookup.current.msgErrClearSources(e));
       notifyListeners();
     }
   }

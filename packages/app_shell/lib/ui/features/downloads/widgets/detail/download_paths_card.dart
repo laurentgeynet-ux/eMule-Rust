@@ -38,7 +38,7 @@ class DownloadPathsCard extends StatelessWidget {
               Expanded(
                 child: DetailCopyRow(
                   label: context.l10n.finalTargetDestination,
-                  value: item.targetPath ?? 'Pending destination...',
+                  value: item.targetPath ?? context.l10n.pendingDestination,
                   monospace: true,
                 ),
               ),

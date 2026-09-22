@@ -33,7 +33,7 @@ void main() {
       final sidebarFinder = find.byType(DownloadsSidebar);
       expect(sidebarFinder, findsOneWidget);
       expect(tester.getSize(sidebarFinder).width, 260);
-      expect(find.text('CATEGORIES'), findsOneWidget);
+      expect(find.text('CATÉGORIES'), findsOneWidget);
 
       // DownloadRow should be in full layout
       expect(find.byType(DownloadRow), findsWidgets);
@@ -54,7 +54,7 @@ void main() {
       expect(tester.getSize(sidebarFinder).width, 68);
 
       // Section titles hidden in compact rail
-      expect(find.text('CATEGORIES'), findsNothing);
+      expect(find.text('CATÉGORIES'), findsNothing);
 
       // Verify no RenderFlex overflows
       expect(tester.takeException(), isNull);
@@ -103,7 +103,7 @@ void main() {
       // Navigate to History
       viewModel.setSection(AppNavSection.history);
       await tester.pumpAndSettle();
-      expect(find.text('History & Local Statistics'), findsOneWidget);
+      expect(find.text('Historique & statistiques locales'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       // Navigate to Servers
@@ -135,7 +135,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('eDonkeyServer No2'), findsOneWidget);
-      expect(find.text('Etat / Filtre'), findsOneWidget);
+      expect(find.text('État / Filtre'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       // Test Small Screen (550x800) -> Responsive cards list

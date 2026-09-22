@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for the eD2K servers section.
 ///
 /// Owns the server list, the loading flag and the live server session
@@ -53,7 +55,7 @@ class ServersController extends ChangeNotifier {
     try {
       _servers = await client.listServers();
     } catch (e) {
-      onError?.call('Failed to list servers: $e');
+      onError?.call(L10nLookup.current.msgErrListServers(e));
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -64,7 +66,7 @@ class ServersController extends ChangeNotifier {
     try {
       return await client.inspectServerMet(filePath);
     } catch (e) {
-      onError?.call('Failed to inspect server.met: $e');
+      onError?.call(L10nLookup.current.msgErrInspectServerMet(e));
       notifyListeners();
       return null;
     }
@@ -74,13 +76,16 @@ class ServersController extends ChangeNotifier {
     try {
       final result = await client.importServerMet(filePath);
       onStatus?.call(
-        'Imported ${result.imported} servers (${result.allowedCount} allowed, '
-        '${result.blockedCount} blocked by filter)',
+        L10nLookup.current.msgServersImported(
+          result.allowedCount,
+          result.blockedCount,
+          result.imported,
+        ),
       );
       await fetch();
       return true;
     } catch (e) {
-      onError?.call('Failed to import server.met: $e');
+      onError?.call(L10nLookup.current.msgErrImportServerMet(e));
       notifyListeners();
       return false;
     }
@@ -92,13 +97,11 @@ class ServersController extends ChangeNotifier {
     try {
       final result = await client.updateServersFromUrl(url);
       final count = result['serversCount'] ?? result['imported'] ?? 0;
-      onStatus?.call(
-        'Mise à jour réussie : $count serveurs traités depuis l\'URL',
-      );
+      onStatus?.call(L10nLookup.current.msgServersUpdated(count));
       await fetch();
       return result;
     } catch (e) {
-      onError?.call('Échec de la mise à jour des serveurs depuis l\'URL : $e');
+      onError?.call(L10nLookup.current.msgErrServersUpdate(e));
       notifyListeners();
       return null;
     } finally {
@@ -112,7 +115,7 @@ class ServersController extends ChangeNotifier {
       await client.setServerEnabled(address, enabled);
       await fetch();
     } catch (e) {
-      onError?.call('Failed to toggle server state: $e');
+      onError?.call(L10nLookup.current.msgErrToggleServer(e));
       notifyListeners();
     }
   }
@@ -122,7 +125,7 @@ class ServersController extends ChangeNotifier {
       await client.deleteServer(address);
       await fetch();
     } catch (e) {
-      onError?.call('Failed to delete server: $e');
+      onError?.call(L10nLookup.current.msgErrDeleteServer(e));
       notifyListeners();
     }
   }
@@ -130,10 +133,10 @@ class ServersController extends ChangeNotifier {
   Future<void> clear() async {
     try {
       final count = await client.clearServers();
-      onStatus?.call('Cleared $count servers');
+      onStatus?.call(L10nLookup.current.msgServersCleared(count));
       await fetch();
     } catch (e) {
-      onError?.call('Failed to clear servers: $e');
+      onError?.call(L10nLookup.current.msgErrClearServers(e));
       notifyListeners();
     }
   }
@@ -145,11 +148,12 @@ class ServersController extends ChangeNotifier {
     try {
       _session = await client.connectServer(address);
       onStatus?.call(
-        'Connexion au serveur ${_session.serverName ?? address}...',
+        L10nLookup.current
+            .msgConnectingToServer(_session.serverName ?? address),
       );
       notifyListeners();
     } catch (e) {
-      onError?.call('Connexion impossible : $e');
+      onError?.call(L10nLookup.current.msgErrConnectServer(e));
       _session = ServerSessionModel.disconnected;
       notifyListeners();
     } finally {
@@ -161,10 +165,10 @@ class ServersController extends ChangeNotifier {
   Future<void> disconnect() async {
     try {
       _session = await client.disconnectServer();
-      onStatus?.call('Déconnecté du serveur eD2K');
+      onStatus?.call(L10nLookup.current.msgDisconnectedFromServer);
       notifyListeners();
     } catch (e) {
-      onError?.call('Erreur de déconnexion : $e');
+      onError?.call(L10nLookup.current.msgErrDisconnectServer(e));
       notifyListeners();
     }
   }

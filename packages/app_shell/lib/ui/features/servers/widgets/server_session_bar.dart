@@ -150,7 +150,9 @@ class ServerSessionBar extends StatelessWidget {
                     color: AppColors.danger,
                   ),
                   label: Text(
-                    isConnecting ? 'Annuler' : 'Déconnecter',
+                    isConnecting
+                        ? context.l10n.annuler
+                        : context.l10n.serverDisconnectBtn,
                     style: const TextStyle(
                       color: AppColors.danger,
                       fontSize: 12,

@@ -42,6 +42,11 @@ void main() {
     final filterBtn = find.byKey(const Key('ip_filter_button'));
     expect(filterBtn, findsOneWidget);
 
+    // The top bar is horizontally scrollable — longer French labels can
+    // push the button out of the viewport, so scroll it into view first.
+    await tester.ensureVisible(filterBtn);
+    await tester.pumpAndSettle();
+
     // Tap button → navigates to the Settings page (standalone mode falls
     // back to the section switch, opening the General section).
     await tester.tap(filterBtn);

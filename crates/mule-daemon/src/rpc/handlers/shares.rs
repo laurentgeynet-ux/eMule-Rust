@@ -3,9 +3,33 @@ use serde_json::{json, Value};
 use crate::error::JsonRpcError;
 use crate::state::AppState;
 
+/// Nudge `shares.changed` — les clients refetchent `shares.list` (le badge
+/// sidebar inclus) après chaque mutation, y compris celles initiées hors
+/// UI (MCP, CLI).
+fn emit_shares_changed(state: &AppState) {
+    state.emit_event(|sequence| crate::services::DaemonEvent::Custom {
+        method: "shares.changed".to_string(),
+        payload: json!({ "sequence": sequence }),
+    });
+}
+
 pub async fn handle_shares_list(state: &AppState) -> Result<Value, JsonRpcError> {
-    let dl_svc = state.downloads.lock().await;
-    let list = dl_svc.list_all_shared_files()?;
+    let mut list = {
+        let dl_svc = state.downloads.lock().await;
+        dl_svc.list_all_shared_files()?
+    };
+    // Statistiques d'upload par fichier (jointure sur le hash en
+    // minuscules) : débit mesuré instantané agrégé sur les slots actifs +
+    // total cumulé persisté (eMule colonnes « Upload speed » /
+    // « Transferred » de la liste des fichiers partagés).
+    let um = state.inbound_listener.upload_manager();
+    let rates = um.per_file_rates_bps().await;
+    let totals = um.per_file_uploaded_bytes();
+    for f in &mut list {
+        let key = f.file_hash.to_lowercase();
+        f.upload_rate_bps = rates.get(&key).copied().unwrap_or(0);
+        f.uploaded_bytes = totals.get(&key).copied().unwrap_or(0);
+    }
     Ok(json!({ "sharedFiles": list }))
 }
 
@@ -33,6 +57,7 @@ pub async fn handle_shares_add(
 
     let shared = mule_core::model::SharedFile::new(file_hash, file_name, file_size, file_path);
     state.downloads.lock().await.add_shared_file(&shared)?;
+    emit_shares_changed(state);
     Ok(serde_json::to_value(shared).unwrap_or_default())
 }
 
@@ -45,9 +70,46 @@ pub async fn handle_shares_remove(
         .as_str()
         .or_else(|| params["hash"].as_str())
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+    let delete_file = params["deleteFile"]
+        .as_bool()
+        .or_else(|| params["delete_file"].as_bool())
+        .unwrap_or(false);
 
-    let removed = state.downloads.lock().await.remove_shared_file(file_hash)?;
+    let removed = state
+        .downloads
+        .lock()
+        .await
+        .remove_shared_file(file_hash, delete_file)?;
+    if removed {
+        emit_shares_changed(state);
+    }
     Ok(json!({ "removed": removed }))
+}
+
+/// `shares.rename` — renomme un fichier partagé complet (`{fileHash,
+/// newName}`) : fichier disque + entrée `shared_files` (et le download
+/// complété associé s'il existe).
+pub async fn handle_shares_rename(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+    let new_name = params["newName"]
+        .as_str()
+        .or_else(|| params["new_name"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'newName'"))?;
+
+    state
+        .downloads
+        .lock()
+        .await
+        .rename_shared_file(file_hash, new_name)?;
+    emit_shares_changed(state);
+    Ok(json!({ "renamed": true }))
 }
 
 /// `shares.rescan` — re-scans the configured download (Incoming) directory
@@ -63,6 +125,9 @@ pub async fn handle_shares_rescan(state: &AppState) -> Result<Value, JsonRpcErro
     let added =
         crate::services::incoming_share::scan_download_dir_shares(&state.downloads, dir.clone())
             .await;
+    if added > 0 {
+        emit_shares_changed(state);
+    }
     Ok(json!({
         "added": added,
         "dir": dir.to_string_lossy(),
@@ -94,6 +159,8 @@ pub async fn handle_shares_set_enabled(
         Some(ref mut sf) => {
             sf.enabled = enabled;
             dl_svc.add_shared_file(sf)?;
+            drop(dl_svc);
+            emit_shares_changed(state);
             Ok(serde_json::to_value(sf).unwrap_or_default())
         }
         None => Err(JsonRpcError::business("Shared file not found")),
@@ -131,6 +198,8 @@ pub async fn handle_shares_set_upload_priority(
             // downloads that were never persisted in `shared_files`.
             sf.up_priority = priority.clone();
             dl_svc.add_shared_file(sf)?;
+            drop(dl_svc);
+            emit_shares_changed(state);
             Ok(json!({ "ok": true, "fileHash": file_hash, "upPriority": priority }))
         }
         None => Err(JsonRpcError::business("Shared file not found")),

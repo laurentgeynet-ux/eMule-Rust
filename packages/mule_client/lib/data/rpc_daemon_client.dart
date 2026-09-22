@@ -58,6 +58,8 @@ class RpcDaemonClient implements MuleDaemonClient {
       StreamController<int>.broadcast();
   final StreamController<int> _historyController =
       StreamController<int>.broadcast();
+  final StreamController<int> _sharesController =
+      StreamController<int>.broadcast();
   final StreamController<SettingsChangedEvent> _settingsController =
       StreamController<SettingsChangedEvent>.broadcast();
   final StreamController<int> _networkPolicyController =
@@ -125,6 +127,9 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<int> get historyEvents => _historyController.stream;
+
+  @override
+  Stream<int> get sharesEvents => _sharesController.stream;
 
   @override
   Stream<SettingsChangedEvent> get settingsEvents => _settingsController.stream;
@@ -416,6 +421,7 @@ class RpcDaemonClient implements MuleDaemonClient {
         }
       } else if (method == 'kad.statusChanged' ||
           method == 'history.entryAdded' ||
+          method == 'shares.changed' ||
           method == 'settings.changed' ||
           method == 'network.policyChanged') {
         final params = data['params'] as Map<String, dynamic>?;
@@ -425,6 +431,8 @@ class RpcDaemonClient implements MuleDaemonClient {
             if (!_kadStatusController.isClosed) _kadStatusController.add(seq);
           case 'history.entryAdded':
             if (!_historyController.isClosed) _historyController.add(seq);
+          case 'shares.changed':
+            if (!_sharesController.isClosed) _sharesController.add(seq);
           case 'network.policyChanged':
             if (!_networkPolicyController.isClosed) {
               _networkPolicyController.add(seq);
@@ -652,6 +660,15 @@ class RpcDaemonClient implements MuleDaemonClient {
     final resp = await _call('downloads.setDestination', {
       'id': id,
       'targetDirectory': targetDirectory,
+    });
+    return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DownloadItem> renameDownload(String id, String newName) async {
+    final resp = await _call('downloads.rename', {
+      'id': id,
+      'newName': newName,
     });
     return RpcDto.downloadFromSnapshotJson(resp as Map<String, dynamic>);
   }
@@ -1141,8 +1158,13 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<void> removeSharedFile(String fileHash) async {
-    await _call('shares.remove', {'fileHash': fileHash});
+  Future<void> removeSharedFile(String fileHash, {bool deleteFile = false}) async {
+    await _call('shares.remove', {'fileHash': fileHash, 'deleteFile': deleteFile});
+  }
+
+  @override
+  Future<void> renameSharedFile(String fileHash, String newName) async {
+    await _call('shares.rename', {'fileHash': fileHash, 'newName': newName});
   }
 
   @override
@@ -1172,6 +1194,11 @@ class RpcDaemonClient implements MuleDaemonClient {
   Future<int> rescanSharedFiles() async {
     final resp = await _call('shares.rescan', {});
     return (resp as Map<String, dynamic>)['added'] as int? ?? 0;
+  }
+
+  @override
+  Future<void> resetLifetimeTotals() async {
+    await _call('stats.resetLifetimeTotals', {});
   }
 
   @override
@@ -1466,6 +1493,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     _lifecycleController.close();
     _kadStatusController.close();
     _historyController.close();
+    _sharesController.close();
     _settingsController.close();
     _networkPolicyController.close();
     _upnpStatusController.close();

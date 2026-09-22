@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../../l10n/l10n.dart';
+
 /// Status badge for a peer source row (allowed / filtered / rejected /
 /// connected / tried / failed / candidate).
 class PeerSourceStatusBadge extends StatelessWidget {
@@ -15,37 +17,37 @@ class PeerSourceStatusBadge extends StatelessWidget {
       PeerSourceStatus.allowed => (
         AppColors.positive.withValues(alpha: 0.15),
         AppColors.positive,
-        'Autorisé',
+        context.l10n.peerSrcAllowed,
       ),
       PeerSourceStatus.filtered => (
         AppColors.danger.withValues(alpha: 0.15),
         AppColors.danger,
-        'Filtré IP',
+        context.l10n.peerSrcFiltered,
       ),
       PeerSourceStatus.rejected => (
         AppColors.accentOrange.withValues(alpha: 0.15),
         AppColors.accentOrange,
-        'Rejeté profil',
+        context.l10n.peerSrcRejected,
       ),
       PeerSourceStatus.connected => (
         AppColors.accentTeal.withValues(alpha: 0.15),
         AppColors.accentTeal,
-        'Connecté',
+        context.l10n.connConnected,
       ),
       PeerSourceStatus.tried => (
         AppColors.accentBlue.withValues(alpha: 0.15),
         AppColors.accentBlue,
-        'Essayé',
+        context.l10n.peerSrcTried,
       ),
       PeerSourceStatus.failed => (
         AppColors.tintRed.withValues(alpha: 0.15),
         AppColors.tintRed,
-        'Échec',
+        context.l10n.peerSrcFailed,
       ),
       PeerSourceStatus.candidate => (
         AppColors.fillLight,
         AppColors.textSecondary,
-        'Candidat',
+        context.l10n.peerSrcCandidate,
       ),
     };
 

@@ -23,8 +23,7 @@ class LabStepCleanup extends StatelessWidget {
     return LabStepCard(
       stepNumber: 5,
       title: context.l10n.cleanTestDataFixturesIncomplete,
-      description:
-          'Purges generated files in <workdir>/fixtures and partial files in <workdir>/temp. Completed downloads in downloads/ are preserved and never touched.',
+      description: context.l10n.labStep5Desc,
       content: Row(
         children: [
           OutlinedButton.icon(
@@ -52,8 +51,8 @@ class LabStepCleanup extends StatelessWidget {
           Expanded(
             child: Text(
               isPortable
-                  ? 'Safe to run in Portable mode.'
-                  : 'Cleanup is restricted in installed mode to protect user files.',
+                  ? context.l10n.labCleanupPortableOk
+                  : context.l10n.labCleanupPortableNo,
               style: TextStyle(
                 fontSize: 11,
                 color:

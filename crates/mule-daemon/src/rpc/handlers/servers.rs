@@ -229,6 +229,23 @@ pub async fn handle_servers_connect(
 
     let server_name = server_record.map(|s| s.name);
 
+    // eMule semantics: asking for another server while a session is
+    // active switches to it (disconnect first); reconnecting to the same
+    // address is idempotent.
+    {
+        let snap = state.server_session.snapshot().await;
+        use crate::services::server_session::ServerConnectionStatus as S;
+        match snap.status {
+            S::Connected if snap.server_address.as_deref() == Some(address_str) => {
+                return Ok(serde_json::to_value(snap).unwrap_or_default());
+            }
+            S::Connected | S::Connecting | S::Disconnecting => {
+                let _ = state.server_session.disconnect().await;
+            }
+            _ => {}
+        }
+    }
+
     // Request TCP connect permit from NetworkPolicyManager
     let permit = state
         .network_policy

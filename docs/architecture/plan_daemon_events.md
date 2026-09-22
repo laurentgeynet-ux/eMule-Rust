@@ -47,7 +47,10 @@
       `event.statsTick`, topic `stats`, cadence 1–2 s
   - payload : `downloadBps`, `uploadBps`, `peersConnected`,
     `downloadsActive`, `serverConnected`, `kadContacts`,
-    `kadUdpBound`
+    `kadUdpBound`, `sessionDownloadedBytes`, `sessionUploadedBytes`,
+    `lifetimeDownloadedBytes`, `lifetimeUploadedBytes`
+    (cumuls « depuis l'installation » persistés en SQLite,
+    remis à zéro via `stats.resetLifetimeTotals`)
 - [ ] Timer dans `state.rs` ou service dédié ; suppression si aucun
       abonné au topic `stats` (économie CPU)
 
@@ -126,3 +129,21 @@ daemon (Rust + tests), client Dart (modèles + streams + fake), UI
 (controller + widgets + tests). Vérifications : `cargo test` daemon,
 `flutter analyze` + `flutter test` (desktop), `flutter build web`.
 `rpc_protocol.md` mis à jour à chaque phase (méthode, topic, payload).
+
+## Phase E6 — Complétion des compteurs sidebar (post-E4) — ✅ livrée
+
+Audit des badges sidebar : tous les compteurs étaient déjà réactifs
+sauf deux, corrigés :
+
+- **`kad.statusChanged`** n'était émis que dans les handlers RPC —
+  les mutations autonomes de la table (contacts appris, évictions)
+  n'émettaient rien et le badge ne bougeait qu'à l'ouverture de la
+  section. La boucle de maintenance `kad.rs` (tick 30 s) émet désormais
+  l'event via `set_event_channel` quand `total_contacts` change
+  réellement — pas d'émission au premier tick pour ne pas intercaler
+  un event dans les réponses RPC en vol.
+- **`shares.changed`** (topic `shares`) — nouveau nudge émis par
+  `handlers/shares.rs` sur `add`/`remove`/`rescan`/`setEnabled`/
+  `setUploadPriority` (couvre les mutations RPC et MCP) ; nouveau
+  stream `sharesEvents` côté client et `SharesController` dans
+  `app_shell` (badge « Partages » live).

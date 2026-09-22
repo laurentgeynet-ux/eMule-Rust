@@ -995,13 +995,23 @@ async fn test_partial_download_is_shared_with_completed_parts_only() {
     assert!(resp.error.is_none());
     let id = resp.result.as_ref().unwrap()["downloadId"].as_str().unwrap().to_string();
 
-    // No completed part yet: not shared.
+    // No completed part yet: still shared as a partial (eMule
+    // `CDownloadQueue::AddPartFilesToShare` — "part files are always
+    // shared files"), exposing an empty completed-parts mask.
     {
         let dl = state.downloads.lock().await;
-        assert!(dl
+        let sf = dl
             .get_shared_file("0123456789abcdef0123456789abcdef")
             .unwrap()
-            .is_none());
+            .expect("in-progress download must be shared even with 0 complete parts");
+        assert!(sf.is_partial);
+        assert!(sf.completed_parts.is_empty());
+        assert!(sf.file_path.ends_with(".part"));
+
+        let all = dl.list_all_shared_files().unwrap();
+        assert!(all.iter().any(|f| f.is_partial
+            && f.completed_parts.is_empty()
+            && f.file_hash.eq_ignore_ascii_case("0123456789abcdef0123456789abcdef")));
     }
 
     // Complete part 0 (9 728 000 bytes) via inject_range.

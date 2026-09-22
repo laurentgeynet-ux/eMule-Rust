@@ -43,13 +43,6 @@ class DownloadDiagnosticsCard extends StatelessWidget {
             onPressed: () {
               final diag = diagnosticBuilder(item);
               Clipboard.setData(ClipboardData(text: diag));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(context.l10n.downloadDiagnosticCopiedToClipboard,
-                  ),
-                  duration: Duration(seconds: 2),
-                ),
-              );
             },
           ),
         ],

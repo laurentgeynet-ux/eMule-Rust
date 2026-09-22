@@ -87,6 +87,12 @@ abstract class MuleDaemonClient {
     String targetDirectory,
   );
 
+  /// `downloads.rename` — rename the download's file name. For a
+  /// completed download the file on disk and its share entry are renamed
+  /// too; an in-progress download's `.part` keeps its internal name and
+  /// the new name applies at finalization.
+  Future<DownloadItem> renameDownload(String id, String newName);
+
   /// Change the eMule-style priority of a download ("low" | "normal" | "high").
   /// The daemon swarm allocator biases its peer slot quota accordingly.
   Future<DownloadItem> setDownloadPriority(String id, String priority);
@@ -303,8 +309,15 @@ abstract class MuleDaemonClient {
     required String filePath,
   });
 
-  /// Remove a file from sharing.
-  Future<void> removeSharedFile(String fileHash);
+  /// Remove a file from sharing. With [deleteFile] the file is also
+  /// deleted from disk (and the download entry when it backs a completed
+  /// download); rejected by the daemon for partial shares.
+  Future<void> removeSharedFile(String fileHash, {bool deleteFile = false});
+
+  /// `shares.rename` — rename a fully shared file: file on disk +
+  /// `shared_files` entry (and the linked completed download when one
+  /// exists).
+  Future<void> renameSharedFile(String fileHash, String newName);
 
   /// Enable or disable sharing for a file.
   Future<SharedFileModel> setSharedFileEnabled(String fileHash, bool enabled);
@@ -350,12 +363,23 @@ abstract class MuleDaemonClient {
   /// global rates, active downloads, connected peers, server/Kad state.
   Stream<DaemonStatsModel> get statsEvents;
 
+  /// `stats.resetLifetimeTotals` — remet à zéro les compteurs cumulés
+  /// « depuis l'installation » (download + upload) émis dans
+  /// `statsTick`. Les totaux de session sont inchangés.
+  Future<void> resetLifetimeTotals();
+
   /// Nudge stream for `kad.statusChanged` (payload = sequence; refetch
   /// `getKadStatus`/`listKadContacts` on receipt).
   Stream<int> get kadStatusEvents;
 
   /// Nudge stream for `history.entryAdded` (refetch `listHistory`).
   Stream<int> get historyEvents;
+
+  /// Nudge stream for `shares.changed` (payload = sequence; refetch
+  /// `listSharedFiles` on receipt). Emitted by share mutations
+  /// (`shares.add`/`remove`/`setEnabled`/`setUploadPriority`/`rescan`),
+  /// including ones initiated outside the UI (MCP, CLI).
+  Stream<int> get sharesEvents;
 
   /// `settings.changed` notifications with the touched keys.
   Stream<SettingsChangedEvent> get settingsEvents;

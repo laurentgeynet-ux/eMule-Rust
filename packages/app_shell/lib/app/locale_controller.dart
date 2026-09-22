@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/l10n_lookup.dart';
+
 /// UI locale preference (independent from daemon settings).
 ///
 /// Defaults to French and persists the choice locally via
@@ -10,6 +12,10 @@ class LocaleController extends ChangeNotifier {
 
   Locale _locale = const Locale('fr');
 
+  LocaleController() {
+    L10nLookup.bindLocale(_locale);
+  }
+
   Locale get locale => _locale;
 
   /// Restores the persisted locale, if any.
@@ -18,6 +24,7 @@ class LocaleController extends ChangeNotifier {
     final code = prefs.getString(_prefKey);
     if (code != null && code != _locale.languageCode) {
       _locale = Locale(code);
+      L10nLookup.bindLocale(_locale);
       notifyListeners();
     }
   }
@@ -25,6 +32,7 @@ class LocaleController extends ChangeNotifier {
   Future<void> setLocale(Locale locale) async {
     if (locale == _locale) return;
     _locale = locale;
+    L10nLookup.bindLocale(_locale);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, locale.languageCode);

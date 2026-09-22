@@ -12,6 +12,10 @@ class SettingsDirectorySection extends StatelessWidget {
   final VoidCallback onReset;
   final VoidCallback onOpenFolder;
 
+  /// Ouvre l'explorateur de dossiers natif et injecte le chemin choisi
+  /// dans [dirController].
+  final VoidCallback? onBrowse;
+
   /// Appelé sur chaque saisie utilisateur (dirty tracking — un champ en
   /// cours d'édition n'est pas écrasé par une resync externe).
   final ValueChanged<String>? onChanged;
@@ -24,6 +28,7 @@ class SettingsDirectorySection extends StatelessWidget {
     required this.onSave,
     required this.onReset,
     required this.onOpenFolder,
+    this.onBrowse,
     this.onChanged,
   });
 
@@ -80,7 +85,12 @@ class SettingsDirectorySection extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 6),
+            IconButton(
+              icon: const Icon(Icons.folder_open_rounded, size: 18),
+              tooltip: context.l10n.browse,
+              onPressed: isSaving ? null : onBrowse,
+            ),
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.primary,

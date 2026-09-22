@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for the eD2K/Kad search section.
 ///
 /// Owns the result list (hash-deduplicated), the searching flag, the
@@ -89,12 +91,12 @@ class SearchController extends ChangeNotifier {
           }
         }
         udpSummary = ' — UDP: $req3×REQ3, $req2×REQ2, $req1×REQ1'
-            '${failed > 0 ? ', $failed échec(s)' : ''}';
+            '${failed > 0 ? L10nLookup.current.searchUdpFailed(failed) : ''}';
       }
       onStatus?.call(
         udpOnly
-            ? 'Recherche globale "$trimmed" envoyée$udpSummary'
-            : 'Recherche "$trimmed" envoyée au serveur$udpSummary',
+            ? L10nLookup.current.msgSearchGlobalSent(trimmed, udpSummary)
+            : L10nLookup.current.msgSearchSent(trimmed, udpSummary),
       );
       // eD2K servers may legitimately never answer (busy, throttled, dead):
       // without a reply the spinner would block every later search forever.
@@ -104,13 +106,13 @@ class SearchController extends ChangeNotifier {
         if (_isSearching) {
           _isSearching = false;
           onStatus?.call(
-            'Recherche "$trimmed" terminée sans réponse du serveur',
+            L10nLookup.current.msgSearchNoResponse(trimmed),
           );
           notifyListeners();
         }
       });
     } catch (e) {
-      onError?.call('Échec de la recherche : $e');
+      onError?.call(L10nLookup.current.msgErrSearch(e));
       _isSearching = false;
     } finally {
       notifyListeners();
@@ -145,10 +147,10 @@ class SearchController extends ChangeNotifier {
       }
       _epoch++;
       onStatus?.call(
-        'Recherche Kad "$trimmed" terminée (${_results.length} résultat(s))',
+        L10nLookup.current.msgKadSearchDone(_results.length, trimmed),
       );
     } catch (e) {
-      onError?.call('Échec de la recherche Kad : $e');
+      onError?.call(L10nLookup.current.msgErrKadSearchRun(e));
     } finally {
       _isSearching = false;
       notifyListeners();
@@ -166,10 +168,10 @@ class SearchController extends ChangeNotifier {
   Future<void> querySources(String fileHash, {int? fileSize}) async {
     try {
       await client.queryServerSources(fileHash: fileHash, fileSize: fileSize);
-      onStatus?.call('Demande de sources envoyée pour $fileHash');
+      onStatus?.call(L10nLookup.current.msgSourceReqSent(fileHash));
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec de la demande de sources : $e');
+      onError?.call(L10nLookup.current.msgErrSourceReq(e));
       notifyListeners();
     }
   }

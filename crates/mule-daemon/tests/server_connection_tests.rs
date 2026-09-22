@@ -285,7 +285,8 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
         "Session must reach connected state with HighID and status"
     );
 
-    // 3. Test concurrent connection attempt rejected (max 1 connection)
+    // 3. Reconnecting to the SAME address is idempotent (eMule semantics:
+    // no second session is spawned — the live one is returned).
     let concurrent_req = make_req(
         3,
         "servers.connect",
@@ -295,14 +296,14 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
         .await
         .unwrap();
     assert!(
-        concurrent_resp.error.is_some(),
-        "Concurrent connection must be rejected"
+        concurrent_resp.error.is_none(),
+        "Same-address connect must be idempotent: {:?}",
+        concurrent_resp.error
     );
-    assert!(concurrent_resp
-        .error
-        .unwrap()
-        .message
-        .contains("already in progress"));
+    assert_eq!(
+        concurrent_resp.result.unwrap()["status"],
+        "connected"
+    );
 
     // 4. Test Kill Switch via network.disconnectAll
     let disc_all_req = make_req(4, "network.disconnectAll", None);

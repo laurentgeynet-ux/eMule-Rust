@@ -208,13 +208,53 @@ pub async fn execute(
                 }
             };
 
+            let delete_file = args
+                .get("delete_file")
+                .and_then(|d| d.as_bool())
+                .unwrap_or(false);
+
             match client
-                .call("shares.remove", json!({ "fileHash": hash }))
+                .call(
+                    "shares.remove",
+                    json!({ "fileHash": hash, "deleteFile": delete_file }),
+                )
                 .await
             {
                 Ok(res) => Some(ToolCallResult::json(&res)),
                 Err(e) => Some(ToolCallResult::error(format!(
                     "Failed to unshare file: {e}"
+                ))),
+            }
+        }
+
+        "emule_rename_share" => {
+            let hash = match args.get("file_hash").and_then(|h| h.as_str()) {
+                Some(h) => h,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'file_hash'",
+                    ))
+                }
+            };
+            let new_name = match args.get("new_name").and_then(|n| n.as_str()) {
+                Some(n) => n,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'new_name'",
+                    ))
+                }
+            };
+
+            match client
+                .call(
+                    "shares.rename",
+                    json!({ "fileHash": hash, "newName": new_name }),
+                )
+                .await
+            {
+                Ok(res) => Some(ToolCallResult::json(&res)),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to rename shared file: {e}"
                 ))),
             }
         }

@@ -30,8 +30,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify Categories section in sidebar
-      expect(find.text('CATEGORIES'), findsOneWidget);
-      expect(find.text('All Downloads'), findsAtLeastNWidgets(1));
+      expect(find.text('CATÉGORIES'), findsOneWidget);
+      expect(find.text('Tous les téléchargements'), findsAtLeastNWidgets(1));
       expect(find.text('Sans catégorie'), findsOneWidget);
       expect(
         find.descendant(of: find.byType(DownloadsSidebar), matching: find.text('Linux ISOs')),
@@ -107,14 +107,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // Click Add Category button (+) in sidebar
-      final addCategoryBtn = find.byTooltip('Add Category');
+      final addCategoryBtn = find.byTooltip('Ajouter une catégorie');
       expect(addCategoryBtn, findsOneWidget);
       await tester.tap(addCategoryBtn);
       await tester.pumpAndSettle();
 
       // Verify dialog is opened
       expect(find.byType(CategoryEditDialog), findsOneWidget);
-      expect(find.text('New Category'), findsOneWidget);
+      expect(find.text('Nouvelle catégorie'), findsOneWidget);
 
       // Enter category name in the dialog TextField
       final nameField = find.descendant(
@@ -125,7 +125,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Submit form
-      final createBtn = find.text('Create Category');
+      final createBtn = find.text('Créer la catégorie');
       await tester.tap(createBtn);
       await tester.pumpAndSettle();
 

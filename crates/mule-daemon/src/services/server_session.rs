@@ -215,6 +215,17 @@ impl ServerSessionManager {
 
     /// Disconnects any active session and resets state.
     pub async fn disconnect(&self) -> Result<(), DaemonError> {
+        self.disconnect_inner(false).await
+    }
+
+    /// Kill-switch variant (`network.disconnectAll`): identical teardown
+    /// but keeps `last_target` so the reconnect watcher can restore the
+    /// session once `network.enable` re-arms the policy.
+    pub async fn disconnect_for_kill_switch(&self) -> Result<(), DaemonError> {
+        self.disconnect_inner(true).await
+    }
+
+    async fn disconnect_inner(&self, keep_target: bool) -> Result<(), DaemonError> {
         let mut guard = self.inner.lock().await;
         if let Some(handle) = guard.abort_handle.take() {
             handle.abort();
@@ -222,8 +233,10 @@ impl ServerSessionManager {
         guard.permit = None;
         guard.outgoing_tx = None;
         guard.snapshot = ServerSessionSnapshot::default();
-        // User-initiated disconnect: no auto-reconnect to this target.
-        self.clear_last_target();
+        if !keep_target {
+            // User-initiated disconnect: no auto-reconnect to this target.
+            self.clear_last_target();
+        }
         self.emit_notification(&guard.snapshot);
         Ok(())
     }

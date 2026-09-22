@@ -5,7 +5,7 @@
 **Emule-Sion** est une réimplémentation moderne des protocoles P2P **eD2K** et **Kad DHT (Kademlia)** :
 - Moteur en **Rust** (workspace Cargo, Tokio async, codecs filaires bornés)
 - Interface **Flutter Desktop** (Windows, Clean Architecture MVVM)
-- Serveur **MCP** exposant ~80 outils pour agents IA
+- Serveur **MCP** exposant ~87 outils pour agents IA
 
 Licence : GPL-2.0-or-later. Plateforme cible : Windows 10/11 x64.
 
@@ -19,7 +19,7 @@ Licence : GPL-2.0-or-later. Plateforme cible : Windows 10/11 x64.
 | `crates/mule-crypto` | MD4, hashes eD2K, identifiants |
 | `crates/mule-filter` | Filtrage IP (`ipfilter.dat`) |
 | `crates/mule-network-policy` | Pipeline anti-SSRF, isolation loopback, kill switch |
-| `crates/mule-mcp` | Serveur MCP (~80 outils) |
+| `crates/mule-mcp` | Serveur MCP (~87 outils) |
 | `crates/mule-cli` | CLI de pilotage |
 | `crates/mule-format` | Formats de fichiers (`.met`, `.dat`…) |
 | `packages/app_shell` | UI Flutter principale (MVVM, `lib/ui/features/…`) |

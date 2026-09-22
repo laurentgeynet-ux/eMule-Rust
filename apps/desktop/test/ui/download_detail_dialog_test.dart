@@ -55,44 +55,44 @@ void main() {
 
       // Header
       expect(find.text('Debian_12_netinst.iso'), findsWidgets);
-      expect(find.text('Downloading'), findsWidgets);
+      expect(find.text('Téléchargement'), findsWidgets);
 
       // Identity & eD2K Link
-      expect(find.text('Identity & eD2K Links'), findsOneWidget);
-      expect(find.text('Download UUID'), findsOneWidget);
+      expect(find.text('Identité & liens eD2K'), findsOneWidget);
+      expect(find.text('UUID du téléchargement'), findsOneWidget);
       expect(find.text(targetId), findsOneWidget);
-      expect(find.text('eD2K Hash (MD4)'), findsOneWidget);
+      expect(find.text('Hash eD2K (MD4)'), findsOneWidget);
       expect(find.text('31d6cfe0d16ae931b73c59d7e0c089c0'), findsOneWidget);
-      expect(find.text('Canonical eD2K Link'), findsOneWidget);
+      expect(find.text('Lien eD2K canonique'), findsOneWidget);
       expect(find.textContaining('ed2k://|file|Debian_12_netinst.iso|654311424|31d6cfe0d16ae931b73c59d7e0c089c0|/'), findsOneWidget);
 
       // Transfer metrics
-      expect(find.text('Transfer Metrics & Speed'), findsOneWidget);
-      expect(find.text('Received'), findsOneWidget);
-      expect(find.text('Verified'), findsOneWidget);
-      expect(find.text('Current Rate'), findsOneWidget);
-      expect(find.text('Average Rate'), findsOneWidget);
+      expect(find.text('Métriques de transfert & vitesse'), findsOneWidget);
+      expect(find.text('Reçu'), findsOneWidget);
+      expect(find.text('Vérifié'), findsOneWidget);
+      expect(find.text('Débit actuel'), findsOneWidget);
+      expect(find.text('Débit moyen'), findsOneWidget);
 
       // Part Map
-      expect(find.textContaining('eD2K Part Map'), findsOneWidget);
-      expect(find.textContaining('Verified ('), findsOneWidget);
-      expect(find.textContaining('Completed ('), findsOneWidget);
-      expect(find.textContaining('Downloading ('), findsOneWidget);
-      expect(find.textContaining('Missing ('), findsOneWidget);
+      expect(find.textContaining('Carte des parts eD2K'), findsOneWidget);
+      expect(find.textContaining('Vérifiées ('), findsOneWidget);
+      expect(find.textContaining('Terminées ('), findsOneWidget);
+      expect(find.textContaining('En téléchargement ('), findsOneWidget);
+      expect(find.textContaining('Manquantes ('), findsOneWidget);
 
       // Paths
-      expect(find.text('Storage & Target Destination'), findsOneWidget);
-      expect(find.text('Temporary Part Path (Confined)'), findsOneWidget);
+      expect(find.text('Stockage & destination'), findsOneWidget);
+      expect(find.text('Chemin .part temporaire (confiné)'), findsOneWidget);
       expect(find.text('data/temp/00000000-0000-0000-0000-000000000001.part'), findsOneWidget);
-      expect(find.text('Final Target Destination'), findsOneWidget);
+      expect(find.text('Destination finale'), findsOneWidget);
       expect(find.text('downloads/Debian_12_netinst.iso'), findsOneWidget);
-      expect(find.text('Change Destination'), findsOneWidget);
+      expect(find.text('Changer la destination'), findsOneWidget);
 
       // Action Bar
       expect(find.text('Pause'), findsOneWidget);
-      expect(find.text('Retry Loopback Source'), findsOneWidget);
-      expect(find.text('Open Completed File'), findsOneWidget);
-      expect(find.text('Remove...'), findsOneWidget);
+      expect(find.text('Réessayer la source loopback'), findsOneWidget);
+      expect(find.text('Ouvrir le fichier terminé'), findsOneWidget);
+      expect(find.text('Supprimer...'), findsOneWidget);
     });
 
     testWidgets('copy redacted diagnostic generates safe sanitized output without secrets', (WidgetTester tester) async {
@@ -136,7 +136,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final copyBtn = find.text('Copy Redacted Diagnostic');
+      final copyBtn = find.text('Copier le diagnostic anonymisé');
       await tester.ensureVisible(copyBtn);
       await tester.pumpAndSettle();
       await tester.tap(copyBtn);
@@ -188,20 +188,26 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final changeBtn = find.text('Change Destination');
+      final changeBtn = find.text('Changer la destination');
       await tester.ensureVisible(changeBtn);
       await tester.pumpAndSettle();
       await tester.tap(changeBtn);
       await tester.pumpAndSettle();
 
-      expect(find.text('Change Target Destination'), findsOneWidget);
-      expect(find.text('Save Destination'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Changer la destination'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Enregistrer la destination'), findsOneWidget);
 
       await tester.enterText(
         find.widgetWithText(TextField, 'downloads'),
         'custom_downloads',
       );
-      await tester.tap(find.text('Save Destination'));
+      await tester.tap(find.text('Enregistrer la destination'));
       await tester.pumpAndSettle();
 
       expect(find.text('custom_downloads/Debian_12_netinst.iso'), findsOneWidget);
@@ -237,15 +243,67 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final removeBtn = find.text('Remove...');
+      final removeBtn = find.text('Supprimer...');
       await tester.ensureVisible(removeBtn);
       await tester.pumpAndSettle();
       await tester.tap(removeBtn);
       await tester.pumpAndSettle();
 
-      expect(find.text('Remove Download?'), findsOneWidget);
-      expect(find.textContaining('SQLite will be permanently deleted'), findsOneWidget);
-      expect(find.text('Confirm Remove'), findsOneWidget);
+      expect(find.text('Supprimer le téléchargement ?'), findsOneWidget);
+      expect(find.textContaining('SQLite sera définitivement supprimée'), findsOneWidget);
+      expect(find.text('Confirmer la suppression'), findsOneWidget);
+      // En cours : les fichiers temporaires sont supprimés automatiquement —
+      // aucune case à cocher ne doit être proposée.
+      expect(find.byType(CheckboxListTile), findsNothing);
+    });
+
+    testWidgets('completed download removal proposes deleting the shared file', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      // Item 003 is seeded as DownloadStatus.completed in the fake client.
+      const targetId = '00000000-0000-0000-0000-000000000003';
+
+      await tester.pumpWidget(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: DownloadDetailDialog(
+              downloadId: targetId,
+              ),
+          ),
+        )),
+      );
+      await tester.pumpAndSettle();
+
+      final removeBtn = find.text('Supprimer...');
+      await tester.ensureVisible(removeBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(removeBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Supprimer le téléchargement ?'), findsOneWidget);
+      expect(find.byType(CheckboxListTile), findsOneWidget);
+      expect(
+        find.text('Supprimer aussi le fichier partagé dans le dossier de destination'),
+        findsOneWidget,
+      );
+      // Option décochée par défaut : le fichier final n'est supprimé que si
+      // l'utilisateur la coche explicitement.
+      final tile = tester.widget<CheckboxListTile>(find.byType(CheckboxListTile));
+      expect(tile.value, isFalse);
     });
   });
 }

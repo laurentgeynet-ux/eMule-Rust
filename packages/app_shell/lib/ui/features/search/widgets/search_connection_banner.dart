@@ -38,11 +38,12 @@ class SearchConnectionBanner extends StatelessWidget {
             color: AppColors.accentLightBlue,
             size: 18,
           ),
-          text:
-              'Kad DHT Actif • Contacts: ${kadStatus.totalContacts} '
-              '(${kadStatus.activeBuckets} k-buckets) • Bind: '
-              '${kadStatus.udpBindAddress ?? "Inconnu"} • Profil: '
-              '${kadStatus.networkProfile}',
+          text: context.l10n.kadActiveBanner(
+            kadStatus.totalContacts,
+            kadStatus.activeBuckets,
+            kadStatus.udpBindAddress ?? context.l10n.unknown,
+            kadStatus.networkProfile,
+          ),
           textColor: AppColors.textSecondary,
         );
       }
@@ -54,9 +55,7 @@ class SearchConnectionBanner extends StatelessWidget {
           color: AppColors.accentAmber,
           size: 20,
         ),
-        text:
-            'Le réseau Kad DHT n\'est pas encore actif. Démarrez le socket '
-            'Kad ou effectuez un bootstrap.',
+        text: context.l10n.kadInactiveBanner,
         textColor: AppColors.accentAmber,
         action: _navButton(
           icon: Icons.hub_rounded,
@@ -77,9 +76,7 @@ class SearchConnectionBanner extends StatelessWidget {
           color: AppColors.accentLightBlue,
           size: 18,
         ),
-        text:
-            'Recherche globale UDP — interroge tous les serveurs connus '
-            '(REQ3 si le serveur supporte EXT_GETFILES + LARGEFILES).',
+        text: context.l10n.searchGlobalBanner,
         textColor: AppColors.textSecondary,
       );
     }
@@ -93,12 +90,14 @@ class SearchConnectionBanner extends StatelessWidget {
           color: AppColors.positive,
           size: 18,
         ),
-        text:
-            'Connecté à ${session.serverName ?? session.serverAddress} '
-            '(${session.serverAddress})'
-            ' • Client ID: '
-            '${session.clientId != null ? "0x${session.clientId!.toRadixString(16).padLeft(8, '0')}" : "Inconnu"} '
-            '(${session.isHighId ? "HighID" : "LowID"})',
+        text: context.l10n.searchConnectedBanner(
+          session.serverName ?? session.serverAddress ?? context.l10n.unknown,
+          session.serverAddress ?? context.l10n.unknown,
+          session.clientId != null
+              ? "0x${session.clientId!.toRadixString(16).padLeft(8, '0')}"
+              : context.l10n.unknown,
+          session.isHighId ? "HighID" : "LowID",
+        ),
         textColor: AppColors.textSecondary,
       );
     }

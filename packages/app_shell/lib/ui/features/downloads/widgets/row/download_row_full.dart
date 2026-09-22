@@ -18,6 +18,7 @@ class DownloadRowFull extends StatelessWidget {
   final List<CategoryItem> categories;
   final ValueChanged<String?> onCategorySelected;
   final VoidCallback onDetails;
+  final VoidCallback onRename;
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onRemove;
@@ -30,6 +31,7 @@ class DownloadRowFull extends StatelessWidget {
     required this.categories,
     required this.onCategorySelected,
     required this.onDetails,
+    required this.onRename,
     required this.onPause,
     required this.onResume,
     required this.onRemove,
@@ -79,14 +81,18 @@ class DownloadRowFull extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Tooltip(
-                        message: context.l10n.fullId(item.id),
-                        preferBelow: false,
-                        child: Text(context.l10n.id(abbreviateId(item.id)),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textFaint,
-                            fontFamily: 'monospace',
+                      Flexible(
+                        child: Tooltip(
+                          message: context.l10n.fullId(item.id),
+                          preferBelow: false,
+                          child: Text(context.l10n.id(abbreviateId(item.id)),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textFaint,
+                              fontFamily: 'monospace',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
@@ -96,13 +102,6 @@ class DownloadRowFull extends StatelessWidget {
                         onTap: () {
                           Clipboard.setData(
                             ClipboardData(text: item.id),
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(context.l10n.downloadIdCopiedToClipboard,
-                              ),
-                              duration: Duration(seconds: 1),
-                            ),
                           );
                         },
                         child: const Padding(
@@ -153,6 +152,11 @@ class DownloadRowFull extends StatelessWidget {
               PartAvailabilityBar(
                 parts: item.parts,
                 totalBytes: item.totalBytes,
+                pendingRanges: item.pendingRanges,
+                progress: item.progress,
+                muted: item.status == DownloadStatus.paused ||
+                    item.status == DownloadStatus.failed,
+                height: 9,
               ),
             ],
           ),
@@ -193,14 +197,24 @@ class DownloadRowFull extends StatelessWidget {
                   color: AppColors.textMuted,
                 ),
               ),
-              if (item.etaSeconds != null)
-                Text(
-                  '${context.l10n.eta}: ${Formatters.formatDuration(item.etaSeconds!)}',
+              // L'emplacement ETA est toujours réservé (visible ou non) :
+              // les lignes « en cours » et « terminées » gardent la même
+              // hauteur et le même alignement vertical.
+              Visibility(
+                visible: item.etaSeconds != null,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: Text(
+                  item.etaSeconds != null
+                      ? '${context.l10n.eta}: ${Formatters.formatDuration(item.etaSeconds!)}'
+                      : '',
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textMuted,
                   ),
                 ),
+              ),
             ],
           ),
         ),
@@ -211,6 +225,7 @@ class DownloadRowFull extends StatelessWidget {
           categories: categories,
           onCategorySelected: onCategorySelected,
           onDetails: onDetails,
+          onRename: onRename,
           onPause: onPause,
           onResume: onResume,
           onRemove: onRemove,

@@ -19,6 +19,7 @@ use mule_protocol::ed2k::{
 use mule_protocol::framing::PacketCodec;
 
 use super::events::{emit_download_update, emit_event};
+use super::PeerSessionManager;
 use super::source_exchange::{
     handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
 };
@@ -101,7 +102,7 @@ async fn sync_transfer_rates(
     peer_bps: u64,
     total_received: u64,
 ) {
-    let (progress_snapshot, total_file_rate_bps) = {
+    let (progress_snapshot, total_file_rate_bps, pending_ranges) = {
         let mut g = inner.lock().await;
         let snap = if let Some(session) = g.sessions.get_mut(address_str) {
             session.snapshot.transferred_bytes = total_received;
@@ -116,7 +117,8 @@ async fn sync_transfer_rates(
             .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash_str))
             .map(|s| s.snapshot.transfer_rate_bps)
             .sum();
-        (snap, total_rate)
+        let pending = PeerSessionManager::pending_ranges_locked(&g, file_hash_str);
+        (snap, total_rate, pending)
     };
 
     if let Some(snap) = progress_snapshot {
@@ -124,7 +126,8 @@ async fn sync_transfer_rates(
     }
 
     let mut dl_svc = downloads.lock().await;
-    if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_file_rate_bps) {
+    if let Some(mut snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_file_rate_bps) {
+        snap.pending_ranges = pending_ranges;
         emit_download_update(event_tx, sequence, &snap);
     }
 }
@@ -356,21 +359,26 @@ pub(crate) async fn run_transfer_loop(
             let event_tx = self.event_tx.clone();
             let sequence = Arc::clone(self.sequence);
             tokio::spawn(async move {
-                let total_remaining_bps: u64 = {
+                let (total_remaining_bps, pending_ranges): (u64, Vec<(u64, u64)>) = {
                     let mut g = inner.lock().await;
                     if let Some(session) = g.sessions.get_mut(&address_str) {
                         session.snapshot.transfer_rate_bps = 0;
                     }
-                    g.sessions
+                    let total = g
+                        .sessions
                         .values()
                         .filter(|s| s.snapshot.file_hash.as_deref() == Some(&file_hash_str))
                         .map(|s| s.snapshot.transfer_rate_bps)
-                        .sum()
+                        .sum();
+                    let pending =
+                        PeerSessionManager::pending_ranges_locked(&g, &file_hash_str);
+                    (total, pending)
                 };
                 let mut dl_svc = downloads.lock().await;
-                if let Some(snap) =
+                if let Some(mut snap) =
                     dl_svc.set_download_rate_by_hash(&file_hash_str, total_remaining_bps)
                 {
+                    snap.pending_ranges = pending_ranges;
                     emit_download_update(&event_tx, &sequence, &snap);
                 }
             });
@@ -878,19 +886,23 @@ pub(crate) async fn run_transfer_loop(
 
     // Reset rate for this peer session and update aggregate file rate
     {
-        let total_remaining_bps: u64 = {
+        let (total_remaining_bps, pending_ranges): (u64, Vec<(u64, u64)>) = {
             let mut g = inner.lock().await;
             if let Some(session) = g.sessions.get_mut(address_str) {
                 session.snapshot.transfer_rate_bps = 0;
             }
-            g.sessions
+            let total = g
+                .sessions
                 .values()
                 .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash_str))
                 .map(|s| s.snapshot.transfer_rate_bps)
-                .sum()
+                .sum();
+            let pending = PeerSessionManager::pending_ranges_locked(&g, file_hash_str);
+            (total, pending)
         };
         let mut dl_svc = downloads.lock().await;
-        if let Some(snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_remaining_bps) {
+        if let Some(mut snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_remaining_bps) {
+            snap.pending_ranges = pending_ranges;
             emit_download_update(event_tx, sequence, &snap);
         }
     }

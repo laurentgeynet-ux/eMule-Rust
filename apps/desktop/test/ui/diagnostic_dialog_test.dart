@@ -52,11 +52,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // Dialog title
-      expect(find.text('System & Lab Diagnostics'), findsOneWidget);
+      expect(find.text('Diagnostics système & lab'), findsOneWidget);
 
       // Network Profile / Confinement card
-      expect(find.text('Network Profile: Public eD2K + Kad Preview'), findsOneWidget);
-      expect(find.textContaining('Public network traffic enabled'), findsOneWidget);
+      expect(find.text('Profil réseau : eD2K + Kad publics (preview)'), findsOneWidget);
+      expect(find.textContaining('Connexions WAN autorisées'), findsOneWidget);
 
       // Workdir mode & path
       expect(find.text('Portable'), findsOneWidget);
@@ -67,10 +67,10 @@ void main() {
       expect(find.textContaining('v0.1.0-fake'), findsOneWidget);
 
       // Actions
-      expect(find.text('Copy Shareable (Sanitized)'), findsOneWidget);
-      expect(find.text('Copy Full (Local Dev)'), findsOneWidget);
-      expect(find.text('Open Lab Guide'), findsOneWidget);
-      expect(find.text('Close'), findsOneWidget);
+      expect(find.text('Copier version partageable (anonymisée)'), findsOneWidget);
+      expect(find.text('Copier version complète (dev local)'), findsOneWidget);
+      expect(find.text('Ouvrir le guide lab'), findsOneWidget);
+      expect(find.text('Fermer'), findsOneWidget);
     });
 
     testWidgets('tapping Open Lab Guide opens LabGuideDialog', (WidgetTester tester) async {
@@ -116,7 +116,7 @@ void main() {
       expect(find.byType(DiagnosticDialog), findsOneWidget);
 
       // Tap Open Lab Guide
-      await tester.tap(find.text('Open Lab Guide'));
+      await tester.tap(find.text('Ouvrir le guide lab'));
       await tester.pumpAndSettle();
 
       // DiagnosticDialog dismissed and LabGuideDialog opened
@@ -157,7 +157,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Copy Full (Local Dev)'));
+      await tester.tap(find.text('Copier version complète (dev local)'));
       await tester.pump();
 
       expect(copiedText, isNotNull);
@@ -206,7 +206,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final copyPathFinder = find.byTooltip('Copy full path');
+      final copyPathFinder = find.byTooltip('Copier le chemin complet');
       expect(copyPathFinder, findsOneWidget);
 
       await tester.tap(copyPathFinder);

@@ -71,7 +71,7 @@ class DownloadMetricsCard extends StatelessWidget {
               ),
               DetailMetricTile(
                 label: context.l10n.sources,
-                value: '${item.sourceCount} loopback',
+                value: context.l10n.sourcesLoopback(item.sourceCount),
               ),
               DetailMetricTile(
                 label: context.l10n.attempts,

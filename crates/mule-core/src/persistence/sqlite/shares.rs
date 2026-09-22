@@ -27,6 +27,8 @@ fn shared_file_from_row(row: &rusqlite::Row) -> rusqlite::Result<SharedFile> {
         up_priority: row.get::<_, Option<String>>(7)?.unwrap_or_else(|| "normal".into()),
         is_partial: false,
         completed_parts: Vec::new(),
+        uploaded_bytes: 0,
+        upload_rate_bps: 0,
     })
 }
 
@@ -132,4 +134,38 @@ pub fn set_shared_file_enabled(
         params![if enabled { 1 } else { 0 }, file_hash],
     )?;
     Ok(rows > 0)
+}
+
+/// Ajoute `delta` octets au total uploadé persisté d'un fichier partagé
+/// (`share_upload_stats` — table séparée car les partages partiels
+/// `CPartFile` n'ont pas de ligne dans `shared_files`).
+pub fn add_share_uploaded_bytes(
+    conn: &mut Connection,
+    file_hash: &str,
+    delta: u64,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO share_upload_stats (file_hash, uploaded_bytes) VALUES (?1, ?2)
+         ON CONFLICT(file_hash) DO UPDATE SET
+            uploaded_bytes = uploaded_bytes + excluded.uploaded_bytes",
+        params![file_hash.to_lowercase(), delta as i64],
+    )?;
+    Ok(())
+}
+
+/// Totaux uploadés persistés par hash de fichier (clés en minuscules).
+pub fn list_share_uploaded_bytes(
+    conn: &Connection,
+) -> Result<std::collections::HashMap<String, u64>, CoreError> {
+    let mut stmt =
+        conn.prepare("SELECT file_hash, uploaded_bytes FROM share_upload_stats")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    let mut map = std::collections::HashMap::new();
+    for r in rows {
+        let (hash, bytes) = r?;
+        map.insert(hash.to_lowercase(), bytes.max(0) as u64);
+    }
+    Ok(map)
 }

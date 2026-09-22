@@ -18,7 +18,7 @@ use mule_protocol::ed2k::{
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
-use super::events::emit_event;
+use super::events::{emit_download_update, emit_event};
 use super::source_exchange::{
     handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
 };
@@ -584,9 +584,27 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                                     "OP_FILESTATUS returned unexpected file hash".to_string(),
                                                 ));
                                             }
+                                            // Propager le bitmap de parts du pair au store
+                                            // swarm (`act.sources`) — il alimente
+                                            // `available_source_count` (eMule
+                                            // `m_SrcPartFrequency` / `DrawStatusBar`).
+                                            // `part_count == 0` = source complète.
+                                            let mut dl_svc = downloads.lock().await;
+                                            if let Some(dl_id) = dl_svc
+                                                .find_by_ed2k_hash(file_hash_str)
+                                                .map(|s| s.id)
+                                            {
+                                                if let Ok(snap) = dl_svc.record_source_availability(
+                                                    &dl_id,
+                                                    target_addr,
+                                                    status.availability_mask.clone(),
+                                                ) {
+                                                    emit_download_update(event_tx, sequence, &snap);
+                                                }
+                                            }
                                             let mask = status.availability_mask.raw_bytes();
                                             if !mask.is_empty() {
-                                                let _ = downloads.lock().await.update_peer_source_details(
+                                                let _ = dl_svc.update_peer_source_details(
                                                     file_hash_str,
                                                     address_str,
                                                     None,
@@ -846,7 +864,31 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                     emit_event(event_tx, sequence, &snap);
                                 }
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_FILESTATUS {
-                                tracing::debug!("Peer {target_addr}: received keep-alive OP_FILESTATUS response");
+                                // Keep-alive part-status : rafraîchit le bitmap
+                                // du pair (et `last_seen`) — la barre de parts
+                                // reflète alors la dispo courante de la file.
+                                if let Ok(status) = decoder.decode_file_status(
+                                    packet.protocol,
+                                    packet.opcode,
+                                    &packet.payload,
+                                    0,
+                                ) {
+                                    if status.file_hash == dl_hash_bytes {
+                                        let mut dl_svc = downloads.lock().await;
+                                        if let Some(dl_id) = dl_svc
+                                            .find_by_ed2k_hash(file_hash_str)
+                                            .map(|s| s.id)
+                                        {
+                                            if let Ok(snap) = dl_svc.record_source_availability(
+                                                &dl_id,
+                                                target_addr,
+                                                status.availability_mask.clone(),
+                                            ) {
+                                                emit_download_update(event_tx, sequence, &snap);
+                                            }
+                                        }
+                                    }
+                                }
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_FILEREQANSNOFILE {
                                 return Err(PeerError::new(PeerFailureReason::FileNotFound, "Remote peer no longer shares this file"));
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)

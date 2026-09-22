@@ -28,8 +28,7 @@ class LabStepLink extends StatelessWidget {
     return LabStepCard(
       stepNumber: 2,
       title: context.l10n.obtainCanonicalEd2kLinkAdd,
-      description:
-          'Use the hash to create a tracked download task inside the client.',
+      description: context.l10n.labStep2Desc,
       isCompleted: addedSuccess,
       content: fixture != null
           ? Column(
@@ -68,13 +67,6 @@ class LabStepLink extends StatelessWidget {
                           Clipboard.setData(
                             ClipboardData(text: fixture.ed2kLink),
                           );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(context.l10n.ed2kLinkCopiedToClipboard,
-                              ),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
                         },
                       ),
                     ],
@@ -98,8 +90,8 @@ class LabStepLink extends StatelessWidget {
                           : const Icon(Icons.download, size: 16),
                       label: Text(
                         addedSuccess
-                            ? 'Added to Downloads!'
-                            : 'Add to Downloads',
+                            ? context.l10n.labAddedToDownloads
+                            : context.l10n.labAddToDownloads,
                       ),
                       onPressed: isAdding ? null : onAdd,
                     ),

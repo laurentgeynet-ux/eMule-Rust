@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/kad_controller.dart';
+import '../../../../core/file_picker_helper.dart';
 import '../../../../l10n/l10n.dart';
 
 /// Dialog: pick a nodes.dat path, inspect it (version, declared/valid/
@@ -79,6 +80,18 @@ Future<void> showKadImportNodesDatDialog(
                       ),
                     ),
                     const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.folder_open_rounded, size: 18),
+                      tooltip: context.l10n.browse,
+                      onPressed: () async {
+                        final title = context.l10n.importerUnFichierNodesDat;
+                        final picked = await pickFile(
+                          description: title,
+                          allowedExtensions: const ['dat'],
+                        );
+                        if (picked != null) pathController.text = picked;
+                      },
+                    ),
                     ElevatedButton(
                       onPressed: isInspecting
                           ? null

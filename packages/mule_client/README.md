@@ -35,10 +35,15 @@ Voir `docs/architecture/rpc_protocol.md`. Résumé :
 - Notifications : `event.downloadUpdated`, `event.downloadAdded/Removed/
   Completed/Failed`, `event.peerSessionUpdated`, `server.sessionUpdated`,
   `server.searchResult`, `server.foundSources`, `upload.uploadsUpdated`,
-  `event.statsTick`, `kad.statusChanged`, `history.entryAdded`,
-  `settings.changed`, `network.policyChanged`, `upnp.statusChanged`,
-  `event.snapshotRequired` — chacune dispatchée sur un stream typé
-  (`downloadEvents`, `upnpStatusEvents`, …)
+  `event.statsTick`, `kad.statusChanged`, `shares.changed`,
+  `history.entryAdded`, `settings.changed`, `network.policyChanged`,
+  `upnp.statusChanged`, `event.snapshotRequired` — chacune dispatchée
+  sur un stream typé (`downloadEvents`, `sharesEvents`,
+  `upnpStatusEvents`, …)
+- `DownloadItem` expose `parts[]` (avec `receivedMask`, bitmap 64
+  cellules intra-part) et `pendingRanges` (`ByteRange`, blocs en vol) —
+  consommés par `PartAvailabilityBar` pour le rendu `DrawStatusBar`
+  eMule byte-précis
 - Filtrage : `events.subscribe {topics: ["downloads","peers","servers","search"]}`
 
 ## Comportements transport

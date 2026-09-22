@@ -153,9 +153,21 @@ impl InboundListenerService {
                     TAG_SPECIAL_EMULE_MISCOPTIONS1, TAG_SPECIAL_EMULE_MISCOPTIONS2,
                     TAG_SPECIAL_EMULE_UDPPORTS, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
                 };
+                // TAG_NAME = le nickname effectif (eMule `nick` pref —
+                // l'HELLOANSWER doit refléter le pseudo configuré, pas une
+                // constante), avec le même défaut que `current_nickname`.
+                let nickname = self
+                    .downloads
+                    .lock()
+                    .await
+                    .get_setting("nickname")
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| "eMule-Rust".to_string());
                 tags.push(Ed2kTag {
                     name: TagName::Id(TAG_SPECIAL_NAME),
-                    value: TagValue::String("Emule-Sion".to_string()),
+                    value: TagValue::String(nickname),
                 });
                 tags.push(Ed2kTag {
                     name: TagName::Id(TAG_SPECIAL_VERSION),

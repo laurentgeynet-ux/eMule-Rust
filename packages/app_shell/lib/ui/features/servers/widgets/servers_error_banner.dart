@@ -19,7 +19,8 @@ class ServersErrorBanner extends StatelessWidget {
     final isPolicyError =
         error.toLowerCase().contains('policy') ||
         error.toLowerCase().contains('networkprofile') ||
-        error.toLowerCase().contains('réseau');
+        error.toLowerCase().contains('réseau') ||
+        error.toLowerCase().contains('network');
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),

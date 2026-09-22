@@ -18,8 +18,8 @@ class ServersSafetyBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = hasConnectionCapability
-        ? 'Connexions eD2K disponibles. Vérifiez votre profil réseau (LocalLab vs PublicEd2kPreview) avant de vous connecter. Les adresses dans votre filtre IP sont automatiquement signalées.'
-        : 'Avertissement Réseau : Importer ou gérer une liste de serveurs n\'établit aucune connexion réseau sortante. Les adresses figurant dans votre filtre IP actif sont automatiquement signalées.';
+        ? context.l10n.serverBannerConnected
+        : context.l10n.serverBannerDisconnected;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 14, 20, 4),

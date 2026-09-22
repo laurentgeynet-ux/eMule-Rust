@@ -76,11 +76,11 @@ void main() {
       // Table should now display 2 servers
       expect(find.text('eDonkeyServer No2'), findsOneWidget);
       expect(find.text('176.103.48.36:4184'), findsOneWidget);
-      expect(find.textContaining('Autorise'), findsWidgets);
+      expect(find.textContaining('Autorisé'), findsWidgets);
 
       expect(find.text('Filtered Rouge Server'), findsOneWidget);
       expect(find.text('10.20.30.40:4661'), findsOneWidget);
-      expect(find.textContaining('Bloque'), findsWidgets);
+      expect(find.textContaining('Bloqué'), findsWidgets);
 
       // Toggle server enable/disable on the first server
       final pauseBtn = find.byIcon(Icons.pause_rounded).first;
@@ -90,7 +90,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should now be disabled
-      expect(find.textContaining('Desactive'), findsOneWidget);
+      expect(find.textContaining('Désactivé'), findsOneWidget);
 
       // Delete server
       final deleteBtn = find.byIcon(Icons.delete_outline).first;

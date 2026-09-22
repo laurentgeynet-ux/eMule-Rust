@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'ip_filter_report_card.dart';
 import 'ip_filter_status_card.dart';
+import '../../../../../core/file_picker_helper.dart';
 import '../../../../../l10n/l10n.dart';
 
 /// First tab of the IP filter dialog: status card + local ipfilter.dat
@@ -77,6 +78,18 @@ class IpFilterTab extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.folder_open_rounded, size: 18),
+                tooltip: context.l10n.browse,
+                onPressed: () async {
+                  final title = context.l10n.importIpfilterDat;
+                  final picked = await pickFile(
+                    description: title,
+                    allowedExtensions: const ['dat'],
+                  );
+                  if (picked != null) filePathController.text = picked;
+                },
+              ),
               ElevatedButton.icon(
                 onPressed: () {
                   final path = filePathController.text.trim();

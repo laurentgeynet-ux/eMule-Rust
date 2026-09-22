@@ -46,12 +46,6 @@ class DetailCopyRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           onTap: () {
             Clipboard.setData(ClipboardData(text: value));
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(context.l10n.copiedToClipboard(label)),
-                duration: const Duration(seconds: 1),
-              ),
-            );
           },
           child: const Padding(
             padding: EdgeInsets.all(4.0),

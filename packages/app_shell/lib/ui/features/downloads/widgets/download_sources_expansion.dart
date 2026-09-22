@@ -6,6 +6,8 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/providers.dart';
+import '../../../../l10n/enum_labels.dart';
+import '../../../../l10n/l10n.dart';
 import 'detail/peer_source_row.dart';
 import 'detail/download_part_map_card.dart';
 
@@ -72,25 +74,25 @@ class _DownloadSourcesExpansionState
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.darkSurface,
-        title: const Text('Sources max (FT_MAXSOURCES)'),
+        title: Text(ctx.l10n.sourcesMaxDialogTitle),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Vide = limite globale',
-            helperText: 'Nombre max de sources pour ce fichier (1-10000)',
+          decoration: InputDecoration(
+            hintText: ctx.l10n.sourcesMaxHint,
+            helperText: ctx.l10n.sourcesMaxHelper,
           ),
           onSubmitted: (_) => Navigator.of(ctx).pop(true),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(ctx.l10n.annuler),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Appliquer'),
+            child: Text(ctx.l10n.apply),
           ),
         ],
       ),
@@ -119,12 +121,10 @@ class _DownloadSourcesExpansionState
 
     Widget body;
     if (hash.isEmpty) {
-      body = const _ExpansionPlaceholder('Pas de hash eD2K pour ce fichier.');
+      body = _ExpansionPlaceholder(context.l10n.srcNoHash);
     } else if (sources.isEmpty && swarm.peers.isEmpty) {
       body = _ExpansionPlaceholder(
-        ctl.isLoading
-            ? 'Chargement des sources...'
-            : 'Aucune source enregistrée pour ce fichier.',
+        ctl.isLoading ? context.l10n.srcLoading : context.l10n.srcNone,
       );
     } else {
       body = Column(
@@ -133,7 +133,7 @@ class _DownloadSourcesExpansionState
           if (swarm.peers.isNotEmpty) ...[
             _SectionHeader(
               icon: Icons.download_rounded,
-              label: 'Connectés (${swarm.peers.length})',
+              label: context.l10n.srcConnected(swarm.peers.length),
             ),
             ...swarm.peers.map(
               (p) => _ConnectedPeerRow(session: p, fileHash: hash),
@@ -142,7 +142,7 @@ class _DownloadSourcesExpansionState
           ],
           _SectionHeader(
             icon: Icons.list_alt_rounded,
-            label: 'Sources connues (${sources.length})',
+            label: context.l10n.srcKnown(sources.length),
           ),
           ListView.separated(
             shrinkWrap: true,
@@ -181,7 +181,7 @@ class _DownloadSourcesExpansionState
                     size: 14, color: AppColors.textMuted),
                 const SizedBox(width: 6),
                 Text(
-                  'Sources (${sources.length})',
+                  context.l10n.srcCount(sources.length),
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -205,7 +205,11 @@ class _DownloadSourcesExpansionState
                         .map(
                           (p) => DropdownMenuItem(
                             value: p,
-                            child: Text('Priorité : ${p.label}'),
+                            child: Text(
+                              context.l10n.srcPriorityLabel(
+                                p.labelL10n(context.l10n),
+                              ),
+                            ),
                           ),
                         )
                         .toList(),
@@ -222,7 +226,7 @@ class _DownloadSourcesExpansionState
                 const SizedBox(width: 4),
                 // eMule per-file source cap (FT_MAXSOURCES).
                 Tooltip(
-                  message: 'Sources max pour ce fichier (FT_MAXSOURCES)',
+                  message: context.l10n.srcMaxTooltip,
                   child: InkWell(
                     onTap: () => _editMaxSources(context, ref, detail),
                     child: Padding(
@@ -231,9 +235,9 @@ class _DownloadSourcesExpansionState
                         vertical: 2,
                       ),
                       child: Text(
-                        detail.maxSources == null
-                            ? 'Src max: ∞'
-                            : 'Src max: ${detail.maxSources}',
+                        context.l10n.srcMaxShort(
+                          detail.maxSources?.toString() ?? '∞',
+                        ),
                         style: const TextStyle(
                           fontSize: 10,
                           color: AppColors.textMuted,
@@ -362,7 +366,7 @@ class _ConnectedPeerRow extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        session.status.toDisplayString(),
+                        session.status.labelL10n(context.l10n),
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w600,
@@ -373,7 +377,7 @@ class _ConnectedPeerRow extends StatelessWidget {
                   ],
                 ),
                 Text(
-                  '$received reçus$queue$part',
+                  context.l10n.peerReceivedBytes(received) + queue + part,
                   style: const TextStyle(
                     fontSize: 10,
                     color: AppColors.textMuted,

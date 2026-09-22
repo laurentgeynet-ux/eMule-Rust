@@ -355,6 +355,16 @@ impl DownloadService {
         self.active.values().map(|a| a.snapshot()).collect()
     }
 
+    /// Octets utiles reçus depuis le démarrage du daemon : somme, sur tous
+    /// les downloads actifs, de `covered_len() - session_bytes_start`
+    /// (le point de départ est fixé à l'hydratation / à l'ajout).
+    pub fn session_downloaded_bytes(&self) -> u64 {
+        self.active
+            .values()
+            .map(|a| a.ranges.covered_len().saturating_sub(a.session_bytes_start))
+            .sum()
+    }
+
     /// Full details (incl. per-part state and source availability) so the
     /// downloads list can render an eMule-style part map per row.
     pub fn list_download_details(&self) -> Vec<DownloadDetail> {
@@ -538,6 +548,27 @@ impl DownloadService {
         target_dir: &Path,
     ) -> Result<DownloadDetail, DaemonError> {
         operations::set_destination(&mut self.db, &mut self.active, id, target_dir)
+    }
+
+    /// `downloads.rename` — renomme le fichier (display_name + target ;
+    /// disque + `shared_files` pour un download terminé).
+    pub fn rename_download(
+        &mut self,
+        id: &Uuid,
+        new_name: &str,
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        operations::rename_download(&mut self.db, &mut self.active, id, new_name)
+    }
+
+    /// `shares.rename` — renomme un fichier partagé complet sur disque
+    /// et dans `shared_files` (délègue à `rename_download` quand le hash
+    /// adosse un download listé).
+    pub fn rename_shared_file(
+        &mut self,
+        file_hash: &str,
+        new_name: &str,
+    ) -> Result<(), DaemonError> {
+        operations::rename_shared_file(&mut self.db, &mut self.active, file_hash, new_name)
     }
 
     pub fn retry_connection(&mut self, id: &Uuid) -> Result<DownloadDetail, DaemonError> {
@@ -893,9 +924,7 @@ impl DownloadService {
     /// ne pas compter une disponibilité périmée.
     pub fn part_source_counts(&self, hex_hash: &str) -> Option<Vec<u32>> {
         const ED2K_PART_SIZE: u64 = 9_728_000;
-        /// Fenêtre de fraîcheur des masques de disponibilité (30 min,
-        /// comparable au cycle de requery des sources eMule).
-        const SOURCE_FRESHNESS_MS: i64 = 30 * 60 * 1000;
+        use types::SOURCE_FRESHNESS_MS;
         let clean = hex_hash.trim().to_lowercase();
         let act = self
             .active
@@ -1081,8 +1110,83 @@ impl DownloadService {
         peers_servers::add_shared_file(&mut self.db, file)
     }
 
-    pub fn remove_shared_file(&mut self, file_hash: &str) -> Result<bool, DaemonError> {
-        peers_servers::remove_shared_file(&mut self.db, file_hash)
+    /// Ajoute `delta` octets au total uploadé persisté d'un fichier partagé.
+    pub fn add_share_uploaded_bytes(
+        &mut self,
+        file_hash: &str,
+        delta: u64,
+    ) -> Result<(), DaemonError> {
+        peers_servers::add_share_uploaded_bytes(&mut self.db, file_hash, delta)
+    }
+
+    /// Totaux uploadés persistés par hash de fichier (clés en minuscules).
+    pub fn list_share_uploaded_bytes(
+        &self,
+    ) -> Result<std::collections::HashMap<String, u64>, DaemonError> {
+        peers_servers::list_share_uploaded_bytes(&self.db)
+    }
+
+    /// Retire un fichier des partages. Avec `delete_file`, le fichier sur
+    /// disque est supprimé en plus : pour un download complété encore
+    /// actif on délègue à `remove_download` (entrée DB + fichier final +
+    /// share), sinon le fichier pointé par l'entrée est supprimé puis
+    /// l'entrée `shared_files` — et l'éventuel download complété en DB —
+    /// sont retirés.
+    pub fn remove_shared_file(
+        &mut self,
+        file_hash: &str,
+        delete_file: bool,
+    ) -> Result<bool, DaemonError> {
+        if !delete_file {
+            return peers_servers::remove_shared_file(&mut self.db, file_hash);
+        }
+        let sf = self.get_shared_file(file_hash)?.ok_or_else(|| {
+            DaemonError::NotFound(format!("Shared file {file_hash} not found"))
+        })?;
+        if sf.is_partial {
+            // Partage transitoire d'un download en cours : le fichier à
+            // supprimer est le `.part`, ce qui est le rôle de
+            // `downloads.remove` — jamais de suppression ici.
+            return Err(DaemonError::Business(
+                "Cannot delete a partial share — remove the download instead".to_string(),
+            ));
+        }
+        if let Some(id) = self
+            .active
+            .values()
+            .find(|a| {
+                a.download
+                    .ed2k_hash
+                    .to_hex()
+                    .eq_ignore_ascii_case(file_hash)
+            })
+            .map(|a| a.download.id)
+        {
+            self.remove_download(&id, true)?;
+            return Ok(true);
+        }
+        let path = PathBuf::from(&sf.file_path);
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+        let removed = peers_servers::remove_shared_file(&mut self.db, file_hash)?;
+        // Download complété resté en DB (hors `active`) : sa target_path
+        // vient d'être supprimée, l'entrée devient morte — on la retire.
+        let stale_db_id = self
+            .db
+            .get_all_downloads()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|d| {
+                d.status == DownloadStatus::Completed
+                    && d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
+            })
+            .map(|d| d.id);
+        if let Some(id) = stale_db_id {
+            let _ = self.db.delete_download(&id);
+            return Ok(true);
+        }
+        Ok(removed)
     }
 
     /// Sets the upload priority of a shared file ("verylow".."veryhigh").
@@ -1112,11 +1216,9 @@ impl DownloadService {
             {
                 continue;
             }
-            if let Some(mut sf) = Self::shared_entry_for_active(act) {
-                sf.aich_root = act.download.aich_root.map(|a| a.0);
-                return Ok(Some(sf));
-            }
-            return Ok(None);
+            let mut sf = Self::shared_entry_for_active(act);
+            sf.aich_root = act.download.aich_root.map(|a| a.0);
+            return Ok(Some(sf));
         }
         // Completed downloads are persisted in the DB even when not loaded
         // into `active` (e.g. after a daemon restart) — they stay shared
@@ -1158,18 +1260,18 @@ impl DownloadService {
     /// Builds the shared-file view of an active download (eMule `CPartFile`
     /// semantics): a completed download resolves to its target path; an
     /// in-progress download resolves to its `.part` file as a partial share
-    /// exposing only its fully-received eD2K parts — `None` when no part is
-    /// complete yet.
-    fn shared_entry_for_active(
-        act: &ActiveDownload,
-    ) -> Option<mule_core::model::SharedFile> {
+    /// exposing only its fully-received eD2K parts. Part files are always
+    /// shared files in eMule (`CDownloadQueue::AddPartFilesToShare`), even
+    /// before any part completes — the empty `completed_parts` mask simply
+    /// advertises nothing servable yet.
+    fn shared_entry_for_active(act: &ActiveDownload) -> mule_core::model::SharedFile {
         if act.download.status == mule_core::DownloadStatus::Completed {
-            return Some(mule_core::model::SharedFile::new(
+            return mule_core::model::SharedFile::new(
                 act.download.ed2k_hash.to_hex(),
                 &act.download.display_name,
                 act.download.total_size,
                 act.download.target_path.to_string_lossy().as_ref(),
-            ));
+            );
         }
         const ED2K_PART_SIZE: u64 = 9_728_000;
         let part_count =
@@ -1181,9 +1283,6 @@ impl DownloadService {
                 end > start && act.ranges.contains(start..end)
             })
             .collect();
-        if completed.is_empty() {
-            return None;
-        }
         let mut sf = mule_core::model::SharedFile::new(
             act.download.ed2k_hash.to_hex(),
             &act.download.display_name,
@@ -1192,7 +1291,7 @@ impl DownloadService {
         );
         sf.is_partial = true;
         sf.completed_parts = completed;
-        Some(sf)
+        sf
     }
 
     /// Every file currently servable to peers: persisted shared files plus
@@ -1208,10 +1307,9 @@ impl DownloadService {
             if persisted.contains(&act.download.ed2k_hash.to_hex().to_lowercase()) {
                 continue;
             }
-            if let Some(mut sf) = Self::shared_entry_for_active(act) {
-                sf.aich_root = act.download.aich_root.map(|a| a.0);
-                list.push(sf);
-            }
+            let mut sf = Self::shared_entry_for_active(act);
+            sf.aich_root = act.download.aich_root.map(|a| a.0);
+            list.push(sf);
         }
         // Completed downloads only live in the DB after a restart — merge
         // them too so the shared list survives reboots (eMule rehashes

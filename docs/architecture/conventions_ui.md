@@ -39,7 +39,11 @@ hiérarchie typographique, l'espacement courant et les breakpoints :
 | Breakpoints | `AppBreakpoints.compact` (750), `AppBreakpoints.medium` (1100) |
 | Décorations récurrentes | `AppDecorations.headerBar`, `footerBar`, `chip()` |
 | Textes utilisateur | `context.l10n.*` (gen_l10n — `lib/l10n/app_fr.arb` est
-  le template, `app_en.arb` la traduction ; `AppStrings` est deprecated) |
+  le template, `app_en.arb` la traduction ; `AppStrings` est deprecated).
+  Hors `BuildContext` (messages `onStatus`/`onError` des contrôleurs) :
+  `L10nLookup.current` (`lib/l10n/l10n_lookup.dart`), synchronisé avec
+  `LocaleController`. Libellés des enums `mule_client` :
+  `lib/l10n/enum_labels.dart` |
 
 Si une couleur/valeur manque : **ajouter un token** dans
 `packages/ui_kit/lib/src/tokens.dart` plutôt qu'écrire la valeur en dur.

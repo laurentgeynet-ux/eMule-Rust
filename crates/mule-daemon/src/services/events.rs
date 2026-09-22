@@ -27,6 +27,16 @@ pub struct StatsTickSnapshot {
     pub kad_contacts: usize,
     /// Whether the Kad UDP socket is bound.
     pub kad_udp_bound: bool,
+    /// Bytes received since daemon start (sum of per-download session deltas).
+    pub session_downloaded_bytes: u64,
+    /// Bytes sent since daemon start (upload manager counter).
+    pub session_uploaded_bytes: u64,
+    /// Bytes received since install — persisted, resettable via
+    /// `stats.resetLifetimeTotals`.
+    pub lifetime_downloaded_bytes: u64,
+    /// Bytes sent since install — persisted, resettable via
+    /// `stats.resetLifetimeTotals`.
+    pub lifetime_uploaded_bytes: u64,
 }
 
 /// Strongly-typed domain and lifecycle events emitted across the daemon.

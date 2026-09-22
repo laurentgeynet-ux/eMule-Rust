@@ -20,6 +20,15 @@ const TRICKLE_RATE_BPS: u64 = 1024;
 /// Grace period before a slow slot may be demoted (60 s).
 const TRICKLE_GRACE_MS: i64 = 60_000;
 
+/// Fenêtre d'échantillonnage du débit upload (~2 s, cadence du statsTick) :
+/// `upload_rate_bps` est recalculé à chaque fenêtre échue — même approche
+/// que les débits de download mesurés par tranches de 500 ms dans
+/// `peer_session/transfer.rs`.
+const RATE_WINDOW_MS: i64 = 2_000;
+/// Premier échantillon rapide (500 ms) : une session qui vient d'ouvrir sa
+/// fenêtre n'attend pas 2 s avant d'afficher un débit réel.
+const RATE_FIRST_SAMPLE_MS: i64 = 500;
+
 /// State of an upload slot or queue entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,6 +58,34 @@ pub struct UploadSessionSnapshot {
     pub state: UploadSlotState,
     pub queue_rank: Option<u32>,
     pub started_at_unix_ms: i64,
+    /// Début de la fenêtre de mesure courante (ms Unix, 0 = pas de mesure).
+    /// État interne du `UploadManager` — non sérialisé.
+    #[serde(skip)]
+    pub rate_window_start_ms: i64,
+    /// Octets envoyés dans la fenêtre courante. Non sérialisé.
+    #[serde(skip)]
+    pub rate_window_bytes: u64,
+    /// `true` dès qu'une fenêtre de mesure a été refermée — requis pour la
+    /// rétrogradation `Trickle` (un débit jamais mesuré n'est pas « lent »).
+    /// Non sérialisé.
+    #[serde(skip)]
+    pub rate_sampled: bool,
+}
+
+impl UploadSessionSnapshot {
+    /// Débit effectif à `now_ms` : le dernier débit échantillonné tant que
+    /// la fenêtre courante reste fraîche ; au-delà de `RATE_WINDOW_MS` sans
+    /// nouvel envoi, les octets résiduels de la fenêtre sont rapportés au
+    /// temps écoulé — le débit décroît vers 0 quand le pair ne demande plus
+    /// rien (même convention que `decay_stale_rates` côté downloads).
+    pub fn effective_rate_bps(&self, now_ms: i64) -> u64 {
+        let elapsed = now_ms.saturating_sub(self.rate_window_start_ms);
+        if self.rate_window_start_ms == 0 || elapsed < RATE_WINDOW_MS {
+            self.upload_rate_bps
+        } else {
+            self.rate_window_bytes.saturating_mul(1000) / elapsed as u64
+        }
+    }
 }
 
 /// Entry waiting in the upload queue.
@@ -139,6 +176,10 @@ pub struct UploadManager {
     /// Total cumulatif des octets uploadés depuis le démarrage du daemon
     /// (compteur source du quota journalier).
     total_uploaded_bytes: Arc<AtomicU64>,
+    /// Totaux uploadés par fichier (hash hex en minuscules) — hydratés
+    /// depuis `share_upload_stats` au démarrage puis incrémentés à chaque
+    /// bloc envoyé ; persistés par deltas dans la boucle `statsTick`.
+    file_upload_totals: Arc<std::sync::RwLock<std::collections::HashMap<String, u64>>>,
 }
 
 impl Default for UploadManager {
@@ -164,7 +205,38 @@ impl UploadManager {
             min_upload_rate_bps: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             quota_gate: Arc::new(std::sync::RwLock::new(Arc::new(AtomicBool::new(true)))),
             total_uploaded_bytes: Arc::new(AtomicU64::new(0)),
+            file_upload_totals: Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
+    }
+
+    /// Hydrate les totaux uploadés par fichier persistés en SQLite
+    /// (`share_upload_stats`) — appelé une fois au démarrage.
+    pub fn set_file_upload_totals(&self, totals: std::collections::HashMap<String, u64>) {
+        *self.file_upload_totals.write().unwrap() = totals;
+    }
+
+    /// Copie des totaux uploadés par fichier (hash en minuscules).
+    pub fn per_file_uploaded_bytes(&self) -> std::collections::HashMap<String, u64> {
+        self.file_upload_totals.read().unwrap().clone()
+    }
+
+    /// Débit effectif courant agrégé par fichier (somme des slots actifs
+    /// sur le même hash, clés en minuscules) — eMule affiche ce débit dans
+    /// la colonne « Upload speed » de la liste des fichiers partagés.
+    pub async fn per_file_rates_bps(&self) -> std::collections::HashMap<String, u64> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let active = self.active_uploads.lock().await;
+        let mut rates = std::collections::HashMap::new();
+        for s in active.values() {
+            *rates.entry(s.file_hash.to_lowercase()).or_insert(0u64) +=
+                s.effective_rate_bps(now);
+        }
+        rates
     }
 
     /// Sets the minimum per-slot upload rate (eMule `MinUpload`, B/s).
@@ -207,8 +279,10 @@ impl UploadManager {
     }
 
     /// Emits the full uploads snapshot (active slots + queue + aggregate
-    /// rate). No-op when no event channel is installed.
-    async fn emit_uploads_updated(&self) {
+    /// rate). No-op when no event channel is installed. `pub` pour la
+    /// poussée périodique depuis la boucle `statsTick` (`state.rs`) qui
+    /// rafraîchit les débits mesurés entre deux envois de blocs.
+    pub async fn emit_uploads_updated(&self) {
         let (tx, seq) = {
             let tx = self.event_tx.read().unwrap().clone();
             let seq = self.sequence.read().unwrap().clone();
@@ -318,13 +392,19 @@ impl UploadManager {
             .min_upload_rate_bps
             .load(std::sync::atomic::Ordering::Relaxed);
         let uploading = Self::uploading_count(&active);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         // eMule `MinUpload`: do not open a new slot when it would push the
-        // average per-slot bandwidth below the configured floor.
+        // average per-slot bandwidth below the configured floor. Le débit
+        // effectif (décroissant quand un pair ne demande plus) évite qu'un
+        // slot inactif ne bloque indéfiniment l'ouverture d'un nouveau.
         let min_rate_ok = if min_rate > 0 && uploading > 0 {
             let total_bps: u64 = active
                 .values()
                 .filter(|s| s.state == UploadSlotState::Uploading)
-                .map(|s| s.upload_rate_bps)
+                .map(|s| s.effective_rate_bps(now))
                 .sum();
             total_bps / uploading.max(1) as u64 >= min_rate
         } else {
@@ -334,11 +414,6 @@ impl UploadManager {
             && min_rate_ok
             && self.uss_gate.read().unwrap().load(Ordering::SeqCst)
         {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as i64;
-
             let snap = UploadSessionSnapshot {
                 client_key: client_key.to_string(),
                 client_address: client_address.to_string(),
@@ -349,6 +424,9 @@ impl UploadManager {
                 state: UploadSlotState::Uploading,
                 queue_rank: None,
                 started_at_unix_ms: now,
+                rate_window_start_ms: 0,
+                rate_window_bytes: 0,
+                rate_sampled: false,
             };
             active.insert(client_key.to_string(), snap);
             self.active_count
@@ -379,6 +457,9 @@ impl UploadManager {
                 state: UploadSlotState::Uploading,
                 queue_rank: None,
                 started_at_unix_ms: now,
+                rate_window_start_ms: 0,
+                rate_window_bytes: 0,
+                rate_sampled: false,
             };
             active.insert(client_key.to_string(), snap);
             tracing::info!(
@@ -504,6 +585,9 @@ impl UploadManager {
                 state: UploadSlotState::Uploading,
                 queue_rank: None,
                 started_at_unix_ms: now,
+                rate_window_start_ms: 0,
+                rate_window_bytes: 0,
+                rate_sampled: false,
             };
             tracing::info!(
                 "[UPLOAD_PROMOTED] Client {} promoted from queue to active upload slot for file '{}' (hash: {})",
@@ -515,13 +599,20 @@ impl UploadManager {
             .store(Self::uploading_count(active), Ordering::SeqCst);
     }
 
-    /// Updates active upload progress.
+    /// Updates active upload progress and measures the slot's real rate.
     ///
-    /// Slot focusing (eMule semantics): an active slot whose rate stays under
-    /// `TRICKLE_RATE_BPS` past `TRICKLE_GRACE_MS` is demoted to `Trickle` —
-    /// it keeps residual bandwidth but frees its slot so the best queued
-    /// client is promoted. This concentrates bandwidth on fast clients.
-    pub async fn update_progress(&self, client_key: &str, bytes_sent: u64, rate_bps: u64) {
+    /// Le débit est mesuré en interne par fenêtres (`RATE_WINDOW_MS`,
+    /// premier échantillon à `RATE_FIRST_SAMPLE_MS`) à partir des octets
+    /// réellement envoyés — l'appelant ne fournit que `bytes_sent`, jamais
+    /// un débit estimé. `effective_rate_bps` décroît vers 0 quand le pair
+    /// cesse de demander des blocs.
+    ///
+    /// Slot focusing (eMule semantics): an active slot whose measured rate
+    /// stays under `TRICKLE_RATE_BPS` past `TRICKLE_GRACE_MS` is demoted to
+    /// `Trickle` — it keeps residual bandwidth but frees its slot so the
+    /// best queued client is promoted. This concentrates bandwidth on fast
+    /// clients.
+    pub async fn update_progress(&self, client_key: &str, bytes_sent: u64) {
         let mut demoted = false;
         {
             let mut active = self.active_uploads.lock().await;
@@ -529,20 +620,42 @@ impl UploadManager {
                 cur.transferred_bytes = cur.transferred_bytes.saturating_add(bytes_sent);
                 self.total_uploaded_bytes
                     .fetch_add(bytes_sent, Ordering::SeqCst);
-                cur.upload_rate_bps = rate_bps;
+                *self
+                    .file_upload_totals
+                    .write()
+                    .unwrap()
+                    .entry(cur.file_hash.to_lowercase())
+                    .or_default() += bytes_sent;
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as i64;
+                if cur.rate_window_start_ms == 0 {
+                    cur.rate_window_start_ms = now;
+                }
+                cur.rate_window_bytes = cur.rate_window_bytes.saturating_add(bytes_sent);
+                let elapsed = now.saturating_sub(cur.rate_window_start_ms);
+                // Referme la fenêtre échue — ou dès 500 ms pour le premier
+                // échantillon — et mesure le débit réellement desservi.
+                if elapsed >= RATE_WINDOW_MS
+                    || (!cur.rate_sampled && elapsed >= RATE_FIRST_SAMPLE_MS)
+                {
+                    cur.upload_rate_bps =
+                        cur.rate_window_bytes.saturating_mul(1000) / elapsed as u64;
+                    cur.rate_window_start_ms = now;
+                    cur.rate_window_bytes = 0;
+                    cur.rate_sampled = true;
+                }
                 if cur.state == UploadSlotState::Uploading
-                    && rate_bps < TRICKLE_RATE_BPS
+                    && cur.rate_sampled
+                    && cur.upload_rate_bps < TRICKLE_RATE_BPS
                     && now.saturating_sub(cur.started_at_unix_ms) > TRICKLE_GRACE_MS
                 {
                     cur.state = UploadSlotState::Trickle;
                     demoted = true;
                     tracing::info!(
                         "[UPLOAD_TRICKLE] Client {} demoted to trickle slot (rate {} B/s < {} B/s) — slot freed for queue",
-                        cur.client_address, rate_bps, TRICKLE_RATE_BPS
+                        cur.client_address, cur.upload_rate_bps, TRICKLE_RATE_BPS
                     );
                 }
             }
@@ -607,15 +720,36 @@ impl UploadManager {
     }
 
     /// Returns the snapshot of the first active upload (if any).
+    /// `upload_rate_bps` y est le débit effectif à l'instant de la lecture.
     pub async fn active_snapshot(&self) -> Option<UploadSessionSnapshot> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         let active = self.active_uploads.lock().await;
-        active.values().next().cloned()
+        active.values().next().cloned().map(|mut s| {
+            s.upload_rate_bps = s.effective_rate_bps(now);
+            s
+        })
     }
 
     /// Returns snapshots of all active upload slots.
+    /// `upload_rate_bps` y est le débit effectif à l'instant de la lecture
+    /// (décroît vers 0 quand un pair ne demande plus de blocs).
     pub async fn active_snapshots(&self) -> Vec<UploadSessionSnapshot> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         let active = self.active_uploads.lock().await;
-        active.values().cloned().collect()
+        active
+            .values()
+            .cloned()
+            .map(|mut s| {
+                s.upload_rate_bps = s.effective_rate_bps(now);
+                s
+            })
+            .collect()
     }
 
     /// Returns the 1-based queue position of a waiting client matched by
@@ -663,6 +797,9 @@ impl UploadManager {
                 state: UploadSlotState::Waiting,
                 queue_rank: Some((idx + 1) as u32),
                 started_at_unix_ms: item.enqueued_at_unix_ms,
+                rate_window_start_ms: 0,
+                rate_window_bytes: 0,
+                rate_sampled: false,
             })
             .collect()
     }
@@ -760,12 +897,19 @@ mod tests {
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
         // c1 stays slow past the grace period → trickle → c2 promoted.
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
         {
             let mut active = mgr.active_uploads.lock().await;
             let s = active.get_mut("c1").unwrap();
             s.started_at_unix_ms -= TRICKLE_GRACE_MS + 1;
+            // Fenêtre de mesure amorcée il y a 1,5 s : le premier
+            // échantillon (≥ 500 ms) mesure ~341 B/s < TRICKLE_RATE_BPS.
+            s.rate_window_start_ms = now_ms - 1_500;
         }
-        mgr.update_progress("c1", 512, 512).await;
+        mgr.update_progress("c1", 512).await;
         let actives = mgr.active_snapshots().await;
         assert_eq!(
             actives.iter().find(|s| s.client_key == "c1").unwrap().state,
@@ -779,6 +923,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn per_file_stats_aggregate_sessions_and_persist_totals() {
+        let mgr = UploadManager::new();
+        // Hydratation au boot : le fichier a déjà 1000 B uploadés.
+        mgr.set_file_upload_totals(std::collections::HashMap::from([(
+            "haa".to_string(),
+            1000u64,
+        )]));
+        // Deux slots actifs sur le même hash (casse mixte) + un autre fichier.
+        mgr.request_upload_slot("c1", "c1", "HAA", "f", 1.0, "normal", false)
+            .await
+            .unwrap();
+        mgr.request_upload_slot("c2", "c2", "haa", "f", 1.0, "normal", false)
+            .await
+            .unwrap();
+        mgr.request_upload_slot("c3", "c3", "hbb", "g", 1.0, "normal", false)
+            .await
+            .unwrap();
+        // Fenêtre de mesure amorcée il y a 1 s → premier échantillon au
+        // prochain update_progress (elapsed ≥ RATE_FIRST_SAMPLE_MS).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        {
+            let mut active = mgr.active_uploads.lock().await;
+            for s in active.values_mut() {
+                s.rate_window_start_ms = now - 1_000;
+            }
+        }
+        mgr.update_progress("c1", 1500).await;
+        mgr.update_progress("c2", 1500).await;
+        mgr.update_progress("c3", 1500).await;
+
+        let totals = mgr.per_file_uploaded_bytes();
+        assert_eq!(totals["haa"], 4000, "hydraté 1000 + 1500 + 1500");
+        assert_eq!(totals["hbb"], 1500);
+        assert!(!totals.contains_key("hcc"));
+
+        let rates = mgr.per_file_rates_bps().await;
+        // ~1500 B/s par slot → ~3000 B/s agrégé pour haa, ~1500 pour hbb.
+        let haa = rates["haa"];
+        let hbb = rates["hbb"];
+        assert!(haa > hbb, "deux slots agrégés ({haa}) > un slot ({hbb})");
+        assert!(haa > 0 && hbb > 0);
+        assert!(!rates.contains_key("hcc"));
+
+        // Slots libérés : débit retombe, total persisté conservé.
+        mgr.release_slot("c1").await;
+        mgr.release_slot("c2").await;
+        assert_eq!(
+            mgr.per_file_rates_bps().await.get("haa").copied().unwrap_or(0),
+            0
+        );
+        assert_eq!(mgr.per_file_uploaded_bytes()["haa"], 4000);
+    }
+
+    #[tokio::test]
     async fn fast_slot_within_grace_is_not_demoted() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
@@ -786,7 +987,7 @@ mod tests {
             .await
             .unwrap();
         // Slow rate but still within grace period → stays Uploading.
-        mgr.update_progress("c1", 512, 512).await;
+        mgr.update_progress("c1", 512).await;
         let s = &mgr.active_snapshots().await[0];
         assert_eq!(s.state, UploadSlotState::Uploading);
     }
@@ -848,8 +1049,8 @@ mod tests {
         mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
             .await
             .unwrap();
-        mgr.update_progress("a", 100, 10).await;
-        mgr.update_progress("b", 200, 20).await;
+        mgr.update_progress("a", 100).await;
+        mgr.update_progress("b", 200).await;
         let actives = mgr.active_snapshots().await;
         assert_eq!(
             actives
@@ -867,5 +1068,36 @@ mod tests {
                 .transferred_bytes,
             200
         );
+    }
+
+    #[tokio::test]
+    async fn rate_is_measured_per_window_and_decays_on_stall() {
+        let mgr = UploadManager::new();
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
+            .await
+            .unwrap();
+        let now_ms = || {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64
+        };
+        // Fenêtre amorcée il y a 1 s : 200 KiB envoyés → premier échantillon
+        // (≥ 500 ms) ≈ 200 KiB/s — le débit mesuré reflète les octets
+        // réellement servis, pas la limite configurée.
+        {
+            let mut active = mgr.active_uploads.lock().await;
+            active.get_mut("a").unwrap().rate_window_start_ms = now_ms() - 1_000;
+        }
+        mgr.update_progress("a", 200 * 1024).await;
+        let snaps = mgr.active_snapshots().await;
+        let rate = snaps[0].upload_rate_bps;
+        assert!(
+            (150 * 1024..=250 * 1024).contains(&rate),
+            "measured rate should be ~200 KiB/s, got {rate}"
+        );
+        // Pair inactif depuis > 2 s : le débit effectif retombe à 0 au lieu
+        // de rester figé sur la dernière valeur.
+        assert_eq!(snaps[0].effective_rate_bps(now_ms() + 10_000), 0);
     }
 }

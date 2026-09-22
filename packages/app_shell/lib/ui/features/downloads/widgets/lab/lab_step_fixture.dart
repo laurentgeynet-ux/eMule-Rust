@@ -35,8 +35,7 @@ class LabStepFixture extends StatelessWidget {
     return LabStepCard(
       stepNumber: 1,
       title: context.l10n.generateLocalTestFixture,
-      description:
-          'Creates a deterministic file in <workdir>/fixtures/ and computes its eD2K hash.',
+      description: context.l10n.labStep1Desc,
       isCompleted: fixture != null,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,8 +67,11 @@ class LabStepFixture extends StatelessWidget {
                         ),
                       )
                     : const Icon(Icons.create_new_folder_outlined, size: 16),
-                label:
-                    Text(isCreating ? 'Generating...' : 'Generate Fixture'),
+                label: Text(
+                  isCreating
+                      ? context.l10n.labGenerating
+                      : context.l10n.labGenerateFixture,
+                ),
                 onPressed: isCreating ? null : onCreate,
               ),
               if (fixture != null) ...[

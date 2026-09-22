@@ -41,6 +41,7 @@ pub async fn handle_request(
         "downloads.resume" => handle_resume(state, req.params).await,
         "downloads.remove" => handle_remove(state, req.params).await,
         "downloads.setDestination" => handle_set_destination(state, req.params).await,
+        "downloads.rename" => handle_rename(state, req.params).await,
         "downloads.setPriority" => handle_set_priority(state, req.params).await,
         "downloads.setMaxSources" => handle_set_max_sources(state, req.params).await,
         "downloads.inspectPartMet" => handle_inspect_part_met(state, req.params).await,
@@ -56,6 +57,7 @@ pub async fn handle_request(
         "settings.set" => handle_settings_set(state, req.params).await,
         "settings.setRetentionDays" => handle_settings_set_retention_days(state, req.params).await,
         "settings.resetDownloadDir" => handle_settings_reset_download_dir(state).await,
+        "stats.resetLifetimeTotals" => handle_stats_reset_lifetime_totals(state).await,
         "categories.list" => handle_categories_list(state).await,
         "categories.create" => handle_categories_create(state, req.params).await,
         "categories.update" => handle_categories_update(state, req.params).await,
@@ -97,6 +99,7 @@ pub async fn handle_request(
         "shares.list" => handle_shares_list(state).await,
         "shares.add" => handle_shares_add(state, req.params).await,
         "shares.remove" => handle_shares_remove(state, req.params).await,
+        "shares.rename" => handle_shares_rename(state, req.params).await,
         "shares.rescan" => handle_shares_rescan(state).await,
         "shares.setEnabled" => handle_shares_set_enabled(state, req.params).await,
         "shares.setUploadPriority" => {

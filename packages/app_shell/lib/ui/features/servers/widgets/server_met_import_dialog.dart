@@ -3,6 +3,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../view_models/servers_controller.dart';
+import '../../../../core/file_picker_helper.dart';
 import '../../../../l10n/l10n.dart';
 
 /// Flow: pick a server.met path → inspect (report of allowed/blocked
@@ -41,6 +42,18 @@ Future<void> showServerMetImportDialog(
                 hintText: 'C:\\path\\to\\server.met ou /path/to/server.met',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.description_outlined, size: 18),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                  tooltip: context.l10n.browse,
+                  onPressed: () async {
+                    final title = context.l10n.importerUnFichierServerMet;
+                    final picked = await pickFile(
+                      description: title,
+                      allowedExtensions: const ['met'],
+                    );
+                    if (picked != null) pathController.text = picked;
+                  },
+                ),
               ),
             ),
           ],

@@ -52,12 +52,6 @@ class DiagnosticCopyRow extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: path));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(copiedMessage),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
             },
           ),
         ],

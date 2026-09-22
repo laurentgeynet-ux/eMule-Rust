@@ -25,8 +25,7 @@ class LabStepPeer extends StatelessWidget {
     return LabStepCard(
       stepNumber: 3,
       title: context.l10n.loopbackTestPeer1270,
-      description:
-          'Spawns a local eD2K protocol peer hosting the test fixtures.',
+      description: context.l10n.labStep3Desc,
       isCompleted: isRunning,
       content: Wrap(
         spacing: 16,
@@ -49,7 +48,9 @@ class LabStepPeer extends StatelessWidget {
                   )
                 : Icon(isRunning ? Icons.stop : Icons.play_arrow, size: 16),
             label: Text(
-              isRunning ? 'Stop Loopback Peer' : 'Start Loopback Peer',
+              isRunning
+                  ? context.l10n.labStopPeer
+                  : context.l10n.labStartPeer,
             ),
             onPressed: isManaging ? null : onToggle,
           ),
@@ -69,8 +70,8 @@ class LabStepPeer extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 isRunning
-                    ? 'Active on $activePeer (Serving $fixtureCount file(s))'
-                    : 'Peer offline',
+                    ? context.l10n.labPeerActive(activePeer!, fixtureCount)
+                    : context.l10n.labPeerOffline,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight:

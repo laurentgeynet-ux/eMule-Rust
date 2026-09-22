@@ -4,6 +4,8 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/providers.dart';
+import '../../../../core/file_picker_helper.dart';
+import '../../../../core/folder_picker.dart';
 import 'import/import_category_dropdown.dart';
 import 'import/import_field_label.dart';
 import 'import/import_inline_error.dart';
@@ -66,6 +68,29 @@ class _ImportPartMetDialogState extends ConsumerState<ImportPartMetDialog> {
     _partPathController.dispose();
     _targetDirController.dispose();
     super.dispose();
+  }
+
+  /// Ouvre l'explorateur de fichiers natif et remplit [ctrl] avec le
+  /// chemin choisi (filtre d'extensions optionnel, ex. `['met']`).
+  Future<void> _browseFile(
+    TextEditingController ctrl,
+    String description, {
+    List<String>? allowedExtensions,
+  }) async {
+    final picked = await pickFile(
+      description: description,
+      allowedExtensions: allowedExtensions,
+    );
+    if (picked != null && mounted) ctrl.text = picked;
+  }
+
+  /// Ouvre l'explorateur de dossiers natif pour [ctrl].
+  Future<void> _browseFolder(
+    TextEditingController ctrl,
+    String description,
+  ) async {
+    final picked = await pickFolder(description: description);
+    if (picked != null && mounted) ctrl.text = picked;
   }
 
   Future<void> _runInspection() async {
@@ -264,6 +289,18 @@ class _ImportPartMetDialogState extends ConsumerState<ImportPartMetDialog> {
                               ),
                             ),
                             const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.folder_open_rounded,
+                                size: 18,
+                              ),
+                              tooltip: context.l10n.browse,
+                              onPressed: () => _browseFile(
+                                _metPathController,
+                                context.l10n.pathToPartMetFile,
+                                allowedExtensions: const ['met'],
+                              ),
+                            ),
                             ElevatedButton.icon(
                               key: const Key('inspect_button'),
                               onPressed: _isInspecting
@@ -302,10 +339,29 @@ class _ImportPartMetDialogState extends ConsumerState<ImportPartMetDialog> {
                         ImportFieldLabel(
                           label: context.l10n.associatedPartFilePathOptional,
                         ),
-                        ImportPathField(
-                          key: const Key('part_path_input'),
-                          controller: _partPathController,
-                          hintText: context.l10n.autoDetectedNextToMet,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ImportPathField(
+                                key: const Key('part_path_input'),
+                                controller: _partPathController,
+                                hintText: context.l10n.autoDetectedNextToMet,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.folder_open_rounded,
+                                size: 18,
+                              ),
+                              tooltip: context.l10n.browse,
+                              onPressed: () => _browseFile(
+                                _partPathController,
+                                context.l10n.associatedPartFilePathOptional,
+                                allowedExtensions: const ['part'],
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 16),
                         if (_inspection != null)
@@ -320,10 +376,28 @@ class _ImportPartMetDialogState extends ConsumerState<ImportPartMetDialog> {
                         ImportFieldLabel(
                           label: context.l10n.targetDownloadDirectory,
                         ),
-                        ImportPathField(
-                          key: const Key('target_dir_input'),
-                          controller: _targetDirController,
-                          hintText: context.l10n.targetDirectory2,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ImportPathField(
+                                key: const Key('target_dir_input'),
+                                controller: _targetDirController,
+                                hintText: context.l10n.targetDirectory2,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.folder_open_rounded,
+                                size: 18,
+                              ),
+                              tooltip: context.l10n.browse,
+                              onPressed: () => _browseFolder(
+                                _targetDirController,
+                                context.l10n.targetDownloadDirectory,
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 16),
                         ImportFieldLabel(
@@ -346,40 +420,44 @@ class _ImportPartMetDialogState extends ConsumerState<ImportPartMetDialog> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: _isImporting
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      child: Text(context.l10n.cancel),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      key: const Key('import_submit_button'),
-                      onPressed: canImport ? _submitImport : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: AppColors.textPrimary,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: _isImporting
+                            ? null
+                            : () => Navigator.of(context).pop(false),
+                        child: Text(context.l10n.cancel),
                       ),
-                      child: _isImporting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.textPrimary,
-                              ),
-                            )
-                          : Text(context.l10n.importDownload),
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        key: const Key('import_submit_button'),
+                        onPressed: canImport ? _submitImport : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: AppColors.textPrimary,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        child: _isImporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.textPrimary,
+                                ),
+                              )
+                            : Text(context.l10n.importDownload),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],

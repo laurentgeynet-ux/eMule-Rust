@@ -1,11 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../app/providers.dart';
+import '../../../../l10n/l10n.dart';
+import '../../downloads/widgets/row/rename_file_dialog.dart';
 
 /// Shared files view (`/shares`): every file served to remote peers with
 /// its eMule upload priority (powershare) selector and enable switch.
@@ -18,88 +18,43 @@ class SharesView extends ConsumerStatefulWidget {
 }
 
 class _SharesViewState extends ConsumerState<SharesView> {
-  List<SharedFileModel> _files = const [];
-  bool _loading = true;
   bool _rescanning = false;
-  StreamSubscription<DownloadLifecycleEvent>? _lifecycleSub;
-  StreamSubscription<DownloadUpdatedEvent>? _updateSub;
-  Timer? _updateDebounce;
 
   /// Re-scans the Incoming directory on the daemon (eMule "reload shared
   /// files" semantics), then refreshes the list.
   Future<void> _rescan() async {
     setState(() => _rescanning = true);
-    String? error;
-    int added = 0;
     try {
-      added = await ref.read(muleDaemonClientProvider).rescanSharedFiles();
-    } catch (e) {
-      error = e.toString();
+      await ref.read(sharesControllerProvider).rescan();
+    } catch (_) {
+      // Non-fatal : la liste ne change pas, le prochain rescan reste possible.
     }
-    if (!mounted) return;
-    setState(() => _rescanning = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          error != null
-              ? 'Rescan échoué : $error'
-              : added > 0
-                  ? '$added nouveau(x) fichier(s) partagé(s)'
-                  : 'Rescan terminé — aucun nouveau fichier',
-        ),
-      ),
-    );
-    await _load();
+    if (mounted) setState(() => _rescanning = false);
   }
 
-  static const _priorities = [
-    ('verylow', 'Très basse'),
-    ('low', 'Basse'),
-    ('normal', 'Normale'),
-    ('high', 'Haute'),
-    ('veryhigh', 'Très haute'),
-    ('powershare', 'PowerShare'),
+  static const _priorityIds = [
+    'verylow',
+    'low',
+    'normal',
+    'high',
+    'veryhigh',
+    'powershare',
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    final client = ref.read(muleDaemonClientProvider);
-    // Lifecycle transitions (added/completed/removed/failed) change the
-    // shared list right away — refresh immediately.
-    _lifecycleSub = client.downloadLifecycleEvents.listen((_) => _load());
-    // Progression events update the completed-parts list of partial shares;
-    // they fire often, so debounce the reload.
-    _updateSub = client.downloadEvents.listen((_) {
-      _updateDebounce ??= Timer(const Duration(seconds: 3), () {
-        _updateDebounce = null;
-        _load();
-      });
-    });
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _updateDebounce?.cancel();
-    _lifecycleSub?.cancel();
-    _updateSub?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    try {
-      final files = await ref.read(muleDaemonClientProvider).listSharedFiles();
-      if (mounted) setState(() => _files = files);
-    } catch (_) {
-      // Non-fatal.
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+  static String _priorityLabelOf(BuildContext context, String id) =>
+      switch (id) {
+        'verylow' => context.l10n.sharePrioVeryLow,
+        'low' => context.l10n.low,
+        'normal' => context.l10n.normal,
+        'high' => context.l10n.high,
+        'veryhigh' => context.l10n.sharePrioVeryHigh,
+        _ => 'PowerShare',
+      };
 
   @override
   Widget build(BuildContext context) {
+    final shares = ref.watch(sharesControllerProvider);
+    final files = shares.files;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -107,9 +62,9 @@ class _SharesViewState extends ConsumerState<SharesView> {
         children: [
           Row(
             children: [
-              const Text(
-                'Fichiers partagés',
-                style: TextStyle(
+              Text(
+                context.l10n.sharesTitle,
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
@@ -117,7 +72,7 @@ class _SharesViewState extends ConsumerState<SharesView> {
               ),
               const SizedBox(width: 12),
               Text(
-                '${_files.length} fichier(s)',
+                context.l10n.sharesFileCount(files.length),
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textMuted,
@@ -132,19 +87,19 @@ class _SharesViewState extends ConsumerState<SharesView> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.refresh, size: 18),
-                tooltip: 'Rescanner le dossier Incoming',
+                tooltip: context.l10n.sharesRescanTooltip,
                 onPressed: _rescanning ? null : _rescan,
               ),
             ],
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: _loading
+            child: shares.loading
                 ? const Center(child: CircularProgressIndicator())
-                : _files.isEmpty
-                    ? const Center(
+                : files.isEmpty
+                    ? Center(
                         child: Text(
-                          'Aucun fichier partagé.\nLes fichiers du dossier Incoming et les téléchargements terminés sont partagés automatiquement.',
+                          context.l10n.sharesEmptyState,
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12,
@@ -153,13 +108,13 @@ class _SharesViewState extends ConsumerState<SharesView> {
                         ),
                       )
                     : ListView.separated(
-                        itemCount: _files.length,
+                        itemCount: files.length,
                         separatorBuilder: (_, __) => const Divider(
                           height: 1,
                           color: AppTheme.darkBorder,
                         ),
                         itemBuilder: (context, i) =>
-                            _ShareRow(file: _files[i], onChanged: _load),
+                            _ShareRow(file: files[i]),
                       ),
           ),
         ],
@@ -170,9 +125,8 @@ class _SharesViewState extends ConsumerState<SharesView> {
 
 class _ShareRow extends ConsumerWidget {
   final SharedFileModel file;
-  final VoidCallback onChanged;
 
-  const _ShareRow({required this.file, required this.onChanged});
+  const _ShareRow({required this.file});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -197,7 +151,7 @@ class _ShareRow extends ConsumerWidget {
                   message: file.filePath,
                   child: Text(
                     '${Formatters.formatBytes(file.fileSize)} — ${file.fileHash}'
-                    '${file.isPartial ? ' — partiel (${file.completedParts.length} part(s))' : ''}',
+                    '${file.isPartial ? context.l10n.sharesPartialParts(file.completedParts.length) : ''}',
                     style: const TextStyle(
                       fontSize: 10,
                       color: AppColors.textMuted,
@@ -208,11 +162,44 @@ class _ShareRow extends ConsumerWidget {
               ],
             ),
           ),
+          // Débit mesuré courant + total cumulé uploadé pour ce fichier
+          // (eMule colonnes « Upload speed » / « Transferred »).
+          SizedBox(
+            width: 120,
+            child: Column(
+              key: Key('share_upload_stats_${file.fileHash}'),
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '↑ ${Formatters.formatSpeed(file.uploadRateBps)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: file.uploadRateBps > 0
+                        ? AppColors.accentTeal
+                        : AppColors.textMuted,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Tooltip(
+                  message: context.l10n.sharesTotalSentTooltip,
+                  child: Text(
+                    'Σ ${Formatters.formatBytes(file.uploadedBytes)}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.textMuted,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           SizedBox(
             height: 24,
             child: DropdownButton<String>(
-              value: _SharesViewState._priorities
-                      .any((p) => p.$1 == file.upPriority)
+              value: _SharesViewState._priorityIds
+                      .any((p) => p == file.upPriority)
                   ? file.upPriority
                   : 'normal',
               isDense: true,
@@ -222,8 +209,13 @@ class _ShareRow extends ConsumerWidget {
                 color: AppColors.textSecondary,
               ),
               dropdownColor: AppTheme.darkSurface,
-              items: _SharesViewState._priorities
-                  .map((p) => DropdownMenuItem(value: p.$1, child: Text(p.$2)))
+              items: _SharesViewState._priorityIds
+                  .map(
+                    (p) => DropdownMenuItem(
+                      value: p,
+                      child: Text(_SharesViewState._priorityLabelOf(context, p)),
+                    ),
+                  )
                   .toList(),
               onChanged: file.isPartial
                   ? null
@@ -231,16 +223,17 @@ class _ShareRow extends ConsumerWidget {
                       if (v == null) return;
                       try {
                         await ref
-                            .read(muleDaemonClientProvider)
-                            .setSharedFileUploadPriority(file.fileHash, v);
-                        onChanged();
+                            .read(sharesControllerProvider)
+                            .setUploadPriority(file.fileHash, v);
                       } catch (_) {}
                     },
             ),
           ),
           const SizedBox(width: 12),
           Tooltip(
-            message: file.enabled ? 'Partagé' : 'Suspendu',
+            message: file.enabled
+                ? context.l10n.sharesEnabledTooltip
+                : context.l10n.sharesDisabledTooltip,
             child: Switch(
               value: file.enabled,
               onChanged: file.isPartial
@@ -248,12 +241,108 @@ class _ShareRow extends ConsumerWidget {
                   : (v) async {
                       try {
                         await ref
-                            .read(muleDaemonClientProvider)
-                            .setSharedFileEnabled(file.fileHash, v);
-                        onChanged();
+                            .read(sharesControllerProvider)
+                            .setEnabled(file.fileHash, v);
                       } catch (_) {}
                     },
             ),
+          ),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: file.isPartial
+                ? context.l10n.sharesRenameDisabledTooltip
+                : context.l10n.sharesRenameTooltip,
+            child: IconButton(
+              key: Key('rename_share_${file.fileHash}'),
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.edit_rounded,
+                size: 18,
+                color: file.isPartial
+                    ? AppColors.textFaint
+                    : AppColors.textSecondary,
+              ),
+              onPressed:
+                  file.isPartial ? null : () => _rename(context, ref),
+            ),
+          ),
+          Tooltip(
+            message: file.isPartial
+                ? context.l10n.sharesDeleteDisabledTooltip
+                : context.l10n.sharesDeleteTooltip,
+            child: IconButton(
+              key: Key('delete_share_${file.fileHash}'),
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.delete_outline_rounded,
+                size: 18,
+                color: file.isPartial
+                    ? AppColors.textFaint
+                    : AppColors.danger.withValues(alpha: 0.85),
+              ),
+              onPressed:
+                  file.isPartial ? null : () => _confirmDelete(context, ref),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Renommage d'un fichier partagé complet (`shares.rename`) : le
+  /// fichier disque et l'entrée `shared_files` sont renommés (et le
+  /// download complété associé s'il existe).
+  void _rename(BuildContext context, WidgetRef ref) {
+    showRenameFileDialog(
+      context,
+      currentName: file.fileName,
+      onSubmit: (newName) async {
+        try {
+          await ref
+              .read(sharesControllerProvider)
+              .renameSharedFile(file.fileHash, newName);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
+    );
+  }
+
+  /// Confirmation avant suppression définitive : le fichier est effacé du
+  /// disque et retiré des partages (l'entrée de téléchargement complété
+  /// associée, s'il y en a une, est supprimée avec lui côté daemon).
+  void _confirmDelete(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(ctx.l10n.sharesDeleteTitle),
+        content: Text(
+          ctx.l10n.sharesDeleteBody(file.fileName),
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(ctx.l10n.annuler),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.statusFailed,
+            ),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await ref
+                    .read(sharesControllerProvider)
+                    .removeSharedFile(file.fileHash);
+              } catch (_) {}
+            },
+            child: Text(ctx.l10n.supprimer),
           ),
         ],
       ),

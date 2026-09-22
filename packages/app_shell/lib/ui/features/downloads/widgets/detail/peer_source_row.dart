@@ -204,8 +204,8 @@ class PeerSourceRow extends StatelessWidget {
                     : () => onConnect(src.address),
                 child: Text(
                   src.status == PeerSourceStatus.failed
-                      ? 'Réessayer'
-                      : 'Connecter',
+                      ? context.l10n.peerRetry
+                      : context.l10n.peerConnect,
                   style: const TextStyle(
                     fontSize: 10,
                     color: AppColors.textPrimary,

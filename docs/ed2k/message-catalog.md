@@ -118,7 +118,8 @@ Offset  Type          Champ                  Description
 
 ### Décodage Emule-Sion
 - Décodé dans `Ed2kFileStatus { file_hash, part_count, status_bitfield }`.
-- Si `Part Count == 0`, le masque est vide (le pair ne possède aucune part disponible).
+- **`Part Count == 0` = source complète** (convention eD2K : la source détient le fichier entier et n'envoie pas de bitfield — eMule `ProcessFileStatus` matérialise `memset(m_abyPartStatus, 1, …)`). `compute_part_summaries` compte une telle source pour toutes les parts.
+- Le masque reçu alimente `availableSourceCount` (barre de parts eMule) via `record_source_availability`, y compris sur keep-alive en file d'attente ; les masques périmés > 30 min sont ignorés.
 - Rejet si la trame est tronquée par rapport à la taille déduite du `Part Count`.
 
 ### Fixtures Associées

@@ -140,7 +140,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "emule_remove_share".to_string(),
-            description: "Unshare a file from the eD2K/Kad network.".to_string(),
+            description: "Unshare a file from the eD2K/Kad network, optionally deleting the file on disk.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "required": ["file_hash"],
@@ -148,6 +148,28 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     "file_hash": {
                         "type": "string",
                         "description": "32-character hex eD2K hash of shared file"
+                    },
+                    "delete_file": {
+                        "type": "boolean",
+                        "description": "Also delete the file on disk (for a completed download this removes the download entry too). Rejected for partial shares of in-progress downloads (default: false)"
+                    }
+                }
+            }),
+        },
+        ToolDefinition {
+            name: "emule_rename_share".to_string(),
+            description: "Rename a fully shared file: the file on disk and its share entry are renamed (and the linked completed download when one exists).".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "required": ["file_hash", "new_name"],
+                "properties": {
+                    "file_hash": {
+                        "type": "string",
+                        "description": "32-character hex eD2K hash of shared file"
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New file name (no path separators or Windows-illegal characters)"
                     }
                 }
             }),

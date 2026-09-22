@@ -267,7 +267,7 @@ class ServersTable extends StatelessWidget {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 220),
               child: Text(
-                server.name.isNotEmpty ? server.name : 'Sans nom',
+                server.name.isNotEmpty ? server.name : context.l10n.serverUnnamed,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w500),
               ),
@@ -292,7 +292,7 @@ class ServersTable extends StatelessWidget {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 240),
             child: Text(
-              server.name.isNotEmpty ? server.name : 'Sans nom',
+              server.name.isNotEmpty ? server.name : context.l10n.serverUnnamed,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),

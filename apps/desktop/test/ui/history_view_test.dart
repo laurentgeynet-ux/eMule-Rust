@@ -33,7 +33,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify sidebar contains History & Statistics button
-      final historyNav = find.text('History & Statistics');
+      final historyNav = find.text('Historique & Statistiques');
       expect(historyNav, findsOneWidget);
 
       // The nav item may sit below the sidebar fold — scroll it into view.
@@ -46,13 +46,13 @@ void main() {
 
       // Verify HistoryView is rendered
       expect(find.byType(HistoryView), findsOneWidget);
-      expect(find.text('History & Local Statistics'), findsOneWidget);
+      expect(find.text('Historique & statistiques locales'), findsOneWidget);
 
       // Verify dashboard statistics cards
-      expect(find.text('Total Completed'), findsOneWidget);
-      expect(find.text('Activity Windows'), findsOneWidget);
-      expect(find.text('Resumes & Retries'), findsOneWidget);
-      expect(find.text('Integrity Health'), findsOneWidget);
+      expect(find.text('Total terminés'), findsOneWidget);
+      expect(find.text("Fenêtres d'activité"), findsOneWidget);
+      expect(find.text('Reprises & tentatives'), findsOneWidget);
+      expect(find.text('Intégrité'), findsOneWidget);
 
       // Verify seeded history entries are listed
       expect(find.text('Linux_Kernel_6.10.tar.xz'), findsOneWidget);
@@ -70,9 +70,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate to History & Statistics (may be below the sidebar fold)
-      await tester.ensureVisible(find.text('History & Statistics'));
+      await tester.ensureVisible(find.text('Historique & Statistiques'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('History & Statistics'));
+      await tester.tap(find.text('Historique & Statistiques'));
       await tester.pumpAndSettle();
 
       // Initially both items are visible
@@ -80,10 +80,10 @@ void main() {
       expect(find.text('Blender_Benchmark_Scene.blend'), findsOneWidget);
 
       // Select 'Completed' from filter dropdown
-      await tester.tap(find.text('All Events'));
+      await tester.tap(find.text('Tous les événements'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Completed').last);
+      await tester.tap(find.text('Terminés').last);
       await tester.pumpAndSettle();
 
       // Now only completed entry is visible
@@ -100,31 +100,31 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate to History & Statistics (may be below the sidebar fold)
-      await tester.ensureVisible(find.text('History & Statistics'));
+      await tester.ensureVisible(find.text('Historique & Statistiques'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('History & Statistics'));
+      await tester.tap(find.text('Historique & Statistiques'));
       await tester.pumpAndSettle();
 
       // Tap Export Report dropdown
-      await tester.tap(find.text('Export Report'));
+      await tester.tap(find.text('Exporter le rapport'));
       await tester.pumpAndSettle();
 
       // Tap Export as JSON
-      await tester.tap(find.text('Export as JSON (Sanitized)'));
+      await tester.tap(find.text('Exporter en JSON (anonymisé)'));
       await tester.pumpAndSettle();
 
       // Verify export dialog opens with sanitized notice
-      expect(find.text('Export History (JSON)'), findsOneWidget);
+      expect(find.text('Exporter l\'historique (JSON)'), findsOneWidget);
       expect(
-        find.text('Report is sanitized: all local usernames and filesystem paths are redacted.'),
+        find.text('Le rapport est anonymisé : tous les noms d\'utilisateur et chemins locaux sont masqués.'),
         findsOneWidget,
       );
-      expect(find.text('Copy to Clipboard'), findsOneWidget);
+      expect(find.text('Copier dans le presse-papiers'), findsOneWidget);
 
       // Close dialog
-      await tester.tap(find.text('Close'));
+      await tester.tap(find.text('Fermer'));
       await tester.pumpAndSettle();
-      expect(find.text('Export History (JSON)'), findsNothing);
+      expect(find.text('Exporter l\'historique (JSON)'), findsNothing);
     });
 
     testWidgets('clears history after destructive confirmation', (WidgetTester tester) async {
@@ -136,26 +136,26 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate to History & Statistics (may be below the sidebar fold)
-      await tester.ensureVisible(find.text('History & Statistics'));
+      await tester.ensureVisible(find.text('Historique & Statistiques'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('History & Statistics'));
+      await tester.tap(find.text('Historique & Statistiques'));
       await tester.pumpAndSettle();
 
       expect(find.text('Linux_Kernel_6.10.tar.xz'), findsOneWidget);
 
       // Tap Clear History
-      await tester.tap(find.text('Clear History'));
+      await tester.tap(find.text('Effacer l\'historique'));
       await tester.pumpAndSettle();
 
       // Verify confirmation dialog
-      expect(find.text('Clear Download History?'), findsOneWidget);
+      expect(find.text('Effacer l\'historique des téléchargements ?'), findsOneWidget);
 
       // Tap Clear All History confirm button
-      await tester.tap(find.text('Clear All History'));
+      await tester.tap(find.text('Effacer tout l\'historique'));
       await tester.pumpAndSettle();
 
       // Verify empty state is now displayed
-      expect(find.text('No download history recorded yet'), findsOneWidget);
+      expect(find.text('Aucun historique de téléchargement enregistré'), findsOneWidget);
       expect(find.text('Linux_Kernel_6.10.tar.xz'), findsNothing);
     });
 
@@ -169,7 +169,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate to the /settings page
-      final settingsFinder = find.text('Settings');
+      final settingsFinder = find.text('Paramètres');
       await tester.ensureVisible(settingsFinder);
       await tester.pumpAndSettle();
       await tester.tap(settingsFinder);

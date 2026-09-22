@@ -13,29 +13,29 @@ class AppLocalizationsFr extends AppLocalizations {
   String get appName => 'Emule-Sion';
 
   @override
-  String get appTagline => 'Modern eD2K Client';
+  String get appTagline => 'Client eD2K moderne';
 
   @override
-  String get loopbackLabMode => 'Loopback Lab Mode';
+  String get loopbackLabMode => 'Mode Lab Loopback';
 
   @override
   String get tooltipLoopbackLabMode =>
-      'Laboratory mode.\nConnections are restricted to 127.0.0.1.\n\nNo public eD2K servers, Kad nodes,\nor external peers are contacted.';
+      'Mode laboratoire.\nLes connexions sont limitées à 127.0.0.1.\n\nAucun serveur eD2K public, nœud Kad ou pair externe.';
 
   @override
   String get devModeBadge => 'DEV';
 
   @override
-  String get sectionDownloads => 'DOWNLOADS';
+  String get sectionDownloads => 'TÉLÉCHARGEMENTS';
 
   @override
-  String get sectionCategories => 'CATEGORIES';
+  String get sectionCategories => 'CATÉGORIES';
 
   @override
-  String get sectionAuditActivity => 'AUDIT & ACTIVITY';
+  String get sectionAuditActivity => 'AUDIT & ACTIVITÉ';
 
   @override
-  String get navHistoryStats => 'History & Statistics';
+  String get navHistoryStats => 'Historique & Statistiques';
 
   @override
   String get navServers => 'Serveurs eD2K';
@@ -47,37 +47,37 @@ class AppLocalizationsFr extends AppLocalizations {
   String get navKad => 'Kad DHT';
 
   @override
-  String get navUploads => 'Uploads';
+  String get navUploads => 'Envois';
 
   @override
-  String get filterAll => 'All Downloads';
+  String get filterAll => 'Tous les téléchargements';
 
   @override
-  String get filterActive => 'Active';
+  String get filterActive => 'Actifs';
 
   @override
-  String get filterPaused => 'Paused';
+  String get filterPaused => 'En pause';
 
   @override
-  String get filterCompleted => 'Completed';
+  String get filterCompleted => 'Terminés';
 
   @override
-  String get filterFailed => 'Failed';
+  String get filterFailed => 'Échoués';
 
   @override
   String get uncategorized => 'Sans catégorie';
 
   @override
-  String get searchPlaceholder => 'Search downloads...';
+  String get searchPlaceholder => 'Rechercher dans les téléchargements...';
 
   @override
-  String get btnAddLink => 'Add Link';
+  String get btnAddLink => 'Ajouter un lien';
 
   @override
-  String get btnAddEd2kLink => 'Add eD2K Link';
+  String get btnAddEd2kLink => 'Ajouter un lien eD2K';
 
   @override
-  String get btnAddDownload => 'Add Download';
+  String get btnAddDownload => 'Ajouter un téléchargement';
 
   @override
   String get btnCancel => 'Annuler';
@@ -101,56 +101,56 @@ class AppLocalizationsFr extends AppLocalizations {
   String get btnCopied => 'Copié';
 
   @override
-  String get actionSettings => 'Settings';
+  String get actionSettings => 'Paramètres';
 
   @override
-  String get actionImportPartMet => 'Import .part.met';
+  String get actionImportPartMet => 'Importer un .part.met';
 
   @override
-  String get actionGuidedLabTest => 'Guided Local Test';
+  String get actionGuidedLabTest => 'Test local guidé';
 
   @override
-  String get tooltipAddCategory => 'Add Category';
+  String get tooltipAddCategory => 'Ajouter une catégorie';
 
   @override
-  String get tooltipRefresh => 'Refresh Downloads';
+  String get tooltipRefresh => 'Actualiser les téléchargements';
 
   @override
-  String get tooltipDevTools => 'Toggle Simulation & Debug Tools';
+  String get tooltipDevTools => 'Outils de simulation & débogage';
 
   @override
-  String get tooltipResume => 'Resume';
+  String get tooltipResume => 'Reprendre';
 
   @override
-  String get tooltipPause => 'Pause';
+  String get tooltipPause => 'Mettre en pause';
 
   @override
-  String get tooltipDelete => 'Delete';
+  String get tooltipDelete => 'Supprimer';
 
   @override
-  String get emptyStateTitle => 'No downloads in this view';
+  String get emptyStateTitle => 'Aucun téléchargement dans cette vue';
 
   @override
   String get emptyStateSubtitle =>
-      'Add an eD2K link to create a local download entry.\nThis lab build operates in loopback-only mode.';
+      'Ajoutez un lien eD2K pour créer un téléchargement local.\nCe build lab fonctionne en loopback uniquement.';
 
   @override
   String get zeroSpeedDual => '↓ 0 B/s   ↑ 0 B/s';
 
   @override
-  String get daemonConnected => 'Daemon Connected';
+  String get daemonConnected => 'Daemon connecté';
 
   @override
-  String get daemonConnecting => 'Connecting to daemon...';
+  String get daemonConnecting => 'Connexion au daemon...';
 
   @override
-  String get daemonReconnecting => 'Reconnecting...';
+  String get daemonReconnecting => 'Reconnexion...';
 
   @override
-  String get daemonError => 'Daemon Error';
+  String get daemonError => 'Erreur du daemon';
 
   @override
-  String get daemonDisconnected => 'Daemon Disconnected';
+  String get daemonDisconnected => 'Daemon déconnecté';
 
   @override
   String daemonVersionLine(String version, String protocol) {
@@ -158,256 +158,299 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String get dialogAddTitle => 'Add eD2K Download';
+  String get dialogAddTitle => 'Ajouter un téléchargement eD2K';
 
   @override
-  String get dialogFieldLabel => 'eD2K Link URL';
+  String get dialogFieldLabel => 'URL du lien eD2K';
 
   @override
   String get dialogFieldHint => 'ed2k://|file|name|size|hash|/';
 
   @override
-  String get dialogValidationPrefix => 'Must start with \"ed2k://|file|\"';
+  String get dialogValidationPrefix => 'Doit commencer par « ed2k://|file| »';
 
   @override
-  String get dialogValidationParts => 'Must contain: name, size, and hash';
+  String get dialogValidationParts => 'Doit contenir : nom, taille et hash';
 
   @override
   String get diagnosticsBadge => 'Diagnostics';
 
   @override
   String get tooltipDiagnostics =>
-      'Click to inspect system & workdir diagnostics.';
+      'Cliquer pour inspecter les diagnostics système & répertoire de travail.';
 
   @override
   String get tooltipSystemDiagnostics =>
-      'System Diagnostics & Confinement (127.0.0.1)';
+      'Diagnostics système & confinement (127.0.0.1)';
 
   @override
   String get tooltipOpenDrawer => 'Ouvrir le menu de navigation';
 
   @override
-  String get tooltipLabGuide => 'Guided Local Test Flow';
+  String get tooltipLabGuide => 'Flux de test local guidé';
 
   @override
-  String get killSwitchBadgeDisabled => 'Disabled';
+  String get killSwitchBadgeDisabled => 'Désactivé';
 
   @override
   String get tooltipPolicyKill =>
-      'Network Subsystem is DISABLED (Kill Switch engaged).\nClick to view policy and re-enable.';
+      'Le sous-système réseau est DÉSACTIVÉ (kill switch engagé). Cliquer pour voir la politique et réactiver.';
 
   @override
-  String tooltipPolicyInfo(String profile, String status) {
-    return 'Network Policy: $profile\nStatus: $status\nClick to inspect policy, quotas, and audit log.';
-  }
+  String get tooltipSessionTotals =>
+      'Totaux de session — octets téléchargés / envoyés depuis le démarrage du daemon.\nCliquer pour ouvrir Historique & Statistiques.';
 
   @override
-  String get tooltipKillSwitchEnable => 'Re-enable Network Subsystem';
+  String get tooltipLifetimeTotals =>
+      'Totaux cumulés depuis l\'installation — téléchargé / envoyé.\nCliquer pour ouvrir Historique & Statistiques. Remise à zéro dans Paramètres → Avancé.';
+
+  @override
+  String get settingsLifetimeResetTile => 'Remise à zéro des totaux cumulés';
+
+  @override
+  String get settingsLifetimeResetSub =>
+      'Remet à zéro les compteurs téléchargé / envoyé depuis l\'installation affichés dans la barre du haut. Les totaux de session sont conservés.';
+
+  @override
+  String get lifetimeResetConfirmTitle => 'Remettre à zéro les totaux ?';
+
+  @override
+  String get lifetimeResetConfirmBody =>
+      'Les compteurs cumulés de téléchargement et d\'envoi depuis l\'installation seront remis à zéro. Les totaux de la session en cours ne sont pas modifiés.';
+
+  @override
+  String get lifetimeResetConfirmButton => 'Remettre à zéro';
+
+  @override
+  String get renameFileTooltip => 'Renommer le fichier';
+
+  @override
+  String get renameFileTitle => 'Renommer le fichier';
+
+  @override
+  String get renameFileLabel => 'Nouveau nom de fichier';
+
+  @override
+  String get renameFileInvalid =>
+      'Nom invalide — non vide, pas \'.\'/\'..\', ne finit pas par \'.\' et sans < > : \" / \\ | ? *';
+
+  @override
+  String get renameFileFailed =>
+      'Le renommage a échoué côté daemon (nom déjà pris ou fichier verrouillé)';
+
+  @override
+  String get renameFileApply => 'Renommer';
+
+  @override
+  String get tooltipKillSwitchEnable => 'Réactiver le sous-système réseau';
 
   @override
   String get tooltipKillSwitchDisable =>
-      'Kill Switch: Disconnect All Sockets Immediately';
+      'Kill switch : déconnecter immédiatement toutes les sockets';
 
   @override
-  String get tooltipIpFilter => 'IP Filter & Rate Limits';
+  String get tooltipIpFilter => 'Filtre IP & limites de débit';
 
   @override
-  String get addEd2kDownload => 'Add eD2K Download';
+  String get addEd2kDownload => 'Ajouter un téléchargement eD2K';
 
   @override
-  String get ed2kLink => 'eD2K Link';
+  String get ed2kLink => 'Lien eD2K';
 
   @override
-  String get category => 'Category';
+  String get category => 'Catégorie';
 
   @override
-  String get targetDirectory => 'Target Directory';
+  String get targetDirectory => 'Dossier de destination';
 
   @override
-  String get defaultDownloadsFolder => 'Default downloads folder';
+  String get defaultDownloadsFolder => 'Dossier de téléchargements par défaut';
 
   @override
-  String get browse => 'Browse...';
+  String get browse => 'Parcourir...';
 
   @override
-  String get diskAllocation => 'Disk Allocation';
+  String get diskAllocation => 'Allocation disque';
 
   @override
   String get cancel => 'Annuler';
 
   @override
-  String get addDownload => 'Add Download';
+  String get addDownload => 'Ajouter le téléchargement';
 
   @override
-  String get eGMoviesMusicLinux => 'e.g. Movies, Music, Linux ISOs';
+  String get eGMoviesMusicLinux => 'ex : Films, Musique, ISOs Linux';
 
   @override
-  String get inheritGlobalDestination => 'Inherit global destination';
+  String get inheritGlobalDestination => 'Hériter de la destination globale';
 
   @override
-  String get devSimulationTools => 'Dev Simulation Tools:';
+  String get devSimulationTools => 'Outils de simulation dev :';
 
   @override
   String selected(String fileName) {
-    return 'Selected: \"$fileName\"';
+    return 'Sélectionné : \"$fileName\"';
   }
 
   @override
-  String get inject256KbChunk => 'Inject 256 KB Chunk';
+  String get inject256KbChunk => 'Injecter un bloc de 256 Ko';
 
   @override
-  String get inject1MbChunk => 'Inject 1 MB Chunk';
+  String get inject1MbChunk => 'Injecter un bloc de 1 Mo';
 
   @override
   String get clickAnyDownloadRowAbove =>
-      'Click any download row above to select it for data injection tests.';
+      'Cliquez sur une ligne de téléchargement ci-dessus pour la sélectionner pour les tests d\'injection.';
 
   @override
-  String get closeDebugBar => 'Close Debug Bar';
+  String get closeDebugBar => 'Fermer la barre de débogage';
 
   @override
-  String get systemLabDiagnostics => 'System & Lab Diagnostics';
+  String get systemLabDiagnostics => 'Diagnostics système & lab';
 
   @override
-  String get workingDirectoryMode => 'Working Directory & Mode';
+  String get workingDirectoryMode => 'Répertoire de travail & mode';
 
   @override
   String get mode => 'Mode';
 
   @override
-  String get isolatedDataFolder => '(Isolated data folder)';
+  String get isolatedDataFolder => '(Dossier de données isolé)';
 
   @override
-  String get internalData => 'Internal Data';
+  String get internalData => 'Données internes';
 
   @override
-  String get downloads => 'Downloads';
+  String get downloads => 'Téléchargements';
 
   @override
-  String get daemonProcess => 'Daemon & Process';
+  String get daemonProcess => 'Daemon & processus';
 
   @override
-  String get processPid => 'Process PID';
+  String get processPid => 'PID du processus';
 
   @override
-  String get rpcEndpoint => 'RPC Endpoint';
+  String get rpcEndpoint => 'Endpoint RPC';
 
   @override
-  String get daemonVersion => 'Daemon Version';
+  String get daemonVersion => 'Version du daemon';
 
   @override
-  String get instanceId => 'Instance ID';
+  String get instanceId => 'ID d\'instance';
 
   @override
-  String get sessionId => 'Session ID';
+  String get sessionId => 'ID de session';
 
   @override
-  String get daemonLog => 'Daemon Log';
+  String get daemonLog => 'Journal du daemon';
 
   @override
-  String get capabilities => 'Capabilities';
+  String get capabilities => 'Capacités';
 
   @override
-  String get none => 'None';
+  String get none => 'Aucune';
 
   @override
-  String get copyShareableSanitized => 'Copy Shareable (Sanitized)';
+  String get copyShareableSanitized =>
+      'Copier version partageable (anonymisée)';
 
   @override
   String get sanitizedShareableDiagnosticsCopied =>
-      'Sanitized shareable diagnostics copied';
+      'Diagnostics anonymisés partageables copiés';
 
   @override
-  String get copyFullLocalDev => 'Copy Full (Local Dev)';
+  String get copyFullLocalDev => 'Copier version complète (dev local)';
 
   @override
   String get fullDiagnosticsCopiedToClipboard =>
-      'Full diagnostics copied to clipboard';
+      'Diagnostics complets copiés dans le presse-papiers';
 
   @override
-  String get openLabGuide => 'Open Lab Guide';
+  String get openLabGuide => 'Ouvrir le guide lab';
 
   @override
-  String get close => 'Close';
+  String get close => 'Fermer';
 
   @override
   String details(String fileName) {
-    return 'Details: $fileName';
+    return 'Détails : $fileName';
   }
 
   @override
-  String get inspectFullDetails => 'Inspect Full Details';
+  String get inspectFullDetails => 'Inspecter tous les détails';
 
   @override
-  String get downloadId => 'Download ID';
+  String get downloadId => 'ID du téléchargement';
 
   @override
-  String get totalSize => 'Total Size';
+  String get totalSize => 'Taille totale';
 
   @override
-  String get verifiedBytes => 'Verified Bytes';
+  String get verifiedBytes => 'Octets vérifiés';
 
   @override
-  String get status => 'Status';
+  String get status => 'Statut';
 
   @override
   String get sources => 'Sources';
 
   @override
-  String get downloadNotFound => 'Download Not Found';
+  String get downloadNotFound => 'Téléchargement introuvable';
 
   @override
   String get theRequestedDownloadIsNo =>
-      'The requested download is no longer available.';
+      'Le téléchargement demandé n\'est plus disponible.';
 
   @override
-  String get importPartMetExperimental => 'Import .part.met (Experimental)';
+  String get importPartMetExperimental =>
+      'Importer un .part.met (expérimental)';
 
   @override
   String get importAnExistingPartialOr =>
-      'Import an existing partial or completed eMule download safely.';
+      'Importer un téléchargement eMule partiel ou terminé en toute sécurité.';
 
   @override
-  String get pathToPartMetFile => 'Path to .part.met file';
+  String get pathToPartMetFile => 'Chemin du fichier .part.met';
 
   @override
-  String get inspect => 'Inspect';
+  String get inspect => 'Inspecter';
 
   @override
   String get associatedPartFilePathOptional =>
-      'Associated .part file path (optional, auto-detected)';
+      'Chemin du fichier .part associé (optionnel, auto-détecté)';
 
   @override
-  String get autoDetectedNextToMet => 'Auto-detected next to .met file';
+  String get autoDetectedNextToMet => 'Auto-détecté à côté du fichier .met';
 
   @override
-  String get targetDownloadDirectory => 'Target Download Directory';
+  String get targetDownloadDirectory =>
+      'Dossier de destination du téléchargement';
 
   @override
-  String get targetDirectory2 => 'Target directory';
+  String get targetDirectory2 => 'Dossier de destination';
 
   @override
-  String get categoryOptional => 'Category (Optional)';
+  String get categoryOptional => 'Catégorie (optionnel)';
 
   @override
-  String get importDownload => 'Import Download';
+  String get importDownload => 'Importer le téléchargement';
 
   @override
-  String get compatibilityAlert => 'Compatibility Alert';
+  String get compatibilityAlert => 'Alerte de compatibilité';
 
   @override
-  String get retry => 'Retry';
+  String get retry => 'Réessayer';
 
   @override
-  String get ipFilterRateLimiters => 'IP Filter & Rate Limiters';
+  String get ipFilterRateLimiters => 'Filtre IP & limiteurs de débit';
 
   @override
   String get localDefensiveIpFilterIpfilter =>
-      'Local defensive IP filter (ipfilter.dat) and Token Bucket bandwidth quotas';
+      'Filtre IP défensif local (ipfilter.dat) et quotas de bande passante par seaux de jetons';
 
   @override
   String connectedDownloadToLoopbackSource(String peerAddr) {
-    return 'Connected download to loopback source ($peerAddr)';
+    return 'Téléchargement connecté à la source loopback ($peerAddr)';
   }
 
   @override
@@ -416,164 +459,166 @@ class AppLocalizationsFr extends AppLocalizations {
     String folders,
     String freedBytes,
   ) {
-    return 'Cleanup completed: $deletedFilesCount file(s) deleted across $folders ($freedBytes freed).';
+    return 'Nettoyage terminé : $deletedFilesCount fichier(s) supprimé(s) dans $folders ($freedBytes libérés).';
   }
 
   @override
-  String get guidedLocalLoopbackTestFlow => 'Guided Local Loopback Test Flow';
+  String get guidedLocalLoopbackTestFlow => 'Flux de test loopback local guidé';
 
   @override
   String get fullEndToEndEd2k =>
-      'Full end-to-end eD2K testing on 127.0.0.1 without touching a terminal.';
+      'Test eD2K complet de bout en bout sur 127.0.0.1 sans toucher à un terminal.';
 
   @override
-  String get networkPolicyDefenseGuard => 'Network Policy & Defense Guard';
+  String get networkPolicyDefenseGuard => 'Politique réseau & garde défensive';
 
   @override
   String get defensiveSocketAuthorizationAntiSsrf =>
-      'Defensive socket authorization, anti-SSRF isolation, and resource quotas';
+      'Autorisation défensive des sockets, isolation anti-SSRF et quotas de ressources';
 
   @override
   String get redactedNetworkAuditLogRecent =>
-      'Redacted Network Audit Log (Recent Decisions)';
+      'Journal d\'audit réseau anonymisé (décisions récentes)';
 
   @override
   String get sparseInstantGrowsDynamically =>
-      'Sparse (Instant, grows dynamically)';
+      'Sparse (instantané, croît dynamiquement)';
 
   @override
   String get preallocateFullSizeAvoidsFragmentation =>
-      'Preallocate (Full size, avoids fragmentation)';
+      'Pré-allouer (taille complète, évite la fragmentation)';
 
   @override
-  String get noneMinimalInitialDiskUse => 'None (Minimal initial disk use)';
+  String get noneMinimalInitialDiskUse =>
+      'Aucune (usage disque initial minimal)';
 
   @override
   String get sansCategorieNone => 'Sans catégorie (None)';
 
   @override
   String hash(String hash) {
-    return 'Hash: $hash';
+    return 'Hash : $hash';
   }
 
   @override
   String get rrggbb => '#RRGGBB';
 
   @override
-  String get normalDefault => 'Normal (Default)';
+  String get normalDefault => 'Normale (défaut)';
 
   @override
-  String get low => 'Low';
+  String get low => 'Basse';
 
   @override
   String get normal => 'Normal';
 
   @override
-  String get high => 'High';
+  String get high => 'Haute';
 
   @override
-  String get changeTargetDestination => 'Change Target Destination';
+  String get changeTargetDestination => 'Changer la destination';
 
   @override
   String selectTargetDestinationFolderFor(String fileName) {
-    return 'Select target destination folder for \"$fileName\":';
+    return 'Choisir le dossier de destination pour \"$fileName\" :';
   }
 
   @override
-  String get targetDirectoryPath => 'Target Directory Path';
+  String get targetDirectoryPath => 'Chemin du dossier de destination';
 
   @override
-  String get eGDownloadsOrC => 'e.g. downloads or C:\\TargetDir';
+  String get eGDownloadsOrC => 'ex : downloads ou C:\\TargetDir';
 
   @override
   String get theFolderMustExistAnd =>
-      'The folder must exist and be writable. Active .part data remains in data/temp/ until completed.';
+      'Le dossier doit exister et être accessible en écriture. Les données .part actives restent dans data/temp/ jusqu\'à la fin.';
 
   @override
-  String get saveDestination => 'Save Destination';
+  String get saveDestination => 'Enregistrer la destination';
 
   @override
   String copiedToClipboard(String label) {
-    return '$label copied to clipboard';
+    return '$label copié dans le presse-papiers';
   }
 
   @override
-  String get resume => 'Resume';
+  String get resume => 'Reprendre';
 
   @override
   String get pause => 'Pause';
 
   @override
-  String get retryLoopbackSource => 'Retry Loopback Source';
+  String get retryLoopbackSource => 'Réessayer la source loopback';
 
   @override
-  String get openCompletedFile => 'Open Completed File';
+  String get openCompletedFile => 'Ouvrir le fichier terminé';
 
   @override
-  String get remove => 'Remove...';
+  String get remove => 'Supprimer...';
 
   @override
-  String get diagnosticsRedactedExport => 'Diagnostics & Redacted Export';
+  String get diagnosticsRedactedExport => 'Diagnostics & export anonymisé';
 
   @override
   String get exportSanitizedDiagnosticsZeroAuth =>
-      'Export sanitized diagnostics (zero auth token secrets, loopback 127.0.0.1 confinement verification, redacted user directories).';
+      'Exporter les diagnostics anonymisés (zéro secret de jeton d\'auth, vérification du confinement loopback 127.0.0.1, noms d\'utilisateur et chemins masqués).';
 
   @override
-  String get copyRedactedDiagnostic => 'Copy Redacted Diagnostic';
+  String get copyRedactedDiagnostic => 'Copier le diagnostic anonymisé';
 
   @override
   String get downloadDiagnosticCopiedToClipboard =>
-      'Download diagnostic copied to clipboard (sanitized: no secrets)';
+      'Diagnostic du téléchargement copié (anonymisé : aucun secret)';
 
   @override
-  String get identityEd2kLinks => 'Identity & eD2K Links';
+  String get identityEd2kLinks => 'Identité & liens eD2K';
 
   @override
-  String get downloadUuid => 'Download UUID';
+  String get downloadUuid => 'UUID du téléchargement';
 
   @override
-  String get ed2kHashMd4 => 'eD2K Hash (MD4)';
+  String get ed2kHashMd4 => 'Hash eD2K (MD4)';
 
   @override
-  String get canonicalEd2kLink => 'Canonical eD2K Link';
+  String get canonicalEd2kLink => 'Lien eD2K canonique';
 
   @override
-  String get transferMetricsSpeed => 'Transfer Metrics & Speed';
+  String get transferMetricsSpeed => 'Métriques de transfert & vitesse';
 
   @override
-  String get received => 'Received';
+  String get received => 'Reçu';
 
   @override
-  String get remaining => 'Remaining';
+  String get remaining => 'Restant';
 
   @override
-  String get verified => 'Verified';
+  String get verified => 'Vérifié';
 
   @override
-  String get currentRate => 'Current Rate';
+  String get currentRate => 'Débit actuel';
 
   @override
-  String get averageRate => 'Average Rate';
+  String get averageRate => 'Débit moyen';
 
   @override
   String get eta => 'ETA';
 
   @override
-  String get attempts => 'Attempts';
+  String get attempts => 'Tentatives';
 
   @override
   String lastError(String lastError) {
-    return 'Last Error: $lastError';
+    return 'Dernière erreur : $lastError';
   }
 
   @override
   String ed2kPartMapPartsOf(String length) {
-    return 'eD2K Part Map ($length parts of 9.28 MB)';
+    return 'Carte des parts eD2K ($length parts de 9,28 Mo)';
   }
 
   @override
-  String get partBreakdownIsInitializing => 'Part breakdown is initializing...';
+  String get partBreakdownIsInitializing =>
+      'Initialisation de la répartition des parts...';
 
   @override
   String part(
@@ -585,71 +630,71 @@ class AppLocalizationsFr extends AppLocalizations {
     String status,
     String availableSourceCount,
   ) {
-    return 'Part #$partIndex\nRange: $startOffset - $endOffset\nSize: $size\nReceived: $receivedBytes\nStatus: $status\nSources: $availableSourceCount';
+    return 'Part #$partIndex Plage : $startOffset - $endOffset Taille : $size Reçu : $receivedBytes Statut : $status';
   }
 
   @override
   String verified2(String verifiedCount) {
-    return 'Verified ($verifiedCount)';
+    return 'Vérifiées ($verifiedCount)';
   }
 
   @override
   String completed(String completedCount) {
-    return 'Completed ($completedCount)';
+    return 'Terminées ($completedCount)';
   }
 
   @override
   String downloading(String downloadingCount) {
-    return 'Downloading ($downloadingCount)';
+    return 'En téléchargement ($downloadingCount)';
   }
 
   @override
   String missing(String missingCount) {
-    return 'Missing ($missingCount)';
+    return 'Manquantes ($missingCount)';
   }
 
   @override
   String noSource(String unavailableCount) {
-    return 'No source ($unavailableCount)';
+    return 'Aucune source ($unavailableCount)';
   }
 
   @override
-  String get storageTargetDestination => 'Storage & Target Destination';
+  String get storageTargetDestination => 'Stockage & destination';
 
   @override
-  String get temporaryPartPathConfined => 'Temporary Part Path (Confined)';
+  String get temporaryPartPathConfined => 'Chemin .part temporaire (confiné)';
 
   @override
-  String get finalTargetDestination => 'Final Target Destination';
+  String get finalTargetDestination => 'Destination finale';
 
   @override
-  String get changeDestination => 'Change Destination';
+  String get changeDestination => 'Changer la destination';
 
   @override
   String get noteChangingDestinationRedirectsWhere =>
-      'Note: Changing destination redirects where the completed file is assembled. Ongoing .part chunks remain safely confined to data/temp/ until final verification.';
+      'Note : changer la destination redirige l\'endroit où le fichier terminé est assemblé. Les blocs .part en cours restent en sécurité dans le dossier temporaire.';
 
   @override
-  String get removeDownload => 'Remove Download?';
+  String get removeDownload => 'Supprimer le téléchargement ?';
 
   @override
   String removeFromTheDownloadsManager(String fileName) {
-    return 'Remove \"$fileName\" from the downloads manager?';
+    return 'Retirer \"$fileName\" du gestionnaire de téléchargements ?';
   }
 
   @override
   String get theDownloadEntryInSqlite =>
-      '• The download entry in SQLite will be permanently deleted.\n• Temporary files (.part and .part.met) in data/temp/ will be removed if selected below.\n• The final completed file in destination (if completed) will NOT be deleted.';
+      '• L\'entrée du téléchargement dans SQLite sera définitivement supprimée.\n• Les fichiers temporaires (.part et .part.met) dans data/temp/ seront supprimés.\n• Si le téléchargement est terminé, une option ci-dessous permet aussi de supprimer le fichier final dans le dossier de destination.';
 
   @override
   String get deleteTemporaryPartFileFrom =>
-      'Delete temporary .part file from data/temp/';
+      'Supprimer le fichier .part temporaire de data/temp/';
 
   @override
-  String get confirmRemove => 'Confirm Remove';
+  String get confirmRemove => 'Confirmer la suppression';
 
   @override
-  String get sourcesEd2kSessionPeer => 'SOURCES ED2K & SESSION PEER';
+  String get sourcesEd2kSessionPeer => 'SOURCES ED2K & PAIRS DE SESSION';
 
   @override
   String get ajouterSourceIpPortEx =>
@@ -689,129 +734,133 @@ class AppLocalizationsFr extends AppLocalizations {
   String get forcer => 'Forcer';
 
   @override
-  String get noCategory => 'No Category';
+  String get noCategory => 'Sans catégorie';
 
   @override
-  String get totalSize2 => 'Total Size:';
+  String get totalSize2 => 'Taille totale :';
 
   @override
-  String get estAcquiredGapsComplement => 'Est. Acquired / Gaps Complement:';
+  String get estAcquiredGapsComplement =>
+      'Acquis est. / complément des trous :';
 
   @override
-  String get partCount => 'Part Count:';
+  String get partCount => 'Nombre de parts :';
 
   @override
-  String get ed2kHash => 'eD2K Hash';
+  String get ed2kHash => 'Hash eD2K';
 
   @override
   String get importSuccessfulTheDownloadIs =>
-      'Import successful! The download is paused and verified parts have been staged.';
+      'Import réussi ! Le téléchargement est en pause et les parts vérifiées ont été préparées.';
 
   @override
-  String get auditReport => 'Audit Report';
+  String get auditReport => 'Rapport d\'audit';
 
   @override
-  String get auditReportCopiedToClipboard => 'Audit report copied to clipboard';
+  String get auditReportCopiedToClipboard =>
+      'Rapport d\'audit copié dans le presse-papiers';
 
   @override
-  String get copyReport => 'Copy Report';
+  String get copyReport => 'Copier le rapport';
 
   @override
-  String get done => 'Done';
+  String get done => 'Terminé';
 
   @override
   String get theDownloadWillBeStaged =>
-      'The download will be staged into data/temp/ and initialized in Paused state. L’import ne contacte aucun peer et le téléchargement restera en pause.';
+      'Le téléchargement sera préparé dans data/temp/ et initialisé en pause. L\'import ne contacte aucun pair eD2K.';
 
   @override
-  String get confirmCleanup => 'Confirm Cleanup';
+  String get confirmCleanup => 'Confirmer le nettoyage';
 
   @override
   String thisWillRemoveFixtureFile(String fixtureCount) {
-    return 'This will remove $fixtureCount fixture file(s) in <workdir>/fixtures/ and clean temporary download part files. Incoming and finished downloads will never be touched.\n\nAre you sure you want to proceed?';
+    return 'Cela supprimera $fixtureCount fichier(s) fixture dans <workdir>/fixtures/ et nettoiera les fichiers .part temporaires.';
   }
 
   @override
-  String get deleteTestData => 'Delete Test Data';
+  String get deleteTestData => 'Supprimer les données de test';
 
   @override
   String get storageDataInternalStateVs =>
-      'Storage: data/ (Internal State) vs downloads/ (Completed Files)';
+      'Stockage : data/ (état interne) vs downloads/ (fichiers terminés)';
 
   @override
   String get openFolder => 'Ouvrir le dossier';
 
   @override
   String internalDataDbTempPart(String workdir) {
-    return '• Internal data (DB, temp .part, fixtures): $workdir';
+    return '• Données internes (DB, .part temporaires, fixtures) : $workdir';
   }
 
   @override
   String completedDownloads(String downloadsDir) {
-    return '• Completed downloads: $downloadsDir';
+    return '• Téléchargements terminés : $downloadsDir';
   }
 
   @override
   String get cleanTestDataFixturesIncomplete =>
-      'Clean Test Data (Fixtures & Incomplete Parts)';
+      'Nettoyer les données de test (fixtures & parts incomplètes)';
 
   @override
-  String get cleanupTestData => 'Cleanup Test Data';
+  String get cleanupTestData => 'Nettoyer les données de test';
 
   @override
   String get connectDownloadToLoopbackSource =>
-      'Connect Download to Loopback Source';
+      'Connecter le téléchargement à la source loopback';
 
   @override
   String get noDownloadsInQueueAdd =>
-      'No downloads in queue. Add an eD2K link in Step 2.';
+      'Aucun téléchargement en file. Ajoutez un lien eD2K à l\'étape 2.';
 
   @override
-  String get targetDownloadTask => 'Target Download Task';
+  String get targetDownloadTask => 'Tâche de téléchargement cible';
 
   @override
   String warningDownloadSize(String totalBytes, String fixtureSize) {
-    return 'Warning: Download size ($totalBytes) does not match fixture ($fixtureSize).';
+    return 'Attention : la taille du téléchargement ($totalBytes) ne correspond pas à la fixture ($fixtureSize).';
   }
 
   @override
   String get startLoopbackPeerInStep =>
-      'Start loopback peer in Step 3 before connecting.';
+      'Démarrez le pair loopback à l\'étape 3 avant de connecter.';
 
   @override
   String finalFile(String fileName, String downloadsDir) {
-    return 'Final file: $downloadsDir\\$fileName';
+    return 'Fichier final : $downloadsDir\\$fileName';
   }
 
   @override
-  String get generateLocalTestFixture => 'Generate Local Test Fixture';
+  String get generateLocalTestFixture => 'Générer une fixture de test locale';
 
   @override
   String get obtainCanonicalEd2kLinkAdd =>
-      'Obtain Canonical eD2K Link & Add to Downloads';
+      'Obtenir le lien eD2K canonique & ajouter aux téléchargements';
 
   @override
-  String get copyLink => 'Copy Link';
+  String get copyLink => 'Copier le lien';
 
   @override
-  String get ed2kLinkCopiedToClipboard => 'eD2K Link copied to clipboard';
+  String get ed2kLinkCopiedToClipboard =>
+      'Lien eD2K copié dans le presse-papiers';
 
   @override
-  String get downloadTaskCreatedInUi => 'Download task created in UI';
+  String get downloadTaskCreatedInUi =>
+      'Tâche de téléchargement créée dans l\'UI';
 
   @override
   String get completeStep1ToGenerate =>
-      'Complete Step 1 to generate an eD2K fixture first.';
+      'Terminez l\'étape 1 pour générer d\'abord une fixture eD2K.';
 
   @override
-  String get loopbackTestPeer1270 => 'Loopback Test Peer (127.0.0.1)';
+  String get loopbackTestPeer1270 => 'Pair de test loopback (127.0.0.1)';
 
   @override
-  String get lastImportReport => 'Last Import Report';
+  String get lastImportReport => 'Dernier rapport d\'import';
 
   @override
   String invalidLinesSkipped(String invalidLines) {
-    return 'Invalid lines skipped: $invalidLines';
+    return 'Lignes invalides ignorées : $invalidLines';
   }
 
   @override
@@ -840,9 +889,6 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get noNetworkEventsRecordedYet =>
       'Aucun événement réseau enregistré pour le moment.';
-
-  @override
-  String get activeConnectivityProfile => 'Profil de connectivité actif';
 
   @override
   String get activeConnectionsLimits => 'Connexions actives & limites';
@@ -897,23 +943,27 @@ class AppLocalizationsFr extends AppLocalizations {
   String get saveLimits => 'Enregistrer les limites';
 
   @override
-  String get inspectDetailsPartMap => 'Inspect Details & Part Map';
+  String get inspectDetailsPartMap => 'Inspecter détails & carte des parts';
 
   @override
-  String get remove2 => 'Remove';
+  String get remove2 => 'Retirer';
 
   @override
   String removeFromDownloads(String fileName) {
-    return 'Remove \"$fileName\" from downloads?';
+    return 'Retirer \"$fileName\" des téléchargements ?';
   }
 
   @override
   String get deleteDownloadedPartTempFiles =>
-      'Delete downloaded part/temp files from disk';
+      'Supprimer les fichiers .part/temp téléchargés du disque';
+
+  @override
+  String get deleteSharedCompletedFile =>
+      'Supprimer aussi le fichier partagé dans le dossier de destination';
 
   @override
   String id(String id) {
-    return 'ID: $id';
+    return 'ID : $id';
   }
 
   @override
@@ -923,11 +973,12 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String fullId(String id) {
-    return 'Full ID: $id';
+    return 'ID complet : $id';
   }
 
   @override
-  String get downloadIdCopiedToClipboard => 'Download ID copied to clipboard';
+  String get downloadIdCopiedToClipboard =>
+      'ID du téléchargement copié dans le presse-papiers';
 
   @override
   String sources2(String sourceCount) {
@@ -935,7 +986,8 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String get downloadSettingsStorage => 'Download Settings & Storage';
+  String get downloadSettingsStorage =>
+      'Paramètres de téléchargement & stockage';
 
   @override
   String get globalDefaultDownloadDirectory =>
@@ -982,7 +1034,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String delete(String name) {
-    return 'Delete \"$name\"?';
+    return 'Supprimer \"$name\" ?';
   }
 
   @override
@@ -990,52 +1042,54 @@ class AppLocalizationsFr extends AppLocalizations {
       'Deleting this category will move all associated downloads to \"Sans catégorie\" (Uncategorized).\n\nNo downloads or files will be deleted.';
 
   @override
-  String get deleteCategory => 'Delete Category';
+  String get deleteCategory => 'Supprimer la catégorie';
 
   @override
-  String get categoryOptions => 'Category Options';
+  String get categoryOptions => 'Options de catégorie';
 
   @override
-  String get editCategory => 'Edit Category';
+  String get editCategory => 'Modifier la catégorie';
 
   @override
-  String get clearDownloadHistory => 'Clear Download History?';
+  String get clearDownloadHistory =>
+      'Effacer l\'historique des téléchargements ?';
 
   @override
   String get areYouSureYouWant =>
-      'Are you sure you want to permanently delete all download history and statistics records?\n\nThis action is irreversible.';
+      'Voulez-vous vraiment supprimer définitivement tout l\'historique et les statistiques de téléchargement ? Cette action est irréversible.';
 
   @override
-  String get clearAllHistory => 'Clear All History';
+  String get clearAllHistory => 'Effacer tout l\'historique';
 
   @override
-  String get noDownloadHistoryRecordedYet => 'No download history recorded yet';
+  String get noDownloadHistoryRecordedYet =>
+      'Aucun historique de téléchargement enregistré';
 
   @override
   String get completedResumedFailedAndRemoved =>
-      'Completed, resumed, failed, and removed transfer events will appear here.';
+      'Les événements de transfert terminés, repris, échoués et supprimés apparaîtront ici.';
 
   @override
   String eventDetail(String fileName) {
-    return 'Event Detail: $fileName';
+    return 'Détail de l\'événement : $fileName';
   }
 
   @override
-  String get viewDetails => 'View details';
+  String get viewDetails => 'Voir les détails';
 
   @override
   String of2(String transferredBytes, String totalBytes) {
-    return '$transferredBytes of $totalBytes';
+    return '$transferredBytes sur $totalBytes';
   }
 
   @override
   String hash2(String ed2kHash) {
-    return 'Hash: $ed2kHash';
+    return 'Hash : $ed2kHash';
   }
 
   @override
   String of3(String totalBytes) {
-    return 'of $totalBytes';
+    return 'sur $totalBytes';
   }
 
   @override
@@ -1045,82 +1099,82 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String exportHistory(String toUpperCase) {
-    return 'Export History ($toUpperCase)';
+    return 'Exporter l\'historique ($toUpperCase)';
   }
 
   @override
   String get reportIsSanitizedAllLocal =>
-      'Report is sanitized: all local usernames and filesystem paths are redacted.';
+      'Le rapport est anonymisé : tous les noms d\'utilisateur et chemins locaux sont masqués.';
 
   @override
-  String get copyToClipboard => 'Copy to Clipboard';
+  String get copyToClipboard => 'Copier dans le presse-papiers';
 
   @override
-  String get exportCopiedToClipboard => 'Export copied to clipboard';
+  String get exportCopiedToClipboard => 'Export copié dans le presse-papiers';
 
   @override
-  String get filterByEvent => 'Filter by Event:';
+  String get filterByEvent => 'Filtrer par événement :';
 
   @override
-  String get allEvents => 'All Events';
+  String get allEvents => 'Tous les événements';
 
   @override
-  String get completed2 => 'Completed';
+  String get completed2 => 'Terminés';
 
   @override
-  String get failed => 'Failed';
+  String get failed => 'Échoués';
 
   @override
-  String get resumed => 'Resumed';
+  String get resumed => 'Repris';
 
   @override
-  String get verifying => 'Verifying';
+  String get verifying => 'Vérification';
 
   @override
-  String get removed => 'Removed';
+  String get removed => 'Supprimés';
 
   @override
   String recordS(String length) {
-    return '$length record(s)';
+    return '$length enregistrement(s)';
   }
 
   @override
-  String get totalCompleted => 'Total Completed';
+  String get totalCompleted => 'Total terminés';
 
   @override
-  String get activityWindows => 'Activity Windows';
+  String get activityWindows => 'Fenêtres d\'activité';
 
   @override
-  String get resumesRetries => 'Resumes & Retries';
+  String get resumesRetries => 'Reprises & tentatives';
 
   @override
   String failuresLogged(String totalFailedCount) {
-    return '$totalFailedCount failures logged';
+    return '$totalFailedCount échecs enregistrés';
   }
 
   @override
-  String get integrityHealth => 'Integrity Health';
+  String get integrityHealth => 'Intégrité';
 
   @override
-  String get historyLocalStatistics => 'History & Local Statistics';
+  String get historyLocalStatistics => 'Historique & statistiques locales';
 
   @override
-  String get exportHistoryReport => 'Export history report';
+  String get exportHistoryReport => 'Exporter le rapport d\'historique';
 
   @override
-  String get exportAsJsonSanitized => 'Export as JSON (Sanitized)';
+  String get exportAsJsonSanitized => 'Exporter en JSON (anonymisé)';
 
   @override
-  String get exportAsCsvSanitized => 'Export as CSV (Sanitized)';
+  String get exportAsCsvSanitized => 'Exporter en CSV (anonymisé)';
 
   @override
-  String get exportReport => 'Export Report';
+  String get exportReport => 'Exporter le rapport';
 
   @override
-  String get clearHistory => 'Clear History';
+  String get clearHistory => 'Effacer l\'historique';
 
   @override
-  String get refresh => 'Refresh';
+  String get refresh => 'Actualiser';
 
   @override
   String get amorcerLeReseauKadBootstrap => 'Amorcer le réseau Kad (Bootstrap)';
@@ -1165,7 +1219,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get effacer => 'Effacer';
 
   @override
-  String get kadId128BitXor => 'Kad ID (128-bit XOR)';
+  String get kadId128BitXor => 'ID Kad (XOR 128 bits)';
 
   @override
   String get adresseIpPorts => 'Adresse IP & Ports';
@@ -1191,7 +1245,7 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String get envoyerKadPing0x60 => 'Envoyer Kad Ping (0x60)';
+  String get envoyerKadPing0x60 => 'Envoyer un ping Kad (0x60)';
 
   @override
   String get aucunContactKad => 'Aucun contact Kad';
@@ -1301,7 +1355,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Vous n\'êtes actuellement pas connecté à un serveur eD2K. Connectez-vous d\'abord pour effectuer une recherche.';
 
   @override
-  String get extensionExIsoZipAvi => 'Extension (ex: iso, zip, avi)';
+  String get extensionExIsoZipAvi => 'Extension (ex : iso, zip, avi)';
 
   @override
   String get tailleMinMo => 'Taille Min (Mo)';
@@ -1310,13 +1364,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tailleMaxMo => 'Taille Max (Mo)';
 
   @override
-  String get effacerFiltres => 'Effacer filtres';
+  String get effacerFiltres => 'Effacer les filtres';
 
   @override
   String get serveurEd2k => 'Serveur eD2K';
 
   @override
-  String get globalUdp => 'Global UDP';
+  String get globalUdp => 'Global (UDP)';
 
   @override
   String get nomDuFichier => 'Nom du fichier';
@@ -1325,7 +1379,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get taille => 'Taille';
 
   @override
-  String get hachageEd2k => 'Hachage eD2K';
+  String get hachageEd2k => 'Hash eD2K';
 
   @override
   String cliquerPourCopierLeHash(String fileHash) {
@@ -1347,7 +1401,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get demanderSourcesAuServeur => 'Demander sources au serveur';
 
   @override
-  String get copierLienEd2k => 'Copier lien eD2K';
+  String get copierLienEd2k => 'Copier le lien eD2K';
 
   @override
   String get lienEd2kCopieDansLe => 'Lien eD2K copié dans le presse-papier';
@@ -1391,7 +1445,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Importez un fichier server.met local pour inspecter et gerer vos serveurs.';
 
   @override
-  String get selectionnerServerMet => 'Selectionner server.met';
+  String get selectionnerServerMet => 'Sélectionner un server.met';
 
   @override
   String get parDefautEmuleSionEst =>
@@ -1411,7 +1465,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get securiteProfil => 'Sécurité / Profil';
 
   @override
-  String get etatFiltre => 'Etat / Filtre';
+  String get etatFiltre => 'État / Filtre';
 
   @override
   String get nomDuServeur => 'Nom du Serveur';
@@ -1426,7 +1480,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get description => 'Description';
 
   @override
-  String get preference => 'Preference';
+  String get preference => 'Préférence';
 
   @override
   String get seConnecter => 'Se connecter';
@@ -1438,7 +1492,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get gestionLocaleDesServeursEd2k => 'Gestion Locale des Serveurs eD2K';
 
   @override
-  String get importerServerMet => 'Importer server.met';
+  String get importerServerMet => 'Importer un server.met';
 
   @override
   String get mettreAJourDepuisUrl => 'Mettre à jour depuis URL';
@@ -1448,7 +1502,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get indiquezLAdresseHttpOu =>
-      'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs :';
+      'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs.';
 
   @override
   String get urlDuServerMet => 'URL du server.met';
@@ -1493,23 +1547,23 @@ class AppLocalizationsFr extends AppLocalizations {
   String get total => 'Total';
 
   @override
-  String get autorises => 'Autorises';
+  String get autorises => 'Autorisés';
 
   @override
-  String get bloquesFiltreIp => 'Bloques (Filtre IP)';
+  String get bloquesFiltreIp => 'Bloqués (filtre IP)';
 
   @override
   String get lesServeursMarquesEnRouge =>
       'Les serveurs marques en rouge correspondent a des plages de votre filtre IP local. Ils seront importes avec le statut bloque.';
 
   @override
-  String get bloque => 'Bloque';
+  String get bloque => 'Bloqué';
 
   @override
-  String get autorise => 'Autorise';
+  String get autorise => 'Autorisé';
 
   @override
-  String get confirmerImportation => 'Confirmer importation';
+  String get confirmerImportation => 'Confirmer l\'importation';
 
   @override
   String get aucunServeurConnecte => 'Aucun serveur connecté';
@@ -1535,9 +1589,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get activerLeModeReseauPublic => 'Activer le Mode Réseau Public (WAN)';
-
-  @override
-  String get profilReseauActuel => 'Profil Réseau Actuel : ';
 
   @override
   String get statutUpnpIgdBoxRouteur => 'Statut UPnP IGD (Box / Routeur NAT)';
@@ -1575,7 +1626,7 @@ class AppLocalizationsFr extends AppLocalizations {
     String last24hCompletedCount,
     String last7dCompletedCount,
   ) {
-    return '24h: $last24hCompletedCount | 7d: $last7dCompletedCount';
+    return '24 h : $last24hCompletedCount | 7 j : $last7dCompletedCount';
   }
 
   @override
@@ -1584,41 +1635,41 @@ class AppLocalizationsFr extends AppLocalizations {
     String totalBytes,
     String progress,
   ) {
-    return '$receivedBytes of $totalBytes ($progress)';
+    return '$receivedBytes sur $totalBytes ($progress)';
   }
 
   @override
   String get serverEnable => 'Activer';
 
   @override
-  String get serverDisable => 'Desactiver';
+  String get serverDisable => 'Désactiver';
 
   @override
-  String get eventType => 'Event Type';
+  String get eventType => 'Type d\'événement';
 
   @override
-  String get statusLabel => 'Status';
+  String get statusLabel => 'Statut';
 
   @override
-  String get transferred => 'Transferred';
+  String get transferred => 'Transféré';
 
   @override
-  String get duration => 'Duration';
+  String get duration => 'Durée';
 
   @override
-  String get resumes => 'Resumes';
+  String get resumes => 'Reprises';
 
   @override
-  String get verificationResult => 'Verification Result';
+  String get verificationResult => 'Résultat de la vérification';
 
   @override
-  String get sanitizedPath => 'Sanitized Path';
+  String get sanitizedPath => 'Chemin anonymisé';
 
   @override
-  String get timestamp => 'Timestamp';
+  String get timestamp => 'Horodatage';
 
   @override
-  String get errorMessage => 'Error Message';
+  String get errorMessage => 'Message d\'erreur';
 
   @override
   String get language => 'Langue';
@@ -1656,7 +1707,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get changeDaemon => 'Changer de daemon';
 
   @override
-  String get sectionUploads => 'Uploads';
+  String get sectionUploads => 'Envois';
 
   @override
   String get uploadsActive => 'UPLOADS ACTIFS';
@@ -1858,7 +1909,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Rejette les pairs sans chiffrement (eMule « Require obfuscated connections »)';
 
   @override
-  String get settingsUssTitle => 'USS — Upload Speed Sense';
+  String get settingsUssTitle => 'USS — Détection de la vitesse d\'envoi';
 
   @override
   String get settingsUssSub =>
@@ -2152,36 +2203,27 @@ class AppLocalizationsFr extends AppLocalizations {
   String get upnpNotMapped => 'Non mappé';
 
   @override
-  String get netModePublicChip => 'RÉSEAU PUBLIC (WAN)';
-
-  @override
-  String get netModeLabChip => 'LABORATOIRE (127.0.0.1)';
-
-  @override
-  String get netModePublicDesc =>
-      'Votre client peut contacter des serveurs eD2K publics, des pairs externes et la DHT Kademlia mondiale.';
-
-  @override
-  String get netModeLabDesc =>
-      'Toutes les sockets sont strictement confinées à la boucle locale 127.0.0.1. Zéro paquet sur Internet.';
-
-  @override
   String get ipFilterActive => 'Filtre actif';
 
   @override
   String get ipFilterDisabled => 'Filtre désactivé';
 
   @override
-  String get netProfileLocalLabDesc =>
-      'Confiné à la boucle locale (127.0.0.1 / ::1). Aucune socket externe permise.';
+  String get networksCardTitle => 'Réseaux';
+
+  @override
+  String get networkEd2kTitle => 'Réseau eD2K';
+
+  @override
+  String get networkKadTitle => 'Réseau Kad';
 
   @override
   String get netProfileEd2kDesc =>
       'TCP sortant vers des pairs/serveurs eD2K publics. Rejette le LAN privé & la boucle locale (anti-SSRF).';
 
   @override
-  String get netProfileEd2kKadDesc =>
-      'Preview WAN avec UDP pour le routage Kademlia. Validation stricte des adresses.';
+  String get netProfileKadDesc =>
+      'DHT Kademlia — UDP sortant pour le routage WAN. Activer Kad active aussi eD2K.';
 
   @override
   String ipReportTotalLines(int count) {
@@ -2202,4 +2244,1345 @@ class AppLocalizationsFr extends AppLocalizations {
   String ipReportFinalRanges(int count) {
     return 'Intervalles actifs finaux : $count';
   }
+
+  @override
+  String get connDisconnected => 'Déconnecté';
+
+  @override
+  String get connConnecting => 'Connexion';
+
+  @override
+  String get connConnectingEllipsis => 'Connexion...';
+
+  @override
+  String get connConnected => 'Connecté';
+
+  @override
+  String get connDisconnecting => 'Déconnexion...';
+
+  @override
+  String get connError => 'Erreur';
+
+  @override
+  String get peerHandshaking => 'Handshake eD2K...';
+
+  @override
+  String get peerQueued => 'En file d\'attente';
+
+  @override
+  String get peerTransferring => 'Téléchargement';
+
+  @override
+  String get dlStatusQueued => 'En file';
+
+  @override
+  String get dlStatusWaitingForSources => 'Recherche de sources';
+
+  @override
+  String get dlStatusAllocating => 'Allocation';
+
+  @override
+  String get dlStatusDownloading => 'Téléchargement';
+
+  @override
+  String get dlStatusPaused => 'En pause';
+
+  @override
+  String get dlStatusVerifying => 'Vérification';
+
+  @override
+  String get dlStatusCompleting => 'Finalisation';
+
+  @override
+  String get dlStatusCompleted => 'Terminé';
+
+  @override
+  String get dlStatusFailed => 'Échoué';
+
+  @override
+  String get profileLocalLab => 'Lab local (loopback uniquement)';
+
+  @override
+  String get profilePublicEd2k => 'eD2K public (preview)';
+
+  @override
+  String get profilePublicEd2kKad => 'eD2K + Kad publics (preview)';
+
+  @override
+  String get subsystemDisabled => 'Désactivé (kill switch)';
+
+  @override
+  String get subsystemReady => 'Prêt (preview)';
+
+  @override
+  String get subsystemShuttingDown => 'Arrêt en cours';
+
+  @override
+  String get daemonIdle => 'Inactif';
+
+  @override
+  String get daemonDiscovering => 'Recherche du daemon...';
+
+  @override
+  String get daemonStarting => 'Démarrage du daemon...';
+
+  @override
+  String get daemonProtocolMismatch => 'Version de protocole incompatible';
+
+  @override
+  String get daemonAuthError => 'Échec d\'authentification';
+
+  @override
+  String get navShares => 'Partages';
+
+  @override
+  String get badgeEd2kHighId => 'eD2K · HighID';
+
+  @override
+  String get badgeEd2kLowId => 'eD2K · LowID';
+
+  @override
+  String get badgeEd2kConnecting => 'eD2K · Connexion…';
+
+  @override
+  String get badgeEd2kDisconnecting => 'eD2K · Déconnexion…';
+
+  @override
+  String get badgeEd2kDisconnected => 'eD2K · Déconnecté';
+
+  @override
+  String get badgeKadStopped => 'Kad · Arrêté';
+
+  @override
+  String get badgeKadConnected => 'Kad · Connecté';
+
+  @override
+  String get badgeKadBootstrapping => 'Kad · Amorçage';
+
+  @override
+  String get daemonCardTooltipTitle => 'État du daemon';
+
+  @override
+  String daemonCardTooltipServer(Object name) {
+    return 'Serveur : $name';
+  }
+
+  @override
+  String get daemonCardTooltipDiagnostics =>
+      'Cliquer pour voir les diagnostics';
+
+  @override
+  String get sharesTitle => 'Fichiers partagés';
+
+  @override
+  String sharesFileCount(Object count) {
+    return '$count fichier(s)';
+  }
+
+  @override
+  String get sharesRescanTooltip => 'Rescanner le dossier Incoming';
+
+  @override
+  String get sharesEmptyState =>
+      'Aucun fichier partagé.\nLes fichiers du dossier Incoming et les téléchargements en cours ou terminés sont partagés automatiquement.';
+
+  @override
+  String sharesPartialParts(Object count) {
+    return ' — partiel ($count part(s))';
+  }
+
+  @override
+  String get sharesTotalSentTooltip => 'Total envoyé pour ce fichier';
+
+  @override
+  String get sharePrioVeryLow => 'Très basse';
+
+  @override
+  String get sharePrioVeryHigh => 'Très haute';
+
+  @override
+  String get sharesEnabledTooltip => 'Partagé';
+
+  @override
+  String get sharesDisabledTooltip => 'Suspendu';
+
+  @override
+  String get sharesRenameDisabledTooltip =>
+      'Téléchargement en cours — renommez-le depuis l\'onglet Téléchargements';
+
+  @override
+  String get sharesRenameTooltip => 'Renommer le fichier';
+
+  @override
+  String get sharesDeleteDisabledTooltip =>
+      'Téléchargement en cours — supprimez-le depuis l\'onglet Téléchargements';
+
+  @override
+  String get sharesDeleteTooltip => 'Supprimer le fichier du disque';
+
+  @override
+  String get sharesDeleteTitle => 'Supprimer le fichier ?';
+
+  @override
+  String sharesDeleteBody(Object name) {
+    return '$name sera définitivement supprimé du disque et retiré des partages.';
+  }
+
+  @override
+  String get sourcesMaxDialogTitle => 'Sources max (FT_MAXSOURCES)';
+
+  @override
+  String get sourcesMaxHint => 'Vide = limite globale';
+
+  @override
+  String get sourcesMaxHelper =>
+      'Nombre max de sources pour ce fichier (1-10000)';
+
+  @override
+  String get apply => 'Appliquer';
+
+  @override
+  String get srcNoHash => 'Pas de hash eD2K pour ce fichier.';
+
+  @override
+  String get srcLoading => 'Chargement des sources...';
+
+  @override
+  String get srcNone => 'Aucune source enregistrée pour ce fichier.';
+
+  @override
+  String srcConnected(Object count) {
+    return 'Connectés ($count)';
+  }
+
+  @override
+  String srcKnown(Object count) {
+    return 'Sources connues ($count)';
+  }
+
+  @override
+  String srcCount(Object count) {
+    return 'Sources ($count)';
+  }
+
+  @override
+  String srcPriorityLabel(Object priority) {
+    return 'Priorité : $priority';
+  }
+
+  @override
+  String get srcMaxTooltip => 'Sources max pour ce fichier (FT_MAXSOURCES)';
+
+  @override
+  String srcMaxShort(Object value) {
+    return 'Src max : $value';
+  }
+
+  @override
+  String get peerRetry => 'Réessayer';
+
+  @override
+  String get peerConnect => 'Connecter';
+
+  @override
+  String get pendingDestination => 'Destination en attente...';
+
+  @override
+  String get pendingCalculation => 'Calcul en cours...';
+
+  @override
+  String get tooltipDownloadPriority => 'Priorité du téléchargement';
+
+  @override
+  String get tooltipAssignCategory => 'Assigner une catégorie';
+
+  @override
+  String tooltipCategoryName(Object name) {
+    return 'Catégorie : $name';
+  }
+
+  @override
+  String get peerSrcAllowed => 'Autorisé';
+
+  @override
+  String get peerSrcFiltered => 'Filtré IP';
+
+  @override
+  String get peerSrcRejected => 'Rejeté profil';
+
+  @override
+  String get peerSrcTried => 'Essayé';
+
+  @override
+  String get peerSrcFailed => 'Échec';
+
+  @override
+  String get peerSrcCandidate => 'Candidat';
+
+  @override
+  String get importPartOnDisk => 'Fichier .part sur le disque :';
+
+  @override
+  String importPartPresent(Object size) {
+    return 'Présent ($size)';
+  }
+
+  @override
+  String get importPartMissing => 'MANQUANT (fichier .part introuvable)';
+
+  @override
+  String get openFileExplorerTooltip =>
+      'Ouvrir le fichier terminé dans l\'explorateur';
+
+  @override
+  String get openFileDisabledTooltip =>
+      'Disponible une fois le téléchargement et la vérification terminés';
+
+  @override
+  String addLinkDuplicate(Object name) {
+    return 'Ce fichier est déjà dans la liste des téléchargements (\"$name\")';
+  }
+
+  @override
+  String get pickDownloadDir => 'Sélectionner le dossier de téléchargement';
+
+  @override
+  String get addLinkGenericError => 'Erreur lors de l\'ajout du téléchargement';
+
+  @override
+  String get catPickDir =>
+      'Sélectionner le dossier de téléchargement par défaut de la catégorie';
+
+  @override
+  String get catNameRequired => 'Le nom de la catégorie ne peut pas être vide';
+
+  @override
+  String get catEditTitle => 'Modifier la catégorie';
+
+  @override
+  String get catNewTitle => 'Nouvelle catégorie';
+
+  @override
+  String get catNameLabel => 'Nom de la catégorie *';
+
+  @override
+  String get catColorLabel => 'Étiquette de couleur';
+
+  @override
+  String get catDestLabel => 'Destination par défaut (optionnel)';
+
+  @override
+  String get catPrioLabel => 'Priorité par défaut (optionnel)';
+
+  @override
+  String get catSaveChanges => 'Enregistrer les modifications';
+
+  @override
+  String get catCreate => 'Créer la catégorie';
+
+  @override
+  String get opFailed => 'L\'opération a échoué';
+
+  @override
+  String get uploadsScore => 'Score';
+
+  @override
+  String get uploadsCredit => 'Crédit';
+
+  @override
+  String get uploadsBanned => 'Client banni (score 0)';
+
+  @override
+  String get kadVerified => 'Vérifié';
+
+  @override
+  String get kadNotVerified => 'Non vérifié';
+
+  @override
+  String get kadBootstrapDescPublic =>
+      'Entrez l\'adresse IP publique et le port UDP d\'un nœud Kad pour amorcer la table de routage (ex : 212.83.184.225).';
+
+  @override
+  String get kadBootstrapDescLab =>
+      'Entrez l\'adresse IP et le port UDP d\'un nœud d\'amorçage (en profil LocalLab, seul 127.0.0.1 est permis).';
+
+  @override
+  String get kadStartUdpPublic => 'Démarrer UDP Kad';
+
+  @override
+  String get kadStartUdpLab => 'Démarrer UDP Loopback';
+
+  @override
+  String kadUdpActive(Object addr) {
+    return 'Actif ($addr)';
+  }
+
+  @override
+  String get kadUdpInactive => 'Inactif';
+
+  @override
+  String get kadTimeNever => 'Jamais';
+
+  @override
+  String kadTimeMinutesAgo(Object min) {
+    return 'Il y a ${min}m';
+  }
+
+  @override
+  String kadTimeHoursAgo(Object hours) {
+    return 'Il y a ${hours}h';
+  }
+
+  @override
+  String kadTimeDaysAgo(Object days) {
+    return 'Il y a ${days}j';
+  }
+
+  @override
+  String kadBannerPublic(Object addr) {
+    return 'Réseau Kad DHT mondial actif sur $addr | Routage Kademlia ouvert | Protection anti-SSRF active.';
+  }
+
+  @override
+  String kadBannerLab(Object addr) {
+    return 'Socket UDP actif : $addr (mode laboratoire confiné) | Kill switch instantané.';
+  }
+
+  @override
+  String get kadBannerStartPublic =>
+      'Transport UDP Kad : cliquez sur « Démarrer UDP » pour vous connecter au réseau Kademlia mondial.';
+
+  @override
+  String get kadBannerStartLab =>
+      'Transport UDP Kad confiné : seul le trafic loopback (127.0.0.1) est autorisé dans le profil LocalLab.';
+
+  @override
+  String get searchExplainKad =>
+      'Les requêtes KADEMLIA2_SEARCH_KEYWORD interrogent les nœuds Kad stockant l\'index du mot-clé MD4.';
+
+  @override
+  String get searchExplainGlobal =>
+      'Les requêtes OP_GLOBSEARCHREQ3/REQ2 sont envoyées en UDP à tous les serveurs connus (port TCP+4). REQ3 est utilisé quand le serveur annonce EXT_GETFILES + LARGEFILES.';
+
+  @override
+  String get searchExplainServer =>
+      'Les requêtes OP_SEARCHREQUEST interrogent directement l\'index du serveur eD2K connecté.';
+
+  @override
+  String searchNoResults(Object term) {
+    return 'Aucun résultat trouvé pour « $term »';
+  }
+
+  @override
+  String get searchPromptKeywords =>
+      'Entrez des mots-clés ci-dessus pour lancer une recherche';
+
+  @override
+  String searchEnableTarget(Object target) {
+    return 'Activez $target pour commencer à chercher des fichiers';
+  }
+
+  @override
+  String get searchTryOther =>
+      'Essayez avec d\'autres termes ou élargissez vos filtres de taille';
+
+  @override
+  String get searchHideFilters => 'Masquer les filtres';
+
+  @override
+  String get searchShowFilters => 'Afficher les filtres avancés';
+
+  @override
+  String get searchHintKad => 'Mots-clés Kad (min. 3 lettres)...';
+
+  @override
+  String get searchHintServer => 'Nom de fichier ou mots-clés...';
+
+  @override
+  String get searchButtonSearching => 'Recherche...';
+
+  @override
+  String get searchButton => 'Rechercher';
+
+  @override
+  String get searchTargetServer => 'Serveur eD2K';
+
+  @override
+  String get searchTargetKad => 'Réseau Kad DHT';
+
+  @override
+  String get searchTargetLabelKad => 'le réseau Kad DHT';
+
+  @override
+  String get searchTargetLabelGlobal => 'les serveurs eD2K (UDP)';
+
+  @override
+  String get searchTargetLabelServer => 'le serveur eD2K';
+
+  @override
+  String get searchTargetEnableGlobal => 'la liste de serveurs eD2K';
+
+  @override
+  String get searchTargetEnableServer => 'un serveur eD2K';
+
+  @override
+  String kadActiveBanner(
+    Object addr,
+    Object buckets,
+    Object contacts,
+    Object profile,
+  ) {
+    return 'Kad DHT actif • Contacts : $contacts ($buckets k-buckets) • Bind : $addr • Profil : $profile';
+  }
+
+  @override
+  String get unknown => 'Inconnu';
+
+  @override
+  String get kadInactiveBanner =>
+      'Le réseau Kad DHT n\'est pas encore actif. Démarrez le socket Kad ou effectuez un bootstrap.';
+
+  @override
+  String get searchGlobalBanner =>
+      'Recherche globale UDP — interroge tous les serveurs connus (REQ3 si le serveur supporte EXT_GETFILES + LARGEFILES).';
+
+  @override
+  String searchConnectedBanner(
+    Object addr,
+    Object id,
+    Object idType,
+    Object name,
+  ) {
+    return 'Connecté à $name ($addr) • Client ID : $id ($idType)';
+  }
+
+  @override
+  String get serverUnnamed => 'Sans nom';
+
+  @override
+  String get serverDisconnectBtn => 'Déconnecter';
+
+  @override
+  String get serverBannerConnected =>
+      'Connexions eD2K disponibles. Vérifiez votre profil réseau (LocalLab vs PublicEd2kPreview) avant de vous connecter. Les adresses dans votre filtre IP sont automatiquement signalées.';
+
+  @override
+  String get serverBannerDisconnected =>
+      'Avertissement réseau : importer ou gérer une liste de serveurs n\'établit aucune connexion réseau sortante. Les adresses figurant dans votre filtre IP actif sont automatiquement signalées.';
+
+  @override
+  String get serverBlockedByFilter => 'Bloqué par le filtre IP';
+
+  @override
+  String get serverDisabledBadge => 'Désactivé';
+
+  @override
+  String get historyIntegrityErrors => 'Erreurs d\'intégrité détectées';
+
+  @override
+  String get labStep2Desc =>
+      'Utilise le hash pour créer une tâche de téléchargement suivie dans le client.';
+
+  @override
+  String get labAddedToDownloads => 'Ajouté aux téléchargements !';
+
+  @override
+  String get labAddToDownloads => 'Ajouter aux téléchargements';
+
+  @override
+  String get labStep4Desc =>
+      'Ordonne au client de se connecter à la source 127.0.0.1 pour transférer les blocs.';
+
+  @override
+  String labDlDone(Object size) {
+    return 'Téléchargement terminé et vérifié ($size)';
+  }
+
+  @override
+  String labDlTransferring(Object received, Object speed, Object total) {
+    return 'Transfert : $received / $total ($speed)';
+  }
+
+  @override
+  String labDlReady(Object state) {
+    return 'État : $state — prêt à se connecter au pair loopback.';
+  }
+
+  @override
+  String get labAlreadyCompleted => 'Déjà terminé';
+
+  @override
+  String get labConnectToSource => 'Connecter à la source';
+
+  @override
+  String get labStep1Desc =>
+      'Crée un fichier déterministe dans <workdir>/fixtures/ et calcule son hash eD2K.';
+
+  @override
+  String get labGenerating => 'Génération...';
+
+  @override
+  String get labGenerateFixture => 'Générer la fixture';
+
+  @override
+  String get labStep3Desc =>
+      'Lance un pair eD2K local hébergeant les fixtures de test.';
+
+  @override
+  String get labStopPeer => 'Arrêter le pair loopback';
+
+  @override
+  String get labStartPeer => 'Démarrer le pair loopback';
+
+  @override
+  String labPeerActive(Object addr, Object count) {
+    return 'Actif sur $addr (sert $count fichier(s))';
+  }
+
+  @override
+  String get labPeerOffline => 'Pair hors ligne';
+
+  @override
+  String get labStep5Desc =>
+      'Purge les fichiers générés dans <workdir>/fixtures et les partiels dans <workdir>/temp. Les téléchargements terminés dans downloads/ sont préservés.';
+
+  @override
+  String get labCleanupSafe => 'Sans risque en mode portable.';
+
+  @override
+  String get labCleanupRestricted =>
+      'Le nettoyage est restreint en mode installé pour protéger les fichiers utilisateur.';
+
+  @override
+  String labErrCreateFixture(Object error) {
+    return 'Échec de la création de la fixture : $error';
+  }
+
+  @override
+  String labErrAddDownload(Object error) {
+    return 'Échec de l\'ajout du téléchargement : $error';
+  }
+
+  @override
+  String labErrPeerOp(Object error) {
+    return 'Échec de l\'opération sur le pair : $error';
+  }
+
+  @override
+  String labErrConnectDownload(Object error) {
+    return 'Échec de la connexion du téléchargement : $error';
+  }
+
+  @override
+  String labErrCleanup(Object error) {
+    return 'Échec du nettoyage : $error';
+  }
+
+  @override
+  String get notAvailable => 'Non disponible';
+
+  @override
+  String get copyFullPath => 'Copier le chemin complet';
+
+  @override
+  String get copiedPathInternal => 'Chemin des données internes copié';
+
+  @override
+  String get copyDownloadsPath =>
+      'Copier le chemin du dossier de téléchargements';
+
+  @override
+  String get copiedDownloadsPath => 'Chemin des téléchargements copié';
+
+  @override
+  String get copyDaemonLogPath => 'Copier le chemin du journal du daemon';
+
+  @override
+  String get copiedDaemonLogPath => 'Chemin du journal du daemon copié';
+
+  @override
+  String diagNetworkProfile(Object profile) {
+    return 'Profil réseau : $profile';
+  }
+
+  @override
+  String msgDownloadAdded(Object name) {
+    return 'Fichier \"$name\" ajouté aux téléchargements';
+  }
+
+  @override
+  String msgDownloadDuplicate(Object name, Object status) {
+    return 'Ce fichier est déjà dans la liste des téléchargements (\"$name\", statut : $status)';
+  }
+
+  @override
+  String msgImportedFile(Object name, Object parts, Object verified) {
+    return '\"$name\" importé ($verified/$parts parts vérifiées)';
+  }
+
+  @override
+  String msgErrImportPartMet(Object error) {
+    return 'Échec de l\'import .part.met : $error';
+  }
+
+  @override
+  String msgErrPause(Object error) {
+    return 'Échec de la pause : $error';
+  }
+
+  @override
+  String msgErrResume(Object error) {
+    return 'Échec de la reprise : $error';
+  }
+
+  @override
+  String msgErrRename(Object error) {
+    return 'Échec du renommage : $error';
+  }
+
+  @override
+  String msgErrRemove(Object error) {
+    return 'Échec de la suppression : $error';
+  }
+
+  @override
+  String msgErrFetchDetails(Object error) {
+    return 'Échec de la récupération des détails : $error';
+  }
+
+  @override
+  String msgDestinationChanged(Object dir) {
+    return 'Destination changée : $dir';
+  }
+
+  @override
+  String msgErrChangeDestination(Object error) {
+    return 'Échec du changement de destination : $error';
+  }
+
+  @override
+  String msgRetryLoopback(Object name) {
+    return 'Nouvelle tentative loopback pour \"$name\"';
+  }
+
+  @override
+  String msgErrRetryConn(Object error) {
+    return 'Échec de la nouvelle tentative : $error';
+  }
+
+  @override
+  String msgErrOpenFile(Object error) {
+    return 'Impossible d\'ouvrir le fichier terminé : $error';
+  }
+
+  @override
+  String msgDownloadCompleted(Object name) {
+    return 'Téléchargement terminé : $name';
+  }
+
+  @override
+  String msgDownloadFailed(Object name) {
+    return 'Échec du téléchargement : $name';
+  }
+
+  @override
+  String msgCategoryCreated(Object name) {
+    return 'Catégorie \"$name\" créée';
+  }
+
+  @override
+  String msgErrCategoryCreate(Object error) {
+    return 'Échec de la création de la catégorie : $error';
+  }
+
+  @override
+  String msgCategoryUpdated(Object name) {
+    return 'Catégorie \"$name\" mise à jour';
+  }
+
+  @override
+  String msgErrCategoryUpdate(Object error) {
+    return 'Échec de la mise à jour de la catégorie : $error';
+  }
+
+  @override
+  String msgCategoryDeleted(Object name) {
+    return 'Catégorie \"$name\" supprimée';
+  }
+
+  @override
+  String msgErrCategoryDelete(Object error) {
+    return 'Échec de la suppression de la catégorie : $error';
+  }
+
+  @override
+  String msgErrCategoryReorder(Object error) {
+    return 'Échec du réordonnancement des catégories : $error';
+  }
+
+  @override
+  String msgAssignedToCategory(Object name) {
+    return 'Assigné à la catégorie \"$name\"';
+  }
+
+  @override
+  String get categoryFallback => 'Catégorie';
+
+  @override
+  String msgProfileSwitched(Object profile) {
+    return 'Profil réseau basculé : $profile';
+  }
+
+  @override
+  String msgErrProfileSwitch(Object error) {
+    return 'Échec du changement de profil réseau : $error';
+  }
+
+  @override
+  String get msgKillSwitchOn =>
+      'Kill switch activé : toutes les connexions réseau ont été coupées';
+
+  @override
+  String msgErrKillSwitch(Object error) {
+    return 'Échec du kill switch : $error';
+  }
+
+  @override
+  String get msgNetworkReactivated => 'Réseau réactivé';
+
+  @override
+  String msgErrNetworkReactivate(Object error) {
+    return 'Échec de la réactivation du réseau : $error';
+  }
+
+  @override
+  String get msgBudgetsUpdated => 'Budgets de ressources mis à jour';
+
+  @override
+  String msgErrBudgets(Object error) {
+    return 'Échec de la mise à jour des budgets de ressources : $error';
+  }
+
+  @override
+  String msgIpFilterImported(Object count) {
+    return 'Filtre IP importé : $count plages';
+  }
+
+  @override
+  String msgErrIpFilterImport(Object error) {
+    return 'Échec de l\'import du filtre IP : $error';
+  }
+
+  @override
+  String get msgIpFilterEnabled => 'Filtre IP activé';
+
+  @override
+  String get msgIpFilterDisabled => 'Filtre IP désactivé';
+
+  @override
+  String msgErrIpFilterToggle(Object error) {
+    return 'Échec du basculement du filtre IP : $error';
+  }
+
+  @override
+  String get msgIpFilterCleared => 'Filtre IP vidé';
+
+  @override
+  String msgErrIpFilterClear(Object error) {
+    return 'Échec de la purge du filtre IP : $error';
+  }
+
+  @override
+  String get msgRateLimitsUpdated => 'Limites de débit mises à jour';
+
+  @override
+  String msgErrRateLimits(Object error) {
+    return 'Échec de la mise à jour des limites de débit : $error';
+  }
+
+  @override
+  String msgErrLoadSources(Object error) {
+    return 'Échec du chargement des sources : $error';
+  }
+
+  @override
+  String msgSourceAdded(Object address) {
+    return 'Source $address ajoutée';
+  }
+
+  @override
+  String msgErrAddSource(Object error) {
+    return 'Échec de l\'ajout de la source : $error';
+  }
+
+  @override
+  String msgConnInitiated(Object address) {
+    return 'Connexion à $address initialisée';
+  }
+
+  @override
+  String msgErrConnectSource(Object error) {
+    return 'Échec de la connexion à la source : $error';
+  }
+
+  @override
+  String msgPeerDisconnected(Object address) {
+    return 'Peer $address déconnecté';
+  }
+
+  @override
+  String get msgSessionsDisconnected => 'Session(s) peer déconnectée(s)';
+
+  @override
+  String msgErrDisconnectPeer(Object error) {
+    return 'Échec de la déconnexion peer : $error';
+  }
+
+  @override
+  String msgPriorityChanged(Object priority) {
+    return 'Priorité changée : $priority';
+  }
+
+  @override
+  String msgErrPriority(Object error) {
+    return 'Échec du changement de priorité : $error';
+  }
+
+  @override
+  String get msgSrcLimitReset => 'Limite de sources réinitialisée';
+
+  @override
+  String msgSrcLimitSet(Object max) {
+    return 'Limite de sources : $max';
+  }
+
+  @override
+  String msgErrSrcLimit(Object error) {
+    return 'Échec du changement de limite : $error';
+  }
+
+  @override
+  String get msgSourcesCleared => 'Sources effacées';
+
+  @override
+  String msgErrClearSources(Object error) {
+    return 'Échec de l\'effacement des sources : $error';
+  }
+
+  @override
+  String msgErrKadContacts(Object error) {
+    return 'Échec de la récupération des contacts Kad : $error';
+  }
+
+  @override
+  String msgErrNodesDatInspect(Object error) {
+    return 'Échec de l\'inspection de nodes.dat : $error';
+  }
+
+  @override
+  String msgKadContactsImported(Object count) {
+    return '$count contacts Kad importés dans la table K-buckets';
+  }
+
+  @override
+  String get msgErrNodesDatImport => 'Échec de l\'importation de nodes.dat';
+
+  @override
+  String msgKadContactsCleared(Object count) {
+    return '$count contacts Kad effacés';
+  }
+
+  @override
+  String msgErrKadClear(Object error) {
+    return 'Échec de l\'effacement des contacts Kad : $error';
+  }
+
+  @override
+  String msgKadUdpStarted(Object addr) {
+    return 'Socket UDP Kad démarré sur $addr';
+  }
+
+  @override
+  String get msgErrKadUdpStart => 'Échec du démarrage UDP Kad';
+
+  @override
+  String get msgKadUdpStopped => 'Socket UDP Kad arrêté';
+
+  @override
+  String get msgErrKadUdpStop => 'Échec de l\'arrêt UDP Kad';
+
+  @override
+  String msgKadPong(Object addr, Object latency) {
+    return 'Pong reçu de $addr en $latency ms';
+  }
+
+  @override
+  String msgErrKadPing(Object addr, Object error) {
+    return 'Échec du ping Kad ($addr) : $error';
+  }
+
+  @override
+  String msgKadBootstrapOk(Object count) {
+    return 'Amorçage Kad réussi ($count contacts reçus)';
+  }
+
+  @override
+  String get msgErrKadBootstrap => 'Échec de l\'amorçage Kad';
+
+  @override
+  String msgKadBootstrapUrlOk(Object count) {
+    return 'Amorçage Kad depuis URL réussi ($count nœuds importés)';
+  }
+
+  @override
+  String get msgErrKadBootstrapUrl => 'Échec de l\'amorçage Kad depuis URL';
+
+  @override
+  String msgKadSearchFound(Object count) {
+    return 'Recherche Kad : $count nœuds les plus proches trouvés';
+  }
+
+  @override
+  String get msgErrKadSearch => 'Échec de la recherche Kad';
+
+  @override
+  String msgKadSourcesFound(Object count, Object hash) {
+    return 'Kad : $count sources trouvées pour $hash…';
+  }
+
+  @override
+  String get msgErrKadSources => 'Échec de la recherche de sources Kad';
+
+  @override
+  String msgKadPublished(Object count, Object hash) {
+    return 'Kad : publié sur $count nœuds pour $hash…';
+  }
+
+  @override
+  String get msgErrKadPublish => 'Échec de la publication Kad';
+
+  @override
+  String msgSearchGlobalSent(Object term, Object udp) {
+    return 'Recherche globale \"$term\" envoyée$udp';
+  }
+
+  @override
+  String msgSearchSent(Object term, Object udp) {
+    return 'Recherche \"$term\" envoyée au serveur$udp';
+  }
+
+  @override
+  String msgSearchNoResponse(Object term) {
+    return 'Recherche \"$term\" terminée sans réponse du serveur';
+  }
+
+  @override
+  String msgErrSearch(Object error) {
+    return 'Échec de la recherche : $error';
+  }
+
+  @override
+  String msgKadSearchDone(Object count, Object term) {
+    return 'Recherche Kad \"$term\" terminée ($count résultat(s))';
+  }
+
+  @override
+  String msgErrKadSearchRun(Object error) {
+    return 'Échec de la recherche Kad : $error';
+  }
+
+  @override
+  String msgSourceReqSent(Object hash) {
+    return 'Demande de sources envoyée pour $hash';
+  }
+
+  @override
+  String msgErrSourceReq(Object error) {
+    return 'Échec de la demande de sources : $error';
+  }
+
+  @override
+  String msgErrListServers(Object error) {
+    return 'Échec de la liste des serveurs : $error';
+  }
+
+  @override
+  String msgErrInspectServerMet(Object error) {
+    return 'Échec de l\'inspection du server.met : $error';
+  }
+
+  @override
+  String msgServersImported(Object allowed, Object blocked, Object imported) {
+    return '$imported serveurs importés ($allowed autorisés, $blocked bloqués par le filtre IP)';
+  }
+
+  @override
+  String msgErrImportServerMet(Object error) {
+    return 'Échec de l\'import du server.met : $error';
+  }
+
+  @override
+  String msgServersUpdated(Object count) {
+    return 'Mise à jour réussie : $count serveurs traités depuis l\'URL';
+  }
+
+  @override
+  String msgErrServersUpdate(Object error) {
+    return 'Échec de la mise à jour des serveurs depuis l\'URL : $error';
+  }
+
+  @override
+  String msgErrToggleServer(Object error) {
+    return 'Échec du basculement du serveur : $error';
+  }
+
+  @override
+  String msgErrDeleteServer(Object error) {
+    return 'Échec de la suppression du serveur : $error';
+  }
+
+  @override
+  String msgServersCleared(Object count) {
+    return '$count serveurs effacés';
+  }
+
+  @override
+  String msgErrClearServers(Object error) {
+    return 'Échec de l\'effacement des serveurs : $error';
+  }
+
+  @override
+  String msgConnectingToServer(Object name) {
+    return 'Connexion au serveur $name...';
+  }
+
+  @override
+  String msgErrConnectServer(Object error) {
+    return 'Connexion impossible : $error';
+  }
+
+  @override
+  String get msgDisconnectedFromServer => 'Déconnecté du serveur eD2K';
+
+  @override
+  String msgErrDisconnectServer(Object error) {
+    return 'Erreur de déconnexion : $error';
+  }
+
+  @override
+  String get msgSettingsUpdated => 'Paramètres mis à jour';
+
+  @override
+  String msgErrSettingsUpdate(Object error) {
+    return 'Échec de la mise à jour des paramètres : $error';
+  }
+
+  @override
+  String get msgDownloadDirUpdated =>
+      'Dossier de téléchargement par défaut mis à jour';
+
+  @override
+  String msgErrDownloadDir(Object error) {
+    return 'Échec de la définition du dossier de téléchargement : $error';
+  }
+
+  @override
+  String get msgDownloadDirReset =>
+      'Dossier de téléchargement réinitialisé (défaut portable)';
+
+  @override
+  String msgErrDownloadDirReset(Object error) {
+    return 'Échec de la réinitialisation du dossier de téléchargement : $error';
+  }
+
+  @override
+  String msgErrFetchHistory(Object error) {
+    return 'Échec du chargement de l\'historique : $error';
+  }
+
+  @override
+  String msgHistoryCleared(Object count) {
+    return '$count enregistrement(s) d\'historique effacé(s)';
+  }
+
+  @override
+  String msgErrClearHistory(Object error) {
+    return 'Échec de l\'effacement de l\'historique : $error';
+  }
+
+  @override
+  String msgErrExportHistory(Object error) {
+    return 'Échec de l\'export de l\'historique : $error';
+  }
+
+  @override
+  String get msgRetentionUnlimited => 'Rétention de l\'historique illimitée';
+
+  @override
+  String msgRetentionDays(Object days) {
+    return 'Rétention de l\'historique : $days jours';
+  }
+
+  @override
+  String msgErrRetention(Object error) {
+    return 'Échec de la mise à jour de la rétention : $error';
+  }
+
+  @override
+  String msgBytesInjected(Object count, Object offset) {
+    return '$count octets injectés à l\'offset $offset';
+  }
+
+  @override
+  String msgErrInject(Object error) {
+    return 'Échec de l\'injection : $error';
+  }
+
+  @override
+  String msgFixtureCreated(Object name) {
+    return 'Fixture $name créée';
+  }
+
+  @override
+  String msgPeerStarted(Object addr) {
+    return 'Pair loopback démarré sur $addr';
+  }
+
+  @override
+  String get msgPeerStopped => 'Pair de test loopback arrêté';
+
+  @override
+  String msgConnectedToPeer(Object addr) {
+    return 'Téléchargement connecté à $addr';
+  }
+
+  @override
+  String msgCatSetError(Object e) {
+    return 'Échec de l\'assignation de la catégorie : $e';
+  }
+
+  @override
+  String msgSourcesFound(Object hash, Object n) {
+    return '$n source(s) trouvée(s) pour $hash';
+  }
+
+  @override
+  String get kadTimeJustNow => 'À l\'instant';
+
+  @override
+  String labCreateFixtureError(Object e) {
+    return 'Échec de la création de la fixture : $e';
+  }
+
+  @override
+  String labAddDownloadError(Object e) {
+    return 'Échec de l\'ajout du téléchargement : $e';
+  }
+
+  @override
+  String labPeerError(Object e) {
+    return 'Échec de l\'opération sur le pair : $e';
+  }
+
+  @override
+  String labConnectError(Object e) {
+    return 'Échec de la connexion du téléchargement : $e';
+  }
+
+  @override
+  String labCleanupError(Object e) {
+    return 'Échec du nettoyage : $e';
+  }
+
+  @override
+  String labDownloadComplete(Object size) {
+    return 'Téléchargement terminé et vérifié ($size)';
+  }
+
+  @override
+  String labTransferring(Object rate, Object recv, Object total) {
+    return 'Transfert : $recv / $total ($rate)';
+  }
+
+  @override
+  String labReadyToConnect(Object state) {
+    return 'État : $state — prêt à se connecter au pair loopback.';
+  }
+
+  @override
+  String get labCleanupPortableOk => 'Sûr à exécuter en mode portable.';
+
+  @override
+  String get labCleanupPortableNo =>
+      'Le nettoyage est restreint en mode installé pour protéger les fichiers utilisateur.';
+
+  @override
+  String histFilesCount(Object n) {
+    return '$n fichiers';
+  }
+
+  @override
+  String histSessionCount(Object n, Object size) {
+    return '$n cette session ($size)';
+  }
+
+  @override
+  String histResumesCount(Object n) {
+    return '$n reprises';
+  }
+
+  @override
+  String histHashMismatchCount(Object n) {
+    return '$n erreur(s) de hash';
+  }
+
+  @override
+  String get histHashVerified => '100 % hash vérifié';
+
+  @override
+  String get histIntegrityErrors => 'Erreurs d\'intégrité détectées';
+
+  @override
+  String peerReceivedBytes(Object bytes) {
+    return 'Reçus : $bytes';
+  }
+
+  @override
+  String searchUdpFailed(Object n) {
+    return ', $n échec(s)';
+  }
+
+  @override
+  String get kadIdGenerated => '(Généré à l\'initialisation)';
+
+  @override
+  String get ed2kErrPrefix => 'Le lien doit commencer par \"ed2k://|file|\"';
+
+  @override
+  String get ed2kErrIncomplete => 'Format de lien eD2K incomplet';
+
+  @override
+  String get ed2kErrInvalid =>
+      'Nom de fichier, taille ou hash hexadécimal de 32 caractères invalide';
+
+  @override
+  String partsCount(Object n) {
+    return '$n partie(s)';
+  }
+
+  @override
+  String sourcesLoopback(Object n) {
+    return '$n loopback';
+  }
+
+  @override
+  String get diagLoopbackTitle => 'Profil réseau : LocalLab (loopback)';
+
+  @override
+  String get diagLoopbackSubtitle =>
+      'Trafic confiné à 127.0.0.1 — aucune donnée ne quitte la machine.';
+
+  @override
+  String get diagPublicSubtitle =>
+      'Connexions WAN autorisées — protection anti-SSRF active.';
 }

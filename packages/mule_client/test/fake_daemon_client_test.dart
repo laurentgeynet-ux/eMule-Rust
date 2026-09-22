@@ -86,6 +86,31 @@ void main() {
       expect(completed.status, DownloadStatus.completed);
     });
 
+    test('seeded download exposes coherent receivedMask and pendingRanges', () async {
+      await client.connect(url: Uri.parse('ws://127.0.0.1:4660/rpc'));
+      final list = await client.listDownloads();
+      final active = list.firstWhere((d) => d.status == DownloadStatus.downloading);
+
+      // Pending ranges stay within file bounds and overlap partial parts.
+      for (final r in active.pendingRanges) {
+        expect(r.start, greaterThanOrEqualTo(0));
+        expect(r.end, lessThanOrEqualTo(active.totalBytes));
+        expect(r.end, greaterThan(r.start));
+      }
+
+      // Partial parts carry a non-trivial mask; verified parts are full.
+      for (final p in active.parts) {
+        if (p.state == 'downloading') {
+          expect(p.receivedMask, isNot(0));
+          expect(p.receivedMask, isNot(-1));
+        }
+      }
+
+      final completed = list.firstWhere((d) => d.status == DownloadStatus.completed);
+      expect(completed.pendingRanges, isEmpty);
+      expect(completed.parts.every((p) => p.receivedMask == -1), isTrue);
+    });
+
     test('removeDownload deletes item from collection', () async {
       await client.connect(url: Uri.parse('ws://127.0.0.1:4660/rpc'));
       final list = await client.listDownloads();

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../../l10n/enum_labels.dart';
+import '../../../../../l10n/l10n.dart';
+
 /// Compact eMule-style priority chip shown directly on a download row:
 /// current priority label + popup menu to change it (no need to expand
 /// the sources panel).
@@ -20,7 +23,7 @@ class DownloadPriorityChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<DownloadPriority>(
-      tooltip: 'Priorité du téléchargement',
+      tooltip: context.l10n.tooltipDownloadPriority,
       initialValue: value,
       onSelected: onChanged,
       padding: EdgeInsets.zero,
@@ -31,7 +34,7 @@ class DownloadPriorityChip extends StatelessWidget {
             value: p,
             height: 32,
             child: Text(
-              p.label,
+              p.labelL10n(context.l10n),
               style: TextStyle(
                 fontSize: 12,
                 color: p == value
@@ -65,7 +68,7 @@ class DownloadPriorityChip extends StatelessWidget {
             ),
             const SizedBox(width: 3),
             Text(
-              value.label,
+              value.labelL10n(context.l10n),
               style: TextStyle(
                 fontSize: compact ? 9 : 10,
                 color: _colorFor(value),

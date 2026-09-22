@@ -17,6 +17,7 @@ class DownloadRowCompact extends StatelessWidget {
   final List<CategoryItem> categories;
   final ValueChanged<String?> onCategorySelected;
   final VoidCallback onDetails;
+  final VoidCallback onRename;
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onRemove;
@@ -29,6 +30,7 @@ class DownloadRowCompact extends StatelessWidget {
     required this.categories,
     required this.onCategorySelected,
     required this.onDetails,
+    required this.onRename,
     required this.onPause,
     required this.onResume,
     required this.onRemove,
@@ -105,6 +107,7 @@ class DownloadRowCompact extends StatelessWidget {
               categories: categories,
               onCategorySelected: onCategorySelected,
               onDetails: onDetails,
+              onRename: onRename,
               onPause: onPause,
               onResume: onResume,
               onRemove: onRemove,
@@ -126,6 +129,11 @@ class DownloadRowCompact extends StatelessWidget {
         PartAvailabilityBar(
           parts: item.parts,
           totalBytes: item.totalBytes,
+          pendingRanges: item.pendingRanges,
+          progress: item.progress,
+          muted: item.status == DownloadStatus.paused ||
+              item.status == DownloadStatus.failed,
+          height: 8,
         ),
         const SizedBox(height: 6),
         Row(

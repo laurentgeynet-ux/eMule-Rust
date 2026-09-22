@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for the History & Statistics section.
 ///
 /// Owns the history entries, stats, filters and retention policy. Status and
@@ -73,7 +75,7 @@ class HistoryController extends ChangeNotifier {
       );
       _stats = await client.getHistoryStats();
     } catch (e) {
-      onError?.call('Failed to fetch history: $e');
+      onError?.call(L10nLookup.current.msgErrFetchHistory(e));
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -87,10 +89,10 @@ class HistoryController extends ChangeNotifier {
       final count = await client.clearHistory();
       _entries.clear();
       _stats = await client.getHistoryStats();
-      onStatus?.call('Cleared $count history record(s)');
+      onStatus?.call(L10nLookup.current.msgHistoryCleared(count));
       return true;
     } catch (e) {
-      onError?.call('Failed to clear history: $e');
+      onError?.call(L10nLookup.current.msgErrClearHistory(e));
       return false;
     } finally {
       _isLoading = false;
@@ -106,7 +108,7 @@ class HistoryController extends ChangeNotifier {
         status: _statusFilter,
       );
     } catch (e) {
-      onError?.call('Failed to export history: $e');
+      onError?.call(L10nLookup.current.msgErrExportHistory(e));
       return '';
     }
   }
@@ -117,13 +119,13 @@ class HistoryController extends ChangeNotifier {
       _retentionDays = days;
       onStatus?.call(
         days == 0
-            ? 'History retention set to unlimited'
-            : 'History retention set to $days days',
+            ? L10nLookup.current.msgRetentionUnlimited
+            : L10nLookup.current.msgRetentionDays(days),
       );
       await fetch();
       return true;
     } catch (e) {
-      onError?.call('Failed to update retention policy: $e');
+      onError?.call(L10nLookup.current.msgErrRetention(e));
       notifyListeners();
       return false;
     }

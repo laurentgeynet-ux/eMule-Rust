@@ -76,9 +76,6 @@ void showHistoryExportDialog(
           onPressed: () {
             Clipboard.setData(ClipboardData(text: content));
             Navigator.of(ctx).pop();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(context.l10n.exportCopiedToClipboard)),
-            );
           },
         ),
         TextButton(

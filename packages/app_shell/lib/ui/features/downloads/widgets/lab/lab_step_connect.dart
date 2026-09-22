@@ -36,8 +36,7 @@ class LabStepConnect extends StatelessWidget {
       return LabStepCard(
         stepNumber: 4,
         title: context.l10n.connectDownloadToLoopbackSource,
-        description:
-            'Instructs the client to connect to 127.0.0.1 source to transfer chunks.',
+        description: context.l10n.labStep4Desc,
         content: Text(context.l10n.noDownloadsInQueueAdd,
           style: TextStyle(fontSize: 12, color: AppColors.textFaint),
         ),
@@ -63,8 +62,7 @@ class LabStepConnect extends StatelessWidget {
     return LabStepCard(
       stepNumber: 4,
       title: context.l10n.connectDownloadToLoopbackSource,
-      description:
-          'Instructs the client to connect to 127.0.0.1 source to transfer chunks.',
+      description: context.l10n.labStep4Desc,
       isCompleted: isCompleted,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,10 +157,26 @@ class LabStepConnect extends StatelessWidget {
                 Expanded(
                   child: Text(
                     isCompleted
-                        ? 'Download completed and verified (${Formatters.formatBytes(selectedDownload.totalBytes)})'
+                        ? context.l10n.labDownloadComplete(
+                            Formatters.formatBytes(
+                              selectedDownload.totalBytes,
+                            ),
+                          )
                         : (isDownloading
-                            ? 'Transferring: ${Formatters.formatBytes(selectedDownload.receivedBytes)} / ${Formatters.formatBytes(selectedDownload.totalBytes)} (${Formatters.formatSpeed(selectedDownload.downloadRateBps)})'
-                            : 'State: ${selectedDownload.status.name.toUpperCase()} — Ready to connect to loopback peer.'),
+                            ? context.l10n.labTransferring(
+                                Formatters.formatBytes(
+                                  selectedDownload.receivedBytes,
+                                ),
+                                Formatters.formatBytes(
+                                  selectedDownload.totalBytes,
+                                ),
+                                Formatters.formatSpeed(
+                                  selectedDownload.downloadRateBps,
+                                ),
+                              )
+                            : context.l10n.labReadyToConnect(
+                                selectedDownload.status.name.toUpperCase(),
+                              )),
                     style: TextStyle(
                       fontSize: 11,
                       color: isCompleted
@@ -192,7 +206,9 @@ class LabStepConnect extends StatelessWidget {
                       )
                     : const Icon(Icons.cable, size: 16),
                 label: Text(
-                  isCompleted ? 'Already Completed' : 'Connect to Source',
+                  isCompleted
+                      ? context.l10n.labAlreadyCompleted
+                      : context.l10n.labConnectToSource,
                 ),
                 onPressed: canConnect ? onConnect : null,
               ),

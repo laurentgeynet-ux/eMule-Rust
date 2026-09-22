@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/enum_labels.dart';
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for the network policy (profile, kill switch,
 /// resource budgets), the IP filter and the rate limiter.
 ///
@@ -64,10 +67,13 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setProfile(NetworkProfile profile) async {
     try {
       _policy = await client.setNetworkProfile(profile);
-      onStatus?.call('Profil réseau basculé : ${profile.label}');
+      onStatus?.call(
+        L10nLookup.current
+            .msgProfileSwitched(profile.labelL10n(L10nLookup.current)),
+      );
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec du changement de profil réseau : $e');
+      onError?.call(L10nLookup.current.msgErrProfileSwitch(e));
       notifyListeners();
     }
   }
@@ -77,12 +83,10 @@ class NetworkPolicyController extends ChangeNotifier {
       await client.disconnectAll();
       await fetchPolicy();
       onAllDisconnected?.call();
-      onStatus?.call(
-        'Kill switch activé : toutes les connexions réseau ont été coupées',
-      );
+      onStatus?.call(L10nLookup.current.msgKillSwitchOn);
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec du kill switch : $e');
+      onError?.call(L10nLookup.current.msgErrKillSwitch(e));
       notifyListeners();
     }
   }
@@ -91,10 +95,10 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       await client.enableNetwork();
       await fetchPolicy();
-      onStatus?.call('Réseau réactivé');
+      onStatus?.call(L10nLookup.current.msgNetworkReactivated);
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec de la réactivation du réseau : $e');
+      onError?.call(L10nLookup.current.msgErrNetworkReactivate(e));
       notifyListeners();
     }
   }
@@ -109,10 +113,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setResourceBudgets(ResourceBudgetsModel budgets) async {
     try {
       _policy = await client.setResourceBudgets(budgets);
-      onStatus?.call('Budgets de ressources mis à jour');
+      onStatus?.call(L10nLookup.current.msgBudgetsUpdated);
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec de la mise à jour des budgets de ressources : $e');
+      onError?.call(L10nLookup.current.msgErrBudgets(e));
       notifyListeners();
     }
   }
@@ -130,12 +134,13 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       _filterStatus = await client.importFilterFile(filePath);
       onStatus?.call(
-        'Filtre IP importé : ${_filterStatus?.rangeCount ?? 0} plages',
+        L10nLookup.current
+            .msgIpFilterImported(_filterStatus?.rangeCount ?? 0),
       );
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Échec de l\'import du filtre IP : $e');
+      onError?.call(L10nLookup.current.msgErrIpFilterImport(e));
       notifyListeners();
       return false;
     }
@@ -144,10 +149,14 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setFilterEnabled(bool enabled) async {
     try {
       _filterStatus = await client.setFilterEnabled(enabled);
-      onStatus?.call(enabled ? 'Filtre IP activé' : 'Filtre IP désactivé');
+      onStatus?.call(
+        enabled
+            ? L10nLookup.current.msgIpFilterEnabled
+            : L10nLookup.current.msgIpFilterDisabled,
+      );
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec du basculement du filtre IP : $e');
+      onError?.call(L10nLookup.current.msgErrIpFilterToggle(e));
       notifyListeners();
     }
   }
@@ -155,10 +164,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> clearFilter() async {
     try {
       _filterStatus = await client.clearFilter();
-      onStatus?.call('Filtre IP vidé');
+      onStatus?.call(L10nLookup.current.msgIpFilterCleared);
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec de la purge du filtre IP : $e');
+      onError?.call(L10nLookup.current.msgErrIpFilterClear(e));
       notifyListeners();
     }
   }
@@ -175,10 +184,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setRateLimits(RateLimitsModel limits) async {
     try {
       _rateLimits = await client.setRateLimits(limits);
-      onStatus?.call('Limites de débit mises à jour');
+      onStatus?.call(L10nLookup.current.msgRateLimitsUpdated);
       notifyListeners();
     } catch (e) {
-      onError?.call('Échec de la mise à jour des limites de débit : $e');
+      onError?.call(L10nLookup.current.msgErrRateLimits(e));
       notifyListeners();
     }
   }

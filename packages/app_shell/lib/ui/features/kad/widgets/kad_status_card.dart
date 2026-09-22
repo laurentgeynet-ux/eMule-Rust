@@ -52,8 +52,7 @@ class KadStatusCard extends StatelessWidget {
                 child: SelectableText(
                   status.localId.isNotEmpty
                       ? status.localId
-                      : '(Généré à l'
-                            'initialisation)',
+                      : context.l10n.kadIdGenerated,
                   style: const TextStyle(
                     fontSize: 12,
                     fontFamily: 'monospace',
@@ -85,7 +84,9 @@ class KadStatusCard extends StatelessWidget {
                 FilledButton.icon(
                   icon: const Icon(Icons.play_circle_outline, size: 14),
                   label: Text(
-                    isPublic ? 'Démarrer UDP Kad' : 'Démarrer UDP Loopback',
+                    isPublic
+                        ? context.l10n.kadStartUdpPublic
+                        : context.l10n.kadStartUdpLab,
                     style: const TextStyle(fontSize: 11),
                   ),
                   style: FilledButton.styleFrom(
@@ -111,8 +112,13 @@ class KadStatusCard extends StatelessWidget {
                 KadStatBadge(
                   label: context.l10n.socketUdp,
                   value: status.isUdpActive
-                      ? 'Actif (${status.udpBindAddress ?? (isPublic ? "0.0.0.0:39737" : "127.0.0.1:39737")})'
-                      : 'Inactif',
+                      ? context.l10n.kadUdpActive(
+                          status.udpBindAddress ??
+                              (isPublic
+                                  ? "0.0.0.0:39737"
+                                  : "127.0.0.1:39737"),
+                        )
+                      : context.l10n.kadUdpInactive,
                   color: status.isUdpActive
                       ? AppColors.positive
                       : AppColors.accentOrange,

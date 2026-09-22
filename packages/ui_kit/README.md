@@ -11,7 +11,7 @@ formatters, chaînes et widgets réutilisables. Consommé par
 | `AppTheme` | Couleurs brand/status (`primary`, `darkSurface`, `statusDownloading`…), `dark()` ThemeData, `getStatusColor(DownloadStatus)` |
 | `Formatters` | `formatBytes`, `formatSpeed`, `formatEta`, `formatPercent` |
 | `AppStrings` | Chaînes UI centralisées (EN) — base avant i18n `gen_l10n` |
-| `PartAvailabilityBar` + `partColorFor` | Bandeau eMule par part : rouge = aucune source, bleu = rare→commun, teal = vérifié |
+| `PartAvailabilityBar` + `partColorFor` | Bandeau eMule `DrawStatusBar` byte-précis : ardoise = reçu, rouge = aucune source, bleu clair→pur = rare→commun, jaune = bloc en vol, strip vert = progression |
 
 ## Usage
 
@@ -20,7 +20,13 @@ import 'package:ui_kit/ui_kit.dart';
 
 MaterialApp(theme: AppTheme.dark(), ...);
 Text(Formatters.formatBytes(item.receivedBytes));
-PartAvailabilityBar(parts: item.parts, totalBytes: item.totalBytes);
+PartAvailabilityBar(
+  parts: item.parts,
+  totalBytes: item.totalBytes,
+  pendingRanges: item.pendingRanges, // blocs en vol → jaune
+  progress: item.progress,           // strip vert en haut
+  muted: item.status == DownloadStatus.paused,
+);
 ```
 
 ## Règles

@@ -6,12 +6,21 @@ import 'detail_legend_item.dart';
 import 'detail_section_card.dart';
 import '../../../../../l10n/l10n.dart';
 
-/// eD2K part-map card: one colored block per 9.28 MB part (state via
-/// `partColorFor`) plus the counts legend.
+/// eD2K part-map card: one cell per 9.28 MB part. Each cell shows the
+/// availability color of its missing gap (red = no source, blue gradient
+/// rare→common like eMule), filled bottom-up with the received fraction
+/// (slate, teal when hash-verified), plus a yellow top stripe while the
+/// part has in-flight block requests.
 class DownloadPartMapCard extends StatelessWidget {
   final DownloadItem item;
 
   const DownloadPartMapCard({super.key, required this.item});
+
+  bool _partHasPending(DownloadPartInfo part) {
+    return item.pendingRanges.any(
+      (r) => r.start < part.endOffset && r.end > part.startOffset,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,9 +28,10 @@ class DownloadPartMapCard extends StatelessWidget {
     final verifiedCount = parts.where((p) => p.isVerified).length;
     final completedCount =
         parts.where((p) => p.state == 'completed').length;
-    final downloadingCount =
-        parts.where((p) => p.state == 'downloading').length;
-    final missingCount = parts.where((p) => p.state == 'missing').length;
+    final pendingCount = parts.where(_partHasPending).length;
+    final availableCount = parts
+        .where((p) => p.state == 'missing' && p.availableSourceCount > 0)
+        .length;
     final unavailableCount = parts
         .where((p) => p.state == 'missing' && p.availableSourceCount == 0)
         .length;
@@ -44,7 +54,11 @@ class DownloadPartMapCard extends StatelessWidget {
               spacing: 4.0,
               runSpacing: 4.0,
               children: parts.map((part) {
-                final color = partColorFor(part);
+                final gapColor = partColorFor(part);
+                final hasPending = _partHasPending(part);
+                final fillFraction = part.progress;
+                final fillColor =
+                    part.isVerified ? Colors.tealAccent : _haveFill;
                 return Tooltip(
                   message: context.l10n.part(
                       '${part.partIndex + 1}',
@@ -54,26 +68,73 @@ class DownloadPartMapCard extends StatelessWidget {
                       Formatters.formatBytes(part.receivedBytes),
                       part.isVerified ? "Verified (Hash valid)" : part.state,
                       '${part.availableSourceCount}'),
-                  child: Container(
+                  child: SizedBox(
                     width: 32.0,
                     height: 24,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(3),
-                      border: Border.all(
-                        color: AppColors.textPrimary.withValues(alpha: 0.15),
-                        width: 0.5,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text('${part.partIndex + 1}',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        color: part.state == 'missing'
-                            ? AppColors.textFaint
-                            : AppColors.textPrimary,
-                      ),
+                    child: Stack(
+                      children: [
+                        // Gap color = availability of the missing portion.
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: gapColor,
+                              borderRadius: BorderRadius.circular(3),
+                              border: Border.all(
+                                color: AppColors.textPrimary
+                                    .withValues(alpha: 0.15),
+                                width: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Received fraction fills bottom-up (eMule draws
+                        // the gaps; here the filled level shows progress).
+                        if (fillFraction > 0)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            height: 24 * fillFraction,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: fillColor,
+                                borderRadius: fillFraction >= 1.0
+                                    ? BorderRadius.circular(3)
+                                    : const BorderRadius.vertical(
+                                        bottom: Radius.circular(3)),
+                              ),
+                            ),
+                          ),
+                        // Yellow stripe while the part has in-flight blocks.
+                        if (hasPending)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            top: 0,
+                            height: 3,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFFD000),
+                                borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(3)),
+                              ),
+                            ),
+                          ),
+                        Positioned.fill(
+                          child: Center(
+                            child: Text('${part.partIndex + 1}',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                                shadows: const [
+                                  Shadow(color: Colors.black54, blurRadius: 2),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -85,20 +146,20 @@ class DownloadPartMapCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 DetailLegendItem(
-                  color: AppColors.accentTeal,
+                  color: Colors.tealAccent,
                   label: context.l10n.verified2('$verifiedCount'),
                 ),
                 DetailLegendItem(
-                  color: AppColors.accentBlue,
+                  color: _haveFill,
                   label: context.l10n.completed('$completedCount'),
                 ),
                 DetailLegendItem(
-                  color: AppColors.accentAmber,
-                  label: context.l10n.downloading('$downloadingCount'),
+                  color: const Color(0xFFFFD000),
+                  label: context.l10n.downloading('$pendingCount'),
                 ),
                 DetailLegendItem(
-                  color: AppColors.fillMedium,
-                  label: context.l10n.missing('$missingCount'),
+                  color: availabilityColor(3),
+                  label: context.l10n.missing('$availableCount'),
                 ),
                 DetailLegendItem(
                   color: AppColors.danger,
@@ -112,3 +173,6 @@ class DownloadPartMapCard extends StatelessWidget {
     );
   }
 }
+
+/// Received (not yet hash-verified) fill color — matches the bar.
+const Color _haveFill = Color(0xFF90A4AE);

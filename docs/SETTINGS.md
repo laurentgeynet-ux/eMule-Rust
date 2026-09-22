@@ -11,11 +11,17 @@ Préférences d'eMule 0.72a.
 | Section UI | Contenu |
 |---|---|
 | **Général** | Pseudo, dossier de téléchargement, partage Incoming, rétention historique, langue |
-| **Connexion** | Kill switch, profil réseau, quotas de sockets, **capacités & ports**, obfuscation, connexions max, USS, UPnP |
+| **Connexion** | Kill switch, interrupteurs **Réseau eD2K / Réseau Kad** (profil réseau), quotas de sockets, **capacités & ports**, obfuscation, connexions max, USS, UPnP |
 | **Transferts** | Sources max globales / par fichier / min, file d'attente upload, quota journalier, sauvetage de swarm |
 | **Sécurité** | Filtre IP (`ipfilter.dat`), limites de débit, notice anti-SSRF, options exclusives (paranoid, rotation d'identité) |
 | **Amis** | Friend slots (`friends.*`) |
 | **Avancé** | Diagnostic, import `.part.met`, guide lab, barre debug, version |
+
+Tous les champs de chemin (dossier de téléchargement, dossier temporaire,
+`ipfilter.dat`, `server.met`, `nodes.dat`, `.part.met`/`.part`/dossier
+cible de l'import) proposent un bouton **« parcourir »** ouvrant le
+sélecteur de fichier/dossier natif Windows (`pickFile`/`pickFolder` via
+`file_picker`) — plus besoin de saisir le chemin à la main.
 
 ## Clés RPC
 
@@ -23,7 +29,7 @@ Préférences d'eMule 0.72a.
 
 | Clé `settings.set` | Clé persistée | Type | Défaut | Effet | eMule |
 |---|---|---|---|---|---|
-| `nickname` | `nickname` | string 1–64 | `"Emule-Sion"` | Annoncé au login serveur et dans les hellos pairs | `nick` |
+| `nickname` | `nickname` | string 1–64 | `"eMule-Rust"` | Annoncé au login serveur et dans les hellos pairs | `nick` |
 | `defaultDownloadDir` | `default_download_directory` | path | dossier portable | Probe d'écriture validé ; utilisé à l'ajout de liens et au scan Incoming | « Répertoire » |
 | `shareDownloadDir` | `share_download_dir` | bool | `true` | Scan+hash des fichiers du dossier Incoming (démarrage + `shares.rescan`) | dossier Incoming partagé |
 | `historyRetentionDays` | `history_retention_days` | u32 | `30` | Purge de l'historique appliquée immédiatement | — |
@@ -44,6 +50,15 @@ Préférences d'eMule 0.72a.
 | `safeConnect` | `safe_connect` | bool | `false` | `downloads.resume` refusé tant que ni serveur eD2K ni Kad (contacts > 0) ne sont disponibles | `SafeConnect` |
 
 ### Connexion
+
+**Interrupteurs « Réseau eD2K » / « Réseau Kad »** : la section ouvre sur
+une carte « Réseaux » à deux switches qui projettent le `NetworkProfile`
+persisté (`network.setProfile`). `Réseau eD2K` off → confinement
+loopback `local-lab` ; `Réseau Kad` on → `public-ed2k-kad-preview`
+(activer Kad active automatiquement eD2K — « Kad sans eD2K » n'existe
+pas dans le modèle). Les trois états possibles restent : `local-lab`,
+`public-ed2k-preview`, `public-ed2k-kad-preview`. Le kill switch et le
+pipeline anti-SSRF sont inchangés.
 
 | Clé | Persistée | Type | Défaut | Effet | eMule |
 |---|---|---|---|---|---|
@@ -94,6 +109,19 @@ persistée au-delà de la capacité est bornée puis réécrite en SQLite. L'UI
 affiche la valeur réellement appliquée (relecture de `limits.get`) et le
 signale dans l'onglet des débits.
 
+**Ratio upload/download** (eMule `GetMaxDownloadInBytesPerSec`,
+`Preferences.cpp:694` — « don't be a Lam3r :) ») : quand la limite upload
+descend sous **20 Ko/s**, le download *effectif* est plafonné à un multiple
+de l'upload — **3×** si upload < 4 Ko/s, **4×** si < 10 Ko/s, **5×** si
+< 20 Ko/s. Un download « illimité » (`0`) est lui aussi plafonné à
+`coef × upload`. La valeur **configurée** persistée reste intacte (le ratio
+est recalculé à chaque application, jamais réécrit) — remonter l'upload
+restaure le download sans le re-saisir. Quand USS est actif, le plafond
+suit la limite dynamique à chaque tick de la boucle de contrôle (eMule
+utilise le débit mesuré quand DynUp est actif). `limits.get` expose
+`downloadConfiguredBytesPerSec` / `uploadConfiguredBytesPerSec` (valeurs
+configurées) et `downloadRatioApplied` (plafond ratio actif).
+
 ### Filtre IP (RPC `filter.*`, section Sécurité)
 
 | RPC | Persistée | Effet |
@@ -112,14 +140,19 @@ son état activé survivent aux redémarrages du daemon.
 - **UDP off** : le client-UDP partage la socket Kad — désactiver UDP coupe
   les trois services d'un coup (Kad UDP, server UDP, client UDP).
 - **Partage partiel** : les téléchargements en cours apparaissent dans
-  `shares.list` avec `isPartial=true` dès qu'une part de 9 728 000 B est
-  complète ; seules les parts complétées sont servies (`PARTSTATUS`).
-  Les partiels sont publiés comme **sources Kad** (`PublishSrc`) mais
-  exclus de la publication de keywords ; dans l'`OP_OFFERFILES` serveur
-  (trié par priorité d'upload, ≤ 200 entrées) ils portent les marqueurs
-  `0xFCFCFCFC`/`0xFCFC`. `shares.setEnabled`/`setUploadPriority` les
-  rejettent — un partage transitoire persisté figerait le chemin `.part`
-  et le servirait comme complet après restart.
+  `shares.list` avec `isPartial=true` **dès leur création** — eMule
+  publie toujours les `.part` actifs
+  (`CDownloadQueue::AddPartFilesToShare` : *« part files are always
+  shared files »*), même sans part complète (`completedParts` vide) ;
+  seules les parts complétées sont servies (`PARTSTATUS`, ranges hors
+  parts refusés). Les partiels sont publiés comme **sources Kad**
+  (`PublishSrc`) mais exclus de la publication de keywords ; dans
+  l'`OP_OFFERFILES` serveur (trié par priorité d'upload, ≤ 200 entrées)
+  ils portent les marqueurs `0xFCFCFCFC`/`0xFCFC`.
+  `shares.setEnabled`/`setUploadPriority` les rejettent — un partage
+  transitoire persisté figerait le chemin `.part` et le servirait comme
+  complet après restart. Chaque mutation `shares.*` émet le nudge
+  `shares.changed` (badge « Partages » live).
 - **Partages après restart** : les downloads `Completed` sont lus depuis
   SQLite même hors de la map `active` — la liste de partage survit aux
   redémarrages (le fichier cible doit exister sur disque).
@@ -146,7 +179,28 @@ son état activé survivent aux redémarrages du daemon.
   switches **et** champs texte ; un champ en cours d'édition (dirty)
   n'est jamais écrasé par une valeur distante.
 - **Kill switch** : confirmé par un dialog avant `network.disconnectAll`.
+  `network.enable` restaure les services réseau (listener entrant,
+  sockets UDP Kad/serveur, maintenance Kad, USS, refresh UPnP) et le
+  watcher reconnecte au dernier serveur (`server_reconnect`).
 - **Rétention** : une valeur persistée hors items standards {7, 30, 90, 0}
   (ex. via MCP) s'affiche dans un item dédié du dropdown.
 - **Localisation** : la totalité de la page (sections, cartes réseau,
   messages de statut) est couverte par les ARB FR/EN.
+
+## Journalisation (daemon)
+
+Le daemon écrit ses traces `tracing` dans **`data/daemon.log`** (ainsi
+que sur stdout) avec horodatage local RFC 3339.
+
+- **Réinitialisation au démarrage** : le fichier est tronqué à chaque
+  lancement du daemon (`truncate(true)`) — il ne contient donc que la
+  session courante. Il n'y a **pas** de rotation ni de taille maximale
+  en cours de session : un daemon longue durée peut le faire grossir
+  significativement (les messages de niveau `info` incluent des traces
+  par paquet Kad).
+- **Filtre par défaut** : `info`. La variable d'environnement
+  **`RUST_LOG`** permet de changer la verbosité au lancement
+  (`EnvFilter::try_from_default_env`), ex.
+  `RUST_LOG=warn` pour ne garder que les avertissements/erreurs, ou
+  `RUST_LOG=info,mule_daemon::services::kad_udp=warn` pour réduire le
+  bruit d'un module précis.

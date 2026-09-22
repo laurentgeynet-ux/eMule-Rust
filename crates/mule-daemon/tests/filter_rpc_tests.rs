@@ -155,3 +155,53 @@ async fn test_rate_limits_get_and_set_rpc() {
     assert_eq!(res["serverRequestsPerSec"], 5);
     assert_eq!(res["kadPacketsPerSec"], 20);
 }
+
+/// eMule `GetMaxDownloadInBytesPerSec` (« don't be a Lam3r :) ») : quand
+/// la limite upload descend sous 20 Ko/s, le download *effectif* est
+/// plafonné à coef×upload, mais la valeur *configurée* persistée reste
+/// intacte — remonter l'upload restaure le download sans le re-saisir.
+#[tokio::test]
+async fn test_ud_ratio_caps_download_when_upload_low() {
+    let (state, _dir) = setup_test_state();
+    let mut authenticated = true;
+
+    // Upload 5 Ko/s (coef 4) + download 1000 Ko/s → effectif 20 Ko/s,
+    // configuré conservé.
+    let set_req = make_req(
+        1,
+        "limits.set",
+        Some(json!({
+            "downloadBytesPerSec": 1_024_000,
+            "uploadBytesPerSec": 5120
+        })),
+    );
+    let resp = handle_request(&state, set_req, &mut authenticated)
+        .await
+        .unwrap();
+    let res = resp.result.unwrap();
+    assert_eq!(res["downloadBytesPerSec"], 20_480);
+    assert_eq!(res["uploadBytesPerSec"], 5120);
+    assert_eq!(res["downloadConfiguredBytesPerSec"], 1_024_000);
+    assert_eq!(res["downloadRatioApplied"], true);
+
+    // Remonter l'upload à 50 Ko/s lève le plafond sans re-saisir le
+    // download configuré.
+    let set_req = make_req(
+        2,
+        "limits.set",
+        Some(json!({ "uploadBytesPerSec": 51_200 })),
+    );
+    let resp = handle_request(&state, set_req, &mut authenticated)
+        .await
+        .unwrap();
+    let res = resp.result.unwrap();
+    assert_eq!(res["downloadBytesPerSec"], 1_024_000);
+    assert_eq!(res["downloadRatioApplied"], false);
+
+    // Upload illimité (0) → pas de ratio.
+    let set_req = make_req(3, "limits.set", Some(json!({ "uploadBytesPerSec": 0 })));
+    let resp = handle_request(&state, set_req, &mut authenticated)
+        .await
+        .unwrap();
+    assert_eq!(resp.result.unwrap()["downloadBytesPerSec"], 1_024_000);
+}

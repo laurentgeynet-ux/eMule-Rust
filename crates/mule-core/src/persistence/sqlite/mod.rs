@@ -213,6 +213,22 @@ impl Database {
         downloads::update_target_path(&mut self.conn, download_id, target_path)
     }
 
+    /// Renames a download: updates `display_name` and the derived
+    /// `target_path` (finalization writes under the new name).
+    pub fn update_download_name_and_target(
+        &mut self,
+        download_id: &Uuid,
+        display_name: &str,
+        target_path: &Path,
+    ) -> Result<(), CoreError> {
+        downloads::update_download_name_and_target(
+            &mut self.conn,
+            download_id,
+            display_name,
+            target_path,
+        )
+    }
+
     // ── Download History ────────────────────────────────────────────────────
 
     /// Inserts a new history record and returns the generated row ID.
@@ -412,6 +428,22 @@ impl Database {
         enabled: bool,
     ) -> Result<bool, CoreError> {
         shares::set_shared_file_enabled(&mut self.conn, file_hash, enabled)
+    }
+
+    /// Ajoute `delta` octets au total uploadé persisté d'un fichier partagé.
+    pub fn add_share_uploaded_bytes(
+        &mut self,
+        file_hash: &str,
+        delta: u64,
+    ) -> Result<(), CoreError> {
+        shares::add_share_uploaded_bytes(&mut self.conn, file_hash, delta)
+    }
+
+    /// Totaux uploadés persistés par hash de fichier (clés en minuscules).
+    pub fn list_share_uploaded_bytes(
+        &self,
+    ) -> Result<std::collections::HashMap<String, u64>, CoreError> {
+        shares::list_share_uploaded_bytes(&self.conn)
     }
 
     /// Sets the upload priority (`up_priority`) of a shared file.

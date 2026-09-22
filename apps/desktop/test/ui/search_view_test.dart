@@ -196,7 +196,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify Kad DHT active banner
-      expect(find.textContaining('Kad DHT Actif'), findsOneWidget);
+      expect(find.textContaining('Kad DHT actif'), findsOneWidget);
 
       // Enter search term
       final searchInput = find.byType(TextField).first;

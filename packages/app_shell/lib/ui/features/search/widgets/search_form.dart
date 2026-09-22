@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'search_target.dart';
 import '../../../../l10n/l10n.dart';
+import '../../../../l10n/l10n_lookup.dart';
 
 /// Search form: target selector (server / global UDP / Kad), keyword field,
 /// search button and the collapsible advanced filters row (extension,
@@ -84,7 +85,6 @@ class SearchForm extends StatelessWidget {
                     _TargetSelector(
                       target: target,
                       fontSize: 13,
-                      kadLabel: 'Réseau Kad DHT',
                       onChanged: onTargetChanged,
                     ),
                     const SizedBox(width: 8),
@@ -114,8 +114,8 @@ class SearchForm extends StatelessWidget {
         color: showFilters ? AppTheme.primary : AppColors.textMuted,
       ),
       tooltip: showFilters
-          ? 'Masquer les filtres'
-          : 'Afficher les filtres avancés',
+          ? L10nLookup.current.searchHideFilters
+          : L10nLookup.current.searchShowFilters,
       onPressed: onToggleFilters,
     );
   }
@@ -127,8 +127,8 @@ class SearchForm extends StatelessWidget {
       style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
       decoration: InputDecoration(
         hintText: target == SearchTarget.kad
-            ? 'Mots-clés Kad (min. 3 lettres)...'
-            : 'Nom de fichier ou mots-clés...',
+            ? L10nLookup.current.searchHintKad
+            : L10nLookup.current.searchHintServer,
         hintStyle: const TextStyle(color: AppColors.textFaint, fontSize: 14),
         prefixIcon: const Icon(
           Icons.search,
@@ -184,7 +184,11 @@ class SearchForm extends StatelessWidget {
               ),
             )
           : const Icon(Icons.search_rounded, size: 18),
-      label: Text(isSearching ? 'Recherche...' : 'Rechercher'),
+      label: Text(
+        isSearching
+            ? L10nLookup.current.searchButtonSearching
+            : L10nLookup.current.searchButton,
+      ),
       style: ElevatedButton.styleFrom(
         backgroundColor: AppTheme.primary,
         foregroundColor: AppColors.textPrimary,
@@ -278,13 +282,11 @@ class SearchForm extends StatelessWidget {
 class _TargetSelector extends StatelessWidget {
   final SearchTarget target;
   final double fontSize;
-  final String kadLabel;
   final ValueChanged<SearchTarget> onChanged;
 
   const _TargetSelector({
     required this.target,
     required this.fontSize,
-    this.kadLabel = 'Kad DHT',
     required this.onChanged,
   });
 
@@ -305,7 +307,10 @@ class _TargetSelector extends StatelessWidget {
         ButtonSegment(
           value: SearchTarget.kad,
           icon: const Icon(Icons.hub_rounded, size: 16),
-          label: Text(kadLabel, style: TextStyle(fontSize: fontSize)),
+          label: Text(
+            context.l10n.searchTargetKad,
+            style: TextStyle(fontSize: fontSize),
+          ),
         ),
       ],
       selected: {target},

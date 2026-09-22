@@ -84,12 +84,6 @@ class ImportReportView extends StatelessWidget {
               key: const Key('copy_report_button'),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: report));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.l10n.auditReportCopiedToClipboard),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
               },
               icon: const Icon(Icons.copy, size: 16),
               label: Text(context.l10n.copyReport),

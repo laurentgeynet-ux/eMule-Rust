@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for daemon settings.
 ///
 /// Owns the raw settings map. Status and error reporting is delegated to
@@ -54,10 +56,10 @@ class SettingsController extends ChangeNotifier {
     try {
       await client.updateSettings(patch);
       await fetch();
-      onStatus?.call('Paramètres mis à jour');
+      onStatus?.call(L10nLookup.current.msgSettingsUpdated);
       return true;
     } catch (e) {
-      onError?.call('Échec de la mise à jour des paramètres : $e');
+      onError?.call(L10nLookup.current.msgErrSettingsUpdate(e));
       return false;
     }
   }
@@ -66,11 +68,11 @@ class SettingsController extends ChangeNotifier {
     try {
       await client.setDefaultDownloadDirectory(path);
       await fetch();
-      onStatus?.call('Dossier de téléchargement par défaut mis à jour');
+      onStatus?.call(L10nLookup.current.msgDownloadDirUpdated);
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Échec de la définition du dossier de téléchargement : $e');
+      onError?.call(L10nLookup.current.msgErrDownloadDir(e));
       notifyListeners();
       return false;
     }
@@ -80,11 +82,11 @@ class SettingsController extends ChangeNotifier {
     try {
       await client.resetDefaultDownloadDirectory();
       await fetch();
-      onStatus?.call('Dossier de téléchargement réinitialisé (défaut portable)');
+      onStatus?.call(L10nLookup.current.msgDownloadDirReset);
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Échec de la réinitialisation du dossier de téléchargement : $e');
+      onError?.call(L10nLookup.current.msgErrDownloadDirReset(e));
       notifyListeners();
       return false;
     }

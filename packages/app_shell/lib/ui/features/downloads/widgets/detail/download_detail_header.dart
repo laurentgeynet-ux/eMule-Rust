@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/enum_labels.dart';
 import '../../../../../l10n/l10n.dart';
 
 /// Dialog header: file icon tinted by status, file name, status badge,
@@ -72,7 +73,7 @@ class DownloadDetailHeader extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        item.status.label,
+                        item.status.labelL10n(context.l10n),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,

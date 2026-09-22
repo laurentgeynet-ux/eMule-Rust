@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for download categories.
 ///
 /// Owns the category list and the selected sidebar category. Status and
@@ -62,11 +64,11 @@ class CategoriesController extends ChangeNotifier {
         defaultPriority: defaultPriority,
       );
       await fetch();
-      onStatus?.call('Created category "${cat.name}"');
+      onStatus?.call(L10nLookup.current.msgCategoryCreated(cat.name));
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to create category: $e');
+      onError?.call(L10nLookup.current.msgErrCategoryCreate(e));
       notifyListeners();
       return false;
     }
@@ -90,11 +92,11 @@ class CategoriesController extends ChangeNotifier {
         sortOrder: sortOrder,
       );
       await fetch();
-      onStatus?.call('Updated category "${cat.name}"');
+      onStatus?.call(L10nLookup.current.msgCategoryUpdated(cat.name));
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to update category: $e');
+      onError?.call(L10nLookup.current.msgErrCategoryUpdate(e));
       notifyListeners();
       return false;
     }
@@ -108,11 +110,13 @@ class CategoriesController extends ChangeNotifier {
         _selectedId = null;
       }
       await onRefreshDownloads?.call();
-      onStatus?.call('Deleted category "${cat?.name ?? id}"');
+      onStatus?.call(
+        L10nLookup.current.msgCategoryDeleted(cat?.name ?? id),
+      );
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to delete category: $e');
+      onError?.call(L10nLookup.current.msgErrCategoryDelete(e));
       notifyListeners();
       return false;
     }
@@ -124,7 +128,7 @@ class CategoriesController extends ChangeNotifier {
       await fetch();
       return true;
     } catch (e) {
-      onError?.call('Failed to reorder categories: $e');
+      onError?.call(L10nLookup.current.msgErrCategoryReorder(e));
       notifyListeners();
       return false;
     }
@@ -142,13 +146,13 @@ class CategoriesController extends ChangeNotifier {
       onDownloadUpdated?.call(updated);
       final catName = categoryId != null
           ? (_categories.where((c) => c.id == categoryId).firstOrNull?.name ??
-                'Category')
-          : 'None';
-      onStatus?.call('Assigned to category "$catName"');
+                L10nLookup.current.categoryFallback)
+          : L10nLookup.current.none;
+      onStatus?.call(L10nLookup.current.msgAssignedToCategory(catName));
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to set category: $e');
+      onError?.call(L10nLookup.current.msgCatSetError(e));
       notifyListeners();
       return false;
     }

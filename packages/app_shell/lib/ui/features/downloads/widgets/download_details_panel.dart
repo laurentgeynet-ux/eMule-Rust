@@ -6,6 +6,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/providers.dart';
 import 'download_detail_dialog.dart';
+import '../../../../l10n/enum_labels.dart';
 import '../../../../l10n/l10n.dart';
 
 /// Collapsible summary panel shown at the bottom of the downloads workspace
@@ -78,7 +79,10 @@ class DownloadDetailsPanel extends ConsumerWidget {
               _Metric(label: context.l10n.downloadId, value: item.id),
               _Metric(label: context.l10n.totalSize, value: Formatters.formatBytes(item.totalBytes)),
               _Metric(label: context.l10n.verifiedBytes, value: Formatters.formatBytes(item.verifiedBytes)),
-              _Metric(label: context.l10n.status, value: item.status.label),
+              _Metric(
+                label: context.l10n.status,
+                value: item.status.labelL10n(context.l10n),
+              ),
               _Metric(label: context.l10n.sources, value: '${item.sourceCount}'),
             ],
           ),

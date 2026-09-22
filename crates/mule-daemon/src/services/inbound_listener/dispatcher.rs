@@ -1063,8 +1063,7 @@ impl InboundListenerService {
                                                              "[UPLOAD_BLOCK] Sent compressed block ({} -> {} bytes) to {} for file '{}' (offset {}..{})",
                                                              payload.len(), compressed.len(), remote_str, shared_file.file_name, start, start + length
                                                          );
-                                                         let reported_rate = upload_bucket.rate_per_sec().max(length);
-                                                         self.upload_manager.update_progress(&client_key, length, reported_rate).await;
+                                                         self.upload_manager.update_progress(&client_key, length).await;
                                                          if shared_file.file_size > 0 && (start + length) <= shared_file.file_size {
                                                              if let (Some(ref ph), Some(ref pk_der)) = (&remote_pubkey_hash, &remote_pubkey_der) {
                                                                  let pk_hex = hex::encode(pk_der);
@@ -1115,8 +1114,7 @@ impl InboundListenerService {
                                                          length, remote_str, shared_file.file_name, start, start + length
                                                      );
 
-                                                     let reported_rate = upload_bucket.rate_per_sec().max(length);
-                                                     self.upload_manager.update_progress(&client_key, length, reported_rate).await;
+                                                     self.upload_manager.update_progress(&client_key, length).await;
 
                                                     if shared_file.file_size > 0 && (start + length) <= shared_file.file_size {
                                                         if let (Some(ref ph), Some(ref pk_der)) = (&remote_pubkey_hash, &remote_pubkey_der) {

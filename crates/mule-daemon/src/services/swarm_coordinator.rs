@@ -36,9 +36,11 @@ impl SwarmCoordinator {
         })
     }
 
-    /// Primary execution loop listening for ticks, cancellation, or daemon shutdown.
+    /// Primary execution loop listening for ticks or daemon shutdown.
+    /// Le kill switch n'arrête pas la boucle : `tick()` court-circuite
+    /// tant que l'état réseau est `Disabled`, puis reprend seul à
+    /// `network.enable` (le token annulé serait sinon définitif).
     pub async fn run_loop(&mut self) {
-        let cancel_token = self.state.network_policy.cancellation_token();
         let shutdown_notify = self.state.shutdown_notify.clone();
         let mut interval = tokio::time::interval(COORDINATOR_TICK_INTERVAL);
 
@@ -46,10 +48,6 @@ impl SwarmCoordinator {
 
         loop {
             tokio::select! {
-                _ = cancel_token.cancelled() => {
-                    tracing::info!("SwarmCoordinator stopped by cancellation token");
-                    break;
-                }
                 _ = shutdown_notify.notified() => {
                     tracing::info!("SwarmCoordinator stopped by shutdown notification");
                     break;

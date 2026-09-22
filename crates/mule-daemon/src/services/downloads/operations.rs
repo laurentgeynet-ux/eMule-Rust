@@ -139,7 +139,7 @@ pub fn get_download_detail(
     let parts = compute_part_summaries(
         act.download.total_size,
         &act.ranges,
-        act.sources.values().map(|s| &s.mask),
+        act.sources.values(),
         &verified_parts_set,
     );
     let total_verified_bytes: u64 = parts
@@ -291,10 +291,19 @@ pub fn remove_download(
 ) -> Result<(), DaemonError> {
     let mut temp_path_to_delete = None;
     let mut temp_path_to_keep = None;
+    // Téléchargement terminé : `delete_files` couvre aussi le fichier final
+    // dans le dossier de destination (retiré de la liste des partages).
+    let mut completed_file_to_delete: Option<(PathBuf, String)> = None;
     let (was_active, history_data) = if let Some(mut act) = active.remove(id) {
         let _ = act.part_file.take();
         if delete_files {
             temp_path_to_delete = Some(act.download.temp_path.clone());
+            if act.download.status == DownloadStatus::Completed {
+                completed_file_to_delete = Some((
+                    act.download.target_path.clone(),
+                    act.download.ed2k_hash.to_hex(),
+                ));
+            }
         } else {
             temp_path_to_keep = Some(act.download.temp_path.clone());
         }
@@ -339,6 +348,17 @@ pub fn remove_download(
             let _ = std::fs::remove_file(&temp_path);
         }
         super::part_met::delete_part_met(&temp_path);
+    }
+
+    // Fichier final partagé : supprimé du dossier de destination et retiré
+    // de `shared_files` (enregistré automatiquement à la complétion —
+    // `finalize_download`), sinon la liste des partages pointerait un
+    // fichier inexistant.
+    if let Some((target_path, hash_hex)) = completed_file_to_delete {
+        if target_path.exists() {
+            let _ = std::fs::remove_file(&target_path);
+        }
+        let _ = db.delete_shared_file(&hash_hex);
     }
 
     // Files kept on disk after removal: rename the companion met to
@@ -1086,6 +1106,147 @@ pub fn set_destination(
 
     get_download_detail(db, active, id)
         .ok_or_else(|| DaemonError::NotFound(format!("Download {id} detail not found")))
+}
+
+/// Valide un nom de fichier fourni par l'utilisateur (`downloads.rename`,
+/// `shares.rename`) : non vide, sans séparateurs ni caractères interdits
+/// Windows, ni `.`/`..`, ni point/espace terminal (NTFS).
+fn validate_new_file_name(name: &str) -> Result<&str, DaemonError> {
+    let trimmed = name.trim();
+    let illegal = |c: char| {
+        c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+    };
+    if trimmed.is_empty()
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.ends_with(['.', ' '])
+        || trimmed.chars().any(illegal)
+    {
+        return Err(DaemonError::InvalidParams(format!(
+            "Invalid file name: '{name}'"
+        )));
+    }
+    Ok(trimmed)
+}
+
+/// `downloads.rename` — renomme un téléchargement (nom affiché + chemin
+/// de destination dérivé). Le `.part`/`.part.met` temporaire garde son
+/// nom UUID ; pour un download terminé, le fichier final est renommé sur
+/// disque et l'entrée `shared_files` suit. (eMule : renommage F2 sur la
+/// liste des téléchargements.)
+pub fn rename_download(
+    db: &mut Database,
+    active: &mut HashMap<Uuid, ActiveDownload>,
+    id: &Uuid,
+    new_name: &str,
+) -> Result<DownloadSnapshot, DaemonError> {
+    let new_name = validate_new_file_name(new_name)?;
+
+    let (old_target, new_target, completed, hash_hex) = {
+        let act = active
+            .get(id)
+            .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
+        if act.download.display_name == new_name {
+            return Ok(act.snapshot());
+        }
+        let parent = act
+            .download
+            .target_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        (
+            act.download.target_path.clone(),
+            parent.join(new_name),
+            act.download.status == DownloadStatus::Completed,
+            act.download.ed2k_hash.to_hex(),
+        )
+    };
+    if active
+        .values()
+        .any(|o| o.download.id != *id && o.download.target_path == new_target)
+    {
+        return Err(DaemonError::Business(format!(
+            "Another download already targets '{new_name}'"
+        )));
+    }
+
+    // Download terminé : le fichier final existe sur disque → renommage
+    // réel + mise à jour de l'entrée de partage (sinon elle pointerait
+    // un chemin inexistant).
+    if completed && old_target != new_target && old_target.exists() {
+        if new_target.exists() {
+            return Err(DaemonError::Business(format!(
+                "A file named '{new_name}' already exists in the destination directory"
+            )));
+        }
+        std::fs::rename(&old_target, &new_target).map_err(|e| {
+            DaemonError::Business(format!("Cannot rename file on disk: {e}"))
+        })?;
+        if let Ok(Some(mut shared)) = db.get_shared_file(&hash_hex) {
+            shared.file_name = new_name.to_string();
+            shared.file_path = new_target.to_string_lossy().to_string();
+            let _ = db.upsert_shared_file(&shared);
+        }
+    }
+
+    let act = active.get_mut(id).unwrap();
+    act.download.display_name = new_name.to_string();
+    act.download.target_path = new_target.clone();
+    act.download.updated_at = now_ms();
+    db.update_download_name_and_target(id, new_name, &new_target)
+        .map_err(|e| DaemonError::Business(format!("DB error renaming download: {e}")))?;
+    Ok(act.snapshot())
+}
+
+/// `shares.rename` — renomme un fichier partagé complet (disque +
+/// `shared_files`). Quand le hash adosse un download encore listé, on
+/// délègue à `rename_download` pour garder les deux vues cohérentes.
+pub fn rename_shared_file(
+    db: &mut Database,
+    active: &mut HashMap<Uuid, ActiveDownload>,
+    file_hash: &str,
+    new_name: &str,
+) -> Result<(), DaemonError> {
+    let new_name = validate_new_file_name(new_name)?;
+
+    if let Some(dl_id) = active
+        .values()
+        .find(|a| a.download.ed2k_hash.to_hex() == file_hash)
+        .map(|a| a.download.id)
+    {
+        rename_download(db, active, &dl_id, new_name)?;
+        return Ok(());
+    }
+
+    let mut shared = db
+        .get_shared_file(file_hash)
+        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?
+        .ok_or_else(|| DaemonError::NotFound(format!("Shared file {file_hash} not found")))?;
+
+    let old_path = PathBuf::from(&shared.file_path);
+    let parent = old_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let new_path = parent.join(new_name);
+
+    if old_path != new_path && old_path.exists() {
+        if new_path.exists() {
+            return Err(DaemonError::Business(format!(
+                "A file named '{new_name}' already exists in the directory"
+            )));
+        }
+        std::fs::rename(&old_path, &new_path).map_err(|e| {
+            DaemonError::Business(format!("Cannot rename file on disk: {e}"))
+        })?;
+    }
+
+    shared.file_name = new_name.to_string();
+    shared.file_path = new_path.to_string_lossy().to_string();
+    db.upsert_shared_file(&shared)
+        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
+    Ok(())
 }
 
 pub fn retry_connection(

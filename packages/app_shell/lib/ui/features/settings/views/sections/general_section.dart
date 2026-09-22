@@ -3,6 +3,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../app/providers.dart';
+import '../../../../../core/folder_picker.dart';
 import '../../../../../core/system_actions.dart';
 import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/settings/settings_directory_section.dart';
@@ -117,6 +118,10 @@ class _SettingsGeneralSectionState
           onReset: _resetDefaultDir,
           onOpenFolder: () => systemActions
               .openDirectory(ref.read(defaultDownloadDirectoryProvider)),
+          onBrowse: () => _browseDir(
+            _dirController,
+            l10n.globalDefaultDownloadDirectory,
+          ),
           onChanged: (_) => _dirty.add(_dirController),
         ),
         if (_inlineError != null)
@@ -151,10 +156,23 @@ class _SettingsGeneralSectionState
             helperStyle: const TextStyle(fontSize: 11, color: AppColors.textMuted),
             isDense: true,
             border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.save_rounded, size: 18),
-              tooltip: l10n.settingsApply,
-              onPressed: _saveTempDir,
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                  tooltip: l10n.browse,
+                  onPressed: () => _browseDir(
+                    _tempDirController,
+                    l10n.settingsTempDirLabel,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.save_rounded, size: 18),
+                  tooltip: l10n.settingsApply,
+                  onPressed: _saveTempDir,
+                ),
+              ],
             ),
           ),
           onChanged: (_) => _dirty.add(_tempDirController),
@@ -224,11 +242,24 @@ class _SettingsGeneralSectionState
     );
   }
 
+  /// Ouvre l'explorateur de dossiers natif et remplit [ctrl] avec le chemin
+  /// choisi — marqué dirty pour ne pas être écrasé par une resync externe.
+  Future<void> _browseDir(
+    TextEditingController ctrl,
+    String description,
+  ) async {
+    final picked = await pickFolder(description: description);
+    if (picked != null && mounted) {
+      ctrl.text = picked;
+      _dirty.add(ctrl);
+    }
+  }
+
   Future<void> _saveNickname() async {
     var nick = _nickController.text.trim();
     // eMule resets to the default nick when the field is cleared.
     if (nick.isEmpty) {
-      nick = 'Emule-Sion';
+      nick = 'eMule-Rust';
       _nickController.text = nick;
     }
     final ok = await ref

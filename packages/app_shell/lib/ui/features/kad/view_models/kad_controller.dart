@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 
+import '../../../../l10n/l10n_lookup.dart';
+
 /// Sub-domain controller for the Kad DHT section.
 ///
 /// Owns the Kad status, contact table, loading flag and the periodic status
@@ -67,7 +69,7 @@ class KadController extends ChangeNotifier {
     try {
       _contacts = await client.listKadContacts(limit: limit);
     } catch (e) {
-      onError?.call('Échec de la récupération des contacts Kad : $e');
+      onError?.call(L10nLookup.current.msgErrKadContacts(e));
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -78,7 +80,7 @@ class KadController extends ChangeNotifier {
     try {
       return await client.inspectNodesDat(filePath);
     } catch (e) {
-      onError?.call('Échec de l\'inspection de nodes.dat : $e');
+      onError?.call(L10nLookup.current.msgErrNodesDatInspect(e));
       return null;
     }
   }
@@ -87,21 +89,23 @@ class KadController extends ChangeNotifier {
     return _runLoading(() async {
       final res = await client.importNodesDat(filePath);
       final count = res['importedCount'] ?? 0;
-      onStatus?.call('Importé $count contacts Kad dans la table K-buckets');
+      onStatus?.call(L10nLookup.current.msgKadContactsImported(count));
       await fetchStatus();
       await fetchContacts();
       return true;
-    }, onErrorMessage: 'Échec de l\'importation de nodes.dat', fallback: false);
+    },
+        onErrorMessage: L10nLookup.current.msgErrNodesDatImport,
+        fallback: false);
   }
 
   Future<void> clearContacts() async {
     try {
       final count = await client.clearKadContacts();
-      onStatus?.call('Effacé $count contacts Kad');
+      onStatus?.call(L10nLookup.current.msgKadContactsCleared(count));
       await fetchStatus();
       await fetchContacts();
     } catch (e) {
-      onError?.call('Échec de l\'effacement des contacts Kad : $e');
+      onError?.call(L10nLookup.current.msgErrKadClear(e));
     }
   }
 
@@ -109,20 +113,25 @@ class KadController extends ChangeNotifier {
     return _runLoading(() async {
       await client.startKadUdp(bindAddress: bindAddress);
       onStatus?.call(
-        'Socket UDP Kad démarré sur ${bindAddress ?? "127.0.0.1:39737"}',
+        L10nLookup.current
+            .msgKadUdpStarted(bindAddress ?? '127.0.0.1:39737'),
       );
       await fetchStatus();
       return true;
-    }, onErrorMessage: 'Échec du démarrage UDP Kad', fallback: false);
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadUdpStart,
+        fallback: false);
   }
 
   Future<bool> stopUdp() {
     return _runLoading(() async {
       await client.stopKadUdp();
-      onStatus?.call('Socket UDP Kad arrêté');
+      onStatus?.call(L10nLookup.current.msgKadUdpStopped);
       await fetchStatus();
       return true;
-    }, onErrorMessage: 'Échec de l\'arrêt UDP Kad', fallback: false);
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadUdpStop,
+        fallback: false);
   }
 
   Future<int?> pingContact({
@@ -133,12 +142,14 @@ class KadController extends ChangeNotifier {
     try {
       final res = await client.pingKadContact(ip: ip, port: port, kadId: kadId);
       final latency = (res['latencyMs'] as num?)?.toInt() ?? 0;
-      onStatus?.call('Pong reçu de $ip:$port en ${latency}ms');
+      onStatus?.call(
+        L10nLookup.current.msgKadPong('$ip:$port', latency),
+      );
       await fetchStatus();
       await fetchContacts();
       return latency;
     } catch (e) {
-      onError?.call('Échec du ping Kad ($ip:$port) : $e');
+      onError?.call(L10nLookup.current.msgErrKadPing('$ip:$port', e));
       return null;
     }
   }
@@ -147,36 +158,40 @@ class KadController extends ChangeNotifier {
     return _runLoading(() async {
       final res = await client.bootstrapKad(ip: ip, port: port);
       final count = (res['receivedContacts'] as num?)?.toInt() ?? 0;
-      onStatus?.call('Amorçage Kad réussi ($count contacts reçus)');
+      onStatus?.call(L10nLookup.current.msgKadBootstrapOk(count));
       await fetchStatus();
       await fetchContacts();
       return true;
-    }, onErrorMessage: 'Échec de l\'amorçage Kad', fallback: false);
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadBootstrap,
+        fallback: false);
   }
 
   Future<bool> bootstrapFromUrl(String url) {
     return _runLoading(() async {
       final res = await client.bootstrapKadFromUrl(url);
       final count = (res['importedNodes'] as num?)?.toInt() ?? 0;
-      onStatus?.call(
-        'Amorçage Kad depuis URL réussi ($count nœuds importés)',
-      );
+      onStatus?.call(L10nLookup.current.msgKadBootstrapUrlOk(count));
       await fetchStatus();
       await fetchContacts();
       return true;
-    }, onErrorMessage: 'Échec de l\'amorçage Kad depuis URL', fallback: false);
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadBootstrapUrl,
+        fallback: false);
   }
 
   Future<List<KadContactModel>> findNode(String targetId) {
     return _runLoading(() async {
       final contacts = await client.findKadNode(targetId);
       onStatus?.call(
-        'Recherche Kad : ${contacts.length} nœuds les plus proches trouvés',
+        L10nLookup.current.msgKadSearchFound(contacts.length),
       );
       await fetchStatus();
       await fetchContacts();
       return contacts;
-    }, onErrorMessage: 'Échec de la recherche Kad', fallback: const []);
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadSearch,
+        fallback: const []);
   }
 
   /// Searches Kad DHT for sources of a specific file hash and auto-injects them.
@@ -190,11 +205,15 @@ class KadController extends ChangeNotifier {
         fileSize: fileSize,
       );
       onStatus?.call(
-        'Kad : ${sources.length} sources trouvées pour '
-        '${fileHash.substring(0, 8)}…',
+        L10nLookup.current.msgKadSourcesFound(
+          sources.length,
+          fileHash.substring(0, 8),
+        ),
       );
       return sources;
-    }, onErrorMessage: 'Échec de la recherche de sources Kad', fallback: const []);
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadSources,
+        fallback: const []);
   }
 
   /// Publishes this node as a source for a file hash to Kad DHT.
@@ -210,10 +229,13 @@ class KadController extends ChangeNotifier {
         tcpPort: tcpPort,
       );
       onStatus?.call(
-        'Kad : publié sur $count nœuds pour ${fileHash.substring(0, 8)}…',
+        L10nLookup.current
+            .msgKadPublished(count, fileHash.substring(0, 8)),
       );
       return count;
-    }, onErrorMessage: 'Échec de la publication Kad', fallback: 0);
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadPublish,
+        fallback: 0);
   }
 
   /// Runs [action] under the loading flag; on error reports

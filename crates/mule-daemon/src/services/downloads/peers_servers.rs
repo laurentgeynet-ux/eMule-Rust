@@ -128,6 +128,24 @@ pub fn get_shared_file(db: &Database, file_hash: &str) -> Result<Option<SharedFi
         .map_err(|e| DaemonError::Business(format!("DB error getting shared file: {e}")))
 }
 
+/// Ajoute `delta` octets au total uploadé persisté du fichier partagé.
+pub fn add_share_uploaded_bytes(
+    db: &mut Database,
+    file_hash: &str,
+    delta: u64,
+) -> Result<(), DaemonError> {
+    db.add_share_uploaded_bytes(file_hash, delta)
+        .map_err(|e| DaemonError::Business(format!("DB error adding share uploaded bytes: {e}")))
+}
+
+/// Totaux uploadés persistés par hash de fichier (clés en minuscules).
+pub fn list_share_uploaded_bytes(
+    db: &Database,
+) -> Result<std::collections::HashMap<String, u64>, DaemonError> {
+    db.list_share_uploaded_bytes()
+        .map_err(|e| DaemonError::Business(format!("DB error listing share upload stats: {e}")))
+}
+
 pub fn get_peer_credit(
     db: &Database,
     pubkey_hash: &str,

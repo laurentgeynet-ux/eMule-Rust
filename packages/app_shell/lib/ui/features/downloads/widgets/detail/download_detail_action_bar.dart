@@ -76,8 +76,8 @@ class DownloadDetailActionBar extends StatelessWidget {
               ),
               Tooltip(
                 message: isCompleted
-                    ? 'Open completed file in file explorer'
-                    : 'Available once download and verification finish',
+                    ? context.l10n.openFileExplorerTooltip
+                    : context.l10n.openFileDisabledTooltip,
                 child: FilledButton.icon(
                   icon: const Icon(Icons.folder_open_rounded, size: 16),
                   label: Text(context.l10n.openCompletedFile),

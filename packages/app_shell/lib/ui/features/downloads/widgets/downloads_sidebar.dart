@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/providers.dart';
 import '../../../../app/shell_controller.dart';
+import '../../../../l10n/enum_labels.dart';
 import '../../../../l10n/l10n.dart';
 import 'category_edit_dialog.dart';
 import 'diagnostic_dialog.dart';
@@ -162,11 +163,14 @@ class DownloadsSidebar extends ConsumerWidget {
                     isCompact: isCompact,
                   ),
                   SidebarNavItem(
-                    title: 'Partages',
+                    title: context.l10n.navShares,
                     icon: Icons.folder_shared_outlined,
                     isSelected:
                         ref.watch(shellControllerProvider).section == AppNavSection.shares,
                     onTap: () => ref.read(shellControllerProvider).setSection(AppNavSection.shares),
+                    count: ref.watch(sharesControllerProvider).files.isNotEmpty
+                        ? ref.watch(sharesControllerProvider).files.length
+                        : null,
                     isCompact: isCompact,
                   ),
                   if (!isCompact)
@@ -236,8 +240,10 @@ class DownloadsSidebar extends ConsumerWidget {
           SidebarStatusCard(
             isCompact: isCompact,
             statusColor: _statusColor(ref),
-            statusLabel: _statusLabel(ref),
-            tooltipLabel: _statusLabel(ref),
+            statusLabel: _statusLabel(context, ref),
+            tooltipLabel: _statusLabel(context, ref),
+            networkBadges: _networkBadges(context, ref),
+            serverLine: _serverLine(ref),
             versionLine: ref.watch(daemonInfoProvider) != null
                 ? context.l10n.daemonVersionLine(
                     ref.watch(daemonInfoProvider)!.version,
@@ -279,13 +285,51 @@ class DownloadsSidebar extends ConsumerWidget {
     );
   }
 
-  String _statusLabel(WidgetRef ref) => ref.watch(daemonSupervisorProvider) != null
-      ? ref.watch(daemonSupervisorStateProvider).label
-      : ref.watch(daemonConnectionStateProvider).label;
+  String _statusLabel(BuildContext context, WidgetRef ref) =>
+      ref.watch(daemonSupervisorProvider) != null
+          ? ref.watch(daemonSupervisorStateProvider).labelL10n(context.l10n)
+          : ref.watch(daemonConnectionStateProvider).labelL10n(context.l10n);
 
   Color _statusColor(WidgetRef ref) => ref.watch(daemonSupervisorProvider) != null
       ? supervisorStateColor(ref.watch(daemonSupervisorStateProvider))
       : connectionStateColor(ref.watch(daemonConnectionStateProvider));
+
+  /// Pastilles réseau eD2K/Kad sous la carte daemon : HighID vert,
+  /// LowID orange, déconnecté rouge ; même code couleur pour Kad
+  /// (connecté vert, amorçage orange, socket arrêté rouge).
+  List<(String, Color)> _networkBadges(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final session = ref.watch(serversControllerProvider).session;
+    final kad = ref.watch(kadControllerProvider).status;
+    final (String, Color) ed2k = switch (session.status) {
+      ServerConnectionStatus.connected => session.isHighId
+          ? (l10n.badgeEd2kHighId, AppColors.positive)
+          : (l10n.badgeEd2kLowId, AppColors.accentOrange),
+      ServerConnectionStatus.connecting =>
+        (l10n.badgeEd2kConnecting, AppColors.accentOrange),
+      ServerConnectionStatus.disconnecting =>
+        (l10n.badgeEd2kDisconnecting, AppColors.accentOrange),
+      ServerConnectionStatus.disconnected =>
+        (l10n.badgeEd2kDisconnected, AppColors.danger),
+    };
+    final (String, Color) kadBadge = !kad.isUdpActive
+        ? (l10n.badgeKadStopped, AppColors.danger)
+        : kad.totalContacts > 0
+            ? (l10n.badgeKadConnected, AppColors.positive)
+            : (l10n.badgeKadBootstrapping, AppColors.accentOrange);
+    return [ed2k, kadBadge];
+  }
+
+  /// Nom du serveur eD2K courant (adresse en repli) — null quand la
+  /// session n'est pas connectée.
+  String? _serverLine(WidgetRef ref) {
+    final session = ref.watch(serversControllerProvider).session;
+    if (session.status != ServerConnectionStatus.connected) return null;
+    if (session.serverName != null && session.serverName!.isNotEmpty) {
+      return session.serverName!;
+    }
+    return session.serverAddress;
+  }
 }
 
 class _CategoriesHeader extends StatelessWidget {

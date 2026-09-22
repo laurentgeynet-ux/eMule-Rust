@@ -27,6 +27,13 @@ async fn setup_secure_ident_test_state() -> (AppState, tempfile::TempDir, String
 
     let file_hash_hex = "41d6cfe0d16ae931b73c59d7e0c089c1".to_string();
 
+    // Le partage doit pointer vers un fichier réel : le chemin upload ne
+    // répond jamais à une plage illisible sur disque (comportement eMule),
+    // donc un chemin fictif figerait indéfiniment les tests qui attendent
+    // OP_SENDINGPART. Taille = valeur déclarée dans le share.
+    let shared_path = dir.path().join("secure_shared_data.bin");
+    std::fs::write(&shared_path, vec![0x5Au8; 18874368]).unwrap();
+
     let mut authenticated = true;
     let share_req = make_req(
         1,
@@ -35,7 +42,7 @@ async fn setup_secure_ident_test_state() -> (AppState, tempfile::TempDir, String
             "fileHash": file_hash_hex,
             "fileName": "secure_shared_data.bin",
             "fileSize": 18874368,
-            "filePath": "C:\\Shared\\secure_shared_data.bin"
+            "filePath": shared_path.to_string_lossy()
         })),
     );
     let resp = handle_request(&state, share_req, &mut authenticated)

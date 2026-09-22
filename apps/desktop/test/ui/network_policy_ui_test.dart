@@ -48,9 +48,42 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify network badge is visible with initial public-ed2k-kad-preview profile
-      expect(find.byKey(const Key('network_policy_badge')), findsOneWidget);
-      expect(find.text('public-ed2k-kad-preview'), findsOneWidget);
+      // The session-totals chip replaced the network profile badge — the
+      // profile name stays in Settings (no duplication in the top bar).
+      final badge = find.byKey(const Key('session_totals_badge'));
+      expect(badge, findsOneWidget);
+      expect(find.text('public-ed2k-kad-preview'), findsNothing);
+      expect(
+        find.descendant(
+            of: badge, matching: find.byIcon(Icons.arrow_downward_rounded)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: badge, matching: find.byIcon(Icons.arrow_upward_rounded)),
+        findsOneWidget,
+      );
+
+      // Lifetime (« depuis l'installation ») chip sits right of the
+      // session chip — download + upload counters, reset via Settings.
+      final lifetimeBadge = find.byKey(const Key('lifetime_totals_badge'));
+      expect(lifetimeBadge, findsOneWidget);
+      expect(
+        find.descendant(
+            of: lifetimeBadge,
+            matching: find.byIcon(Icons.arrow_downward_rounded)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: lifetimeBadge,
+            matching: find.byIcon(Icons.arrow_upward_rounded)),
+        findsOneWidget,
+      );
+
+      // The Diagnostics badge is gone from the top bar (the dialog
+      // remains reachable via the sidebar and Settings → Avancé).
+      expect(find.text('Diagnostics'), findsNothing);
 
       // Verify kill switch button is visible
       expect(find.byKey(const Key('network_kill_switch_button')), findsOneWidget);
@@ -90,15 +123,16 @@ void main() {
 
       // State is now disabled
       expect(viewModel.isNetworkKillSwitchActive, isTrue);
-      expect(find.text('Disabled'), findsOneWidget);
+      expect(find.text('Désactivé'), findsOneWidget);
 
       // Tap kill switch button again to re-enable
       await tester.tap(find.byKey(const Key('network_kill_switch_button')));
       await tester.pumpAndSettle();
 
-      // State is restored to preview-active
+      // State is restored to preview-active — the totals chip is back
       expect(viewModel.isNetworkKillSwitchActive, isFalse);
-      expect(find.text('public-ed2k-kad-preview'), findsOneWidget);
+      expect(find.text('Désactivé'), findsNothing);
+      expect(find.byKey(const Key('session_totals_badge')), findsOneWidget);
     });
 
     testWidgets('settings Connection section allows inspecting budgets and switching profile',
@@ -127,15 +161,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The badge navigates to the Settings page — Connection section
-      // (standalone mode falls back to the section switch on General).
-      await tester.tap(find.byKey(const Key('network_policy_badge')));
+      // Navigate to the Settings page — Connection section (standalone
+      // mode switches sections via the shell controller).
+      viewModel.shellCtl.setSection(AppNavSection.settings);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Connexion'));
       await tester.pumpAndSettle();
 
-      // Verify section header and quotas
-      expect(find.text('Profil de connectivité actif'), findsOneWidget);
+      // Verify networks card and quotas
+      expect(find.text('Réseaux'), findsOneWidget);
+      expect(find.text('Réseau eD2K'), findsOneWidget);
+      expect(find.text('Réseau Kad'), findsOneWidget);
       expect(find.text('Connexions actives & limites'), findsOneWidget);
       expect(find.text('Sockets pairs'), findsOneWidget);
       expect(find.text('Sockets serveur'), findsOneWidget);
@@ -144,14 +180,14 @@ void main() {
       // Initial profile is public-ed2k-kad-preview
       expect(viewModel.currentNetworkProfile, NetworkProfile.publicEd2kKadPreview);
 
-      // Switch profile to public-ed2k-preview
-      await tester.tap(find.byKey(const Key('profile_public-ed2k-preview')));
+      // Turning Kad off keeps eD2K on → public-ed2k-preview
+      await tester.tap(find.byKey(const Key('switch_kad')));
       await tester.pumpAndSettle();
 
       expect(viewModel.currentNetworkProfile, NetworkProfile.publicEd2kPreview);
 
-      // Switch profile to local-lab
-      await tester.tap(find.byKey(const Key('profile_local-lab')));
+      // Turning eD2K off confines everything → local-lab
+      await tester.tap(find.byKey(const Key('switch_ed2k')));
       await tester.pumpAndSettle();
 
       expect(viewModel.currentNetworkProfile, NetworkProfile.localLab);

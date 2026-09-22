@@ -109,13 +109,14 @@ Namespaces stables (voir `methods.rs` pour la liste exhaustive maintenue) :
 | Namespace | Méthodes représentatives |
 |---|---|
 | `system.*` | `hello`, `status`, `stop`/`shutdown` |
-| `downloads.*` | `list`, `get`, `addEd2kLink`, `pause`, `resume`, `remove`, `setDestination`, `setCategory`, `getSources`, `inspectPartMet`, `importPartMet`, `retryConnection` |
+| `downloads.*` | `list`, `get`, `addEd2kLink`, `pause`, `resume`, `remove`, `setDestination`, `rename` (`{id, newName}` — disque + `shared_files` si terminé), `setCategory`, `getSources`, `inspectPartMet`, `importPartMet`, `retryConnection` |
 | `servers.*` | `list`, `connect`, `disconnect`, `status`, `search`, `querySources`, `importMet`, `updateFromUrl`, `setEnabled`, `delete`, `clear` |
 | `sources.*` | `list`, `addManual`, `connect`, `disconnect`, `clear`, `status`/`swarmStatus` |
 | `kad.*` | `status`, `startUdp`, `stopUdp`, `bootstrap`, `findNode`, `searchSources`, `searchKeywords`, `searchNotes`, `publish*`, `listContacts`, `importNodesDat` |
 | `network.*` | `getPolicy`, `setProfile`, `enable`, `disconnectAll`, `getAuditLog`, `setBudgets` |
 | `settings.*` / `limits.*` | `get`, `set`, `setRetentionDays`, `resetDownloadDir` — voir `docs/SETTINGS.md` pour toutes les clés |
-| `shares.*` | `list` → `{sharedFiles[]}` (incl. partiels `isPartial`/`completedParts`), `add`, `remove`, `setEnabled`, `setUploadPriority` (les deux derniers refusent les partiels), `rescan` |
+| `stats.*` | `resetLifetimeTotals` → `{reset: true}` — remet à zéro les compteurs cumulés « depuis l'installation » (`lifetime_*_bytes`, mémoire + SQLite) ; les totaux de session sont conservés |
+| `shares.*` | `list` → `{sharedFiles[]}` (incl. partiels `isPartial`/`completedParts` + stats d'upload par fichier `uploadRateBps`/`uploadedBytes` — débit mesuré agrégé sur les slots actifs, total persisté dans `share_upload_stats`), `add`, `remove`, `rename` (`{fileHash, newName}` — fichier disque + entrée, délègue à `downloads.rename` quand le hash adosse un download), `setEnabled`, `setUploadPriority` (les deux derniers refusent les partiels), `rescan` |
 | `uploads.*` / `listener.*` | `list`, `status`, `cancel` ; `start`, `stop`, `status` |
 | `identity.*` / `credits.*` | `status`, `rotate` ; `list`, `stats` |
 | `upnp.*` | `status`, `mapPorts`, `unmapPorts`, `setEnabled` |
@@ -128,6 +129,20 @@ Conventions de nommage en vigueur : `namespace.verbe` en camelCase
 (`downloads.addEd2kLink`). Garder cette convention pour toute nouvelle
 méthode ; les alias existants (`downloads.retry`, `swarm.status`…) sont
 maintenus pour compat.
+
+**Cycle kill switch / reconnexion** — `network.disconnectAll` annule le
+token partagé : toutes les sessions TCP pairs/serveur tombent avec leur
+nettoyage complet (map de sessions, blocs en vol, statuts SQLite) et les
+sockets UDP (Kad, serveur) sont explicitement stoppés ; les superviseurs
+(watcher serveur, `SwarmCoordinator`, rotateur d'identité, quota)
+restent vivants mais inertes tant que l'état est `Disabled`.
+`network.enable` crée un token neuf puis relance le listener TCP
+entrant, les sockets UDP, la maintenance Kad, USS et le refresh UPnP ;
+`last_target` étant conservé par le kill switch, le watcher reconnecte
+automatiquement au dernier serveur si `server_reconnect` est actif.
+`servers.connect` sur une session active bascule vers la nouvelle
+adresse (déconnexion puis connexion — sémantique eMule) ; la même
+adresse retourne idempotemment le snapshot courant.
 
 ## 6. Events (notifications serveur)
 
@@ -148,8 +163,9 @@ souscription et sérialise son payload via `to_wire_json()` ; tous les
 | `event.peerSessionUpdated` | `{sequence, session: PeerSessionSnapshot}` | `peers` | moyenne |
 | `server.sessionUpdated` | `{sequence, session: ServerSessionSnapshot}` | `servers` | faible |
 | `upload.uploadsUpdated` | `{sequence, active: [UploadSessionSnapshot], queue: [UploadSessionSnapshot], uploadRateBps}` | `uploads` | par mutation + progression throttlée ~500 ms |
-| `event.statsTick` | `{sequence, stats: {downloadBps, uploadBps, downloadsActive, peersConnected, serverConnected, kadContacts, kadUdpBound}}` | `stats` | cadence ~2 s, suspendu sans abonné |
-| `kad.statusChanged` | `{sequence}` (nudge → refetch `kad.status`) | `kad` | par mutation (udp, bootstrap, contacts) |
+| `event.statsTick` | `{sequence, stats: {downloadBps, uploadBps, downloadsActive, peersConnected, serverConnected, kadContacts, kadUdpBound, sessionDownloadedBytes, sessionUploadedBytes, lifetimeDownloadedBytes, lifetimeUploadedBytes}}` | `stats` | cadence ~2 s, suspendu sans abonné |
+| `kad.statusChanged` | `{sequence}` (nudge → refetch `kad.status`) | `kad` | par mutation (udp, bootstrap, contacts) + boucle de maintenance quand `total_contacts` change réellement (≤30 s) |
+| `shares.changed` | `{sequence}` (nudge → refetch `shares.list`) | `shares` | par `add`/`remove`/`rescan`/`setEnabled`/`setUploadPriority` (couvre les mutations RPC et MCP) |
 | `history.entryAdded` | `{sequence}` (nudge → refetch `history.list`) | `history` | par entrée d'historique |
 | `settings.changed` | `{sequence, keys: [String]}` | `settings` | par `settings.set*` |
 | `network.policyChanged` | `{sequence}` (nudge → refetch `network.getPolicy`) | `network` | profil, kill switch, budgets |
@@ -161,6 +177,27 @@ souscription et sérialise son payload via `to_wire_json()` ; tous les
 `DownloadSnapshot` inclut `etaSeconds` (Option<u64>, seconds restantes
 au débit courant) depuis E5 ; `PeerSessionSnapshot.transferRateBps`
 expose le débit par source.
+
+**Visualisation des parts (barre façon eMule 0.72a)** — le snapshot
+expose trois champs pour le rendu byte-précis de
+`PartAvailabilityBar` :
+
+- `parts[]` (`PartProgressSummary`) : `index`, `offset`, `size`,
+  `receivedBytes`, `state`, `availableSourceCount` et `receivedMask`
+  (u64 — bitmap de 64 cellules intra-part, ≈152 Kio/cellule, calculé
+  depuis le `RangeSet` réel via `contains`).
+- `pendingRanges` (`[[start,end],…]` en octets absolus) : ranges des
+  blocs en vol (`in_flight_blocks` du swarm, équivalent de
+  `requestedblocks_list`), enrichi dans `downloads.list`,
+  `downloads.get`, `broadcast_download_update` et les émissions
+  `transfer.rs`/`strategy.rs` ; rendu en jaune overlay.
+- `availableSourceCount` : nombre de sources confirmées ayant annoncé
+  la part via `OP_FILESTATUS` (`part_count == 0` = source complète,
+  comptée pour toutes les parts ; masques périmés > 30 min ignorés —
+  `SOURCE_FRESHNESS_MS`). Le masque est enregistré dans `act.sources`
+  à chaque réponse `FILESTATUS`, y compris les keep-alives en file
+  d'attente, avec emit `downloadUpdated` → la barre passe du rouge
+  au bleu en direct dès qu'un pair confirme ses parts.
 
 Le champ `sequence` (u64 monotone partagé) permet au client de détecter
 les trous et de resynchroniser via `*.list`/`*.status` — implémenté

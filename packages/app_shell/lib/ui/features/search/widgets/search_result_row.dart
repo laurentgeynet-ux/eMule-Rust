@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../l10n/enum_labels.dart';
 import '../../../../l10n/l10n.dart';
 
 /// One search result row: file name, size, source count badge, copyable
@@ -141,13 +142,6 @@ class SearchResultRow extends StatelessWidget {
                         Clipboard.setData(
                           ClipboardData(text: file.fileHash),
                         );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(context.l10n.hachageCopie(file.fileHash),
-                            ),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -209,7 +203,7 @@ class SearchResultRow extends StatelessWidget {
                             color: AppTheme.primary,
                           ),
                           label: Text(
-                            existingDownload!.status.label,
+                            existingDownload!.status.labelL10n(context.l10n),
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppTheme.primary,
@@ -240,7 +234,7 @@ class SearchResultRow extends StatelessWidget {
                             ),
                             visualDensity: VisualDensity.compact,
                           ),
-                          onPressed: () => _download(context),
+                          onPressed: _download,
                         ),
                       const SizedBox(width: 4),
                       IconButton(
@@ -265,13 +259,6 @@ class SearchResultRow extends StatelessWidget {
                           Clipboard.setData(
                             ClipboardData(text: file.ed2kLink),
                           );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(context.l10n.lienEd2kCopieDansLe,
-                              ),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
                         },
                       ),
                     ],
@@ -285,27 +272,7 @@ class SearchResultRow extends StatelessWidget {
     );
   }
 
-  Future<void> _download(BuildContext context) async {
-    final success = await onDownload(file);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'Téléchargement lancé : ${file.fileName}'
-                : (lastError() ?? 'Échec de l\'ajout au téléchargement'),
-          ),
-          duration: const Duration(seconds: 4),
-          backgroundColor:
-              success ? null : AppColors.accentOrangeShade700,
-          action: success
-              ? SnackBarAction(
-                  label: context.l10n.afficher,
-                  onPressed: onGoToDownloads,
-                )
-              : null,
-        ),
-      );
-    }
+  Future<void> _download() async {
+    await onDownload(file);
   }
 }

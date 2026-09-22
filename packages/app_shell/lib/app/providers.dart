@@ -18,6 +18,7 @@ import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
 import '../ui/features/search/view_models/search_controller.dart';
 import '../ui/features/servers/view_models/servers_controller.dart';
+import '../ui/features/shares/view_models/shares_controller.dart';
 import '../ui/features/uploads/view_models/uploads_controller.dart';
 
 /// Daemon client (real `RpcDaemonClient` or `FakeMuleDaemonClient`).
@@ -127,6 +128,11 @@ final uploadsControllerProvider = ChangeNotifierProvider<UploadsController>(
   (ref) => ref.read(appControllerProvider).uploads,
 );
 
+/// Shared files sub-domain controller. Provider-owned disposal.
+final sharesControllerProvider = ChangeNotifierProvider<SharesController>(
+  (ref) => ref.read(appControllerProvider).shares,
+);
+
 /// App-shell UI state (section, filter, banners). Provider-owned disposal.
 final shellControllerProvider = ChangeNotifierProvider<ShellController>(
   (ref) => ref.read(appControllerProvider).shellCtl,
@@ -168,7 +174,9 @@ final filteredDownloadsProvider = Provider<List<DownloadItem>>((ref) {
       }
     }
     return true;
-  }).toList();
+  }).toList()
+    // Terminés en bas ; les autres par avancement décroissant.
+    ..sort(compareDownloadsForList);
 });
 
 /// Per-category download counts (sidebar badges).

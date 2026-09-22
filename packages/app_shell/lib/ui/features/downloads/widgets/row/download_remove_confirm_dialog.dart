@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 import '../../../../../l10n/l10n.dart';
 
 /// Quick remove confirmation used directly from the downloads list row
 /// (the richer variant lives in detail/download_remove_dialog.dart).
+///
+/// In-progress downloads always have their .part/.part.met temp files
+/// deleted — no checkbox. For completed downloads, a checkbox offers to
+/// also delete the shared finished file in the destination folder.
 void showDownloadRemoveConfirmDialog(
   BuildContext context,
-  String fileName, {
+  DownloadItem item, {
   required void Function({required bool deleteFiles}) onConfirm,
 }) {
-  bool deleteFilesOnDisk = true;
+  final isCompleted = item.status.isCompleted;
+  bool deleteSharedFile = false;
   showDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -19,21 +25,23 @@ void showDownloadRemoveConfirmDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(context.l10n.removeFromDownloads(fileName)),
-            const SizedBox(height: 12),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(context.l10n.deleteDownloadedPartTempFiles,
-                style: TextStyle(fontSize: 13),
+            Text(context.l10n.removeFromDownloads(item.fileName)),
+            if (isCompleted) ...[
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(context.l10n.deleteSharedCompletedFile,
+                  style: TextStyle(fontSize: 13),
+                ),
+                value: deleteSharedFile,
+                onChanged: (val) {
+                  setDialogState(() {
+                    deleteSharedFile = val ?? false;
+                  });
+                },
               ),
-              value: deleteFilesOnDisk,
-              onChanged: (val) {
-                setDialogState(() {
-                  deleteFilesOnDisk = val ?? true;
-                });
-              },
-            ),
+            ],
           ],
         ),
         actions: [
@@ -46,7 +54,11 @@ void showDownloadRemoveConfirmDialog(
               backgroundColor: AppTheme.statusFailed,
             ),
             onPressed: () {
-              onConfirm(deleteFiles: deleteFilesOnDisk);
+              // En cours : fichiers temporaires toujours supprimés ;
+              // terminé : le fichier partagé n'est supprimé que sur demande.
+              onConfirm(
+                deleteFiles: isCompleted ? deleteSharedFile : true,
+              );
               Navigator.of(ctx).pop();
             },
             child: Text(context.l10n.remove2),

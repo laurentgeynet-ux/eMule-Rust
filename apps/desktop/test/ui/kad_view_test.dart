@@ -57,7 +57,7 @@ void main() {
       );
 
       // Check contacts table
-      expect(find.text('Kad ID (128-bit XOR)'), findsOneWidget);
+      expect(find.text('ID Kad (XOR 128 bits)'), findsOneWidget);
       expect(find.textContaining('127.0.0.1:39737'), findsOneWidget);
       expect(find.text('v2'), findsOneWidget);
     });

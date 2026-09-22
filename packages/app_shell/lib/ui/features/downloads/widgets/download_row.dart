@@ -7,6 +7,7 @@ import '../../../../app/providers.dart';
 import 'download_detail_dialog.dart';
 import 'download_sources_expansion.dart';
 import 'row/download_remove_confirm_dialog.dart';
+import 'row/rename_file_dialog.dart';
 import 'row/download_row_compact.dart';
 import 'row/download_row_full.dart';
 
@@ -70,6 +71,7 @@ class DownloadRow extends ConsumerWidget {
                         onCategorySelected: (catId) =>
                             categoriesCtl.assignDownload(item.id, catId),
                         onDetails: () => _openDetailDialog(context, ref),
+                        onRename: () => _confirmRename(context, ref),
                         onPause: () => downloads.pause(item.id),
                         onResume: () => downloads.resume(item.id),
                         onRemove: () => _confirmRemove(context, ref),
@@ -84,6 +86,7 @@ class DownloadRow extends ConsumerWidget {
                       onCategorySelected: (catId) =>
                           categoriesCtl.assignDownload(item.id, catId),
                       onDetails: () => _openDetailDialog(context, ref),
+                      onRename: () => _confirmRename(context, ref),
                       onPause: () => downloads.pause(item.id),
                       onResume: () => downloads.resume(item.id),
                       onRemove: () => _confirmRemove(context, ref),
@@ -108,10 +111,22 @@ class DownloadRow extends ConsumerWidget {
     );
   }
 
+  /// Renommage (en cours ou terminé) — le daemon met à jour le fichier
+  /// disque et l'entrée de partage quand le download est complété.
+  void _confirmRename(BuildContext context, WidgetRef ref) {
+    showRenameFileDialog(
+      context,
+      currentName: item.fileName,
+      onSubmit: (newName) => ref
+          .read(downloadsStoreControllerProvider)
+          .rename(item.id, newName),
+    );
+  }
+
   void _confirmRemove(BuildContext context, WidgetRef ref) {
     showDownloadRemoveConfirmDialog(
       context,
-      item.fileName,
+      item,
       onConfirm: ({required deleteFiles}) => ref
           .read(downloadsStoreControllerProvider)
           .remove(item.id, deleteFiles: deleteFiles),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
+import '../../../../../l10n/enum_labels.dart';
 import '../../../../../l10n/l10n.dart';
 
 /// Kill-switch status banner with the Disconnect All / Re-enable action.
@@ -49,7 +50,8 @@ class NetworkStateBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.l10n.status2(state.label),
+                Text(
+                  context.l10n.status2(state.labelL10n(context.l10n)),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,

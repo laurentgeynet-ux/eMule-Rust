@@ -24,6 +24,7 @@ class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
   late final TextEditingController _targetDirController;
   String _allocationPolicy = 'sparse';
   String? _selectedCategoryId;
+  String? _submitError;
 
   Ed2kLinkParseResult _parsed = const Ed2kLinkParseResult.empty();
 
@@ -61,7 +62,7 @@ class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
       final existing = ref.read(downloadsStoreControllerProvider).getDownloadByHash(result.hash!);
       if (existing != null) {
         result = Ed2kLinkParseResult.error(
-          'Ce fichier est déjà dans la liste des téléchargements ("${existing.fileName}")',
+          context.l10n.addLinkDuplicate(existing.fileName),
         );
       }
     }
@@ -109,13 +110,15 @@ class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text(context.l10n.addEd2kDownload,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(context.l10n.addEd2kDownload,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   IconButton(
                     icon: const Icon(
                       Icons.close,
@@ -235,26 +238,40 @@ class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
                   ),
                 ],
               ),
+              if (_submitError != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _submitError!,
+                  style: const TextStyle(
+                    color: AppColors.accentOrangeShade700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(context.l10n.cancel,
-                      style: TextStyle(color: AppColors.textSoft),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(context.l10n.cancel,
+                        style: TextStyle(color: AppColors.textSoft),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: Text(context.l10n.addDownload),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                    const SizedBox(width: 12),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: Text(context.l10n.addDownload),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                      ),
+                      onPressed: _isValid ? _submit : null,
                     ),
-                    onPressed: _isValid ? _submit : null,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -281,7 +298,7 @@ class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
 
   Future<void> _browseFolder() async {
     final chosen =
-        await pickFolder(description: 'Select Download Directory');
+        await pickFolder(description: context.l10n.pickDownloadDir);
     if (chosen != null && mounted) {
       setState(() {
         _targetDirController.text = chosen;
@@ -292,6 +309,7 @@ class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
   void _submit() async {
     final link = _linkController.text.trim();
     final targetDir = _targetDirController.text.trim();
+    setState(() => _submitError = null);
 
     final destination = targetDir.isNotEmpty
         ? targetDir
@@ -307,16 +325,10 @@ class _AddLinkDialogState extends ConsumerState<AddLinkDialog> {
     if (success && mounted) {
       Navigator.of(context).pop();
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            ref.read(shellControllerProvider).errorMessage ??
-                'Erreur lors de l\'ajout du téléchargement',
-          ),
-          backgroundColor: AppColors.accentOrangeShade700,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      setState(() {
+        _submitError = ref.read(shellControllerProvider).errorMessage ??
+            context.l10n.addLinkGenericError;
+      });
     }
   }
 }

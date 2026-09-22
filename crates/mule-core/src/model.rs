@@ -483,6 +483,15 @@ pub struct SharedFile {
     /// share; empty for regular shared files (all parts available).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completed_parts: Vec<u16>,
+    /// Total cumulatif des octets uploadés pour ce fichier — persisté dans
+    /// `share_upload_stats`, renseigné par `shares.list` (eMule
+    /// `CKnownFile::statistic.GetTransferred()`).
+    #[serde(default)]
+    pub uploaded_bytes: u64,
+    /// Débit d'upload courant agrégé sur les sessions actives de ce
+    /// fichier (B/s) — mesuré, 0 quand aucun slot actif.
+    #[serde(default)]
+    pub upload_rate_bps: u64,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -515,6 +524,8 @@ impl SharedFile {
             up_priority: "normal".to_string(),
             is_partial: false,
             completed_parts: Vec::new(),
+            uploaded_bytes: 0,
+            upload_rate_bps: 0,
         }
     }
 }

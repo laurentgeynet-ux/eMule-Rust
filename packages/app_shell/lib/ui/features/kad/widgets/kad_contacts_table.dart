@@ -91,7 +91,9 @@ class KadContactsTable extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      c.verified ? 'Vérifié' : 'Non vérifié',
+                      c.verified
+                          ? context.l10n.kadVerified
+                          : context.l10n.kadNotVerified,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,

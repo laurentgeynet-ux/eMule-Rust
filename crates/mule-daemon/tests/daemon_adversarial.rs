@@ -150,7 +150,7 @@ async fn test_concurrent_downloads_no_crosstalk() {
         .send(Message::Text(handshake_req.to_string().into()))
         .await
         .unwrap();
-    let _ = read.next().await.unwrap().unwrap();
+    let _ = read_response(&mut read, 1).await;
 
     // Add File 1
     let link1 = format!("ed2k://|file|concurrent_1.txt|368640|{}|/", hash1_hex);
@@ -208,7 +208,7 @@ async fn test_concurrent_downloads_no_crosstalk() {
         .send(Message::Text(src_add1_req.to_string().into()))
         .await
         .unwrap();
-    let _ = read.next().await.unwrap().unwrap(); // response for lab.addPeerSource 1
+    let _ = read_response(&mut read, 4).await; // response for lab.addPeerSource 1
 
     let src_add2_req = json!({
         "jsonrpc": "2.0",
@@ -223,7 +223,7 @@ async fn test_concurrent_downloads_no_crosstalk() {
         .send(Message::Text(src_add2_req.to_string().into()))
         .await
         .unwrap();
-    let _ = read.next().await.unwrap().unwrap(); // response for lab.addPeerSource 2
+    let _ = read_response(&mut read, 5).await; // response for lab.addPeerSource 2
 
     // Monitor events until BOTH downloads reach "Completed"
     let mut id1_completed = false;
@@ -360,7 +360,7 @@ async fn test_slow_source_delayed_delivery_recovers_cleanly() {
         .send(Message::Text(req_hello.to_string().into()))
         .await
         .unwrap();
-    let _ = read.next().await.unwrap().unwrap();
+    let _ = read_response(&mut read, 1).await;
 
     // Subscribe
     let req_sub = json!({
@@ -373,7 +373,7 @@ async fn test_slow_source_delayed_delivery_recovers_cleanly() {
         .send(Message::Text(req_sub.to_string().into()))
         .await
         .unwrap();
-    let _ = read.next().await.unwrap().unwrap();
+    let _ = read_response(&mut read, 2).await;
 
     // Add download
     let link = format!("ed2k://|file|slow_file.txt|10000|{hash_hex}|/");
@@ -390,13 +390,14 @@ async fn test_slow_source_delayed_delivery_recovers_cleanly() {
         .send(Message::Text(req_add.to_string().into()))
         .await
         .unwrap();
-    let add_resp: serde_json::Value =
-        serde_json::from_str(&read.next().await.unwrap().unwrap().to_string()).unwrap();
+    let add_resp: serde_json::Value = read_response(&mut read, 3).await;
     let dl_id = add_resp["result"]["downloadId"]
         .as_str()
         .unwrap()
         .to_string();
-    let _ = read.next().await.unwrap().unwrap(); // Queued event
+    // Drain the queued lifecycle event if it has not already been consumed
+    // by read_response above.
+    let _ = tokio::time::timeout(Duration::from_millis(500), read.next()).await;
 
     // Add slow peer source
     let req_src = json!({
@@ -412,7 +413,7 @@ async fn test_slow_source_delayed_delivery_recovers_cleanly() {
         .send(Message::Text(req_src.to_string().into()))
         .await
         .unwrap();
-    let _ = read.next().await.unwrap().unwrap();
+    let _ = read_response(&mut read, 4).await;
 
     // Wait for completed with timeout
     let mut completed = false;

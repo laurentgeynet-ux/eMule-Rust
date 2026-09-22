@@ -7,7 +7,14 @@ use crate::state::AppState;
 
 pub async fn handle_downloads_list(state: &AppState) -> Result<Value, JsonRpcError> {
     let seq = state.sequence.load(std::sync::atomic::Ordering::SeqCst);
-    let list = state.downloads.lock().await.list_download_details();
+    let mut list = state.downloads.lock().await.list_download_details();
+    // Attach in-flight block ranges (eMule "pending" yellow segments).
+    let pending_map = state.peer_session.pending_ranges_by_file().await;
+    for detail in &mut list {
+        if let Some(ranges) = pending_map.get(&detail.snapshot.ed2k_hash) {
+            detail.snapshot.pending_ranges = ranges.clone();
+        }
+    }
     Ok(json!({
         "sequence": seq,
         "downloads": list
@@ -24,12 +31,17 @@ pub async fn handle_downloads_get(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
 
-    let dl = state
+    let mut dl = state
         .downloads
         .lock()
         .await
         .get_download_detail(&id)
         .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
+
+    dl.snapshot.pending_ranges = state
+        .peer_session
+        .pending_ranges_for_file(&dl.ed2k_hash)
+        .await;
 
     Ok(serde_json::to_value(dl).unwrap_or_default())
 }
@@ -268,6 +280,33 @@ pub async fn handle_set_destination(
     state.broadcast_download_update(detail.snapshot.clone());
 
     Ok(serde_json::to_value(detail).unwrap_or_default())
+}
+
+/// `downloads.rename` — renomme le fichier (`{id, newName}`). Pour un
+/// download terminé, renomme aussi le fichier sur disque et l'entrée de
+/// partage associée.
+pub async fn handle_rename(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    let new_name = params["newName"]
+        .as_str()
+        .or_else(|| params["new_name"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'newName' parameter"))?;
+
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .rename_download(&id, new_name)?;
+    state.broadcast_download_update(snapshot.clone());
+
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
 }
 
 pub async fn handle_set_priority(

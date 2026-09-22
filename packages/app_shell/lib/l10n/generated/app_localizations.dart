@@ -107,19 +107,19 @@ abstract class AppLocalizations {
   /// No description provided for @appTagline.
   ///
   /// In fr, this message translates to:
-  /// **'Modern eD2K Client'**
+  /// **'Client eD2K moderne'**
   String get appTagline;
 
   /// No description provided for @loopbackLabMode.
   ///
   /// In fr, this message translates to:
-  /// **'Loopback Lab Mode'**
+  /// **'Mode Lab Loopback'**
   String get loopbackLabMode;
 
   /// No description provided for @tooltipLoopbackLabMode.
   ///
   /// In fr, this message translates to:
-  /// **'Laboratory mode.\nConnections are restricted to 127.0.0.1.\n\nNo public eD2K servers, Kad nodes,\nor external peers are contacted.'**
+  /// **'Mode laboratoire.\nLes connexions sont limitées à 127.0.0.1.\n\nAucun serveur eD2K public, nœud Kad ou pair externe.'**
   String get tooltipLoopbackLabMode;
 
   /// No description provided for @devModeBadge.
@@ -131,25 +131,25 @@ abstract class AppLocalizations {
   /// No description provided for @sectionDownloads.
   ///
   /// In fr, this message translates to:
-  /// **'DOWNLOADS'**
+  /// **'TÉLÉCHARGEMENTS'**
   String get sectionDownloads;
 
   /// No description provided for @sectionCategories.
   ///
   /// In fr, this message translates to:
-  /// **'CATEGORIES'**
+  /// **'CATÉGORIES'**
   String get sectionCategories;
 
   /// No description provided for @sectionAuditActivity.
   ///
   /// In fr, this message translates to:
-  /// **'AUDIT & ACTIVITY'**
+  /// **'AUDIT & ACTIVITÉ'**
   String get sectionAuditActivity;
 
   /// No description provided for @navHistoryStats.
   ///
   /// In fr, this message translates to:
-  /// **'History & Statistics'**
+  /// **'Historique & Statistiques'**
   String get navHistoryStats;
 
   /// No description provided for @navServers.
@@ -173,37 +173,37 @@ abstract class AppLocalizations {
   /// No description provided for @navUploads.
   ///
   /// In fr, this message translates to:
-  /// **'Uploads'**
+  /// **'Envois'**
   String get navUploads;
 
   /// No description provided for @filterAll.
   ///
   /// In fr, this message translates to:
-  /// **'All Downloads'**
+  /// **'Tous les téléchargements'**
   String get filterAll;
 
   /// No description provided for @filterActive.
   ///
   /// In fr, this message translates to:
-  /// **'Active'**
+  /// **'Actifs'**
   String get filterActive;
 
   /// No description provided for @filterPaused.
   ///
   /// In fr, this message translates to:
-  /// **'Paused'**
+  /// **'En pause'**
   String get filterPaused;
 
   /// No description provided for @filterCompleted.
   ///
   /// In fr, this message translates to:
-  /// **'Completed'**
+  /// **'Terminés'**
   String get filterCompleted;
 
   /// No description provided for @filterFailed.
   ///
   /// In fr, this message translates to:
-  /// **'Failed'**
+  /// **'Échoués'**
   String get filterFailed;
 
   /// No description provided for @uncategorized.
@@ -215,25 +215,25 @@ abstract class AppLocalizations {
   /// No description provided for @searchPlaceholder.
   ///
   /// In fr, this message translates to:
-  /// **'Search downloads...'**
+  /// **'Rechercher dans les téléchargements...'**
   String get searchPlaceholder;
 
   /// No description provided for @btnAddLink.
   ///
   /// In fr, this message translates to:
-  /// **'Add Link'**
+  /// **'Ajouter un lien'**
   String get btnAddLink;
 
   /// No description provided for @btnAddEd2kLink.
   ///
   /// In fr, this message translates to:
-  /// **'Add eD2K Link'**
+  /// **'Ajouter un lien eD2K'**
   String get btnAddEd2kLink;
 
   /// No description provided for @btnAddDownload.
   ///
   /// In fr, this message translates to:
-  /// **'Add Download'**
+  /// **'Ajouter un téléchargement'**
   String get btnAddDownload;
 
   /// No description provided for @btnCancel.
@@ -281,67 +281,67 @@ abstract class AppLocalizations {
   /// No description provided for @actionSettings.
   ///
   /// In fr, this message translates to:
-  /// **'Settings'**
+  /// **'Paramètres'**
   String get actionSettings;
 
   /// No description provided for @actionImportPartMet.
   ///
   /// In fr, this message translates to:
-  /// **'Import .part.met'**
+  /// **'Importer un .part.met'**
   String get actionImportPartMet;
 
   /// No description provided for @actionGuidedLabTest.
   ///
   /// In fr, this message translates to:
-  /// **'Guided Local Test'**
+  /// **'Test local guidé'**
   String get actionGuidedLabTest;
 
   /// No description provided for @tooltipAddCategory.
   ///
   /// In fr, this message translates to:
-  /// **'Add Category'**
+  /// **'Ajouter une catégorie'**
   String get tooltipAddCategory;
 
   /// No description provided for @tooltipRefresh.
   ///
   /// In fr, this message translates to:
-  /// **'Refresh Downloads'**
+  /// **'Actualiser les téléchargements'**
   String get tooltipRefresh;
 
   /// No description provided for @tooltipDevTools.
   ///
   /// In fr, this message translates to:
-  /// **'Toggle Simulation & Debug Tools'**
+  /// **'Outils de simulation & débogage'**
   String get tooltipDevTools;
 
   /// No description provided for @tooltipResume.
   ///
   /// In fr, this message translates to:
-  /// **'Resume'**
+  /// **'Reprendre'**
   String get tooltipResume;
 
   /// No description provided for @tooltipPause.
   ///
   /// In fr, this message translates to:
-  /// **'Pause'**
+  /// **'Mettre en pause'**
   String get tooltipPause;
 
   /// No description provided for @tooltipDelete.
   ///
   /// In fr, this message translates to:
-  /// **'Delete'**
+  /// **'Supprimer'**
   String get tooltipDelete;
 
   /// No description provided for @emptyStateTitle.
   ///
   /// In fr, this message translates to:
-  /// **'No downloads in this view'**
+  /// **'Aucun téléchargement dans cette vue'**
   String get emptyStateTitle;
 
   /// No description provided for @emptyStateSubtitle.
   ///
   /// In fr, this message translates to:
-  /// **'Add an eD2K link to create a local download entry.\nThis lab build operates in loopback-only mode.'**
+  /// **'Ajoutez un lien eD2K pour créer un téléchargement local.\nCe build lab fonctionne en loopback uniquement.'**
   String get emptyStateSubtitle;
 
   /// No description provided for @zeroSpeedDual.
@@ -353,31 +353,31 @@ abstract class AppLocalizations {
   /// No description provided for @daemonConnected.
   ///
   /// In fr, this message translates to:
-  /// **'Daemon Connected'**
+  /// **'Daemon connecté'**
   String get daemonConnected;
 
   /// No description provided for @daemonConnecting.
   ///
   /// In fr, this message translates to:
-  /// **'Connecting to daemon...'**
+  /// **'Connexion au daemon...'**
   String get daemonConnecting;
 
   /// No description provided for @daemonReconnecting.
   ///
   /// In fr, this message translates to:
-  /// **'Reconnecting...'**
+  /// **'Reconnexion...'**
   String get daemonReconnecting;
 
   /// No description provided for @daemonError.
   ///
   /// In fr, this message translates to:
-  /// **'Daemon Error'**
+  /// **'Erreur du daemon'**
   String get daemonError;
 
   /// No description provided for @daemonDisconnected.
   ///
   /// In fr, this message translates to:
-  /// **'Daemon Disconnected'**
+  /// **'Daemon déconnecté'**
   String get daemonDisconnected;
 
   /// No description provided for @daemonVersionLine.
@@ -389,13 +389,13 @@ abstract class AppLocalizations {
   /// No description provided for @dialogAddTitle.
   ///
   /// In fr, this message translates to:
-  /// **'Add eD2K Download'**
+  /// **'Ajouter un téléchargement eD2K'**
   String get dialogAddTitle;
 
   /// No description provided for @dialogFieldLabel.
   ///
   /// In fr, this message translates to:
-  /// **'eD2K Link URL'**
+  /// **'URL du lien eD2K'**
   String get dialogFieldLabel;
 
   /// No description provided for @dialogFieldHint.
@@ -407,13 +407,13 @@ abstract class AppLocalizations {
   /// No description provided for @dialogValidationPrefix.
   ///
   /// In fr, this message translates to:
-  /// **'Must start with \"ed2k://|file|\"'**
+  /// **'Doit commencer par « ed2k://|file| »'**
   String get dialogValidationPrefix;
 
   /// No description provided for @dialogValidationParts.
   ///
   /// In fr, this message translates to:
-  /// **'Must contain: name, size, and hash'**
+  /// **'Doit contenir : nom, taille et hash'**
   String get dialogValidationParts;
 
   /// No description provided for @diagnosticsBadge.
@@ -425,13 +425,13 @@ abstract class AppLocalizations {
   /// No description provided for @tooltipDiagnostics.
   ///
   /// In fr, this message translates to:
-  /// **'Click to inspect system & workdir diagnostics.'**
+  /// **'Cliquer pour inspecter les diagnostics système & répertoire de travail.'**
   String get tooltipDiagnostics;
 
   /// No description provided for @tooltipSystemDiagnostics.
   ///
   /// In fr, this message translates to:
-  /// **'System Diagnostics & Confinement (127.0.0.1)'**
+  /// **'Diagnostics système & confinement (127.0.0.1)'**
   String get tooltipSystemDiagnostics;
 
   /// No description provided for @tooltipOpenDrawer.
@@ -443,85 +443,157 @@ abstract class AppLocalizations {
   /// No description provided for @tooltipLabGuide.
   ///
   /// In fr, this message translates to:
-  /// **'Guided Local Test Flow'**
+  /// **'Flux de test local guidé'**
   String get tooltipLabGuide;
 
   /// No description provided for @killSwitchBadgeDisabled.
   ///
   /// In fr, this message translates to:
-  /// **'Disabled'**
+  /// **'Désactivé'**
   String get killSwitchBadgeDisabled;
 
   /// No description provided for @tooltipPolicyKill.
   ///
   /// In fr, this message translates to:
-  /// **'Network Subsystem is DISABLED (Kill Switch engaged).\nClick to view policy and re-enable.'**
+  /// **'Le sous-système réseau est DÉSACTIVÉ (kill switch engagé). Cliquer pour voir la politique et réactiver.'**
   String get tooltipPolicyKill;
 
-  /// No description provided for @tooltipPolicyInfo.
+  /// No description provided for @tooltipSessionTotals.
   ///
   /// In fr, this message translates to:
-  /// **'Network Policy: {profile}\nStatus: {status}\nClick to inspect policy, quotas, and audit log.'**
-  String tooltipPolicyInfo(String profile, String status);
+  /// **'Totaux de session — octets téléchargés / envoyés depuis le démarrage du daemon.\nCliquer pour ouvrir Historique & Statistiques.'**
+  String get tooltipSessionTotals;
+
+  /// No description provided for @tooltipLifetimeTotals.
+  ///
+  /// In fr, this message translates to:
+  /// **'Totaux cumulés depuis l\'installation — téléchargé / envoyé.\nCliquer pour ouvrir Historique & Statistiques. Remise à zéro dans Paramètres → Avancé.'**
+  String get tooltipLifetimeTotals;
+
+  /// No description provided for @settingsLifetimeResetTile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Remise à zéro des totaux cumulés'**
+  String get settingsLifetimeResetTile;
+
+  /// No description provided for @settingsLifetimeResetSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Remet à zéro les compteurs téléchargé / envoyé depuis l\'installation affichés dans la barre du haut. Les totaux de session sont conservés.'**
+  String get settingsLifetimeResetSub;
+
+  /// No description provided for @lifetimeResetConfirmTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Remettre à zéro les totaux ?'**
+  String get lifetimeResetConfirmTitle;
+
+  /// No description provided for @lifetimeResetConfirmBody.
+  ///
+  /// In fr, this message translates to:
+  /// **'Les compteurs cumulés de téléchargement et d\'envoi depuis l\'installation seront remis à zéro. Les totaux de la session en cours ne sont pas modifiés.'**
+  String get lifetimeResetConfirmBody;
+
+  /// No description provided for @lifetimeResetConfirmButton.
+  ///
+  /// In fr, this message translates to:
+  /// **'Remettre à zéro'**
+  String get lifetimeResetConfirmButton;
+
+  /// No description provided for @renameFileTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Renommer le fichier'**
+  String get renameFileTooltip;
+
+  /// No description provided for @renameFileTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Renommer le fichier'**
+  String get renameFileTitle;
+
+  /// No description provided for @renameFileLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nouveau nom de fichier'**
+  String get renameFileLabel;
+
+  /// No description provided for @renameFileInvalid.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nom invalide — non vide, pas \'.\'/\'..\', ne finit pas par \'.\' et sans < > : \" / \\ | ? *'**
+  String get renameFileInvalid;
+
+  /// No description provided for @renameFileFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le renommage a échoué côté daemon (nom déjà pris ou fichier verrouillé)'**
+  String get renameFileFailed;
+
+  /// No description provided for @renameFileApply.
+  ///
+  /// In fr, this message translates to:
+  /// **'Renommer'**
+  String get renameFileApply;
 
   /// No description provided for @tooltipKillSwitchEnable.
   ///
   /// In fr, this message translates to:
-  /// **'Re-enable Network Subsystem'**
+  /// **'Réactiver le sous-système réseau'**
   String get tooltipKillSwitchEnable;
 
   /// No description provided for @tooltipKillSwitchDisable.
   ///
   /// In fr, this message translates to:
-  /// **'Kill Switch: Disconnect All Sockets Immediately'**
+  /// **'Kill switch : déconnecter immédiatement toutes les sockets'**
   String get tooltipKillSwitchDisable;
 
   /// No description provided for @tooltipIpFilter.
   ///
   /// In fr, this message translates to:
-  /// **'IP Filter & Rate Limits'**
+  /// **'Filtre IP & limites de débit'**
   String get tooltipIpFilter;
 
   /// No description provided for @addEd2kDownload.
   ///
   /// In fr, this message translates to:
-  /// **'Add eD2K Download'**
+  /// **'Ajouter un téléchargement eD2K'**
   String get addEd2kDownload;
 
   /// No description provided for @ed2kLink.
   ///
   /// In fr, this message translates to:
-  /// **'eD2K Link'**
+  /// **'Lien eD2K'**
   String get ed2kLink;
 
   /// No description provided for @category.
   ///
   /// In fr, this message translates to:
-  /// **'Category'**
+  /// **'Catégorie'**
   String get category;
 
   /// No description provided for @targetDirectory.
   ///
   /// In fr, this message translates to:
-  /// **'Target Directory'**
+  /// **'Dossier de destination'**
   String get targetDirectory;
 
   /// No description provided for @defaultDownloadsFolder.
   ///
   /// In fr, this message translates to:
-  /// **'Default downloads folder'**
+  /// **'Dossier de téléchargements par défaut'**
   String get defaultDownloadsFolder;
 
   /// No description provided for @browse.
   ///
   /// In fr, this message translates to:
-  /// **'Browse...'**
+  /// **'Parcourir...'**
   String get browse;
 
   /// No description provided for @diskAllocation.
   ///
   /// In fr, this message translates to:
-  /// **'Disk Allocation'**
+  /// **'Allocation disque'**
   String get diskAllocation;
 
   /// No description provided for @cancel.
@@ -533,67 +605,67 @@ abstract class AppLocalizations {
   /// No description provided for @addDownload.
   ///
   /// In fr, this message translates to:
-  /// **'Add Download'**
+  /// **'Ajouter le téléchargement'**
   String get addDownload;
 
   /// No description provided for @eGMoviesMusicLinux.
   ///
   /// In fr, this message translates to:
-  /// **'e.g. Movies, Music, Linux ISOs'**
+  /// **'ex : Films, Musique, ISOs Linux'**
   String get eGMoviesMusicLinux;
 
   /// No description provided for @inheritGlobalDestination.
   ///
   /// In fr, this message translates to:
-  /// **'Inherit global destination'**
+  /// **'Hériter de la destination globale'**
   String get inheritGlobalDestination;
 
   /// No description provided for @devSimulationTools.
   ///
   /// In fr, this message translates to:
-  /// **'Dev Simulation Tools:'**
+  /// **'Outils de simulation dev :'**
   String get devSimulationTools;
 
   /// No description provided for @selected.
   ///
   /// In fr, this message translates to:
-  /// **'Selected: \"{fileName}\"'**
+  /// **'Sélectionné : \"{fileName}\"'**
   String selected(String fileName);
 
   /// No description provided for @inject256KbChunk.
   ///
   /// In fr, this message translates to:
-  /// **'Inject 256 KB Chunk'**
+  /// **'Injecter un bloc de 256 Ko'**
   String get inject256KbChunk;
 
   /// No description provided for @inject1MbChunk.
   ///
   /// In fr, this message translates to:
-  /// **'Inject 1 MB Chunk'**
+  /// **'Injecter un bloc de 1 Mo'**
   String get inject1MbChunk;
 
   /// No description provided for @clickAnyDownloadRowAbove.
   ///
   /// In fr, this message translates to:
-  /// **'Click any download row above to select it for data injection tests.'**
+  /// **'Cliquez sur une ligne de téléchargement ci-dessus pour la sélectionner pour les tests d\'injection.'**
   String get clickAnyDownloadRowAbove;
 
   /// No description provided for @closeDebugBar.
   ///
   /// In fr, this message translates to:
-  /// **'Close Debug Bar'**
+  /// **'Fermer la barre de débogage'**
   String get closeDebugBar;
 
   /// No description provided for @systemLabDiagnostics.
   ///
   /// In fr, this message translates to:
-  /// **'System & Lab Diagnostics'**
+  /// **'Diagnostics système & lab'**
   String get systemLabDiagnostics;
 
   /// No description provided for @workingDirectoryMode.
   ///
   /// In fr, this message translates to:
-  /// **'Working Directory & Mode'**
+  /// **'Répertoire de travail & mode'**
   String get workingDirectoryMode;
 
   /// No description provided for @mode.
@@ -605,145 +677,145 @@ abstract class AppLocalizations {
   /// No description provided for @isolatedDataFolder.
   ///
   /// In fr, this message translates to:
-  /// **'(Isolated data folder)'**
+  /// **'(Dossier de données isolé)'**
   String get isolatedDataFolder;
 
   /// No description provided for @internalData.
   ///
   /// In fr, this message translates to:
-  /// **'Internal Data'**
+  /// **'Données internes'**
   String get internalData;
 
   /// No description provided for @downloads.
   ///
   /// In fr, this message translates to:
-  /// **'Downloads'**
+  /// **'Téléchargements'**
   String get downloads;
 
   /// No description provided for @daemonProcess.
   ///
   /// In fr, this message translates to:
-  /// **'Daemon & Process'**
+  /// **'Daemon & processus'**
   String get daemonProcess;
 
   /// No description provided for @processPid.
   ///
   /// In fr, this message translates to:
-  /// **'Process PID'**
+  /// **'PID du processus'**
   String get processPid;
 
   /// No description provided for @rpcEndpoint.
   ///
   /// In fr, this message translates to:
-  /// **'RPC Endpoint'**
+  /// **'Endpoint RPC'**
   String get rpcEndpoint;
 
   /// No description provided for @daemonVersion.
   ///
   /// In fr, this message translates to:
-  /// **'Daemon Version'**
+  /// **'Version du daemon'**
   String get daemonVersion;
 
   /// No description provided for @instanceId.
   ///
   /// In fr, this message translates to:
-  /// **'Instance ID'**
+  /// **'ID d\'instance'**
   String get instanceId;
 
   /// No description provided for @sessionId.
   ///
   /// In fr, this message translates to:
-  /// **'Session ID'**
+  /// **'ID de session'**
   String get sessionId;
 
   /// No description provided for @daemonLog.
   ///
   /// In fr, this message translates to:
-  /// **'Daemon Log'**
+  /// **'Journal du daemon'**
   String get daemonLog;
 
   /// No description provided for @capabilities.
   ///
   /// In fr, this message translates to:
-  /// **'Capabilities'**
+  /// **'Capacités'**
   String get capabilities;
 
   /// No description provided for @none.
   ///
   /// In fr, this message translates to:
-  /// **'None'**
+  /// **'Aucune'**
   String get none;
 
   /// No description provided for @copyShareableSanitized.
   ///
   /// In fr, this message translates to:
-  /// **'Copy Shareable (Sanitized)'**
+  /// **'Copier version partageable (anonymisée)'**
   String get copyShareableSanitized;
 
   /// No description provided for @sanitizedShareableDiagnosticsCopied.
   ///
   /// In fr, this message translates to:
-  /// **'Sanitized shareable diagnostics copied'**
+  /// **'Diagnostics anonymisés partageables copiés'**
   String get sanitizedShareableDiagnosticsCopied;
 
   /// No description provided for @copyFullLocalDev.
   ///
   /// In fr, this message translates to:
-  /// **'Copy Full (Local Dev)'**
+  /// **'Copier version complète (dev local)'**
   String get copyFullLocalDev;
 
   /// No description provided for @fullDiagnosticsCopiedToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'Full diagnostics copied to clipboard'**
+  /// **'Diagnostics complets copiés dans le presse-papiers'**
   String get fullDiagnosticsCopiedToClipboard;
 
   /// No description provided for @openLabGuide.
   ///
   /// In fr, this message translates to:
-  /// **'Open Lab Guide'**
+  /// **'Ouvrir le guide lab'**
   String get openLabGuide;
 
   /// No description provided for @close.
   ///
   /// In fr, this message translates to:
-  /// **'Close'**
+  /// **'Fermer'**
   String get close;
 
   /// No description provided for @details.
   ///
   /// In fr, this message translates to:
-  /// **'Details: {fileName}'**
+  /// **'Détails : {fileName}'**
   String details(String fileName);
 
   /// No description provided for @inspectFullDetails.
   ///
   /// In fr, this message translates to:
-  /// **'Inspect Full Details'**
+  /// **'Inspecter tous les détails'**
   String get inspectFullDetails;
 
   /// No description provided for @downloadId.
   ///
   /// In fr, this message translates to:
-  /// **'Download ID'**
+  /// **'ID du téléchargement'**
   String get downloadId;
 
   /// No description provided for @totalSize.
   ///
   /// In fr, this message translates to:
-  /// **'Total Size'**
+  /// **'Taille totale'**
   String get totalSize;
 
   /// No description provided for @verifiedBytes.
   ///
   /// In fr, this message translates to:
-  /// **'Verified Bytes'**
+  /// **'Octets vérifiés'**
   String get verifiedBytes;
 
   /// No description provided for @status.
   ///
   /// In fr, this message translates to:
-  /// **'Status'**
+  /// **'Statut'**
   String get status;
 
   /// No description provided for @sources.
@@ -755,109 +827,109 @@ abstract class AppLocalizations {
   /// No description provided for @downloadNotFound.
   ///
   /// In fr, this message translates to:
-  /// **'Download Not Found'**
+  /// **'Téléchargement introuvable'**
   String get downloadNotFound;
 
   /// No description provided for @theRequestedDownloadIsNo.
   ///
   /// In fr, this message translates to:
-  /// **'The requested download is no longer available.'**
+  /// **'Le téléchargement demandé n\'est plus disponible.'**
   String get theRequestedDownloadIsNo;
 
   /// No description provided for @importPartMetExperimental.
   ///
   /// In fr, this message translates to:
-  /// **'Import .part.met (Experimental)'**
+  /// **'Importer un .part.met (expérimental)'**
   String get importPartMetExperimental;
 
   /// No description provided for @importAnExistingPartialOr.
   ///
   /// In fr, this message translates to:
-  /// **'Import an existing partial or completed eMule download safely.'**
+  /// **'Importer un téléchargement eMule partiel ou terminé en toute sécurité.'**
   String get importAnExistingPartialOr;
 
   /// No description provided for @pathToPartMetFile.
   ///
   /// In fr, this message translates to:
-  /// **'Path to .part.met file'**
+  /// **'Chemin du fichier .part.met'**
   String get pathToPartMetFile;
 
   /// No description provided for @inspect.
   ///
   /// In fr, this message translates to:
-  /// **'Inspect'**
+  /// **'Inspecter'**
   String get inspect;
 
   /// No description provided for @associatedPartFilePathOptional.
   ///
   /// In fr, this message translates to:
-  /// **'Associated .part file path (optional, auto-detected)'**
+  /// **'Chemin du fichier .part associé (optionnel, auto-détecté)'**
   String get associatedPartFilePathOptional;
 
   /// No description provided for @autoDetectedNextToMet.
   ///
   /// In fr, this message translates to:
-  /// **'Auto-detected next to .met file'**
+  /// **'Auto-détecté à côté du fichier .met'**
   String get autoDetectedNextToMet;
 
   /// No description provided for @targetDownloadDirectory.
   ///
   /// In fr, this message translates to:
-  /// **'Target Download Directory'**
+  /// **'Dossier de destination du téléchargement'**
   String get targetDownloadDirectory;
 
   /// No description provided for @targetDirectory2.
   ///
   /// In fr, this message translates to:
-  /// **'Target directory'**
+  /// **'Dossier de destination'**
   String get targetDirectory2;
 
   /// No description provided for @categoryOptional.
   ///
   /// In fr, this message translates to:
-  /// **'Category (Optional)'**
+  /// **'Catégorie (optionnel)'**
   String get categoryOptional;
 
   /// No description provided for @importDownload.
   ///
   /// In fr, this message translates to:
-  /// **'Import Download'**
+  /// **'Importer le téléchargement'**
   String get importDownload;
 
   /// No description provided for @compatibilityAlert.
   ///
   /// In fr, this message translates to:
-  /// **'Compatibility Alert'**
+  /// **'Alerte de compatibilité'**
   String get compatibilityAlert;
 
   /// No description provided for @retry.
   ///
   /// In fr, this message translates to:
-  /// **'Retry'**
+  /// **'Réessayer'**
   String get retry;
 
   /// No description provided for @ipFilterRateLimiters.
   ///
   /// In fr, this message translates to:
-  /// **'IP Filter & Rate Limiters'**
+  /// **'Filtre IP & limiteurs de débit'**
   String get ipFilterRateLimiters;
 
   /// No description provided for @localDefensiveIpFilterIpfilter.
   ///
   /// In fr, this message translates to:
-  /// **'Local defensive IP filter (ipfilter.dat) and Token Bucket bandwidth quotas'**
+  /// **'Filtre IP défensif local (ipfilter.dat) et quotas de bande passante par seaux de jetons'**
   String get localDefensiveIpFilterIpfilter;
 
   /// No description provided for @connectedDownloadToLoopbackSource.
   ///
   /// In fr, this message translates to:
-  /// **'Connected download to loopback source ({peerAddr})'**
+  /// **'Téléchargement connecté à la source loopback ({peerAddr})'**
   String connectedDownloadToLoopbackSource(String peerAddr);
 
   /// No description provided for @cleanupCompletedFileSDeleted.
   ///
   /// In fr, this message translates to:
-  /// **'Cleanup completed: {deletedFilesCount} file(s) deleted across {folders} ({freedBytes} freed).'**
+  /// **'Nettoyage terminé : {deletedFilesCount} fichier(s) supprimé(s) dans {folders} ({freedBytes} libérés).'**
   String cleanupCompletedFileSDeleted(
     String deletedFilesCount,
     String folders,
@@ -867,49 +939,49 @@ abstract class AppLocalizations {
   /// No description provided for @guidedLocalLoopbackTestFlow.
   ///
   /// In fr, this message translates to:
-  /// **'Guided Local Loopback Test Flow'**
+  /// **'Flux de test loopback local guidé'**
   String get guidedLocalLoopbackTestFlow;
 
   /// No description provided for @fullEndToEndEd2k.
   ///
   /// In fr, this message translates to:
-  /// **'Full end-to-end eD2K testing on 127.0.0.1 without touching a terminal.'**
+  /// **'Test eD2K complet de bout en bout sur 127.0.0.1 sans toucher à un terminal.'**
   String get fullEndToEndEd2k;
 
   /// No description provided for @networkPolicyDefenseGuard.
   ///
   /// In fr, this message translates to:
-  /// **'Network Policy & Defense Guard'**
+  /// **'Politique réseau & garde défensive'**
   String get networkPolicyDefenseGuard;
 
   /// No description provided for @defensiveSocketAuthorizationAntiSsrf.
   ///
   /// In fr, this message translates to:
-  /// **'Defensive socket authorization, anti-SSRF isolation, and resource quotas'**
+  /// **'Autorisation défensive des sockets, isolation anti-SSRF et quotas de ressources'**
   String get defensiveSocketAuthorizationAntiSsrf;
 
   /// No description provided for @redactedNetworkAuditLogRecent.
   ///
   /// In fr, this message translates to:
-  /// **'Redacted Network Audit Log (Recent Decisions)'**
+  /// **'Journal d\'audit réseau anonymisé (décisions récentes)'**
   String get redactedNetworkAuditLogRecent;
 
   /// No description provided for @sparseInstantGrowsDynamically.
   ///
   /// In fr, this message translates to:
-  /// **'Sparse (Instant, grows dynamically)'**
+  /// **'Sparse (instantané, croît dynamiquement)'**
   String get sparseInstantGrowsDynamically;
 
   /// No description provided for @preallocateFullSizeAvoidsFragmentation.
   ///
   /// In fr, this message translates to:
-  /// **'Preallocate (Full size, avoids fragmentation)'**
+  /// **'Pré-allouer (taille complète, évite la fragmentation)'**
   String get preallocateFullSizeAvoidsFragmentation;
 
   /// No description provided for @noneMinimalInitialDiskUse.
   ///
   /// In fr, this message translates to:
-  /// **'None (Minimal initial disk use)'**
+  /// **'Aucune (usage disque initial minimal)'**
   String get noneMinimalInitialDiskUse;
 
   /// No description provided for @sansCategorieNone.
@@ -921,7 +993,7 @@ abstract class AppLocalizations {
   /// No description provided for @hash.
   ///
   /// In fr, this message translates to:
-  /// **'Hash: {hash}'**
+  /// **'Hash : {hash}'**
   String hash(String hash);
 
   /// No description provided for @rrggbb.
@@ -933,13 +1005,13 @@ abstract class AppLocalizations {
   /// No description provided for @normalDefault.
   ///
   /// In fr, this message translates to:
-  /// **'Normal (Default)'**
+  /// **'Normale (défaut)'**
   String get normalDefault;
 
   /// No description provided for @low.
   ///
   /// In fr, this message translates to:
-  /// **'Low'**
+  /// **'Basse'**
   String get low;
 
   /// No description provided for @normal.
@@ -951,55 +1023,55 @@ abstract class AppLocalizations {
   /// No description provided for @high.
   ///
   /// In fr, this message translates to:
-  /// **'High'**
+  /// **'Haute'**
   String get high;
 
   /// No description provided for @changeTargetDestination.
   ///
   /// In fr, this message translates to:
-  /// **'Change Target Destination'**
+  /// **'Changer la destination'**
   String get changeTargetDestination;
 
   /// No description provided for @selectTargetDestinationFolderFor.
   ///
   /// In fr, this message translates to:
-  /// **'Select target destination folder for \"{fileName}\":'**
+  /// **'Choisir le dossier de destination pour \"{fileName}\" :'**
   String selectTargetDestinationFolderFor(String fileName);
 
   /// No description provided for @targetDirectoryPath.
   ///
   /// In fr, this message translates to:
-  /// **'Target Directory Path'**
+  /// **'Chemin du dossier de destination'**
   String get targetDirectoryPath;
 
   /// No description provided for @eGDownloadsOrC.
   ///
   /// In fr, this message translates to:
-  /// **'e.g. downloads or C:\\TargetDir'**
+  /// **'ex : downloads ou C:\\TargetDir'**
   String get eGDownloadsOrC;
 
   /// No description provided for @theFolderMustExistAnd.
   ///
   /// In fr, this message translates to:
-  /// **'The folder must exist and be writable. Active .part data remains in data/temp/ until completed.'**
+  /// **'Le dossier doit exister et être accessible en écriture. Les données .part actives restent dans data/temp/ jusqu\'à la fin.'**
   String get theFolderMustExistAnd;
 
   /// No description provided for @saveDestination.
   ///
   /// In fr, this message translates to:
-  /// **'Save Destination'**
+  /// **'Enregistrer la destination'**
   String get saveDestination;
 
   /// No description provided for @copiedToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'{label} copied to clipboard'**
+  /// **'{label} copié dans le presse-papiers'**
   String copiedToClipboard(String label);
 
   /// No description provided for @resume.
   ///
   /// In fr, this message translates to:
-  /// **'Resume'**
+  /// **'Reprendre'**
   String get resume;
 
   /// No description provided for @pause.
@@ -1011,103 +1083,103 @@ abstract class AppLocalizations {
   /// No description provided for @retryLoopbackSource.
   ///
   /// In fr, this message translates to:
-  /// **'Retry Loopback Source'**
+  /// **'Réessayer la source loopback'**
   String get retryLoopbackSource;
 
   /// No description provided for @openCompletedFile.
   ///
   /// In fr, this message translates to:
-  /// **'Open Completed File'**
+  /// **'Ouvrir le fichier terminé'**
   String get openCompletedFile;
 
   /// No description provided for @remove.
   ///
   /// In fr, this message translates to:
-  /// **'Remove...'**
+  /// **'Supprimer...'**
   String get remove;
 
   /// No description provided for @diagnosticsRedactedExport.
   ///
   /// In fr, this message translates to:
-  /// **'Diagnostics & Redacted Export'**
+  /// **'Diagnostics & export anonymisé'**
   String get diagnosticsRedactedExport;
 
   /// No description provided for @exportSanitizedDiagnosticsZeroAuth.
   ///
   /// In fr, this message translates to:
-  /// **'Export sanitized diagnostics (zero auth token secrets, loopback 127.0.0.1 confinement verification, redacted user directories).'**
+  /// **'Exporter les diagnostics anonymisés (zéro secret de jeton d\'auth, vérification du confinement loopback 127.0.0.1, noms d\'utilisateur et chemins masqués).'**
   String get exportSanitizedDiagnosticsZeroAuth;
 
   /// No description provided for @copyRedactedDiagnostic.
   ///
   /// In fr, this message translates to:
-  /// **'Copy Redacted Diagnostic'**
+  /// **'Copier le diagnostic anonymisé'**
   String get copyRedactedDiagnostic;
 
   /// No description provided for @downloadDiagnosticCopiedToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'Download diagnostic copied to clipboard (sanitized: no secrets)'**
+  /// **'Diagnostic du téléchargement copié (anonymisé : aucun secret)'**
   String get downloadDiagnosticCopiedToClipboard;
 
   /// No description provided for @identityEd2kLinks.
   ///
   /// In fr, this message translates to:
-  /// **'Identity & eD2K Links'**
+  /// **'Identité & liens eD2K'**
   String get identityEd2kLinks;
 
   /// No description provided for @downloadUuid.
   ///
   /// In fr, this message translates to:
-  /// **'Download UUID'**
+  /// **'UUID du téléchargement'**
   String get downloadUuid;
 
   /// No description provided for @ed2kHashMd4.
   ///
   /// In fr, this message translates to:
-  /// **'eD2K Hash (MD4)'**
+  /// **'Hash eD2K (MD4)'**
   String get ed2kHashMd4;
 
   /// No description provided for @canonicalEd2kLink.
   ///
   /// In fr, this message translates to:
-  /// **'Canonical eD2K Link'**
+  /// **'Lien eD2K canonique'**
   String get canonicalEd2kLink;
 
   /// No description provided for @transferMetricsSpeed.
   ///
   /// In fr, this message translates to:
-  /// **'Transfer Metrics & Speed'**
+  /// **'Métriques de transfert & vitesse'**
   String get transferMetricsSpeed;
 
   /// No description provided for @received.
   ///
   /// In fr, this message translates to:
-  /// **'Received'**
+  /// **'Reçu'**
   String get received;
 
   /// No description provided for @remaining.
   ///
   /// In fr, this message translates to:
-  /// **'Remaining'**
+  /// **'Restant'**
   String get remaining;
 
   /// No description provided for @verified.
   ///
   /// In fr, this message translates to:
-  /// **'Verified'**
+  /// **'Vérifié'**
   String get verified;
 
   /// No description provided for @currentRate.
   ///
   /// In fr, this message translates to:
-  /// **'Current Rate'**
+  /// **'Débit actuel'**
   String get currentRate;
 
   /// No description provided for @averageRate.
   ///
   /// In fr, this message translates to:
-  /// **'Average Rate'**
+  /// **'Débit moyen'**
   String get averageRate;
 
   /// No description provided for @eta.
@@ -1119,31 +1191,31 @@ abstract class AppLocalizations {
   /// No description provided for @attempts.
   ///
   /// In fr, this message translates to:
-  /// **'Attempts'**
+  /// **'Tentatives'**
   String get attempts;
 
   /// No description provided for @lastError.
   ///
   /// In fr, this message translates to:
-  /// **'Last Error: {lastError}'**
+  /// **'Dernière erreur : {lastError}'**
   String lastError(String lastError);
 
   /// No description provided for @ed2kPartMapPartsOf.
   ///
   /// In fr, this message translates to:
-  /// **'eD2K Part Map ({length} parts of 9.28 MB)'**
+  /// **'Carte des parts eD2K ({length} parts de 9,28 Mo)'**
   String ed2kPartMapPartsOf(String length);
 
   /// No description provided for @partBreakdownIsInitializing.
   ///
   /// In fr, this message translates to:
-  /// **'Part breakdown is initializing...'**
+  /// **'Initialisation de la répartition des parts...'**
   String get partBreakdownIsInitializing;
 
   /// No description provided for @part.
   ///
   /// In fr, this message translates to:
-  /// **'Part #{partIndex}\nRange: {startOffset} - {endOffset}\nSize: {size}\nReceived: {receivedBytes}\nStatus: {status}\nSources: {availableSourceCount}'**
+  /// **'Part #{partIndex} Plage : {startOffset} - {endOffset} Taille : {size} Reçu : {receivedBytes} Statut : {status}'**
   String part(
     String partIndex,
     String startOffset,
@@ -1157,97 +1229,97 @@ abstract class AppLocalizations {
   /// No description provided for @verified2.
   ///
   /// In fr, this message translates to:
-  /// **'Verified ({verifiedCount})'**
+  /// **'Vérifiées ({verifiedCount})'**
   String verified2(String verifiedCount);
 
   /// No description provided for @completed.
   ///
   /// In fr, this message translates to:
-  /// **'Completed ({completedCount})'**
+  /// **'Terminées ({completedCount})'**
   String completed(String completedCount);
 
   /// No description provided for @downloading.
   ///
   /// In fr, this message translates to:
-  /// **'Downloading ({downloadingCount})'**
+  /// **'En téléchargement ({downloadingCount})'**
   String downloading(String downloadingCount);
 
   /// No description provided for @missing.
   ///
   /// In fr, this message translates to:
-  /// **'Missing ({missingCount})'**
+  /// **'Manquantes ({missingCount})'**
   String missing(String missingCount);
 
   /// No description provided for @noSource.
   ///
   /// In fr, this message translates to:
-  /// **'No source ({unavailableCount})'**
+  /// **'Aucune source ({unavailableCount})'**
   String noSource(String unavailableCount);
 
   /// No description provided for @storageTargetDestination.
   ///
   /// In fr, this message translates to:
-  /// **'Storage & Target Destination'**
+  /// **'Stockage & destination'**
   String get storageTargetDestination;
 
   /// No description provided for @temporaryPartPathConfined.
   ///
   /// In fr, this message translates to:
-  /// **'Temporary Part Path (Confined)'**
+  /// **'Chemin .part temporaire (confiné)'**
   String get temporaryPartPathConfined;
 
   /// No description provided for @finalTargetDestination.
   ///
   /// In fr, this message translates to:
-  /// **'Final Target Destination'**
+  /// **'Destination finale'**
   String get finalTargetDestination;
 
   /// No description provided for @changeDestination.
   ///
   /// In fr, this message translates to:
-  /// **'Change Destination'**
+  /// **'Changer la destination'**
   String get changeDestination;
 
   /// No description provided for @noteChangingDestinationRedirectsWhere.
   ///
   /// In fr, this message translates to:
-  /// **'Note: Changing destination redirects where the completed file is assembled. Ongoing .part chunks remain safely confined to data/temp/ until final verification.'**
+  /// **'Note : changer la destination redirige l\'endroit où le fichier terminé est assemblé. Les blocs .part en cours restent en sécurité dans le dossier temporaire.'**
   String get noteChangingDestinationRedirectsWhere;
 
   /// No description provided for @removeDownload.
   ///
   /// In fr, this message translates to:
-  /// **'Remove Download?'**
+  /// **'Supprimer le téléchargement ?'**
   String get removeDownload;
 
   /// No description provided for @removeFromTheDownloadsManager.
   ///
   /// In fr, this message translates to:
-  /// **'Remove \"{fileName}\" from the downloads manager?'**
+  /// **'Retirer \"{fileName}\" du gestionnaire de téléchargements ?'**
   String removeFromTheDownloadsManager(String fileName);
 
   /// No description provided for @theDownloadEntryInSqlite.
   ///
   /// In fr, this message translates to:
-  /// **'• The download entry in SQLite will be permanently deleted.\n• Temporary files (.part and .part.met) in data/temp/ will be removed if selected below.\n• The final completed file in destination (if completed) will NOT be deleted.'**
+  /// **'• L\'entrée du téléchargement dans SQLite sera définitivement supprimée.\n• Les fichiers temporaires (.part et .part.met) dans data/temp/ seront supprimés.\n• Si le téléchargement est terminé, une option ci-dessous permet aussi de supprimer le fichier final dans le dossier de destination.'**
   String get theDownloadEntryInSqlite;
 
   /// No description provided for @deleteTemporaryPartFileFrom.
   ///
   /// In fr, this message translates to:
-  /// **'Delete temporary .part file from data/temp/'**
+  /// **'Supprimer le fichier .part temporaire de data/temp/'**
   String get deleteTemporaryPartFileFrom;
 
   /// No description provided for @confirmRemove.
   ///
   /// In fr, this message translates to:
-  /// **'Confirm Remove'**
+  /// **'Confirmer la suppression'**
   String get confirmRemove;
 
   /// No description provided for @sourcesEd2kSessionPeer.
   ///
   /// In fr, this message translates to:
-  /// **'SOURCES ED2K & SESSION PEER'**
+  /// **'SOURCES ED2K & PAIRS DE SESSION'**
   String get sourcesEd2kSessionPeer;
 
   /// No description provided for @ajouterSourceIpPortEx.
@@ -1313,91 +1385,91 @@ abstract class AppLocalizations {
   /// No description provided for @noCategory.
   ///
   /// In fr, this message translates to:
-  /// **'No Category'**
+  /// **'Sans catégorie'**
   String get noCategory;
 
   /// No description provided for @totalSize2.
   ///
   /// In fr, this message translates to:
-  /// **'Total Size:'**
+  /// **'Taille totale :'**
   String get totalSize2;
 
   /// No description provided for @estAcquiredGapsComplement.
   ///
   /// In fr, this message translates to:
-  /// **'Est. Acquired / Gaps Complement:'**
+  /// **'Acquis est. / complément des trous :'**
   String get estAcquiredGapsComplement;
 
   /// No description provided for @partCount.
   ///
   /// In fr, this message translates to:
-  /// **'Part Count:'**
+  /// **'Nombre de parts :'**
   String get partCount;
 
   /// No description provided for @ed2kHash.
   ///
   /// In fr, this message translates to:
-  /// **'eD2K Hash'**
+  /// **'Hash eD2K'**
   String get ed2kHash;
 
   /// No description provided for @importSuccessfulTheDownloadIs.
   ///
   /// In fr, this message translates to:
-  /// **'Import successful! The download is paused and verified parts have been staged.'**
+  /// **'Import réussi ! Le téléchargement est en pause et les parts vérifiées ont été préparées.'**
   String get importSuccessfulTheDownloadIs;
 
   /// No description provided for @auditReport.
   ///
   /// In fr, this message translates to:
-  /// **'Audit Report'**
+  /// **'Rapport d\'audit'**
   String get auditReport;
 
   /// No description provided for @auditReportCopiedToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'Audit report copied to clipboard'**
+  /// **'Rapport d\'audit copié dans le presse-papiers'**
   String get auditReportCopiedToClipboard;
 
   /// No description provided for @copyReport.
   ///
   /// In fr, this message translates to:
-  /// **'Copy Report'**
+  /// **'Copier le rapport'**
   String get copyReport;
 
   /// No description provided for @done.
   ///
   /// In fr, this message translates to:
-  /// **'Done'**
+  /// **'Terminé'**
   String get done;
 
   /// No description provided for @theDownloadWillBeStaged.
   ///
   /// In fr, this message translates to:
-  /// **'The download will be staged into data/temp/ and initialized in Paused state. L’import ne contacte aucun peer et le téléchargement restera en pause.'**
+  /// **'Le téléchargement sera préparé dans data/temp/ et initialisé en pause. L\'import ne contacte aucun pair eD2K.'**
   String get theDownloadWillBeStaged;
 
   /// No description provided for @confirmCleanup.
   ///
   /// In fr, this message translates to:
-  /// **'Confirm Cleanup'**
+  /// **'Confirmer le nettoyage'**
   String get confirmCleanup;
 
   /// No description provided for @thisWillRemoveFixtureFile.
   ///
   /// In fr, this message translates to:
-  /// **'This will remove {fixtureCount} fixture file(s) in <workdir>/fixtures/ and clean temporary download part files. Incoming and finished downloads will never be touched.\n\nAre you sure you want to proceed?'**
+  /// **'Cela supprimera {fixtureCount} fichier(s) fixture dans <workdir>/fixtures/ et nettoiera les fichiers .part temporaires.'**
   String thisWillRemoveFixtureFile(String fixtureCount);
 
   /// No description provided for @deleteTestData.
   ///
   /// In fr, this message translates to:
-  /// **'Delete Test Data'**
+  /// **'Supprimer les données de test'**
   String get deleteTestData;
 
   /// No description provided for @storageDataInternalStateVs.
   ///
   /// In fr, this message translates to:
-  /// **'Storage: data/ (Internal State) vs downloads/ (Completed Files)'**
+  /// **'Stockage : data/ (état interne) vs downloads/ (fichiers terminés)'**
   String get storageDataInternalStateVs;
 
   /// No description provided for @openFolder.
@@ -1409,115 +1481,115 @@ abstract class AppLocalizations {
   /// No description provided for @internalDataDbTempPart.
   ///
   /// In fr, this message translates to:
-  /// **'• Internal data (DB, temp .part, fixtures): {workdir}'**
+  /// **'• Données internes (DB, .part temporaires, fixtures) : {workdir}'**
   String internalDataDbTempPart(String workdir);
 
   /// No description provided for @completedDownloads.
   ///
   /// In fr, this message translates to:
-  /// **'• Completed downloads: {downloadsDir}'**
+  /// **'• Téléchargements terminés : {downloadsDir}'**
   String completedDownloads(String downloadsDir);
 
   /// No description provided for @cleanTestDataFixturesIncomplete.
   ///
   /// In fr, this message translates to:
-  /// **'Clean Test Data (Fixtures & Incomplete Parts)'**
+  /// **'Nettoyer les données de test (fixtures & parts incomplètes)'**
   String get cleanTestDataFixturesIncomplete;
 
   /// No description provided for @cleanupTestData.
   ///
   /// In fr, this message translates to:
-  /// **'Cleanup Test Data'**
+  /// **'Nettoyer les données de test'**
   String get cleanupTestData;
 
   /// No description provided for @connectDownloadToLoopbackSource.
   ///
   /// In fr, this message translates to:
-  /// **'Connect Download to Loopback Source'**
+  /// **'Connecter le téléchargement à la source loopback'**
   String get connectDownloadToLoopbackSource;
 
   /// No description provided for @noDownloadsInQueueAdd.
   ///
   /// In fr, this message translates to:
-  /// **'No downloads in queue. Add an eD2K link in Step 2.'**
+  /// **'Aucun téléchargement en file. Ajoutez un lien eD2K à l\'étape 2.'**
   String get noDownloadsInQueueAdd;
 
   /// No description provided for @targetDownloadTask.
   ///
   /// In fr, this message translates to:
-  /// **'Target Download Task'**
+  /// **'Tâche de téléchargement cible'**
   String get targetDownloadTask;
 
   /// No description provided for @warningDownloadSize.
   ///
   /// In fr, this message translates to:
-  /// **'Warning: Download size ({totalBytes}) does not match fixture ({fixtureSize}).'**
+  /// **'Attention : la taille du téléchargement ({totalBytes}) ne correspond pas à la fixture ({fixtureSize}).'**
   String warningDownloadSize(String totalBytes, String fixtureSize);
 
   /// No description provided for @startLoopbackPeerInStep.
   ///
   /// In fr, this message translates to:
-  /// **'Start loopback peer in Step 3 before connecting.'**
+  /// **'Démarrez le pair loopback à l\'étape 3 avant de connecter.'**
   String get startLoopbackPeerInStep;
 
   /// No description provided for @finalFile.
   ///
   /// In fr, this message translates to:
-  /// **'Final file: {downloadsDir}\\{fileName}'**
+  /// **'Fichier final : {downloadsDir}\\{fileName}'**
   String finalFile(String fileName, String downloadsDir);
 
   /// No description provided for @generateLocalTestFixture.
   ///
   /// In fr, this message translates to:
-  /// **'Generate Local Test Fixture'**
+  /// **'Générer une fixture de test locale'**
   String get generateLocalTestFixture;
 
   /// No description provided for @obtainCanonicalEd2kLinkAdd.
   ///
   /// In fr, this message translates to:
-  /// **'Obtain Canonical eD2K Link & Add to Downloads'**
+  /// **'Obtenir le lien eD2K canonique & ajouter aux téléchargements'**
   String get obtainCanonicalEd2kLinkAdd;
 
   /// No description provided for @copyLink.
   ///
   /// In fr, this message translates to:
-  /// **'Copy Link'**
+  /// **'Copier le lien'**
   String get copyLink;
 
   /// No description provided for @ed2kLinkCopiedToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'eD2K Link copied to clipboard'**
+  /// **'Lien eD2K copié dans le presse-papiers'**
   String get ed2kLinkCopiedToClipboard;
 
   /// No description provided for @downloadTaskCreatedInUi.
   ///
   /// In fr, this message translates to:
-  /// **'Download task created in UI'**
+  /// **'Tâche de téléchargement créée dans l\'UI'**
   String get downloadTaskCreatedInUi;
 
   /// No description provided for @completeStep1ToGenerate.
   ///
   /// In fr, this message translates to:
-  /// **'Complete Step 1 to generate an eD2K fixture first.'**
+  /// **'Terminez l\'étape 1 pour générer d\'abord une fixture eD2K.'**
   String get completeStep1ToGenerate;
 
   /// No description provided for @loopbackTestPeer1270.
   ///
   /// In fr, this message translates to:
-  /// **'Loopback Test Peer (127.0.0.1)'**
+  /// **'Pair de test loopback (127.0.0.1)'**
   String get loopbackTestPeer1270;
 
   /// No description provided for @lastImportReport.
   ///
   /// In fr, this message translates to:
-  /// **'Last Import Report'**
+  /// **'Dernier rapport d\'import'**
   String get lastImportReport;
 
   /// No description provided for @invalidLinesSkipped.
   ///
   /// In fr, this message translates to:
-  /// **'Invalid lines skipped: {invalidLines}'**
+  /// **'Lignes invalides ignorées : {invalidLines}'**
   String invalidLinesSkipped(String invalidLines);
 
   /// No description provided for @rangesLoaded.
@@ -1561,12 +1633,6 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Aucun événement réseau enregistré pour le moment.'**
   String get noNetworkEventsRecordedYet;
-
-  /// No description provided for @activeConnectivityProfile.
-  ///
-  /// In fr, this message translates to:
-  /// **'Profil de connectivité actif'**
-  String get activeConnectivityProfile;
 
   /// No description provided for @activeConnectionsLimits.
   ///
@@ -1667,31 +1733,37 @@ abstract class AppLocalizations {
   /// No description provided for @inspectDetailsPartMap.
   ///
   /// In fr, this message translates to:
-  /// **'Inspect Details & Part Map'**
+  /// **'Inspecter détails & carte des parts'**
   String get inspectDetailsPartMap;
 
   /// No description provided for @remove2.
   ///
   /// In fr, this message translates to:
-  /// **'Remove'**
+  /// **'Retirer'**
   String get remove2;
 
   /// No description provided for @removeFromDownloads.
   ///
   /// In fr, this message translates to:
-  /// **'Remove \"{fileName}\" from downloads?'**
+  /// **'Retirer \"{fileName}\" des téléchargements ?'**
   String removeFromDownloads(String fileName);
 
   /// No description provided for @deleteDownloadedPartTempFiles.
   ///
   /// In fr, this message translates to:
-  /// **'Delete downloaded part/temp files from disk'**
+  /// **'Supprimer les fichiers .part/temp téléchargés du disque'**
   String get deleteDownloadedPartTempFiles;
+
+  /// No description provided for @deleteSharedCompletedFile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Supprimer aussi le fichier partagé dans le dossier de destination'**
+  String get deleteSharedCompletedFile;
 
   /// No description provided for @id.
   ///
   /// In fr, this message translates to:
-  /// **'ID: {id}'**
+  /// **'ID : {id}'**
   String id(String id);
 
   /// No description provided for @src.
@@ -1703,13 +1775,13 @@ abstract class AppLocalizations {
   /// No description provided for @fullId.
   ///
   /// In fr, this message translates to:
-  /// **'Full ID: {id}'**
+  /// **'ID complet : {id}'**
   String fullId(String id);
 
   /// No description provided for @downloadIdCopiedToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'Download ID copied to clipboard'**
+  /// **'ID du téléchargement copié dans le presse-papiers'**
   String get downloadIdCopiedToClipboard;
 
   /// No description provided for @sources2.
@@ -1721,7 +1793,7 @@ abstract class AppLocalizations {
   /// No description provided for @downloadSettingsStorage.
   ///
   /// In fr, this message translates to:
-  /// **'Download Settings & Storage'**
+  /// **'Paramètres de téléchargement & stockage'**
   String get downloadSettingsStorage;
 
   /// No description provided for @globalDefaultDownloadDirectory.
@@ -1805,7 +1877,7 @@ abstract class AppLocalizations {
   /// No description provided for @delete.
   ///
   /// In fr, this message translates to:
-  /// **'Delete \"{name}\"?'**
+  /// **'Supprimer \"{name}\" ?'**
   String delete(String name);
 
   /// No description provided for @deletingThisCategoryWillMove.
@@ -1817,79 +1889,79 @@ abstract class AppLocalizations {
   /// No description provided for @deleteCategory.
   ///
   /// In fr, this message translates to:
-  /// **'Delete Category'**
+  /// **'Supprimer la catégorie'**
   String get deleteCategory;
 
   /// No description provided for @categoryOptions.
   ///
   /// In fr, this message translates to:
-  /// **'Category Options'**
+  /// **'Options de catégorie'**
   String get categoryOptions;
 
   /// No description provided for @editCategory.
   ///
   /// In fr, this message translates to:
-  /// **'Edit Category'**
+  /// **'Modifier la catégorie'**
   String get editCategory;
 
   /// No description provided for @clearDownloadHistory.
   ///
   /// In fr, this message translates to:
-  /// **'Clear Download History?'**
+  /// **'Effacer l\'historique des téléchargements ?'**
   String get clearDownloadHistory;
 
   /// No description provided for @areYouSureYouWant.
   ///
   /// In fr, this message translates to:
-  /// **'Are you sure you want to permanently delete all download history and statistics records?\n\nThis action is irreversible.'**
+  /// **'Voulez-vous vraiment supprimer définitivement tout l\'historique et les statistiques de téléchargement ? Cette action est irréversible.'**
   String get areYouSureYouWant;
 
   /// No description provided for @clearAllHistory.
   ///
   /// In fr, this message translates to:
-  /// **'Clear All History'**
+  /// **'Effacer tout l\'historique'**
   String get clearAllHistory;
 
   /// No description provided for @noDownloadHistoryRecordedYet.
   ///
   /// In fr, this message translates to:
-  /// **'No download history recorded yet'**
+  /// **'Aucun historique de téléchargement enregistré'**
   String get noDownloadHistoryRecordedYet;
 
   /// No description provided for @completedResumedFailedAndRemoved.
   ///
   /// In fr, this message translates to:
-  /// **'Completed, resumed, failed, and removed transfer events will appear here.'**
+  /// **'Les événements de transfert terminés, repris, échoués et supprimés apparaîtront ici.'**
   String get completedResumedFailedAndRemoved;
 
   /// No description provided for @eventDetail.
   ///
   /// In fr, this message translates to:
-  /// **'Event Detail: {fileName}'**
+  /// **'Détail de l\'événement : {fileName}'**
   String eventDetail(String fileName);
 
   /// No description provided for @viewDetails.
   ///
   /// In fr, this message translates to:
-  /// **'View details'**
+  /// **'Voir les détails'**
   String get viewDetails;
 
   /// No description provided for @of2.
   ///
   /// In fr, this message translates to:
-  /// **'{transferredBytes} of {totalBytes}'**
+  /// **'{transferredBytes} sur {totalBytes}'**
   String of2(String transferredBytes, String totalBytes);
 
   /// No description provided for @hash2.
   ///
   /// In fr, this message translates to:
-  /// **'Hash: {ed2kHash}'**
+  /// **'Hash : {ed2kHash}'**
   String hash2(String ed2kHash);
 
   /// No description provided for @of3.
   ///
   /// In fr, this message translates to:
-  /// **'of {totalBytes}'**
+  /// **'sur {totalBytes}'**
   String of3(String totalBytes);
 
   /// No description provided for @res.
@@ -1901,145 +1973,145 @@ abstract class AppLocalizations {
   /// No description provided for @exportHistory.
   ///
   /// In fr, this message translates to:
-  /// **'Export History ({toUpperCase})'**
+  /// **'Exporter l\'historique ({toUpperCase})'**
   String exportHistory(String toUpperCase);
 
   /// No description provided for @reportIsSanitizedAllLocal.
   ///
   /// In fr, this message translates to:
-  /// **'Report is sanitized: all local usernames and filesystem paths are redacted.'**
+  /// **'Le rapport est anonymisé : tous les noms d\'utilisateur et chemins locaux sont masqués.'**
   String get reportIsSanitizedAllLocal;
 
   /// No description provided for @copyToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'Copy to Clipboard'**
+  /// **'Copier dans le presse-papiers'**
   String get copyToClipboard;
 
   /// No description provided for @exportCopiedToClipboard.
   ///
   /// In fr, this message translates to:
-  /// **'Export copied to clipboard'**
+  /// **'Export copié dans le presse-papiers'**
   String get exportCopiedToClipboard;
 
   /// No description provided for @filterByEvent.
   ///
   /// In fr, this message translates to:
-  /// **'Filter by Event:'**
+  /// **'Filtrer par événement :'**
   String get filterByEvent;
 
   /// No description provided for @allEvents.
   ///
   /// In fr, this message translates to:
-  /// **'All Events'**
+  /// **'Tous les événements'**
   String get allEvents;
 
   /// No description provided for @completed2.
   ///
   /// In fr, this message translates to:
-  /// **'Completed'**
+  /// **'Terminés'**
   String get completed2;
 
   /// No description provided for @failed.
   ///
   /// In fr, this message translates to:
-  /// **'Failed'**
+  /// **'Échoués'**
   String get failed;
 
   /// No description provided for @resumed.
   ///
   /// In fr, this message translates to:
-  /// **'Resumed'**
+  /// **'Repris'**
   String get resumed;
 
   /// No description provided for @verifying.
   ///
   /// In fr, this message translates to:
-  /// **'Verifying'**
+  /// **'Vérification'**
   String get verifying;
 
   /// No description provided for @removed.
   ///
   /// In fr, this message translates to:
-  /// **'Removed'**
+  /// **'Supprimés'**
   String get removed;
 
   /// No description provided for @recordS.
   ///
   /// In fr, this message translates to:
-  /// **'{length} record(s)'**
+  /// **'{length} enregistrement(s)'**
   String recordS(String length);
 
   /// No description provided for @totalCompleted.
   ///
   /// In fr, this message translates to:
-  /// **'Total Completed'**
+  /// **'Total terminés'**
   String get totalCompleted;
 
   /// No description provided for @activityWindows.
   ///
   /// In fr, this message translates to:
-  /// **'Activity Windows'**
+  /// **'Fenêtres d\'activité'**
   String get activityWindows;
 
   /// No description provided for @resumesRetries.
   ///
   /// In fr, this message translates to:
-  /// **'Resumes & Retries'**
+  /// **'Reprises & tentatives'**
   String get resumesRetries;
 
   /// No description provided for @failuresLogged.
   ///
   /// In fr, this message translates to:
-  /// **'{totalFailedCount} failures logged'**
+  /// **'{totalFailedCount} échecs enregistrés'**
   String failuresLogged(String totalFailedCount);
 
   /// No description provided for @integrityHealth.
   ///
   /// In fr, this message translates to:
-  /// **'Integrity Health'**
+  /// **'Intégrité'**
   String get integrityHealth;
 
   /// No description provided for @historyLocalStatistics.
   ///
   /// In fr, this message translates to:
-  /// **'History & Local Statistics'**
+  /// **'Historique & statistiques locales'**
   String get historyLocalStatistics;
 
   /// No description provided for @exportHistoryReport.
   ///
   /// In fr, this message translates to:
-  /// **'Export history report'**
+  /// **'Exporter le rapport d\'historique'**
   String get exportHistoryReport;
 
   /// No description provided for @exportAsJsonSanitized.
   ///
   /// In fr, this message translates to:
-  /// **'Export as JSON (Sanitized)'**
+  /// **'Exporter en JSON (anonymisé)'**
   String get exportAsJsonSanitized;
 
   /// No description provided for @exportAsCsvSanitized.
   ///
   /// In fr, this message translates to:
-  /// **'Export as CSV (Sanitized)'**
+  /// **'Exporter en CSV (anonymisé)'**
   String get exportAsCsvSanitized;
 
   /// No description provided for @exportReport.
   ///
   /// In fr, this message translates to:
-  /// **'Export Report'**
+  /// **'Exporter le rapport'**
   String get exportReport;
 
   /// No description provided for @clearHistory.
   ///
   /// In fr, this message translates to:
-  /// **'Clear History'**
+  /// **'Effacer l\'historique'**
   String get clearHistory;
 
   /// No description provided for @refresh.
   ///
   /// In fr, this message translates to:
-  /// **'Refresh'**
+  /// **'Actualiser'**
   String get refresh;
 
   /// No description provided for @amorcerLeReseauKadBootstrap.
@@ -2123,7 +2195,7 @@ abstract class AppLocalizations {
   /// No description provided for @kadId128BitXor.
   ///
   /// In fr, this message translates to:
-  /// **'Kad ID (128-bit XOR)'**
+  /// **'ID Kad (XOR 128 bits)'**
   String get kadId128BitXor;
 
   /// No description provided for @adresseIpPorts.
@@ -2171,7 +2243,7 @@ abstract class AppLocalizations {
   /// No description provided for @envoyerKadPing0x60.
   ///
   /// In fr, this message translates to:
-  /// **'Envoyer Kad Ping (0x60)'**
+  /// **'Envoyer un ping Kad (0x60)'**
   String get envoyerKadPing0x60;
 
   /// No description provided for @aucunContactKad.
@@ -2363,7 +2435,7 @@ abstract class AppLocalizations {
   /// No description provided for @extensionExIsoZipAvi.
   ///
   /// In fr, this message translates to:
-  /// **'Extension (ex: iso, zip, avi)'**
+  /// **'Extension (ex : iso, zip, avi)'**
   String get extensionExIsoZipAvi;
 
   /// No description provided for @tailleMinMo.
@@ -2381,7 +2453,7 @@ abstract class AppLocalizations {
   /// No description provided for @effacerFiltres.
   ///
   /// In fr, this message translates to:
-  /// **'Effacer filtres'**
+  /// **'Effacer les filtres'**
   String get effacerFiltres;
 
   /// No description provided for @serveurEd2k.
@@ -2393,7 +2465,7 @@ abstract class AppLocalizations {
   /// No description provided for @globalUdp.
   ///
   /// In fr, this message translates to:
-  /// **'Global UDP'**
+  /// **'Global (UDP)'**
   String get globalUdp;
 
   /// No description provided for @nomDuFichier.
@@ -2411,7 +2483,7 @@ abstract class AppLocalizations {
   /// No description provided for @hachageEd2k.
   ///
   /// In fr, this message translates to:
-  /// **'Hachage eD2K'**
+  /// **'Hash eD2K'**
   String get hachageEd2k;
 
   /// No description provided for @cliquerPourCopierLeHash.
@@ -2447,7 +2519,7 @@ abstract class AppLocalizations {
   /// No description provided for @copierLienEd2k.
   ///
   /// In fr, this message translates to:
-  /// **'Copier lien eD2K'**
+  /// **'Copier le lien eD2K'**
   String get copierLienEd2k;
 
   /// No description provided for @lienEd2kCopieDansLe.
@@ -2519,7 +2591,7 @@ abstract class AppLocalizations {
   /// No description provided for @selectionnerServerMet.
   ///
   /// In fr, this message translates to:
-  /// **'Selectionner server.met'**
+  /// **'Sélectionner un server.met'**
   String get selectionnerServerMet;
 
   /// No description provided for @parDefautEmuleSionEst.
@@ -2555,7 +2627,7 @@ abstract class AppLocalizations {
   /// No description provided for @etatFiltre.
   ///
   /// In fr, this message translates to:
-  /// **'Etat / Filtre'**
+  /// **'État / Filtre'**
   String get etatFiltre;
 
   /// No description provided for @nomDuServeur.
@@ -2585,7 +2657,7 @@ abstract class AppLocalizations {
   /// No description provided for @preference.
   ///
   /// In fr, this message translates to:
-  /// **'Preference'**
+  /// **'Préférence'**
   String get preference;
 
   /// No description provided for @seConnecter.
@@ -2609,7 +2681,7 @@ abstract class AppLocalizations {
   /// No description provided for @importerServerMet.
   ///
   /// In fr, this message translates to:
-  /// **'Importer server.met'**
+  /// **'Importer un server.met'**
   String get importerServerMet;
 
   /// No description provided for @mettreAJourDepuisUrl.
@@ -2627,7 +2699,7 @@ abstract class AppLocalizations {
   /// No description provided for @indiquezLAdresseHttpOu.
   ///
   /// In fr, this message translates to:
-  /// **'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs :'**
+  /// **'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs.'**
   String get indiquezLAdresseHttpOu;
 
   /// No description provided for @urlDuServerMet.
@@ -2699,13 +2771,13 @@ abstract class AppLocalizations {
   /// No description provided for @autorises.
   ///
   /// In fr, this message translates to:
-  /// **'Autorises'**
+  /// **'Autorisés'**
   String get autorises;
 
   /// No description provided for @bloquesFiltreIp.
   ///
   /// In fr, this message translates to:
-  /// **'Bloques (Filtre IP)'**
+  /// **'Bloqués (filtre IP)'**
   String get bloquesFiltreIp;
 
   /// No description provided for @lesServeursMarquesEnRouge.
@@ -2717,19 +2789,19 @@ abstract class AppLocalizations {
   /// No description provided for @bloque.
   ///
   /// In fr, this message translates to:
-  /// **'Bloque'**
+  /// **'Bloqué'**
   String get bloque;
 
   /// No description provided for @autorise.
   ///
   /// In fr, this message translates to:
-  /// **'Autorise'**
+  /// **'Autorisé'**
   String get autorise;
 
   /// No description provided for @confirmerImportation.
   ///
   /// In fr, this message translates to:
-  /// **'Confirmer importation'**
+  /// **'Confirmer l\'importation'**
   String get confirmerImportation;
 
   /// No description provided for @aucunServeurConnecte.
@@ -2773,12 +2845,6 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Activer le Mode Réseau Public (WAN)'**
   String get activerLeModeReseauPublic;
-
-  /// No description provided for @profilReseauActuel.
-  ///
-  /// In fr, this message translates to:
-  /// **'Profil Réseau Actuel : '**
-  String get profilReseauActuel;
 
   /// No description provided for @statutUpnpIgdBoxRouteur.
   ///
@@ -2837,7 +2903,7 @@ abstract class AppLocalizations {
   /// No description provided for @twentyFourHours.
   ///
   /// In fr, this message translates to:
-  /// **'24h: {last24hCompletedCount} | 7d: {last7dCompletedCount}'**
+  /// **'24 h : {last24hCompletedCount} | 7 j : {last7dCompletedCount}'**
   String twentyFourHours(
     String last24hCompletedCount,
     String last7dCompletedCount,
@@ -2846,7 +2912,7 @@ abstract class AppLocalizations {
   /// No description provided for @receivedOfTotal.
   ///
   /// In fr, this message translates to:
-  /// **'{receivedBytes} of {totalBytes} ({progress})'**
+  /// **'{receivedBytes} sur {totalBytes} ({progress})'**
   String receivedOfTotal(
     String receivedBytes,
     String totalBytes,
@@ -2862,61 +2928,61 @@ abstract class AppLocalizations {
   /// No description provided for @serverDisable.
   ///
   /// In fr, this message translates to:
-  /// **'Desactiver'**
+  /// **'Désactiver'**
   String get serverDisable;
 
   /// No description provided for @eventType.
   ///
   /// In fr, this message translates to:
-  /// **'Event Type'**
+  /// **'Type d\'événement'**
   String get eventType;
 
   /// No description provided for @statusLabel.
   ///
   /// In fr, this message translates to:
-  /// **'Status'**
+  /// **'Statut'**
   String get statusLabel;
 
   /// No description provided for @transferred.
   ///
   /// In fr, this message translates to:
-  /// **'Transferred'**
+  /// **'Transféré'**
   String get transferred;
 
   /// No description provided for @duration.
   ///
   /// In fr, this message translates to:
-  /// **'Duration'**
+  /// **'Durée'**
   String get duration;
 
   /// No description provided for @resumes.
   ///
   /// In fr, this message translates to:
-  /// **'Resumes'**
+  /// **'Reprises'**
   String get resumes;
 
   /// No description provided for @verificationResult.
   ///
   /// In fr, this message translates to:
-  /// **'Verification Result'**
+  /// **'Résultat de la vérification'**
   String get verificationResult;
 
   /// No description provided for @sanitizedPath.
   ///
   /// In fr, this message translates to:
-  /// **'Sanitized Path'**
+  /// **'Chemin anonymisé'**
   String get sanitizedPath;
 
   /// No description provided for @timestamp.
   ///
   /// In fr, this message translates to:
-  /// **'Timestamp'**
+  /// **'Horodatage'**
   String get timestamp;
 
   /// No description provided for @errorMessage.
   ///
   /// In fr, this message translates to:
-  /// **'Error Message'**
+  /// **'Message d\'erreur'**
   String get errorMessage;
 
   /// No description provided for @language.
@@ -2988,7 +3054,7 @@ abstract class AppLocalizations {
   /// No description provided for @sectionUploads.
   ///
   /// In fr, this message translates to:
-  /// **'Uploads'**
+  /// **'Envois'**
   String get sectionUploads;
 
   /// No description provided for @uploadsActive.
@@ -3342,7 +3408,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsUssTitle.
   ///
   /// In fr, this message translates to:
-  /// **'USS — Upload Speed Sense'**
+  /// **'USS — Détection de la vitesse d\'envoi'**
   String get settingsUssTitle;
 
   /// No description provided for @settingsUssSub.
@@ -3825,30 +3891,6 @@ abstract class AppLocalizations {
   /// **'Non mappé'**
   String get upnpNotMapped;
 
-  /// No description provided for @netModePublicChip.
-  ///
-  /// In fr, this message translates to:
-  /// **'RÉSEAU PUBLIC (WAN)'**
-  String get netModePublicChip;
-
-  /// No description provided for @netModeLabChip.
-  ///
-  /// In fr, this message translates to:
-  /// **'LABORATOIRE (127.0.0.1)'**
-  String get netModeLabChip;
-
-  /// No description provided for @netModePublicDesc.
-  ///
-  /// In fr, this message translates to:
-  /// **'Votre client peut contacter des serveurs eD2K publics, des pairs externes et la DHT Kademlia mondiale.'**
-  String get netModePublicDesc;
-
-  /// No description provided for @netModeLabDesc.
-  ///
-  /// In fr, this message translates to:
-  /// **'Toutes les sockets sont strictement confinées à la boucle locale 127.0.0.1. Zéro paquet sur Internet.'**
-  String get netModeLabDesc;
-
   /// No description provided for @ipFilterActive.
   ///
   /// In fr, this message translates to:
@@ -3861,11 +3903,23 @@ abstract class AppLocalizations {
   /// **'Filtre désactivé'**
   String get ipFilterDisabled;
 
-  /// No description provided for @netProfileLocalLabDesc.
+  /// No description provided for @networksCardTitle.
   ///
   /// In fr, this message translates to:
-  /// **'Confiné à la boucle locale (127.0.0.1 / ::1). Aucune socket externe permise.'**
-  String get netProfileLocalLabDesc;
+  /// **'Réseaux'**
+  String get networksCardTitle;
+
+  /// No description provided for @networkEd2kTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réseau eD2K'**
+  String get networkEd2kTitle;
+
+  /// No description provided for @networkKadTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réseau Kad'**
+  String get networkKadTitle;
 
   /// No description provided for @netProfileEd2kDesc.
   ///
@@ -3873,11 +3927,11 @@ abstract class AppLocalizations {
   /// **'TCP sortant vers des pairs/serveurs eD2K publics. Rejette le LAN privé & la boucle locale (anti-SSRF).'**
   String get netProfileEd2kDesc;
 
-  /// No description provided for @netProfileEd2kKadDesc.
+  /// No description provided for @netProfileKadDesc.
   ///
   /// In fr, this message translates to:
-  /// **'Preview WAN avec UDP pour le routage Kademlia. Validation stricte des adresses.'**
-  String get netProfileEd2kKadDesc;
+  /// **'DHT Kademlia — UDP sortant pour le routage WAN. Activer Kad active aussi eD2K.'**
+  String get netProfileKadDesc;
 
   /// No description provided for @ipReportTotalLines.
   ///
@@ -3902,6 +3956,2032 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Intervalles actifs finaux : {count}'**
   String ipReportFinalRanges(int count);
+
+  /// No description provided for @connDisconnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déconnecté'**
+  String get connDisconnected;
+
+  /// No description provided for @connConnecting.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion'**
+  String get connConnecting;
+
+  /// No description provided for @connConnectingEllipsis.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion...'**
+  String get connConnectingEllipsis;
+
+  /// No description provided for @connConnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connecté'**
+  String get connConnected;
+
+  /// No description provided for @connDisconnecting.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déconnexion...'**
+  String get connDisconnecting;
+
+  /// No description provided for @connError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Erreur'**
+  String get connError;
+
+  /// No description provided for @peerHandshaking.
+  ///
+  /// In fr, this message translates to:
+  /// **'Handshake eD2K...'**
+  String get peerHandshaking;
+
+  /// No description provided for @peerQueued.
+  ///
+  /// In fr, this message translates to:
+  /// **'En file d\'attente'**
+  String get peerQueued;
+
+  /// No description provided for @peerTransferring.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement'**
+  String get peerTransferring;
+
+  /// No description provided for @dlStatusQueued.
+  ///
+  /// In fr, this message translates to:
+  /// **'En file'**
+  String get dlStatusQueued;
+
+  /// No description provided for @dlStatusWaitingForSources.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche de sources'**
+  String get dlStatusWaitingForSources;
+
+  /// No description provided for @dlStatusAllocating.
+  ///
+  /// In fr, this message translates to:
+  /// **'Allocation'**
+  String get dlStatusAllocating;
+
+  /// No description provided for @dlStatusDownloading.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement'**
+  String get dlStatusDownloading;
+
+  /// No description provided for @dlStatusPaused.
+  ///
+  /// In fr, this message translates to:
+  /// **'En pause'**
+  String get dlStatusPaused;
+
+  /// No description provided for @dlStatusVerifying.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vérification'**
+  String get dlStatusVerifying;
+
+  /// No description provided for @dlStatusCompleting.
+  ///
+  /// In fr, this message translates to:
+  /// **'Finalisation'**
+  String get dlStatusCompleting;
+
+  /// No description provided for @dlStatusCompleted.
+  ///
+  /// In fr, this message translates to:
+  /// **'Terminé'**
+  String get dlStatusCompleted;
+
+  /// No description provided for @dlStatusFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échoué'**
+  String get dlStatusFailed;
+
+  /// No description provided for @profileLocalLab.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lab local (loopback uniquement)'**
+  String get profileLocalLab;
+
+  /// No description provided for @profilePublicEd2k.
+  ///
+  /// In fr, this message translates to:
+  /// **'eD2K public (preview)'**
+  String get profilePublicEd2k;
+
+  /// No description provided for @profilePublicEd2kKad.
+  ///
+  /// In fr, this message translates to:
+  /// **'eD2K + Kad publics (preview)'**
+  String get profilePublicEd2kKad;
+
+  /// No description provided for @subsystemDisabled.
+  ///
+  /// In fr, this message translates to:
+  /// **'Désactivé (kill switch)'**
+  String get subsystemDisabled;
+
+  /// No description provided for @subsystemReady.
+  ///
+  /// In fr, this message translates to:
+  /// **'Prêt (preview)'**
+  String get subsystemReady;
+
+  /// No description provided for @subsystemShuttingDown.
+  ///
+  /// In fr, this message translates to:
+  /// **'Arrêt en cours'**
+  String get subsystemShuttingDown;
+
+  /// No description provided for @daemonIdle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Inactif'**
+  String get daemonIdle;
+
+  /// No description provided for @daemonDiscovering.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche du daemon...'**
+  String get daemonDiscovering;
+
+  /// No description provided for @daemonStarting.
+  ///
+  /// In fr, this message translates to:
+  /// **'Démarrage du daemon...'**
+  String get daemonStarting;
+
+  /// No description provided for @daemonProtocolMismatch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Version de protocole incompatible'**
+  String get daemonProtocolMismatch;
+
+  /// No description provided for @daemonAuthError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec d\'authentification'**
+  String get daemonAuthError;
+
+  /// No description provided for @navShares.
+  ///
+  /// In fr, this message translates to:
+  /// **'Partages'**
+  String get navShares;
+
+  /// No description provided for @badgeEd2kHighId.
+  ///
+  /// In fr, this message translates to:
+  /// **'eD2K · HighID'**
+  String get badgeEd2kHighId;
+
+  /// No description provided for @badgeEd2kLowId.
+  ///
+  /// In fr, this message translates to:
+  /// **'eD2K · LowID'**
+  String get badgeEd2kLowId;
+
+  /// No description provided for @badgeEd2kConnecting.
+  ///
+  /// In fr, this message translates to:
+  /// **'eD2K · Connexion…'**
+  String get badgeEd2kConnecting;
+
+  /// No description provided for @badgeEd2kDisconnecting.
+  ///
+  /// In fr, this message translates to:
+  /// **'eD2K · Déconnexion…'**
+  String get badgeEd2kDisconnecting;
+
+  /// No description provided for @badgeEd2kDisconnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'eD2K · Déconnecté'**
+  String get badgeEd2kDisconnected;
+
+  /// No description provided for @badgeKadStopped.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad · Arrêté'**
+  String get badgeKadStopped;
+
+  /// No description provided for @badgeKadConnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad · Connecté'**
+  String get badgeKadConnected;
+
+  /// No description provided for @badgeKadBootstrapping.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad · Amorçage'**
+  String get badgeKadBootstrapping;
+
+  /// No description provided for @daemonCardTooltipTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'État du daemon'**
+  String get daemonCardTooltipTitle;
+
+  /// No description provided for @daemonCardTooltipServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Serveur : {name}'**
+  String daemonCardTooltipServer(Object name);
+
+  /// No description provided for @daemonCardTooltipDiagnostics.
+  ///
+  /// In fr, this message translates to:
+  /// **'Cliquer pour voir les diagnostics'**
+  String get daemonCardTooltipDiagnostics;
+
+  /// No description provided for @sharesTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichiers partagés'**
+  String get sharesTitle;
+
+  /// No description provided for @sharesFileCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} fichier(s)'**
+  String sharesFileCount(Object count);
+
+  /// No description provided for @sharesRescanTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rescanner le dossier Incoming'**
+  String get sharesRescanTooltip;
+
+  /// No description provided for @sharesEmptyState.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun fichier partagé.\nLes fichiers du dossier Incoming et les téléchargements en cours ou terminés sont partagés automatiquement.'**
+  String get sharesEmptyState;
+
+  /// No description provided for @sharesPartialParts.
+  ///
+  /// In fr, this message translates to:
+  /// **' — partiel ({count} part(s))'**
+  String sharesPartialParts(Object count);
+
+  /// No description provided for @sharesTotalSentTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Total envoyé pour ce fichier'**
+  String get sharesTotalSentTooltip;
+
+  /// No description provided for @sharePrioVeryLow.
+  ///
+  /// In fr, this message translates to:
+  /// **'Très basse'**
+  String get sharePrioVeryLow;
+
+  /// No description provided for @sharePrioVeryHigh.
+  ///
+  /// In fr, this message translates to:
+  /// **'Très haute'**
+  String get sharePrioVeryHigh;
+
+  /// No description provided for @sharesEnabledTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Partagé'**
+  String get sharesEnabledTooltip;
+
+  /// No description provided for @sharesDisabledTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Suspendu'**
+  String get sharesDisabledTooltip;
+
+  /// No description provided for @sharesRenameDisabledTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement en cours — renommez-le depuis l\'onglet Téléchargements'**
+  String get sharesRenameDisabledTooltip;
+
+  /// No description provided for @sharesRenameTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Renommer le fichier'**
+  String get sharesRenameTooltip;
+
+  /// No description provided for @sharesDeleteDisabledTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement en cours — supprimez-le depuis l\'onglet Téléchargements'**
+  String get sharesDeleteDisabledTooltip;
+
+  /// No description provided for @sharesDeleteTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Supprimer le fichier du disque'**
+  String get sharesDeleteTooltip;
+
+  /// No description provided for @sharesDeleteTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Supprimer le fichier ?'**
+  String get sharesDeleteTitle;
+
+  /// No description provided for @sharesDeleteBody.
+  ///
+  /// In fr, this message translates to:
+  /// **'{name} sera définitivement supprimé du disque et retiré des partages.'**
+  String sharesDeleteBody(Object name);
+
+  /// No description provided for @sourcesMaxDialogTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources max (FT_MAXSOURCES)'**
+  String get sourcesMaxDialogTitle;
+
+  /// No description provided for @sourcesMaxHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vide = limite globale'**
+  String get sourcesMaxHint;
+
+  /// No description provided for @sourcesMaxHelper.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nombre max de sources pour ce fichier (1-10000)'**
+  String get sourcesMaxHelper;
+
+  /// No description provided for @apply.
+  ///
+  /// In fr, this message translates to:
+  /// **'Appliquer'**
+  String get apply;
+
+  /// No description provided for @srcNoHash.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pas de hash eD2K pour ce fichier.'**
+  String get srcNoHash;
+
+  /// No description provided for @srcLoading.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chargement des sources...'**
+  String get srcLoading;
+
+  /// No description provided for @srcNone.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucune source enregistrée pour ce fichier.'**
+  String get srcNone;
+
+  /// No description provided for @srcConnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connectés ({count})'**
+  String srcConnected(Object count);
+
+  /// No description provided for @srcKnown.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources connues ({count})'**
+  String srcKnown(Object count);
+
+  /// No description provided for @srcCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources ({count})'**
+  String srcCount(Object count);
+
+  /// No description provided for @srcPriorityLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Priorité : {priority}'**
+  String srcPriorityLabel(Object priority);
+
+  /// No description provided for @srcMaxTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources max pour ce fichier (FT_MAXSOURCES)'**
+  String get srcMaxTooltip;
+
+  /// No description provided for @srcMaxShort.
+  ///
+  /// In fr, this message translates to:
+  /// **'Src max : {value}'**
+  String srcMaxShort(Object value);
+
+  /// No description provided for @peerRetry.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réessayer'**
+  String get peerRetry;
+
+  /// No description provided for @peerConnect.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connecter'**
+  String get peerConnect;
+
+  /// No description provided for @pendingDestination.
+  ///
+  /// In fr, this message translates to:
+  /// **'Destination en attente...'**
+  String get pendingDestination;
+
+  /// No description provided for @pendingCalculation.
+  ///
+  /// In fr, this message translates to:
+  /// **'Calcul en cours...'**
+  String get pendingCalculation;
+
+  /// No description provided for @tooltipDownloadPriority.
+  ///
+  /// In fr, this message translates to:
+  /// **'Priorité du téléchargement'**
+  String get tooltipDownloadPriority;
+
+  /// No description provided for @tooltipAssignCategory.
+  ///
+  /// In fr, this message translates to:
+  /// **'Assigner une catégorie'**
+  String get tooltipAssignCategory;
+
+  /// No description provided for @tooltipCategoryName.
+  ///
+  /// In fr, this message translates to:
+  /// **'Catégorie : {name}'**
+  String tooltipCategoryName(Object name);
+
+  /// No description provided for @peerSrcAllowed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Autorisé'**
+  String get peerSrcAllowed;
+
+  /// No description provided for @peerSrcFiltered.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtré IP'**
+  String get peerSrcFiltered;
+
+  /// No description provided for @peerSrcRejected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rejeté profil'**
+  String get peerSrcRejected;
+
+  /// No description provided for @peerSrcTried.
+  ///
+  /// In fr, this message translates to:
+  /// **'Essayé'**
+  String get peerSrcTried;
+
+  /// No description provided for @peerSrcFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec'**
+  String get peerSrcFailed;
+
+  /// No description provided for @peerSrcCandidate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Candidat'**
+  String get peerSrcCandidate;
+
+  /// No description provided for @importPartOnDisk.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichier .part sur le disque :'**
+  String get importPartOnDisk;
+
+  /// No description provided for @importPartPresent.
+  ///
+  /// In fr, this message translates to:
+  /// **'Présent ({size})'**
+  String importPartPresent(Object size);
+
+  /// No description provided for @importPartMissing.
+  ///
+  /// In fr, this message translates to:
+  /// **'MANQUANT (fichier .part introuvable)'**
+  String get importPartMissing;
+
+  /// No description provided for @openFileExplorerTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ouvrir le fichier terminé dans l\'explorateur'**
+  String get openFileExplorerTooltip;
+
+  /// No description provided for @openFileDisabledTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Disponible une fois le téléchargement et la vérification terminés'**
+  String get openFileDisabledTooltip;
+
+  /// No description provided for @addLinkDuplicate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ce fichier est déjà dans la liste des téléchargements (\"{name}\")'**
+  String addLinkDuplicate(Object name);
+
+  /// No description provided for @pickDownloadDir.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sélectionner le dossier de téléchargement'**
+  String get pickDownloadDir;
+
+  /// No description provided for @addLinkGenericError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Erreur lors de l\'ajout du téléchargement'**
+  String get addLinkGenericError;
+
+  /// No description provided for @catPickDir.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sélectionner le dossier de téléchargement par défaut de la catégorie'**
+  String get catPickDir;
+
+  /// No description provided for @catNameRequired.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le nom de la catégorie ne peut pas être vide'**
+  String get catNameRequired;
+
+  /// No description provided for @catEditTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Modifier la catégorie'**
+  String get catEditTitle;
+
+  /// No description provided for @catNewTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nouvelle catégorie'**
+  String get catNewTitle;
+
+  /// No description provided for @catNameLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nom de la catégorie *'**
+  String get catNameLabel;
+
+  /// No description provided for @catColorLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Étiquette de couleur'**
+  String get catColorLabel;
+
+  /// No description provided for @catDestLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Destination par défaut (optionnel)'**
+  String get catDestLabel;
+
+  /// No description provided for @catPrioLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Priorité par défaut (optionnel)'**
+  String get catPrioLabel;
+
+  /// No description provided for @catSaveChanges.
+  ///
+  /// In fr, this message translates to:
+  /// **'Enregistrer les modifications'**
+  String get catSaveChanges;
+
+  /// No description provided for @catCreate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Créer la catégorie'**
+  String get catCreate;
+
+  /// No description provided for @opFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'L\'opération a échoué'**
+  String get opFailed;
+
+  /// No description provided for @uploadsScore.
+  ///
+  /// In fr, this message translates to:
+  /// **'Score'**
+  String get uploadsScore;
+
+  /// No description provided for @uploadsCredit.
+  ///
+  /// In fr, this message translates to:
+  /// **'Crédit'**
+  String get uploadsCredit;
+
+  /// No description provided for @uploadsBanned.
+  ///
+  /// In fr, this message translates to:
+  /// **'Client banni (score 0)'**
+  String get uploadsBanned;
+
+  /// No description provided for @kadVerified.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vérifié'**
+  String get kadVerified;
+
+  /// No description provided for @kadNotVerified.
+  ///
+  /// In fr, this message translates to:
+  /// **'Non vérifié'**
+  String get kadNotVerified;
+
+  /// No description provided for @kadBootstrapDescPublic.
+  ///
+  /// In fr, this message translates to:
+  /// **'Entrez l\'adresse IP publique et le port UDP d\'un nœud Kad pour amorcer la table de routage (ex : 212.83.184.225).'**
+  String get kadBootstrapDescPublic;
+
+  /// No description provided for @kadBootstrapDescLab.
+  ///
+  /// In fr, this message translates to:
+  /// **'Entrez l\'adresse IP et le port UDP d\'un nœud d\'amorçage (en profil LocalLab, seul 127.0.0.1 est permis).'**
+  String get kadBootstrapDescLab;
+
+  /// No description provided for @kadStartUdpPublic.
+  ///
+  /// In fr, this message translates to:
+  /// **'Démarrer UDP Kad'**
+  String get kadStartUdpPublic;
+
+  /// No description provided for @kadStartUdpLab.
+  ///
+  /// In fr, this message translates to:
+  /// **'Démarrer UDP Loopback'**
+  String get kadStartUdpLab;
+
+  /// No description provided for @kadUdpActive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Actif ({addr})'**
+  String kadUdpActive(Object addr);
+
+  /// No description provided for @kadUdpInactive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Inactif'**
+  String get kadUdpInactive;
+
+  /// No description provided for @kadTimeNever.
+  ///
+  /// In fr, this message translates to:
+  /// **'Jamais'**
+  String get kadTimeNever;
+
+  /// No description provided for @kadTimeMinutesAgo.
+  ///
+  /// In fr, this message translates to:
+  /// **'Il y a {min}m'**
+  String kadTimeMinutesAgo(Object min);
+
+  /// No description provided for @kadTimeHoursAgo.
+  ///
+  /// In fr, this message translates to:
+  /// **'Il y a {hours}h'**
+  String kadTimeHoursAgo(Object hours);
+
+  /// No description provided for @kadTimeDaysAgo.
+  ///
+  /// In fr, this message translates to:
+  /// **'Il y a {days}j'**
+  String kadTimeDaysAgo(Object days);
+
+  /// No description provided for @kadBannerPublic.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réseau Kad DHT mondial actif sur {addr} | Routage Kademlia ouvert | Protection anti-SSRF active.'**
+  String kadBannerPublic(Object addr);
+
+  /// No description provided for @kadBannerLab.
+  ///
+  /// In fr, this message translates to:
+  /// **'Socket UDP actif : {addr} (mode laboratoire confiné) | Kill switch instantané.'**
+  String kadBannerLab(Object addr);
+
+  /// No description provided for @kadBannerStartPublic.
+  ///
+  /// In fr, this message translates to:
+  /// **'Transport UDP Kad : cliquez sur « Démarrer UDP » pour vous connecter au réseau Kademlia mondial.'**
+  String get kadBannerStartPublic;
+
+  /// No description provided for @kadBannerStartLab.
+  ///
+  /// In fr, this message translates to:
+  /// **'Transport UDP Kad confiné : seul le trafic loopback (127.0.0.1) est autorisé dans le profil LocalLab.'**
+  String get kadBannerStartLab;
+
+  /// No description provided for @searchExplainKad.
+  ///
+  /// In fr, this message translates to:
+  /// **'Les requêtes KADEMLIA2_SEARCH_KEYWORD interrogent les nœuds Kad stockant l\'index du mot-clé MD4.'**
+  String get searchExplainKad;
+
+  /// No description provided for @searchExplainGlobal.
+  ///
+  /// In fr, this message translates to:
+  /// **'Les requêtes OP_GLOBSEARCHREQ3/REQ2 sont envoyées en UDP à tous les serveurs connus (port TCP+4). REQ3 est utilisé quand le serveur annonce EXT_GETFILES + LARGEFILES.'**
+  String get searchExplainGlobal;
+
+  /// No description provided for @searchExplainServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Les requêtes OP_SEARCHREQUEST interrogent directement l\'index du serveur eD2K connecté.'**
+  String get searchExplainServer;
+
+  /// No description provided for @searchNoResults.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun résultat trouvé pour « {term} »'**
+  String searchNoResults(Object term);
+
+  /// No description provided for @searchPromptKeywords.
+  ///
+  /// In fr, this message translates to:
+  /// **'Entrez des mots-clés ci-dessus pour lancer une recherche'**
+  String get searchPromptKeywords;
+
+  /// No description provided for @searchEnableTarget.
+  ///
+  /// In fr, this message translates to:
+  /// **'Activez {target} pour commencer à chercher des fichiers'**
+  String searchEnableTarget(Object target);
+
+  /// No description provided for @searchTryOther.
+  ///
+  /// In fr, this message translates to:
+  /// **'Essayez avec d\'autres termes ou élargissez vos filtres de taille'**
+  String get searchTryOther;
+
+  /// No description provided for @searchHideFilters.
+  ///
+  /// In fr, this message translates to:
+  /// **'Masquer les filtres'**
+  String get searchHideFilters;
+
+  /// No description provided for @searchShowFilters.
+  ///
+  /// In fr, this message translates to:
+  /// **'Afficher les filtres avancés'**
+  String get searchShowFilters;
+
+  /// No description provided for @searchHintKad.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mots-clés Kad (min. 3 lettres)...'**
+  String get searchHintKad;
+
+  /// No description provided for @searchHintServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nom de fichier ou mots-clés...'**
+  String get searchHintServer;
+
+  /// No description provided for @searchButtonSearching.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche...'**
+  String get searchButtonSearching;
+
+  /// No description provided for @searchButton.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rechercher'**
+  String get searchButton;
+
+  /// No description provided for @searchTargetServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Serveur eD2K'**
+  String get searchTargetServer;
+
+  /// No description provided for @searchTargetKad.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réseau Kad DHT'**
+  String get searchTargetKad;
+
+  /// No description provided for @searchTargetLabelKad.
+  ///
+  /// In fr, this message translates to:
+  /// **'le réseau Kad DHT'**
+  String get searchTargetLabelKad;
+
+  /// No description provided for @searchTargetLabelGlobal.
+  ///
+  /// In fr, this message translates to:
+  /// **'les serveurs eD2K (UDP)'**
+  String get searchTargetLabelGlobal;
+
+  /// No description provided for @searchTargetLabelServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'le serveur eD2K'**
+  String get searchTargetLabelServer;
+
+  /// No description provided for @searchTargetEnableGlobal.
+  ///
+  /// In fr, this message translates to:
+  /// **'la liste de serveurs eD2K'**
+  String get searchTargetEnableGlobal;
+
+  /// No description provided for @searchTargetEnableServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'un serveur eD2K'**
+  String get searchTargetEnableServer;
+
+  /// No description provided for @kadActiveBanner.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad DHT actif • Contacts : {contacts} ({buckets} k-buckets) • Bind : {addr} • Profil : {profile}'**
+  String kadActiveBanner(
+    Object addr,
+    Object buckets,
+    Object contacts,
+    Object profile,
+  );
+
+  /// No description provided for @unknown.
+  ///
+  /// In fr, this message translates to:
+  /// **'Inconnu'**
+  String get unknown;
+
+  /// No description provided for @kadInactiveBanner.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le réseau Kad DHT n\'est pas encore actif. Démarrez le socket Kad ou effectuez un bootstrap.'**
+  String get kadInactiveBanner;
+
+  /// No description provided for @searchGlobalBanner.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche globale UDP — interroge tous les serveurs connus (REQ3 si le serveur supporte EXT_GETFILES + LARGEFILES).'**
+  String get searchGlobalBanner;
+
+  /// No description provided for @searchConnectedBanner.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connecté à {name} ({addr}) • Client ID : {id} ({idType})'**
+  String searchConnectedBanner(
+    Object addr,
+    Object id,
+    Object idType,
+    Object name,
+  );
+
+  /// No description provided for @serverUnnamed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sans nom'**
+  String get serverUnnamed;
+
+  /// No description provided for @serverDisconnectBtn.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déconnecter'**
+  String get serverDisconnectBtn;
+
+  /// No description provided for @serverBannerConnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexions eD2K disponibles. Vérifiez votre profil réseau (LocalLab vs PublicEd2kPreview) avant de vous connecter. Les adresses dans votre filtre IP sont automatiquement signalées.'**
+  String get serverBannerConnected;
+
+  /// No description provided for @serverBannerDisconnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Avertissement réseau : importer ou gérer une liste de serveurs n\'établit aucune connexion réseau sortante. Les adresses figurant dans votre filtre IP actif sont automatiquement signalées.'**
+  String get serverBannerDisconnected;
+
+  /// No description provided for @serverBlockedByFilter.
+  ///
+  /// In fr, this message translates to:
+  /// **'Bloqué par le filtre IP'**
+  String get serverBlockedByFilter;
+
+  /// No description provided for @serverDisabledBadge.
+  ///
+  /// In fr, this message translates to:
+  /// **'Désactivé'**
+  String get serverDisabledBadge;
+
+  /// No description provided for @historyIntegrityErrors.
+  ///
+  /// In fr, this message translates to:
+  /// **'Erreurs d\'intégrité détectées'**
+  String get historyIntegrityErrors;
+
+  /// No description provided for @labStep2Desc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Utilise le hash pour créer une tâche de téléchargement suivie dans le client.'**
+  String get labStep2Desc;
+
+  /// No description provided for @labAddedToDownloads.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouté aux téléchargements !'**
+  String get labAddedToDownloads;
+
+  /// No description provided for @labAddToDownloads.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter aux téléchargements'**
+  String get labAddToDownloads;
+
+  /// No description provided for @labStep4Desc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ordonne au client de se connecter à la source 127.0.0.1 pour transférer les blocs.'**
+  String get labStep4Desc;
+
+  /// No description provided for @labDlDone.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement terminé et vérifié ({size})'**
+  String labDlDone(Object size);
+
+  /// No description provided for @labDlTransferring.
+  ///
+  /// In fr, this message translates to:
+  /// **'Transfert : {received} / {total} ({speed})'**
+  String labDlTransferring(Object received, Object speed, Object total);
+
+  /// No description provided for @labDlReady.
+  ///
+  /// In fr, this message translates to:
+  /// **'État : {state} — prêt à se connecter au pair loopback.'**
+  String labDlReady(Object state);
+
+  /// No description provided for @labAlreadyCompleted.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déjà terminé'**
+  String get labAlreadyCompleted;
+
+  /// No description provided for @labConnectToSource.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connecter à la source'**
+  String get labConnectToSource;
+
+  /// No description provided for @labStep1Desc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Crée un fichier déterministe dans <workdir>/fixtures/ et calcule son hash eD2K.'**
+  String get labStep1Desc;
+
+  /// No description provided for @labGenerating.
+  ///
+  /// In fr, this message translates to:
+  /// **'Génération...'**
+  String get labGenerating;
+
+  /// No description provided for @labGenerateFixture.
+  ///
+  /// In fr, this message translates to:
+  /// **'Générer la fixture'**
+  String get labGenerateFixture;
+
+  /// No description provided for @labStep3Desc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lance un pair eD2K local hébergeant les fixtures de test.'**
+  String get labStep3Desc;
+
+  /// No description provided for @labStopPeer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Arrêter le pair loopback'**
+  String get labStopPeer;
+
+  /// No description provided for @labStartPeer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Démarrer le pair loopback'**
+  String get labStartPeer;
+
+  /// No description provided for @labPeerActive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Actif sur {addr} (sert {count} fichier(s))'**
+  String labPeerActive(Object addr, Object count);
+
+  /// No description provided for @labPeerOffline.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pair hors ligne'**
+  String get labPeerOffline;
+
+  /// No description provided for @labStep5Desc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Purge les fichiers générés dans <workdir>/fixtures et les partiels dans <workdir>/temp. Les téléchargements terminés dans downloads/ sont préservés.'**
+  String get labStep5Desc;
+
+  /// No description provided for @labCleanupSafe.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sans risque en mode portable.'**
+  String get labCleanupSafe;
+
+  /// No description provided for @labCleanupRestricted.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le nettoyage est restreint en mode installé pour protéger les fichiers utilisateur.'**
+  String get labCleanupRestricted;
+
+  /// No description provided for @labErrCreateFixture.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la création de la fixture : {error}'**
+  String labErrCreateFixture(Object error);
+
+  /// No description provided for @labErrAddDownload.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'ajout du téléchargement : {error}'**
+  String labErrAddDownload(Object error);
+
+  /// No description provided for @labErrPeerOp.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'opération sur le pair : {error}'**
+  String labErrPeerOp(Object error);
+
+  /// No description provided for @labErrConnectDownload.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la connexion du téléchargement : {error}'**
+  String labErrConnectDownload(Object error);
+
+  /// No description provided for @labErrCleanup.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du nettoyage : {error}'**
+  String labErrCleanup(Object error);
+
+  /// No description provided for @notAvailable.
+  ///
+  /// In fr, this message translates to:
+  /// **'Non disponible'**
+  String get notAvailable;
+
+  /// No description provided for @copyFullPath.
+  ///
+  /// In fr, this message translates to:
+  /// **'Copier le chemin complet'**
+  String get copyFullPath;
+
+  /// No description provided for @copiedPathInternal.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chemin des données internes copié'**
+  String get copiedPathInternal;
+
+  /// No description provided for @copyDownloadsPath.
+  ///
+  /// In fr, this message translates to:
+  /// **'Copier le chemin du dossier de téléchargements'**
+  String get copyDownloadsPath;
+
+  /// No description provided for @copiedDownloadsPath.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chemin des téléchargements copié'**
+  String get copiedDownloadsPath;
+
+  /// No description provided for @copyDaemonLogPath.
+  ///
+  /// In fr, this message translates to:
+  /// **'Copier le chemin du journal du daemon'**
+  String get copyDaemonLogPath;
+
+  /// No description provided for @copiedDaemonLogPath.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chemin du journal du daemon copié'**
+  String get copiedDaemonLogPath;
+
+  /// No description provided for @diagNetworkProfile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Profil réseau : {profile}'**
+  String diagNetworkProfile(Object profile);
+
+  /// No description provided for @msgDownloadAdded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichier \"{name}\" ajouté aux téléchargements'**
+  String msgDownloadAdded(Object name);
+
+  /// No description provided for @msgDownloadDuplicate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ce fichier est déjà dans la liste des téléchargements (\"{name}\", statut : {status})'**
+  String msgDownloadDuplicate(Object name, Object status);
+
+  /// No description provided for @msgImportedFile.
+  ///
+  /// In fr, this message translates to:
+  /// **'\"{name}\" importé ({verified}/{parts} parts vérifiées)'**
+  String msgImportedFile(Object name, Object parts, Object verified);
+
+  /// No description provided for @msgErrImportPartMet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'import .part.met : {error}'**
+  String msgErrImportPartMet(Object error);
+
+  /// No description provided for @msgErrPause.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la pause : {error}'**
+  String msgErrPause(Object error);
+
+  /// No description provided for @msgErrResume.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la reprise : {error}'**
+  String msgErrResume(Object error);
+
+  /// No description provided for @msgErrRename.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du renommage : {error}'**
+  String msgErrRename(Object error);
+
+  /// No description provided for @msgErrRemove.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la suppression : {error}'**
+  String msgErrRemove(Object error);
+
+  /// No description provided for @msgErrFetchDetails.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la récupération des détails : {error}'**
+  String msgErrFetchDetails(Object error);
+
+  /// No description provided for @msgDestinationChanged.
+  ///
+  /// In fr, this message translates to:
+  /// **'Destination changée : {dir}'**
+  String msgDestinationChanged(Object dir);
+
+  /// No description provided for @msgErrChangeDestination.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du changement de destination : {error}'**
+  String msgErrChangeDestination(Object error);
+
+  /// No description provided for @msgRetryLoopback.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nouvelle tentative loopback pour \"{name}\"'**
+  String msgRetryLoopback(Object name);
+
+  /// No description provided for @msgErrRetryConn.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la nouvelle tentative : {error}'**
+  String msgErrRetryConn(Object error);
+
+  /// No description provided for @msgErrOpenFile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Impossible d\'ouvrir le fichier terminé : {error}'**
+  String msgErrOpenFile(Object error);
+
+  /// No description provided for @msgDownloadCompleted.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement terminé : {name}'**
+  String msgDownloadCompleted(Object name);
+
+  /// No description provided for @msgDownloadFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du téléchargement : {name}'**
+  String msgDownloadFailed(Object name);
+
+  /// No description provided for @msgCategoryCreated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Catégorie \"{name}\" créée'**
+  String msgCategoryCreated(Object name);
+
+  /// No description provided for @msgErrCategoryCreate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la création de la catégorie : {error}'**
+  String msgErrCategoryCreate(Object error);
+
+  /// No description provided for @msgCategoryUpdated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Catégorie \"{name}\" mise à jour'**
+  String msgCategoryUpdated(Object name);
+
+  /// No description provided for @msgErrCategoryUpdate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la mise à jour de la catégorie : {error}'**
+  String msgErrCategoryUpdate(Object error);
+
+  /// No description provided for @msgCategoryDeleted.
+  ///
+  /// In fr, this message translates to:
+  /// **'Catégorie \"{name}\" supprimée'**
+  String msgCategoryDeleted(Object name);
+
+  /// No description provided for @msgErrCategoryDelete.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la suppression de la catégorie : {error}'**
+  String msgErrCategoryDelete(Object error);
+
+  /// No description provided for @msgErrCategoryReorder.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du réordonnancement des catégories : {error}'**
+  String msgErrCategoryReorder(Object error);
+
+  /// No description provided for @msgAssignedToCategory.
+  ///
+  /// In fr, this message translates to:
+  /// **'Assigné à la catégorie \"{name}\"'**
+  String msgAssignedToCategory(Object name);
+
+  /// No description provided for @categoryFallback.
+  ///
+  /// In fr, this message translates to:
+  /// **'Catégorie'**
+  String get categoryFallback;
+
+  /// No description provided for @msgProfileSwitched.
+  ///
+  /// In fr, this message translates to:
+  /// **'Profil réseau basculé : {profile}'**
+  String msgProfileSwitched(Object profile);
+
+  /// No description provided for @msgErrProfileSwitch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du changement de profil réseau : {error}'**
+  String msgErrProfileSwitch(Object error);
+
+  /// No description provided for @msgKillSwitchOn.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kill switch activé : toutes les connexions réseau ont été coupées'**
+  String get msgKillSwitchOn;
+
+  /// No description provided for @msgErrKillSwitch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du kill switch : {error}'**
+  String msgErrKillSwitch(Object error);
+
+  /// No description provided for @msgNetworkReactivated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réseau réactivé'**
+  String get msgNetworkReactivated;
+
+  /// No description provided for @msgErrNetworkReactivate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la réactivation du réseau : {error}'**
+  String msgErrNetworkReactivate(Object error);
+
+  /// No description provided for @msgBudgetsUpdated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Budgets de ressources mis à jour'**
+  String get msgBudgetsUpdated;
+
+  /// No description provided for @msgErrBudgets.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la mise à jour des budgets de ressources : {error}'**
+  String msgErrBudgets(Object error);
+
+  /// No description provided for @msgIpFilterImported.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtre IP importé : {count} plages'**
+  String msgIpFilterImported(Object count);
+
+  /// No description provided for @msgErrIpFilterImport.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'import du filtre IP : {error}'**
+  String msgErrIpFilterImport(Object error);
+
+  /// No description provided for @msgIpFilterEnabled.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtre IP activé'**
+  String get msgIpFilterEnabled;
+
+  /// No description provided for @msgIpFilterDisabled.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtre IP désactivé'**
+  String get msgIpFilterDisabled;
+
+  /// No description provided for @msgErrIpFilterToggle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du basculement du filtre IP : {error}'**
+  String msgErrIpFilterToggle(Object error);
+
+  /// No description provided for @msgIpFilterCleared.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtre IP vidé'**
+  String get msgIpFilterCleared;
+
+  /// No description provided for @msgErrIpFilterClear.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la purge du filtre IP : {error}'**
+  String msgErrIpFilterClear(Object error);
+
+  /// No description provided for @msgRateLimitsUpdated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Limites de débit mises à jour'**
+  String get msgRateLimitsUpdated;
+
+  /// No description provided for @msgErrRateLimits.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la mise à jour des limites de débit : {error}'**
+  String msgErrRateLimits(Object error);
+
+  /// No description provided for @msgErrLoadSources.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du chargement des sources : {error}'**
+  String msgErrLoadSources(Object error);
+
+  /// No description provided for @msgSourceAdded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Source {address} ajoutée'**
+  String msgSourceAdded(Object address);
+
+  /// No description provided for @msgErrAddSource.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'ajout de la source : {error}'**
+  String msgErrAddSource(Object error);
+
+  /// No description provided for @msgConnInitiated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion à {address} initialisée'**
+  String msgConnInitiated(Object address);
+
+  /// No description provided for @msgErrConnectSource.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la connexion à la source : {error}'**
+  String msgErrConnectSource(Object error);
+
+  /// No description provided for @msgPeerDisconnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Peer {address} déconnecté'**
+  String msgPeerDisconnected(Object address);
+
+  /// No description provided for @msgSessionsDisconnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Session(s) peer déconnectée(s)'**
+  String get msgSessionsDisconnected;
+
+  /// No description provided for @msgErrDisconnectPeer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la déconnexion peer : {error}'**
+  String msgErrDisconnectPeer(Object error);
+
+  /// No description provided for @msgPriorityChanged.
+  ///
+  /// In fr, this message translates to:
+  /// **'Priorité changée : {priority}'**
+  String msgPriorityChanged(Object priority);
+
+  /// No description provided for @msgErrPriority.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du changement de priorité : {error}'**
+  String msgErrPriority(Object error);
+
+  /// No description provided for @msgSrcLimitReset.
+  ///
+  /// In fr, this message translates to:
+  /// **'Limite de sources réinitialisée'**
+  String get msgSrcLimitReset;
+
+  /// No description provided for @msgSrcLimitSet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Limite de sources : {max}'**
+  String msgSrcLimitSet(Object max);
+
+  /// No description provided for @msgErrSrcLimit.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du changement de limite : {error}'**
+  String msgErrSrcLimit(Object error);
+
+  /// No description provided for @msgSourcesCleared.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources effacées'**
+  String get msgSourcesCleared;
+
+  /// No description provided for @msgErrClearSources.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'effacement des sources : {error}'**
+  String msgErrClearSources(Object error);
+
+  /// No description provided for @msgErrKadContacts.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la récupération des contacts Kad : {error}'**
+  String msgErrKadContacts(Object error);
+
+  /// No description provided for @msgErrNodesDatInspect.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'inspection de nodes.dat : {error}'**
+  String msgErrNodesDatInspect(Object error);
+
+  /// No description provided for @msgKadContactsImported.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} contacts Kad importés dans la table K-buckets'**
+  String msgKadContactsImported(Object count);
+
+  /// No description provided for @msgErrNodesDatImport.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'importation de nodes.dat'**
+  String get msgErrNodesDatImport;
+
+  /// No description provided for @msgKadContactsCleared.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} contacts Kad effacés'**
+  String msgKadContactsCleared(Object count);
+
+  /// No description provided for @msgErrKadClear.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'effacement des contacts Kad : {error}'**
+  String msgErrKadClear(Object error);
+
+  /// No description provided for @msgKadUdpStarted.
+  ///
+  /// In fr, this message translates to:
+  /// **'Socket UDP Kad démarré sur {addr}'**
+  String msgKadUdpStarted(Object addr);
+
+  /// No description provided for @msgErrKadUdpStart.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du démarrage UDP Kad'**
+  String get msgErrKadUdpStart;
+
+  /// No description provided for @msgKadUdpStopped.
+  ///
+  /// In fr, this message translates to:
+  /// **'Socket UDP Kad arrêté'**
+  String get msgKadUdpStopped;
+
+  /// No description provided for @msgErrKadUdpStop.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'arrêt UDP Kad'**
+  String get msgErrKadUdpStop;
+
+  /// No description provided for @msgKadPong.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pong reçu de {addr} en {latency} ms'**
+  String msgKadPong(Object addr, Object latency);
+
+  /// No description provided for @msgErrKadPing.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du ping Kad ({addr}) : {error}'**
+  String msgErrKadPing(Object addr, Object error);
+
+  /// No description provided for @msgKadBootstrapOk.
+  ///
+  /// In fr, this message translates to:
+  /// **'Amorçage Kad réussi ({count} contacts reçus)'**
+  String msgKadBootstrapOk(Object count);
+
+  /// No description provided for @msgErrKadBootstrap.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'amorçage Kad'**
+  String get msgErrKadBootstrap;
+
+  /// No description provided for @msgKadBootstrapUrlOk.
+  ///
+  /// In fr, this message translates to:
+  /// **'Amorçage Kad depuis URL réussi ({count} nœuds importés)'**
+  String msgKadBootstrapUrlOk(Object count);
+
+  /// No description provided for @msgErrKadBootstrapUrl.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'amorçage Kad depuis URL'**
+  String get msgErrKadBootstrapUrl;
+
+  /// No description provided for @msgKadSearchFound.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche Kad : {count} nœuds les plus proches trouvés'**
+  String msgKadSearchFound(Object count);
+
+  /// No description provided for @msgErrKadSearch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la recherche Kad'**
+  String get msgErrKadSearch;
+
+  /// No description provided for @msgKadSourcesFound.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad : {count} sources trouvées pour {hash}…'**
+  String msgKadSourcesFound(Object count, Object hash);
+
+  /// No description provided for @msgErrKadSources.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la recherche de sources Kad'**
+  String get msgErrKadSources;
+
+  /// No description provided for @msgKadPublished.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad : publié sur {count} nœuds pour {hash}…'**
+  String msgKadPublished(Object count, Object hash);
+
+  /// No description provided for @msgErrKadPublish.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la publication Kad'**
+  String get msgErrKadPublish;
+
+  /// No description provided for @msgSearchGlobalSent.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche globale \"{term}\" envoyée{udp}'**
+  String msgSearchGlobalSent(Object term, Object udp);
+
+  /// No description provided for @msgSearchSent.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche \"{term}\" envoyée au serveur{udp}'**
+  String msgSearchSent(Object term, Object udp);
+
+  /// No description provided for @msgSearchNoResponse.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche \"{term}\" terminée sans réponse du serveur'**
+  String msgSearchNoResponse(Object term);
+
+  /// No description provided for @msgErrSearch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la recherche : {error}'**
+  String msgErrSearch(Object error);
+
+  /// No description provided for @msgKadSearchDone.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche Kad \"{term}\" terminée ({count} résultat(s))'**
+  String msgKadSearchDone(Object count, Object term);
+
+  /// No description provided for @msgErrKadSearchRun.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la recherche Kad : {error}'**
+  String msgErrKadSearchRun(Object error);
+
+  /// No description provided for @msgSourceReqSent.
+  ///
+  /// In fr, this message translates to:
+  /// **'Demande de sources envoyée pour {hash}'**
+  String msgSourceReqSent(Object hash);
+
+  /// No description provided for @msgErrSourceReq.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la demande de sources : {error}'**
+  String msgErrSourceReq(Object error);
+
+  /// No description provided for @msgErrListServers.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la liste des serveurs : {error}'**
+  String msgErrListServers(Object error);
+
+  /// No description provided for @msgErrInspectServerMet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'inspection du server.met : {error}'**
+  String msgErrInspectServerMet(Object error);
+
+  /// No description provided for @msgServersImported.
+  ///
+  /// In fr, this message translates to:
+  /// **'{imported} serveurs importés ({allowed} autorisés, {blocked} bloqués par le filtre IP)'**
+  String msgServersImported(Object allowed, Object blocked, Object imported);
+
+  /// No description provided for @msgErrImportServerMet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'import du server.met : {error}'**
+  String msgErrImportServerMet(Object error);
+
+  /// No description provided for @msgServersUpdated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mise à jour réussie : {count} serveurs traités depuis l\'URL'**
+  String msgServersUpdated(Object count);
+
+  /// No description provided for @msgErrServersUpdate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la mise à jour des serveurs depuis l\'URL : {error}'**
+  String msgErrServersUpdate(Object error);
+
+  /// No description provided for @msgErrToggleServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du basculement du serveur : {error}'**
+  String msgErrToggleServer(Object error);
+
+  /// No description provided for @msgErrDeleteServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la suppression du serveur : {error}'**
+  String msgErrDeleteServer(Object error);
+
+  /// No description provided for @msgServersCleared.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} serveurs effacés'**
+  String msgServersCleared(Object count);
+
+  /// No description provided for @msgErrClearServers.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'effacement des serveurs : {error}'**
+  String msgErrClearServers(Object error);
+
+  /// No description provided for @msgConnectingToServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion au serveur {name}...'**
+  String msgConnectingToServer(Object name);
+
+  /// No description provided for @msgErrConnectServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion impossible : {error}'**
+  String msgErrConnectServer(Object error);
+
+  /// No description provided for @msgDisconnectedFromServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déconnecté du serveur eD2K'**
+  String get msgDisconnectedFromServer;
+
+  /// No description provided for @msgErrDisconnectServer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Erreur de déconnexion : {error}'**
+  String msgErrDisconnectServer(Object error);
+
+  /// No description provided for @msgSettingsUpdated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Paramètres mis à jour'**
+  String get msgSettingsUpdated;
+
+  /// No description provided for @msgErrSettingsUpdate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la mise à jour des paramètres : {error}'**
+  String msgErrSettingsUpdate(Object error);
+
+  /// No description provided for @msgDownloadDirUpdated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier de téléchargement par défaut mis à jour'**
+  String get msgDownloadDirUpdated;
+
+  /// No description provided for @msgErrDownloadDir.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la définition du dossier de téléchargement : {error}'**
+  String msgErrDownloadDir(Object error);
+
+  /// No description provided for @msgDownloadDirReset.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier de téléchargement réinitialisé (défaut portable)'**
+  String get msgDownloadDirReset;
+
+  /// No description provided for @msgErrDownloadDirReset.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la réinitialisation du dossier de téléchargement : {error}'**
+  String msgErrDownloadDirReset(Object error);
+
+  /// No description provided for @msgErrFetchHistory.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du chargement de l\'historique : {error}'**
+  String msgErrFetchHistory(Object error);
+
+  /// No description provided for @msgHistoryCleared.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} enregistrement(s) d\'historique effacé(s)'**
+  String msgHistoryCleared(Object count);
+
+  /// No description provided for @msgErrClearHistory.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'effacement de l\'historique : {error}'**
+  String msgErrClearHistory(Object error);
+
+  /// No description provided for @msgErrExportHistory.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'export de l\'historique : {error}'**
+  String msgErrExportHistory(Object error);
+
+  /// No description provided for @msgRetentionUnlimited.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rétention de l\'historique illimitée'**
+  String get msgRetentionUnlimited;
+
+  /// No description provided for @msgRetentionDays.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rétention de l\'historique : {days} jours'**
+  String msgRetentionDays(Object days);
+
+  /// No description provided for @msgErrRetention.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la mise à jour de la rétention : {error}'**
+  String msgErrRetention(Object error);
+
+  /// No description provided for @msgBytesInjected.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} octets injectés à l\'offset {offset}'**
+  String msgBytesInjected(Object count, Object offset);
+
+  /// No description provided for @msgErrInject.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'injection : {error}'**
+  String msgErrInject(Object error);
+
+  /// No description provided for @msgFixtureCreated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fixture {name} créée'**
+  String msgFixtureCreated(Object name);
+
+  /// No description provided for @msgPeerStarted.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pair loopback démarré sur {addr}'**
+  String msgPeerStarted(Object addr);
+
+  /// No description provided for @msgPeerStopped.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pair de test loopback arrêté'**
+  String get msgPeerStopped;
+
+  /// No description provided for @msgConnectedToPeer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement connecté à {addr}'**
+  String msgConnectedToPeer(Object addr);
+
+  /// No description provided for @msgCatSetError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'assignation de la catégorie : {e}'**
+  String msgCatSetError(Object e);
+
+  /// No description provided for @msgSourcesFound.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} source(s) trouvée(s) pour {hash}'**
+  String msgSourcesFound(Object hash, Object n);
+
+  /// No description provided for @kadTimeJustNow.
+  ///
+  /// In fr, this message translates to:
+  /// **'À l\'instant'**
+  String get kadTimeJustNow;
+
+  /// No description provided for @labCreateFixtureError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la création de la fixture : {e}'**
+  String labCreateFixtureError(Object e);
+
+  /// No description provided for @labAddDownloadError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'ajout du téléchargement : {e}'**
+  String labAddDownloadError(Object e);
+
+  /// No description provided for @labPeerError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'opération sur le pair : {e}'**
+  String labPeerError(Object e);
+
+  /// No description provided for @labConnectError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la connexion du téléchargement : {e}'**
+  String labConnectError(Object e);
+
+  /// No description provided for @labCleanupError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du nettoyage : {e}'**
+  String labCleanupError(Object e);
+
+  /// No description provided for @labDownloadComplete.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement terminé et vérifié ({size})'**
+  String labDownloadComplete(Object size);
+
+  /// No description provided for @labTransferring.
+  ///
+  /// In fr, this message translates to:
+  /// **'Transfert : {recv} / {total} ({rate})'**
+  String labTransferring(Object rate, Object recv, Object total);
+
+  /// No description provided for @labReadyToConnect.
+  ///
+  /// In fr, this message translates to:
+  /// **'État : {state} — prêt à se connecter au pair loopback.'**
+  String labReadyToConnect(Object state);
+
+  /// No description provided for @labCleanupPortableOk.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sûr à exécuter en mode portable.'**
+  String get labCleanupPortableOk;
+
+  /// No description provided for @labCleanupPortableNo.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le nettoyage est restreint en mode installé pour protéger les fichiers utilisateur.'**
+  String get labCleanupPortableNo;
+
+  /// No description provided for @histFilesCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} fichiers'**
+  String histFilesCount(Object n);
+
+  /// No description provided for @histSessionCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} cette session ({size})'**
+  String histSessionCount(Object n, Object size);
+
+  /// No description provided for @histResumesCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} reprises'**
+  String histResumesCount(Object n);
+
+  /// No description provided for @histHashMismatchCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} erreur(s) de hash'**
+  String histHashMismatchCount(Object n);
+
+  /// No description provided for @histHashVerified.
+  ///
+  /// In fr, this message translates to:
+  /// **'100 % hash vérifié'**
+  String get histHashVerified;
+
+  /// No description provided for @histIntegrityErrors.
+  ///
+  /// In fr, this message translates to:
+  /// **'Erreurs d\'intégrité détectées'**
+  String get histIntegrityErrors;
+
+  /// No description provided for @peerReceivedBytes.
+  ///
+  /// In fr, this message translates to:
+  /// **'Reçus : {bytes}'**
+  String peerReceivedBytes(Object bytes);
+
+  /// No description provided for @searchUdpFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **', {n} échec(s)'**
+  String searchUdpFailed(Object n);
+
+  /// No description provided for @kadIdGenerated.
+  ///
+  /// In fr, this message translates to:
+  /// **'(Généré à l\'initialisation)'**
+  String get kadIdGenerated;
+
+  /// No description provided for @ed2kErrPrefix.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le lien doit commencer par \"ed2k://|file|\"'**
+  String get ed2kErrPrefix;
+
+  /// No description provided for @ed2kErrIncomplete.
+  ///
+  /// In fr, this message translates to:
+  /// **'Format de lien eD2K incomplet'**
+  String get ed2kErrIncomplete;
+
+  /// No description provided for @ed2kErrInvalid.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nom de fichier, taille ou hash hexadécimal de 32 caractères invalide'**
+  String get ed2kErrInvalid;
+
+  /// No description provided for @partsCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} partie(s)'**
+  String partsCount(Object n);
+
+  /// No description provided for @sourcesLoopback.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} loopback'**
+  String sourcesLoopback(Object n);
+
+  /// No description provided for @diagLoopbackTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Profil réseau : LocalLab (loopback)'**
+  String get diagLoopbackTitle;
+
+  /// No description provided for @diagLoopbackSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Trafic confiné à 127.0.0.1 — aucune donnée ne quitte la machine.'**
+  String get diagLoopbackSubtitle;
+
+  /// No description provided for @diagPublicSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexions WAN autorisées — protection anti-SSRF active.'**
+  String get diagPublicSubtitle;
 }
 
 class _AppLocalizationsDelegate

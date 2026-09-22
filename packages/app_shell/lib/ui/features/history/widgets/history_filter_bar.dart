@@ -14,44 +14,82 @@ class HistoryFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(context.l10n.filterByEvent,
-          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        Flexible(
+          child: Text(context.l10n.filterByEvent,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
         ),
         SizedBox(width: 10),
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: AppTheme.darkCard,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppTheme.darkBorder, width: 0.5),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String?>(
-              value: controller.eventTypeFilter,
-              dropdownColor: AppTheme.darkCard,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textPrimary,
+        Flexible(
+          flex: 2,
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppTheme.darkBorder, width: 0.5),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: controller.eventTypeFilter,
+                dropdownColor: AppTheme.darkCard,
+                isExpanded: true,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textPrimary,
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text(
+                      context.l10n.allEvents,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'completed',
+                    child: Text(
+                      context.l10n.completed2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'failed',
+                    child: Text(
+                      context.l10n.failed,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'resumed',
+                    child: Text(
+                      context.l10n.resumed,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'verified_pending_promotion',
+                    child: Text(
+                      context.l10n.verifying,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'removed',
+                    child: Text(
+                      context.l10n.removed,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                onChanged: (val) => controller.setEventTypeFilter(val),
               ),
-              items: [
-                DropdownMenuItem(value: null, child: Text(context.l10n.allEvents)),
-                DropdownMenuItem(
-                  value: 'completed',
-                  child: Text(context.l10n.completed2),
-                ),
-                DropdownMenuItem(value: 'failed', child: Text(context.l10n.failed)),
-                DropdownMenuItem(value: 'resumed', child: Text(context.l10n.resumed)),
-                DropdownMenuItem(
-                  value: 'verified_pending_promotion',
-                  child: Text(context.l10n.verifying),
-                ),
-                DropdownMenuItem(value: 'removed', child: Text(context.l10n.removed)),
-              ],
-              onChanged: (val) => controller.setEventTypeFilter(val),
             ),
           ),
         ),
         const Spacer(),
+        const SizedBox(width: 10),
         Text(context.l10n.recordS('${controller.entries.length}'),
           style: const TextStyle(fontSize: 12, color: AppColors.textFaint),
         ),

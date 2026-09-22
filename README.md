@@ -11,7 +11,7 @@ Le projet est conçu en **Rust** (moteur de stockage éparse, démon Tokio async
 * **Moteur Rust Moderne & Sûr** : 100 % mémoire sûre (*memory safe*), zéro allocation sauvage, décompression continue zlib (`OP_COMPRESSEDPART`).
 * **Swarm Multi-Sources Autonome** : Algorithme **Weighted Max-Min Fair-Share** (water-filling) distribuant les slots de connexion selon la rareté et les priorités des fichiers.
 * **DHT Kademlia v2 Décentralisée** : Métrique de distance numérique 128-bit conforme à `CUInt128` d'eMule, K-Buckets avec cache LRU, recherche itérative avec convergence vers `SEARCHTOLERANCE`.
-* **Serveur Model Context Protocol (MCP)** : Plus de **80 outils MCP natifs** permettant à des assistants IA (Claude Desktop, Cursor, Antigravity) de piloter intégralement le client.
+* **Serveur Model Context Protocol (MCP)** : **87 outils MCP natifs** permettant à des assistants IA (Claude Desktop, Cursor, Antigravity) de piloter intégralement le client.
 * **Sécurité Défensive & Anti-SSRF** : Pipeline de contrôle réseau en 7 étapes, isolation loopback par défaut, Kill Switch atomique, filtrage IP rapide (`ipfilter.dat`) et pseudonymisation salée des pairs.
 * **Fidélité Protocolaire eMule** : Interopérabilité validée face aux sources officielles **eMule 0.72a** (`srchybrid`), Source Exchange v4 (SX1/SX2), détection fine des files d'attente distantes (*Queue Ranking*).
 

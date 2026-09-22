@@ -59,11 +59,22 @@ class FilterStatusModel {
 }
 
 class RateLimitsModel {
+  /// Effective limit applied to the download bucket — already capped by
+  /// the eMule upload/download ratio when the upload limit is < 20 KB/s.
   final int downloadBytesPerSec;
   final int uploadBytesPerSec;
   final int connectionsPerMinute;
   final int serverRequestsPerSec;
   final int kadPacketsPerSec;
+
+  /// User-configured limits as persisted (pre-ratio) — read-only,
+  /// never sent back via `limits.set`.
+  final int downloadConfiguredBytesPerSec;
+  final int uploadConfiguredBytesPerSec;
+
+  /// true when `downloadBytesPerSec` is currently capped by the eMule
+  /// upload/download ratio (« don't be a Lam3r :) »).
+  final bool downloadRatioApplied;
 
   const RateLimitsModel({
     required this.downloadBytesPerSec,
@@ -71,18 +82,30 @@ class RateLimitsModel {
     required this.connectionsPerMinute,
     required this.serverRequestsPerSec,
     required this.kadPacketsPerSec,
+    this.downloadConfiguredBytesPerSec = 0,
+    this.uploadConfiguredBytesPerSec = 0,
+    this.downloadRatioApplied = false,
   });
 
   factory RateLimitsModel.fromJson(Map<String, dynamic> json) {
+    final dl = json['downloadBytesPerSec'] as int? ?? 0;
+    final ul = json['uploadBytesPerSec'] as int? ?? 0;
     return RateLimitsModel(
-      downloadBytesPerSec: json['downloadBytesPerSec'] as int? ?? 0,
-      uploadBytesPerSec: json['uploadBytesPerSec'] as int? ?? 0,
+      downloadBytesPerSec: dl,
+      uploadBytesPerSec: ul,
       connectionsPerMinute: json['connectionsPerMinute'] as int? ?? 120,
       serverRequestsPerSec: json['serverRequestsPerSec'] as int? ?? 10,
       kadPacketsPerSec: json['kadPacketsPerSec'] as int? ?? 50,
+      downloadConfiguredBytesPerSec:
+          json['downloadConfiguredBytesPerSec'] as int? ?? dl,
+      uploadConfiguredBytesPerSec:
+          json['uploadConfiguredBytesPerSec'] as int? ?? ul,
+      downloadRatioApplied: json['downloadRatioApplied'] as bool? ?? false,
     );
   }
 
+  /// Only the configurable fields are sent — the ratio fields are
+  /// daemon-computed read-outs.
   Map<String, dynamic> toJson() => {
         'downloadBytesPerSec': downloadBytesPerSec,
         'uploadBytesPerSec': uploadBytesPerSec,

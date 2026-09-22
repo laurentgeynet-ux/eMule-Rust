@@ -63,14 +63,16 @@ class ImportInspectionCard extends StatelessWidget {
           const SizedBox(height: 4),
           _MetricRow(
             label: context.l10n.partCount,
-            value: '${inspection.partCount} part(s)',
+            value: context.l10n.partsCount(inspection.partCount),
           ),
           const SizedBox(height: 4),
           _MetricRow(
-            label: '.part File on Disk:',
+            label: context.l10n.importPartOnDisk,
             value: inspection.partFileExists
-                ? 'Present (${Formatters.formatBytes(inspection.partFileSize ?? 0)})'
-                : 'MISSING (.part file not found)',
+                ? context.l10n.importPartPresent(
+                    Formatters.formatBytes(inspection.partFileSize ?? 0),
+                  )
+                : context.l10n.importPartMissing,
             valueColor: inspection.partFileExists
                 ? AppTheme.statusCompleted
                 : AppTheme.statusFailed,
@@ -119,13 +121,17 @@ class _MetricRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
+        Flexible(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
           ),
         ),
+        const SizedBox(width: 8),
         Text(
           value,
           style: TextStyle(

@@ -100,7 +100,7 @@ class _LabGuideDialogState extends ConsumerState<LabGuideDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to create fixture: $e';
+          _errorMessage = context.l10n.labCreateFixtureError(e.toString());
           _isCreatingFixture = false;
         });
       }
@@ -127,7 +127,7 @@ class _LabGuideDialogState extends ConsumerState<LabGuideDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to add download: $e';
+          _errorMessage = context.l10n.labAddDownloadError(e.toString());
           _isAddingToDownloads = false;
         });
       }
@@ -157,7 +157,7 @@ class _LabGuideDialogState extends ConsumerState<LabGuideDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Peer operation failed: $e';
+          _errorMessage = context.l10n.labPeerError(e.toString());
           _isManagingPeer = false;
         });
       }
@@ -184,17 +184,11 @@ class _LabGuideDialogState extends ConsumerState<LabGuideDialog> {
         setState(() {
           _isConnectingDownload = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.connectedDownloadToLoopbackSource(peerAddr)),
-            duration: const Duration(seconds: 2),
-          ),
-        );
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to connect download: $e';
+          _errorMessage = context.l10n.labConnectError(e.toString());
           _isConnectingDownload = false;
         });
       }
@@ -215,7 +209,7 @@ class _LabGuideDialogState extends ConsumerState<LabGuideDialog> {
     });
 
     try {
-      final report = await ref.read(labControllerProvider).cleanupLabTestData();
+      await ref.read(labControllerProvider).cleanupLabTestData();
       final updatedStatus = await ref.read(labControllerProvider).getLabStatus();
       if (mounted) {
         setState(() {
@@ -224,21 +218,11 @@ class _LabGuideDialogState extends ConsumerState<LabGuideDialog> {
           _addedToDownloadsSuccess = false;
           _isCleaningUp = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.cleanupCompletedFileSDeleted(
-              '${report.deletedFilesCount}',
-              report.cleanedFolders.join(', '),
-              Formatters.formatBytes(report.freedBytes)),
-            ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Cleanup failed: $e';
+          _errorMessage = context.l10n.labCleanupError(e.toString());
           _isCleaningUp = false;
         });
       }

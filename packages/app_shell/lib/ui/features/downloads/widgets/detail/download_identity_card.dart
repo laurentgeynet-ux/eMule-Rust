@@ -35,7 +35,7 @@ class DownloadIdentityCard extends StatelessWidget {
           const Divider(color: AppTheme.darkBorder, height: 16),
           DetailCopyRow(
             label: context.l10n.ed2kHashMd4,
-            value: item.ed2kHash ?? 'Pending calculation...',
+            value: item.ed2kHash ?? context.l10n.pendingCalculation,
             monospace: true,
           ),
           const Divider(color: AppTheme.darkBorder, height: 16),

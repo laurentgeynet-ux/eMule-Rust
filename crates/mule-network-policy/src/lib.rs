@@ -12,7 +12,9 @@ pub use audit::{
 };
 pub use budgets::ResourceBudgets;
 pub use cancellation::CancellationToken;
-pub use manager::{NetworkPolicyManager, PolicyError, PolicyRateLimiters};
+pub use manager::{
+    emule_ud_ratio, NetworkPolicyManager, PolicyError, PolicyRateLimiters,
+};
 pub use permit::{ConnectionPurpose, ListenPermit, SocketPermit};
 pub use profile::NetworkProfile;
 pub use state::NetworkState;

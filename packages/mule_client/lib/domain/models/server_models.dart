@@ -606,6 +606,12 @@ class SharedFileModel {
   /// `CPartFile`): only `completedParts` are served to peers.
   final bool isPartial;
   final List<int> completedParts;
+  /// Total uploaded for this file since install, persisted daemon-side
+  /// (eMule `CKnownFile::statistic.GetTransferred()`).
+  final int uploadedBytes;
+  /// Current measured upload rate aggregated over this file's active
+  /// upload sessions (B/s); 0 when no peer is pulling it.
+  final int uploadRateBps;
 
   const SharedFileModel({
     required this.fileHash,
@@ -617,6 +623,8 @@ class SharedFileModel {
     this.upPriority = 'normal',
     this.isPartial = false,
     this.completedParts = const [],
+    this.uploadedBytes = 0,
+    this.uploadRateBps = 0,
   });
 
   factory SharedFileModel.fromJson(Map<String, dynamic> json) {
@@ -645,6 +653,12 @@ class SharedFileModel {
               .map((n) => n.toInt())
               .toList() ??
           const [],
+      uploadedBytes: (json['uploadedBytes'] as num?)?.toInt() ??
+          (json['uploaded_bytes'] as num?)?.toInt() ??
+          0,
+      uploadRateBps: (json['uploadRateBps'] as num?)?.toInt() ??
+          (json['upload_rate_bps'] as num?)?.toInt() ??
+          0,
     );
   }
 }
@@ -1182,6 +1196,10 @@ class DaemonStatsModel {
   final bool serverConnected;
   final int kadContacts;
   final bool kadUdpBound;
+  final int sessionDownloadedBytes;
+  final int sessionUploadedBytes;
+  final int lifetimeDownloadedBytes;
+  final int lifetimeUploadedBytes;
 
   const DaemonStatsModel({
     this.downloadBps = 0,
@@ -1191,6 +1209,10 @@ class DaemonStatsModel {
     this.serverConnected = false,
     this.kadContacts = 0,
     this.kadUdpBound = false,
+    this.sessionDownloadedBytes = 0,
+    this.sessionUploadedBytes = 0,
+    this.lifetimeDownloadedBytes = 0,
+    this.lifetimeUploadedBytes = 0,
   });
 
   factory DaemonStatsModel.fromJson(Map<String, dynamic> json) {
@@ -1203,6 +1225,10 @@ class DaemonStatsModel {
       serverConnected: json['serverConnected'] == true,
       kadContacts: toInt('kadContacts'),
       kadUdpBound: json['kadUdpBound'] == true,
+      sessionDownloadedBytes: toInt('sessionDownloadedBytes'),
+      sessionUploadedBytes: toInt('sessionUploadedBytes'),
+      lifetimeDownloadedBytes: toInt('lifetimeDownloadedBytes'),
+      lifetimeUploadedBytes: toInt('lifetimeUploadedBytes'),
     );
   }
 }

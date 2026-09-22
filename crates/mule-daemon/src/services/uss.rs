@@ -131,6 +131,10 @@ struct UssInner {
     /// Upload limit configured manually via `limits.set` — restored when
     /// USS is disabled.
     manual_limit_bps: u64,
+    /// Download limit *configurée* (`rate_limit_download_bps`) — le bucket
+    /// download est replafonné à `emule_ud_ratio(dl_cfg, upload)` à chaque
+    /// ajustement dynamique (eMule `GetMaxDownloadInBytesPerSec` dynamique).
+    download_limit_bps: u64,
 }
 
 /// USS controller. Drives `upload_bucket` when enabled.
@@ -162,6 +166,7 @@ impl UssService {
                 lowest_ping_ms: 0,
                 ping_target: None,
                 manual_limit_bps: 0,
+                download_limit_bps: 0,
             })),
             accept_new_client: Arc::new(AtomicBool::new(true)),
             running: Arc::new(AtomicBool::new(false)),
@@ -234,14 +239,25 @@ impl UssService {
         self.inner.write().unwrap().manual_limit_bps = bps;
     }
 
+    /// Records the *configured* download limit (`limits.set`, capacity
+    /// clamp, boot) so the control loop can re-cap the download bucket
+    /// with the eMule upload/download ratio on every dynamic update.
+    pub fn note_manual_download_limit(&self, bps: u64) {
+        self.inner.write().unwrap().download_limit_bps = bps;
+    }
+
     /// Starts the background control loop. Idempotent.
     pub fn start(&self, limiters: Arc<PolicyRateLimiters>, cancel: CancellationToken) {
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
         let svc = self.clone();
+        let running = Arc::clone(&self.running);
         let handle = tokio::spawn(async move {
             svc.run(limiters, cancel).await;
+            // Le kill switch annule la boucle via le token ; on libère le
+            // drapeau pour que `network.enable` puisse relancer le service.
+            running.store(false, Ordering::SeqCst);
         });
         if let Ok(mut t) = self.task.try_lock() {
             *t = Some(handle.abort_handle());
@@ -250,6 +266,7 @@ impl UssService {
 
     async fn run(&self, limiters: Arc<PolicyRateLimiters>, cancel: CancellationToken) {
         let upload_bucket = &limiters.upload_bucket;
+        let download_bucket = &limiters.download_bucket;
         let mut delays: VecDeque<u32> = VecDeque::new();
         let mut initial_ping_ms: u32 = 0;
         let mut upload_bps: u64 = 0;
@@ -265,6 +282,22 @@ impl UssService {
                     self.inner.write().unwrap().config = cfg;
                 }
             }
+            // Limite download configurée persistée (ratio eMule dynamique).
+            if let Ok(Some(s)) = dl.lock().await.get_setting("rate_limit_download_bps") {
+                if let Ok(v) = s.trim().parse::<u64>() {
+                    self.inner.write().unwrap().download_limit_bps = v;
+                }
+            }
+        }
+
+        /// Replafonne le bucket download au ratio eMule
+        /// (`GetMaxDownloadInBytesPerSec`) pour la limite upload courante.
+        macro_rules! apply_ud_ratio {
+            ($ul_eff:expr) => {{
+                let dl_cfg = self.inner.read().unwrap().download_limit_bps;
+                let eff = mule_network_policy::emule_ud_ratio(dl_cfg, $ul_eff);
+                download_bucket.set_rate(eff, eff.max(65536));
+            }};
         }
 
         loop {
@@ -281,6 +314,7 @@ impl UssService {
                         inner.state = "disabled";
                         inner.current_limit_bps = 0;
                         upload_bucket.set_rate(manual, manual.max(65536));
+                        apply_ud_ratio!(manual);
                     }
                 }
                 baseline_done = false;
@@ -352,6 +386,7 @@ impl UssService {
                     upload_bps = upload_bps.min(max);
                 }
                 upload_bucket.set_rate(upload_bps, upload_bps.max(65536));
+                apply_ud_ratio!(upload_bps);
                 delays.clear();
                 consecutive_failures = 0;
                 baseline_done = true;
@@ -467,6 +502,7 @@ impl UssService {
                 upload_bps = upload_bps.min(cfg.max_upload_bps);
             }
             upload_bucket.set_rate(upload_bps, upload_bps.max(65536));
+            apply_ud_ratio!(upload_bps);
 
             {
                 let mut inner = self.inner.write().unwrap();

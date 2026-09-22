@@ -39,6 +39,11 @@ pub struct DownloadSnapshot {
     /// parts verified); `downloads.get` reports the authoritative flags.
     #[serde(default)]
     pub parts: Vec<PartProgressSummary>,
+    /// Byte ranges of blocks currently requested but not yet received
+    /// (eMule `requestedblocks_list` — the yellow "pending" segments).
+    /// Enriched by the RPC/event layer from the swarm state.
+    #[serde(default)]
+    pub pending_ranges: Vec<(u64, u64)>,
     /// Per-file source cap imported from `.part.met` FT_MAXSOURCES
     /// (eMule `CPartFile::GetMaxSources`); `None` = global limit.
     #[serde(default)]
@@ -58,7 +63,17 @@ pub struct PartProgressSummary {
     /// Number of known sources whose availability mask covers this part
     /// (eMule's blue-shade/red coloring: 0 = no source has it → stuck part).
     pub available_source_count: u32,
+    /// Bitmap of the part split into [`PART_MASK_CELLS`] equal cells; bit i is
+    /// set when the cell is fully covered by received data. Lets the UI draw
+    /// eMule-style intra-part gaps without shipping the raw range list.
+    #[serde(default)]
+    pub received_mask: u64,
 }
+
+/// Number of cells in [`PartProgressSummary::received_mask`] (one bit each).
+/// ≈152 KiB per cell on a full 9.28 MiB part — close to the 180 KiB eD2K
+/// block granularity eMule's bar actually shows.
+pub const PART_MASK_CELLS: u64 = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -188,19 +203,25 @@ impl ActiveDownload {
         snap.parts = compute_part_summaries(
             self.download.total_size,
             &self.ranges,
-            self.sources.values().map(|s| &s.mask),
+            self.sources.values(),
             &verified_parts,
         );
         snap
     }
 }
 
+/// Fenêtre de fraîcheur des masques de disponibilité (30 min, comparable au
+/// cycle de requery des sources eMule). Au-delà, une source dont la session
+/// est morte ne contribue plus à `available_source_count` — eMule retire le
+/// client de `srclist` à la déconnexion.
+pub(crate) const SOURCE_FRESHNESS_MS: i64 = 30 * 60 * 1000;
+
 /// Computes the per-part progress summary shared by `downloads.list`
 /// snapshots and `downloads.get` details (eMule `CPartFile` part states).
 pub fn compute_part_summaries<'a>(
     total_size: u64,
     ranges: &RangeSet,
-    source_masks: impl Iterator<Item = &'a PartAvailabilityMask>,
+    sources: impl Iterator<Item = &'a ActiveSource>,
     verified_parts: &HashSet<u32>,
 ) -> Vec<PartProgressSummary> {
     let part_size_const = ED2K_PART_SIZE as u64;
@@ -211,7 +232,11 @@ pub fn compute_part_summaries<'a>(
     };
 
     let all_ranges = ranges.ranges();
-    let masks: Vec<&PartAvailabilityMask> = source_masks.collect();
+    let now = now_ms();
+    let masks: Vec<&PartAvailabilityMask> = sources
+        .filter(|s| now - s.last_seen_unix_ms <= SOURCE_FRESHNESS_MS)
+        .map(|s| &s.mask)
+        .collect();
     let mut parts = Vec::with_capacity(part_count as usize);
 
     for i in 0..part_count {
@@ -243,10 +268,34 @@ pub fn compute_part_summaries<'a>(
             "missing"
         };
 
+        // Convention eD2K : `part_count == 0` (masque vide) = source
+        // complète couvrant toutes les parts — eMule `ProcessFileStatus`
+        // matérialise alors `m_abyPartStatus` tout à 1.
         let available_source_count = masks
             .iter()
-            .filter(|m| u16::try_from(i).is_ok_and(|p| m.has_part(p)))
+            .filter(|m| {
+                m.part_count() == 0 || u16::try_from(i).is_ok_and(|p| m.has_part(p))
+            })
             .count() as u32;
+
+        // Intra-part received bitmap: 64 equal cells, bit set when the cell
+        // is fully covered. Skipped for empty/full parts (mask is trivial).
+        let received_mask = if received_in_part == 0 {
+            0
+        } else if received_in_part >= size {
+            u64::MAX
+        } else {
+            let cell = size.div_ceil(PART_MASK_CELLS);
+            let mut mask = 0u64;
+            for bit in 0..PART_MASK_CELLS {
+                let cs = start_offset + bit * cell;
+                let ce = (cs + cell).min(end_offset);
+                if cs < ce && ranges.contains(cs..ce) {
+                    mask |= 1 << bit;
+                }
+            }
+            mask
+        };
 
         parts.push(PartProgressSummary {
             part_index: i,
@@ -257,6 +306,7 @@ pub fn compute_part_summaries<'a>(
             is_verified,
             state: state.to_string(),
             available_source_count,
+            received_mask,
         });
     }
 
@@ -314,6 +364,76 @@ pub fn make_snapshot(
         eta_seconds,
         ed2k_hash: dl.ed2k_hash.to_string(),
         parts: Vec::new(),
+        pending_ranges: Vec::new(),
         max_sources: dl.max_sources,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn src(mask: PartAvailabilityMask, age_ms: i64) -> ActiveSource {
+        ActiveSource {
+            source_id: "src_test".to_string(),
+            _addr: "127.0.0.1:4662".parse().unwrap(),
+            mask,
+            last_seen_unix_ms: now_ms() - age_ms,
+        }
+    }
+
+    #[test]
+    fn part_summaries_count_only_queried_sources() {
+        // 2-part file, nothing received yet.
+        let total = ED2K_PART_SIZE as u64 * 2;
+        let ranges = RangeSet::new();
+        let verified = HashSet::new();
+
+        // No sources at all → every part red (0 sources).
+        let parts = compute_part_summaries(
+            total,
+            &ranges,
+            std::iter::empty::<&ActiveSource>(),
+            &verified,
+        );
+        assert_eq!(parts.len(), 2);
+        assert!(parts.iter().all(|p| p.available_source_count == 0));
+
+        // Partial source covering only part 0 → part 1 stays at 0.
+        let partial = PartAvailabilityMask::from_parts(&[0], 2);
+        let sources = [src(partial, 0)];
+        let parts = compute_part_summaries(total, &ranges, sources.iter(), &verified);
+        assert_eq!(parts[0].available_source_count, 1);
+        assert_eq!(parts[1].available_source_count, 0);
+    }
+
+    #[test]
+    fn part_summaries_empty_mask_is_complete_source() {
+        // eD2K convention (eMule ProcessFileStatus): part_count == 0 → the
+        // peer is a complete source covering every part.
+        let total = ED2K_PART_SIZE as u64 * 3;
+        let ranges = RangeSet::new();
+        let verified = HashSet::new();
+
+        let sources = [src(PartAvailabilityMask::empty(), 0)];
+        let parts = compute_part_summaries(total, &ranges, sources.iter(), &verified);
+        assert_eq!(parts.len(), 3);
+        assert!(parts.iter().all(|p| p.available_source_count == 1));
+    }
+
+    #[test]
+    fn part_summaries_stale_source_is_not_counted() {
+        let total = ED2K_PART_SIZE as u64;
+        let ranges = RangeSet::new();
+        let verified = HashSet::new();
+
+        // Mask learned 31 min ago → outside the freshness window.
+        let stale = src(
+            PartAvailabilityMask::from_parts(&[0], 1),
+            SOURCE_FRESHNESS_MS + 60_000,
+        );
+        let sources = [stale];
+        let parts = compute_part_summaries(total, &ranges, sources.iter(), &verified);
+        assert_eq!(parts[0].available_source_count, 0);
     }
 }

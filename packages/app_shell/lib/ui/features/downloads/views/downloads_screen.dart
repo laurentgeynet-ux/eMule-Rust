@@ -10,7 +10,6 @@ import '../widgets/downloads_list.dart';
 import '../widgets/downloads_sidebar.dart';
 import '../widgets/downloads_top_bar.dart';
 import '../widgets/incompatible_version_dialog.dart';
-import '../widgets/status_notification_banner.dart';
 import '../../history/views/history_view.dart';
 import '../../servers/views/servers_screen.dart';
 import '../../shares/views/shares_view.dart';
@@ -63,13 +62,6 @@ class DownloadsScreen extends ConsumerWidget {
                           IncompatibleVersionBanner(
                             errorMessage: ref.watch(shellControllerProvider).protocolMismatchError!,
                             onRetry: () => ref.watch(daemonSupervisorProvider)?.start(),
-                          ),
-
-                        // Status Notification banner if any
-                        if (ref.watch(shellControllerProvider).statusNotification != null)
-                          StatusNotificationBanner(
-                            message: ref.watch(shellControllerProvider).statusNotification!,
-                            onClose: ref.read(shellControllerProvider).clearStatusNotification,
                           ),
 
                         // Main Workspace Area (routed or VM-driven)

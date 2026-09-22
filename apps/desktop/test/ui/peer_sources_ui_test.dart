@@ -441,6 +441,9 @@ class PeerSourcesMockClient implements MuleDaemonClient {
   Stream<int> get historyEvents => const Stream.empty();
 
   @override
+  Stream<int> get sharesEvents => const Stream.empty();
+
+  @override
   Stream<SettingsChangedEvent> get settingsEvents => const Stream.empty();
 
   @override
@@ -544,7 +547,17 @@ class PeerSourcesMockClient implements MuleDaemonClient {
   );
 
   @override
-  Future<void> removeSharedFile(String fileHash) async {}
+  Future<void> removeSharedFile(String fileHash, {bool deleteFile = false}) async {}
+
+  @override
+  Future<DownloadItem> renameDownload(String id, String newName) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> renameSharedFile(String fileHash, String newName) async {}
+
+  @override
+  Future<void> resetLifetimeTotals() async {}
 
   @override
   Future<SharedFileModel> setSharedFileEnabled(
@@ -808,7 +821,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify section title is visible
-      expect(find.text('SOURCES ED2K & SESSION PEER'), findsOneWidget);
+      expect(find.text('SOURCES ED2K & PAIRS DE SESSION'), findsOneWidget);
 
       // Verify sources listed with status badges
       expect(find.text('127.0.0.1:39735'), findsOneWidget);

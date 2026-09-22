@@ -429,6 +429,9 @@ class LargeListMockClient implements MuleDaemonClient {
   Stream<int> get historyEvents => const Stream.empty();
 
   @override
+  Stream<int> get sharesEvents => const Stream.empty();
+
+  @override
   Stream<SettingsChangedEvent> get settingsEvents => const Stream.empty();
 
   @override
@@ -503,7 +506,17 @@ class LargeListMockClient implements MuleDaemonClient {
   );
 
   @override
-  Future<void> removeSharedFile(String fileHash) async {}
+  Future<void> removeSharedFile(String fileHash, {bool deleteFile = false}) async {}
+
+  @override
+  Future<DownloadItem> renameDownload(String id, String newName) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> renameSharedFile(String fileHash, String newName) async {}
+
+  @override
+  Future<void> resetLifetimeTotals() async {}
 
   @override
   Future<SharedFileModel> setSharedFileEnabled(
@@ -727,9 +740,11 @@ void main() {
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
-      // Verify initial viewport renders visible items
+      // Verify initial viewport renders visible items — with the list
+      // ordering (completed last, others by progress desc then most recent
+      // first), `archive_part_2` is the newest active item and sits on top.
       expect(find.byType(DownloadRow), findsWidgets);
-      expect(find.text('archive_part_1.tar.gz'), findsOneWidget);
+      expect(find.text('archive_part_2.tar.gz'), findsOneWidget);
 
       // Scroll down 2000 pixels
       await tester.drag(find.byType(ListView), const Offset(0, -2000));
@@ -737,7 +752,7 @@ void main() {
 
       // Elements off screen should be unmounted (virtualized)
       expect(find.byType(DownloadRow), findsWidgets);
-      expect(find.text('archive_part_1.tar.gz'), findsNothing);
+      expect(find.text('archive_part_2.tar.gz'), findsNothing);
 
       // Filter to active items only
       viewModel.setFilter(DownloadFilter.active);

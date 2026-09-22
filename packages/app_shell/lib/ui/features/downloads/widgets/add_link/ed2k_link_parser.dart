@@ -1,3 +1,5 @@
+import '../../../../../l10n/l10n_lookup.dart';
+
 /// Result of parsing a candidate `ed2k://|file|…` link.
 class Ed2kLinkParseResult {
   final String? fileName;
@@ -33,15 +35,15 @@ Ed2kLinkParseResult parseEd2kLink(String raw) {
   if (text.isEmpty) return const Ed2kLinkParseResult.empty();
 
   if (!text.startsWith('ed2k://|file|')) {
-    return const Ed2kLinkParseResult.error(
-      'Must start with "ed2k://|file|"',
+    return Ed2kLinkParseResult.error(
+      L10nLookup.current.ed2kErrPrefix,
     );
   }
 
   final parts = text.split('|');
   if (parts.length < 5) {
-    return const Ed2kLinkParseResult.error(
-      'Incomplete eD2K link format',
+    return Ed2kLinkParseResult.error(
+      L10nLookup.current.ed2kErrIncomplete,
     );
   }
 
@@ -50,8 +52,8 @@ Ed2kLinkParseResult parseEd2kLink(String raw) {
   final hash = parts[4];
 
   if (name.isEmpty || size == null || size <= 0 || hash.length != 32) {
-    return const Ed2kLinkParseResult.error(
-      'Invalid filename, size, or 32-character hex hash',
+    return Ed2kLinkParseResult.error(
+      L10nLookup.current.ed2kErrInvalid,
     );
   }
 

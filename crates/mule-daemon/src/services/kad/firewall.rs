@@ -313,7 +313,7 @@ impl KadService {
         let mut tags = Vec::with_capacity(6);
         tags.push(Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_NAME),
-            value: TagValue::String("Emule-Sion".to_string()),
+            value: TagValue::String("eMule-Rust".to_string()),
         });
         tags.push(Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_VERSION),

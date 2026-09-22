@@ -8,6 +8,7 @@ import 'shell_controller.dart';
 
 export 'shell_controller.dart';
 import '../core/daemon_lifecycle.dart';
+import '../l10n/l10n_lookup.dart';
 
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
@@ -22,6 +23,7 @@ import 'transfer_rate_tracker.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/uploads/view_models/uploads_controller.dart';
+import '../ui/features/shares/view_models/shares_controller.dart';
 
 // Application composition root and daemon session owner.
 ///
@@ -82,6 +84,10 @@ class AppController extends ChangeNotifier {
   /// `features/uploads/view_models/uploads_controller.dart`).
   late final UploadsController uploads;
 
+  /// Shared files sub-domain (extracted controller, see
+  /// `features/shares/view_models/shares_controller.dart`).
+  late final SharesController shares;
+
   /// Latest aggregate `event.statsTick` snapshot (app-level).
   late final StatsController stats;
 
@@ -108,6 +114,8 @@ class AppController extends ChangeNotifier {
           kad.fetchContacts();
         } else if (section == AppNavSection.uploads) {
           uploads.fetch();
+        } else if (section == AppNavSection.shares) {
+          shares.fetch();
         }
       },
     )..addListener(notifyListeners);
@@ -118,6 +126,9 @@ class AppController extends ChangeNotifier {
       onRefresh: refresh,
     )..addListener(notifyListeners);
     uploads = UploadsController(client: client)
+      ..attach()
+      ..addListener(notifyListeners);
+    shares = SharesController(client: client)
       ..attach()
       ..addListener(notifyListeners);
     stats = StatsController(client: client)
@@ -196,13 +207,16 @@ class AppController extends ChangeNotifier {
           final d = e.download;
           if (d != null) {
             downloadsCtl.upsert(d);
-            shellCtl.setStatus('Téléchargement terminé : ${d.fileName}');
+            shellCtl.setStatus(
+              L10nLookup.current.msgDownloadCompleted(d.fileName),
+            );
           }
         case DownloadLifecycleKind.failed:
           final d = e.download;
           if (d != null) downloadsCtl.upsert(d);
           shellCtl.setError(
-            'Échec du téléchargement : ${d?.fileName ?? e.id ?? "?"}',
+            L10nLookup.current
+                .msgDownloadFailed(d?.fileName ?? e.id ?? '?'),
           );
       }
     });
@@ -334,7 +348,7 @@ class AppController extends ChangeNotifier {
       }
 
       return true;
-    }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }).toList()..sort(compareDownloadsForList);
   }
 
   // Actions
@@ -367,6 +381,7 @@ class AppController extends ChangeNotifier {
       await fetchKadStatus();
       await downloadsCtl.reload();
       await uploads.fetch();
+      await shares.fetch();
       shellCtl.setError(null);
     } catch (e) {
       shellCtl.setError("Refresh failed: $e");

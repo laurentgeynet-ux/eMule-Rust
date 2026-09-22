@@ -54,7 +54,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
 
   Future<void> _browseFolder() async {
     final chosen = await pickFolder(
-      description: 'Select Default Category Download Directory',
+      description: context.l10n.catPickDir,
     );
     if (chosen != null && mounted) {
       setState(() {
@@ -66,7 +66,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = 'Category name cannot be empty');
+      setState(() => _error = context.l10n.catNameRequired);
       return;
     }
 
@@ -106,7 +106,8 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
       Navigator.of(context).pop();
     } else {
       setState(() =>
-          _error = ref.read(shellControllerProvider).errorMessage ?? 'Operation failed');
+          _error = ref.read(shellControllerProvider).errorMessage ??
+              context.l10n.opFailed);
     }
   }
 
@@ -147,7 +148,9 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    isEditing ? 'Edit Category' : 'New Category',
+                    isEditing
+                        ? context.l10n.catEditTitle
+                        : context.l10n.catNewTitle,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -200,7 +203,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
                 ),
                 const SizedBox(height: 16),
               ],
-              const _FieldLabel('Category Name *'),
+              _FieldLabel(context.l10n.catNameLabel),
               TextField(
                 controller: _nameController,
                 autofocus: true,
@@ -211,13 +214,13 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-              const _FieldLabel('Color Tag'),
+              _FieldLabel(context.l10n.catColorLabel),
               CategoryColorPicker(
                 colorController: _colorController,
                 onChanged: () => setState(() {}),
               ),
               const SizedBox(height: 16),
-              const _FieldLabel('Default Destination (Optional)'),
+              _FieldLabel(context.l10n.catDestLabel),
               Row(
                 children: [
                   Expanded(
@@ -250,7 +253,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
                 ],
               ),
               const SizedBox(height: 16),
-              const _FieldLabel('Default Priority (Optional)'),
+              _FieldLabel(context.l10n.catPrioLabel),
               CategoryPriorityDropdown(
                 value: _selectedPriority,
                 onChanged: (val) =>
@@ -287,8 +290,8 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog> {
                           ),
                     label: Text(
                       isEditing
-                          ? 'Save Changes'
-                          : 'Create Category',
+                          ? context.l10n.catSaveChanges
+                          : context.l10n.catCreate,
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: currentColor,

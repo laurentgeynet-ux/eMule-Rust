@@ -880,6 +880,54 @@ impl PeerSessionManager {
         }
     }
 
+    /// Byte ranges of blocks currently requested but not yet received for a
+    /// file (eMule `requestedblocks_list` — painted yellow on the status
+    /// bar). Empty when the file has no active session.
+    pub(crate) fn pending_ranges_locked(g: &SwarmInnerState, file_hash: &str) -> Vec<(u64, u64)> {
+        g.in_flight_blocks
+            .iter()
+            .filter(|b| {
+                g.sessions
+                    .get(&b.peer_id)
+                    .is_some_and(|s| s.snapshot.file_hash.as_deref() == Some(file_hash))
+            })
+            .map(|b| (b.start, b.end))
+            .collect()
+    }
+
+    /// Non-blocking variant for sync emit paths (`broadcast_download_update`
+    /// runs without async context): returns empty when the swarm state is
+    /// contended — the next event refreshes it.
+    pub fn try_pending_ranges(&self, file_hash: &str) -> Vec<(u64, u64)> {
+        self.inner
+            .try_lock()
+            .map(|g| Self::pending_ranges_locked(&g, file_hash))
+            .unwrap_or_default()
+    }
+
+    /// Async variant for RPC handlers (`downloads.get`).
+    pub async fn pending_ranges_for_file(&self, file_hash: &str) -> Vec<(u64, u64)> {
+        let g = self.inner.lock().await;
+        Self::pending_ranges_locked(&g, file_hash)
+    }
+
+    /// All in-flight ranges grouped by file hash — one lock for
+    /// `downloads.list`.
+    pub async fn pending_ranges_by_file(&self) -> HashMap<String, Vec<(u64, u64)>> {
+        let g = self.inner.lock().await;
+        let mut out: HashMap<String, Vec<(u64, u64)>> = HashMap::new();
+        for b in &g.in_flight_blocks {
+            if let Some(hash) = g
+                .sessions
+                .get(&b.peer_id)
+                .and_then(|s| s.snapshot.file_hash.clone())
+            {
+                out.entry(hash).or_default().push((b.start, b.end));
+            }
+        }
+        out
+    }
+
     /// Clears any cached sessions and in-flight blocks.
     pub async fn clear(&self) {
         let mut g = self.inner.lock().await;

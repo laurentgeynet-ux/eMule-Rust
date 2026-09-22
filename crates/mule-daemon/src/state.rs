@@ -57,6 +57,11 @@ pub struct AppState {
     /// `false` bloque les nouvelles demandes de slot. Piloté par
     /// `spawn_quota_watcher`.
     upload_quota_gate: Arc<AtomicBool>,
+    /// Totaux cumulés depuis l'installation (persistés en settings DB,
+    /// incrémentés du delta de session à chaque `statsTick`, remis à zéro
+    /// par `stats.resetLifetimeTotals`).
+    pub lifetime_downloaded_bytes: Arc<AtomicU64>,
+    pub lifetime_uploaded_bytes: Arc<AtomicU64>,
     #[cfg(feature = "lab-tools")]
     pub active_lab_peer: Arc<Mutex<Option<(std::net::SocketAddr, tokio::task::AbortHandle)>>>,
 }
@@ -181,6 +186,17 @@ impl AppState {
                     rl.upload_bytes_per_sec = clamped;
                 }
             }
+            // eMule `GetMaxDownloadInBytesPerSec` : ratio upload/download
+            // — le bucket reçoit l'effectif ; le setting persisté garde la
+            // valeur *configurée* (le ratio n'est jamais réécrit).
+            let eff_dl = mule_network_policy::emule_ud_ratio(
+                rl.download_bytes_per_sec,
+                rl.upload_bytes_per_sec,
+            );
+            if eff_dl != rl.download_bytes_per_sec {
+                rl.download_bytes_per_sec = eff_dl;
+                has_override = true;
+            }
             if has_override {
                 network_policy.rate_limiters().apply_config(&rl);
             }
@@ -220,6 +236,21 @@ impl AppState {
         let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
         let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence))
             .with_limits(max_per_dl, max_global);
+        // Totaux « depuis l'installation » persistés en settings — lus une
+        // fois au boot puis incrémentés des deltas de session par la
+        // boucle statsTick (remis à zéro via `stats.resetLifetimeTotals`).
+        let u64_setting = |key: &str| {
+            downloads
+                .get_setting(key)
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0)
+        };
+        let lifetime_downloaded_bytes =
+            Arc::new(AtomicU64::new(u64_setting("lifetime_downloaded_bytes")));
+        let lifetime_uploaded_bytes =
+            Arc::new(AtomicU64::new(u64_setting("lifetime_uploaded_bytes")));
         downloads.set_event_channel(event_tx.clone(), Arc::clone(&sequence));
         let dl_arc = Arc::new(Mutex::new(downloads));
         server_session.set_downloads(Arc::clone(&dl_arc));
@@ -257,6 +288,14 @@ impl AppState {
             .set_quota_gate(Arc::clone(&upload_quota_gate));
         inbound_listener.set_peer_session(peer_session.clone());
         inbound_listener.set_server_session(server_session.clone());
+        // Sens inverse : OP_CALLBACKREQUESTED relayé par le serveur (un
+        // pair HighID veut nous joindre alors que nous sommes LowID)
+        // déclenche un connect-back sortant servi par l'inbound listener.
+        server_session.set_inbound_listener(inbound_listener.clone());
+        // eMule IsServerCryptLayerConnection : tentative d'obfuscation du
+        // handshake serveur selon les préférences effectives (persistées).
+        server_session
+            .set_obfuscation_preference(obf_enabled || obf_required, config.obfuscation_padding_max);
         let kad_id = mule_core::kad::KadId::random();
         let kad = Arc::new(crate::services::KadService::new(
             kad_id,
@@ -266,6 +305,9 @@ impl AppState {
         ));
         kad.set_ed2k_tcp_port(ed2k_port_eff);
         kad.set_fw_check_identity(user_hash);
+        // Nudges `kad.statusChanged` quand la table de routage évolue en
+        // tâche de fond — le badge UI se met à jour sans ouvrir la section.
+        kad.set_event_channel(event_tx.clone(), Arc::clone(&sequence));
         // Buddy relay role: TCP port the buddy client connects to, and the
         // GetMyConnectOptions-style flags byte sent in KADEMLIA_FINDBUDDY_RES
         // (bit0/1 = obfuscation supported+requested, bit2 = required).
@@ -308,16 +350,21 @@ impl AppState {
         // Friend slots: load persisted friends into the upload manager
         // (eMule friends.met → dedicated slots for `uh:<userhash>` keys).
         {
-            let friends = dl_arc
-                .try_lock()
-                .map(|dl| dl.list_friends().unwrap_or_default())
-                .unwrap_or_default();
-            inbound_listener.upload_manager().set_friends(
-                friends
-                    .iter()
-                    .map(|f| format!("uh:{}", f.user_hash))
-                    .collect(),
-            );
+            if let Ok(dl) = dl_arc.try_lock() {
+                let friends = dl.list_friends().unwrap_or_default();
+                inbound_listener.upload_manager().set_friends(
+                    friends
+                        .iter()
+                        .map(|f| format!("uh:{}", f.user_hash))
+                        .collect(),
+                );
+                // Totaux uploadés par fichier persistés (`share_upload_stats`)
+                // — l'UploadManager les incrémente ensuite en mémoire.
+                let totals = dl.list_share_uploaded_bytes().unwrap_or_default();
+                inbound_listener
+                    .upload_manager()
+                    .set_file_upload_totals(totals);
+            }
         }
         let kad_udp = Arc::clone(kad.udp());
         let client_udp_for_kad = client_udp.clone();
@@ -337,15 +384,63 @@ impl AppState {
             let stats_kad = Arc::clone(&kad);
             let stats_tx = event_tx.clone();
             let stats_seq = Arc::clone(&sequence);
+            let stats_lifetime_dl = Arc::clone(&lifetime_downloaded_bytes);
+            let stats_lifetime_ul = Arc::clone(&lifetime_uploaded_bytes);
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                let mut last_session_dl = 0u64;
+                let mut last_session_ul = 0u64;
+                // Totaux par fichier déjà persistés — le delta écrit à
+                // chaque tick ne couvre que les octets envoyés depuis.
+                let mut last_file_totals = stats_uploads.per_file_uploaded_bytes();
                 loop {
                     interval.tick().await;
                     if stats_tx.receiver_count() == 0 {
                         continue;
                     }
-                    let downloads = stats_downloads.lock().await.list_downloads();
+                    let session_uploaded_bytes = stats_uploads.total_uploaded_bytes();
+                    let (downloads, session_downloaded_bytes) = {
+                        let mut dl = stats_downloads.lock().await;
+                        // Cumul « depuis l'installation » : on ajoute le delta
+                        // de session écoulé depuis le dernier tick (seuls les
+                        // deltas positifs comptent — les évictions de parts
+                        // corrompues ne retirent rien au total) puis on
+                        // persiste, sinon un crash perdrait le delta courant.
+                        let session_dl = dl.session_downloaded_bytes();
+                        let d_dl = session_dl.saturating_sub(last_session_dl);
+                        let d_ul = session_uploaded_bytes.saturating_sub(last_session_ul);
+                        if d_dl > 0 || d_ul > 0 {
+                            let lt_dl =
+                                stats_lifetime_dl.fetch_add(d_dl, Ordering::SeqCst) + d_dl;
+                            let lt_ul =
+                                stats_lifetime_ul.fetch_add(d_ul, Ordering::SeqCst) + d_ul;
+                            let _ = dl.set_setting(
+                                "lifetime_downloaded_bytes",
+                                &lt_dl.to_string(),
+                            );
+                            let _ = dl.set_setting(
+                                "lifetime_uploaded_bytes",
+                                &lt_ul.to_string(),
+                            );
+                        }
+                        last_session_dl = session_dl;
+                        last_session_ul = session_uploaded_bytes;
+                        // Persiste les deltas d'upload par fichier dans
+                        // `share_upload_stats` (même cadence que les cumuls
+                        // lifetime — un crash ne perd qu'un tick).
+                        let file_totals = stats_uploads.per_file_uploaded_bytes();
+                        for (hash, total) in &file_totals {
+                            let prev =
+                                last_file_totals.get(hash.as_str()).copied().unwrap_or(0);
+                            let d = total.saturating_sub(prev);
+                            if d > 0 {
+                                let _ = dl.add_share_uploaded_bytes(hash, d);
+                            }
+                        }
+                        last_file_totals = file_totals;
+                        (dl.list_downloads(), session_dl)
+                    };
                     let download_bps: u64 = downloads.iter().map(|d| d.download_rate_bps).sum();
                     let downloads_active = downloads
                         .iter()
@@ -373,9 +468,25 @@ impl AppState {
                             server_connected,
                             kad_contacts: kad_status.total_contacts,
                             kad_udp_bound: kad_status.udp_bind_address.is_some(),
+                            session_downloaded_bytes,
+                            session_uploaded_bytes,
+                            lifetime_downloaded_bytes:
+                                stats_lifetime_dl.load(Ordering::SeqCst),
+                            lifetime_uploaded_bytes:
+                                stats_lifetime_ul.load(Ordering::SeqCst),
                         },
                     }
                     .send(&stats_tx);
+                    // Poussée périodique des snapshots d'upload sur la même
+                    // cadence : rafraîchit les débits mesurés par fenêtre et
+                    // les fait décroître vers 0 quand un client cesse de
+                    // demander des blocs (sinon l'UI resterait figée sur la
+                    // dernière valeur entre deux `update_progress`).
+                    if stats_uploads.active_len() > 0
+                        || stats_uploads.waiting_len().await > 0
+                    {
+                        stats_uploads.emit_uploads_updated().await;
+                    }
                 }
             });
         }
@@ -413,6 +524,8 @@ impl AppState {
             kad_port_eff: Arc::new(std::sync::atomic::AtomicU16::new(kad_port_eff)),
             udp_enabled: Arc::new(AtomicBool::new(udp_enabled)),
             upload_quota_gate,
+            lifetime_downloaded_bytes,
+            lifetime_uploaded_bytes,
             #[cfg(feature = "lab-tools")]
             active_lab_peer: Arc::new(Mutex::new(None)),
         }
@@ -462,7 +575,7 @@ impl AppState {
     }
 
     /// Effective nickname announced in eD2K hellos / server login
-    /// (eMule `nick` pref). Default: "Emule-Sion".
+    /// (eMule `nick` pref). Default: "eMule-Rust".
     pub async fn current_nickname(&self) -> String {
         self.downloads
             .lock()
@@ -472,7 +585,7 @@ impl AppState {
             .flatten()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "Emule-Sion".to_string())
+            .unwrap_or_else(|| "eMule-Rust".to_string())
     }
 
     pub async fn register_task(&self, handle: tokio::task::AbortHandle) {
@@ -496,7 +609,11 @@ impl AppState {
     }
 
     /// Emits a sequenced download update event to all active WebSocket subscribers.
-    pub fn broadcast_download_update(&self, snapshot: DownloadSnapshot) {
+    pub fn broadcast_download_update(&self, mut snapshot: DownloadSnapshot) {
+        // Attach the swarm's in-flight block ranges (eMule "pending" yellow
+        // segments) — the downloads service can't see peer sessions itself.
+        snapshot.pending_ranges =
+            self.peer_session.try_pending_ranges(&snapshot.ed2k_hash);
         self.emit_event(|sequence| DaemonEvent::DownloadUpdated {
             sequence,
             download: snapshot,

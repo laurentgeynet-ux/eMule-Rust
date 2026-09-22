@@ -125,6 +125,11 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
 
         CREATE INDEX IF NOT EXISTS idx_shared_files_enabled ON shared_files(enabled);
 
+        CREATE TABLE IF NOT EXISTS share_upload_stats (
+            file_hash TEXT PRIMARY KEY,
+            uploaded_bytes INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS peer_credits (
             pubkey_hash TEXT PRIMARY KEY,
             pubkey_hex TEXT NOT NULL,

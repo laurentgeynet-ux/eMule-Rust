@@ -52,6 +52,12 @@ class SettingsAdvancedSection extends ConsumerWidget {
             builder: (_) => const LabGuideDialog(),
           ),
         ),
+        _AdvancedTile(
+          icon: Icons.restart_alt_rounded,
+          title: l10n.settingsLifetimeResetTile,
+          subtitle: l10n.settingsLifetimeResetSub,
+          onTap: () => _confirmLifetimeReset(context, ref),
+        ),
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -82,6 +88,43 @@ class SettingsAdvancedSection extends ConsumerWidget {
             style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
       ],
+    );
+  }
+
+  /// Confirmation avant remise à zéro des compteurs « depuis
+  /// l'installation » (`stats.resetLifetimeTotals`) — les totaux de
+  /// session sont conservés.
+  void _confirmLifetimeReset(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.lifetimeResetConfirmTitle),
+        content: Text(
+          l10n.lifetimeResetConfirmBody,
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.statusFailed,
+            ),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await ref
+                    .read(muleDaemonClientProvider)
+                    .resetLifetimeTotals();
+              } catch (_) {}
+            },
+            child: Text(l10n.lifetimeResetConfirmButton),
+          ),
+        ],
+      ),
     );
   }
 }

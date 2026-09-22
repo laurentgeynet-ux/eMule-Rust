@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../l10n/l10n.dart';
+
 /// Filter-status badge shared by the servers data table and the mobile
 /// cards list: blocked by IP filter / disabled / allowed.
 class ServerStatusBadge extends StatelessWidget {
@@ -28,7 +30,7 @@ class ServerStatusBadge extends StatelessWidget {
         padding,
         color: AppColors.tintRed.withAlpha(40),
         border: AppColors.danger.withAlpha(100),
-        text: 'Bloque par IP Filter',
+        text: context.l10n.serverBlockedByFilter,
         textColor: AppColors.danger,
         fontSize: fontSize,
         bold: true,
@@ -39,7 +41,7 @@ class ServerStatusBadge extends StatelessWidget {
         padding,
         color: AppColors.tintGrey.withAlpha(40),
         border: AppColors.tintGrey.withAlpha(100),
-        text: 'Desactive',
+        text: context.l10n.serverDisabledBadge,
         textColor: AppColors.textSoft,
         fontSize: fontSize,
       );
@@ -48,7 +50,7 @@ class ServerStatusBadge extends StatelessWidget {
       padding,
       color: AppColors.tintGreen.withAlpha(40),
       border: AppColors.positive.withAlpha(100),
-      text: 'Autorise',
+      text: context.l10n.peerSrcAllowed,
       textColor: AppColors.positive,
       fontSize: fontSize,
       bold: true,

@@ -41,8 +41,8 @@ class UploadsTable extends StatelessWidget {
           if (isQueue) ...[
             DataColumn(label: Text(context.l10n.uploadsRank)),
             // eMule queue score: wait × credit × file priority.
-            const DataColumn(label: Text('Score')),
-            const DataColumn(label: Text('Crédit')),
+            DataColumn(label: Text(context.l10n.uploadsScore)),
+            DataColumn(label: Text(context.l10n.uploadsCredit)),
           ] else
             DataColumn(label: Text(context.l10n.uploadsRate)),
           DataColumn(label: Text(context.l10n.statut)),
@@ -125,8 +125,8 @@ class UploadsTable extends StatelessWidget {
                       ),
                       if (s.banned) ...[
                         const SizedBox(width: 4),
-                        const Tooltip(
-                          message: 'Client banni (score 0)',
+                        Tooltip(
+                          message: context.l10n.uploadsBanned,
                           child: Icon(
                             Icons.block,
                             size: 12,

@@ -113,6 +113,26 @@ pub async fn handle_stop(state: &AppState) -> Result<Value, JsonRpcError> {
     Ok(json!({ "stopping": true }))
 }
 
+/// `stats.resetLifetimeTotals` — remet à zéro les compteurs cumulés
+/// « depuis l'installation » (download + upload) : les compteurs en
+/// mémoire alimentant `statsTick` ET les valeurs persistées. Les totaux
+/// de session ne sont pas touchés ; les octets émis après le reset
+/// recommencent à s'accumuler à partir de zéro.
+pub async fn handle_stats_reset_lifetime_totals(
+    state: &AppState,
+) -> Result<Value, JsonRpcError> {
+    state
+        .lifetime_downloaded_bytes
+        .store(0, std::sync::atomic::Ordering::SeqCst);
+    state
+        .lifetime_uploaded_bytes
+        .store(0, std::sync::atomic::Ordering::SeqCst);
+    let mut dl = state.downloads.lock().await;
+    dl.set_setting("lifetime_downloaded_bytes", "0")?;
+    dl.set_setting("lifetime_uploaded_bytes", "0")?;
+    Ok(json!({ "reset": true }))
+}
+
 pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError> {
     let (
         custom_dir,
@@ -153,7 +173,7 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
         let nickname = dls
             .get_setting("nickname")?
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "Emule-Sion".to_string());
+            .unwrap_or_else(|| "eMule-Rust".to_string());
         let bool_setting = |key: &str, default: bool| {
             dls.get_setting(key)
                 .ok()
@@ -425,6 +445,13 @@ pub async fn handle_settings_set(
     if obf_changed {
         let (enabled, required) = state.effective_obfuscation().await;
         state.inbound_listener.set_obfuscation(enabled, required);
+        // Propager la préférence à la session serveur (eMule
+        // IsServerCryptLayerConnection) — sinon le réglage n'agit que sur
+        // les pairs entrants.
+        state.server_session.set_obfuscation_preference(
+            enabled || required,
+            state.config.obfuscation_padding_max,
+        );
         // Update the buddy-relay connect-options byte announced over Kad.
         let connect_opts: u8 = if enabled { 0x03 } else { 0 } | if required { 0x04 } else { 0 };
         state
@@ -911,7 +938,7 @@ async fn apply_port_change(state: &AppState) -> Result<(), JsonRpcError> {
 /// Starts/stops the UDP services per the `udp_enabled` toggle (eMule
 /// « UDP désactivé »). Kad UDP + server UDP share the toggle; the client
 /// UDP layer rides the Kad socket so it follows automatically.
-async fn apply_udp_state(state: &AppState, enabled: bool) {
+pub(crate) async fn apply_udp_state(state: &AppState, enabled: bool) {
     let profile = state.network_policy.profile();
     if enabled && profile.allows_udp_kad() {
         let ip = if profile.is_loopback_only() {

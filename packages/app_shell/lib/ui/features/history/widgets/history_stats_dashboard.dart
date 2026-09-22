@@ -22,7 +22,7 @@ class HistoryStatsDashboard extends StatelessWidget {
             HistoryStatCard(
               width: cardWidth,
               title: context.l10n.totalCompleted,
-              mainValue: '${stats.totalCompletedCount} files',
+              mainValue: context.l10n.histFilesCount(stats.totalCompletedCount),
               subtitle: Formatters.formatBytes(stats.totalCompletedBytes),
               icon: Icons.check_circle_outline_rounded,
               color: AppTheme.statusCompleted,
@@ -30,9 +30,10 @@ class HistoryStatsDashboard extends StatelessWidget {
             HistoryStatCard(
               width: cardWidth,
               title: context.l10n.activityWindows,
-              mainValue:
-                  '${stats.sessionCompletedCount} session '
-                  '(${Formatters.formatBytes(stats.sessionCompletedBytes)})',
+              mainValue: context.l10n.histSessionCount(
+                stats.sessionCompletedCount,
+                Formatters.formatBytes(stats.sessionCompletedBytes),
+              ),
               subtitle: context.l10n.twentyFourHours(
                   '${stats.last24hCompletedCount}',
                   '${stats.last7dCompletedCount}'),
@@ -42,7 +43,8 @@ class HistoryStatsDashboard extends StatelessWidget {
             HistoryStatCard(
               width: cardWidth,
               title: context.l10n.resumesRetries,
-              mainValue: '${stats.totalResumesCount} resumes',
+              mainValue:
+                  context.l10n.histResumesCount(stats.totalResumesCount),
               subtitle: context.l10n.failuresLogged('${stats.totalFailedCount}'),
               icon: Icons.replay_rounded,
               color: AppTheme.statusDownloading,
@@ -50,10 +52,11 @@ class HistoryStatsDashboard extends StatelessWidget {
             HistoryStatCard(
               width: cardWidth,
               title: context.l10n.integrityHealth,
-              mainValue: '${stats.totalIntegrityFailures} hash mismatch',
+              mainValue: context.l10n
+                  .histHashMismatchCount(stats.totalIntegrityFailures),
               subtitle: stats.totalIntegrityFailures == 0
-                  ? '100% hash verified'
-                  : 'Integrity errors detected',
+                  ? context.l10n.histHashVerified
+                  : context.l10n.histIntegrityErrors,
               icon: Icons.verified_user_outlined,
               color: stats.totalIntegrityFailures == 0
                   ? AppColors.accentTeal

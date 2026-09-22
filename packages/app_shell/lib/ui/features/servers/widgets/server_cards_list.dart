@@ -61,7 +61,7 @@ class ServerCardsList extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      server.name.isNotEmpty ? server.name : 'Sans nom',
+                      server.name.isNotEmpty ? server.name : context.l10n.serverUnnamed,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13.5,
@@ -194,7 +194,9 @@ class ServerCardsList extends StatelessWidget {
                           ? AppColors.positive
                           : AppColors.accentAmber,
                     ),
-                    tooltip: isDisabled ? 'Activer' : 'Desactiver',
+                    tooltip: isDisabled
+                        ? context.l10n.serverEnable
+                        : context.l10n.serverDisable,
                     onPressed: () =>
                         controller.setEnabled(server.address, isDisabled),
                   ),

@@ -62,17 +62,17 @@ void main() {
 
       expect(find.text('eDonkeyServer No2'), findsOneWidget);
       expect(find.text('176.103.48.36:4184'), findsOneWidget);
-      expect(find.textContaining('Autorise'), findsWidgets);
+      expect(find.textContaining('Autorisé'), findsWidgets);
       expect(find.text('Filtered Rouge Server'), findsOneWidget);
       expect(find.text('10.20.30.40:4661'), findsOneWidget);
-      expect(find.textContaining('Bloque'), findsOneWidget);
+      expect(find.textContaining('Bloqué'), findsOneWidget);
 
       final pauseBtn = find.byIcon(Icons.pause_rounded).first;
       await tester.ensureVisible(pauseBtn);
       await tester.pumpAndSettle();
       await tester.tap(pauseBtn);
       await tester.pumpAndSettle();
-      expect(find.textContaining('Desactive'), findsOneWidget);
+      expect(find.textContaining('Désactivé'), findsOneWidget);
 
       final deleteBtn = find.byIcon(Icons.delete_outline).first;
       await tester.tap(deleteBtn);

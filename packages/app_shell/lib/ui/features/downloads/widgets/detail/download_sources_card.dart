@@ -212,8 +212,8 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
               alignment: Alignment.center,
               child: Text(
                 ctl.isLoading
-                    ? 'Chargement des sources...'
-                    : 'Aucune source enregistrée pour ce fichier.',
+                    ? context.l10n.srcLoading
+                    : context.l10n.srcNone,
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textFaint,

@@ -1,8 +1,22 @@
 import 'dart:async';
 import '../../../../core/system_actions.dart';
+import '../../../../l10n/enum_labels.dart';
+import '../../../../l10n/l10n_lookup.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+
+/// Ordre d'affichage de la liste des téléchargements : les éléments
+/// terminés en bas ; les autres triés par avancement décroissant (les plus
+/// complets en haut). À égalité, les ajouts les plus récents d'abord.
+int compareDownloadsForList(DownloadItem a, DownloadItem b) {
+  final doneCmp =
+      (a.status.isCompleted ? 1 : 0) - (b.status.isCompleted ? 1 : 0);
+  if (doneCmp != 0) return doneCmp;
+  final progressCmp = b.progress.compareTo(a.progress);
+  if (progressCmp != 0) return progressCmp;
+  return b.createdAt.compareTo(a.createdAt);
+}
 
 /// Sub-domain controller for the downloads store.
 ///
@@ -130,8 +144,10 @@ class DownloadsStoreController extends ChangeNotifier {
         final existing = getDownloadByHash(linkHash);
         if (existing != null) {
           onError?.call(
-            'Ce fichier est déjà dans la liste des téléchargements '
-            '("${existing.fileName}", statut : ${existing.status.label})',
+            L10nLookup.current.msgDownloadDuplicate(
+              existing.fileName,
+              existing.status.labelL10n(L10nLookup.current),
+            ),
           );
           return false;
         }
@@ -155,7 +171,7 @@ class DownloadsStoreController extends ChangeNotifier {
         }
       }
 
-      onStatus?.call('Fichier "$displayName" ajouté aux téléchargements');
+      onStatus?.call(L10nLookup.current.msgDownloadAdded(displayName));
       await onRefresh?.call();
       return true;
     } catch (e) {
@@ -194,13 +210,16 @@ class DownloadsStoreController extends ChangeNotifier {
       _downloads[res.download.id] = res.download;
       _selectedId = res.download.id;
       onStatus?.call(
-        'Imported "${res.download.fileName}" (${res.verifiedParts}/'
-        '${res.totalParts} verified, status: Paused)',
+        L10nLookup.current.msgImportedFile(
+          res.download.fileName,
+          res.totalParts,
+          res.verifiedParts,
+        ),
       );
       await onRefresh?.call();
       return res;
     } catch (e) {
-      onError?.call('Failed to import .part.met: $e');
+      onError?.call(L10nLookup.current.msgErrImportPartMet(e));
       return null;
     } finally {
       _isLoading = false;
@@ -214,7 +233,7 @@ class DownloadsStoreController extends ChangeNotifier {
       _downloads[updated.id] = updated;
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to pause: $e');
+      onError?.call(L10nLookup.current.msgErrPause(e));
       notifyListeners();
     }
   }
@@ -225,8 +244,25 @@ class DownloadsStoreController extends ChangeNotifier {
       _downloads[updated.id] = updated;
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to resume: $e');
+      onError?.call(L10nLookup.current.msgErrResume(e));
       notifyListeners();
+    }
+  }
+
+  /// `downloads.rename` — renomme le fichier (en cours ou terminé ; le
+  /// daemon renomme aussi le fichier disque et l'entrée `shared_files`
+  /// associée). Retourne `false` si le daemon refuse (nom invalide,
+  /// collision…).
+  Future<bool> rename(String id, String newName) async {
+    try {
+      final updated = await client.renameDownload(id, newName);
+      _downloads[updated.id] = updated;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      onError?.call(L10nLookup.current.msgErrRename(e));
+      notifyListeners();
+      return false;
     }
   }
 
@@ -239,7 +275,7 @@ class DownloadsStoreController extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to remove: $e');
+      onError?.call(L10nLookup.current.msgErrRemove(e));
       notifyListeners();
     }
   }
@@ -253,7 +289,7 @@ class DownloadsStoreController extends ChangeNotifier {
       }
       return detail;
     } catch (e) {
-      onError?.call('Failed to fetch details: $e');
+      onError?.call(L10nLookup.current.msgErrFetchDetails(e));
       notifyListeners();
       return null;
     }
@@ -265,11 +301,13 @@ class DownloadsStoreController extends ChangeNotifier {
       notifyListeners();
       final updated = await client.setDownloadDestination(id, newDirectory);
       _downloads[updated.id] = updated;
-      onStatus?.call('Destination changed to $newDirectory');
+      onStatus?.call(
+        L10nLookup.current.msgDestinationChanged(newDirectory),
+      );
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to change destination: $e');
+      onError?.call(L10nLookup.current.msgErrChangeDestination(e));
       notifyListeners();
       return false;
     } finally {
@@ -283,12 +321,12 @@ class DownloadsStoreController extends ChangeNotifier {
       final updated = await client.retryDownloadConnection(id);
       _downloads[updated.id] = updated;
       onStatus?.call(
-        'Retrying loopback connection for "${updated.fileName}"',
+        L10nLookup.current.msgRetryLoopback(updated.fileName),
       );
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to retry connection: $e');
+      onError?.call(L10nLookup.current.msgErrRetryConn(e));
       notifyListeners();
       return false;
     }
@@ -301,7 +339,7 @@ class DownloadsStoreController extends ChangeNotifier {
     try {
       await systemActions.revealFile(targetPath);
     } catch (e) {
-      onError?.call('Could not open completed file location: $e');
+      onError?.call(L10nLookup.current.msgErrOpenFile(e));
       notifyListeners();
     }
   }

@@ -45,6 +45,17 @@ pub struct KadService {
     /// Last time we bootstrapped Kad from a connected eD2K peer
     /// (eMule "bootstrap from clients") — throttles the per-peer hook.
     last_peer_bootstrap: std::sync::Mutex<Option<std::time::Instant>>,
+    /// Canal d'événements broadcast + compteur de séquence partagé —
+    /// injecté par `set_event_channel` pour émettre `kad.statusChanged`
+    /// quand la table de routage évolue hors des actions RPC (paquets
+    /// entrants, lookups, bootstrap, maintenance). No-op tant que le
+    /// canal n'est pas câblé.
+    event_channel: std::sync::RwLock<
+        Option<(
+            tokio::sync::broadcast::Sender<String>,
+            Arc<std::sync::atomic::AtomicU64>,
+        )>,
+    >,
 }
 
 /// Interval between Kad republication rounds of shared files
@@ -76,6 +87,7 @@ impl KadService {
             ed2k_tcp_port: std::sync::atomic::AtomicU16::new(0),
             fw_user_hash: std::sync::RwLock::new([0u8; 16]),
             last_peer_bootstrap: std::sync::Mutex::new(None),
+            event_channel: std::sync::RwLock::new(None),
         }
     }
 
@@ -83,6 +95,28 @@ impl KadService {
     pub fn set_ed2k_tcp_port(&self, port: u16) {
         self.ed2k_tcp_port
             .store(port, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Injecte le canal d'événements du daemon — active l'émission de
+    /// `kad.statusChanged` lors des mutations autonomes de la table de
+    /// routage (contacts appris en tâche de fond, évictions, rotation).
+    pub fn set_event_channel(
+        &self,
+        event_tx: tokio::sync::broadcast::Sender<String>,
+        sequence: Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        *self.event_channel.write().unwrap() = Some((event_tx, sequence));
+    }
+
+    /// Émet un nudge `kad.statusChanged` si le canal est câblé —
+    /// no-op sinon (tests unitaires, phase de boot avant injection).
+    fn emit_status_changed(&self) {
+        if let Some((tx, seq)) = self.event_channel.read().unwrap().as_ref() {
+            crate::services::DaemonEvent::KadStatusChanged {
+                sequence: seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+            }
+            .send(tx);
+        }
     }
 
     /// Records our public IPv4 (learned from the eD2K server-assigned HighID,
@@ -104,6 +138,7 @@ impl KadService {
         let new_id = KadId::random();
         *self.local_id.write().unwrap() = new_id;
         *self.routing_table.lock().await = KBucketTable::new(new_id);
+        self.emit_status_changed();
         new_id
     }
 
@@ -443,6 +478,9 @@ impl KadService {
             // First tick completes immediately, skip it to let startup bootstrap finish
             interval.tick().await;
             let mut last_publish: Option<std::time::Instant> = None;
+            // Compteur de contacts déjà notifié — on n'émet
+            // `kad.statusChanged` que quand la valeur observable change.
+            let mut last_contacts: Option<usize> = None;
 
             loop {
                 tokio::select! {
@@ -465,6 +503,20 @@ impl KadService {
                             "[KAD_ROUTING] Kad routing table status: {} verified contacts in memory",
                             total_contacts
                         );
+
+                        // La table évolue aussi hors RPC (learn_contact,
+                        // lookups, bootstrap) — on nudge l'UI à chaque
+                        // changement pour que le badge sidebar reste frais.
+                        // Pas d'émission à la première observation : le
+                        // client refetch déjà le status à la connexion, et
+                        // un event intempestif ~30 s après le démarrage
+                        // s'intercalerait dans les réponses RPC en vol.
+                        if let Some(prev) = last_contacts {
+                            if prev != total_contacts {
+                                kad.emit_status_changed();
+                            }
+                        }
+                        last_contacts = Some(total_contacts);
 
                         if total_contacts > 0 && total_contacts < 400 {
                             tracing::info!(

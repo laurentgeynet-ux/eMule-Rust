@@ -85,6 +85,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   Stream<int> get historyEvents => _historyController.stream;
 
   @override
+  Stream<int> get sharesEvents => _sharesController.stream;
+
+  @override
   Stream<SettingsChangedEvent> get settingsEvents => _settingsController.stream;
 
   @override
@@ -143,6 +146,18 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
                 ? 'completed'
                 : (partReceived > 0 ? 'downloading' : 'missing'));
 
+      // Contiguous fill → mask with the first `fullCells` bits set.
+      final cellSize = (size / 64).ceil();
+      final fullCells = cellSize > 0 ? partReceived ~/ cellSize : 0;
+      final receivedMask = fullCells >= 64 ? -1 : ((1 << fullCells) - 1);
+
+      // Deterministic pseudo source availability for demo mode: missing
+      // parts get a few sources (blue gradient), every 7th part is source-
+      // less (red), received/verified parts need none.
+      final availableSourceCount = state == 'missing' || state == 'downloading'
+          ? (i % 7 == 5 ? 0 : 2 + (i * 3) % 9)
+          : 0;
+
       list.add(
         DownloadPartInfo(
           partIndex: i,
@@ -152,10 +167,26 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
           receivedBytes: partReceived,
           isVerified: isVerified,
           state: state,
+          availableSourceCount: availableSourceCount,
+          receivedMask: receivedMask,
         ),
       );
     }
     return list;
+  }
+
+  /// Simulated in-flight blocks: one ~180 KiB request at the frontier of
+  /// each partially-received part (the eMule "pending" yellow segment).
+  static List<ByteRange> _pendingRangesFor(List<DownloadPartInfo> parts) {
+    const blockSize = 184320;
+    return [
+      for (final p in parts)
+        if (p.state == 'downloading')
+          ByteRange(
+            p.startOffset + p.receivedBytes,
+            min(p.startOffset + p.receivedBytes + blockSize, p.endOffset),
+          ),
+    ];
   }
 
   void _seedDefaultDownloads() {
@@ -184,6 +215,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _categories[catIso.id] = catIso;
     _categories[catMedia.id] = catMedia;
 
+    final d1Parts = _generateParts(654311424, 550000000, false);
     final d1 = DownloadItem(
       id: '00000000-0000-0000-0000-000000000001',
       fileName: 'Debian_12_netinst.iso',
@@ -206,7 +238,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       etaSeconds: 40,
       connectionAttempts: 1,
       lastStatusChange: now.subtract(const Duration(minutes: 45)),
-      parts: _generateParts(654311424, 550000000, false),
+      parts: d1Parts,
+      pendingRanges: _pendingRangesFor(d1Parts),
       categoryId: catIso.id,
     );
 
@@ -426,6 +459,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     final updated = existing.copyWith(
       status: DownloadStatus.paused,
       downloadRateBps: 0,
+      pendingRanges: const <ByteRange>[],
       updatedAt: DateTime.now(),
     );
 
@@ -442,6 +476,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     final updated = existing.copyWith(
       status: DownloadStatus.downloading,
       downloadRateBps: 512000,
+      pendingRanges: _pendingRangesFor(existing.parts),
       updatedAt: DateTime.now(),
     );
 
@@ -475,12 +510,16 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         : 1.0;
     final isDone = newReceived >= existing.totalBytes;
 
+    final newParts = _generateParts(existing.totalBytes, newReceived, isDone);
     final updated = existing.copyWith(
       receivedBytes: newReceived,
       verifiedBytes: newReceived,
       progress: newProgress,
       status: isDone ? DownloadStatus.completed : existing.status,
       downloadRateBps: isDone ? 0 : existing.downloadRateBps,
+      parts: newParts,
+      pendingRanges:
+          isDone ? const <ByteRange>[] : _pendingRangesFor(newParts),
       updatedAt: DateTime.now(),
     );
 
@@ -498,6 +537,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   final StreamController<int> _kadStatusController =
       StreamController<int>.broadcast();
   final StreamController<int> _historyController =
+      StreamController<int>.broadcast();
+  final StreamController<int> _sharesController =
       StreamController<int>.broadcast();
   final StreamController<SettingsChangedEvent> _settingsController =
       StreamController<SettingsChangedEvent>.broadcast();
@@ -548,6 +589,11 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
               ? newReceived / item.totalBytes
               : 1.0;
 
+          final newParts = _generateParts(
+            item.totalBytes,
+            newReceived,
+            isDone,
+          );
           final updated = item.copyWith(
             receivedBytes: newReceived,
             verifiedBytes: min(newReceived, item.verifiedBytes + added),
@@ -556,6 +602,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
             status: isDone
                 ? DownloadStatus.completed
                 : DownloadStatus.downloading,
+            parts: newParts,
+            pendingRanges:
+                isDone ? const <ByteRange>[] : _pendingRangesFor(newParts),
             updatedAt: DateTime.now(),
           );
 
@@ -582,6 +631,17 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         .where((d) => d.status == DownloadStatus.downloading)
         .fold<int>(0, (sum, d) => sum + d.downloadRateBps);
     final uploadBps = _fakeActiveUpload?.uploadRateBps ?? 0;
+    final sessionDl = _downloads.values
+        .fold<int>(0, (sum, d) => sum + d.receivedBytes);
+    final sessionUl = _fakeActiveUpload?.transferredBytes ?? 0;
+    // Cumuls « depuis l'installation » simulés : accumulation des
+    // deltas de session, remise à zéro via resetLifetimeTotals().
+    final dDl = sessionDl - _lastSessionDl;
+    final dUl = sessionUl - _lastSessionUl;
+    if (dDl > 0) _lifetimeDl += dDl;
+    if (dUl > 0) _lifetimeUl += dUl;
+    _lastSessionDl = sessionDl;
+    _lastSessionUl = sessionUl;
     _statsController.add(
       DaemonStatsModel(
         downloadBps: downloadBps,
@@ -593,9 +653,29 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         serverConnected: _state == DaemonConnectionState.connected,
         kadContacts: 42,
         kadUdpBound: true,
+        sessionDownloadedBytes: sessionDl,
+        sessionUploadedBytes: sessionUl,
+        lifetimeDownloadedBytes: _lifetimeDl,
+        lifetimeUploadedBytes: _lifetimeUl,
       ),
     );
   }
+
+  int _lifetimeDl = 0;
+  int _lifetimeUl = 0;
+  int _lastSessionDl = 0;
+  int _lastSessionUl = 0;
+
+  @override
+  Future<void> resetLifetimeTotals() async {
+    _lifetimeDl = 0;
+    _lifetimeUl = 0;
+  }
+
+  /// Test hook: emits one simulated `upload.uploadsUpdated` tick and
+  /// accumulates the per-file totals — same path as the 1 s simulation
+  /// timer, but driven deterministically by widget tests.
+  void emitUploadTick() => _emitUploadsTick();
 
   /// Emits a simulated `upload.uploadsUpdated` snapshot each tick: one
   /// active upload oscillating ~50–250 kB/s plus a small waiting queue.
@@ -603,18 +683,21 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     if (_uploadsController.isClosed) return;
     _simTick += 1;
     final rate = 50000 + Random().nextInt(200000);
-    final active = [
-      UploadSessionModel(
-        clientAddress: '203.0.113.7:4662',
-        fileHash: 'aabbccddeeff00112233445566778899',
-        fileName: 'shared-sample.iso',
-        transferredBytes: _simTick * rate,
-        uploadRateBps: rate,
-        state: 'uploading',
-        startedAtUnixMs:
-            DateTime.now().millisecondsSinceEpoch - _simTick * 1000,
-      ),
-    ];
+    final activeSession = UploadSessionModel(
+      clientAddress: '203.0.113.7:4662',
+      fileHash: 'aabbccddeeff00112233445566778899',
+      fileName: 'shared-sample.iso',
+      transferredBytes: _simTick * rate,
+      uploadRateBps: rate,
+      state: 'uploading',
+      startedAtUnixMs:
+          DateTime.now().millisecondsSinceEpoch - _simTick * 1000,
+    );
+    _lastActiveUpload = activeSession;
+    // Cumul par fichier comme `share_upload_stats` côté daemon.
+    _shareUploadTotals[activeSession.fileHash] =
+        (_shareUploadTotals[activeSession.fileHash] ?? 0) + rate;
+    final active = [activeSession];
     final queue = [
       UploadSessionModel(
         clientAddress: '198.51.100.23:4662',
@@ -738,6 +821,35 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<DownloadItem> renameDownload(String id, String newName) async {
+    final existing = _downloads[id];
+    if (existing == null) throw Exception('Download $id not found');
+    final updated = existing.copyWith(
+      fileName: newName,
+      updatedAt: DateTime.now(),
+    );
+    _downloads[id] = updated;
+    // Le fichier complété est aussi partagé : garder la vue Partages
+    // cohérente comme le fait le daemon.
+    final shareIdx =
+        _fakeSharedFiles.indexWhere((f) => f.fileHash == existing.ed2kHash);
+    if (shareIdx != -1) {
+      final cur = _fakeSharedFiles[shareIdx];
+      _fakeSharedFiles[shareIdx] = SharedFileModel(
+        fileHash: cur.fileHash,
+        fileName: newName,
+        fileSize: cur.fileSize,
+        filePath: cur.filePath,
+        sharedAtUnixMs: cur.sharedAtUnixMs,
+        enabled: cur.enabled,
+        upPriority: cur.upPriority,
+      );
+    }
+    _emitUpdate(updated);
+    return updated;
+  }
+
+  @override
   Future<DownloadItem> setDownloadPriority(String id, String priority) async {
     final existing = _downloads[id];
     if (existing == null) throw Exception('Download $id not found');
@@ -798,7 +910,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   int _fakeMinPeersPerDownload = 2;
   bool _fakeShareDownloadDir = true;
   final Map<String, dynamic> _fakeExtraSettings = {
-    'nickname': 'Emule-Sion',
+    'nickname': 'eMule-Rust',
     'obfuscationEnabled': true,
     'obfuscationRequired': false,
     'maxConnections': 500,
@@ -1559,10 +1671,32 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   InboundListenerStatusModel _fakeListenerStatus =
       InboundListenerStatusModel.idle;
   UploadSessionModel? _fakeActiveUpload;
+  /// Dernière session d'upload simulée + totaux par fichier (hash →
+  /// octets) — source des colonnes débit/total de la vue Partages.
+  UploadSessionModel? _lastActiveUpload;
+  final Map<String, int> _shareUploadTotals = {};
 
   @override
   Future<List<SharedFileModel>> listSharedFiles() async {
-    return List.unmodifiable(_fakeSharedFiles);
+    return List.unmodifiable(_fakeSharedFiles.map((f) {
+      final key = f.fileHash.toLowerCase();
+      return SharedFileModel(
+        fileHash: f.fileHash,
+        fileName: f.fileName,
+        fileSize: f.fileSize,
+        filePath: f.filePath,
+        sharedAtUnixMs: f.sharedAtUnixMs,
+        enabled: f.enabled,
+        upPriority: f.upPriority,
+        isPartial: f.isPartial,
+        completedParts: f.completedParts,
+        uploadedBytes: _shareUploadTotals[key] ?? 0,
+        uploadRateBps:
+            _lastActiveUpload?.fileHash.toLowerCase() == key
+                ? _lastActiveUpload!.uploadRateBps
+                : 0,
+      );
+    }));
   }
 
   @override
@@ -1586,8 +1720,35 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<void> removeSharedFile(String fileHash) async {
+  Future<void> removeSharedFile(String fileHash, {bool deleteFile = false}) async {
     _fakeSharedFiles.removeWhere((f) => f.fileHash == fileHash);
+  }
+
+  @override
+  Future<void> renameSharedFile(String fileHash, String newName) async {
+    final idx = _fakeSharedFiles.indexWhere((f) => f.fileHash == fileHash);
+    if (idx == -1) throw Exception('File not found in shares');
+    final cur = _fakeSharedFiles[idx];
+    _fakeSharedFiles[idx] = SharedFileModel(
+      fileHash: cur.fileHash,
+      fileName: newName,
+      fileSize: cur.fileSize,
+      filePath: cur.filePath,
+      sharedAtUnixMs: cur.sharedAtUnixMs,
+      enabled: cur.enabled,
+      upPriority: cur.upPriority,
+    );
+    // Garder le download complété associé cohérent (même hash).
+    final dl = _downloads.values
+        .where((d) => d.ed2kHash == fileHash)
+        .firstOrNull;
+    if (dl != null) {
+      _downloads[dl.id] = dl.copyWith(
+        fileName: newName,
+        updatedAt: DateTime.now(),
+      );
+      _emitUpdate(_downloads[dl.id]!);
+    }
   }
 
   @override
@@ -2050,6 +2211,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _lifecycleController.close();
     _kadStatusController.close();
     _historyController.close();
+    _sharesController.close();
     _settingsController.close();
     _networkPolicyController.close();
     _upnpStatusController.close();

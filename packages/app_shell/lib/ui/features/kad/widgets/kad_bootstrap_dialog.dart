@@ -43,8 +43,8 @@ Future<void> showKadBootstrapDialog(
           children: [
             Text(
               isPublic
-                  ? 'Entrez l\'adresse IP publique et le port UDP d\'un nœud Kad pour amorcer la table de routage (ex: 212.83.184.225).'
-                  : 'Entrez l\'adresse IP et le port UDP d\'un nœud d\'amorçage (en profil LocalLab, seul 127.0.0.1 est permis).',
+                  ? context.l10n.kadBootstrapDescPublic
+                  : context.l10n.kadBootstrapDescLab,
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),

@@ -18,6 +18,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `.github/copilot-instructions.md` | Lien physique vers `AGENTS.md` (compatibilité GitHub Copilot) |
 | `deny.toml` | Configuration cargo-deny (audit des licences/vulnérabilités) |
 | `search_mgr.cpp` | Fichier C++ de référence (code eMule original, gestionnaire de recherche) |
+| `Asset/generated-image.png` | Image source de l'icône d'application (1254×1254 RGBA) — déclinée en `app_icon.ico` Windows/tray et icônes web/macOS/iOS |
 
 ## .agents/ — Configuration agents/MCP
 
@@ -61,7 +62,7 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | `test/integration/live_daemon_e2e_test.dart` | Test E2E contre un daemon réel |
 | `test/services/daemon_supervisor_test.dart` | Tests du superviseur de daemon |
 | `test/services/work_directory_resolver_test.dart` | Tests du résolveur de répertoire de travail |
-| `test/ui/*.dart` (17 fichiers) | Tests UI : catégories, diagnostics, détails, écrans downloads/history/Kad/search/servers, import part.met, IP filter, politique réseau, sources de pairs, responsive, performance grandes listes, settings |
+| `test/ui/*.dart` (18 fichiers) | Tests UI : catégories, diagnostics, détails, écrans downloads/history/Kad/search/servers, import part.met, IP filter, politique réseau, sources de pairs, responsive, performance grandes listes, settings, partages, barre de disponibilité des parts (`part_availability_bar_test`) |
 
 ## apps/web/ — Application Flutter Web
 
@@ -96,6 +97,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 |---|---|
 | `lib/core/daemon_lifecycle.dart` | Cycle de vie de la connexion daemon |
 | `lib/core/folder_picker.dart` (+`_io`, `_stub`) | Sélecteur de dossier (abstraction + impl natif/stub) |
+| `lib/core/file_picker_helper.dart` (+`_io`, `_stub`) | Sélecteur de fichier natif (`pickFile`, `file_picker` 12.3) — ipfilter.dat, server.met, nodes.dat, .part.met |
 | `lib/core/system_actions.dart` (+`_io`, `_stub`) | Actions système (ouvrir dossier, révéler fichier…) |
 | `lib/core/work_dirs.dart` | Répertoires de travail (downloads, incoming…) |
 
@@ -104,6 +106,8 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | Fichier | Fonction |
 |---|---|
 | `lib/l10n/l10n.dart` | Point d'accès aux localisations |
+| `lib/l10n/l10n_lookup.dart` | `L10nLookup` : accès à `AppLocalizations` sans `BuildContext` (messages des contrôleurs), synchronisé avec `LocaleController` |
+| `lib/l10n/enum_labels.dart` | Extensions localisées sur les enums de `mule_client` (`DownloadStatus`, `DaemonConnectionState`, `SupervisorState`, `NetworkProfile`, priorités…) |
 | `lib/l10n/app_fr.arb` / `app_en.arb` | Ressources de traduction FR/EN |
 | `lib/l10n/generated/` | Localisations générées (`app_localizations*.dart`) |
 
@@ -120,17 +124,17 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `widgets/downloads_list.dart`, `downloads_top_bar.dart`, `downloads_sidebar.dart`, `downloads_empty_state.dart` | Liste, barre d'outils, sidebar et état vide |
 | `widgets/download_row.dart`, `download_details_panel.dart`, `download_detail_dialog.dart` | Ligne de download et panneau/dialogue de détail |
 | `widgets/download_sources_expansion.dart` | Expansion des sources d'un download |
-| `widgets/speed_sparkline.dart`, `status_notification_banner.dart`, `debug_simulation_bar.dart` | Sparkline de débit, bannière de statut, barre de simulation |
+| `widgets/speed_sparkline.dart`, `debug_simulation_bar.dart` | Sparkline de débit, barre de simulation |
 | `widgets/add_link_dialog.dart` + `widgets/add_link/` | Dialogue d'ajout de lien ed2k (`ed2k_link_parser`, dropdowns catégorie/allocation, preview) |
 | `widgets/category_edit_dialog.dart` + `widgets/category/` | Édition de catégorie (color picker, dropdown priorité) |
 | `widgets/detail/` (16 fichiers) | Cartes du détail : header, action bar, identité, métriques, part map, chemins, sources, diagnostics, dialogues destination/suppression, `peer_source_row` |
 | `widgets/diagnostic_dialog.dart` + `widgets/diagnostic/` (8 fichiers) | Carte de diagnostic : chips de capacités, lignes d'info, formatage, bannière profil réseau |
 | `widgets/import/` (7 fichiers) + `import_part_met_dialog.dart` | Import défensif `.part.met` : inspection, rapport, notice de sécurité |
 | `widgets/lab/` (9 fichiers) + `lab_guide_dialog.dart` | Assistant lab : étapes fixture/lien/pair/connexion/nettoyage |
-| `widgets/network/` (9 fichiers) + `network_policy_dialog.dart`, `ip_filter_dialog.dart` | Onglets IP filter et rate limits, quotas, profil réseau, audit log |
-| `widgets/row/` (8 fichiers) | Ligne de download : variantes compacte/complète, badges, icônes, barre d'actions, pill de statut, chip de priorité (`download_priority_chip.dart`) |
+| `widgets/network/` (8 fichiers) + `network_policy_dialog.dart`, `ip_filter_dialog.dart` | Onglets IP filter et rate limits, quotas, bannière d'état réseau, audit log |
+| `widgets/row/` (9 fichiers) | Ligne de download : variantes compacte/complète, badges, icônes, barre d'actions, pill de statut, chip de priorité (`download_priority_chip.dart`), dialogue de renommage (`rename_file_dialog.dart`) |
 | `widgets/settings/` (5 fichiers) | Briques réutilisées par la page Paramètres : dossier, langue, rétention, amis, message inline |
-| `widgets/sidebar/` (9 fichiers) | Sidebar : header brand, items nav/catégorie/filtre, carte de statut, suppression de catégorie |
+| `widgets/sidebar/` (9 fichiers) | Sidebar : header brand, items nav/catégorie/filtre, carte de statut daemon (`sidebar_status_card` — version, pastilles eD2K/Kad colorées, nom du serveur), suppression de catégorie |
 | `widgets/incompatible_version_dialog.dart` | Avertissement de version daemon incompatible |
 
 ### Features `history`, `kad`, `search`, `servers`, `settings`, `shares`, `uploads`
@@ -141,8 +145,8 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `kad/view_models/kad_controller.dart` + `views/kad_screen.dart` + `widgets/` (12 fichiers) | Kad : table de contacts, bootstrap (dialogue + URL), import nodes.dat, badges/statuts, bannière sécurité |
 | `search/view_models/search_controller.dart` + `views/search_screen.dart` + `widgets/` (7 fichiers) | Recherche : formulaire, table de résultats, bannière connexion, états |
 | `servers/view_models/servers_controller.dart` + `views/servers_screen.dart` + `widgets/` (12 fichiers) | Serveurs : table et cartes, import server.met, session bar, badges, dialogues clear/update |
-| `settings/view_models/settings_controller.dart` + `views/settings_view.dart` + `views/sections/` (6 fichiers) + `widgets/` (4 fichiers) | Page Paramètres (`/settings`) : rail Général/Connexion/Transferts/Sécurité/Amis/Avancé ; pseudo, partage Incoming, profil/kill switch/quotas, **capacités & ports TCP/UDP, toggles UDP+UPnP**, obfuscation, connexions max, USS, limites de sources, file d'upload, IP filter, amis, outils avancés |
-| `shares/views/shares_view.dart` | Onglet « Partages » (`/shares`) : fichiers servis (persistés + partiels `.part` badge « partiel »), priorité d'upload (powershare), switch activé/suspendu, **bouton rescan Incoming** (`shares.rescan`), rafraîchissement live sur events lifecycle/progression |
+| `settings/view_models/settings_controller.dart` + `views/settings_view.dart` + `views/sections/` (6 fichiers) + `widgets/` (3 fichiers) | Page Paramètres (`/settings`) : rail Général/Connexion/Transferts/Sécurité/Amis/Avancé ; pseudo, partage Incoming, **interrupteurs Réseau eD2K/Kad** (`network_toggles_card`), kill switch/quotas, **capacités & ports TCP/UDP, toggles UDP+UPnP**, obfuscation, connexions max, USS, limites de sources, file d'upload, IP filter, amis, outils avancés |
+| `shares/views/shares_view.dart` + `shares/view_models/shares_controller.dart` | Onglet « Partages » (`/shares`) : fichiers servis (persistés + partiels `.part` badge « partiel », **downloads actifs toujours publiés dès la création**), **débit d'upload courant + total cumulé par fichier** (`uploadRateBps`/`uploadedBytes`), renommage (`shares.rename`), priorité d'upload (powershare), switch activé/suspendu, **bouton rescan Incoming** (`shares.rescan`) ; le contrôleur alimente le badge sidebar live (refetch `shares.list` sur events lifecycle/progression downloads + `shares.changed` + `upload.uploadsUpdated` debouncé) |
 | `uploads/view_models/uploads_controller.dart` + `views/uploads_view.dart` + `widgets/uploads_table.dart` | Uploads : vue et table des envois |
 
 ## packages/mule_client/ — Client daemon partagé
@@ -157,7 +161,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `lib/domain/models/category_item.dart` | Modèle : catégorie de téléchargement |
 | `lib/domain/models/daemon_event.dart` | Modèle : événement émis par le daemon |
 | `lib/domain/models/daemon_info.dart` | Modèle : informations d'état du daemon |
-| `lib/domain/models/download_item.dart` | Modèle : élément de téléchargement |
+| `lib/domain/models/download_item.dart` | Modèle : élément de téléchargement (`parts[]` avec `receivedMask` bitmap 64 cellules, `pendingRanges` blocs en vol, `ByteRange`) |
 | `lib/domain/models/filter_models.dart` | Modèles : filtres (IP filter, etc.) |
 | `lib/domain/models/history_entry.dart` | Modèle : entrée d'historique |
 | `lib/domain/models/history_stats.dart` | Modèle : statistiques d'historique |
@@ -179,7 +183,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `lib/src/tokens.dart` | Design tokens (espacements, rayons, couleurs) |
 | `lib/src/formatters.dart` | `Formatters` : bytes, vitesses, ETA, pourcentages |
 | `lib/src/strings.dart` | `AppStrings` : chaînes UI centralisées (base i18n) |
-| `lib/src/part_availability_bar.dart` | Bandeau eMule par part (rouge/bleu/teal) |
+| `lib/src/part_availability_bar.dart` | Barre `DrawStatusBar` eMule 0.72a byte-précise (CustomPaint) : ardoise = reçu, rouge = aucune source, dégradé bleu rare→commun, jaune = en vol, strip vert = progression |
 | `pubspec.yaml` | Manifeste du package |
 | `README.md` | Contenu et règles du design system |
 
@@ -222,7 +226,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/persistence/sqlite/history.rs` | Persistance de l'historique |
 | `src/persistence/sqlite/kad.rs` | Persistance des données Kad |
 | `src/persistence/sqlite/servers.rs` | Persistance des serveurs |
-| `src/persistence/sqlite/shares.rs` | Persistance des fichiers partagés |
+| `src/persistence/sqlite/shares.rs` | Persistance des fichiers partagés (incl. `share_upload_stats` : totaux d'upload cumulés par hash) |
 | `src/persistence/sqlite/sources.rs` | Persistance des sources/pairs |
 | `src/ranges/mod.rs` | Module de gestion d'intervalles |
 | `src/ranges/range_set.rs` | Ensemble d'intervalles (parties téléchargées) |
@@ -263,7 +267,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 
 | Fichier | Fonction |
 |---|---|
-| `src/main.rs` | Point d'entrée du daemon |
+| `src/main.rs` | Point d'entrée du daemon (init logging `tracing` → stdout + `data/daemon.log`, filtre `RUST_LOG`, défaut `info`) |
 | `src/lib.rs` | Racine de la bibliothèque daemon |
 | `src/config.rs` | Chargement de la configuration |
 | `src/error.rs` | Erreurs du daemon |
@@ -288,15 +292,15 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/rpc/events.rs` | Événements RPC (notifications) |
 | `src/rpc/handlers/mod.rs` | Module des handlers RPC |
 | `src/rpc/handlers/categories.rs` | Handler : catégories |
-| `src/rpc/handlers/downloads.rs` | Handler : téléchargements |
+| `src/rpc/handlers/downloads.rs` | Handler : téléchargements (`downloads.*` incl. `rename`, `setDestination`, `inspectPartMet`/`importPartMet`) |
 | `src/rpc/handlers/friends.rs` | Handler : amis (friend slots) |
 | `src/rpc/handlers/history.rs` | Handler : historique |
 | `src/rpc/handlers/kad.rs` | Handler : Kad |
 | `src/rpc/handlers/lab.rs` | Handler : lab |
-| `src/rpc/handlers/network.rs` | Handler : politique réseau |
+| `src/rpc/handlers/network.rs` | Handler : politique réseau (`network.*`) + limites de débit (`limits.get`/`set` — clamp capacité eMule 90 %/80 %, ratio anti-leech `emule_ud_ratio` 3×/4×/5× sous 20 Ko/s d'upload) |
 | `src/rpc/handlers/servers.rs` | Handler : serveurs |
 | `src/rpc/handlers/settings.rs` | Handler : paramètres — `settings.get`/`set` couvrant tous les réglages runtime (ports, UDP, UPnP, obfuscation, capacités — clamp eMule 90 %/80 % sur les limites, USS, quotas, file upload) avec application à chaud (`apply_port_change`, `apply_udp_state`, `apply_capacity_clamp`) ; write-probe sur les dossiers, warning sur clés inconnues |
-| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés — `shares.list` (incl. partiels), `add`, `remove`, `setEnabled`, `setUploadPriority` (mutations refusées sur `is_partial`), `rescan` |
+| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés — `shares.list` (incl. partiels + stats d'upload `uploadRateBps`/`uploadedBytes`), `add`, `remove`, `rename`, `setEnabled`, `setUploadPriority` (mutations refusées sur `is_partial`), `rescan` ; emit `shares.changed` sur chaque mutation |
 | `src/rpc/handlers/sources.rs` | Handler : sources |
 | `src/rpc/handlers/upnp.rs` | Handler : UPnP |
 
@@ -311,14 +315,14 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/services/downloads/operations.rs` | Opérations sur les téléchargements (pause, reprise…) |
 | `src/services/downloads/part_met.rs` | Import/gestion des .part.met |
 | `src/services/downloads/peers_servers.rs` | Sources pairs et serveurs des downloads |
-| `src/services/downloads/types.rs` | Types du service downloads |
+| `src/services/downloads/types.rs` | Types du service downloads (`PartProgressSummary` + `received_mask`, `compute_part_summaries` : source complète `part_count==0`, fraîcheur 30 min) |
 | `src/services/events.rs` | Bus d'événements internes |
 | `src/services/identity.rs` | Identité du client (user hash, ident) |
 | `src/services/inbound_listener.rs` | Écoute des connexions entrantes (obfuscation live via `set_obfuscation`) |
 | `src/services/inbound_listener/connection.rs` | Acceptation de connexions entrantes |
 | `src/services/inbound_listener/dispatcher.rs` | Dispatch des connexions entrantes |
 | `src/services/inbound_listener/types.rs` | Types du listener |
-| `src/services/kad.rs` | Service Kad |
+| `src/services/kad.rs` | Service Kad (canal `kad.statusChanged` émis par la maintenance quand `total_contacts` change) |
 | `src/services/kad/nodes_dat.rs` | Bootstrap via nodes.dat |
 | `src/services/kad/search_keywords.rs` | Recherche par mots-clés Kad |
 | `src/services/kad/search_sources.rs` | Recherche de sources Kad |
@@ -330,16 +334,16 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/services/kad_udp/search_client.rs` | Client de recherche Kad |
 | `src/services/client_udp.rs` | Socket client-UDP eD2K (reasks/keep-alive 0x90-0x93) |
 | `src/services/server_udp.rs` | Socket UDP serveur (GLOBGETSOURCES2/GLOBFOUNDSOURCES) + failover dans `swarm_coordinator/strategy.rs` |
-| `src/services/uss.rs` | USS — limite upload dynamique par latence (loi `LastCommonRouteFinder`, gate `accept_new_client` sur la file) |
+| `src/services/uss.rs` | USS — limite upload dynamique par latence (loi `LastCommonRouteFinder`, gate `accept_new_client` sur la file) ; replafonne le bucket download via `emule_ud_ratio` à chaque tick (eMule `bDynamic`) |
 | `src/services/kad_udp/storage.rs` | Nœud de stockage Kad (TTL, bornes anti-flood) |
 | `src/services/kad_udp/types.rs` | Types Kad UDP |
 | `src/services/obfuscation_stream.rs` | Flux réseau obfusqué (protocol obfuscation) |
-| `src/services/peer_session.rs` | Session avec un pair eD2k |
+| `src/services/peer_session.rs` | Session avec un pair eD2k (+ helpers `pending_ranges*` : blocs en vol vers `DownloadSnapshot.pendingRanges`) |
 | `src/services/peer_session/connection.rs` | Connexion au pair |
 | `src/services/peer_session/events.rs` | Événements de session pair |
 | `src/services/peer_session/handshake.rs` | Handshake eD2k avec le pair |
 | `src/services/peer_session/source_exchange.rs` | Échange de sources entre pairs |
-| `src/services/peer_session/status_query.rs` | Requêtes de statut de fichier |
+| `src/services/peer_session/status_query.rs` | Requêtes de statut de fichier — `OP_FILESTATUS` → `record_source_availability` + emit `downloadUpdated` (masques de parts, initial et keep-alive en file) |
 | `src/services/peer_session/sui.rs` | Secure User Identification dans la session pair |
 | `src/services/peer_session/transfer.rs` | Transfert de blocs avec le pair |
 | `src/services/peer_session/types.rs` | Types de session pair |
@@ -468,7 +472,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/audit.rs` | Journal d'audit des décisions réseau |
 | `src/budgets.rs` | Budgets réseau (bande passante) |
 | `src/cancellation.rs` | Annulation d'opérations réseau |
-| `src/manager.rs` | Gestionnaire de politique réseau |
+| `src/manager.rs` | Gestionnaire de politique réseau (incl. `emule_ud_ratio` — plafond download anti-leech eMule) |
 | `src/permit.rs` | Permis d'accès réseau |
 | `src/profile.rs` | Profils de politique (lab, WAN…) |
 | `src/state.rs` | État de la politique |
@@ -654,6 +658,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `docs/walkthroughs/walkthrough_Phase_13.md` | Source Exchange v4 (SX1/SX2), compression zlib et serveur MCP 83 outils (Phase 13) |
 | `docs/walkthroughs/walkthrough_Phase_14.md` | Convergence recherche Kad DHT (CUInt128) et Clean Architecture complète (Phase 14) |
 | `docs/walkthroughs/walkthrough_Phase_15.md` | Swarm multi-pairs réel, conformité files d'attente eMule et logs stratégiques (Phase 15) |
+| — (Phases 16 & 17) | Documentées inline dans `docs/architecture/rapport_architecture_et_avancement.md` §10/§11 + `docs/CHANGELOG.md` (interopérabilité eMule 0.72a ; fidélité UI : partages partiels, compteurs temps réel, barre de parts `DrawStatusBar`) |
 
 ### docs/releases/ — Notes de Version Détaillées
 | Fichier | Fonction |

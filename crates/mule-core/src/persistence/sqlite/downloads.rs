@@ -384,3 +384,28 @@ pub fn update_target_path(
     )?;
     Ok(())
 }
+
+/// Renames a download: display name + finalization target path derived
+/// from it (the `.part` temp file keeps its UUID name).
+pub fn update_download_name_and_target(
+    conn: &mut Connection,
+    download_id: &Uuid,
+    display_name: &str,
+    target_path: &Path,
+) -> Result<(), CoreError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    conn.execute(
+        "UPDATE downloads SET display_name = ?1, target_path = ?2, updated_at = ?3 WHERE id = ?4",
+        params![
+            display_name,
+            target_path.to_str().unwrap_or_default(),
+            now,
+            download_id.to_string()
+        ],
+    )?;
+    Ok(())
+}

@@ -197,9 +197,49 @@ class AppLocalizationsEn extends AppLocalizations {
       'Network Subsystem is DISABLED (Kill Switch engaged).\nClick to view policy and re-enable.';
 
   @override
-  String tooltipPolicyInfo(String profile, String status) {
-    return 'Network Policy: $profile\nStatus: $status\nClick to inspect policy, quotas, and audit log.';
-  }
+  String get tooltipSessionTotals =>
+      'Session totals — bytes downloaded / uploaded since daemon start.\nClick to open History & Statistics.';
+
+  @override
+  String get tooltipLifetimeTotals =>
+      'Lifetime totals — bytes downloaded / uploaded since install.\nClick to open History & Statistics. Reset in Settings → Advanced.';
+
+  @override
+  String get settingsLifetimeResetTile => 'Reset lifetime transfer totals';
+
+  @override
+  String get settingsLifetimeResetSub =>
+      'Zeroes the cumulative downloaded / uploaded counters shown in the top bar. Session totals are kept.';
+
+  @override
+  String get lifetimeResetConfirmTitle => 'Reset lifetime totals?';
+
+  @override
+  String get lifetimeResetConfirmBody =>
+      'The cumulative download and upload counters since install will be reset to zero. Current session totals are not affected.';
+
+  @override
+  String get lifetimeResetConfirmButton => 'Reset';
+
+  @override
+  String get renameFileTooltip => 'Rename file';
+
+  @override
+  String get renameFileTitle => 'Rename file';
+
+  @override
+  String get renameFileLabel => 'New file name';
+
+  @override
+  String get renameFileInvalid =>
+      'Invalid name — must not be empty, be \'.\'/\'..\', end with \'.\' or contain < > : \" / \\ | ? *';
+
+  @override
+  String get renameFileFailed =>
+      'Rename failed on the daemon (name taken or file locked)';
+
+  @override
+  String get renameFileApply => 'Rename';
 
   @override
   String get tooltipKillSwitchEnable => 'Re-enable Network Subsystem';
@@ -639,7 +679,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get theDownloadEntryInSqlite =>
-      '• The download entry in SQLite will be permanently deleted.\n• Temporary files (.part and .part.met) in data/temp/ will be removed if selected below.\n• The final completed file in destination (if completed) will NOT be deleted.';
+      '• The download entry in SQLite will be permanently deleted.\n• Temporary files (.part and .part.met) in data/temp/ will be removed.\n• If the download is completed, an option below also allows deleting the final file in the destination folder.';
 
   @override
   String get deleteTemporaryPartFileFrom =>
@@ -653,7 +693,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ajouterSourceIpPortEx =>
-      'Ajouter source IP:port (ex: 127.0.0.1:39735)';
+      'Add source IP:port (e.g. 127.0.0.1:39735)';
 
   @override
   String get ajouter => 'Add';
@@ -669,7 +709,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sessionActive(String peerAddress) {
-    return 'Session active : $peerAddress';
+    return 'Active session: $peerAddress';
   }
 
   @override
@@ -686,7 +726,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get forcer => 'Forcer';
+  String get forcer => 'Force';
 
   @override
   String get noCategory => 'No Category';
@@ -721,7 +761,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get theDownloadWillBeStaged =>
-      'The download will be staged into data/temp/ and initialized in Paused state. L’import ne contacte aucun peer et le téléchargement restera en pause.';
+      'The download will be staged into data/temp/ and initialized in Paused state. The import never contacts any eD2K peer.';
 
   @override
   String get confirmCleanup => 'Confirm Cleanup';
@@ -841,9 +881,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noNetworkEventsRecordedYet => 'No network events recorded yet.';
 
   @override
-  String get activeConnectivityProfile => 'Active Connectivity Profile';
-
-  @override
   String get activeConnectionsLimits => 'Active Connections & Limits';
 
   @override
@@ -910,6 +947,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Delete downloaded part/temp files from disk';
 
   @override
+  String get deleteSharedCompletedFile =>
+      'Also delete the shared file in the destination folder';
+
+  @override
   String id(String id) {
     return 'ID: $id';
   }
@@ -964,7 +1005,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Switch between local lab and worldwide public network.';
 
   @override
-  String get configurer => 'Configurer';
+  String get configurer => 'Configure';
 
   @override
   String get historyRetentionPolicy => 'History Retention Policy';
@@ -1125,16 +1166,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get amorcerLeReseauKadBootstrap => 'Bootstrap the Kad network';
 
   @override
-  String get adresseIp => 'Adresse IP';
+  String get adresseIp => 'IP Address';
 
   @override
-  String get portUdp => 'Port UDP';
+  String get portUdp => 'UDP Port';
 
   @override
-  String get annuler => 'Annuler';
+  String get annuler => 'Cancel';
 
   @override
-  String get lancerLAmorcage => 'Lancer l\'amorçage';
+  String get lancerLAmorcage => 'Start bootstrap';
 
   @override
   String get amorcerKadDepuisUneUrl => 'Bootstrap Kad from a URL';
@@ -1161,19 +1202,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'All Kad contacts in memory and in the local SQLite database will be deleted.\nNo network packet will be sent.';
 
   @override
-  String get effacer => 'Effacer';
+  String get effacer => 'Clear';
 
   @override
   String get kadId128BitXor => 'Kad ID (128-bit XOR)';
 
   @override
-  String get adresseIpPorts => 'Adresse IP & Ports';
+  String get adresseIpPorts => 'IP Address & Ports';
 
   @override
   String get version => 'Version';
 
   @override
-  String get statut => 'Statut';
+  String get statut => 'Status';
 
   @override
   String get echecs => 'Failed';
@@ -1190,7 +1231,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get envoyerKadPing0x60 => 'Envoyer Kad Ping (0x60)';
+  String get envoyerKadPing0x60 => 'Send Kad Ping (0x60)';
 
   @override
   String get aucunContactKad => 'No Kad contacts';
@@ -1203,7 +1244,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importerNodesDat => 'Import nodes.dat';
 
   @override
-  String get filtrerParKadIdIp => 'Filtrer par Kad ID, IP ou Port...';
+  String get filtrerParKadIdIp => 'Filter by Kad ID, IP or Port...';
 
   @override
   String get effacerLaTable => 'Clear table';
@@ -1216,7 +1257,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Enter the absolute path to a nodes.dat file (v0, v1 or v2).';
 
   @override
-  String get inspecter => 'Inspecter';
+  String get inspecter => 'Inspect';
 
   @override
   String formatNodesDatVDetecte(String version) {
@@ -1247,57 +1288,56 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importerLesContacts => 'Import contacts';
 
   @override
-  String get idKadLocal => 'ID Kad Local :';
+  String get idKadLocal => 'Local Kad ID:';
 
   @override
   String get arreterUdp => 'Stop UDP';
 
   @override
-  String get socketUdp => 'Socket UDP';
+  String get socketUdp => 'UDP Socket';
 
   @override
-  String get paquetsTxRx => 'Paquets TX / RX';
+  String get paquetsTxRx => 'TX / RX Packets';
 
   @override
-  String get contactsActifs => 'Contacts actifs';
+  String get contactsActifs => 'Active contacts';
 
   @override
-  String get bucketsActifs => 'Buckets actifs';
+  String get bucketsActifs => 'Active buckets';
 
   @override
-  String get contactsEnBase => 'Contacts en base';
+  String get contactsEnBase => 'Stored contacts';
 
   @override
-  String get profil => 'Profil';
+  String get profil => 'Profile';
 
   @override
   String get reseauKadDhtKademlia => 'Kad DHT Network (Kademlia)';
 
   @override
-  String get actualiser => 'Actualiser';
+  String get actualiser => 'Refresh';
 
   @override
-  String get amorcerBootstrap => 'Amorcer (Bootstrap)';
+  String get amorcerBootstrap => 'Bootstrap';
 
   @override
-  String get amorcerDepuisUrl => 'Amorcer depuis URL';
+  String get amorcerDepuisUrl => 'Bootstrap from URL';
 
   @override
   String get allerAKad => 'Go to Kad';
 
   @override
-  String get allerAuxServeurs => 'Aller aux Serveurs';
+  String get allerAuxServeurs => 'Go to Servers';
 
   @override
   String get nonConnecteAUnServeur => 'Not connected to an eD2K server.';
 
   @override
-  String get connectezVousDAbordPour =>
-      'Connectez-vous d\'abord pour effectuer une recherche.';
+  String get connectezVousDAbordPour => 'Connect first to perform a search.';
 
   @override
   String get vousNEtesActuellementPas =>
-      'Vous n\'êtes actuellement pas connecté à un serveur eD2K. Connectez-vous d\'abord pour effectuer une recherche.';
+      'You are not currently connected to an eD2K server. Connect first to perform a search.';
 
   @override
   String get extensionExIsoZipAvi => 'Extension (ex: iso, zip, avi)';
@@ -1309,13 +1349,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tailleMaxMo => 'Max Size (MB)';
 
   @override
-  String get effacerFiltres => 'Effacer filtres';
+  String get effacerFiltres => 'Clear filters';
 
   @override
   String get serveurEd2k => 'eD2K Server';
 
   @override
-  String get globalUdp => 'Global UDP';
+  String get globalUdp => 'Global (UDP)';
 
   @override
   String get nomDuFichier => 'File name';
@@ -1324,7 +1364,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taille => 'Size';
 
   @override
-  String get hachageEd2k => 'Hachage eD2K';
+  String get hachageEd2k => 'eD2K Hash';
 
   @override
   String cliquerPourCopierLeHash(String fileHash) {
@@ -1346,13 +1386,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get demanderSourcesAuServeur => 'Request sources from server';
 
   @override
-  String get copierLienEd2k => 'Copier lien eD2K';
+  String get copierLienEd2k => 'Copy eD2K link';
 
   @override
   String get lienEd2kCopieDansLe => 'eD2K link copied to clipboard';
 
   @override
-  String get afficher => 'Afficher';
+  String get afficher => 'Show';
 
   @override
   String rechercheEnCoursSur(String targetLabel) {
@@ -1390,7 +1430,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Import a local server.met file to inspect and manage your servers.';
 
   @override
-  String get selectionnerServerMet => 'Selectionner server.met';
+  String get selectionnerServerMet => 'Select server.met';
 
   @override
   String get parDefautEmuleSionEst =>
@@ -1403,13 +1443,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rechercherUnServeurNomIp => 'Search a server (name, IP, port)...';
 
   @override
-  String get toutEffacer => 'Tout effacer';
+  String get toutEffacer => 'Clear all';
 
   @override
   String get securiteProfil => 'Security / Profile';
 
   @override
-  String get etatFiltre => 'Etat / Filtre';
+  String get etatFiltre => 'State / Filter';
 
   @override
   String get nomDuServeur => 'Server Name';
@@ -1427,16 +1467,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get preference => 'Preference';
 
   @override
-  String get seConnecter => 'Se connecter';
+  String get seConnecter => 'Connect';
 
   @override
-  String get supprimer => 'Supprimer';
+  String get supprimer => 'Delete';
 
   @override
   String get gestionLocaleDesServeursEd2k => 'Local eD2K Server Management';
 
   @override
-  String get importerServerMet => 'Importer server.met';
+  String get importerServerMet => 'Import server.met';
 
   @override
   String get mettreAJourDepuisUrl => 'Update from URL';
@@ -1446,10 +1486,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get indiquezLAdresseHttpOu =>
-      'Indiquez l\'adresse HTTP ou HTTPS d\'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs :';
+      'Enter the HTTP or HTTPS address of a remote server.met file to automatically update your server list.';
 
   @override
-  String get urlDuServerMet => 'URL du server.met';
+  String get urlDuServerMet => 'server.met URL';
 
   @override
   String get noteLesAdressesIpDe =>
@@ -1490,23 +1530,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get total => 'Total';
 
   @override
-  String get autorises => 'Autorises';
+  String get autorises => 'Allowed';
 
   @override
-  String get bloquesFiltreIp => 'Bloques (Filtre IP)';
+  String get bloquesFiltreIp => 'Blocked (IP filter)';
 
   @override
   String get lesServeursMarquesEnRouge =>
       'Servers marked in red match ranges in your local IP filter. They will be imported with blocked status.';
 
   @override
-  String get bloque => 'Bloque';
+  String get bloque => 'Blocked';
 
   @override
-  String get autorise => 'Autorise';
+  String get autorise => 'Allowed';
 
   @override
-  String get confirmerImportation => 'Confirmer importation';
+  String get confirmerImportation => 'Confirm import';
 
   @override
   String get aucunServeurConnecte => 'No server connected';
@@ -1521,7 +1561,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get memeEnModePublicLa =>
-      'Même en mode public, la politique réseau d\'Emule-Sion bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.';
+      'Even in public mode, Emule-Sion\'s network policy rigorously blocks all outbound traffic to your private local network addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x) to protect your home devices.';
 
   @override
   String get fermer => 'Close';
@@ -1534,25 +1574,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activerLeModeReseauPublic => 'Enable Public Network Mode (WAN)';
 
   @override
-  String get profilReseauActuel => 'Current Network Profile: ';
-
-  @override
-  String get statutUpnpIgdBoxRouteur => 'Statut UPnP IGD (Box / Routeur NAT)';
+  String get statutUpnpIgdBoxRouteur => 'UPnP IGD status (router/NAT box)';
 
   @override
   String get passerelleBoxDetectee => 'Gateway / Router detected:';
 
   @override
-  String get adresseIpExterneWan => 'Adresse IP Externe (WAN) :';
+  String get adresseIpExterneWan => 'External WAN IP address:';
 
   @override
   String portTcpEd2k(String tcpPort) {
-    return 'Port TCP eD2K ($tcpPort) :';
+    return 'eD2K TCP port ($tcpPort):';
   }
 
   @override
   String portUdpKad(String udpPort) {
-    return 'Port UDP Kad ($udpPort) :';
+    return 'Kad UDP port ($udpPort):';
   }
 
   @override
@@ -2141,36 +2178,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get upnpNotMapped => 'Not mapped';
 
   @override
-  String get netModePublicChip => 'PUBLIC NETWORK (WAN)';
-
-  @override
-  String get netModeLabChip => 'LAB (127.0.0.1)';
-
-  @override
-  String get netModePublicDesc =>
-      'Your client can reach public eD2K servers, external peers and the global Kademlia DHT.';
-
-  @override
-  String get netModeLabDesc =>
-      'All sockets are strictly confined to loopback 127.0.0.1. Zero packets on the Internet.';
-
-  @override
   String get ipFilterActive => 'Filter active';
 
   @override
   String get ipFilterDisabled => 'Filter disabled';
 
   @override
-  String get netProfileLocalLabDesc =>
-      'Confined to loopback (127.0.0.1 / ::1). Zero external sockets permitted.';
+  String get networksCardTitle => 'Networks';
+
+  @override
+  String get networkEd2kTitle => 'eD2K Network';
+
+  @override
+  String get networkKadTitle => 'Kad Network';
 
   @override
   String get netProfileEd2kDesc =>
       'Outbound TCP to public eD2K peers/servers. Rejects private LAN & loopback (anti-SSRF).';
 
   @override
-  String get netProfileEd2kKadDesc =>
-      'Preview WAN with UDP support for Kademlia routing. Strict address validation.';
+  String get netProfileKadDesc =>
+      'Kademlia DHT — outbound UDP for WAN routing. Enabling Kad also enables eD2K.';
 
   @override
   String ipReportTotalLines(int count) {
@@ -2191,4 +2219,1338 @@ class AppLocalizationsEn extends AppLocalizations {
   String ipReportFinalRanges(int count) {
     return 'Final active intervals: $count';
   }
+
+  @override
+  String get connDisconnected => 'Disconnected';
+
+  @override
+  String get connConnecting => 'Connecting';
+
+  @override
+  String get connConnectingEllipsis => 'Connecting...';
+
+  @override
+  String get connConnected => 'Connected';
+
+  @override
+  String get connDisconnecting => 'Disconnecting...';
+
+  @override
+  String get connError => 'Error';
+
+  @override
+  String get peerHandshaking => 'eD2K Handshake...';
+
+  @override
+  String get peerQueued => 'In queue';
+
+  @override
+  String get peerTransferring => 'Downloading';
+
+  @override
+  String get dlStatusQueued => 'Queued';
+
+  @override
+  String get dlStatusWaitingForSources => 'Waiting for sources';
+
+  @override
+  String get dlStatusAllocating => 'Allocating';
+
+  @override
+  String get dlStatusDownloading => 'Downloading';
+
+  @override
+  String get dlStatusPaused => 'Paused';
+
+  @override
+  String get dlStatusVerifying => 'Verifying';
+
+  @override
+  String get dlStatusCompleting => 'Completing';
+
+  @override
+  String get dlStatusCompleted => 'Completed';
+
+  @override
+  String get dlStatusFailed => 'Failed';
+
+  @override
+  String get profileLocalLab => 'Local Lab (Loopback Only)';
+
+  @override
+  String get profilePublicEd2k => 'Public eD2K Preview';
+
+  @override
+  String get profilePublicEd2kKad => 'Public eD2K + Kad Preview';
+
+  @override
+  String get subsystemDisabled => 'Disabled (Kill Switch)';
+
+  @override
+  String get subsystemReady => 'Ready (Preview)';
+
+  @override
+  String get subsystemShuttingDown => 'Shutting Down';
+
+  @override
+  String get daemonIdle => 'Idle';
+
+  @override
+  String get daemonDiscovering => 'Discovering Daemon...';
+
+  @override
+  String get daemonStarting => 'Starting Daemon...';
+
+  @override
+  String get daemonProtocolMismatch => 'Protocol Version Incompatible';
+
+  @override
+  String get daemonAuthError => 'Authentication Failed';
+
+  @override
+  String get navShares => 'Shared Files';
+
+  @override
+  String get badgeEd2kHighId => 'eD2K · HighID';
+
+  @override
+  String get badgeEd2kLowId => 'eD2K · LowID';
+
+  @override
+  String get badgeEd2kConnecting => 'eD2K · Connecting…';
+
+  @override
+  String get badgeEd2kDisconnecting => 'eD2K · Disconnecting…';
+
+  @override
+  String get badgeEd2kDisconnected => 'eD2K · Disconnected';
+
+  @override
+  String get badgeKadStopped => 'Kad · Stopped';
+
+  @override
+  String get badgeKadConnected => 'Kad · Connected';
+
+  @override
+  String get badgeKadBootstrapping => 'Kad · Bootstrapping';
+
+  @override
+  String get daemonCardTooltipTitle => 'Daemon Status';
+
+  @override
+  String daemonCardTooltipServer(Object name) {
+    return 'Server: $name';
+  }
+
+  @override
+  String get daemonCardTooltipDiagnostics => 'Click to view Diagnostics';
+
+  @override
+  String get sharesTitle => 'Shared Files';
+
+  @override
+  String sharesFileCount(Object count) {
+    return '$count file(s)';
+  }
+
+  @override
+  String get sharesRescanTooltip => 'Rescan Incoming folder';
+
+  @override
+  String get sharesEmptyState =>
+      'No shared files.\nFiles in the Incoming folder and active or completed downloads are shared automatically.';
+
+  @override
+  String sharesPartialParts(Object count) {
+    return ' — partial ($count part(s))';
+  }
+
+  @override
+  String get sharesTotalSentTooltip => 'Total sent for this file';
+
+  @override
+  String get sharePrioVeryLow => 'Very low';
+
+  @override
+  String get sharePrioVeryHigh => 'Very high';
+
+  @override
+  String get sharesEnabledTooltip => 'Shared';
+
+  @override
+  String get sharesDisabledTooltip => 'Suspended';
+
+  @override
+  String get sharesRenameDisabledTooltip =>
+      'Download in progress — rename it from the Downloads tab';
+
+  @override
+  String get sharesRenameTooltip => 'Rename file';
+
+  @override
+  String get sharesDeleteDisabledTooltip =>
+      'Download in progress — remove it from the Downloads tab';
+
+  @override
+  String get sharesDeleteTooltip => 'Delete file from disk';
+
+  @override
+  String get sharesDeleteTitle => 'Delete the file?';
+
+  @override
+  String sharesDeleteBody(Object name) {
+    return '$name will be permanently deleted from disk and removed from shares.';
+  }
+
+  @override
+  String get sourcesMaxDialogTitle => 'Max sources (FT_MAXSOURCES)';
+
+  @override
+  String get sourcesMaxHint => 'Empty = global limit';
+
+  @override
+  String get sourcesMaxHelper =>
+      'Max number of sources for this file (1-10000)';
+
+  @override
+  String get apply => 'Apply';
+
+  @override
+  String get srcNoHash => 'No eD2K hash for this file.';
+
+  @override
+  String get srcLoading => 'Loading sources...';
+
+  @override
+  String get srcNone => 'No known sources for this file.';
+
+  @override
+  String srcConnected(Object count) {
+    return 'Connected ($count)';
+  }
+
+  @override
+  String srcKnown(Object count) {
+    return 'Known sources ($count)';
+  }
+
+  @override
+  String srcCount(Object count) {
+    return 'Sources ($count)';
+  }
+
+  @override
+  String srcPriorityLabel(Object priority) {
+    return 'Priority: $priority';
+  }
+
+  @override
+  String get srcMaxTooltip => 'Max sources for this file (FT_MAXSOURCES)';
+
+  @override
+  String srcMaxShort(Object value) {
+    return 'Src max: $value';
+  }
+
+  @override
+  String get peerRetry => 'Retry';
+
+  @override
+  String get peerConnect => 'Connect';
+
+  @override
+  String get pendingDestination => 'Pending destination...';
+
+  @override
+  String get pendingCalculation => 'Pending calculation...';
+
+  @override
+  String get tooltipDownloadPriority => 'Download priority';
+
+  @override
+  String get tooltipAssignCategory => 'Assign Category';
+
+  @override
+  String tooltipCategoryName(Object name) {
+    return 'Category: $name';
+  }
+
+  @override
+  String get peerSrcAllowed => 'Allowed';
+
+  @override
+  String get peerSrcFiltered => 'IP Filtered';
+
+  @override
+  String get peerSrcRejected => 'Profile Rejected';
+
+  @override
+  String get peerSrcTried => 'Tried';
+
+  @override
+  String get peerSrcFailed => 'Failed';
+
+  @override
+  String get peerSrcCandidate => 'Candidate';
+
+  @override
+  String get importPartOnDisk => '.part File on Disk:';
+
+  @override
+  String importPartPresent(Object size) {
+    return 'Present ($size)';
+  }
+
+  @override
+  String get importPartMissing => 'MISSING (.part file not found)';
+
+  @override
+  String get openFileExplorerTooltip => 'Open completed file in file explorer';
+
+  @override
+  String get openFileDisabledTooltip =>
+      'Available once download and verification finish';
+
+  @override
+  String addLinkDuplicate(Object name) {
+    return 'This file is already in the downloads list (\"$name\")';
+  }
+
+  @override
+  String get pickDownloadDir => 'Select Download Directory';
+
+  @override
+  String get addLinkGenericError => 'Error while adding the download';
+
+  @override
+  String get catPickDir => 'Select Default Category Download Directory';
+
+  @override
+  String get catNameRequired => 'Category name cannot be empty';
+
+  @override
+  String get catEditTitle => 'Edit Category';
+
+  @override
+  String get catNewTitle => 'New Category';
+
+  @override
+  String get catNameLabel => 'Category Name *';
+
+  @override
+  String get catColorLabel => 'Color Tag';
+
+  @override
+  String get catDestLabel => 'Default Destination (Optional)';
+
+  @override
+  String get catPrioLabel => 'Default Priority (Optional)';
+
+  @override
+  String get catSaveChanges => 'Save Changes';
+
+  @override
+  String get catCreate => 'Create Category';
+
+  @override
+  String get opFailed => 'Operation failed';
+
+  @override
+  String get uploadsScore => 'Score';
+
+  @override
+  String get uploadsCredit => 'Credit';
+
+  @override
+  String get uploadsBanned => 'Banned client (score 0)';
+
+  @override
+  String get kadVerified => 'Verified';
+
+  @override
+  String get kadNotVerified => 'Not verified';
+
+  @override
+  String get kadBootstrapDescPublic =>
+      'Enter the public IP address and UDP port of a Kad node to bootstrap the routing table (e.g. 212.83.184.225).';
+
+  @override
+  String get kadBootstrapDescLab =>
+      'Enter the IP address and UDP port of a bootstrap node (in the LocalLab profile, only 127.0.0.1 is allowed).';
+
+  @override
+  String get kadStartUdpPublic => 'Start Kad UDP';
+
+  @override
+  String get kadStartUdpLab => 'Start Loopback UDP';
+
+  @override
+  String kadUdpActive(Object addr) {
+    return 'Active ($addr)';
+  }
+
+  @override
+  String get kadUdpInactive => 'Inactive';
+
+  @override
+  String get kadTimeNever => 'Never';
+
+  @override
+  String kadTimeMinutesAgo(Object min) {
+    return '${min}m ago';
+  }
+
+  @override
+  String kadTimeHoursAgo(Object hours) {
+    return '${hours}h ago';
+  }
+
+  @override
+  String kadTimeDaysAgo(Object days) {
+    return '${days}d ago';
+  }
+
+  @override
+  String kadBannerPublic(Object addr) {
+    return 'Global Kad DHT network active on $addr | Kademlia routing open | Anti-SSRF protection active.';
+  }
+
+  @override
+  String kadBannerLab(Object addr) {
+    return 'UDP socket active: $addr (Confined Lab Mode) | Instant kill switch.';
+  }
+
+  @override
+  String get kadBannerStartPublic =>
+      'Kad UDP transport: click \"Start UDP\" to join the global Kademlia network.';
+
+  @override
+  String get kadBannerStartLab =>
+      'Confined Kad UDP transport: only loopback traffic (127.0.0.1) is allowed in the LocalLab profile.';
+
+  @override
+  String get searchExplainKad =>
+      'KADEMLIA2_SEARCH_KEYWORD requests query Kad nodes storing the MD4 keyword index.';
+
+  @override
+  String get searchExplainGlobal =>
+      'OP_GLOBSEARCHREQ3/REQ2 requests are sent via UDP to all known servers (TCP port +4). REQ3 is used when the server advertises EXT_GETFILES + LARGEFILES.';
+
+  @override
+  String get searchExplainServer =>
+      'OP_SEARCHREQUEST requests directly query the connected eD2K server index.';
+
+  @override
+  String searchNoResults(Object term) {
+    return 'No results found for « $term »';
+  }
+
+  @override
+  String get searchPromptKeywords => 'Enter keywords above to start a search';
+
+  @override
+  String searchEnableTarget(Object target) {
+    return 'Enable $target to start searching for files';
+  }
+
+  @override
+  String get searchTryOther => 'Try other terms or broaden your size filters';
+
+  @override
+  String get searchHideFilters => 'Hide filters';
+
+  @override
+  String get searchShowFilters => 'Show advanced filters';
+
+  @override
+  String get searchHintKad => 'Kad keywords (min. 3 letters)...';
+
+  @override
+  String get searchHintServer => 'File name or keywords...';
+
+  @override
+  String get searchButtonSearching => 'Searching...';
+
+  @override
+  String get searchButton => 'Search';
+
+  @override
+  String get searchTargetServer => 'eD2K Server';
+
+  @override
+  String get searchTargetKad => 'Kad DHT Network';
+
+  @override
+  String get searchTargetLabelKad => 'the Kad DHT network';
+
+  @override
+  String get searchTargetLabelGlobal => 'eD2K servers (UDP)';
+
+  @override
+  String get searchTargetLabelServer => 'the eD2K server';
+
+  @override
+  String get searchTargetEnableGlobal => 'the eD2K server list';
+
+  @override
+  String get searchTargetEnableServer => 'an eD2K server';
+
+  @override
+  String kadActiveBanner(
+    Object addr,
+    Object buckets,
+    Object contacts,
+    Object profile,
+  ) {
+    return 'Kad DHT Active • Contacts: $contacts ($buckets k-buckets) • Bind: $addr • Profile: $profile';
+  }
+
+  @override
+  String get unknown => 'Unknown';
+
+  @override
+  String get kadInactiveBanner =>
+      'The Kad DHT network is not yet active. Start the Kad socket or perform a bootstrap.';
+
+  @override
+  String get searchGlobalBanner =>
+      'Global UDP search — queries all known servers (REQ3 if the server supports EXT_GETFILES + LARGEFILES).';
+
+  @override
+  String searchConnectedBanner(
+    Object addr,
+    Object id,
+    Object idType,
+    Object name,
+  ) {
+    return 'Connected to $name ($addr) • Client ID: $id ($idType)';
+  }
+
+  @override
+  String get serverUnnamed => 'Unnamed';
+
+  @override
+  String get serverDisconnectBtn => 'Disconnect';
+
+  @override
+  String get serverBannerConnected =>
+      'eD2K connections available. Check your network profile (LocalLab vs PublicEd2kPreview) before connecting. Addresses in your IP filter are automatically flagged.';
+
+  @override
+  String get serverBannerDisconnected =>
+      'Network warning: importing or managing a server list does not establish any outbound connection. Addresses in your active IP filter are automatically flagged.';
+
+  @override
+  String get serverBlockedByFilter => 'Blocked by IP Filter';
+
+  @override
+  String get serverDisabledBadge => 'Disabled';
+
+  @override
+  String get historyIntegrityErrors => 'Integrity errors detected';
+
+  @override
+  String get labStep2Desc =>
+      'Use the hash to create a tracked download task inside the client.';
+
+  @override
+  String get labAddedToDownloads => 'Added to Downloads!';
+
+  @override
+  String get labAddToDownloads => 'Add to Downloads';
+
+  @override
+  String get labStep4Desc =>
+      'Instructs the client to connect to the 127.0.0.1 source to transfer chunks.';
+
+  @override
+  String labDlDone(Object size) {
+    return 'Download completed and verified ($size)';
+  }
+
+  @override
+  String labDlTransferring(Object received, Object speed, Object total) {
+    return 'Transferring: $received / $total ($speed)';
+  }
+
+  @override
+  String labDlReady(Object state) {
+    return 'State: $state — Ready to connect to loopback peer.';
+  }
+
+  @override
+  String get labAlreadyCompleted => 'Already Completed';
+
+  @override
+  String get labConnectToSource => 'Connect to Source';
+
+  @override
+  String get labStep1Desc =>
+      'Creates a deterministic file in <workdir>/fixtures/ and computes its eD2K hash.';
+
+  @override
+  String get labGenerating => 'Generating...';
+
+  @override
+  String get labGenerateFixture => 'Generate Fixture';
+
+  @override
+  String get labStep3Desc =>
+      'Spawns a local eD2K protocol peer hosting the test fixtures.';
+
+  @override
+  String get labStopPeer => 'Stop Loopback Peer';
+
+  @override
+  String get labStartPeer => 'Start Loopback Peer';
+
+  @override
+  String labPeerActive(Object addr, Object count) {
+    return 'Active on $addr (serving $count file(s))';
+  }
+
+  @override
+  String get labPeerOffline => 'Peer offline';
+
+  @override
+  String get labStep5Desc =>
+      'Purges generated files in <workdir>/fixtures and partial files in <workdir>/temp. Completed downloads in downloads/ are preserved and never touched.';
+
+  @override
+  String get labCleanupSafe => 'Safe to run in Portable mode.';
+
+  @override
+  String get labCleanupRestricted =>
+      'Cleanup is restricted in installed mode to protect user files.';
+
+  @override
+  String labErrCreateFixture(Object error) {
+    return 'Failed to create fixture: $error';
+  }
+
+  @override
+  String labErrAddDownload(Object error) {
+    return 'Failed to add download: $error';
+  }
+
+  @override
+  String labErrPeerOp(Object error) {
+    return 'Peer operation failed: $error';
+  }
+
+  @override
+  String labErrConnectDownload(Object error) {
+    return 'Failed to connect download: $error';
+  }
+
+  @override
+  String labErrCleanup(Object error) {
+    return 'Cleanup failed: $error';
+  }
+
+  @override
+  String get notAvailable => 'Not available';
+
+  @override
+  String get copyFullPath => 'Copy full path';
+
+  @override
+  String get copiedPathInternal => 'Internal data path copied to clipboard';
+
+  @override
+  String get copyDownloadsPath => 'Copy downloads directory path';
+
+  @override
+  String get copiedDownloadsPath => 'Downloads path copied to clipboard';
+
+  @override
+  String get copyDaemonLogPath => 'Copy daemon log path';
+
+  @override
+  String get copiedDaemonLogPath => 'Daemon log path copied to clipboard';
+
+  @override
+  String diagNetworkProfile(Object profile) {
+    return 'Network Profile: $profile';
+  }
+
+  @override
+  String msgDownloadAdded(Object name) {
+    return 'File \"$name\" added to downloads';
+  }
+
+  @override
+  String msgDownloadDuplicate(Object name, Object status) {
+    return 'This file is already in the downloads list (\"$name\", status: $status)';
+  }
+
+  @override
+  String msgImportedFile(Object name, Object parts, Object verified) {
+    return 'Imported \"$name\" ($verified/$parts parts verified)';
+  }
+
+  @override
+  String msgErrImportPartMet(Object error) {
+    return 'Failed to import .part.met: $error';
+  }
+
+  @override
+  String msgErrPause(Object error) {
+    return 'Failed to pause: $error';
+  }
+
+  @override
+  String msgErrResume(Object error) {
+    return 'Failed to resume: $error';
+  }
+
+  @override
+  String msgErrRename(Object error) {
+    return 'Failed to rename: $error';
+  }
+
+  @override
+  String msgErrRemove(Object error) {
+    return 'Failed to remove: $error';
+  }
+
+  @override
+  String msgErrFetchDetails(Object error) {
+    return 'Failed to fetch details: $error';
+  }
+
+  @override
+  String msgDestinationChanged(Object dir) {
+    return 'Destination changed to $dir';
+  }
+
+  @override
+  String msgErrChangeDestination(Object error) {
+    return 'Failed to change destination: $error';
+  }
+
+  @override
+  String msgRetryLoopback(Object name) {
+    return 'Retrying loopback connection for \"$name\"';
+  }
+
+  @override
+  String msgErrRetryConn(Object error) {
+    return 'Failed to retry connection: $error';
+  }
+
+  @override
+  String msgErrOpenFile(Object error) {
+    return 'Could not open completed file location: $error';
+  }
+
+  @override
+  String msgDownloadCompleted(Object name) {
+    return 'Download completed: $name';
+  }
+
+  @override
+  String msgDownloadFailed(Object name) {
+    return 'Download failed: $name';
+  }
+
+  @override
+  String msgCategoryCreated(Object name) {
+    return 'Created category \"$name\"';
+  }
+
+  @override
+  String msgErrCategoryCreate(Object error) {
+    return 'Failed to create category: $error';
+  }
+
+  @override
+  String msgCategoryUpdated(Object name) {
+    return 'Updated category \"$name\"';
+  }
+
+  @override
+  String msgErrCategoryUpdate(Object error) {
+    return 'Failed to update category: $error';
+  }
+
+  @override
+  String msgCategoryDeleted(Object name) {
+    return 'Deleted category \"$name\"';
+  }
+
+  @override
+  String msgErrCategoryDelete(Object error) {
+    return 'Failed to delete category: $error';
+  }
+
+  @override
+  String msgErrCategoryReorder(Object error) {
+    return 'Failed to reorder categories: $error';
+  }
+
+  @override
+  String msgAssignedToCategory(Object name) {
+    return 'Assigned to category \"$name\"';
+  }
+
+  @override
+  String get categoryFallback => 'Category';
+
+  @override
+  String msgProfileSwitched(Object profile) {
+    return 'Network profile switched: $profile';
+  }
+
+  @override
+  String msgErrProfileSwitch(Object error) {
+    return 'Failed to change network profile: $error';
+  }
+
+  @override
+  String get msgKillSwitchOn =>
+      'Kill switch engaged: all network connections were cut';
+
+  @override
+  String msgErrKillSwitch(Object error) {
+    return 'Kill switch failed: $error';
+  }
+
+  @override
+  String get msgNetworkReactivated => 'Network reactivated';
+
+  @override
+  String msgErrNetworkReactivate(Object error) {
+    return 'Failed to reactivate network: $error';
+  }
+
+  @override
+  String get msgBudgetsUpdated => 'Resource budgets updated';
+
+  @override
+  String msgErrBudgets(Object error) {
+    return 'Failed to update resource budgets: $error';
+  }
+
+  @override
+  String msgIpFilterImported(Object count) {
+    return 'IP filter imported: $count ranges';
+  }
+
+  @override
+  String msgErrIpFilterImport(Object error) {
+    return 'Failed to import IP filter: $error';
+  }
+
+  @override
+  String get msgIpFilterEnabled => 'IP filter enabled';
+
+  @override
+  String get msgIpFilterDisabled => 'IP filter disabled';
+
+  @override
+  String msgErrIpFilterToggle(Object error) {
+    return 'Failed to toggle IP filter: $error';
+  }
+
+  @override
+  String get msgIpFilterCleared => 'IP filter cleared';
+
+  @override
+  String msgErrIpFilterClear(Object error) {
+    return 'Failed to clear IP filter: $error';
+  }
+
+  @override
+  String get msgRateLimitsUpdated => 'Rate limits updated';
+
+  @override
+  String msgErrRateLimits(Object error) {
+    return 'Failed to update rate limits: $error';
+  }
+
+  @override
+  String msgErrLoadSources(Object error) {
+    return 'Failed to load sources: $error';
+  }
+
+  @override
+  String msgSourceAdded(Object address) {
+    return 'Source $address added';
+  }
+
+  @override
+  String msgErrAddSource(Object error) {
+    return 'Failed to add source: $error';
+  }
+
+  @override
+  String msgConnInitiated(Object address) {
+    return 'Connection to $address initiated';
+  }
+
+  @override
+  String msgErrConnectSource(Object error) {
+    return 'Failed to connect to source: $error';
+  }
+
+  @override
+  String msgPeerDisconnected(Object address) {
+    return 'Peer $address disconnected';
+  }
+
+  @override
+  String get msgSessionsDisconnected => 'Peer session(s) disconnected';
+
+  @override
+  String msgErrDisconnectPeer(Object error) {
+    return 'Failed to disconnect peer: $error';
+  }
+
+  @override
+  String msgPriorityChanged(Object priority) {
+    return 'Priority changed: $priority';
+  }
+
+  @override
+  String msgErrPriority(Object error) {
+    return 'Failed to change priority: $error';
+  }
+
+  @override
+  String get msgSrcLimitReset => 'Source limit reset';
+
+  @override
+  String msgSrcLimitSet(Object max) {
+    return 'Source limit: $max';
+  }
+
+  @override
+  String msgErrSrcLimit(Object error) {
+    return 'Failed to change limit: $error';
+  }
+
+  @override
+  String get msgSourcesCleared => 'Sources cleared';
+
+  @override
+  String msgErrClearSources(Object error) {
+    return 'Failed to clear sources: $error';
+  }
+
+  @override
+  String msgErrKadContacts(Object error) {
+    return 'Failed to fetch Kad contacts: $error';
+  }
+
+  @override
+  String msgErrNodesDatInspect(Object error) {
+    return 'Failed to inspect nodes.dat: $error';
+  }
+
+  @override
+  String msgKadContactsImported(Object count) {
+    return 'Imported $count Kad contacts into K-buckets';
+  }
+
+  @override
+  String get msgErrNodesDatImport => 'Failed to import nodes.dat';
+
+  @override
+  String msgKadContactsCleared(Object count) {
+    return 'Cleared $count Kad contacts';
+  }
+
+  @override
+  String msgErrKadClear(Object error) {
+    return 'Failed to clear Kad contacts: $error';
+  }
+
+  @override
+  String msgKadUdpStarted(Object addr) {
+    return 'Kad UDP socket started on $addr';
+  }
+
+  @override
+  String get msgErrKadUdpStart => 'Failed to start Kad UDP';
+
+  @override
+  String get msgKadUdpStopped => 'Kad UDP socket stopped';
+
+  @override
+  String get msgErrKadUdpStop => 'Failed to stop Kad UDP';
+
+  @override
+  String msgKadPong(Object addr, Object latency) {
+    return 'Pong received from $addr in ${latency}ms';
+  }
+
+  @override
+  String msgErrKadPing(Object addr, Object error) {
+    return 'Kad ping failed ($addr): $error';
+  }
+
+  @override
+  String msgKadBootstrapOk(Object count) {
+    return 'Kad bootstrap successful ($count contacts received)';
+  }
+
+  @override
+  String get msgErrKadBootstrap => 'Kad bootstrap failed';
+
+  @override
+  String msgKadBootstrapUrlOk(Object count) {
+    return 'Kad bootstrap from URL successful ($count nodes imported)';
+  }
+
+  @override
+  String get msgErrKadBootstrapUrl => 'Kad bootstrap from URL failed';
+
+  @override
+  String msgKadSearchFound(Object count) {
+    return 'Kad search: $count closest nodes found';
+  }
+
+  @override
+  String get msgErrKadSearch => 'Kad search failed';
+
+  @override
+  String msgKadSourcesFound(Object count, Object hash) {
+    return 'Kad: $count sources found for $hash…';
+  }
+
+  @override
+  String get msgErrKadSources => 'Kad source search failed';
+
+  @override
+  String msgKadPublished(Object count, Object hash) {
+    return 'Kad: published to $count nodes for $hash…';
+  }
+
+  @override
+  String get msgErrKadPublish => 'Kad publish failed';
+
+  @override
+  String msgSearchGlobalSent(Object term, Object udp) {
+    return 'Global search \"$term\" sent$udp';
+  }
+
+  @override
+  String msgSearchSent(Object term, Object udp) {
+    return 'Search \"$term\" sent to server$udp';
+  }
+
+  @override
+  String msgSearchNoResponse(Object term) {
+    return 'Search \"$term\" finished with no server response';
+  }
+
+  @override
+  String msgErrSearch(Object error) {
+    return 'Search failed: $error';
+  }
+
+  @override
+  String msgKadSearchDone(Object count, Object term) {
+    return 'Kad search \"$term\" finished ($count result(s))';
+  }
+
+  @override
+  String msgErrKadSearchRun(Object error) {
+    return 'Kad search failed: $error';
+  }
+
+  @override
+  String msgSourceReqSent(Object hash) {
+    return 'Source request sent for $hash';
+  }
+
+  @override
+  String msgErrSourceReq(Object error) {
+    return 'Source request failed: $error';
+  }
+
+  @override
+  String msgErrListServers(Object error) {
+    return 'Failed to list servers: $error';
+  }
+
+  @override
+  String msgErrInspectServerMet(Object error) {
+    return 'Failed to inspect server.met: $error';
+  }
+
+  @override
+  String msgServersImported(Object allowed, Object blocked, Object imported) {
+    return 'Imported $imported servers ($allowed allowed, $blocked blocked by IP filter)';
+  }
+
+  @override
+  String msgErrImportServerMet(Object error) {
+    return 'Failed to import server.met: $error';
+  }
+
+  @override
+  String msgServersUpdated(Object count) {
+    return 'Update successful: $count servers processed from URL';
+  }
+
+  @override
+  String msgErrServersUpdate(Object error) {
+    return 'Failed to update servers from URL: $error';
+  }
+
+  @override
+  String msgErrToggleServer(Object error) {
+    return 'Failed to toggle server state: $error';
+  }
+
+  @override
+  String msgErrDeleteServer(Object error) {
+    return 'Failed to delete server: $error';
+  }
+
+  @override
+  String msgServersCleared(Object count) {
+    return 'Cleared $count servers';
+  }
+
+  @override
+  String msgErrClearServers(Object error) {
+    return 'Failed to clear servers: $error';
+  }
+
+  @override
+  String msgConnectingToServer(Object name) {
+    return 'Connecting to server $name...';
+  }
+
+  @override
+  String msgErrConnectServer(Object error) {
+    return 'Connection failed: $error';
+  }
+
+  @override
+  String get msgDisconnectedFromServer => 'Disconnected from eD2K server';
+
+  @override
+  String msgErrDisconnectServer(Object error) {
+    return 'Disconnection error: $error';
+  }
+
+  @override
+  String get msgSettingsUpdated => 'Settings updated';
+
+  @override
+  String msgErrSettingsUpdate(Object error) {
+    return 'Failed to update settings: $error';
+  }
+
+  @override
+  String get msgDownloadDirUpdated => 'Default download directory updated';
+
+  @override
+  String msgErrDownloadDir(Object error) {
+    return 'Failed to set download directory: $error';
+  }
+
+  @override
+  String get msgDownloadDirReset =>
+      'Download directory reset (portable default)';
+
+  @override
+  String msgErrDownloadDirReset(Object error) {
+    return 'Failed to reset download directory: $error';
+  }
+
+  @override
+  String msgErrFetchHistory(Object error) {
+    return 'Failed to fetch history: $error';
+  }
+
+  @override
+  String msgHistoryCleared(Object count) {
+    return 'Cleared $count history record(s)';
+  }
+
+  @override
+  String msgErrClearHistory(Object error) {
+    return 'Failed to clear history: $error';
+  }
+
+  @override
+  String msgErrExportHistory(Object error) {
+    return 'Failed to export history: $error';
+  }
+
+  @override
+  String get msgRetentionUnlimited => 'History retention set to unlimited';
+
+  @override
+  String msgRetentionDays(Object days) {
+    return 'History retention set to $days days';
+  }
+
+  @override
+  String msgErrRetention(Object error) {
+    return 'Failed to update retention policy: $error';
+  }
+
+  @override
+  String msgBytesInjected(Object count, Object offset) {
+    return 'Injected $count bytes at offset $offset';
+  }
+
+  @override
+  String msgErrInject(Object error) {
+    return 'Injection failed: $error';
+  }
+
+  @override
+  String msgFixtureCreated(Object name) {
+    return 'Created fixture $name';
+  }
+
+  @override
+  String msgPeerStarted(Object addr) {
+    return 'Started loopback peer at $addr';
+  }
+
+  @override
+  String get msgPeerStopped => 'Stopped loopback test peer';
+
+  @override
+  String msgConnectedToPeer(Object addr) {
+    return 'Connected download to $addr';
+  }
+
+  @override
+  String msgCatSetError(Object e) {
+    return 'Failed to set category: $e';
+  }
+
+  @override
+  String msgSourcesFound(Object hash, Object n) {
+    return '$n source(s) found for $hash';
+  }
+
+  @override
+  String get kadTimeJustNow => 'Just now';
+
+  @override
+  String labCreateFixtureError(Object e) {
+    return 'Failed to create fixture: $e';
+  }
+
+  @override
+  String labAddDownloadError(Object e) {
+    return 'Failed to add download: $e';
+  }
+
+  @override
+  String labPeerError(Object e) {
+    return 'Peer operation failed: $e';
+  }
+
+  @override
+  String labConnectError(Object e) {
+    return 'Failed to connect download: $e';
+  }
+
+  @override
+  String labCleanupError(Object e) {
+    return 'Cleanup failed: $e';
+  }
+
+  @override
+  String labDownloadComplete(Object size) {
+    return 'Download completed and verified ($size)';
+  }
+
+  @override
+  String labTransferring(Object rate, Object recv, Object total) {
+    return 'Transferring: $recv / $total ($rate)';
+  }
+
+  @override
+  String labReadyToConnect(Object state) {
+    return 'State: $state — ready to connect to loopback peer.';
+  }
+
+  @override
+  String get labCleanupPortableOk => 'Safe to run in Portable mode.';
+
+  @override
+  String get labCleanupPortableNo =>
+      'Cleanup is restricted in installed mode to protect user files.';
+
+  @override
+  String histFilesCount(Object n) {
+    return '$n files';
+  }
+
+  @override
+  String histSessionCount(Object n, Object size) {
+    return '$n session ($size)';
+  }
+
+  @override
+  String histResumesCount(Object n) {
+    return '$n resumes';
+  }
+
+  @override
+  String histHashMismatchCount(Object n) {
+    return '$n hash mismatch';
+  }
+
+  @override
+  String get histHashVerified => '100% hash verified';
+
+  @override
+  String get histIntegrityErrors => 'Integrity errors detected';
+
+  @override
+  String peerReceivedBytes(Object bytes) {
+    return 'Received: $bytes';
+  }
+
+  @override
+  String searchUdpFailed(Object n) {
+    return ', $n failed';
+  }
+
+  @override
+  String get kadIdGenerated => '(Generated at init)';
+
+  @override
+  String get ed2kErrPrefix => 'Must start with \"ed2k://|file|\"';
+
+  @override
+  String get ed2kErrIncomplete => 'Incomplete eD2K link format';
+
+  @override
+  String get ed2kErrInvalid =>
+      'Invalid filename, size, or 32-character hex hash';
+
+  @override
+  String partsCount(Object n) {
+    return '$n part(s)';
+  }
+
+  @override
+  String sourcesLoopback(Object n) {
+    return '$n loopback';
+  }
+
+  @override
+  String get diagLoopbackTitle => 'Network profile: LocalLab (loopback)';
+
+  @override
+  String get diagLoopbackSubtitle =>
+      'Traffic confined to 127.0.0.1 — no data leaves the machine.';
+
+  @override
+  String get diagPublicSubtitle =>
+      'WAN connections allowed — anti-SSRF protection active.';
 }

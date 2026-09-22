@@ -70,6 +70,28 @@ impl RunningDaemon {
     }
 }
 
+/// Lit la prochaine trame WS portant l'`id` de réponse attendu — les events
+/// broadcast (`event.statsTick`, `upnp.statusChanged`, `downloadUpdated`…)
+/// sont multiplexés sur le socket et peuvent précéder la réponse RPC.
+async fn next_response<S>(read: &mut S, id: u64) -> Value
+where
+    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+        + Unpin,
+{
+    for _ in 0..64 {
+        let msg = read
+            .next()
+            .await
+            .expect("ws stream ended")
+            .expect("ws frame error");
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"].as_u64() == Some(id) {
+            return val;
+        }
+    }
+    panic!("response id={id} not received within 64 frames");
+}
+
 #[tokio::test]
 async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
     // 1. Prepare isolated directories
@@ -122,8 +144,7 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
         .send(Message::Text(req_hello.to_string().into()))
         .await
         .unwrap();
-    let resp = read.next().await.unwrap().unwrap();
-    let hello_val: Value = serde_json::from_str(resp.to_text().unwrap()).unwrap();
+    let hello_val = next_response(&mut read, 1).await;
     assert_eq!(hello_val["result"]["protocolVersion"], 1);
 
     // Subscribe to events
@@ -302,8 +323,7 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
         .send(Message::Text(req_hello_2.to_string().into()))
         .await
         .unwrap();
-    let resp = read_2.next().await.unwrap().unwrap();
-    let hello_val_2: Value = serde_json::from_str(resp.to_text().unwrap()).unwrap();
+    let hello_val_2 = next_response(&mut read_2, 10).await;
     assert_eq!(hello_val_2["result"]["protocolVersion"], 1);
 
     // 9. Verify restored download status and neutral SourceAvailabilitySummary
@@ -317,8 +337,7 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
         .send(Message::Text(req_list.to_string().into()))
         .await
         .unwrap();
-    let resp_list = read_2.next().await.unwrap().unwrap();
-    let list_val: Value = serde_json::from_str(resp_list.to_text().unwrap()).unwrap();
+    let list_val = next_response(&mut read_2, 11).await;
     let dls = list_val["result"]["downloads"].as_array().unwrap();
     assert_eq!(dls.len(), 1, "Exactly one download restored from SQLite");
     let restored_dl = &dls[0];
@@ -517,8 +536,7 @@ async fn test_ed2k_transfer_residual_part_file_completion() {
         .send(Message::Text(req_hello.to_string().into()))
         .await
         .unwrap();
-    let resp = read.next().await.unwrap().unwrap();
-    let hello_val: Value = serde_json::from_str(resp.to_text().unwrap()).unwrap();
+    let hello_val = next_response(&mut read, 1).await;
     assert_eq!(hello_val["result"]["protocolVersion"], 1);
 
     // Subscribe to events

@@ -4,7 +4,10 @@
 
 Le message `OP_FILESTATUS` est émis par un pair eD2K en réponse à une requête `OP_FILESTATUSREQ`. Il annonce le nombre total de parts constituant le fichier ainsi qu'un masque binaire (bitfield) indiquant quelles parts sont détenues et partagées par ce pair.
 
-Dans l'architecture Emule-Sion, ce message est **strictement d'observation et de contrôle sur boucle locale**. Il permet d'alimenter les statistiques de disponibilité des sources (`sourceCount = 1`) sans jamais initier de demande de bloc binaire (`OP_REQUESTPARTS`), sans allouer de tampon de téléchargement, et sans ouvrir ni écrire dans un fichier `.part`.
+Dans l'architecture Emule-Sion, ce message joue deux rôles :
+
+- **Production (`peer_session`)** : chaque `FILESTATUS` reçu — réponse initiale *et* keep-alive en file d'attente — enregistre le masque dans le store de disponibilité (`record_source_availability`) et déclenche `downloadUpdated`. C'est la source unique de la barre de parts (`availableSourceCount` → dégradé rouge/bleu façon `CPartFile::DrawStatusBar`) : seules les sources **ayant répondu** comptent (eMule `GetPartStatus() != NULL`), les masques périmés > 30 min sont ignorés, et `part_count == 0` est traité comme **source complète** (eMule `ProcessFileStatus` → `memset(m_abyPartStatus, 1, …)`).
+- **Lab / contrôle (`Ed2kSession`)** : la machine d'états dédiée reste strictement d'observation sur boucle locale — elle alimente les statistiques de disponibilité (`sourceCount = 1`) sans jamais initier de demande de bloc (`OP_REQUESTPARTS`), sans allouer de tampon, et sans ouvrir ni écrire dans un fichier `.part`.
 
 ---
 
@@ -16,7 +19,7 @@ Dans l'architecture Emule-Sion, ce message est **strictement d'observation et de
 | **Nom Symbolique** | `OP_FILESTATUS` |
 | **Protocole Réseau** | `PR_ED2K` (`0xE3`) |
 | **Direction** | Pair distant $\rightarrow$ Client |
-| **Statut d'Exécution** | Loopback control-only (Phase 6.3) |
+| **Statut d'Exécution** | Production (`peer_session`, disponibilité des parts) + loopback control-only (`Ed2kSession`, Phase 6.3) |
 | **Transfert de Données Associé** | Aucun (métadonnée pure) |
 
 ---
@@ -66,7 +69,8 @@ Lorsque $N \pmod 8 \neq 0$, le dernier octet du masque contient $8 - (N \pmod 8)
    - `part_count` ne doit pas dépasser le plafond de sécurité configuré (`limits.max_parts`, maximum 65 535). Tout dépassement provoque `Ed2kErrorKind::MalformedField`.
 4. **Cas Particulier `part_count == 0`** :
    - Décodage passif : accepté pour observation historique (retourne un masque vide).
-   - Session active (`Ed2kSession`) : rejeté avec `Ed2kSessionError::ZeroPartCountInActiveSession` car un fichier réel eD2K partagé possède au moins une part.
+   - Session lab (`Ed2kSession`) : rejeté avec `Ed2kSessionError::ZeroPartCountInActiveSession` car un fichier réel eD2K partagé possède au moins une part.
+   - **Production (`peer_session`)** : interprété comme **source complète** — eMule `ProcessFileStatus` matérialise un masque plein (`memset(m_abyPartStatus, 1, …)`) ; `compute_part_summaries` compte une telle source pour **toutes** les parts (`availableSourceCount`).
 
 ---
 

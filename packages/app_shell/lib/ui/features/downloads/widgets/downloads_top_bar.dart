@@ -8,7 +8,6 @@ import '../../../../l10n/l10n.dart';
 import 'package:go_router/go_router.dart';
 
 import 'add_link_dialog.dart';
-import 'diagnostic_dialog.dart';
 import 'speed_sparkline.dart';
 import 'lab_guide_dialog.dart';
 
@@ -93,12 +92,12 @@ class DownloadsTopBar extends ConsumerWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildModeBadge(context, ref),
                   if (ref.watch(isLabModeAvailableProvider)) _buildLabButton(context, ref),
                   const SizedBox(width: AppSpacing.sm - 2),
                   _buildSpeedBadge(ref),
                   const SizedBox(width: AppSpacing.sm),
-                  _buildNetworkPolicyBadge(context, ref),
+                  _buildSessionTotalsBadge(context, ref),
+                  _buildLifetimeTotalsBadge(context, ref),
                   _buildKillSwitchButton(context, ref),
                   _buildIpFilterButton(context, ref),
                   if (ref.watch(devToolsEnabledProvider)) ...[
@@ -119,77 +118,49 @@ class DownloadsTopBar extends ConsumerWidget {
     );
   }
 
-  Widget _buildModeBadge(BuildContext context, WidgetRef ref) {
-    final isLab = ref.watch(isLabModeAvailableProvider);
-    final accent = isLab ? AppColors.lab : AppColors.labDim;
+  /// Chip « Loopback Lab Mode » — indicateur de sécurité lab
+  /// (loopback-only) ; ouvre le guide de test local.
+  Widget _buildLabButton(BuildContext context, WidgetRef ref) {
     return Tooltip(
-      message: isLab
-          ? '${context.l10n.tooltipLoopbackLabMode}\n\n${context.l10n.tooltipDiagnostics}'
-          : '${context.l10n.tooltipSystemDiagnostics}\n\n${context.l10n.tooltipDiagnostics}',
+      message: context.l10n.tooltipLoopbackLabMode,
       preferBelow: true,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xF01E2A3A),
-        borderRadius: AppRadius.mdAll,
-        border: Border.all(color: accent.withValues(alpha: 0.4), width: 0.5),
-      ),
-      textStyle: const TextStyle(
-        fontSize: 12,
-        color: AppColors.textSecondary,
-        height: 1.4,
-      ),
       child: InkWell(
         borderRadius: AppRadius.mdAll,
         onTap: () {
           showDialog(
             context: context,
-            builder: (ctx) => const DiagnosticDialog(),
+            builder: (ctx) => const LabGuideDialog(),
           );
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.15),
+            color: AppColors.lab.withValues(alpha: 0.15),
             borderRadius: AppRadius.mdAll,
-            border: Border.all(color: accent.withValues(alpha: 0.3), width: 0.5),
+            border: Border.all(
+              color: AppColors.lab.withValues(alpha: 0.3),
+              width: 0.5,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                isLab ? Icons.science_outlined : Icons.analytics_outlined,
+              const Icon(
+                Icons.science_outlined,
                 size: 14,
-                color: isLab ? AppColors.accentTeal : AppColors.textSecondary,
+                color: AppColors.accentTeal,
               ),
               const SizedBox(width: 5),
               Text(
-                isLab
-                    ? context.l10n.loopbackLabMode
-                    : context.l10n.diagnosticsBadge,
+                context.l10n.loopbackLabMode,
                 style: AppTextStyles.toolbarLabel.copyWith(
-                  color: isLab ? AppColors.accentTeal : AppColors.textSecondary,
+                  color: AppColors.accentTeal,
                 ),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildLabButton(BuildContext context, WidgetRef ref) {
-    return IconButton(
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      padding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
-      icon: const Icon(Icons.biotech, color: AppColors.accentTeal, size: 18),
-      tooltip: context.l10n.tooltipLabGuide,
-      onPressed: () {
-        showDialog(
-          context: context,
-          builder: (ctx) => const LabGuideDialog(),
-        );
-      },
     );
   }
 
@@ -228,22 +199,35 @@ class DownloadsTopBar extends ConsumerWidget {
     );
   }
 
-  Widget _buildNetworkPolicyBadge(BuildContext context, WidgetRef ref) {
+  /// Session transfer totals (event.statsTick). Replaces the network
+  /// profile badge — the profile remains visible in Settings → Connexion.
+  /// When the kill switch is engaged the chip keeps its red warning state
+  /// and still leads to the policy section.
+  Widget _buildSessionTotalsBadge(BuildContext context, WidgetRef ref) {
     final killSwitch = ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
+    final stats = ref.watch(statsControllerProvider).latest;
     final accent = killSwitch ? AppColors.tintRed : AppColors.tintCyan;
     final accentText = killSwitch ? AppColors.danger : AppColors.accentCyan;
     return Tooltip(
       message: killSwitch
           ? context.l10n.tooltipPolicyKill
-          : context.l10n.tooltipPolicyInfo(
-              ref.watch(networkPolicyControllerProvider).currentProfile.label,
-              ref.watch(networkPolicyControllerProvider).currentState.label,
-            ),
+          : context.l10n.tooltipSessionTotals,
       child: InkWell(
-        key: const Key('network_policy_badge'),
+        key: const Key('session_totals_badge'),
         borderRadius: AppRadius.mdAll,
         onTap: () {
-          _goToSettings(context, ref, 'connection');
+          if (killSwitch) {
+            _goToSettings(context, ref, 'connection');
+          } else {
+            final router = GoRouter.maybeOf(context);
+            if (router != null) {
+              router.go('/history');
+            } else {
+              ref
+                  .read(shellControllerProvider)
+                  .setSection(AppNavSection.history);
+            }
+          }
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -258,17 +242,102 @@ class DownloadsTopBar extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                killSwitch ? Icons.shield_rounded : Icons.security_rounded,
-                size: 13,
-                color: accentText,
+              if (killSwitch) ...[
+                Icon(Icons.shield_rounded, size: 13, color: accentText),
+                const SizedBox(width: 5),
+                Text(
+                  context.l10n.killSwitchBadgeDisabled,
+                  style: AppTextStyles.badgeLabel.copyWith(color: accentText),
+                ),
+              ] else ...[
+                const Icon(
+                  Icons.arrow_downward_rounded,
+                  size: 13,
+                  color: AppTheme.statusDownloading,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  Formatters.formatBytes(stats?.sessionDownloadedBytes ?? 0),
+                  style: AppTextStyles.badgeLabel.copyWith(
+                    color: AppTheme.statusDownloading,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.arrow_upward_rounded,
+                  size: 13,
+                  color: AppColors.accentTeal,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  Formatters.formatBytes(stats?.sessionUploadedBytes ?? 0),
+                  style: AppTextStyles.badgeLabel.copyWith(
+                    color: AppColors.accentTeal,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Cumul « depuis l'installation » (persisté côté daemon, remise à
+  /// zéro dans Settings → Avancé). Tap → Historique & Statistiques.
+  Widget _buildLifetimeTotalsBadge(BuildContext context, WidgetRef ref) {
+    final stats = ref.watch(statsControllerProvider).latest;
+    return Tooltip(
+      message: context.l10n.tooltipLifetimeTotals,
+      child: InkWell(
+        key: const Key('lifetime_totals_badge'),
+        borderRadius: AppRadius.mdAll,
+        onTap: () {
+          final router = GoRouter.maybeOf(context);
+          if (router != null) {
+            router.go('/history');
+          } else {
+            ref
+                .read(shellControllerProvider)
+                .setSection(AppNavSection.history);
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: AppDecorations.chip(),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.functions_rounded,
+                size: 12,
+                color: AppColors.textFaint,
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.arrow_downward_rounded,
+                size: 13,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 3),
               Text(
-                killSwitch
-                    ? context.l10n.killSwitchBadgeDisabled
-                    : ref.watch(networkPolicyControllerProvider).currentProfile.toKebabCase(),
-                style: AppTextStyles.badgeLabel.copyWith(color: accentText),
+                Formatters.formatBytes(stats?.lifetimeDownloadedBytes ?? 0),
+                style: AppTextStyles.badgeLabel.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.arrow_upward_rounded,
+                size: 13,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 3),
+              Text(
+                Formatters.formatBytes(stats?.lifetimeUploadedBytes ?? 0),
+                style: AppTextStyles.badgeLabel.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
           ),

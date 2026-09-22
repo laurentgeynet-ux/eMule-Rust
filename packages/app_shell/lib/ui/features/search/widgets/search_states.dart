@@ -13,9 +13,9 @@ class SearchSearchingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final targetLabel = switch (target) {
-      SearchTarget.kad => 'le réseau Kad DHT',
-      SearchTarget.global => 'les serveurs eD2K (UDP)',
-      SearchTarget.server => 'le serveur eD2K',
+      SearchTarget.kad => context.l10n.searchTargetLabelKad,
+      SearchTarget.global => context.l10n.searchTargetLabelGlobal,
+      SearchTarget.server => context.l10n.searchTargetLabelServer,
     };
     return Center(
       child: Column(
@@ -53,18 +53,14 @@ class SearchEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasSearched = lastTerm != null;
     final targetName = switch (target) {
-      SearchTarget.kad => 'le réseau Kad DHT',
-      SearchTarget.global => 'la liste de serveurs eD2K',
-      SearchTarget.server => 'un serveur eD2K',
+      SearchTarget.kad => context.l10n.searchTargetLabelKad,
+      SearchTarget.global => context.l10n.searchTargetEnableGlobal,
+      SearchTarget.server => context.l10n.searchTargetEnableServer,
     };
     final helpText = switch (target) {
-      SearchTarget.kad =>
-        'Les requêtes KADEMLIA2_SEARCH_KEYWORD interrogent les nœuds Kad stockant l\'index du mot-clé MD4.',
-      SearchTarget.global =>
-        'Les requêtes OP_GLOBSEARCHREQ3/REQ2 sont envoyées en UDP à tous les serveurs connus (port TCP+4). '
-            'REQ3 est utilisé quand le serveur annonce EXT_GETFILES + LARGEFILES.',
-      SearchTarget.server =>
-        'Les requêtes OP_SEARCHREQUEST interrogent directement l\'index du serveur eD2K connecté.',
+      SearchTarget.kad => context.l10n.searchExplainKad,
+      SearchTarget.global => context.l10n.searchExplainGlobal,
+      SearchTarget.server => context.l10n.searchExplainServer,
     };
 
     return Center(
@@ -79,10 +75,10 @@ class SearchEmptyState extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             hasSearched
-                ? 'Aucun résultat trouvé pour « $lastTerm »'
+                ? context.l10n.searchNoResults(lastTerm!)
                 : isSearchReady
-                ? 'Entrez des mots-clés ci-dessus pour lancer une recherche'
-                : 'Activez $targetName pour commencer à chercher des fichiers',
+                ? context.l10n.searchPromptKeywords
+                : context.l10n.searchEnableTarget(targetName),
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w500,
@@ -92,9 +88,7 @@ class SearchEmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            hasSearched
-                ? 'Essayez avec d\'autres termes ou élargissez vos filtres de taille'
-                : helpText,
+            hasSearched ? context.l10n.searchTryOther : helpText,
             style: const TextStyle(fontSize: 12, color: AppColors.iconFaint),
             textAlign: TextAlign.center,
           ),
