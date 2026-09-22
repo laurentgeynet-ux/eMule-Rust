@@ -484,7 +484,10 @@ async fn test_kad_notes_publish_and_search_roundtrip() {
         .expect("start kad udp");
 
     let mock = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock");
-    let file_hash = [0x42u8; 16];
+    // The publish target must sit within SEARCHTOLERANCE of the daemon's
+    // KadID — eMule drops out-of-tolerance publishes silently. Reusing the
+    // local ID gives distance 0 and keeps the test deterministic.
+    let file_hash = state.kad.local_id().0;
     let source_id = [0x77u8; 16];
 
     // 1. PublishNotesReq → daemon stores it and answers 0x4B with load.

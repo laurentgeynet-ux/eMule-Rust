@@ -71,6 +71,7 @@ pub fn spawn_connection_task(
     sequence_clone: Arc<AtomicU64>,
     downloads_clone: Option<Arc<Mutex<DownloadService>>>,
     inbound_clone: Option<crate::services::inbound_listener::InboundListenerService>,
+    kad_clone: Option<Arc<crate::services::kad::KadService>>,
     prefer_obfuscation: bool,
     obfuscation_padding_max: u8,
 ) -> tokio::task::JoinHandle<()> {
@@ -369,6 +370,16 @@ pub fn spawn_connection_task(
                                                         is_connecting = false;
                                                         g.snapshot.client_id = Some(idc.client_id);
                                                         g.snapshot.is_high_id = idc.is_high_id();
+                                                        // A HighID encodes our public IPv4 (eD2K convention:
+                                                        // id = a<<24|b<<16|c<<8|d) — Kad uses it as the
+                                                        // advertised address in PUBLISH_SOURCE contacts.
+                                                        if let Some(kad) = &kad_clone {
+                                                            kad.set_public_ipv4(if idc.is_high_id() {
+                                                                Some(std::net::Ipv4Addr::from(idc.client_id))
+                                                            } else {
+                                                                None
+                                                            });
+                                                        }
                                                         g.snapshot.status = ServerConnectionStatus::Connected;
                                                         if g.snapshot.connected_at_unix_ms.is_none() {
                                                             let now = std::time::SystemTime::now()
@@ -663,10 +674,17 @@ software: None,
                 }
             }
             ServerResponse::CallbackFail { client_id } => {
-                                                        warn!(
-                                                            "OP_CALLBACK_FAIL: server could not relay callback to client {:?}",
-                                                            client_id
-                                                        );
+                                                        // eMule servers send OP_CALLBACK_FAIL
+                                                        // with an empty payload — the target
+                                                        // client_id is not echoed back.
+                                                        match client_id {
+                                                            Some(id) => warn!(
+                                                                "OP_CALLBACK_FAIL: server could not relay callback to LowID client {id}"
+                                                            ),
+                                                            None => warn!(
+                                                                "OP_CALLBACK_FAIL: server could not relay a pending callback (target offline or unreachable)"
+                                                            ),
+                                                        }
                                                     }
                                                     ServerResponse::Other { opcode, .. } => {
                                                         info!("Received other server opcode: 0x{:02x}", opcode);

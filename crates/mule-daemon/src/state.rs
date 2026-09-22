@@ -227,6 +227,9 @@ impl AppState {
         let connect_opts: u8 = if obf_enabled { 0x03 } else { 0 }
             | if obf_required { 0x04 } else { 0 };
         kad.udp().set_buddy_tcp_info(ed2k_port_eff, connect_opts);
+        // The eD2K server-assigned HighID feeds Kad with our public IPv4
+        // (PUBLISH_SOURCE advertised address).
+        server_session.set_kad(Arc::clone(&kad));
         inbound_listener.set_kad_udp(Arc::clone(kad.udp()));
         inbound_listener.set_kad(Arc::clone(&kad));
         inbound_listener.set_kad_udp_port(kad_port_eff);

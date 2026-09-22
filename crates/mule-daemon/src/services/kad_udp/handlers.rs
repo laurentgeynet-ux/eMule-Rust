@@ -1,7 +1,8 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 
+use mule_core::kad::{KBucketTable, KadContact, KadId};
 use mule_protocol::ed2k::OP_CALLBACK;
 use mule_protocol::kad::*;
 
@@ -28,8 +29,12 @@ pub async fn handle_incoming_message(
     downloads: &DownloadsSlot,
     firewall: &Arc<tokio::sync::Mutex<FirewallTestTracker>>,
     buddy: &Arc<tokio::sync::Mutex<BuddyRegistry>>,
+    // Local eD2K TCP port — also advertised in `BOOTSTRAP_RES`/`HELLO_RES`
+    // headers (eMule `thePrefs.GetPort()`).
     buddy_tcp_port: u16,
     buddy_connect_options: u8,
+    // Shared routing table (`None` until `KadService` injects it).
+    routing_table: Option<Arc<tokio::sync::Mutex<KBucketTable>>>,
 ) {
     match msg {
         KadMessage::Ping(_ping) => {
@@ -62,6 +67,29 @@ pub async fn handle_incoming_message(
                 hello.tcp_port,
                 hello.misc_options
             );
+            // eMule AddContact_KADEMLIA2: every HELLO_REQ feeds the routing
+            // table. The contact stays unverified until it answers one of
+            // our requests or completes the HELLO_RES_ACK handshake.
+            if let IpAddr::V4(ip) = peer_addr.ip() {
+                learn_contact(
+                    &routing_table,
+                    hello.kad_id,
+                    ip,
+                    if hello.udp_port != 0 {
+                        hello.udp_port
+                    } else {
+                        peer_addr.port()
+                    },
+                    if hello.tcp_port != 0 {
+                        Some(hello.tcp_port)
+                    } else {
+                        None
+                    },
+                    hello.version,
+                    false,
+                )
+                .await;
+            }
             // eMule KADMISCOPTIONS: bit0 = UDP firewalled, bit2 = ask the
             // receiver to complete the handshake with HELLO_RES_ACK.
             let mut misc = 0x04u8;
@@ -89,26 +117,49 @@ pub async fn handle_incoming_message(
             } else {
                 peer_addr.port()
             };
-            let mut inf = in_flight.lock().await;
-            let mut matched_tx = None;
-            for (id, tx) in inf.iter() {
-                if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip())
-                    && tx.expected_response == KadExpectedResponse::HelloRes
-                {
-                    matched_tx = Some(*id);
-                    break;
+            // in_flight must be released before learn_contact awaits
+            // routing_table — holding it creates an in_flight → routing_table
+            // ordering that deadlocks against get_status (routing_table →
+            // get_snapshot → in_flight).
+            let (matched_id, matched_sender) = {
+                let mut inf = in_flight.lock().await;
+                let mut matched_tx = None;
+                for (id, tx) in inf.iter() {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip())
+                        && tx.expected_response == KadExpectedResponse::HelloRes
+                    {
+                        matched_tx = Some(*id);
+                        break;
+                    }
                 }
-            }
+                (matched_tx, matched_tx.and_then(|id| inf.remove(&id)))
+            };
             tracing::info!(
-                "Kad UDP: received HelloRes from {peer_addr} (kad_v{}, tcp={}, udp_tag={}, matched_tx={matched_tx:?})",
+                "Kad UDP: received HelloRes from {peer_addr} (kad_v{}, tcp={}, udp_tag={}, matched_tx={matched_id:?})",
                 hello_res.version,
                 hello_res.tcp_port,
                 peer_udp_port
             );
-            if let Some(id) = matched_tx {
-                if let Some(tx) = inf.remove(&id) {
-                    let _ = tx.sender.send(Ok(KadMessage::HelloRes(hello_res)));
+            if let Some(tx) = matched_sender {
+                // A solicited HELLO_RES proves the remote owns its advertised
+                // IP:port — the contact is verified (eMule IsIpVerified).
+                if let IpAddr::V4(ip) = peer_addr.ip() {
+                    learn_contact(
+                        &routing_table,
+                        hello_res.kad_id,
+                        ip,
+                        peer_udp_port,
+                        if hello_res.tcp_port != 0 {
+                            Some(hello_res.tcp_port)
+                        } else {
+                            None
+                        },
+                        hello_res.version,
+                        true,
+                    )
+                    .await;
                 }
+                let _ = tx.sender.send(Ok(KadMessage::HelloRes(hello_res)));
             }
             if wants_ack {
                 let ack = KadCodec::encode_hello_res_ack(local_kad_id);
@@ -116,8 +167,18 @@ pub async fn handle_incoming_message(
             }
         }
         KadMessage::HelloResAck(ack) => {
-            // Completes the three-way hello we initiated — the peer proved it
-            // owns its advertised IP (eMule marks the contact verified).
+            // Completes the three-way hello (eMule
+            // Process_KADEMLIA2_HELLO_RES_ACK): the peer acked our HELLO_RES,
+            // proving it owns its advertised IP — promote the stored contact
+            // to verified, but only if the packet source matches the contact's
+            // IP (an ACK for someone else's KadID must not verify them).
+            if let (Some(table), IpAddr::V4(ip)) = (&routing_table, peer_addr.ip()) {
+                let mut t = table.lock().await;
+                let id = KadId(ack.kad_id);
+                if t.get(&id).map(|c| c.ip == ip).unwrap_or(false) {
+                    t.mark_seen(&id, now_unix_ms());
+                }
+            }
             tracing::info!(
                 "Kad UDP: received HelloResAck from {peer_addr} (kad_id={})",
                 hex::encode(ack.kad_id)
@@ -131,9 +192,10 @@ pub async fn handle_incoming_message(
         }
         KadMessage::FirewalledRes(res) => {
             // Answer to a FIREWALLED_REQ we sent — carries our public IP as
-            // seen by the responder. We only log: no TCP-check requester flow
-            // is implemented yet, so unsolicited ones are dropped.
+            // seen by the responder. Recorded as our observed external IP
+            // (used as the advertised address when publishing sources).
             let ip = std::net::Ipv4Addr::from(res.ip.to_le_bytes());
+            firewall.lock().await.observed_ip = Some(ip);
             tracing::info!("Kad UDP: received FirewalledRes from {peer_addr} (observed ip={ip})");
         }
         KadMessage::FirewalledAckRes => {
@@ -141,33 +203,114 @@ pub async fn handle_incoming_message(
                 "Kad UDP: received FirewalledAckRes from {peer_addr} (TCP port reachable)"
             );
         }
-        KadMessage::BootstrapReq(_) | KadMessage::Req(_) => {
+        KadMessage::BootstrapReq(req) => {
+            // eMule Process_KADEMLIA2_BOOTSTRAP_REQ: answer with our KadID +
+            // eD2K TCP port + Kad version and up to 20 verified contacts
+            // spread across the keyspace (GetBootstrapContacts).
+            let contacts: Vec<KadContactWire> = match &routing_table {
+                Some(table) => table
+                    .lock()
+                    .await
+                    .spread_verified(20)
+                    .iter()
+                    .map(contact_to_wire)
+                    .collect(),
+                None => Vec::new(),
+            };
             tracing::info!(
-                "Kad UDP: received BootstrapReq/Req from {peer_addr}, replying with empty contacts"
+                "Kad UDP: received BootstrapReq from {peer_addr} (requester_id={}), replying with {} contacts",
+                hex::encode(req.kad_id),
+                contacts.len()
             );
-            let empty_res = KadCodec::encode_bootstrap_res(local_kad_id, local_port, 2, &[]);
-            let _ = socket.send_to(&empty_res, peer_addr).await;
+            let res = KadCodec::encode_bootstrap_res(
+                local_kad_id,
+                buddy_tcp_port,
+                OUR_KAD_VERSION,
+                &contacts,
+            );
+            let _ = socket.send_to(&res, peer_addr).await;
+        }
+        KadMessage::Req(req) => {
+            // eMule Process_KADEMLIA2_REQ: [type][target][uCheck] — uCheck is
+            // the KadID the requester believes we own; a mismatch means a
+            // stale contact entry and eMule drops the request silently.
+            let count = (req.req_type & 0x1F) as usize;
+            if count == 0 || req.sender_id != *local_kad_id {
+                tracing::debug!(
+                    "Kad UDP: dropping Req from {peer_addr} (type=0x{:02X}, id check: {})",
+                    req.req_type,
+                    if req.sender_id == *local_kad_id {
+                        "ok"
+                    } else {
+                        "stale kad_id"
+                    }
+                );
+                return;
+            }
+            // Only IP-verified contacts may be returned (eMule GetClosestTo
+            // type 2 → bOnlyVerified) — propagating unverified contacts would
+            // relay potentially spoofed entries.
+            let contacts: Vec<KadContactWire> = match &routing_table {
+                Some(table) => table
+                    .lock()
+                    .await
+                    .find_verified_closest(&KadId(req.target_id), count.min(32))
+                    .iter()
+                    .map(contact_to_wire)
+                    .collect(),
+                None => Vec::new(),
+            };
+            tracing::info!(
+                "Kad UDP: received Req (0x21) from {peer_addr} for target {}, replying with {} verified contacts",
+                hex::encode(req.target_id),
+                contacts.len()
+            );
+            let res = KadCodec::encode_find_node_res(&req.target_id, &contacts);
+            let _ = socket.send_to(&res, peer_addr).await;
         }
         KadMessage::BootstrapRes(boot_res) => {
-            let mut inf = in_flight.lock().await;
-            let mut matched_tx = None;
-            for (id, tx) in inf.iter() {
-                if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip())
-                    && (tx.expected_response == KadExpectedResponse::BootstrapRes
-                        || tx.expected_response == KadExpectedResponse::FindNodeRes)
-                {
-                    matched_tx = Some(*id);
-                    break;
+            // Release in_flight before learn_contact awaits routing_table —
+            // same in_flight → routing_table ordering hazard as HelloRes.
+            let (matched_id, matched_sender) = {
+                let mut inf = in_flight.lock().await;
+                let mut matched_tx = None;
+                for (id, tx) in inf.iter() {
+                    if (tx.target == peer_addr || tx.target.ip() == peer_addr.ip())
+                        && (tx.expected_response == KadExpectedResponse::BootstrapRes
+                            || tx.expected_response == KadExpectedResponse::FindNodeRes)
+                    {
+                        matched_tx = Some(*id);
+                        break;
+                    }
                 }
-            }
+                (matched_tx, matched_tx.and_then(|id| inf.remove(&id)))
+            };
             tracing::info!(
-                "Kad UDP: received BootstrapRes/FindNodeRes from {peer_addr} with {} contacts (matched_tx={matched_tx:?})",
+                "Kad UDP: received BootstrapRes/FindNodeRes from {peer_addr} with {} contacts (matched_tx={matched_id:?})",
                 boot_res.contacts.len()
             );
-            if let Some(id) = matched_tx {
-                if let Some(tx) = inf.remove(&id) {
-                    let _ = tx.sender.send(Ok(KadMessage::BootstrapRes(boot_res)));
+            if matched_id.is_some() {
+                // Solicited response → the responder is verified. Its header
+                // port field is its TCP port (eMule BOOTSTRAP_RES layout).
+                if let IpAddr::V4(ip) = peer_addr.ip() {
+                    learn_contact(
+                        &routing_table,
+                        boot_res.kad_id,
+                        ip,
+                        peer_addr.port(),
+                        if boot_res.udp_port != 0 {
+                            Some(boot_res.udp_port)
+                        } else {
+                            None
+                        },
+                        boot_res.version,
+                        true,
+                    )
+                    .await;
                 }
+            }
+            if let Some(tx) = matched_sender {
+                let _ = tx.sender.send(Ok(KadMessage::BootstrapRes(boot_res)));
             }
         }
         KadMessage::SearchSourceReq(req) => {
@@ -203,12 +346,26 @@ pub async fn handle_incoming_message(
                 hex::encode(search_res.target_file_hash)
             );
             if let Some(id) = matched_tx {
-                if let Some(tx) = inf.remove(&id) {
-                    let _ = tx.sender.send(Ok(KadMessage::SearchSourceRes(search_res)));
+                // Multi-packet response: keep the transaction registered so
+                // the next batch from this peer still routes to the sender;
+                // drop it only when the collector is gone.
+                if let Some(tx) = inf.get(&id) {
+                    if tx.sender.send(Ok(KadMessage::SearchSourceRes(search_res))).is_err() {
+                        inf.remove(&id);
+                    }
                 }
             }
         }
         KadMessage::PublishSourceReq(req) => {
+            // eMule ProcessPublishSourceRequest: out-of-tolerance targets are
+            // dropped silently — we are not an indexer for this key.
+            if !within_publish_tolerance(local_kad_id, &req.target_file_hash) {
+                tracing::debug!(
+                    "Kad UDP: dropping out-of-tolerance PublishSourceReq from {peer_addr} for file {}",
+                    hex::encode(req.target_file_hash)
+                );
+                return;
+            }
             let peer_ip_bytes = match peer_addr.ip() {
                 std::net::IpAddr::V4(v4) => v4.octets(),
                 std::net::IpAddr::V6(_) => [127, 0, 0, 1],
@@ -216,6 +373,20 @@ pub async fn handle_incoming_message(
             // eMule CKademliaUDPListener::ProcessPublishSourceRequest: the
             // advertised contact must match the sender's IP and carry a TCP port.
             let valid_contact = req.contact.ip == peer_ip_bytes && req.contact.tcp_port > 0;
+            if valid_contact {
+                // The publisher's self-announced contact is IP-bound and
+                // validated — learn it (unverified) like eMule's AddContact.
+                learn_contact(
+                    &routing_table,
+                    req.contact.kad_id,
+                    Ipv4Addr::from(req.contact.ip),
+                    req.contact.udp_port,
+                    Some(req.contact.tcp_port),
+                    req.contact.version,
+                    false,
+                )
+                .await;
+            }
             let status = if valid_contact {
                 let stored = {
                     let mut store = storage.lock().await;
@@ -325,12 +496,25 @@ pub async fn handle_incoming_message(
                 hex::encode(search_res.keyword_hash)
             );
             if let Some(id) = matched_tx {
-                if let Some(tx) = inf.remove(&id) {
-                    let _ = tx.sender.send(Ok(KadMessage::SearchKeywordRes(search_res)));
+                // Multi-packet response: keep the transaction registered so
+                // the next batch from this peer still routes to the sender.
+                if let Some(tx) = inf.get(&id) {
+                    if tx.sender.send(Ok(KadMessage::SearchKeywordRes(search_res))).is_err() {
+                        inf.remove(&id);
+                    }
                 }
             }
         }
         KadMessage::PublishKeywordReq(req) => {
+            // eMule ProcessPublishKeywordRequest: out-of-tolerance keyword
+            // hashes are dropped silently.
+            if !within_publish_tolerance(local_kad_id, &req.keyword_hash) {
+                tracing::debug!(
+                    "Kad UDP: dropping out-of-tolerance PublishKeywordReq from {peer_addr} for keyword {}",
+                    hex::encode(req.keyword_hash)
+                );
+                return;
+            }
             // Reject malformed entries: zero file hash or empty/oversized name.
             let valid_entries: Vec<_> = req
                 .entries
@@ -532,12 +716,25 @@ pub async fn handle_incoming_message(
                 hex::encode(res.target_file_hash)
             );
             if let Some(id) = matched_tx {
-                if let Some(tx) = inf.remove(&id) {
-                    let _ = tx.sender.send(Ok(KadMessage::SearchNotesRes(res)));
+                // Multi-packet response: keep the transaction registered so
+                // the next batch from this peer still routes to the sender.
+                if let Some(tx) = inf.get(&id) {
+                    if tx.sender.send(Ok(KadMessage::SearchNotesRes(res))).is_err() {
+                        inf.remove(&id);
+                    }
                 }
             }
         }
         KadMessage::PublishNotesReq(req) => {
+            // eMule Process_KADEMLIA2_PUBLISH_NOTES_REQ: out-of-tolerance
+            // targets are dropped silently before any index work.
+            if !within_publish_tolerance(local_kad_id, &req.target_file_hash) {
+                tracing::debug!(
+                    "Kad UDP: dropping out-of-tolerance PublishNotesReq from {peer_addr} for file {}",
+                    hex::encode(req.target_file_hash)
+                );
+                return;
+            }
             // eMule CKademliaUDPListener::Process_KADEMLIA2_PUBLISH_NOTES_REQ:
             // a UDP-firewalled node refuses indexing work.
             let firewalled = {
@@ -684,6 +881,65 @@ fn now_unix_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+/// Converts a routing-table contact into its wire form for `KADEMLIA2_RES` /
+/// `BOOTSTRAP_RES` answers.
+fn contact_to_wire(c: &KadContact) -> KadContactWire {
+    KadContactWire {
+        kad_id: c.kad_id.0,
+        ip: c.ip.octets(),
+        udp_port: c.udp_port,
+        tcp_port: c.tcp_port.unwrap_or(0),
+        version: c.version,
+    }
+}
+
+/// Records a contact learned from an inbound packet into the routing table
+/// (eMule `AddContact_KADEMLIA2` / `CRoutingZone::Add` — every packet feeds
+/// the routing zone).
+///
+/// `verified` semantics mirror eMule: contacts are learned *unverified*;
+/// `verified` is earned only by a solicited response (`mark_seen = true`,
+/// the peer answered one of our requests — proving IP ownership) or by the
+/// `HELLO_RES_ACK` three-way handshake.
+async fn learn_contact(
+    routing_table: &Option<Arc<tokio::sync::Mutex<KBucketTable>>>,
+    kad_id_bytes: [u8; 16],
+    ip: Ipv4Addr,
+    udp_port: u16,
+    tcp_port: Option<u16>,
+    version: u8,
+    mark_seen: bool,
+) {
+    let Some(table) = routing_table else {
+        return;
+    };
+    if kad_id_bytes == [0u8; 16] {
+        return;
+    }
+    let now_ms = now_unix_ms();
+    let mut contact = KadContact::new(
+        KadId(kad_id_bytes),
+        ip,
+        udp_port,
+        tcp_port,
+        version,
+        now_ms,
+    );
+    if mark_seen {
+        contact.mark_seen(now_ms);
+    }
+    table.lock().await.insert_or_update(contact);
+}
+
+/// `SEARCHTOLERANCE` gate shared by the publish handlers: eMule drops a
+/// publish request whose target key lies outside tolerance of our KadID
+/// (`uDistance.Get32BitChunk(0) > SEARCHTOLERANCE → return` in
+/// `KademliaUDPListener.cpp`). Without it this node becomes a universal
+/// index sink for arbitrary keys.
+fn within_publish_tolerance(local_kad_id: &[u8; 16], target: &[u8; 16]) -> bool {
+    KadId(*local_kad_id).is_within_search_tolerance(&KadId(*target))
 }
 
 /// Mirrors an accepted `PublishSourceReq` into `kad_sources_index` so the

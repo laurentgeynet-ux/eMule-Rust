@@ -55,141 +55,34 @@ pub async fn search_sources_iterative(
     let target_kad_id = KadId::from_hash_hex(file_hash_hex)
         .ok_or_else(|| format!("Invalid target file hash hex: {file_hash_hex}"))?;
 
-    let initial_closest = {
+    {
         let table = routing_table.lock().await;
-        table.find_closest(&target_kad_id, 32)
-    };
-
-    if initial_closest.is_empty() {
-        tracing::warn!(
-            "Kad search_sources for {}: routing table is empty (0 contacts)! Import nodes.dat or bootstrap to find sources.",
-            file_hash_hex
-        );
-        return Ok(Vec::new());
-    }
-
-    let mut candidates: std::collections::BTreeMap<KadId, KadContact> =
-        std::collections::BTreeMap::new();
-    for c in initial_closest {
-        let dist = c.kad_id.xor_distance(&target_kad_id);
-        candidates.insert(dist, c);
+        if table.find_closest(&target_kad_id, 1).is_empty() {
+            tracing::warn!(
+                "Kad search_sources for {}: routing table is empty (0 contacts)! Import nodes.dat or bootstrap to find sources.",
+                file_hash_hex
+            );
+            return Ok(Vec::new());
+        }
     }
 
     tracing::info!(
-        "Kad search_sources: performing iterative find_node convergence for target hash {} (initial pool: {} contacts)...",
-        file_hash_hex,
-        candidates.len()
+        "Kad search_sources: performing iterative find_node convergence for target hash {}...",
+        file_hash_hex
     );
 
-    let mut queried_nodes = std::collections::HashSet::new();
     const MAX_CONVERGENCE_ROUNDS: usize = 6;
-    const ALPHA: usize = 5;
+    let candidates: Vec<KadContact> = super::lookup::converge_closest_contacts(
+        &target_kad_id,
+        routing_table,
+        policy_mgr,
+        ip_filter,
+        udp,
+        MAX_CONVERGENCE_ROUNDS,
+    )
+    .await;
 
-    for iter in 0..MAX_CONVERGENCE_ROUNDS {
-        let unqueried: Vec<_> = candidates
-            .values()
-            .filter(|c| !queried_nodes.contains(&SocketAddr::new(IpAddr::V4(c.ip), c.udp_port)))
-            .take(ALPHA)
-            .cloned()
-            .collect();
-
-        if unqueried.is_empty() {
-            tracing::debug!("Kad search_sources: convergence reached after {} rounds (no closer unqueried contacts)", iter);
-            break;
-        }
-
-        // Check if top candidates already satisfy SEARCHTOLERANCE (0x01000000)
-        let within_tolerance_count = candidates
-            .values()
-            .take(16)
-            .filter(|c| c.kad_id.is_within_search_tolerance(&target_kad_id))
-            .count();
-
-        if within_tolerance_count >= 12 && iter >= 2 {
-            tracing::info!(
-                "Kad search_sources: early convergence after {} rounds ({} candidates within SEARCHTOLERANCE)",
-                iter,
-                within_tolerance_count
-            );
-            break;
-        }
-
-        let mut find_futs = Vec::new();
-        for contact in &unqueried {
-            let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-            let receiver_id = contact.kad_id;
-            queried_nodes.insert(addr);
-            let udp_c = Arc::clone(udp);
-            let target_id = target_kad_id;
-            find_futs.push(async move {
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(2500),
-                    udp_c.send_find_node(addr, &target_id, &receiver_id),
-                )
-                .await
-                {
-                    Ok(res) => res,
-                    Err(_) => Err("FindNode round timeout (2.5s)".to_string()),
-                }
-            });
-        }
-
-        let find_results = futures_util::future::join_all(find_futs).await;
-        // eMule : un contact qui ne répond pas accumule des échecs et finit
-        // expiré ; à l'inverse une réponse le maintient vivant (mark_seen).
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        {
-            let mut table = routing_table.lock().await;
-            for (contact, res) in unqueried.iter().zip(find_results.iter()) {
-                if res.is_ok() {
-                    table.mark_seen(&contact.kad_id, now_ms);
-                } else if table.mark_failed(&contact.kad_id) {
-                    tracing::debug!(
-                        "Kad: contact {}:{} evicted after repeated unresponsive queries",
-                        contact.ip,
-                        contact.udp_port
-                    );
-                }
-            }
-        }
-        let mut new_contacts = Vec::new();
-        let profile = policy_mgr.profile();
-        for contacts in find_results.into_iter().flatten() {
-            for mut c in contacts {
-                let cat = classify_ip(IpAddr::V4(c.ip));
-                let policy_allowed = match profile {
-                    NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                    NetworkProfile::PublicEd2kPreview
-                    | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
-                };
-                if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                    c.verified = true;
-                    new_contacts.push(c);
-                }
-            }
-        }
-
-        if !new_contacts.is_empty() {
-            let mut table = routing_table.lock().await;
-            for c in &new_contacts {
-                table.insert_or_update(c.clone());
-                let dist = c.kad_id.xor_distance(&target_kad_id);
-                candidates.insert(dist, c.clone());
-            }
-            tracing::debug!(
-                "Kad search_sources: convergence round {} found {} closer contacts (candidate pool now {}, closest chunk0=0x{:08x})",
-                iter + 1,
-                new_contacts.len(),
-                candidates.len(),
-                candidates.keys().next().map_or(0, |d| d.dword(0))
-            );
-        }
-    }
-
-    let search_targets: Vec<KadContact> = candidates.values().take(16).cloned().collect();
+    let search_targets: Vec<KadContact> = candidates.into_iter().take(16).collect();
     let within_tol = search_targets
         .iter()
         .filter(|c| c.kad_id.is_within_search_tolerance(&target_kad_id))

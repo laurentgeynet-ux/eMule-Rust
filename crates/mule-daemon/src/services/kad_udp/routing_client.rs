@@ -2,7 +2,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use tokio::sync::oneshot;
+use tokio::sync::mpsc;
 
 use mule_core::kad::KadContact;
 use mule_network_policy::ConnectionPurpose;
@@ -28,19 +28,19 @@ impl KadUdpService {
             .map_err(|e| format!("Policy denied Kad UDP send to {target}: {e}"))?;
 
         let tx_id = self.next_tx_id.fetch_add(1, Ordering::SeqCst);
-        let (tx, rx) = oneshot::channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         let in_flight_entry = InFlightTransaction {
             target,
             expected_response: KadExpectedResponse::Pong,
             expected_target_hash: None,
-            _created_at: Instant::now(),
+            created_at: Instant::now(),
             sender: tx,
         };
 
-        {
+        let _tx_guard = {
             let inner = self.inner.read().await;
-            inner.insert_in_flight(tx_id, in_flight_entry).await?;
-        }
+            inner.insert_in_flight(tx_id, in_flight_entry).await?
+        };
 
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
         let ping_bytes = KadCodec::encode_ping(&self.local_id.read().unwrap().0, local_port);
@@ -67,17 +67,17 @@ impl KadUdpService {
                 tracing::warn!("Kad Ping to node {} timed out after {}s (tx_id={})", target, KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad ping to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
-            res = rx => {
+            res = rx.recv() => {
                 let elapsed = start_time.elapsed();
                 match res {
-                    Ok(Ok(KadMessage::Pong(pong))) => {
+                    Some(Ok(KadMessage::Pong(pong))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!("Kad received Pong (0x61) from node {} in {} ms (client_port={})", target, elapsed.as_millis(), pong.client_port);
                         Ok((pong, elapsed))
                     }
-                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
-                    Ok(Err(err)) => Err(err),
-                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                    Some(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Some(Err(err)) => Err(err),
+                    None => Err("Transaction channel cancelled".to_string()),
                 }
             }
         }
@@ -99,19 +99,19 @@ impl KadUdpService {
             .map_err(|e| format!("Policy denied Kad UDP send to {target}: {e}"))?;
 
         let tx_id = self.next_tx_id.fetch_add(1, Ordering::SeqCst);
-        let (tx, rx) = oneshot::channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         let in_flight_entry = InFlightTransaction {
             target,
             expected_response: KadExpectedResponse::BootstrapRes,
             expected_target_hash: None,
-            _created_at: Instant::now(),
+            created_at: Instant::now(),
             sender: tx,
         };
 
-        {
+        let _tx_guard = {
             let inner = self.inner.read().await;
-            inner.insert_in_flight(tx_id, in_flight_entry).await?;
-        }
+            inner.insert_in_flight(tx_id, in_flight_entry).await?
+        };
 
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
         let boot_bytes =
@@ -138,9 +138,9 @@ impl KadUdpService {
                 tracing::warn!("Kad Bootstrap to node {} timed out after {}s (tx_id={})", target, KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad bootstrap to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
-            res = rx => {
+            res = rx.recv() => {
                 match res {
-                    Ok(Ok(KadMessage::BootstrapRes(boot_res))) => {
+                    Some(Ok(KadMessage::BootstrapRes(boot_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!("Kad received BootstrapRes (0x09) from node {} with {} contacts", target, boot_res.contacts.len());
                         let now_ms = std::time::SystemTime::now()
@@ -185,9 +185,9 @@ impl KadUdpService {
                         }
                         Ok(contacts)
                     }
-                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
-                    Ok(Err(err)) => Err(err),
-                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                    Some(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Some(Err(err)) => Err(err),
+                    None => Err("Transaction channel cancelled".to_string()),
                 }
             }
         }
@@ -214,19 +214,19 @@ impl KadUdpService {
             .map_err(|e| format!("Policy denied Kad UDP send to {target}: {e}"))?;
 
         let tx_id = self.next_tx_id.fetch_add(1, Ordering::SeqCst);
-        let (tx, rx) = oneshot::channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         let in_flight_entry = InFlightTransaction {
             target,
             expected_response: KadExpectedResponse::FindNodeRes,
             expected_target_hash: None,
-            _created_at: Instant::now(),
+            created_at: Instant::now(),
             sender: tx,
         };
 
-        {
+        let _tx_guard = {
             let inner = self.inner.read().await;
-            inner.insert_in_flight(tx_id, in_flight_entry).await?;
-        }
+            inner.insert_in_flight(tx_id, in_flight_entry).await?
+        };
 
         let find_bytes = KadCodec::encode_find_node_req(&target_kad_id.0, &receiver_kad_id.0);
         tracing::info!(
@@ -259,9 +259,9 @@ impl KadUdpService {
                 );
                 Err(format!("Kad find_node to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
-            res = rx => {
+            res = rx.recv() => {
                 match res {
-                    Ok(Ok(KadMessage::BootstrapRes(boot_res))) => {
+                    Some(Ok(KadMessage::BootstrapRes(boot_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!(
                             "Kad received FindNode response from node {} with {} contacts",
@@ -290,9 +290,9 @@ impl KadUdpService {
                         }
                         Ok(contacts)
                     }
-                    Ok(Ok(_)) => Err("Unexpected Kad response type".to_string()),
-                    Ok(Err(err)) => Err(err),
-                    Err(_) => Err("Transaction channel cancelled".to_string()),
+                    Some(Ok(_)) => Err("Unexpected Kad response type".to_string()),
+                    Some(Err(err)) => Err(err),
+                    None => Err("Transaction channel cancelled".to_string()),
                 }
             }
         }

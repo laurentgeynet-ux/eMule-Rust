@@ -8,13 +8,13 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::net::UdpSocket;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
-use mule_core::kad::KadId;
+use mule_core::kad::{KBucketTable, KadId};
 use mule_network_policy::{
     classify_ip, ConnectionPurpose, IpCategory, ListenPermit, NetworkPolicyManager, NetworkProfile,
 };
@@ -41,19 +41,32 @@ pub struct KadUdpInner {
 }
 
 impl KadUdpInner {
+    /// Registers a transaction and returns a guard that removes it on drop.
+    ///
+    /// Entries abandoned by cancelled `send_*` futures (outer timeout/select
+    /// dropping the future before its own timeout branch runs) are dead once
+    /// older than `KAD_TRANSACTION_TIMEOUT_SECS` — the inner `select!` would
+    /// have fired otherwise. They are swept here so leaks cannot saturate the
+    /// map nor steal responses from live transactions to the same peer.
     pub async fn insert_in_flight(
         &self,
         tx_id: u32,
         entry: InFlightTransaction,
-    ) -> Result<(), String> {
+    ) -> Result<types::InFlightTxGuard, String> {
         let mut inf = self.in_flight.lock().await;
+        let now = Instant::now();
+        let max_age = Duration::from_secs(KAD_TRANSACTION_TIMEOUT_SECS + 2);
+        inf.retain(|_, tx| now.duration_since(tx.created_at) < max_age);
         if inf.len() >= MAX_IN_FLIGHT_TRANSACTIONS {
             return Err(format!(
                 "Too many in-flight Kad transactions ({MAX_IN_FLIGHT_TRANSACTIONS} max)"
             ));
         }
         inf.insert(tx_id, entry);
-        Ok(())
+        Ok(types::InFlightTxGuard::new(
+            Arc::clone(&self.in_flight),
+            tx_id,
+        ))
     }
 }
 
@@ -82,6 +95,11 @@ pub struct KadUdpService {
     /// Connection option flags sent in `KADEMLIA_FINDBUDDY_RES`
     /// (eMule `GetMyConnectOptions(true, false)` byte).
     buddy_connect_options: Arc<std::sync::atomic::AtomicU8>,
+    /// Shared Kad routing table, injected by `KadService` after construction
+    /// (`set_routing_table`). The UDP listener needs it to answer
+    /// `KADEMLIA2_REQ`/`BOOTSTRAP_REQ` with real contacts and to record
+    /// inbound contacts — eMule feeds its routing zone from every packet.
+    routing_table: Arc<std::sync::RwLock<Option<Arc<Mutex<KBucketTable>>>>>,
 }
 
 impl KadUdpService {
@@ -110,6 +128,15 @@ impl KadUdpService {
             buddy: Arc::new(Mutex::new(BuddyRegistry::default())),
             buddy_tcp_port: Arc::new(std::sync::atomic::AtomicU16::new(0)),
             buddy_connect_options: Arc::new(std::sync::atomic::AtomicU8::new(0)),
+            routing_table: Arc::new(std::sync::RwLock::new(None)),
+        }
+    }
+
+    /// Injects the shared Kad routing table (`KadService` owns it). Safe to
+    /// call before or after `start()` — the listener resolves it per packet.
+    pub fn set_routing_table(&self, table: Arc<Mutex<KBucketTable>>) {
+        if let Ok(mut slot) = self.routing_table.write() {
+            *slot = Some(table);
         }
     }
 
@@ -183,6 +210,11 @@ impl KadUdpService {
         self.inner.read().await.bind_addr.map(|a| a.port())
     }
 
+    /// Local bound socket address, if the socket is up.
+    pub async fn bind_addr(&self) -> Option<SocketAddr> {
+        self.inner.read().await.bind_addr
+    }
+
     /// Injects the download service for index persistence.
     pub async fn set_downloads(
         &self,
@@ -230,6 +262,7 @@ impl KadUdpService {
 
         let socket_for_task = socket_arc.clone();
         let in_flight_arc = inner.in_flight.clone();
+        let routing_arc = Arc::clone(&self.routing_table);
         // Arc partagé — relu à chaque datagramme pour suivre la rotation
         // d'identité (`identityRotationHours`).
         let local_id_arc = Arc::clone(&self.local_id);
@@ -365,6 +398,10 @@ impl KadUdpService {
                                                         );
                                                         let local_kad_id_bytes =
                                                             local_id_arc.read().unwrap().0;
+                                                        let routing_table = routing_arc
+                                                            .read()
+                                                            .ok()
+                                                            .and_then(|g| g.clone());
                                                         handlers::handle_incoming_message(
                                                             &socket_for_task,
                                                             peer_addr,
@@ -378,6 +415,7 @@ impl KadUdpService {
                                                             &buddy_arc,
                                                             buddy_tcp_port,
                                                             buddy_connect_options,
+                                                            routing_table,
                                                         ).await;
                                                         decrypted = true;
                                                     }
@@ -480,6 +518,10 @@ impl KadUdpService {
                                     Ok(msg) => {
                                         let local_kad_id_bytes =
                                             local_id_arc.read().unwrap().0;
+                                        let routing_table = routing_arc
+                                            .read()
+                                            .ok()
+                                            .and_then(|g| g.clone());
                                         handlers::handle_incoming_message(
                                             &socket_for_task,
                                             peer_addr,
@@ -493,6 +535,7 @@ impl KadUdpService {
                                             &buddy_arc,
                                             buddy_tcp_port,
                                             buddy_connect_options,
+                                            routing_table,
                                         ).await;
                                     }
                                     Err(err) => {

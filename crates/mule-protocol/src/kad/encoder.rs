@@ -201,9 +201,12 @@ impl KadEncoder {
     }
 
     /// Encodes a Kad2 Bootstrap response packet (0x09).
+    ///
+    /// eMule `Process_KADEMLIA2_BOOTSTRAP_REQ`: the header port field is the
+    /// responder's **TCP** port (`thePrefs.GetPort()`), not the UDP port.
     pub fn encode_bootstrap_res(
         kad_id: &KadIdBytes,
-        udp_port: u16,
+        tcp_port: u16,
         version: u8,
         contacts: &[KadContactWire],
     ) -> Bytes {
@@ -212,7 +215,7 @@ impl KadEncoder {
         buf.put_u8(PR_KADEMLIA);
         buf.put_u8(KADEMLIA2_BOOTSTRAP_RES);
         buf.put_slice(kad_id);
-        buf.put_u16_le(udp_port);
+        buf.put_u16_le(tcp_port);
         buf.put_u8(version);
         buf.put_u16_le(count as u16);
         for c in &contacts[..count] {

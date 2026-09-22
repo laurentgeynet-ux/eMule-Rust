@@ -5,6 +5,67 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Kad DHT — durcissement d'interopérabilité eMule 0.72a** (audit des
+  sources officielles `srchybrid/kademlia/` + diagnostic du log WAN) :
+
+  - *Réponses de routage conformes* : `KADEMLIA2_REQ` (`0x21`) reçoit
+    désormais une vraie réponse `KADEMLIA2_RES` (`0x29`) avec les contacts
+    **vérifiés** les plus proches de `target` (eMule `GetClosestTo` type 2),
+    au lieu d'un `BOOTSTRAP_RES` vide qui était droppé comme non sollicité
+    par le demandeur — le nœud n'est plus évincé des tables distantes.
+    Comme eMule, la requête n'est servie que si le champ `uCheck` égale
+    notre KadID (drop silencieux sinon). `BOOTSTRAP_REQ` reçoit notre
+    KadID + port **TCP** eD2K (et non UDP — bug filaire corrigé, le
+    paramètre encodeur est renommé `tcp_port`) + version Kad **8** +
+    jusqu'à 20 contacts vérifiés diversifiés (`spread_verified`).
+  - *Apprentissage des contacts entrants* : la table de routage est
+    injectée dans le listener UDP (`set_routing_table`) ; les émetteurs
+    de `HelloReq`, `HelloRes`, `BootstrapRes` et `PublishSourceReq`
+    validé nourrissent la table — comme `AddContact` eMule qui apprend
+    depuis chaque paquet.
+  - *Sémantique `verified` fidèle* : les contacts appris dans les
+    réponses de routage ne sont plus marqués vérifiés (un bootstrap
+    malveillant ne peut plus injecter des « vérifiés » arbitraires) ;
+    promotion uniquement par réponse sollicitée (`mark_seen`) ou
+    handshake `HELLO_RES_ACK`. Le bootstrap n'assume `verified` que si
+    la table est vide (`bAssumeVerified` = `GetNumContacts()==0`).
+  - *Tolérance de publication* : `PublishSourceReq`/`PublishKeywordReq`/
+    `PublishNotesReq` entrants sont droppés silencieusement quand la
+    clé cible est hors `SEARCHTOLERANCE` de notre KadID (comportement
+    `KademliaUDPListener.cpp`) — le nœud ne devient plus un puits
+    d'index universel.
+  - *Identité publiée correcte* : `publish_source` annonce l'IPv4
+    **publique observée** (`FirewalledRes` → `observed_ip`, ou HighID
+    de connexion serveur propagé via `set_public_ipv4`) et le port UDP
+    effectif au lieu de l'adresse de bind — sinon les indexeurs eMule
+    rejetaient nos publications (`contact.ip == IP source`). Version
+    annoncée : 8.
+  - *Lookups unifiés* : `find_node`, `search_notes` et `publish_note`
+    passent par `converge_closest_contacts` (convergence itérative
+    ALPHA=5) au lieu du parcours séquentiel / table locale.
+  - *Deadlock corrigé* : cycle `in_flight` → `routing_table` (handlers
+    `HelloRes`/`BootstrapRes` tenant le mutex des transactions pendant
+    `learn_contact`) contre `routing_table` → `in_flight`
+    (`kad.status` → `get_status` → `get_snapshot`) — gelait tout le
+    pipeline Kad en session WAN réelle (recv loop morte, maintenance et
+    recherches bloquées). Ordre des verrous corrigé des deux côtés :
+    `learn_contact` appelé après relâchement d'`in_flight`, et
+    `get_status` ne traverse plus aucun await en tenant `routing_table`.
+  - *Fuite de transactions en vol* : `InFlightTxGuard` RAII retire
+    l'entrée `in_flight` à l'abandon de la future `send_*` (le timeout
+    externe de 2,5 s de `converge_closest_contacts` annulait la future
+    avant son propre timeout interne de 3 s, laissant l'entrée jusqu'à
+    saturation du cap 200 → silence total des envois). `insert_in_flight`
+    balaye en prime les entrées âgées de plus de `timeout+2 s` ; les 4
+    insertions inline qui contournaient le cap sont unifiées.
+  - *Réponses de recherche multi-paquets* : les `SEARCH_*_RES` arrivent
+    en plusieurs datagrammes (~50 entrées/paquet, jusqu'à ~300 résultats
+    chez eMule) — la transaction n'est plus retirée au premier paquet.
+    `InFlightTransaction.sender` passe en `mpsc` non borné ;
+    `collect_search_batches` agrège les batches dans une fenêtre idle de
+    350 ms (≤ 12 paquets, ≤ 300 entrées). ~91 % des résultats keyword
+    étaient auparavant jetés comme non sollicités.
+
 - **Options exclusives Emule-Sion** (aucun équivalent eMule/aMule) :
   - `paranoidMode` : slots d'upload réservés aux pairs **obfusqués avec
     signature Secure Ident vérifiée** — applique le gate devant

@@ -37,6 +37,9 @@ pub struct ServerSessionManager {
     /// a LowID us) triggers an outbound connect-back served by this service.
     inbound:
         Arc<std::sync::RwLock<Option<crate::services::inbound_listener::InboundListenerService>>>,
+    /// Kad service — a HighID `OP_IDCHANGE` teaches it our public IPv4
+    /// (advertised in `PUBLISH_SOURCE` contacts).
+    kad: Arc<std::sync::RwLock<Option<Arc<crate::services::kad::KadService>>>>,
     /// Prefer the server's dedicated obfuscation port (`ST_TCPPORTOBFUSCATION`)
     /// when advertised — mirrors eMule `IsServerCryptLayerConnection()`.
     prefer_obfuscation: Arc<std::sync::atomic::AtomicBool>,
@@ -65,6 +68,7 @@ impl ServerSessionManager {
             sequence,
             downloads: Arc::new(std::sync::RwLock::new(None)),
             inbound: Arc::new(std::sync::RwLock::new(None)),
+            kad: Arc::new(std::sync::RwLock::new(None)),
             prefer_obfuscation: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             obfuscation_padding_max: Arc::new(std::sync::atomic::AtomicU8::new(0)),
             last_target: Arc::new(std::sync::Mutex::new(None)),
@@ -105,6 +109,14 @@ impl ServerSessionManager {
     pub fn set_downloads(&self, downloads: Arc<Mutex<DownloadService>>) {
         if let Ok(mut d) = self.downloads.write() {
             *d = Some(downloads);
+        }
+    }
+
+    /// Injects the Kad service — the server-assigned HighID is forwarded to
+    /// it as our observed public IPv4 for `PUBLISH_SOURCE` contacts.
+    pub fn set_kad(&self, kad: Arc<crate::services::kad::KadService>) {
+        if let Ok(mut k) = self.kad.write() {
+            *k = Some(kad);
         }
     }
 
@@ -270,6 +282,7 @@ impl ServerSessionManager {
         let sequence_clone = Arc::clone(&self.sequence);
         let downloads_clone = self.downloads.read().ok().and_then(|g| g.clone());
         let inbound_clone = self.inbound.read().ok().and_then(|g| g.clone());
+        let kad_clone = self.kad.read().ok().and_then(|g| g.clone());
         let cancel_token = permit.cancellation_token();
         let prefer_obf = self
             .prefer_obfuscation
@@ -292,6 +305,7 @@ impl ServerSessionManager {
             sequence_clone,
             downloads_clone,
             inbound_clone,
+            kad_clone,
             prefer_obf,
             pad_max,
         );

@@ -77,14 +77,17 @@ impl KadCodec {
     }
 
     /// Encodes a Kad2 Bootstrap response packet (0x09) with a list of contacts.
+    ///
+    /// `tcp_port` is the responder's eD2K **TCP** port (eMule
+    /// `thePrefs.GetPort()` in the response header).
     #[inline]
     pub fn encode_bootstrap_res(
         bootstrap_id: &KadIdBytes,
-        port: u16,
+        tcp_port: u16,
         version: u8,
         contacts: &[KadContactWire],
     ) -> Bytes {
-        KadEncoder::encode_bootstrap_res(bootstrap_id, port, version, contacts)
+        KadEncoder::encode_bootstrap_res(bootstrap_id, tcp_port, version, contacts)
     }
 
     /// Encodes a Kad2 Find Node request packet.

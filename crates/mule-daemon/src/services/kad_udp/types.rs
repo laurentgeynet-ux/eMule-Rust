@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use mule_protocol::kad::KadMessage;
 
@@ -68,8 +68,38 @@ pub struct InFlightTransaction {
     pub target: SocketAddr,
     pub expected_response: KadExpectedResponse,
     pub expected_target_hash: Option<[u8; 16]>,
-    pub _created_at: Instant,
-    pub sender: oneshot::Sender<Result<KadMessage, String>>,
+    pub created_at: Instant,
+    /// Multi-packet responses (SEARCH_*_RES arrive as several ~50-entry
+    /// batches) need a channel that stays open after the first packet —
+    /// hence unbounded mpsc rather than oneshot.
+    pub sender: mpsc::UnboundedSender<Result<KadMessage, String>>,
+}
+
+/// RAII guard for a registered in-flight transaction: removes the entry on
+/// drop. Callers may wrap a `send_*` future in an outer timeout or `select!`
+/// branch — cancellation then skips the timeout branch's manual `remove`,
+/// leaking the entry toward `MAX_IN_FLIGHT_TRANSACTIONS` until the map
+/// saturates and every subsequent send fails. `try_lock` keeps `Drop`
+/// synchronous; a contended map is healed by the stale-entry sweep in
+/// `insert_in_flight`. Removing an already-consumed tx_id is a no-op.
+pub struct InFlightTxGuard {
+    map: InFlightMap,
+    tx_id: u32,
+}
+
+impl InFlightTxGuard {
+    /// Creates a guard that removes `tx_id` from `map` on drop.
+    pub fn new(map: InFlightMap, tx_id: u32) -> Self {
+        Self { map, tx_id }
+    }
+}
+
+impl Drop for InFlightTxGuard {
+    fn drop(&mut self) {
+        if let Ok(mut map) = self.map.try_lock() {
+            map.remove(&self.tx_id);
+        }
+    }
 }
 
 /// Statistics snapshot of the UDP Kad service.
@@ -134,6 +164,10 @@ pub struct FirewallTestTracker {
     /// `GetUseExternKadPort` preference.
     pub extern_port: Option<u16>,
     pub use_extern: bool,
+    /// Our public IPv4 as observed by a peer (`KADEMLIA_FIREWALLED_RES`
+    /// echoes it back). Used as the advertised IP when publishing ourselves
+    /// as a source — the socket bind address may be `0.0.0.0` or NATed.
+    pub observed_ip: Option<Ipv4Addr>,
     /// Last completed check time (for cooldowns / re-verification).
     pub last_check: Option<Instant>,
     /// Pending tests per candidate IP: `(verify_key, result_sender)`. The

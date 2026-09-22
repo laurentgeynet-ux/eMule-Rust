@@ -220,40 +220,31 @@ impl KBucketTable {
         self.buckets.iter().map(|b| b.replacements.len()).sum()
     }
 
-    /// Finds up to `count` closest contacts to the given target key.
-    pub fn find_closest(&self, target: &KadId, count: usize) -> Vec<KadContact> {
+    /// Collects every known contact (bucket entries + replacement cache).
+    fn collect_all(&self) -> Vec<KadContact> {
         let mut all_contacts = Vec::new();
         for b in &self.buckets {
-            for c in &b.contacts {
-                all_contacts.push(c.clone());
-            }
-            for c in &b.replacements {
-                all_contacts.push(c.clone());
-            }
+            all_contacts.extend(b.contacts.iter().cloned());
+            all_contacts.extend(b.replacements.iter().cloned());
         }
+        all_contacts
+    }
 
+    /// Finds up to `count` closest contacts to the given target key.
+    pub fn find_closest(&self, target: &KadId, count: usize) -> Vec<KadContact> {
+        let mut all_contacts = self.collect_all();
         all_contacts.sort_by(|a, b| {
             let dist_a = a.kad_id.xor_distance(target);
             let dist_b = b.kad_id.xor_distance(target);
             dist_a.cmp(&dist_b)
         });
-
         all_contacts.truncate(count);
         all_contacts
     }
 
     /// Finds up to `count` closest contacts, prioritizing verified contacts.
     pub fn find_closest_verified(&self, target: &KadId, count: usize) -> Vec<KadContact> {
-        let mut all_contacts = Vec::new();
-        for b in &self.buckets {
-            for c in &b.contacts {
-                all_contacts.push(c.clone());
-            }
-            for c in &b.replacements {
-                all_contacts.push(c.clone());
-            }
-        }
-
+        let mut all_contacts = self.collect_all();
         all_contacts.sort_by(|a, b| match (a.verified, b.verified) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
@@ -263,9 +254,55 @@ impl KBucketTable {
                 dist_a.cmp(&dist_b)
             }
         });
-
         all_contacts.truncate(count);
         all_contacts
+    }
+
+    /// Finds up to `count` closest *verified* contacts to `target`.
+    ///
+    /// Mirrors eMule `GetClosestTo(..., bOnlyVerified=true)` used to answer
+    /// `KADEMLIA2_REQ`/`BOOTSTRAP_REQ`: only contacts whose IP ownership was
+    /// proven (answered one of our requests, or completed the
+    /// `HELLO_RES_ACK` handshake) may be handed to other nodes — returning
+    /// unverified contacts would propagate potentially spoofed entries.
+    pub fn find_verified_closest(&self, target: &KadId, count: usize) -> Vec<KadContact> {
+        let mut verified: Vec<KadContact> = self
+            .collect_all()
+            .into_iter()
+            .filter(|c| c.verified)
+            .collect();
+        verified.sort_by(|a, b| {
+            let dist_a = a.kad_id.xor_distance(target);
+            let dist_b = b.kad_id.xor_distance(target);
+            dist_a.cmp(&dist_b)
+        });
+        verified.truncate(count);
+        verified
+    }
+
+    /// Returns up to `max` verified contacts spread across the keyspace
+    /// (round-robin over non-empty buckets), mirroring eMule
+    /// `GetBootstrapContacts`: a bootstrap answer must give the requester a
+    /// diverse sample of the DHT, not a clump of same-prefix contacts.
+    pub fn spread_verified(&self, max: usize) -> Vec<KadContact> {
+        let mut out = Vec::new();
+        let mut round = 0;
+        loop {
+            let before = out.len();
+            for b in &self.buckets {
+                if let Some(c) = b.contacts.iter().filter(|c| c.verified).nth(round) {
+                    out.push(c.clone());
+                    if out.len() >= max {
+                        return out;
+                    }
+                }
+            }
+            if out.len() == before {
+                break;
+            }
+            round += 1;
+        }
+        out
     }
 
     /// Returns a snapshot of non-empty buckets and their contact counts.
