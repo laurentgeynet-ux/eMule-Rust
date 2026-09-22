@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mule_client/mule_client.dart';
@@ -19,6 +21,9 @@ class _SharesViewState extends ConsumerState<SharesView> {
   List<SharedFileModel> _files = const [];
   bool _loading = true;
   bool _rescanning = false;
+  StreamSubscription<DownloadLifecycleEvent>? _lifecycleSub;
+  StreamSubscription<DownloadUpdatedEvent>? _updateSub;
+  Timer? _updateDebounce;
 
   /// Re-scans the Incoming directory on the daemon (eMule "reload shared
   /// files" semantics), then refreshes the list.
@@ -59,7 +64,27 @@ class _SharesViewState extends ConsumerState<SharesView> {
   @override
   void initState() {
     super.initState();
+    final client = ref.read(muleDaemonClientProvider);
+    // Lifecycle transitions (added/completed/removed/failed) change the
+    // shared list right away — refresh immediately.
+    _lifecycleSub = client.downloadLifecycleEvents.listen((_) => _load());
+    // Progression events update the completed-parts list of partial shares;
+    // they fire often, so debounce the reload.
+    _updateSub = client.downloadEvents.listen((_) {
+      _updateDebounce ??= Timer(const Duration(seconds: 3), () {
+        _updateDebounce = null;
+        _load();
+      });
+    });
     _load();
+  }
+
+  @override
+  void dispose() {
+    _updateDebounce?.cancel();
+    _lifecycleSub?.cancel();
+    _updateSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

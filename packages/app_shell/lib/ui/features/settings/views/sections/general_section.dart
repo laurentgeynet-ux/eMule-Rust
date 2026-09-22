@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../app/providers.dart';
 import '../../../../../core/system_actions.dart';
+import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/settings/settings_directory_section.dart';
 import '../../../downloads/widgets/settings/settings_inline_message.dart';
 import '../../../downloads/widgets/settings/settings_language_section.dart';
@@ -25,6 +26,11 @@ class _SettingsGeneralSectionState
   late TextEditingController _dirController;
   late TextEditingController _nickController;
   late TextEditingController _tempDirController;
+
+  /// Champs en cours d'édition : jamais écrasés par une resynchronisation
+  /// externe (`settings.changed`, autre client, MCP).
+  final Set<TextEditingController> _dirty = {};
+
   bool _isSaving = false;
   String? _inlineError;
   String? _inlineSuccess;
@@ -38,11 +44,7 @@ class _SettingsGeneralSectionState
     _tempDirController = TextEditingController();
     Future.microtask(() async {
       await ref.read(settingsControllerProvider).fetch();
-      if (mounted) {
-        final s = ref.read(settingsControllerProvider).settings;
-        _nickController.text = s['nickname']?.toString() ?? '';
-        _tempDirController.text = s['tempDir']?.toString() ?? '';
-      }
+      if (mounted) _syncFromSettings();
     });
   }
 
@@ -54,17 +56,36 @@ class _SettingsGeneralSectionState
     super.dispose();
   }
 
+  void _syncText(TextEditingController ctrl, Object? value) {
+    final v = value?.toString() ?? '';
+    if (!_dirty.contains(ctrl) && ctrl.text != v) ctrl.text = v;
+  }
+
+  /// Réécrit les champs depuis la map de settings (fetch initial ou
+  /// événement `settings.changed`), sauf ceux en cours d'édition.
+  void _syncFromSettings() {
+    final s = ref.read(settingsControllerProvider).settings;
+    _syncText(_nickController, s['nickname']);
+    _syncText(_tempDirController, s['tempDir']);
+    _syncText(
+      _dirController,
+      s['defaultDownloadDir'] ?? ref.read(defaultDownloadDirectoryProvider),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(settingsControllerProvider, (_, __) => _syncFromSettings());
     final settings = ref.watch(settingsControllerProvider).settings;
+    final l10n = context.l10n;
     final isCustom = settings['isCustom'] == true ||
         (settings['defaultDownloadDir'] != null &&
             settings['defaultDownloadDir'] != settings['portableDownloadDir']);
     final shareDir = settings['shareDownloadDir'] as bool? ?? true;
 
     return SettingsSectionScaffold(
-      title: 'Général',
-      subtitle: 'Identité, dossiers, partage automatique, historique et langue',
+      title: l10n.settingsSectionGeneral,
+      subtitle: l10n.settingsGeneralSubtitle,
       icon: Icons.tune_rounded,
       children: [
         TextField(
@@ -72,19 +93,19 @@ class _SettingsGeneralSectionState
           maxLength: 64,
           style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
           decoration: InputDecoration(
-            labelText: 'Pseudo (nickname)',
-            helperText:
-                'Annoncé aux serveurs eD2K et aux pairs (eMule « nick » ; vide = défaut)',
+            labelText: l10n.settingsNicknameLabel,
+            helperText: l10n.settingsNicknameHelper,
             helperStyle: const TextStyle(fontSize: 11, color: AppColors.textMuted),
             isDense: true,
             border: const OutlineInputBorder(),
             counterText: '',
             suffixIcon: IconButton(
               icon: const Icon(Icons.save_rounded, size: 18),
-              tooltip: 'Appliquer',
+              tooltip: l10n.settingsApply,
               onPressed: _saveNickname,
             ),
           ),
+          onChanged: (_) => _dirty.add(_nickController),
           onSubmitted: (_) => _saveNickname(),
         ),
         const SizedBox(height: 12),
@@ -96,6 +117,7 @@ class _SettingsGeneralSectionState
           onReset: _resetDefaultDir,
           onOpenFolder: () => systemActions
               .openDirectory(ref.read(defaultDownloadDirectoryProvider)),
+          onChanged: (_) => _dirty.add(_dirController),
         ),
         if (_inlineError != null)
           SettingsInlineMessage(message: _inlineError!, isError: true),
@@ -104,14 +126,13 @@ class _SettingsGeneralSectionState
         const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'Partager automatiquement le dossier de téléchargement',
-            style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
+          title: Text(
+            l10n.settingsShareDownloadDirTitle,
+            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
           ),
-          subtitle: const Text(
-            'Les fichiers du dossier Incoming sont hashés et servis aux pairs '
-            'au démarrage du daemon (comme le dossier Incoming d\'eMule).',
-            style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+          subtitle: Text(
+            l10n.settingsShareDownloadDirSub,
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
           value: shareDir,
           onChanged: (v) => ref
@@ -125,35 +146,31 @@ class _SettingsGeneralSectionState
           controller: _tempDirController,
           style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
           decoration: InputDecoration(
-            labelText: 'Dossier temporaire (.part)',
-            helperText:
-                'Où sont stockés les fichiers en cours (eMule « Répertoire temporaire » ; vide = dossier du daemon)',
+            labelText: l10n.settingsTempDirLabel,
+            helperText: l10n.settingsTempDirHelper,
             helperStyle: const TextStyle(fontSize: 11, color: AppColors.textMuted),
             isDense: true,
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
               icon: const Icon(Icons.save_rounded, size: 18),
-              tooltip: 'Appliquer',
-              onPressed: () => ref
-                  .read(settingsControllerProvider)
-                  .updateSettings({'tempDir': _tempDirController.text.trim()}),
+              tooltip: l10n.settingsApply,
+              onPressed: _saveTempDir,
             ),
           ),
-          onSubmitted: (v) => ref
-              .read(settingsControllerProvider)
-              .updateSettings({'tempDir': v.trim()}),
+          onChanged: (_) => _dirty.add(_tempDirController),
+          onSubmitted: (_) => _saveTempDir(),
         ),
         const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text(
-            'ICH — vérification intelligente des parts',
-            style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+          title: Text(
+            l10n.settingsIchTitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
           ),
-          subtitle: const Text(
-            'Vérifie chaque part complétée par MD4 (eMule « ICH » ; désactiver saute la vérification intermédiaire)',
-            style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+          subtitle: Text(
+            l10n.settingsIchSub,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
           ),
           value: settings['ichEnabled'] as bool? ?? true,
           onChanged: (v) => ref
@@ -163,13 +180,13 @@ class _SettingsGeneralSectionState
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text(
-            'Mémoriser les fichiers annulés',
-            style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+          title: Text(
+            l10n.settingsRememberCancelledTitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
           ),
-          subtitle: const Text(
-            'Ajoute une entrée d\'historique à l\'annulation (eMule « Remember cancelled files »)',
-            style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+          subtitle: Text(
+            l10n.settingsRememberCancelledSub,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
           ),
           value: settings['rememberCancelled'] as bool? ?? true,
           onChanged: (v) => ref
@@ -179,13 +196,13 @@ class _SettingsGeneralSectionState
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text(
-            'Mémoriser les fichiers téléchargés',
-            style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+          title: Text(
+            l10n.settingsRememberDownloadedTitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
           ),
-          subtitle: const Text(
-            'Ajoute une entrée d\'historique à la complétion (eMule « Remember downloaded files »)',
-            style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+          subtitle: Text(
+            l10n.settingsRememberDownloadedSub,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
           ),
           value: settings['rememberDownloaded'] as bool? ?? true,
           onChanged: (v) => ref
@@ -214,12 +231,27 @@ class _SettingsGeneralSectionState
       nick = 'Emule-Sion';
       _nickController.text = nick;
     }
-    await ref
+    final ok = await ref
         .read(settingsControllerProvider)
         .updateSettings({'nickname': nick});
+    if (ok && mounted) {
+      _dirty.remove(_nickController);
+      _syncFromSettings();
+    }
+  }
+
+  Future<void> _saveTempDir() async {
+    final ok = await ref.read(settingsControllerProvider).updateSettings(
+      {'tempDir': _tempDirController.text.trim()},
+    );
+    if (ok && mounted) {
+      _dirty.remove(_tempDirController);
+      _syncFromSettings();
+    }
   }
 
   Future<void> _saveDefaultDir() async {
+    final l10n = context.l10n;
     setState(() {
       _isSaving = true;
       _inlineError = null;
@@ -230,7 +262,7 @@ class _SettingsGeneralSectionState
     if (newDir.isEmpty) {
       setState(() {
         _isSaving = false;
-        _inlineError = 'Directory path cannot be empty.';
+        _inlineError = l10n.settingsDirEmptyError;
       });
       return;
     }
@@ -242,17 +274,19 @@ class _SettingsGeneralSectionState
       setState(() {
         _isSaving = false;
         if (success) {
-          _inlineSuccess =
-              'Default download directory updated successfully.';
+          _dirty.remove(_dirController);
+          _inlineSuccess = l10n.settingsDirSaved;
         } else {
           _inlineError = ref.read(shellControllerProvider).errorMessage ??
-              'Directory write probe failed.';
+              l10n.settingsDirProbeFailed;
         }
       });
+      if (success) _syncFromSettings();
     }
   }
 
   Future<void> _resetDefaultDir() async {
+    final l10n = context.l10n;
     setState(() {
       _isSaving = true;
       _inlineError = null;
@@ -266,12 +300,13 @@ class _SettingsGeneralSectionState
       setState(() {
         _isSaving = false;
         if (success) {
+          _dirty.remove(_dirController);
           _dirController.text =
               ref.read(defaultDownloadDirectoryProvider);
-          _inlineSuccess = 'Reset to portable default directory.';
+          _inlineSuccess = l10n.settingsDirResetDone;
         } else {
           _inlineError = ref.read(shellControllerProvider).errorMessage ??
-              'Failed to reset download directory.';
+              l10n.settingsDirResetFailed;
         }
       });
     }

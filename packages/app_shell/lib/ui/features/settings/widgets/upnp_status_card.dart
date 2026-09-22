@@ -43,8 +43,8 @@ class UpnpStatusCard extends StatelessWidget {
                 label: context.l10n.passerelleBoxDetectee,
                 child: Text(
                   status.available
-                      ? (status.gatewayAddr ?? 'Connectée')
-                      : 'Non détectée / Désactivée',
+                      ? (status.gatewayAddr ?? context.l10n.upnpGatewayConnected)
+                      : context.l10n.upnpGatewayAbsent,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -58,7 +58,7 @@ class UpnpStatusCard extends StatelessWidget {
               _UpnpRow(
                 label: context.l10n.adresseIpExterneWan,
                 child: Text(
-                  status.externalIp ?? 'Inconnue',
+                  status.externalIp ?? context.l10n.upnpIpUnknown,
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -71,7 +71,7 @@ class UpnpStatusCard extends StatelessWidget {
                 label: context.l10n.portTcpEd2k('${status.tcpPort}'),
                 child: _MappedValue(
                   mapped: status.tcpMapped,
-                  mappedLabel: 'Mappé (HighID)',
+                  mappedLabel: context.l10n.upnpMappedHighId,
                 ),
               ),
               const SizedBox(height: 8),
@@ -79,7 +79,7 @@ class UpnpStatusCard extends StatelessWidget {
                 label: context.l10n.portUdpKad('${status.udpPort}'),
                 child: _MappedValue(
                   mapped: status.udpMapped,
-                  mappedLabel: 'Mappé (Ouvert)',
+                  mappedLabel: context.l10n.upnpMappedOpen,
                 ),
               ),
             ],
@@ -150,7 +150,7 @@ class _MappedValue extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         Text(
-          mapped ? mappedLabel : 'Non mappé',
+          mapped ? mappedLabel : context.l10n.upnpNotMapped,
           style: TextStyle(
             fontSize: 12,
             color: mapped ? AppColors.positive : AppColors.textSoft,

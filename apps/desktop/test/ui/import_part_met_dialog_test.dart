@@ -63,7 +63,7 @@ void main() {
       expect(find.text('Category (Optional)'), findsOneWidget);
 
       // Action buttons
-      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Annuler'), findsOneWidget);
       expect(find.byKey(const Key('inspect_button')), findsOneWidget);
       expect(find.byKey(const Key('import_submit_button')), findsOneWidget);
     });

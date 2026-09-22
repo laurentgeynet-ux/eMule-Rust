@@ -460,11 +460,9 @@ abstract class MuleDaemonClient {
   /// Enable or disable UPnP service.
   Future<UpnpStatusModel> setUpnpEnabled(bool enabled);
 
-  /// Map ports via UPnP IGD.
-  Future<UpnpStatusModel> mapUpnpPorts({
-    int tcpPort = 39735,
-    int udpPort = 39737,
-  });
+  /// Map ports via UPnP IGD. When [tcpPort]/[udpPort] are omitted the
+  /// daemon maps its effective eD2K/Kad ports.
+  Future<UpnpStatusModel> mapUpnpPorts({int? tcpPort, int? udpPort});
 
   /// Unmap ports via UPnP IGD.
   Future<UpnpStatusModel> unmapUpnpPorts();

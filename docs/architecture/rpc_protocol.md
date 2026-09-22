@@ -114,7 +114,7 @@ Namespaces stables (voir `methods.rs` pour la liste exhaustive maintenue) :
 | `kad.*` | `status`, `startUdp`, `stopUdp`, `bootstrap`, `findNode`, `searchSources`, `searchKeywords`, `searchNotes`, `publish*`, `listContacts`, `importNodesDat` |
 | `network.*` | `getPolicy`, `setProfile`, `enable`, `disconnectAll`, `getAuditLog`, `setBudgets` |
 | `settings.*` / `limits.*` | `get`, `set`, `setRetentionDays`, `resetDownloadDir` — voir `docs/SETTINGS.md` pour toutes les clés |
-| `shares.*` | `list` (incl. partiels `isPartial`/`completedParts`), `add`, `remove`, `setEnabled`, `setUploadPriority`, `rescan` |
+| `shares.*` | `list` → `{sharedFiles[]}` (incl. partiels `isPartial`/`completedParts`), `add`, `remove`, `setEnabled`, `setUploadPriority` (les deux derniers refusent les partiels), `rescan` |
 | `uploads.*` / `listener.*` | `list`, `status`, `cancel` ; `start`, `stop`, `status` |
 | `identity.*` / `credits.*` | `status`, `rotate` ; `list`, `stats` |
 | `upnp.*` | `status`, `mapPorts`, `unmapPorts`, `setEnabled` |

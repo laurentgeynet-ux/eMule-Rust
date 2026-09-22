@@ -60,8 +60,8 @@ class NetworkStateBanner extends StatelessWidget {
                 ),
                 Text(
                   isKillSwitchActive
-                      ? 'Kill switch actif : toutes les sockets sont coupées, connexions entrantes et sortantes bloquées.'
-                      : 'Chaque socket est soumise aux contraintes du profil réseau actif (permis, budgets, filtre IP).',
+                      ? context.l10n.netBannerKillActive
+                      : context.l10n.netBannerPolicyActive,
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textSoft,

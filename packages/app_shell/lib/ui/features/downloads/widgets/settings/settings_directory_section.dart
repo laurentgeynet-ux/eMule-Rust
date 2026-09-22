@@ -12,6 +12,10 @@ class SettingsDirectorySection extends StatelessWidget {
   final VoidCallback onReset;
   final VoidCallback onOpenFolder;
 
+  /// Appelé sur chaque saisie utilisateur (dirty tracking — un champ en
+  /// cours d'édition n'est pas écrasé par une resync externe).
+  final ValueChanged<String>? onChanged;
+
   const SettingsDirectorySection({
     super.key,
     required this.dirController,
@@ -20,6 +24,7 @@ class SettingsDirectorySection extends StatelessWidget {
     required this.onSave,
     required this.onReset,
     required this.onOpenFolder,
+    this.onChanged,
   });
 
   @override
@@ -50,6 +55,8 @@ class SettingsDirectorySection extends StatelessWidget {
               child: TextField(
                 controller: dirController,
                 style: const TextStyle(fontSize: 13),
+                onChanged: onChanged,
+                onSubmitted: (_) => onSave(),
                 decoration: InputDecoration(
                   isDense: true,
                   labelText: context.l10n.destinationDirectoryPath,
@@ -62,8 +69,8 @@ class SettingsDirectorySection extends StatelessWidget {
                         const BorderSide(color: AppTheme.darkBorder),
                   ),
                   helperText: isCustom
-                      ? 'Dossier personnalisé (persisté en base, appliqué immédiatement)'
-                      : 'Dossier portable par défaut (<racine_du_bundle>/downloads)',
+                      ? context.l10n.settingsDirCustomHelper
+                      : context.l10n.settingsDirPortableHelper,
                   helperStyle: TextStyle(
                     color: isCustom
                         ? AppColors.accentTeal

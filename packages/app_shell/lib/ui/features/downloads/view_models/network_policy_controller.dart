@@ -64,10 +64,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setProfile(NetworkProfile profile) async {
     try {
       _policy = await client.setNetworkProfile(profile);
-      onStatus?.call('Switched network profile to ${profile.label}');
+      onStatus?.call('Profil réseau basculé : ${profile.label}');
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to switch network profile: $e');
+      onError?.call('Échec du changement de profil réseau : $e');
       notifyListeners();
     }
   }
@@ -78,11 +78,11 @@ class NetworkPolicyController extends ChangeNotifier {
       await fetchPolicy();
       onAllDisconnected?.call();
       onStatus?.call(
-        'Kill Switch engaged: All network connections disconnected',
+        'Kill switch activé : toutes les connexions réseau ont été coupées',
       );
       notifyListeners();
     } catch (e) {
-      onError?.call('Kill switch failed: $e');
+      onError?.call('Échec du kill switch : $e');
       notifyListeners();
     }
   }
@@ -91,10 +91,10 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       await client.enableNetwork();
       await fetchPolicy();
-      onStatus?.call('Network policy re-enabled');
+      onStatus?.call('Réseau réactivé');
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to re-enable network: $e');
+      onError?.call('Échec de la réactivation du réseau : $e');
       notifyListeners();
     }
   }
@@ -109,10 +109,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setResourceBudgets(ResourceBudgetsModel budgets) async {
     try {
       _policy = await client.setResourceBudgets(budgets);
-      onStatus?.call('Resource budgets updated');
+      onStatus?.call('Budgets de ressources mis à jour');
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to set resource budgets: $e');
+      onError?.call('Échec de la mise à jour des budgets de ressources : $e');
       notifyListeners();
     }
   }
@@ -130,12 +130,12 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       _filterStatus = await client.importFilterFile(filePath);
       onStatus?.call(
-        'Imported ${_filterStatus?.rangeCount ?? 0} IP filter ranges',
+        'Filtre IP importé : ${_filterStatus?.rangeCount ?? 0} plages',
       );
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to import IP filter: $e');
+      onError?.call('Échec de l\'import du filtre IP : $e');
       notifyListeners();
       return false;
     }
@@ -144,10 +144,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setFilterEnabled(bool enabled) async {
     try {
       _filterStatus = await client.setFilterEnabled(enabled);
-      onStatus?.call(enabled ? 'IP Filter enabled' : 'IP Filter disabled');
+      onStatus?.call(enabled ? 'Filtre IP activé' : 'Filtre IP désactivé');
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to toggle IP filter: $e');
+      onError?.call('Échec du basculement du filtre IP : $e');
       notifyListeners();
     }
   }
@@ -155,10 +155,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> clearFilter() async {
     try {
       _filterStatus = await client.clearFilter();
-      onStatus?.call('IP Filter cleared');
+      onStatus?.call('Filtre IP vidé');
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to clear IP filter: $e');
+      onError?.call('Échec de la purge du filtre IP : $e');
       notifyListeners();
     }
   }
@@ -175,10 +175,10 @@ class NetworkPolicyController extends ChangeNotifier {
   Future<void> setRateLimits(RateLimitsModel limits) async {
     try {
       _rateLimits = await client.setRateLimits(limits);
-      onStatus?.call('Rate limits updated');
+      onStatus?.call('Limites de débit mises à jour');
       notifyListeners();
     } catch (e) {
-      onError?.call('Failed to set rate limits: $e');
+      onError?.call('Échec de la mise à jour des limites de débit : $e');
       notifyListeners();
     }
   }

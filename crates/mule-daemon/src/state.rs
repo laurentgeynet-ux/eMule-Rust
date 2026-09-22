@@ -119,6 +119,9 @@ impl AppState {
         let upnp_enabled_boot = bool_setting("upnp_enabled").unwrap_or(config.upnp_enabled);
 
         let network_policy = NetworkPolicyManager::new(config.network_profile, budgets);
+        // Valeurs clampées à réécrire dans le store — différées car les
+        // closures ci-dessus empruntent `downloads` immuablement.
+        let mut clamped_limits: Vec<(&'static str, u64)> = Vec::new();
         // Persisted rate limits (eMule MaxUpload/MaxDownload, stored via
         // `limits.set`) applied at boot.
         {
@@ -151,6 +154,28 @@ impl AppState {
                 rl.kad_packets_per_sec = v as u32;
                 has_override = true;
             }
+            // eMule LoadPreferences : une limite persistée ne peut pas
+            // excéder la capacité de ligne déclarée — download ≤ capacité
+            // × 9/10, upload ≤ capacité × 4/5 (0 = illimité, jamais
+            // clampé). Même règle que `handle_limits_set`.
+            let cap_dl = get_u64("capacity_download_kbs").unwrap_or(0);
+            let cap_ul = get_u64("capacity_upload_kbs").unwrap_or(0);
+            if rl.download_bytes_per_sec > 0 && cap_dl > 0 {
+                let cap = cap_dl.saturating_mul(1024).saturating_mul(9) / 10;
+                let clamped = rl.download_bytes_per_sec.min(cap);
+                if clamped != rl.download_bytes_per_sec {
+                    clamped_limits.push(("rate_limit_download_bps", clamped));
+                    rl.download_bytes_per_sec = clamped;
+                }
+            }
+            if rl.upload_bytes_per_sec > 0 && cap_ul > 0 {
+                let cap = cap_ul.saturating_mul(1024).saturating_mul(4) / 5;
+                let clamped = rl.upload_bytes_per_sec.min(cap);
+                if clamped != rl.upload_bytes_per_sec {
+                    clamped_limits.push(("rate_limit_upload_bps", clamped));
+                    rl.upload_bytes_per_sec = clamped;
+                }
+            }
             if has_override {
                 network_policy.rate_limiters().apply_config(&rl);
             }
@@ -176,6 +201,14 @@ impl AppState {
             }
             if bool_setting("ipfilter_enabled").unwrap_or(false) {
                 network_policy.ip_filter().set_enabled(true);
+            }
+        }
+        // Réécriture des limites clampées au boot : la persistance reflète
+        // la valeur effectivement appliquée (cohérence avec `limits.set`,
+        // qui persiste la valeur clampée).
+        for (key, v) in clamped_limits {
+            if let Err(e) = downloads.set_setting(key, &v.to_string()) {
+                tracing::warn!("[LIMITS] Échec persistance {key} clampé: {e}");
             }
         }
         let sequence = Arc::new(AtomicU64::new(1));

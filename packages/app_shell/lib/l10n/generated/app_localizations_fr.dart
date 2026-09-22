@@ -80,7 +80,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get btnAddDownload => 'Add Download';
 
   @override
-  String get btnCancel => 'Cancel';
+  String get btnCancel => 'Annuler';
 
   @override
   String get btnClose => 'Fermer';
@@ -233,7 +233,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get diskAllocation => 'Disk Allocation';
 
   @override
-  String get cancel => 'Cancel';
+  String get cancel => 'Annuler';
 
   @override
   String get addDownload => 'Add Download';
@@ -1684,4 +1684,522 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get uploadsCancelTooltip => 'Annuler l\'upload';
+
+  @override
+  String get settingsSectionGeneral => 'Général';
+
+  @override
+  String get settingsSectionConnection => 'Connexion';
+
+  @override
+  String get settingsSectionTransfers => 'Transferts';
+
+  @override
+  String get settingsSectionSecurity => 'Sécurité';
+
+  @override
+  String get settingsSectionFriends => 'Amis';
+
+  @override
+  String get settingsSectionAdvanced => 'Avancé';
+
+  @override
+  String get settingsGeneralSubtitle =>
+      'Identité, dossiers, partage automatique, historique et langue';
+
+  @override
+  String get settingsConnectionSubtitle =>
+      'Profil réseau, isolation, budgets de sockets et UPnP';
+
+  @override
+  String get settingsTransfersSubtitle =>
+      'Limites de connexions aux sources du swarm';
+
+  @override
+  String get settingsSecuritySubtitle =>
+      'Filtre IP, limites de débit et politique anti-SSRF';
+
+  @override
+  String get settingsFriendsSubtitle =>
+      'Slot d\'upload dédié sans passer par la file (friend slot eMule)';
+
+  @override
+  String get settingsAdvancedSubtitle =>
+      'Diagnostic, outils de laboratoire et informations daemon';
+
+  @override
+  String get settingsApply => 'Appliquer';
+
+  @override
+  String get settingsSaving => 'Enregistrement…';
+
+  @override
+  String get settingsNicknameLabel => 'Pseudo (nickname)';
+
+  @override
+  String get settingsNicknameHelper =>
+      'Annoncé aux serveurs eD2K et aux pairs (eMule « nick » ; vide = défaut)';
+
+  @override
+  String get settingsShareDownloadDirTitle =>
+      'Partager automatiquement le dossier de téléchargement';
+
+  @override
+  String get settingsShareDownloadDirSub =>
+      'Les fichiers du dossier Incoming sont hashés et servis aux pairs au démarrage du daemon (comme le dossier Incoming d\'eMule).';
+
+  @override
+  String get settingsTempDirLabel => 'Dossier temporaire (.part)';
+
+  @override
+  String get settingsTempDirHelper =>
+      'Où sont stockés les fichiers en cours (eMule « Répertoire temporaire » ; vide = dossier du daemon)';
+
+  @override
+  String get settingsIchTitle => 'ICH — vérification intelligente des parts';
+
+  @override
+  String get settingsIchSub =>
+      'Vérifie chaque part complétée par MD4 (eMule « ICH » ; désactiver saute la vérification intermédiaire)';
+
+  @override
+  String get settingsRememberCancelledTitle => 'Mémoriser les fichiers annulés';
+
+  @override
+  String get settingsRememberCancelledSub =>
+      'Ajoute une entrée d\'historique à l\'annulation (eMule « Remember cancelled files »)';
+
+  @override
+  String get settingsRememberDownloadedTitle =>
+      'Mémoriser les fichiers téléchargés';
+
+  @override
+  String get settingsRememberDownloadedSub =>
+      'Ajoute une entrée d\'historique à la complétion (eMule « Remember downloaded files »)';
+
+  @override
+  String get settingsDirEmptyError =>
+      'Le chemin du dossier ne peut pas être vide.';
+
+  @override
+  String get settingsDirSaved =>
+      'Dossier de téléchargement par défaut mis à jour.';
+
+  @override
+  String get settingsDirProbeFailed =>
+      'Le test d\'écriture dans le dossier a échoué.';
+
+  @override
+  String get settingsDirResetDone => 'Dossier portable par défaut restauré.';
+
+  @override
+  String get settingsDirResetFailed =>
+      'Échec de la réinitialisation du dossier de téléchargement.';
+
+  @override
+  String get settingsCapPortsTitle => 'Capacités & ports';
+
+  @override
+  String get settingsCapDlLabel => 'Capacité réception (Ko/s)';
+
+  @override
+  String get settingsCapDlHint =>
+      'Vitesse de ligne descendante — borne la limite de download à 90 % (0 = aucune)';
+
+  @override
+  String get settingsCapUlLabel => 'Capacité émission (Ko/s)';
+
+  @override
+  String get settingsCapUlHint =>
+      'Vitesse de ligne montante — référence USS, borne la limite d\'upload à 80 % (0 = aucune)';
+
+  @override
+  String get settingsTcpPortLabel => 'Port TCP';
+
+  @override
+  String get settingsTcpPortHint =>
+      'Port client eD2K — rebind immédiat du listener';
+
+  @override
+  String get settingsUdpPortLabel => 'Port UDP';
+
+  @override
+  String get settingsUdpPortHint => 'Port Kad/UDP — socket rebind à chaud';
+
+  @override
+  String get settingsUdpEnabledTitle => 'UDP activé';
+
+  @override
+  String get settingsUdpEnabledSub =>
+      'Kad UDP, requêtes serveur UDP et re-ask UDP (eMule « UDP désactivé »)';
+
+  @override
+  String get settingsUpnpToggleTitle => 'Configurer les ports grâce à l\'UPnP';
+
+  @override
+  String get settingsUpnpToggleSub =>
+      'Mappe/démappe automatiquement TCP+UDP sur la box';
+
+  @override
+  String get settingsProtocolTitle => 'Protocole & limites';
+
+  @override
+  String get settingsObfEnabledTitle => 'Connexions obfusquées supportées';
+
+  @override
+  String get settingsObfEnabledSub =>
+      'Chiffrement de protocole eD2K/Kad (eMule « Support obfuscated connections »)';
+
+  @override
+  String get settingsObfRequiredTitle => 'Obfuscation requise';
+
+  @override
+  String get settingsObfRequiredSub =>
+      'Rejette les pairs sans chiffrement (eMule « Require obfuscated connections »)';
+
+  @override
+  String get settingsUssTitle => 'USS — Upload Speed Sense';
+
+  @override
+  String get settingsUssSub =>
+      'Ajuste dynamiquement la limite d\'upload selon la latence mesurée';
+
+  @override
+  String get settingsMaxConnLabel => 'Connexions max';
+
+  @override
+  String get settingsMaxConnHint =>
+      'Budget global de sockets pairs (eMule MaxConnections)';
+
+  @override
+  String get settingsConnPerMinLabel => 'Connexions / min';
+
+  @override
+  String get settingsConnPerMinHint =>
+      'Nouvelles connexions sortantes par minute (eMule ≈ 240)';
+
+  @override
+  String get settingsServersTitle => 'Serveurs eD2K';
+
+  @override
+  String get settingsServerReconnectTitle => 'Reconnexion automatique';
+
+  @override
+  String get settingsServerReconnectSub =>
+      'Reconnecte au dernier serveur après une perte de connexion (eMule « Reconnect »)';
+
+  @override
+  String get settingsServerAutoconnectTitle => 'Connexion au démarrage';
+
+  @override
+  String get settingsServerAutoconnectSub =>
+      'Se connecte automatiquement au meilleur serveur connu au lancement (eMule « Autoconnect »)';
+
+  @override
+  String get settingsServerAutoremoveTitle => 'Supprimer les serveurs morts';
+
+  @override
+  String get settingsServerAutoremoveSub =>
+      'Retire un serveur de la liste dès le premier échec de reconnexion (eMule « DeadServerRetry » = 1)';
+
+  @override
+  String get settingsSafeConnectTitle => 'Connexion sûre';
+
+  @override
+  String get settingsSafeConnectSub =>
+      'Bloque la reprise des downloads tant que ni le serveur eD2K ni Kad ne sont disponibles';
+
+  @override
+  String get settingsServerAutoupdateTitle =>
+      'Mettre à jour la liste au démarrage';
+
+  @override
+  String get settingsServerAutoupdateSub =>
+      'Importe le fichier server.met ci-dessous au lancement du daemon';
+
+  @override
+  String get settingsServerMetLabel => 'Fichier server.met';
+
+  @override
+  String get settingsServerMetHint =>
+      'Chemin local du fichier .met importé au démarrage (aucun fetch HTTP)';
+
+  @override
+  String upnpConfiguredMsg(String ip) {
+    return 'UPnP configuré (IP WAN : $ip).';
+  }
+
+  @override
+  String get upnpNoGateway =>
+      'Passerelle UPnP non détectée ou désactivée sur votre box.';
+
+  @override
+  String upnpRefreshFailed(String error) {
+    return 'Échec de rafraîchissement UPnP : $error';
+  }
+
+  @override
+  String settingsInvalidNumMin(String label, String value, int min) {
+    return '$label : « $value » invalide (entier ≥ $min attendu)';
+  }
+
+  @override
+  String settingsInvalidNumRange(String label, String value, int min, int max) {
+    return '$label : « $value » invalide (entier entre $min et $max attendu)';
+  }
+
+  @override
+  String get killSwitchConfirmTitle => 'Couper toutes les connexions ?';
+
+  @override
+  String get killSwitchConfirmBody =>
+      'Le kill switch coupe immédiatement toutes les sockets réseau (pairs, serveurs, listeners) jusqu\'à réactivation manuelle.';
+
+  @override
+  String get killSwitchConfirmAction => 'Tout déconnecter';
+
+  @override
+  String get settingsMaxGlobalLabel => 'Sources maximum (global)';
+
+  @override
+  String get settingsMaxGlobalHint =>
+      'Nombre total de sources eD2K/Kad simultanées, tous fichiers confondus';
+
+  @override
+  String get settingsMaxPerFileLabel => 'Sources maximum par fichier';
+
+  @override
+  String get settingsMaxPerFileHint =>
+      'Plafond par défaut — surchargeable par fichier (FT_MAXSOURCES)';
+
+  @override
+  String get settingsMinPerFileLabel => 'Sources minimum par fichier';
+
+  @override
+  String get settingsMinPerFileHint =>
+      'Quota de sources garanti par fichier même si le swarm global est saturé';
+
+  @override
+  String get settingsMaxQueueLabel => 'File d\'attente upload max';
+
+  @override
+  String get settingsMaxQueueHint =>
+      'Clients en attente d\'un slot upload (eMule QueueSize, défaut 5000)';
+
+  @override
+  String get settingsMinUploadLabel => 'Débit upload min par slot (Ko/s)';
+
+  @override
+  String get settingsMinUploadHint =>
+      'N\'ouvre pas de nouveau slot sous ce seuil (eMule MinUpload, défaut 1)';
+
+  @override
+  String get settingsDailyQuotaLabel =>
+      'Quota upload quotidien (Gio, 0 = illimité)';
+
+  @override
+  String get settingsDailyQuotaHint =>
+      'Option Emule-Sion : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).';
+
+  @override
+  String get settingsAutoPriorityTitle =>
+      'Priorité auto des nouveaux downloads';
+
+  @override
+  String get settingsAutoPrioritySub =>
+      'Les fichiers ≥ 1 part eD2K (9,28 Mio) démarrent en priorité « high »';
+
+  @override
+  String get settingsSwarmHealingTitle => 'Sauvetage de swarm (swarm healing)';
+
+  @override
+  String get settingsSwarmHealingSub =>
+      'Option Emule-Sion : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition';
+
+  @override
+  String get settingsExclusiveTitle => 'Options exclusives Emule-Sion';
+
+  @override
+  String get settingsParanoidTitle => 'Mode paranoid';
+
+  @override
+  String get settingsParanoidSub =>
+      'Ne sert que les pairs obfusqués dont la signature Secure Ident a été vérifiée — les clients eMule classiques sont refusés (réduit fortement la compatibilité)';
+
+  @override
+  String get settingsIdentityRotationLabel =>
+      'Rotation d\'identité (heures, 0 = désactivée)';
+
+  @override
+  String get settingsIdentityRotationHelper =>
+      'Régénère la clé RSA, le user hash eD2K et le KadID périodiquement. Invalide les crédits accumulés — identité volontairement éphémère.';
+
+  @override
+  String settingsInvalidLimits(String fields) {
+    return 'Limites invalides : $fields';
+  }
+
+  @override
+  String get settingsLimitDlField => 'limite de réception (Ko/s)';
+
+  @override
+  String get settingsLimitUlField => 'limite d\'émission (Ko/s)';
+
+  @override
+  String get settingsLimitConnField => 'connexions/minute';
+
+  @override
+  String settingsIdentityRotationInvalid(String value) {
+    return 'Rotation d\'identité : « $value » invalide (entier entre 0 et 8760 attendu)';
+  }
+
+  @override
+  String get rateLimitsCapacityNote =>
+      'Les limites sont bornées à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).';
+
+  @override
+  String get settingsDiagnosticTile => 'Diagnostic du daemon';
+
+  @override
+  String get settingsDiagnosticSub =>
+      'État de santé, connexions et statistiques internes';
+
+  @override
+  String get settingsImportPartTile => 'Importer un .part.met';
+
+  @override
+  String get settingsImportPartSub =>
+      'Reprendre un téléchargement eMule existant';
+
+  @override
+  String get settingsLabGuideTile => 'Guide du mode laboratoire';
+
+  @override
+  String get settingsLabGuideSub =>
+      'Scénarios de test loopback sans trafic WAN';
+
+  @override
+  String get settingsDebugBarTitle => 'Barre de simulation debug';
+
+  @override
+  String get settingsDebugBarOn =>
+      'Affiche la barre de simulation en bas de l\'écran';
+
+  @override
+  String get settingsDebugBarOff =>
+      'Disponible uniquement avec les dev tools (ENABLE_DEV_TOOLS ou fake daemon)';
+
+  @override
+  String settingsDaemonVersion(String version, String protocol) {
+    return 'Daemon $version — protocole $protocol';
+  }
+
+  @override
+  String get settingsAddFriendTitle => 'Ajouter un ami';
+
+  @override
+  String get settingsUserHashLabel => 'UserHash (hex)';
+
+  @override
+  String get settingsUserHashHint => '32 caractères hexadécimaux';
+
+  @override
+  String get settingsFriendNameLabel => 'Nom (optionnel)';
+
+  @override
+  String get settingsNoFriends => 'Aucun ami configuré.';
+
+  @override
+  String get settingsRemoveFriendTooltip => 'Retirer';
+
+  @override
+  String settingsRetentionDaysCustom(int days) {
+    return '$days jours';
+  }
+
+  @override
+  String get settingsDirCustomHelper =>
+      'Dossier personnalisé (persisté en base, appliqué immédiatement)';
+
+  @override
+  String get settingsDirPortableHelper =>
+      'Dossier portable par défaut (<racine_du_bundle>/downloads)';
+
+  @override
+  String get netBannerKillActive =>
+      'Kill switch actif : toutes les sockets sont coupées, connexions entrantes et sortantes bloquées.';
+
+  @override
+  String get netBannerPolicyActive =>
+      'Chaque socket est soumise aux contraintes du profil réseau actif (permis, budgets, filtre IP).';
+
+  @override
+  String get upnpGatewayConnected => 'Connectée';
+
+  @override
+  String get upnpGatewayAbsent => 'Non détectée / Désactivée';
+
+  @override
+  String get upnpIpUnknown => 'Inconnue';
+
+  @override
+  String get upnpMappedHighId => 'Mappé (HighID)';
+
+  @override
+  String get upnpMappedOpen => 'Mappé (Ouvert)';
+
+  @override
+  String get upnpNotMapped => 'Non mappé';
+
+  @override
+  String get netModePublicChip => 'RÉSEAU PUBLIC (WAN)';
+
+  @override
+  String get netModeLabChip => 'LABORATOIRE (127.0.0.1)';
+
+  @override
+  String get netModePublicDesc =>
+      'Votre client peut contacter des serveurs eD2K publics, des pairs externes et la DHT Kademlia mondiale.';
+
+  @override
+  String get netModeLabDesc =>
+      'Toutes les sockets sont strictement confinées à la boucle locale 127.0.0.1. Zéro paquet sur Internet.';
+
+  @override
+  String get ipFilterActive => 'Filtre actif';
+
+  @override
+  String get ipFilterDisabled => 'Filtre désactivé';
+
+  @override
+  String get netProfileLocalLabDesc =>
+      'Confiné à la boucle locale (127.0.0.1 / ::1). Aucune socket externe permise.';
+
+  @override
+  String get netProfileEd2kDesc =>
+      'TCP sortant vers des pairs/serveurs eD2K publics. Rejette le LAN privé & la boucle locale (anti-SSRF).';
+
+  @override
+  String get netProfileEd2kKadDesc =>
+      'Preview WAN avec UDP pour le routage Kademlia. Validation stricte des adresses.';
+
+  @override
+  String ipReportTotalLines(int count) {
+    return 'Lignes lues : $count';
+  }
+
+  @override
+  String ipReportValidEntries(int count) {
+    return 'Entrées valides : $count';
+  }
+
+  @override
+  String ipReportCoalesced(int count) {
+    return 'Plages fusionnées : $count';
+  }
+
+  @override
+  String ipReportFinalRanges(int count) {
+    return 'Intervalles actifs finaux : $count';
+  }
 }

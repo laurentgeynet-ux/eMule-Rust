@@ -224,19 +224,21 @@ pub async fn handle_limits_set(
         kad_packets_per_sec: live.kad_bucket.rate_per_sec() as u32,
     };
 
+    let (cap_dl_kbs, cap_ul_kbs) = read_capacities(state).await;
+
     let dl_bytes = params["downloadBytesPerSec"]
         .as_u64()
         .or_else(|| params["downloadLimit"].as_u64().map(|kb| kb * 1024));
     if let Some(dl) = dl_bytes {
-        cfg.download_bytes_per_sec = dl;
+        cfg.download_bytes_per_sec = clamp_to_capacity(dl, cap_dl_kbs, 9, 10);
     }
 
     let ul_bytes = params["uploadBytesPerSec"]
         .as_u64()
         .or_else(|| params["uploadLimit"].as_u64().map(|kb| kb * 1024));
     if let Some(ul) = ul_bytes {
-        cfg.upload_bytes_per_sec = ul;
-        state.uss.note_manual_limit(ul);
+        cfg.upload_bytes_per_sec = clamp_to_capacity(ul, cap_ul_kbs, 4, 5);
+        state.uss.note_manual_limit(cfg.upload_bytes_per_sec);
     }
     if let Some(cpm) = params["connectionsPerMinute"].as_u64() {
         cfg.connections_per_minute = cpm as u32;
@@ -254,11 +256,17 @@ pub async fn handle_limits_set(
     // preferences.ini) so throttles survive daemon restarts.
     {
         let mut dls = state.downloads.lock().await;
-        if let Some(dl) = dl_bytes {
-            dls.set_setting("rate_limit_download_bps", &dl.to_string())?;
+        if dl_bytes.is_some() {
+            dls.set_setting(
+                "rate_limit_download_bps",
+                &cfg.download_bytes_per_sec.to_string(),
+            )?;
         }
-        if let Some(ul) = ul_bytes {
-            dls.set_setting("rate_limit_upload_bps", &ul.to_string())?;
+        if ul_bytes.is_some() {
+            dls.set_setting(
+                "rate_limit_upload_bps",
+                &cfg.upload_bytes_per_sec.to_string(),
+            )?;
         }
         for (param, key) in [
             ("connectionsPerMinute", "rate_limit_conn_per_min"),
@@ -321,4 +329,61 @@ pub async fn handle_limits_set(
     }
 
     handle_limits_get(state).await
+}
+
+/// Declared line capacities (`capacity_download_kbs` / `capacity_upload_kbs`,
+/// Ko/s — eMule `DownloadCapacity`/`UploadCapacityNew`). 0 = non renseignée.
+async fn read_capacities(state: &AppState) -> (u64, u64) {
+    let dls = state.downloads.lock().await;
+    let read = |key: &str| {
+        dls.get_setting(key)
+            .ok()
+            .flatten()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    (read("capacity_download_kbs"), read("capacity_upload_kbs"))
+}
+
+/// eMule `LoadPreferences` (Preferences.cpp) : la limite effective ne peut
+/// pas excéder la capacité de ligne déclarée — download ≤ capacité × 9/10,
+/// upload ≤ capacité × 4/5. Une limite à 0 (illimitée) n'est jamais clampée.
+fn clamp_to_capacity(limit_bps: u64, capacity_kbs: u64, num: u64, den: u64) -> u64 {
+    if limit_bps == 0 || capacity_kbs == 0 {
+        return limit_bps;
+    }
+    let cap = capacity_kbs.saturating_mul(1024).saturating_mul(num) / den;
+    limit_bps.min(cap)
+}
+
+/// Re-applique le clamp de capacité aux limites courantes quand
+/// `capacity*Kbs` change via `settings.set` (même règle que `limits.set`).
+pub async fn apply_capacity_clamp(state: &AppState) -> Result<(), JsonRpcError> {
+    let live = state.network_policy.rate_limiters();
+    let mut cfg = mule_filter::RateLimitsConfig {
+        download_bytes_per_sec: live.download_bucket.rate_per_sec(),
+        upload_bytes_per_sec: live.upload_bucket.rate_per_sec(),
+        connections_per_minute: (live.conn_bucket.rate_per_sec() * 60) as u32,
+        server_requests_per_sec: live.server_bucket.rate_per_sec() as u32,
+        kad_packets_per_sec: live.kad_bucket.rate_per_sec() as u32,
+    };
+    let (cap_dl, cap_ul) = read_capacities(state).await;
+    let clamped_dl = clamp_to_capacity(cfg.download_bytes_per_sec, cap_dl, 9, 10);
+    let clamped_ul = clamp_to_capacity(cfg.upload_bytes_per_sec, cap_ul, 4, 5);
+    if clamped_dl == cfg.download_bytes_per_sec && clamped_ul == cfg.upload_bytes_per_sec {
+        return Ok(());
+    }
+    {
+        let mut dls = state.downloads.lock().await;
+        if clamped_dl != cfg.download_bytes_per_sec {
+            dls.set_setting("rate_limit_download_bps", &clamped_dl.to_string())?;
+        }
+        if clamped_ul != cfg.upload_bytes_per_sec {
+            dls.set_setting("rate_limit_upload_bps", &clamped_ul.to_string())?;
+        }
+    }
+    cfg.download_bytes_per_sec = clamped_dl;
+    cfg.upload_bytes_per_sec = clamped_ul;
+    state.network_policy.rate_limiters().apply_config(&cfg);
+    Ok(())
 }

@@ -781,10 +781,15 @@ async fn publish_shared_files(
     const MAX_OFFER_FILES: usize = 200;
 
     let Some(dl_service) = downloads else { return };
-    let shared = {
+    let mut shared = {
         let dl_svc = dl_service.lock().await;
-        dl_svc.list_shared_files().unwrap_or_default()
+        dl_svc.list_all_shared_files().unwrap_or_default()
     };
+    // eMule `SendListToServer`: files are offered sorted by upload priority
+    // (highest first), capped at the server soft limit (≤200).
+    shared.sort_by_key(|sf| {
+        std::cmp::Reverse(crate::services::upload_queue::file_prio_num(&sf.up_priority))
+    });
 
     let mut files = Vec::with_capacity(shared.len().min(MAX_OFFER_FILES));
     for sf in shared.iter().filter(|sf| sf.enabled) {
@@ -805,6 +810,7 @@ async fn publish_shared_files(
             client_id,
             client_port,
             tcp_flags,
+            sf.is_partial,
         ) {
             files.push(of);
         }

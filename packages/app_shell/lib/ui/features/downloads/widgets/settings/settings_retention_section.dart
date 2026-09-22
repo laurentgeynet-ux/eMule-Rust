@@ -98,6 +98,17 @@ class SettingsRetentionSection extends StatelessWidget {
                             child:
                                 Text(context.l10n.indefinitelyNoPruning),
                           ),
+                          // Valeur persistée hors des choix standards
+                          // (ex. via un autre client/MCP) : item dédié
+                          // pour éviter l'assertion DropdownButton.
+                          if (!const {7, 30, 90, 0}
+                              .contains(retentionDays))
+                            DropdownMenuItem(
+                              value: retentionDays,
+                              child: Text(context.l10n
+                                  .settingsRetentionDaysCustom(
+                                      retentionDays)),
+                            ),
                         ],
                         onChanged: (days) {
                           if (days != null) onChanged(days);

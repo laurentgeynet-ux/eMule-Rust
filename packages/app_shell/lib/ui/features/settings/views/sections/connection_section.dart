@@ -4,6 +4,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../app/providers.dart';
+import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/network/network_profile_selector.dart';
 import '../../../downloads/widgets/network/network_quotas_card.dart';
 import '../../../downloads/widgets/network/network_state_banner.dart';
@@ -36,22 +37,17 @@ class _SettingsConnectionSectionState
   final _capUlCtrl = TextEditingController();
   final _serverMetPathCtrl = TextEditingController();
 
+  /// Champs en cours d'édition : jamais écrasés par une resynchronisation
+  /// externe (`settings.changed`, autre client, MCP).
+  final Set<TextEditingController> _dirty = {};
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() async {
       await _loadData();
       await ref.read(settingsControllerProvider).fetch();
-      if (mounted) {
-        final s = ref.read(settingsControllerProvider).settings;
-        _maxConnCtrl.text = '${s['maxConnections'] ?? ''}';
-        _connPerMinCtrl.text = '${s['maxConnPerMin'] ?? ''}';
-        _tcpPortCtrl.text = '${s['ed2kPort'] ?? ''}';
-        _udpPortCtrl.text = '${s['kadPort'] ?? ''}';
-        _capDlCtrl.text = '${s['capacityDownloadKbs'] ?? ''}';
-        _capUlCtrl.text = '${s['capacityUploadKbs'] ?? ''}';
-        _serverMetPathCtrl.text = '${s['serverAutoupdatePath'] ?? ''}';
-      }
+      if (mounted) _syncFromSettings();
     });
   }
 
@@ -65,6 +61,24 @@ class _SettingsConnectionSectionState
     _capUlCtrl.dispose();
     _serverMetPathCtrl.dispose();
     super.dispose();
+  }
+
+  void _syncText(TextEditingController ctrl, Object? value) {
+    final v = value?.toString() ?? '';
+    if (!_dirty.contains(ctrl) && ctrl.text != v) ctrl.text = v;
+  }
+
+  /// Réécrit les champs depuis la map de settings, sauf ceux en cours
+  /// d'édition par l'utilisateur.
+  void _syncFromSettings() {
+    final s = ref.read(settingsControllerProvider).settings;
+    _syncText(_maxConnCtrl, s['maxConnections']);
+    _syncText(_connPerMinCtrl, s['maxConnPerMin']);
+    _syncText(_tcpPortCtrl, s['ed2kPort']);
+    _syncText(_udpPortCtrl, s['kadPort']);
+    _syncText(_capDlCtrl, s['capacityDownloadKbs']);
+    _syncText(_capUlCtrl, s['capacityUploadKbs']);
+    _syncText(_serverMetPathCtrl, s['serverAutoupdatePath']);
   }
 
   Future<void> _loadData() async {
@@ -96,6 +110,7 @@ class _SettingsConnectionSectionState
   }
 
   Future<void> _refreshUpnp() async {
+    final l10n = context.l10n;
     setState(() {
       _upnpLoading = true;
       _upnpMessage = null;
@@ -108,8 +123,8 @@ class _SettingsConnectionSectionState
           _upnpLoading = false;
           _upnpIsError = !upnp.available;
           _upnpMessage = upnp.available
-              ? 'UPnP configuré (IP WAN : ${upnp.externalIp ?? "inconnue"}).'
-              : 'Passerelle UPnP non détectée ou désactivée sur votre box.';
+              ? l10n.upnpConfiguredMsg(upnp.externalIp ?? l10n.upnpIpUnknown)
+              : l10n.upnpNoGateway;
         });
       }
     } catch (e) {
@@ -117,28 +132,60 @@ class _SettingsConnectionSectionState
         setState(() {
           _upnpLoading = false;
           _upnpIsError = true;
-          _upnpMessage = 'Échec de rafraîchissement UPnP : $e';
+          _upnpMessage = l10n.upnpRefreshFailed('$e');
         });
       }
     }
   }
 
+  /// Le kill switch coupe immédiatement toutes les sockets réseau —
+  /// confirmation explicite avant de couper (action destructive pour les
+  /// transferts en cours).
+  Future<void> _confirmDisconnectAll() async {
+    final l10n = context.l10n;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.darkSurface,
+        title: Text(l10n.killSwitchConfirmTitle),
+        content: Text(l10n.killSwitchConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.btnCancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerShade700,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.killSwitchConfirmAction),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      final ctl = ref.read(networkPolicyControllerProvider);
+      await ctl.disconnectAll();
+      await ctl.fetchPolicy();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(settingsControllerProvider, (_, __) => _syncFromSettings());
     final ctl = ref.watch(networkPolicyControllerProvider);
+    final l10n = context.l10n;
 
     return SettingsSectionScaffold(
-      title: 'Connexion',
-      subtitle: 'Profil réseau, isolation, budgets de sockets et UPnP',
+      title: l10n.settingsSectionConnection,
+      subtitle: l10n.settingsConnectionSubtitle,
       icon: Icons.settings_ethernet_rounded,
       children: [
         NetworkStateBanner(
           state: ctl.currentState,
           isKillSwitchActive: ctl.isKillSwitchActive,
-          onDisconnectAll: () async {
-            await ctl.disconnectAll();
-            await ctl.fetchPolicy();
-          },
+          onDisconnectAll: _confirmDisconnectAll,
           onReenable: () async {
             await ctl.enableNetwork();
             await ctl.fetchPolicy();
@@ -187,6 +234,7 @@ class _SettingsConnectionSectionState
   /// Capacités & ports clients — eMule Preferences → Connexion
   /// (débits de ligne, ports TCP/UDP, toggle UDP, UPnP).
   Widget _buildPortsCard(BuildContext context) {
+    final l10n = context.l10n;
     final settings = ref.watch(settingsControllerProvider).settings;
     final udpEnabled = settings['udpEnabled'] as bool? ?? true;
     final upnpEnabled = settings['upnpEnabled'] as bool? ?? false;
@@ -201,9 +249,9 @@ class _SettingsConnectionSectionState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Capacités & ports',
-              style: TextStyle(
+            Text(
+              l10n.settingsCapPortsTitle,
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -215,8 +263,8 @@ class _SettingsConnectionSectionState
                 Expanded(
                   child: _numField(
                     _capDlCtrl,
-                    'Capacité réception (Ko/s)',
-                    'Vitesse de ligne descendante (0 = illimité)',
+                    l10n.settingsCapDlLabel,
+                    l10n.settingsCapDlHint,
                     (v) => set('capacityDownloadKbs', v),
                     min: 0,
                   ),
@@ -225,8 +273,8 @@ class _SettingsConnectionSectionState
                 Expanded(
                   child: _numField(
                     _capUlCtrl,
-                    'Capacité émission (Ko/s)',
-                    'Vitesse de ligne montante (référence USS, 0 = illimité)',
+                    l10n.settingsCapUlLabel,
+                    l10n.settingsCapUlHint,
                     (v) => set('capacityUploadKbs', v),
                     min: 0,
                   ),
@@ -239,18 +287,20 @@ class _SettingsConnectionSectionState
                 Expanded(
                   child: _numField(
                     _tcpPortCtrl,
-                    'Port TCP',
-                    'Port client eD2K — rebind immédiat du listener',
+                    l10n.settingsTcpPortLabel,
+                    l10n.settingsTcpPortHint,
                     (v) => set('ed2kPort', v),
+                    max: 65535,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _numField(
                     _udpPortCtrl,
-                    'Port UDP',
-                    'Port Kad/UDP — socket rebind à chaud',
+                    l10n.settingsUdpPortLabel,
+                    l10n.settingsUdpPortHint,
                     (v) => set('kadPort', v),
+                    max: 65535,
                   ),
                 ),
               ],
@@ -258,13 +308,13 @@ class _SettingsConnectionSectionState
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text(
-                'UDP activé',
-                style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+              title: Text(
+                l10n.settingsUdpEnabledTitle,
+                style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
               ),
-              subtitle: const Text(
-                'Kad UDP, requêtes serveur UDP et re-ask UDP (eMule « UDP désactivé »)',
-                style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+              subtitle: Text(
+                l10n.settingsUdpEnabledSub,
+                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
               ),
               value: udpEnabled,
               onChanged: (v) => set('udpEnabled', v),
@@ -272,13 +322,13 @@ class _SettingsConnectionSectionState
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text(
-                'Configurer les ports grâce à l\'UPnP',
-                style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+              title: Text(
+                l10n.settingsUpnpToggleTitle,
+                style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
               ),
-              subtitle: const Text(
-                'Mappe/démappe automatiquement TCP+UDP sur la box',
-                style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+              subtitle: Text(
+                l10n.settingsUpnpToggleSub,
+                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
               ),
               value: upnpEnabled,
               onChanged: (v) => set('upnpEnabled', v),
@@ -288,13 +338,13 @@ class _SettingsConnectionSectionState
               alignment: Alignment.centerRight,
               child: FilledButton.icon(
                 icon: const Icon(Icons.save_rounded, size: 16),
-                label: const Text('Appliquer'),
-                onPressed: () {
-                  _submitNum(_capDlCtrl, 0, (v) => set('capacityDownloadKbs', v));
-                  _submitNum(_capUlCtrl, 0, (v) => set('capacityUploadKbs', v));
-                  _submitNum(_tcpPortCtrl, 1, (v) => set('ed2kPort', v));
-                  _submitNum(_udpPortCtrl, 1, (v) => set('kadPort', v));
-                },
+                label: Text(l10n.settingsApply),
+                onPressed: () => _applyNumeric([
+                  (ctrl: _capDlCtrl, label: l10n.settingsCapDlLabel, key: 'capacityDownloadKbs', min: 0, max: null),
+                  (ctrl: _capUlCtrl, label: l10n.settingsCapUlLabel, key: 'capacityUploadKbs', min: 0, max: null),
+                  (ctrl: _tcpPortCtrl, label: l10n.settingsTcpPortLabel, key: 'ed2kPort', min: 1, max: 65535),
+                  (ctrl: _udpPortCtrl, label: l10n.settingsUdpPortLabel, key: 'kadPort', min: 1, max: 65535),
+                ]),
               ),
             ),
           ],
@@ -306,6 +356,7 @@ class _SettingsConnectionSectionState
   /// Obfuscation (protocol encryption), connection counters and USS —
   /// eMule Preferences → Connection / Extended.
   Widget _buildProtocolCard(BuildContext context) {
+    final l10n = context.l10n;
     final settings = ref.watch(settingsControllerProvider).settings;
     final obfEnabled = settings['obfuscationEnabled'] as bool? ?? true;
     final obfRequired = settings['obfuscationRequired'] as bool? ?? false;
@@ -321,9 +372,9 @@ class _SettingsConnectionSectionState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Protocole & limites',
-              style: TextStyle(
+            Text(
+              l10n.settingsProtocolTitle,
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -332,13 +383,13 @@ class _SettingsConnectionSectionState
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text(
-                'Connexions obfusquées supportées',
-                style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+              title: Text(
+                l10n.settingsObfEnabledTitle,
+                style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
               ),
-              subtitle: const Text(
-                'Protocol encryption eD2K/Kad (eMule « Support obfuscated connections »)',
-                style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+              subtitle: Text(
+                l10n.settingsObfEnabledSub,
+                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
               ),
               value: obfEnabled,
               onChanged: (v) => set('obfuscationEnabled', v),
@@ -346,13 +397,13 @@ class _SettingsConnectionSectionState
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text(
-                'Obfuscation requise',
-                style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+              title: Text(
+                l10n.settingsObfRequiredTitle,
+                style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
               ),
-              subtitle: const Text(
-                'Rejette les pairs sans chiffrement (eMule « Require obfuscated connections »)',
-                style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+              subtitle: Text(
+                l10n.settingsObfRequiredSub,
+                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
               ),
               value: obfRequired,
               onChanged: obfEnabled
@@ -362,13 +413,13 @@ class _SettingsConnectionSectionState
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text(
-                'USS — Upload Speed Sense',
-                style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+              title: Text(
+                l10n.settingsUssTitle,
+                style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
               ),
-              subtitle: const Text(
-                'Ajuste dynamiquement la limite d\'upload selon la latence mesurée',
-                style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+              subtitle: Text(
+                l10n.settingsUssSub,
+                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
               ),
               value: ussEnabled,
               onChanged: (v) => set('ussEnabled', v),
@@ -379,8 +430,8 @@ class _SettingsConnectionSectionState
                 Expanded(
                   child: _numField(
                     _maxConnCtrl,
-                    'Connexions max',
-                    'Budget global de sockets pairs (eMule MaxConnections)',
+                    l10n.settingsMaxConnLabel,
+                    l10n.settingsMaxConnHint,
                     (v) => set('maxConnections', v),
                   ),
                 ),
@@ -388,8 +439,8 @@ class _SettingsConnectionSectionState
                 Expanded(
                   child: _numField(
                     _connPerMinCtrl,
-                    'Connexions / min',
-                    'Nouvelles connexions sortantes par minute (eMule ≈ 240)',
+                    l10n.settingsConnPerMinLabel,
+                    l10n.settingsConnPerMinHint,
                     (v) => set('maxConnPerMin', v),
                   ),
                 ),
@@ -400,11 +451,11 @@ class _SettingsConnectionSectionState
               alignment: Alignment.centerRight,
               child: FilledButton.icon(
                 icon: const Icon(Icons.save_rounded, size: 16),
-                label: const Text('Appliquer'),
-                onPressed: () {
-                  _submitNum(_maxConnCtrl, 1, (v) => set('maxConnections', v));
-                  _submitNum(_connPerMinCtrl, 1, (v) => set('maxConnPerMin', v));
-                },
+                label: Text(l10n.settingsApply),
+                onPressed: () => _applyNumeric([
+                  (ctrl: _maxConnCtrl, label: l10n.settingsMaxConnLabel, key: 'maxConnections', min: 1, max: null),
+                  (ctrl: _connPerMinCtrl, label: l10n.settingsConnPerMinLabel, key: 'maxConnPerMin', min: 1, max: null),
+                ]),
               ),
             ),
           ],
@@ -417,6 +468,7 @@ class _SettingsConnectionSectionState
   /// autoconnect au démarrage, suppression des serveurs morts, mise à jour
   /// de la liste depuis un fichier `server.met` local, connexion sûre.
   Widget _buildServersCard(BuildContext context) {
+    final l10n = context.l10n;
     final settings = ref.watch(settingsControllerProvider).settings;
     bool b(String key, bool def) => settings[key] as bool? ?? def;
 
@@ -446,9 +498,9 @@ class _SettingsConnectionSectionState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Serveurs eD2K',
-              style: TextStyle(
+            Text(
+              l10n.settingsServersTitle,
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -457,55 +509,52 @@ class _SettingsConnectionSectionState
             tile(
               'serverReconnect',
               true,
-              'Reconnexion automatique',
-              'Reconnecte au dernier serveur après une perte de connexion (eMule « Reconnect »)',
+              l10n.settingsServerReconnectTitle,
+              l10n.settingsServerReconnectSub,
             ),
             tile(
               'serverAutoconnect',
               false,
-              'Connexion au démarrage',
-              'Se connecte automatiquement au meilleur serveur connu au lancement (eMule « Autoconnect »)',
+              l10n.settingsServerAutoconnectTitle,
+              l10n.settingsServerAutoconnectSub,
             ),
             tile(
               'serverAutoremoveDead',
               true,
-              'Supprimer les serveurs morts',
-              'Retire un serveur de la liste dès le premier échec de reconnexion (eMule « DeadServerRetry » = 1)',
+              l10n.settingsServerAutoremoveTitle,
+              l10n.settingsServerAutoremoveSub,
             ),
             tile(
               'safeConnect',
               false,
-              'Connexion sûre',
-              'Bloque la reprise des downloads tant que ni le serveur eD2K ni Kad ne sont disponibles',
+              l10n.settingsSafeConnectTitle,
+              l10n.settingsSafeConnectSub,
             ),
             tile(
               'serverAutoupdateList',
               false,
-              'Mettre à jour la liste au démarrage',
-              'Importe le fichier server.met ci-dessous au lancement du daemon',
+              l10n.settingsServerAutoupdateTitle,
+              l10n.settingsServerAutoupdateSub,
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _serverMetPathCtrl,
               style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
               decoration: InputDecoration(
-                labelText: 'Fichier server.met',
-                helperText:
-                    'Chemin local du fichier .met importé au démarrage (aucun fetch HTTP)',
+                labelText: l10n.settingsServerMetLabel,
+                helperText: l10n.settingsServerMetHint,
                 helperStyle:
                     const TextStyle(fontSize: 10, color: AppColors.textMuted),
                 isDense: true,
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.save_rounded, size: 18),
-                  tooltip: 'Appliquer',
-                  onPressed: () => set(
-                    'serverAutoupdatePath',
-                    _serverMetPathCtrl.text.trim(),
-                  ),
+                  tooltip: l10n.settingsApply,
+                  onPressed: _saveServerMetPath,
                 ),
               ),
-              onSubmitted: (v) => set('serverAutoupdatePath', v.trim()),
+              onChanged: (_) => _dirty.add(_serverMetPathCtrl),
+              onSubmitted: (_) => _saveServerMetPath(),
             ),
           ],
         ),
@@ -513,9 +562,65 @@ class _SettingsConnectionSectionState
     );
   }
 
-  void _submitNum(TextEditingController ctrl, int min, void Function(int) onSubmit) {
-    final n = int.tryParse(ctrl.text.trim());
-    if (n != null && n >= min) onSubmit(n);
+  Future<void> _saveServerMetPath() async {
+    final ok = await ref.read(settingsControllerProvider).updateSettings(
+      {'serverAutoupdatePath': _serverMetPathCtrl.text.trim()},
+    );
+    if (ok && mounted) {
+      _dirty.remove(_serverMetPathCtrl);
+      _syncFromSettings();
+    }
+  }
+
+  /// Parse + validation d'un champ numérique. Champ vide = valeur inchangée
+  /// (`invalid: false`, `value: null`) ; saisie hors bornes = erreur
+  /// remontée via la bannière globale (`invalid: true`).
+  ({int? value, bool invalid}) _parseNum(
+    String label,
+    String raw, {
+    required int min,
+    int? max,
+  }) {
+    if (raw.isEmpty) return (value: null, invalid: false);
+    final n = int.tryParse(raw);
+    if (n == null || n < min || (max != null && n > max)) {
+      final l10n = context.l10n;
+      ref.read(shellControllerProvider).setError(
+        max != null
+            ? l10n.settingsInvalidNumRange(label, raw, min, max)
+            : l10n.settingsInvalidNumMin(label, raw, min),
+      );
+      return (value: null, invalid: true);
+    }
+    return (value: n, invalid: false);
+  }
+
+  /// Bouton « Appliquer » : valide tous les champs puis envoie un patch
+  /// `settings.set` unique — aucune application partielle si un champ est
+  /// invalide.
+  Future<void> _applyNumeric(
+    List<({TextEditingController ctrl, String label, String key, int min, int? max})>
+    fields,
+  ) async {
+    final patch = <String, dynamic>{};
+    var invalid = false;
+    for (final f in fields) {
+      final r = _parseNum(f.label, f.ctrl.text.trim(), min: f.min, max: f.max);
+      if (r.invalid) {
+        invalid = true;
+      } else if (r.value != null) {
+        patch[f.key] = r.value;
+      }
+    }
+    if (invalid || patch.isEmpty) return;
+    final ok =
+        await ref.read(settingsControllerProvider).updateSettings(patch);
+    if (ok && mounted) {
+      for (final f in fields) {
+        if (patch.containsKey(f.key)) _dirty.remove(f.ctrl);
+      }
+      _syncFromSettings();
+    }
   }
 
   Widget _numField(
@@ -524,6 +629,7 @@ class _SettingsConnectionSectionState
     String hint,
     void Function(int) onSubmit, {
     int min = 1,
+    int? max,
   }) {
     return TextField(
       controller: ctrl,
@@ -536,9 +642,13 @@ class _SettingsConnectionSectionState
         isDense: true,
         border: const OutlineInputBorder(),
       ),
+      onChanged: (_) => _dirty.add(ctrl),
       onSubmitted: (v) {
-        final n = int.tryParse(v.trim());
-        if (n != null && n >= min) onSubmit(n);
+        final r = _parseNum(label, v.trim(), min: min, max: max);
+        if (r.value != null) {
+          _dirty.remove(ctrl);
+          onSubmit(r.value!);
+        }
       },
     );
   }

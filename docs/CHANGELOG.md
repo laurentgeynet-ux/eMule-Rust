@@ -528,6 +528,99 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 - `RecvError::Lagged` sur le broadcast n'est plus ignoré : le daemon émet `event.snapshotRequired {skipped}` pour forcer une resynchronisation complète côté client.
 - Doc : `docs/architecture/rpc_protocol.md` §6 documente le tableau méthode → topic, la sémantique de `events.subscribe` et `snapshotRequired` ; §9 décrit `packages/mule_client` (reconnexion auto, keep-alive, resync).
 
+### Corrigé — Audit et refonte UX de la page Paramètres (`/settings`)
+
+Audit complet du câblage UI → client RPC → handler daemon → persistance →
+consommation réelle (référence mise à jour : `docs/SETTINGS.md`).
+
+- **UPnP** : `RpcDaemonClient.mapUpnpPorts` n'envoie plus les ports codés
+  en dur `39735/39737` — en omettant les paramètres, le daemon mappe les
+  ports effectifs du snapshot (suivis par `upnp.set_ports`).
+- **`capacityDownloadKbs` fonctionnel** (était inerte) : clamp eMule
+  (`Preferences.cpp` : limite DL ≤ capacité × 9/10, UL ≤ capacité × 4/5,
+  `0` = illimité non borné) appliqué dans `limits.set`
+  (`clamp_to_capacity`), au changement de capacité via `settings.set`
+  (`apply_capacity_clamp`), et **normalisé au boot** dans `AppState::new`
+  — une limite persistée au-delà de la capacité est bornée puis réécrite
+  en SQLite pour refléter la valeur effective.
+- **Saisies invalides remontées** : `int.tryParse` échouait silencieusement
+  (clé omise du patch, toast « mis à jour » mensonger) — les sections
+  Connexion/Transferts/Sécurité valident désormais chaque champ (bornes,
+  non-vide) et remontent l'erreur dans la bannière globale.
+- **Mineurs daemon** : write-probe sur `tempDir` (comme
+  `defaultDownloadDir`), warning `tracing` sur les clés `settings.set`
+  inconnues, `maxUploadQueue` borné UI ≥ 10.
+
+### Modifié — Localisation complète de `/settings`
+
+- ~120 nouvelles clés ARB FR/EN (`settings*`, `network*`, `filter*`,
+  `upnp*`, `friends*`, descriptions de profils réseau) ; les 6 sections,
+  le rail, les cartes réseau (`NetworkStateBanner`, `UpnpStatusCard`,
+  `NetworkModeStatusCard`, `RateLimitsTab`, `NetworkProfileSelector`,
+  `IpFilterTab`, rapport d'import) et les widgets réutilisés
+  (`SettingsDirectorySection`, `SettingsFriendsSection`) passent par
+  `context.l10n` — le toggle Langue traduit désormais tout l'écran.
+- Messages de statut des contrôleurs (`SettingsController`,
+  `NetworkPolicyController`) passés en français, cohérents avec le reste
+  du shell.
+- Corrections préexistantes : `btnCancel`/`cancel` FR étaient « Cancel »
+  → « Annuler » ; `ajouter` EN était « Ajouter » → « Add ».
+
+### Modifié — UX de sauvegarde et synchronisation des Paramètres
+
+- **Affordances homogènes** : Entrée soumet dans tous les champs (y
+  compris Transferts et les limites de débit) ; boutons « Appliquer » par
+  carte en Connexion/Transferts, icône de sauvegarde sur les champs
+  libres.
+- **Dirty tracking + resync** : tous les `TextEditingController` se
+  resynchronisent sur `settings.changed` / changements de politique via
+  `ref.listen` — un champ en cours d'édition (dirty) n'est jamais
+  écrasé par une valeur distante.
+- **Dropdown rétention robuste** : une valeur persistée hors des items
+  standards (ex. 60 jours via `emule_update_settings` MCP) s'affiche dans
+  un item dédié au lieu d'asserter le `DropdownButton`.
+- **Kill switch** : dialog de confirmation avant de couper toutes les
+  sockets (`network.disconnectAll`).
+- **Sécurité** : plus de spinner pleine section à chaque toggle — barre
+  de progression linéaire pendant les opérations.
+- **Divers** : section Amis sur `SettingsSectionScaffold`, `Scrollbar`
+  explicite sur le panneau, switch barre debug désactivé quand les dev
+  tools sont indisponibles, note explicative capacité ↔ limite dans
+  l'onglet des débits.
+- Tests UI mis à jour : `import_part_met_dialog_test` attend « Annuler »,
+  `network_policy_ui_test` confirme le dialog du kill switch.
+
+### Modifié — Partage partiel : publication serveur/Kad et protections
+
+Fidélité eMule 0.72a pour les `.part` en cours (`CPartFile`) :
+
+- **Offre serveur (`OP_OFFERFILES`)** : la liste envoyée au login est triée
+  par priorité d'upload décroissante (`file_prio_num`, comme
+  `SendListToServer`) et plafonnée à 200 ; les fichiers **incomplets**
+  portent désormais le couple de marqueurs `0xFCFCFCFC`/`0xFCFC` (vs
+  `0xFBFBFBFB`/`0xFBFB` pour les complets) quand le serveur supporte
+  `SRV_TCPFLG_COMPRESSION` — `OfferedFile::for_server` prend un paramètre
+  `is_partial` et exporte `OFFER_INCOMPLETE_CLIENT_ID`/`_PORT`.
+- **Republication Kad** : les partiels sont publiés comme **sources**
+  (`CKnownFile::PublishSrc` — les pairs peuvent récupérer les parts déjà
+  complétées) mais la publication de *keywords* leur est refusée (« someone
+  else should have the full file »).
+- **Mutations refusées sur partiels** : `shares.setEnabled` et
+  `shares.setUploadPriority` retournent une erreur métier sur un
+  `is_partial` — persister un partage transitoire figerait son chemin
+  `.part` dans `shared_files` et le servirait plus tard comme complet
+  (eMule n'autorise pas le départage d'un part en cours).
+- **`setUploadPriority` robustifié** : résolution `get_shared_file` puis
+  upsert — fonctionne aussi sur les downloads `Completed` jamais persistés
+  dans `shared_files`.
+- **Fix client `shares.list`** : `RpcDaemonClient.listSharedFiles`
+  attendait une liste JSON nue alors que le daemon renvoie
+  `{sharedFiles: [...]}` — l'onglet Partages affichait une liste vide ;
+  le parseur accepte désormais les deux formes.
+- **UI Partages** : `SharesView` s'abonne aux événements lifecycle
+  (rafraîchissement immédiat) et aux events de progression (debounce 3 s)
+  pour suivre les `completedParts` des partiels.
+
 ## [0.1.9] - 2026-09-20
 
 ### Ajouté — Interopérabilité eMule 0.72a (fonctions essentielles du réseau eD2K/Kad)

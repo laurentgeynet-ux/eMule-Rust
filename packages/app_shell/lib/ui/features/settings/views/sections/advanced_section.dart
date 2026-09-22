@@ -3,6 +3,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../app/providers.dart';
+import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/diagnostic_dialog.dart';
 import '../../../downloads/widgets/import_part_met_dialog.dart';
 import '../../../downloads/widgets/lab_guide_dialog.dart';
@@ -17,16 +18,17 @@ class SettingsAdvancedSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final shell = ref.watch(shellControllerProvider);
     final daemonInfo = ref.watch(daemonInfoProvider);
+    final l10n = context.l10n;
 
     return SettingsSectionScaffold(
-      title: 'Avancé',
-      subtitle: 'Diagnostic, outils de laboratoire et informations daemon',
+      title: l10n.settingsSectionAdvanced,
+      subtitle: l10n.settingsAdvancedSubtitle,
       icon: Icons.build_circle_outlined,
       children: [
         _AdvancedTile(
           icon: Icons.medical_information_outlined,
-          title: 'Diagnostic du daemon',
-          subtitle: 'État de santé, connexions et statistiques internes',
+          title: l10n.settingsDiagnosticTile,
+          subtitle: l10n.settingsDiagnosticSub,
           onTap: () => showDialog(
             context: context,
             builder: (_) => const DiagnosticDialog(),
@@ -34,8 +36,8 @@ class SettingsAdvancedSection extends ConsumerWidget {
         ),
         _AdvancedTile(
           icon: Icons.file_download_outlined,
-          title: 'Importer un .part.met',
-          subtitle: 'Reprendre un téléchargement eMule existant',
+          title: l10n.settingsImportPartTile,
+          subtitle: l10n.settingsImportPartSub,
           onTap: () => showDialog(
             context: context,
             builder: (_) => const ImportPartMetDialog(),
@@ -43,8 +45,8 @@ class SettingsAdvancedSection extends ConsumerWidget {
         ),
         _AdvancedTile(
           icon: Icons.science_outlined,
-          title: 'Guide du mode laboratoire',
-          subtitle: 'Scénarios de test loopback sans trafic WAN',
+          title: l10n.settingsLabGuideTile,
+          subtitle: l10n.settingsLabGuideSub,
           onTap: () => showDialog(
             context: context,
             builder: (_) => const LabGuideDialog(),
@@ -53,24 +55,30 @@ class SettingsAdvancedSection extends ConsumerWidget {
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'Barre de simulation debug',
-            style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
+          title: Text(
+            l10n.settingsDebugBarTitle,
+            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
           ),
-          subtitle: const Text(
-            'Affiche la barre de simulation en bas de l\'écran',
-            style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+          subtitle: Text(
+            shell.isDevToolsAvailable
+                ? l10n.settingsDebugBarOn
+                : l10n.settingsDebugBarOff,
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
           value: shell.isDebugBarVisible,
-          onChanged: (_) =>
-              ref.read(shellControllerProvider).toggleDebugBar(),
+          onChanged: shell.isDevToolsAvailable
+              ? (_) => ref.read(shellControllerProvider).toggleDebugBar()
+              : null,
         ),
         const SizedBox(height: 16),
         const Divider(color: AppTheme.darkBorder),
         const SizedBox(height: 12),
         if (daemonInfo != null)
           Text(
-            'Daemon ${daemonInfo.version} — protocole ${daemonInfo.protocolVersion}',
+            l10n.settingsDaemonVersion(
+              daemonInfo.version,
+              '${daemonInfo.protocolVersion}',
+            ),
             style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
       ],

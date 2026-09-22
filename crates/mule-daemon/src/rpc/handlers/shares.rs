@@ -82,12 +82,21 @@ pub async fn handle_shares_set_enabled(
 
     let mut dl_svc = state.downloads.lock().await;
     let mut file_opt = dl_svc.get_shared_file(file_hash)?;
-    if let Some(ref mut sf) = file_opt {
-        sf.enabled = enabled;
-        dl_svc.add_shared_file(sf)?;
-        Ok(serde_json::to_value(sf).unwrap_or_default())
-    } else {
-        Err(JsonRpcError::business("Shared file not found"))
+    match file_opt {
+        Some(ref mut sf) if sf.is_partial => {
+            // Persisting a transient partial share would freeze its `.part`
+            // path in `shared_files` and serve it later as a complete file.
+            // eMule does not allow unsharing an in-progress part file.
+            Err(JsonRpcError::business(
+                "Cannot enable/disable a partial share (download in progress)",
+            ))
+        }
+        Some(ref mut sf) => {
+            sf.enabled = enabled;
+            dl_svc.add_shared_file(sf)?;
+            Ok(serde_json::to_value(sf).unwrap_or_default())
+        }
+        None => Err(JsonRpcError::business("Shared file not found")),
     }
 }
 
@@ -111,15 +120,20 @@ pub async fn handle_shares_set_upload_priority(
         "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare" => {}
         _ => return Err(JsonRpcError::invalid_params("Invalid priority")),
     }
-    let updated = state
-        .downloads
-        .lock()
-        .await
-        .set_shared_up_priority(file_hash, &priority)?;
-    if updated {
-        Ok(json!({ "ok": true, "fileHash": file_hash, "upPriority": priority }))
-    } else {
-        Err(JsonRpcError::business("Shared file not found"))
+    let mut dl_svc = state.downloads.lock().await;
+    let mut file_opt = dl_svc.get_shared_file(file_hash)?;
+    match file_opt {
+        Some(ref mut sf) if sf.is_partial => Err(JsonRpcError::business(
+            "Cannot set upload priority on a partial share (download in progress)",
+        )),
+        Some(ref mut sf) => {
+            // Resolve-then-upsert like setEnabled: also works on completed
+            // downloads that were never persisted in `shared_files`.
+            sf.up_priority = priority.clone();
+            dl_svc.add_shared_file(sf)?;
+            Ok(json!({ "ok": true, "fileHash": file_hash, "upPriority": priority }))
+        }
+        None => Err(JsonRpcError::business("Shared file not found")),
     }
 }
 

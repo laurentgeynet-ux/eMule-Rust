@@ -51,8 +51,8 @@ Préférences d'eMule 0.72a.
 | `kadPort` | `kad_port` | u16 1–65535 | `39737` | Rebind à chaud de la socket Kad UDP | Port UDP (idem, randomisé par eMule) |
 | `udpEnabled` | `udp_enabled` | bool | `true` | Stoppe/démarre `kad_udp` + `server_udp` | « UDP désactivé » |
 | `upnpEnabled` | `upnp_enabled` | bool | `false` | `map_ports`/`unmap_ports` immédiat | `EnableUPnP` (défaut eMule : off) |
-| `capacityDownloadKbs` | `capacity_download_kbs` | Ko/s | `0` | Capacité de ligne descendante (informationnelle) | Capacité Réception |
-| `capacityUploadKbs` | `capacity_upload_kbs` | Ko/s | `0` | Capacité montante — référence USS (`note_manual_limit`) | Capacité Émission |
+| `capacityDownloadKbs` | `capacity_download_kbs` | Ko/s | `0` | Capacité de ligne descendante — borne la limite DL à 90 % de la capacité (clamp eMule `Preferences.cpp`), réappliqué à chaque `limits.set` et normalisé au boot | Capacité Réception |
+| `capacityUploadKbs` | `capacity_upload_kbs` | Ko/s | `0` | Capacité montante — borne la limite UL à 80 % de la capacité ; référence USS (`note_manual_limit`) | Capacité Émission |
 | `obfuscationEnabled` | `obfuscation_enabled` | bool | config | Listener inbound live (`AtomicBool`), connexions sortantes, byte buddy Kad | « Support obfuscated connections » |
 | `obfuscationRequired` | `obfuscation_required` | bool | config | idem — pairs sans chiffrement rejetés | « Require obfuscated connections » |
 | `maxConnections` | `max_connections` | usize | `500` | `ResourceBudgets.max_active_peer_connections` (live) | MaxConnections |
@@ -85,6 +85,15 @@ au démarrage dans `AppState::new`. Une mise à jour **partielle** conserve
 les autres limiteurs (la config part du snapshot live des buckets, pas des
 défauts compilés).
 
+**Clamp capacité** (sémantique eMule `Preferences.cpp`) : les limites DL/UL
+sont bornées à **90 %** / **80 %** des capacités déclarées — `0` (illimité)
+n'est jamais borné, idem si la capacité est `0`. Le clamp s'applique à
+`limits.set`, à tout changement de `capacity*Kbs` (`apply_capacity_clamp`,
+la valeur effective est repersistée), et **au démarrage** : une limite
+persistée au-delà de la capacité est bornée puis réécrite en SQLite. L'UI
+affiche la valeur réellement appliquée (relecture de `limits.get`) et le
+signale dans l'onglet des débits.
+
 ### Filtre IP (RPC `filter.*`, section Sécurité)
 
 | RPC | Persistée | Effet |
@@ -105,6 +114,12 @@ son état activé survivent aux redémarrages du daemon.
 - **Partage partiel** : les téléchargements en cours apparaissent dans
   `shares.list` avec `isPartial=true` dès qu'une part de 9 728 000 B est
   complète ; seules les parts complétées sont servies (`PARTSTATUS`).
+  Les partiels sont publiés comme **sources Kad** (`PublishSrc`) mais
+  exclus de la publication de keywords ; dans l'`OP_OFFERFILES` serveur
+  (trié par priorité d'upload, ≤ 200 entrées) ils portent les marqueurs
+  `0xFCFCFCFC`/`0xFCFC`. `shares.setEnabled`/`setUploadPriority` les
+  rejettent — un partage transitoire persisté figerait le chemin `.part`
+  et le servirait comme complet après restart.
 - **Partages après restart** : les downloads `Completed` sont lus depuis
   SQLite même hors de la map `active` — la liste de partage survit aux
   redémarrages (le fichier cible doit exister sur disque).
@@ -119,3 +134,19 @@ son état activé survivent aux redémarrages du daemon.
 - **ICH off** : les parts complétées ne sont plus vérifiées par MD4 — la
   complétion repose sur la couverture des ranges et le hash global final.
   AICH recovery n'est pas impacté (il dépend de `aich_root`).
+
+## UX de la page `/settings`
+
+- **Sauvegarde** : les switches s'appliquent immédiatement ; les champs
+  texte/numériques se soumettent par Entrée ou bouton « Appliquer »/icône.
+- **Validation** : toute saisie invalide (hors bornes, vide) remonte une
+  erreur localisée dans la bannière globale — plus de toast « mis à
+  jour » quand rien n'a été appliqué.
+- **Synchronisation multi-clients** : `settings.changed` resynchronise
+  switches **et** champs texte ; un champ en cours d'édition (dirty)
+  n'est jamais écrasé par une valeur distante.
+- **Kill switch** : confirmé par un dialog avant `network.disconnectAll`.
+- **Rétention** : une valeur persistée hors items standards {7, 30, 90, 0}
+  (ex. via MCP) s'affiche dans un item dédié du dropdown.
+- **Localisation** : la totalité de la page (sections, cartes réseau,
+  messages de statut) est couverte par les ARB FR/EN.

@@ -239,7 +239,7 @@ abstract class AppLocalizations {
   /// No description provided for @btnCancel.
   ///
   /// In fr, this message translates to:
-  /// **'Cancel'**
+  /// **'Annuler'**
   String get btnCancel;
 
   /// No description provided for @btnClose.
@@ -527,7 +527,7 @@ abstract class AppLocalizations {
   /// No description provided for @cancel.
   ///
   /// In fr, this message translates to:
-  /// **'Cancel'**
+  /// **'Annuler'**
   String get cancel;
 
   /// No description provided for @addDownload.
@@ -3044,6 +3044,864 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Annuler l\'upload'**
   String get uploadsCancelTooltip;
+
+  /// No description provided for @settingsSectionGeneral.
+  ///
+  /// In fr, this message translates to:
+  /// **'Général'**
+  String get settingsSectionGeneral;
+
+  /// No description provided for @settingsSectionConnection.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion'**
+  String get settingsSectionConnection;
+
+  /// No description provided for @settingsSectionTransfers.
+  ///
+  /// In fr, this message translates to:
+  /// **'Transferts'**
+  String get settingsSectionTransfers;
+
+  /// No description provided for @settingsSectionSecurity.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sécurité'**
+  String get settingsSectionSecurity;
+
+  /// No description provided for @settingsSectionFriends.
+  ///
+  /// In fr, this message translates to:
+  /// **'Amis'**
+  String get settingsSectionFriends;
+
+  /// No description provided for @settingsSectionAdvanced.
+  ///
+  /// In fr, this message translates to:
+  /// **'Avancé'**
+  String get settingsSectionAdvanced;
+
+  /// No description provided for @settingsGeneralSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Identité, dossiers, partage automatique, historique et langue'**
+  String get settingsGeneralSubtitle;
+
+  /// No description provided for @settingsConnectionSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Profil réseau, isolation, budgets de sockets et UPnP'**
+  String get settingsConnectionSubtitle;
+
+  /// No description provided for @settingsTransfersSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Limites de connexions aux sources du swarm'**
+  String get settingsTransfersSubtitle;
+
+  /// No description provided for @settingsSecuritySubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtre IP, limites de débit et politique anti-SSRF'**
+  String get settingsSecuritySubtitle;
+
+  /// No description provided for @settingsFriendsSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Slot d\'upload dédié sans passer par la file (friend slot eMule)'**
+  String get settingsFriendsSubtitle;
+
+  /// No description provided for @settingsAdvancedSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Diagnostic, outils de laboratoire et informations daemon'**
+  String get settingsAdvancedSubtitle;
+
+  /// No description provided for @settingsApply.
+  ///
+  /// In fr, this message translates to:
+  /// **'Appliquer'**
+  String get settingsApply;
+
+  /// No description provided for @settingsSaving.
+  ///
+  /// In fr, this message translates to:
+  /// **'Enregistrement…'**
+  String get settingsSaving;
+
+  /// No description provided for @settingsNicknameLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pseudo (nickname)'**
+  String get settingsNicknameLabel;
+
+  /// No description provided for @settingsNicknameHelper.
+  ///
+  /// In fr, this message translates to:
+  /// **'Annoncé aux serveurs eD2K et aux pairs (eMule « nick » ; vide = défaut)'**
+  String get settingsNicknameHelper;
+
+  /// No description provided for @settingsShareDownloadDirTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Partager automatiquement le dossier de téléchargement'**
+  String get settingsShareDownloadDirTitle;
+
+  /// No description provided for @settingsShareDownloadDirSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Les fichiers du dossier Incoming sont hashés et servis aux pairs au démarrage du daemon (comme le dossier Incoming d\'eMule).'**
+  String get settingsShareDownloadDirSub;
+
+  /// No description provided for @settingsTempDirLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier temporaire (.part)'**
+  String get settingsTempDirLabel;
+
+  /// No description provided for @settingsTempDirHelper.
+  ///
+  /// In fr, this message translates to:
+  /// **'Où sont stockés les fichiers en cours (eMule « Répertoire temporaire » ; vide = dossier du daemon)'**
+  String get settingsTempDirHelper;
+
+  /// No description provided for @settingsIchTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'ICH — vérification intelligente des parts'**
+  String get settingsIchTitle;
+
+  /// No description provided for @settingsIchSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vérifie chaque part complétée par MD4 (eMule « ICH » ; désactiver saute la vérification intermédiaire)'**
+  String get settingsIchSub;
+
+  /// No description provided for @settingsRememberCancelledTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mémoriser les fichiers annulés'**
+  String get settingsRememberCancelledTitle;
+
+  /// No description provided for @settingsRememberCancelledSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajoute une entrée d\'historique à l\'annulation (eMule « Remember cancelled files »)'**
+  String get settingsRememberCancelledSub;
+
+  /// No description provided for @settingsRememberDownloadedTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mémoriser les fichiers téléchargés'**
+  String get settingsRememberDownloadedTitle;
+
+  /// No description provided for @settingsRememberDownloadedSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajoute une entrée d\'historique à la complétion (eMule « Remember downloaded files »)'**
+  String get settingsRememberDownloadedSub;
+
+  /// No description provided for @settingsDirEmptyError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le chemin du dossier ne peut pas être vide.'**
+  String get settingsDirEmptyError;
+
+  /// No description provided for @settingsDirSaved.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier de téléchargement par défaut mis à jour.'**
+  String get settingsDirSaved;
+
+  /// No description provided for @settingsDirProbeFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le test d\'écriture dans le dossier a échoué.'**
+  String get settingsDirProbeFailed;
+
+  /// No description provided for @settingsDirResetDone.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier portable par défaut restauré.'**
+  String get settingsDirResetDone;
+
+  /// No description provided for @settingsDirResetFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la réinitialisation du dossier de téléchargement.'**
+  String get settingsDirResetFailed;
+
+  /// No description provided for @settingsCapPortsTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Capacités & ports'**
+  String get settingsCapPortsTitle;
+
+  /// No description provided for @settingsCapDlLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Capacité réception (Ko/s)'**
+  String get settingsCapDlLabel;
+
+  /// No description provided for @settingsCapDlHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vitesse de ligne descendante — borne la limite de download à 90 % (0 = aucune)'**
+  String get settingsCapDlHint;
+
+  /// No description provided for @settingsCapUlLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Capacité émission (Ko/s)'**
+  String get settingsCapUlLabel;
+
+  /// No description provided for @settingsCapUlHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vitesse de ligne montante — référence USS, borne la limite d\'upload à 80 % (0 = aucune)'**
+  String get settingsCapUlHint;
+
+  /// No description provided for @settingsTcpPortLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Port TCP'**
+  String get settingsTcpPortLabel;
+
+  /// No description provided for @settingsTcpPortHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Port client eD2K — rebind immédiat du listener'**
+  String get settingsTcpPortHint;
+
+  /// No description provided for @settingsUdpPortLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Port UDP'**
+  String get settingsUdpPortLabel;
+
+  /// No description provided for @settingsUdpPortHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Port Kad/UDP — socket rebind à chaud'**
+  String get settingsUdpPortHint;
+
+  /// No description provided for @settingsUdpEnabledTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'UDP activé'**
+  String get settingsUdpEnabledTitle;
+
+  /// No description provided for @settingsUdpEnabledSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad UDP, requêtes serveur UDP et re-ask UDP (eMule « UDP désactivé »)'**
+  String get settingsUdpEnabledSub;
+
+  /// No description provided for @settingsUpnpToggleTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Configurer les ports grâce à l\'UPnP'**
+  String get settingsUpnpToggleTitle;
+
+  /// No description provided for @settingsUpnpToggleSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mappe/démappe automatiquement TCP+UDP sur la box'**
+  String get settingsUpnpToggleSub;
+
+  /// No description provided for @settingsProtocolTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Protocole & limites'**
+  String get settingsProtocolTitle;
+
+  /// No description provided for @settingsObfEnabledTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexions obfusquées supportées'**
+  String get settingsObfEnabledTitle;
+
+  /// No description provided for @settingsObfEnabledSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chiffrement de protocole eD2K/Kad (eMule « Support obfuscated connections »)'**
+  String get settingsObfEnabledSub;
+
+  /// No description provided for @settingsObfRequiredTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Obfuscation requise'**
+  String get settingsObfRequiredTitle;
+
+  /// No description provided for @settingsObfRequiredSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rejette les pairs sans chiffrement (eMule « Require obfuscated connections »)'**
+  String get settingsObfRequiredSub;
+
+  /// No description provided for @settingsUssTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'USS — Upload Speed Sense'**
+  String get settingsUssTitle;
+
+  /// No description provided for @settingsUssSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajuste dynamiquement la limite d\'upload selon la latence mesurée'**
+  String get settingsUssSub;
+
+  /// No description provided for @settingsMaxConnLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexions max'**
+  String get settingsMaxConnLabel;
+
+  /// No description provided for @settingsMaxConnHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Budget global de sockets pairs (eMule MaxConnections)'**
+  String get settingsMaxConnHint;
+
+  /// No description provided for @settingsConnPerMinLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexions / min'**
+  String get settingsConnPerMinLabel;
+
+  /// No description provided for @settingsConnPerMinHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nouvelles connexions sortantes par minute (eMule ≈ 240)'**
+  String get settingsConnPerMinHint;
+
+  /// No description provided for @settingsServersTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Serveurs eD2K'**
+  String get settingsServersTitle;
+
+  /// No description provided for @settingsServerReconnectTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Reconnexion automatique'**
+  String get settingsServerReconnectTitle;
+
+  /// No description provided for @settingsServerReconnectSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Reconnecte au dernier serveur après une perte de connexion (eMule « Reconnect »)'**
+  String get settingsServerReconnectSub;
+
+  /// No description provided for @settingsServerAutoconnectTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion au démarrage'**
+  String get settingsServerAutoconnectTitle;
+
+  /// No description provided for @settingsServerAutoconnectSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Se connecte automatiquement au meilleur serveur connu au lancement (eMule « Autoconnect »)'**
+  String get settingsServerAutoconnectSub;
+
+  /// No description provided for @settingsServerAutoremoveTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Supprimer les serveurs morts'**
+  String get settingsServerAutoremoveTitle;
+
+  /// No description provided for @settingsServerAutoremoveSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Retire un serveur de la liste dès le premier échec de reconnexion (eMule « DeadServerRetry » = 1)'**
+  String get settingsServerAutoremoveSub;
+
+  /// No description provided for @settingsSafeConnectTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion sûre'**
+  String get settingsSafeConnectTitle;
+
+  /// No description provided for @settingsSafeConnectSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Bloque la reprise des downloads tant que ni le serveur eD2K ni Kad ne sont disponibles'**
+  String get settingsSafeConnectSub;
+
+  /// No description provided for @settingsServerAutoupdateTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mettre à jour la liste au démarrage'**
+  String get settingsServerAutoupdateTitle;
+
+  /// No description provided for @settingsServerAutoupdateSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Importe le fichier server.met ci-dessous au lancement du daemon'**
+  String get settingsServerAutoupdateSub;
+
+  /// No description provided for @settingsServerMetLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichier server.met'**
+  String get settingsServerMetLabel;
+
+  /// No description provided for @settingsServerMetHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chemin local du fichier .met importé au démarrage (aucun fetch HTTP)'**
+  String get settingsServerMetHint;
+
+  /// No description provided for @upnpConfiguredMsg.
+  ///
+  /// In fr, this message translates to:
+  /// **'UPnP configuré (IP WAN : {ip}).'**
+  String upnpConfiguredMsg(String ip);
+
+  /// No description provided for @upnpNoGateway.
+  ///
+  /// In fr, this message translates to:
+  /// **'Passerelle UPnP non détectée ou désactivée sur votre box.'**
+  String get upnpNoGateway;
+
+  /// No description provided for @upnpRefreshFailed.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de rafraîchissement UPnP : {error}'**
+  String upnpRefreshFailed(String error);
+
+  /// No description provided for @settingsInvalidNumMin.
+  ///
+  /// In fr, this message translates to:
+  /// **'{label} : « {value} » invalide (entier ≥ {min} attendu)'**
+  String settingsInvalidNumMin(String label, String value, int min);
+
+  /// No description provided for @settingsInvalidNumRange.
+  ///
+  /// In fr, this message translates to:
+  /// **'{label} : « {value} » invalide (entier entre {min} et {max} attendu)'**
+  String settingsInvalidNumRange(String label, String value, int min, int max);
+
+  /// No description provided for @killSwitchConfirmTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Couper toutes les connexions ?'**
+  String get killSwitchConfirmTitle;
+
+  /// No description provided for @killSwitchConfirmBody.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le kill switch coupe immédiatement toutes les sockets réseau (pairs, serveurs, listeners) jusqu\'à réactivation manuelle.'**
+  String get killSwitchConfirmBody;
+
+  /// No description provided for @killSwitchConfirmAction.
+  ///
+  /// In fr, this message translates to:
+  /// **'Tout déconnecter'**
+  String get killSwitchConfirmAction;
+
+  /// No description provided for @settingsMaxGlobalLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources maximum (global)'**
+  String get settingsMaxGlobalLabel;
+
+  /// No description provided for @settingsMaxGlobalHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nombre total de sources eD2K/Kad simultanées, tous fichiers confondus'**
+  String get settingsMaxGlobalHint;
+
+  /// No description provided for @settingsMaxPerFileLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources maximum par fichier'**
+  String get settingsMaxPerFileLabel;
+
+  /// No description provided for @settingsMaxPerFileHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Plafond par défaut — surchargeable par fichier (FT_MAXSOURCES)'**
+  String get settingsMaxPerFileHint;
+
+  /// No description provided for @settingsMinPerFileLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources minimum par fichier'**
+  String get settingsMinPerFileLabel;
+
+  /// No description provided for @settingsMinPerFileHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Quota de sources garanti par fichier même si le swarm global est saturé'**
+  String get settingsMinPerFileHint;
+
+  /// No description provided for @settingsMaxQueueLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'File d\'attente upload max'**
+  String get settingsMaxQueueLabel;
+
+  /// No description provided for @settingsMaxQueueHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Clients en attente d\'un slot upload (eMule QueueSize, défaut 5000)'**
+  String get settingsMaxQueueHint;
+
+  /// No description provided for @settingsMinUploadLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Débit upload min par slot (Ko/s)'**
+  String get settingsMinUploadLabel;
+
+  /// No description provided for @settingsMinUploadHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'N\'ouvre pas de nouveau slot sous ce seuil (eMule MinUpload, défaut 1)'**
+  String get settingsMinUploadHint;
+
+  /// No description provided for @settingsDailyQuotaLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Quota upload quotidien (Gio, 0 = illimité)'**
+  String get settingsDailyQuotaLabel;
+
+  /// No description provided for @settingsDailyQuotaHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Option Emule-Sion : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).'**
+  String get settingsDailyQuotaHint;
+
+  /// No description provided for @settingsAutoPriorityTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Priorité auto des nouveaux downloads'**
+  String get settingsAutoPriorityTitle;
+
+  /// No description provided for @settingsAutoPrioritySub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Les fichiers ≥ 1 part eD2K (9,28 Mio) démarrent en priorité « high »'**
+  String get settingsAutoPrioritySub;
+
+  /// No description provided for @settingsSwarmHealingTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sauvetage de swarm (swarm healing)'**
+  String get settingsSwarmHealingTitle;
+
+  /// No description provided for @settingsSwarmHealingSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Option Emule-Sion : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition'**
+  String get settingsSwarmHealingSub;
+
+  /// No description provided for @settingsExclusiveTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Options exclusives Emule-Sion'**
+  String get settingsExclusiveTitle;
+
+  /// No description provided for @settingsParanoidTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mode paranoid'**
+  String get settingsParanoidTitle;
+
+  /// No description provided for @settingsParanoidSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ne sert que les pairs obfusqués dont la signature Secure Ident a été vérifiée — les clients eMule classiques sont refusés (réduit fortement la compatibilité)'**
+  String get settingsParanoidSub;
+
+  /// No description provided for @settingsIdentityRotationLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rotation d\'identité (heures, 0 = désactivée)'**
+  String get settingsIdentityRotationLabel;
+
+  /// No description provided for @settingsIdentityRotationHelper.
+  ///
+  /// In fr, this message translates to:
+  /// **'Régénère la clé RSA, le user hash eD2K et le KadID périodiquement. Invalide les crédits accumulés — identité volontairement éphémère.'**
+  String get settingsIdentityRotationHelper;
+
+  /// No description provided for @settingsInvalidLimits.
+  ///
+  /// In fr, this message translates to:
+  /// **'Limites invalides : {fields}'**
+  String settingsInvalidLimits(String fields);
+
+  /// No description provided for @settingsLimitDlField.
+  ///
+  /// In fr, this message translates to:
+  /// **'limite de réception (Ko/s)'**
+  String get settingsLimitDlField;
+
+  /// No description provided for @settingsLimitUlField.
+  ///
+  /// In fr, this message translates to:
+  /// **'limite d\'émission (Ko/s)'**
+  String get settingsLimitUlField;
+
+  /// No description provided for @settingsLimitConnField.
+  ///
+  /// In fr, this message translates to:
+  /// **'connexions/minute'**
+  String get settingsLimitConnField;
+
+  /// No description provided for @settingsIdentityRotationInvalid.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rotation d\'identité : « {value} » invalide (entier entre 0 et 8760 attendu)'**
+  String settingsIdentityRotationInvalid(String value);
+
+  /// No description provided for @rateLimitsCapacityNote.
+  ///
+  /// In fr, this message translates to:
+  /// **'Les limites sont bornées à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).'**
+  String get rateLimitsCapacityNote;
+
+  /// No description provided for @settingsDiagnosticTile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Diagnostic du daemon'**
+  String get settingsDiagnosticTile;
+
+  /// No description provided for @settingsDiagnosticSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'État de santé, connexions et statistiques internes'**
+  String get settingsDiagnosticSub;
+
+  /// No description provided for @settingsImportPartTile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Importer un .part.met'**
+  String get settingsImportPartTile;
+
+  /// No description provided for @settingsImportPartSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Reprendre un téléchargement eMule existant'**
+  String get settingsImportPartSub;
+
+  /// No description provided for @settingsLabGuideTile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Guide du mode laboratoire'**
+  String get settingsLabGuideTile;
+
+  /// No description provided for @settingsLabGuideSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Scénarios de test loopback sans trafic WAN'**
+  String get settingsLabGuideSub;
+
+  /// No description provided for @settingsDebugBarTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Barre de simulation debug'**
+  String get settingsDebugBarTitle;
+
+  /// No description provided for @settingsDebugBarOn.
+  ///
+  /// In fr, this message translates to:
+  /// **'Affiche la barre de simulation en bas de l\'écran'**
+  String get settingsDebugBarOn;
+
+  /// No description provided for @settingsDebugBarOff.
+  ///
+  /// In fr, this message translates to:
+  /// **'Disponible uniquement avec les dev tools (ENABLE_DEV_TOOLS ou fake daemon)'**
+  String get settingsDebugBarOff;
+
+  /// No description provided for @settingsDaemonVersion.
+  ///
+  /// In fr, this message translates to:
+  /// **'Daemon {version} — protocole {protocol}'**
+  String settingsDaemonVersion(String version, String protocol);
+
+  /// No description provided for @settingsAddFriendTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter un ami'**
+  String get settingsAddFriendTitle;
+
+  /// No description provided for @settingsUserHashLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'UserHash (hex)'**
+  String get settingsUserHashLabel;
+
+  /// No description provided for @settingsUserHashHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'32 caractères hexadécimaux'**
+  String get settingsUserHashHint;
+
+  /// No description provided for @settingsFriendNameLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nom (optionnel)'**
+  String get settingsFriendNameLabel;
+
+  /// No description provided for @settingsNoFriends.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun ami configuré.'**
+  String get settingsNoFriends;
+
+  /// No description provided for @settingsRemoveFriendTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Retirer'**
+  String get settingsRemoveFriendTooltip;
+
+  /// No description provided for @settingsRetentionDaysCustom.
+  ///
+  /// In fr, this message translates to:
+  /// **'{days} jours'**
+  String settingsRetentionDaysCustom(int days);
+
+  /// No description provided for @settingsDirCustomHelper.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier personnalisé (persisté en base, appliqué immédiatement)'**
+  String get settingsDirCustomHelper;
+
+  /// No description provided for @settingsDirPortableHelper.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier portable par défaut (<racine_du_bundle>/downloads)'**
+  String get settingsDirPortableHelper;
+
+  /// No description provided for @netBannerKillActive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kill switch actif : toutes les sockets sont coupées, connexions entrantes et sortantes bloquées.'**
+  String get netBannerKillActive;
+
+  /// No description provided for @netBannerPolicyActive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chaque socket est soumise aux contraintes du profil réseau actif (permis, budgets, filtre IP).'**
+  String get netBannerPolicyActive;
+
+  /// No description provided for @upnpGatewayConnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connectée'**
+  String get upnpGatewayConnected;
+
+  /// No description provided for @upnpGatewayAbsent.
+  ///
+  /// In fr, this message translates to:
+  /// **'Non détectée / Désactivée'**
+  String get upnpGatewayAbsent;
+
+  /// No description provided for @upnpIpUnknown.
+  ///
+  /// In fr, this message translates to:
+  /// **'Inconnue'**
+  String get upnpIpUnknown;
+
+  /// No description provided for @upnpMappedHighId.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mappé (HighID)'**
+  String get upnpMappedHighId;
+
+  /// No description provided for @upnpMappedOpen.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mappé (Ouvert)'**
+  String get upnpMappedOpen;
+
+  /// No description provided for @upnpNotMapped.
+  ///
+  /// In fr, this message translates to:
+  /// **'Non mappé'**
+  String get upnpNotMapped;
+
+  /// No description provided for @netModePublicChip.
+  ///
+  /// In fr, this message translates to:
+  /// **'RÉSEAU PUBLIC (WAN)'**
+  String get netModePublicChip;
+
+  /// No description provided for @netModeLabChip.
+  ///
+  /// In fr, this message translates to:
+  /// **'LABORATOIRE (127.0.0.1)'**
+  String get netModeLabChip;
+
+  /// No description provided for @netModePublicDesc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Votre client peut contacter des serveurs eD2K publics, des pairs externes et la DHT Kademlia mondiale.'**
+  String get netModePublicDesc;
+
+  /// No description provided for @netModeLabDesc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Toutes les sockets sont strictement confinées à la boucle locale 127.0.0.1. Zéro paquet sur Internet.'**
+  String get netModeLabDesc;
+
+  /// No description provided for @ipFilterActive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtre actif'**
+  String get ipFilterActive;
+
+  /// No description provided for @ipFilterDisabled.
+  ///
+  /// In fr, this message translates to:
+  /// **'Filtre désactivé'**
+  String get ipFilterDisabled;
+
+  /// No description provided for @netProfileLocalLabDesc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Confiné à la boucle locale (127.0.0.1 / ::1). Aucune socket externe permise.'**
+  String get netProfileLocalLabDesc;
+
+  /// No description provided for @netProfileEd2kDesc.
+  ///
+  /// In fr, this message translates to:
+  /// **'TCP sortant vers des pairs/serveurs eD2K publics. Rejette le LAN privé & la boucle locale (anti-SSRF).'**
+  String get netProfileEd2kDesc;
+
+  /// No description provided for @netProfileEd2kKadDesc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Preview WAN avec UDP pour le routage Kademlia. Validation stricte des adresses.'**
+  String get netProfileEd2kKadDesc;
+
+  /// No description provided for @ipReportTotalLines.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lignes lues : {count}'**
+  String ipReportTotalLines(int count);
+
+  /// No description provided for @ipReportValidEntries.
+  ///
+  /// In fr, this message translates to:
+  /// **'Entrées valides : {count}'**
+  String ipReportValidEntries(int count);
+
+  /// No description provided for @ipReportCoalesced.
+  ///
+  /// In fr, this message translates to:
+  /// **'Plages fusionnées : {count}'**
+  String ipReportCoalesced(int count);
+
+  /// No description provided for @ipReportFinalRanges.
+  ///
+  /// In fr, this message translates to:
+  /// **'Intervalles actifs finaux : {count}'**
+  String ipReportFinalRanges(int count);
 }
 
 class _AppLocalizationsDelegate

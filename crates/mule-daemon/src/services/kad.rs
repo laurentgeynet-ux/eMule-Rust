@@ -508,21 +508,29 @@ impl KadService {
                                 .load(std::sync::atomic::Ordering::Relaxed);
                             let shared = {
                                 let dl = kad.downloads.lock().await;
-                                dl.list_shared_files().unwrap_or_default()
+                                dl.list_all_shared_files().unwrap_or_default()
                             };
                             if tcp_port > 0 {
                                 let mut published = 0usize;
                                 for f in shared.iter().filter(|f| f.enabled).take(200) {
                                     let hash = f.file_hash.trim().to_string();
+                                    // eMule `CKnownFile::PublishSrc`: part files
+                                    // are published as sources too — peers can
+                                    // fetch the parts we already completed.
                                     if let Ok(n) = kad
                                         .publish_source(&hash, f.file_size, tcp_port)
                                         .await
                                     {
                                         published += n;
                                     }
-                                    let _ = kad
-                                        .publish_keyword(&hash, &f.file_name, f.file_size)
-                                        .await;
+                                    // eMule keyword publish skips part files
+                                    // ("someone else should have the full file
+                                    // to publish these keywords").
+                                    if !f.is_partial {
+                                        let _ = kad
+                                            .publish_keyword(&hash, &f.file_name, f.file_size)
+                                            .await;
+                                    }
                                 }
                                 tracing::info!(
                                     "[KAD_PUBLISH] Republication round: {} file(s), {} successful source publishes",

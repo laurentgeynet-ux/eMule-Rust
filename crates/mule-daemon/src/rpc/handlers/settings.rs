@@ -5,6 +5,46 @@ use crate::error::JsonRpcError;
 use crate::rpc::methods::DAEMON_VERSION;
 use crate::state::AppState;
 
+/// Clés camelCase reconnues par `settings.set` — toute autre clé est
+/// ignorée (un warning est émis pour faciliter le diagnostic des typos).
+const KNOWN_SETTINGS_KEYS: &[&str] = &[
+    "defaultDownloadDir",
+    "historyRetentionDays",
+    "maxGlobalDownloadPeers",
+    "maxPeersPerDownload",
+    "minPeersPerDownload",
+    "shareDownloadDir",
+    "nickname",
+    "obfuscationEnabled",
+    "obfuscationRequired",
+    "maxConnections",
+    "maxConnPerMin",
+    "maxUploadQueue",
+    "ussEnabled",
+    "ed2kPort",
+    "kadPort",
+    "udpEnabled",
+    "upnpEnabled",
+    "capacityDownloadKbs",
+    "capacityUploadKbs",
+    "minUploadKbs",
+    "ichEnabled",
+    "rememberCancelled",
+    "rememberDownloaded",
+    "serverReconnect",
+    "serverAutoconnect",
+    "serverAutoremoveDead",
+    "serverAutoupdateList",
+    "serverAutoupdatePath",
+    "safeConnect",
+    "autoPriorityNewDownloads",
+    "swarmHealing",
+    "tempDir",
+    "identityRotationHours",
+    "dailyUploadQuotaGb",
+    "paranoidMode",
+];
+
 pub async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let dl_count = state.downloads.lock().await.list_downloads().len();
     let capabilities = vec![
@@ -544,6 +584,11 @@ pub async fn handle_settings_set(
         // baseline manual limit (eMule uses it for slot computations).
         state.uss.note_manual_limit(v.saturating_mul(1024));
     }
+    if params.get("capacityDownloadKbs").is_some() || params.get("capacityUploadKbs").is_some() {
+        // eMule borne les limites effectives à la capacité déclarée :
+        // une baisse de capacité réduit la limite en conséquence.
+        crate::rpc::handlers::network::apply_capacity_clamp(state).await?;
+    }
     if let Some(val) = params.get("minUploadKbs") {
         let v = val
             .as_u64()
@@ -607,17 +652,29 @@ pub async fn handle_settings_set(
     if let Some(val) = params.get("tempDir") {
         let dir_str = val
             .as_str()
-            .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'tempDir'"))?;
-        if !dir_str.trim().is_empty() {
+            .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'tempDir'"))?
+            .trim();
+        if !dir_str.is_empty() {
             let dir = std::path::Path::new(dir_str);
             std::fs::create_dir_all(dir)
                 .map_err(|e| JsonRpcError::business(format!("Cannot create temp dir: {e}")))?;
+            let probe = dir.join(format!(".mule_write_probe_{}", Uuid::new_v4()));
+            match std::fs::write(&probe, b"probe") {
+                Ok(_) => {
+                    let _ = std::fs::remove_file(&probe);
+                }
+                Err(e) => {
+                    return Err(JsonRpcError::business(format!(
+                        "Temp dir is not writable: {e}"
+                    )));
+                }
+            }
         }
         state
             .downloads
             .lock()
             .await
-            .set_setting("temp_dir", dir_str.trim())?;
+            .set_setting("temp_dir", dir_str)?;
         keys.push("tempDir");
     }
     // --- Options propres à Emule-Sion ---
@@ -716,6 +773,14 @@ pub async fn handle_settings_set(
     if updated_share_dir.is_some() {
         keys.push("shareDownloadDir");
     }
+    if let Some(obj) = params.as_object() {
+        for k in obj.keys() {
+            if !KNOWN_SETTINGS_KEYS.contains(&k.as_str()) {
+                tracing::warn!("settings.set: clé inconnue ignorée '{k}'");
+            }
+        }
+    }
+
     if !keys.is_empty() {
         state.emit_event(|sequence| crate::services::DaemonEvent::SettingsChanged {
             sequence,

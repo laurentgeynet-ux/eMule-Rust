@@ -26,7 +26,7 @@
   "btnAddLink": "Add Link",
   "btnAddEd2kLink": "Add eD2K Link",
   "btnAddDownload": "Add Download",
-  "btnCancel": "Cancel",
+  "btnCancel": "Annuler",
   "btnClose": "Fermer",
   "btnSave": "Enregistrer",
   "btnDelete": "Supprimer",
@@ -94,7 +94,7 @@
   "defaultDownloadsFolder": "Default downloads folder",
   "browse": "Browse...",
   "diskAllocation": "Disk Allocation",
-  "cancel": "Cancel",
+  "cancel": "Annuler",
   "addDownload": "Add Download",
   "eGMoviesMusicLinux": "e.g. Movies, Music, Linux ISOs",
   "inheritGlobalDestination": "Inherit global destination",
@@ -988,5 +988,250 @@
   "uploadsFile": "Fichier",
   "uploadsRate": "Débit",
   "uploadsRank": "Rang",
-  "uploadsCancelTooltip": "Annuler l'upload"
+  "uploadsCancelTooltip": "Annuler l'upload",
+  "settingsSectionGeneral": "Général",
+  "settingsSectionConnection": "Connexion",
+  "settingsSectionTransfers": "Transferts",
+  "settingsSectionSecurity": "Sécurité",
+  "settingsSectionFriends": "Amis",
+  "settingsSectionAdvanced": "Avancé",
+  "settingsGeneralSubtitle": "Identité, dossiers, partage automatique, historique et langue",
+  "settingsConnectionSubtitle": "Profil réseau, isolation, budgets de sockets et UPnP",
+  "settingsTransfersSubtitle": "Limites de connexions aux sources du swarm",
+  "settingsSecuritySubtitle": "Filtre IP, limites de débit et politique anti-SSRF",
+  "settingsFriendsSubtitle": "Slot d'upload dédié sans passer par la file (friend slot eMule)",
+  "settingsAdvancedSubtitle": "Diagnostic, outils de laboratoire et informations daemon",
+  "settingsApply": "Appliquer",
+  "settingsSaving": "Enregistrement…",
+  "settingsNicknameLabel": "Pseudo (nickname)",
+  "settingsNicknameHelper": "Annoncé aux serveurs eD2K et aux pairs (eMule « nick » ; vide = défaut)",
+  "settingsShareDownloadDirTitle": "Partager automatiquement le dossier de téléchargement",
+  "settingsShareDownloadDirSub": "Les fichiers du dossier Incoming sont hashés et servis aux pairs au démarrage du daemon (comme le dossier Incoming d'eMule).",
+  "settingsTempDirLabel": "Dossier temporaire (.part)",
+  "settingsTempDirHelper": "Où sont stockés les fichiers en cours (eMule « Répertoire temporaire » ; vide = dossier du daemon)",
+  "settingsIchTitle": "ICH — vérification intelligente des parts",
+  "settingsIchSub": "Vérifie chaque part complétée par MD4 (eMule « ICH » ; désactiver saute la vérification intermédiaire)",
+  "settingsRememberCancelledTitle": "Mémoriser les fichiers annulés",
+  "settingsRememberCancelledSub": "Ajoute une entrée d'historique à l'annulation (eMule « Remember cancelled files »)",
+  "settingsRememberDownloadedTitle": "Mémoriser les fichiers téléchargés",
+  "settingsRememberDownloadedSub": "Ajoute une entrée d'historique à la complétion (eMule « Remember downloaded files »)",
+  "settingsDirEmptyError": "Le chemin du dossier ne peut pas être vide.",
+  "settingsDirSaved": "Dossier de téléchargement par défaut mis à jour.",
+  "settingsDirProbeFailed": "Le test d'écriture dans le dossier a échoué.",
+  "settingsDirResetDone": "Dossier portable par défaut restauré.",
+  "settingsDirResetFailed": "Échec de la réinitialisation du dossier de téléchargement.",
+  "settingsCapPortsTitle": "Capacités & ports",
+  "settingsCapDlLabel": "Capacité réception (Ko/s)",
+  "settingsCapDlHint": "Vitesse de ligne descendante — borne la limite de download à 90 % (0 = aucune)",
+  "settingsCapUlLabel": "Capacité émission (Ko/s)",
+  "settingsCapUlHint": "Vitesse de ligne montante — référence USS, borne la limite d'upload à 80 % (0 = aucune)",
+  "settingsTcpPortLabel": "Port TCP",
+  "settingsTcpPortHint": "Port client eD2K — rebind immédiat du listener",
+  "settingsUdpPortLabel": "Port UDP",
+  "settingsUdpPortHint": "Port Kad/UDP — socket rebind à chaud",
+  "settingsUdpEnabledTitle": "UDP activé",
+  "settingsUdpEnabledSub": "Kad UDP, requêtes serveur UDP et re-ask UDP (eMule « UDP désactivé »)",
+  "settingsUpnpToggleTitle": "Configurer les ports grâce à l'UPnP",
+  "settingsUpnpToggleSub": "Mappe/démappe automatiquement TCP+UDP sur la box",
+  "settingsProtocolTitle": "Protocole & limites",
+  "settingsObfEnabledTitle": "Connexions obfusquées supportées",
+  "settingsObfEnabledSub": "Chiffrement de protocole eD2K/Kad (eMule « Support obfuscated connections »)",
+  "settingsObfRequiredTitle": "Obfuscation requise",
+  "settingsObfRequiredSub": "Rejette les pairs sans chiffrement (eMule « Require obfuscated connections »)",
+  "settingsUssTitle": "USS — Upload Speed Sense",
+  "settingsUssSub": "Ajuste dynamiquement la limite d'upload selon la latence mesurée",
+  "settingsMaxConnLabel": "Connexions max",
+  "settingsMaxConnHint": "Budget global de sockets pairs (eMule MaxConnections)",
+  "settingsConnPerMinLabel": "Connexions / min",
+  "settingsConnPerMinHint": "Nouvelles connexions sortantes par minute (eMule ≈ 240)",
+  "settingsServersTitle": "Serveurs eD2K",
+  "settingsServerReconnectTitle": "Reconnexion automatique",
+  "settingsServerReconnectSub": "Reconnecte au dernier serveur après une perte de connexion (eMule « Reconnect »)",
+  "settingsServerAutoconnectTitle": "Connexion au démarrage",
+  "settingsServerAutoconnectSub": "Se connecte automatiquement au meilleur serveur connu au lancement (eMule « Autoconnect »)",
+  "settingsServerAutoremoveTitle": "Supprimer les serveurs morts",
+  "settingsServerAutoremoveSub": "Retire un serveur de la liste dès le premier échec de reconnexion (eMule « DeadServerRetry » = 1)",
+  "settingsSafeConnectTitle": "Connexion sûre",
+  "settingsSafeConnectSub": "Bloque la reprise des downloads tant que ni le serveur eD2K ni Kad ne sont disponibles",
+  "settingsServerAutoupdateTitle": "Mettre à jour la liste au démarrage",
+  "settingsServerAutoupdateSub": "Importe le fichier server.met ci-dessous au lancement du daemon",
+  "settingsServerMetLabel": "Fichier server.met",
+  "settingsServerMetHint": "Chemin local du fichier .met importé au démarrage (aucun fetch HTTP)",
+  "upnpConfiguredMsg": "UPnP configuré (IP WAN : {ip}).",
+  "@upnpConfiguredMsg": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "upnpNoGateway": "Passerelle UPnP non détectée ou désactivée sur votre box.",
+  "upnpRefreshFailed": "Échec de rafraîchissement UPnP : {error}",
+  "@upnpRefreshFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsInvalidNumMin": "{label} : « {value} » invalide (entier ≥ {min} attendu)",
+  "@settingsInvalidNumMin": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsInvalidNumRange": "{label} : « {value} » invalide (entier entre {min} et {max} attendu)",
+  "@settingsInvalidNumRange": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "killSwitchConfirmTitle": "Couper toutes les connexions ?",
+  "killSwitchConfirmBody": "Le kill switch coupe immédiatement toutes les sockets réseau (pairs, serveurs, listeners) jusqu'à réactivation manuelle.",
+  "killSwitchConfirmAction": "Tout déconnecter",
+  "settingsMaxGlobalLabel": "Sources maximum (global)",
+  "settingsMaxGlobalHint": "Nombre total de sources eD2K/Kad simultanées, tous fichiers confondus",
+  "settingsMaxPerFileLabel": "Sources maximum par fichier",
+  "settingsMaxPerFileHint": "Plafond par défaut — surchargeable par fichier (FT_MAXSOURCES)",
+  "settingsMinPerFileLabel": "Sources minimum par fichier",
+  "settingsMinPerFileHint": "Quota de sources garanti par fichier même si le swarm global est saturé",
+  "settingsMaxQueueLabel": "File d'attente upload max",
+  "settingsMaxQueueHint": "Clients en attente d'un slot upload (eMule QueueSize, défaut 5000)",
+  "settingsMinUploadLabel": "Débit upload min par slot (Ko/s)",
+  "settingsMinUploadHint": "N'ouvre pas de nouveau slot sous ce seuil (eMule MinUpload, défaut 1)",
+  "settingsDailyQuotaLabel": "Quota upload quotidien (Gio, 0 = illimité)",
+  "settingsDailyQuotaHint": "Option Emule-Sion : au-delà du quota, plus aucun slot d'upload n'est accordé. Remise à zéro chaque jour (UTC).",
+  "settingsAutoPriorityTitle": "Priorité auto des nouveaux downloads",
+  "settingsAutoPrioritySub": "Les fichiers ≥ 1 part eD2K (9,28 Mio) démarrent en priorité « high »",
+  "settingsSwarmHealingTitle": "Sauvetage de swarm (swarm healing)",
+  "settingsSwarmHealingSub": "Option Emule-Sion : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition",
+  "settingsExclusiveTitle": "Options exclusives Emule-Sion",
+  "settingsParanoidTitle": "Mode paranoid",
+  "settingsParanoidSub": "Ne sert que les pairs obfusqués dont la signature Secure Ident a été vérifiée — les clients eMule classiques sont refusés (réduit fortement la compatibilité)",
+  "settingsIdentityRotationLabel": "Rotation d'identité (heures, 0 = désactivée)",
+  "settingsIdentityRotationHelper": "Régénère la clé RSA, le user hash eD2K et le KadID périodiquement. Invalide les crédits accumulés — identité volontairement éphémère.",
+  "settingsInvalidLimits": "Limites invalides : {fields}",
+  "@settingsInvalidLimits": {
+    "placeholders": {
+      "fields": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsLimitDlField": "limite de réception (Ko/s)",
+  "settingsLimitUlField": "limite d'émission (Ko/s)",
+  "settingsLimitConnField": "connexions/minute",
+  "settingsIdentityRotationInvalid": "Rotation d'identité : « {value} » invalide (entier entre 0 et 8760 attendu)",
+  "@settingsIdentityRotationInvalid": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "rateLimitsCapacityNote": "Les limites sont bornées à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).",
+  "settingsDiagnosticTile": "Diagnostic du daemon",
+  "settingsDiagnosticSub": "État de santé, connexions et statistiques internes",
+  "settingsImportPartTile": "Importer un .part.met",
+  "settingsImportPartSub": "Reprendre un téléchargement eMule existant",
+  "settingsLabGuideTile": "Guide du mode laboratoire",
+  "settingsLabGuideSub": "Scénarios de test loopback sans trafic WAN",
+  "settingsDebugBarTitle": "Barre de simulation debug",
+  "settingsDebugBarOn": "Affiche la barre de simulation en bas de l'écran",
+  "settingsDebugBarOff": "Disponible uniquement avec les dev tools (ENABLE_DEV_TOOLS ou fake daemon)",
+  "settingsDaemonVersion": "Daemon {version} — protocole {protocol}",
+  "@settingsDaemonVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "protocol": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsAddFriendTitle": "Ajouter un ami",
+  "settingsUserHashLabel": "UserHash (hex)",
+  "settingsUserHashHint": "32 caractères hexadécimaux",
+  "settingsFriendNameLabel": "Nom (optionnel)",
+  "settingsNoFriends": "Aucun ami configuré.",
+  "settingsRemoveFriendTooltip": "Retirer",
+  "settingsRetentionDaysCustom": "{days} jours",
+  "@settingsRetentionDaysCustom": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsDirCustomHelper": "Dossier personnalisé (persisté en base, appliqué immédiatement)",
+  "settingsDirPortableHelper": "Dossier portable par défaut (<racine_du_bundle>/downloads)",
+  "netBannerKillActive": "Kill switch actif : toutes les sockets sont coupées, connexions entrantes et sortantes bloquées.",
+  "netBannerPolicyActive": "Chaque socket est soumise aux contraintes du profil réseau actif (permis, budgets, filtre IP).",
+  "upnpGatewayConnected": "Connectée",
+  "upnpGatewayAbsent": "Non détectée / Désactivée",
+  "upnpIpUnknown": "Inconnue",
+  "upnpMappedHighId": "Mappé (HighID)",
+  "upnpMappedOpen": "Mappé (Ouvert)",
+  "upnpNotMapped": "Non mappé",
+  "netModePublicChip": "RÉSEAU PUBLIC (WAN)",
+  "netModeLabChip": "LABORATOIRE (127.0.0.1)",
+  "netModePublicDesc": "Votre client peut contacter des serveurs eD2K publics, des pairs externes et la DHT Kademlia mondiale.",
+  "netModeLabDesc": "Toutes les sockets sont strictement confinées à la boucle locale 127.0.0.1. Zéro paquet sur Internet.",
+  "ipFilterActive": "Filtre actif",
+  "ipFilterDisabled": "Filtre désactivé",
+  "netProfileLocalLabDesc": "Confiné à la boucle locale (127.0.0.1 / ::1). Aucune socket externe permise.",
+  "netProfileEd2kDesc": "TCP sortant vers des pairs/serveurs eD2K publics. Rejette le LAN privé & la boucle locale (anti-SSRF).",
+  "netProfileEd2kKadDesc": "Preview WAN avec UDP pour le routage Kademlia. Validation stricte des adresses.",
+  "ipReportTotalLines": "Lignes lues : {count}",
+  "@ipReportTotalLines": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportValidEntries": "Entrées valides : {count}",
+  "@ipReportValidEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportCoalesced": "Plages fusionnées : {count}",
+  "@ipReportCoalesced": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportFinalRanges": "Intervalles actifs finaux : {count}",
+  "@ipReportFinalRanges": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -1980,10 +1980,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<UpnpStatusModel> mapUpnpPorts({
-    int tcpPort = 39735,
-    int udpPort = 39737,
-  }) async {
+  Future<UpnpStatusModel> mapUpnpPorts({int? tcpPort, int? udpPort}) async {
     _upnpStatus = UpnpStatusModel(
       enabled: true,
       available: true,
@@ -1991,8 +1988,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       externalIp: '198.51.100.42',
       tcpMapped: true,
       udpMapped: true,
-      tcpPort: tcpPort,
-      udpPort: udpPort,
+      tcpPort: tcpPort ?? _upnpStatus.tcpPort,
+      udpPort: udpPort ?? _upnpStatus.udpPort,
       updatedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
     );
     return _upnpStatus;

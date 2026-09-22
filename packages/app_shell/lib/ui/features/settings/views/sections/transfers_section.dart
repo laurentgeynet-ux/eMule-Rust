@@ -3,6 +3,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../app/providers.dart';
+import '../../../../../l10n/l10n.dart';
 import 'settings_section_scaffold.dart';
 
 /// « Transferts » : limites de sources du swarm (persistées via
@@ -23,6 +24,11 @@ class _SettingsTransfersSectionState
   final _maxQueueCtrl = TextEditingController();
   final _minUploadCtrl = TextEditingController();
   final _dailyQuotaCtrl = TextEditingController();
+
+  /// Champs en cours d'édition : jamais écrasés par une resynchronisation
+  /// externe (`settings.changed`, autre client, MCP).
+  final Set<TextEditingController> _dirty = {};
+
   bool _isSaving = false;
   bool _loaded = false;
 
@@ -46,76 +52,94 @@ class _SettingsTransfersSectionState
     super.dispose();
   }
 
+  void _syncText(TextEditingController ctrl, Object? value) {
+    final v = value?.toString() ?? '';
+    if (!_dirty.contains(ctrl) && ctrl.text != v) ctrl.text = v;
+  }
+
   void _syncFromSettings() {
     final s = ref.read(settingsControllerProvider).settings;
-    _maxGlobalCtrl.text = '${s['maxGlobalDownloadPeers'] ?? ''}';
-    _maxPerFileCtrl.text = '${s['maxPeersPerDownload'] ?? ''}';
-    _minPerFileCtrl.text = '${s['minPeersPerDownload'] ?? ''}';
-    _maxQueueCtrl.text = '${s['maxUploadQueue'] ?? ''}';
-    _minUploadCtrl.text = '${s['minUploadKbs'] ?? '1'}';
-    _dailyQuotaCtrl.text = '${s['dailyUploadQuotaGb'] ?? '0'}';
-    if (mounted) setState(() => _loaded = true);
+    _syncText(_maxGlobalCtrl, s['maxGlobalDownloadPeers']);
+    _syncText(_maxPerFileCtrl, s['maxPeersPerDownload']);
+    _syncText(_minPerFileCtrl, s['minPeersPerDownload']);
+    _syncText(_maxQueueCtrl, s['maxUploadQueue']);
+    _syncText(_minUploadCtrl, s['minUploadKbs'] ?? 1);
+    _syncText(_dailyQuotaCtrl, s['dailyUploadQuotaGb'] ?? 0);
+    if (mounted && !_loaded) setState(() => _loaded = true);
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(settingsControllerProvider, (_, __) => _syncFromSettings());
+    final l10n = context.l10n;
+
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
 
     return SettingsSectionScaffold(
-      title: 'Transferts',
-      subtitle: 'Limites de connexions aux sources du swarm',
+      title: l10n.settingsSectionTransfers,
+      subtitle: l10n.settingsTransfersSubtitle,
       icon: Icons.swap_vert_rounded,
       children: [
         _NumberField(
           controller: _maxGlobalCtrl,
-          label: 'Sources maximum (global)',
-          hint: 'Nombre total de sources eD2K/Kad simultanées, tous fichiers confondus',
+          label: l10n.settingsMaxGlobalLabel,
+          hint: l10n.settingsMaxGlobalHint,
+          onDirty: () => _dirty.add(_maxGlobalCtrl),
+          onSubmit: _save,
         ),
         const SizedBox(height: 12),
         _NumberField(
           controller: _maxPerFileCtrl,
-          label: 'Sources maximum par fichier',
-          hint: 'Plafond par défaut — surchargeable par fichier (FT_MAXSOURCES)',
+          label: l10n.settingsMaxPerFileLabel,
+          hint: l10n.settingsMaxPerFileHint,
+          onDirty: () => _dirty.add(_maxPerFileCtrl),
+          onSubmit: _save,
         ),
         const SizedBox(height: 12),
         _NumberField(
           controller: _minPerFileCtrl,
-          label: 'Sources minimum par fichier',
-          hint: 'Quota de sources garanti par fichier même si le swarm global est saturé',
+          label: l10n.settingsMinPerFileLabel,
+          hint: l10n.settingsMinPerFileHint,
+          onDirty: () => _dirty.add(_minPerFileCtrl),
+          onSubmit: _save,
         ),
         const SizedBox(height: 12),
         _NumberField(
           controller: _maxQueueCtrl,
-          label: 'File d\'attente upload max',
-          hint: 'Clients en attente d\'un slot upload (eMule QueueSize, défaut 5000)',
+          label: l10n.settingsMaxQueueLabel,
+          hint: l10n.settingsMaxQueueHint,
+          onDirty: () => _dirty.add(_maxQueueCtrl),
+          onSubmit: _save,
         ),
         const SizedBox(height: 12),
         _NumberField(
           controller: _minUploadCtrl,
-          label: 'Débit upload min par slot (Ko/s)',
-          hint: 'N\'ouvre pas de nouveau slot sous ce seuil (eMule MinUpload, défaut 1)',
+          label: l10n.settingsMinUploadLabel,
+          hint: l10n.settingsMinUploadHint,
+          onDirty: () => _dirty.add(_minUploadCtrl),
+          onSubmit: _save,
         ),
         const SizedBox(height: 12),
         _NumberField(
           controller: _dailyQuotaCtrl,
-          label: 'Quota upload quotidien (Gio, 0 = illimité)',
-          hint:
-              'Option Emule-Sion : au-delà du quota, plus aucun slot '
-              'd\'upload n\'est accordé. Remise à zéro chaque jour (UTC).',
+          label: l10n.settingsDailyQuotaLabel,
+          hint: l10n.settingsDailyQuotaHint,
+          onDirty: () => _dirty.add(_dailyQuotaCtrl),
+          onSubmit: _save,
         ),
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text(
-            'Priorité auto des nouveaux downloads',
-            style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+          title: Text(
+            l10n.settingsAutoPriorityTitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
           ),
-          subtitle: const Text(
-            'Les fichiers ≥ 1 part eD2K (9,28 Mio) démarrent en priorité « high »',
-            style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+          subtitle: Text(
+            l10n.settingsAutoPrioritySub,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
           ),
           value:
               ref.watch(settingsControllerProvider).settings['autoPriorityNewDownloads']
@@ -128,15 +152,13 @@ class _SettingsTransfersSectionState
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text(
-            'Sauvetage de swarm (swarm healing)',
-            style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+          title: Text(
+            l10n.settingsSwarmHealingTitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
           ),
-          subtitle: const Text(
-            'Option Emule-Sion : télécharge en priorité les parts les plus '
-            'rares du swarm (peu de sources restantes) pour devenir une '
-            'source de secours avant leur disparition',
-            style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+          subtitle: Text(
+            l10n.settingsSwarmHealingSub,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
           ),
           value:
               ref.watch(settingsControllerProvider).settings['swarmHealing']
@@ -155,7 +177,7 @@ class _SettingsTransfersSectionState
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.save_rounded, size: 16),
-          label: Text(_isSaving ? 'Enregistrement…' : 'Appliquer'),
+          label: Text(_isSaving ? l10n.settingsSaving : l10n.settingsApply),
           onPressed: _isSaving ? null : _save,
         ),
       ],
@@ -163,24 +185,45 @@ class _SettingsTransfersSectionState
   }
 
   Future<void> _save() async {
-    setState(() => _isSaving = true);
+    final l10n = context.l10n;
     final patch = <String, dynamic>{};
-    final g = int.tryParse(_maxGlobalCtrl.text.trim());
-    final f = int.tryParse(_maxPerFileCtrl.text.trim());
-    final m = int.tryParse(_minPerFileCtrl.text.trim());
-    if (g != null && g > 0) patch['maxGlobalDownloadPeers'] = g;
-    if (f != null && f > 0) patch['maxPeersPerDownload'] = f;
-    if (m != null && m >= 0) patch['minPeersPerDownload'] = m;
-    final q = int.tryParse(_maxQueueCtrl.text.trim());
-    if (q != null && q >= 10) patch['maxUploadQueue'] = q;
-    final mu = int.tryParse(_minUploadCtrl.text.trim());
-    if (mu != null && mu >= 0) patch['minUploadKbs'] = mu;
-    final quota = int.tryParse(_dailyQuotaCtrl.text.trim());
-    if (quota != null && quota >= 0) patch['dailyUploadQuotaGb'] = quota;
-    await ref.read(settingsControllerProvider).updateSettings(patch);
+    final applied = <TextEditingController>[];
+    var invalid = false;
+    void add(TextEditingController ctrl, String label, int min, String key) {
+      final raw = ctrl.text.trim();
+      if (raw.isEmpty) return; // champ vide = valeur inchangée
+      final n = int.tryParse(raw);
+      if (n == null || n < min) {
+        invalid = true;
+        ref
+            .read(shellControllerProvider)
+            .setError(l10n.settingsInvalidNumMin(label, raw, min));
+      } else {
+        patch[key] = n;
+        applied.add(ctrl);
+      }
+    }
+
+    add(_maxGlobalCtrl, l10n.settingsMaxGlobalLabel, 1, 'maxGlobalDownloadPeers');
+    add(_maxPerFileCtrl, l10n.settingsMaxPerFileLabel, 1, 'maxPeersPerDownload');
+    add(_minPerFileCtrl, l10n.settingsMinPerFileLabel, 0, 'minPeersPerDownload');
+    add(_maxQueueCtrl, l10n.settingsMaxQueueLabel, 10, 'maxUploadQueue');
+    add(_minUploadCtrl, l10n.settingsMinUploadLabel, 0, 'minUploadKbs');
+    add(_dailyQuotaCtrl, l10n.settingsDailyQuotaLabel, 0, 'dailyUploadQuotaGb');
+
+    if (invalid || patch.isEmpty) return;
+
+    setState(() => _isSaving = true);
+    final ok =
+        await ref.read(settingsControllerProvider).updateSettings(patch);
     if (mounted) {
       setState(() => _isSaving = false);
-      _syncFromSettings();
+      if (ok) {
+        for (final c in applied) {
+          _dirty.remove(c);
+        }
+        _syncFromSettings();
+      }
     }
   }
 }
@@ -189,11 +232,15 @@ class _NumberField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final String hint;
+  final VoidCallback onDirty;
+  final VoidCallback onSubmit;
 
   const _NumberField({
     required this.controller,
     required this.label,
     required this.hint,
+    required this.onDirty,
+    required this.onSubmit,
   });
 
   @override
@@ -209,6 +256,8 @@ class _NumberField extends StatelessWidget {
         isDense: true,
         border: const OutlineInputBorder(),
       ),
+      onChanged: (_) => onDirty(),
+      onSubmitted: (_) => onSubmit(),
     );
   }
 }

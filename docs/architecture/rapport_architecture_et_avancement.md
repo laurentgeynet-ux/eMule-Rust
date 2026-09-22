@@ -269,7 +269,7 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
   * *Trickle slots* : un slot < 1 Kio/s après 60 s est rétrogradé (`Trickle`, hors quota) et le meilleur client en file est promu.
   * *Friend slots* : table `friends` + RPC `friends.*` → slot dédié (`uh:<userhash>`).
   * *Anti-leecher minimal* : rejet des clients sans `user_hash` quand la file est ≥ 90 % pleine.
-  * *Partage partiel* (`CPartFile` eMule) : un téléchargement actif est serviable dès la première part eD2K complète — `SharedFile.is_partial` + `completed_parts` ; `PARTSTATUS` n'annonce que les parts reçues, tout range hors parts complétées est refusé, hashset/AICH jamais calculés depuis un `.part` incomplet.
+  * *Partage partiel* (`CPartFile` eMule) : un téléchargement actif est serviable dès la première part eD2K complète — `SharedFile.is_partial` + `completed_parts` ; `PARTSTATUS` n'annonce que les parts reçues, tout range hors parts complétées est refusé, hashset/AICH jamais calculés depuis un `.part` incomplet. Publiés comme sources Kad (`PublishSrc`) mais exclus des keywords ; offerts au serveur avec marqueurs `0xFCFC` (tri par priorité d'upload, cap 200) ; `shares.setEnabled`/`setUploadPriority` les refusent (le `.part` transitoire ne doit pas être persisté comme partage complet).
   * *Partages persistants* : les downloads `Completed` sont fusionnés depuis SQLite dans `list_all_shared_files`/`get_shared_file` même hors `active` (survie au restart, eMule rehash des fichiers finis) — le fichier cible doit exister.
   * *File d'attente configurable* : `max_queue` (`AtomicUsize`, eMule `QueueSize`) piloté par `settings.set maxUploadQueue`.
 * **Paramètres runtime (eMule Préférences)** — tous persistés via `settings.set` et appliqués **à chaud** :

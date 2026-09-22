@@ -129,7 +129,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `widgets/lab/` (9 fichiers) + `lab_guide_dialog.dart` | Assistant lab : étapes fixture/lien/pair/connexion/nettoyage |
 | `widgets/network/` (9 fichiers) + `network_policy_dialog.dart`, `ip_filter_dialog.dart` | Onglets IP filter et rate limits, quotas, profil réseau, audit log |
 | `widgets/row/` (8 fichiers) | Ligne de download : variantes compacte/complète, badges, icônes, barre d'actions, pill de statut, chip de priorité (`download_priority_chip.dart`) |
-| `widgets/settings/` (4 fichiers) | Briques réutilisées par la page Paramètres : dossier, langue, rétention, amis |
+| `widgets/settings/` (5 fichiers) | Briques réutilisées par la page Paramètres : dossier, langue, rétention, amis, message inline |
 | `widgets/sidebar/` (9 fichiers) | Sidebar : header brand, items nav/catégorie/filtre, carte de statut, suppression de catégorie |
 | `widgets/incompatible_version_dialog.dart` | Avertissement de version daemon incompatible |
 
@@ -142,7 +142,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `search/view_models/search_controller.dart` + `views/search_screen.dart` + `widgets/` (7 fichiers) | Recherche : formulaire, table de résultats, bannière connexion, états |
 | `servers/view_models/servers_controller.dart` + `views/servers_screen.dart` + `widgets/` (12 fichiers) | Serveurs : table et cartes, import server.met, session bar, badges, dialogues clear/update |
 | `settings/view_models/settings_controller.dart` + `views/settings_view.dart` + `views/sections/` (6 fichiers) + `widgets/` (4 fichiers) | Page Paramètres (`/settings`) : rail Général/Connexion/Transferts/Sécurité/Amis/Avancé ; pseudo, partage Incoming, profil/kill switch/quotas, **capacités & ports TCP/UDP, toggles UDP+UPnP**, obfuscation, connexions max, USS, limites de sources, file d'upload, IP filter, amis, outils avancés |
-| `shares/views/shares_view.dart` | Onglet « Partages » (`/shares`) : fichiers servis (persistés + partiels `.part` badge « partiel »), priorité d'upload (powershare), switch activé/suspendu, **bouton rescan Incoming** (`shares.rescan`) |
+| `shares/views/shares_view.dart` | Onglet « Partages » (`/shares`) : fichiers servis (persistés + partiels `.part` badge « partiel »), priorité d'upload (powershare), switch activé/suspendu, **bouton rescan Incoming** (`shares.rescan`), rafraîchissement live sur events lifecycle/progression |
 | `uploads/view_models/uploads_controller.dart` + `views/uploads_view.dart` + `widgets/uploads_table.dart` | Uploads : vue et table des envois |
 
 ## packages/mule_client/ — Client daemon partagé
@@ -295,8 +295,8 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/rpc/handlers/lab.rs` | Handler : lab |
 | `src/rpc/handlers/network.rs` | Handler : politique réseau |
 | `src/rpc/handlers/servers.rs` | Handler : serveurs |
-| `src/rpc/handlers/settings.rs` | Handler : paramètres — `settings.get`/`set` couvrant tous les réglages runtime (ports, UDP, UPnP, obfuscation, capacités, USS, quotas, file upload) avec application à chaud (`apply_port_change`, `apply_udp_state`) |
-| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés — `shares.list` (incl. partiels), `add`, `remove`, `setEnabled`, `setUploadPriority`, `rescan` |
+| `src/rpc/handlers/settings.rs` | Handler : paramètres — `settings.get`/`set` couvrant tous les réglages runtime (ports, UDP, UPnP, obfuscation, capacités — clamp eMule 90 %/80 % sur les limites, USS, quotas, file upload) avec application à chaud (`apply_port_change`, `apply_udp_state`, `apply_capacity_clamp`) ; write-probe sur les dossiers, warning sur clés inconnues |
+| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés — `shares.list` (incl. partiels), `add`, `remove`, `setEnabled`, `setUploadPriority` (mutations refusées sur `is_partial`), `rescan` |
 | `src/rpc/handlers/sources.rs` | Handler : sources |
 | `src/rpc/handlers/upnp.rs` | Handler : UPnP |
 
@@ -546,7 +546,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/ed2k/server.rs` | Protocole client↔serveur |
 | `src/ed2k/server/search.rs` | Recherche sur serveur |
 | `src/ed2k/server/sources.rs` | Requête de sources au serveur |
-| `src/ed2k/server/types.rs` | Types serveur |
+| `src/ed2k/server/types.rs` | Types serveur — `OfferedFile::for_server` : marqueurs `0xFBFB` (complet) / `0xFCFC` (partiel `is_partial`) quand `SRV_TCPFLG_COMPRESSION` |
 | `src/ed2k/source_exchange.rs` | Échange de sources pair-à-pair |
 | `src/ed2k/source_exchange/codec.rs` | Codec de l'échange de sources |
 | `src/ed2k/source_exchange/types.rs` | Types de l'échange de sources |

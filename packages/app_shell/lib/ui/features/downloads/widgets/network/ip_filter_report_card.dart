@@ -30,10 +30,10 @@ class IpFilterReportCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          _line('Total lines read: ${report.totalLines}'),
-          _line('Valid entries: ${report.validEntriesParsed}'),
-          _line('Coalesced (merged) ranges: ${report.coalescedCount}'),
-          _line('Final active intervals: ${report.finalRangeCount}'),
+          _line(context.l10n.ipReportTotalLines(report.totalLines)),
+          _line(context.l10n.ipReportValidEntries(report.validEntriesParsed)),
+          _line(context.l10n.ipReportCoalesced(report.coalescedCount)),
+          _line(context.l10n.ipReportFinalRanges(report.finalRangeCount)),
           if (report.invalidLines > 0)
             Text(context.l10n.invalidLinesSkipped('${report.invalidLines}'),
               style: const TextStyle(

@@ -36,8 +36,8 @@ class NetworkModeStatusCard extends StatelessWidget {
               Chip(
                 label: Text(
                   isPublic
-                      ? 'RÉSEAU PUBLIC (WAN)'
-                      : 'LABORATOIRE (127.0.0.1)',
+                      ? context.l10n.netModePublicChip
+                      : context.l10n.netModeLabChip,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -53,8 +53,8 @@ class NetworkModeStatusCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             isPublic
-                ? 'Votre client peut contacter des serveurs eD2K publics, des pairs externes et la DHT Kademlia mondiale.'
-                : 'Toutes les sockets sont strictement confinées à la boucle locale 127.0.0.1. Zéro paquet sur Internet.',
+                ? context.l10n.netModePublicDesc
+                : context.l10n.netModeLabDesc,
             style: const TextStyle(
               fontSize: 12,
               color: AppColors.textSoft,

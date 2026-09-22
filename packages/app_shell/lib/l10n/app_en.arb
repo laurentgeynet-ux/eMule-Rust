@@ -327,7 +327,7 @@
   "confirmRemove": "Confirm Remove",
   "sourcesEd2kSessionPeer": "SOURCES ED2K & SESSION PEER",
   "ajouterSourceIpPortEx": "Ajouter source IP:port (ex: 127.0.0.1:39735)",
-  "ajouter": "Ajouter",
+  "ajouter": "Add",
   "demanderAuServeur": "Query the server",
   "demanderAuReseauKad": "Query the Kad network",
   "actualiserLaListe": "Refresh list",
@@ -988,5 +988,250 @@
   "uploadsFile": "File",
   "uploadsRate": "Rate",
   "uploadsRank": "Rank",
-  "uploadsCancelTooltip": "Cancel upload"
+  "uploadsCancelTooltip": "Cancel upload",
+  "settingsSectionGeneral": "General",
+  "settingsSectionConnection": "Connection",
+  "settingsSectionTransfers": "Transfers",
+  "settingsSectionSecurity": "Security",
+  "settingsSectionFriends": "Friends",
+  "settingsSectionAdvanced": "Advanced",
+  "settingsGeneralSubtitle": "Identity, folders, automatic sharing, history and language",
+  "settingsConnectionSubtitle": "Network profile, isolation, socket budgets and UPnP",
+  "settingsTransfersSubtitle": "Swarm source connection limits",
+  "settingsSecuritySubtitle": "IP filter, rate limits and anti-SSRF policy",
+  "settingsFriendsSubtitle": "Dedicated upload slot bypassing the queue (eMule friend slot)",
+  "settingsAdvancedSubtitle": "Diagnostics, lab tools and daemon information",
+  "settingsApply": "Apply",
+  "settingsSaving": "Saving…",
+  "settingsNicknameLabel": "Nickname",
+  "settingsNicknameHelper": "Announced to eD2K servers and peers (eMule \"nick\"; empty = default)",
+  "settingsShareDownloadDirTitle": "Automatically share the download folder",
+  "settingsShareDownloadDirSub": "Files in the Incoming folder are hashed and served to peers at daemon startup (like eMule's Incoming folder).",
+  "settingsTempDirLabel": "Temporary folder (.part)",
+  "settingsTempDirHelper": "Where in-progress files are stored (eMule \"Temporary directory\"; empty = daemon folder)",
+  "settingsIchTitle": "ICH — intelligent part verification",
+  "settingsIchSub": "Verifies each completed part via MD4 (eMule \"ICH\"; disabling skips the intermediate check)",
+  "settingsRememberCancelledTitle": "Remember cancelled files",
+  "settingsRememberCancelledSub": "Adds a history entry on cancellation (eMule \"Remember cancelled files\")",
+  "settingsRememberDownloadedTitle": "Remember downloaded files",
+  "settingsRememberDownloadedSub": "Adds a history entry on completion (eMule \"Remember downloaded files\")",
+  "settingsDirEmptyError": "Directory path cannot be empty.",
+  "settingsDirSaved": "Default download directory updated successfully.",
+  "settingsDirProbeFailed": "Directory write probe failed.",
+  "settingsDirResetDone": "Reset to portable default directory.",
+  "settingsDirResetFailed": "Failed to reset download directory.",
+  "settingsCapPortsTitle": "Capacities & ports",
+  "settingsCapDlLabel": "Download capacity (KB/s)",
+  "settingsCapDlHint": "Declared downlink speed — caps the download limit at 90% (0 = none)",
+  "settingsCapUlLabel": "Upload capacity (KB/s)",
+  "settingsCapUlHint": "Declared uplink speed — USS reference, caps the upload limit at 80% (0 = none)",
+  "settingsTcpPortLabel": "TCP port",
+  "settingsTcpPortHint": "eD2K client port — immediate listener rebind",
+  "settingsUdpPortLabel": "UDP port",
+  "settingsUdpPortHint": "Kad/UDP port — hot socket rebind",
+  "settingsUdpEnabledTitle": "UDP enabled",
+  "settingsUdpEnabledSub": "Kad UDP, server UDP requests and UDP re-asks (eMule \"UDP disabled\")",
+  "settingsUpnpToggleTitle": "Set up ports via UPnP",
+  "settingsUpnpToggleSub": "Automatically maps/unmaps TCP+UDP on the router",
+  "settingsProtocolTitle": "Protocol & limits",
+  "settingsObfEnabledTitle": "Obfuscated connections supported",
+  "settingsObfEnabledSub": "eD2K/Kad protocol encryption (eMule \"Support obfuscated connections\")",
+  "settingsObfRequiredTitle": "Obfuscation required",
+  "settingsObfRequiredSub": "Rejects peers without encryption (eMule \"Require obfuscated connections\")",
+  "settingsUssTitle": "USS — Upload Speed Sense",
+  "settingsUssSub": "Dynamically adjusts the upload limit based on measured latency",
+  "settingsMaxConnLabel": "Max connections",
+  "settingsMaxConnHint": "Global peer-socket budget (eMule MaxConnections)",
+  "settingsConnPerMinLabel": "Connections / min",
+  "settingsConnPerMinHint": "New outbound connections per minute (eMule ≈ 240)",
+  "settingsServersTitle": "eD2K servers",
+  "settingsServerReconnectTitle": "Automatic reconnection",
+  "settingsServerReconnectSub": "Reconnects to the last server after a connection loss (eMule \"Reconnect\")",
+  "settingsServerAutoconnectTitle": "Connect at startup",
+  "settingsServerAutoconnectSub": "Automatically connects to the best known server at launch (eMule \"Autoconnect\")",
+  "settingsServerAutoremoveTitle": "Remove dead servers",
+  "settingsServerAutoremoveSub": "Removes a server from the list on first reconnection failure (eMule \"DeadServerRetry\" = 1)",
+  "settingsSafeConnectTitle": "Safe connect",
+  "settingsSafeConnectSub": "Blocks download resumption until either the eD2K server or Kad is available",
+  "settingsServerAutoupdateTitle": "Update server list at startup",
+  "settingsServerAutoupdateSub": "Imports the server.met file below at daemon launch",
+  "settingsServerMetLabel": "server.met file",
+  "settingsServerMetHint": "Local path of the .met file imported at startup (no HTTP fetch)",
+  "upnpConfiguredMsg": "UPnP configured (WAN IP: {ip}).",
+  "@upnpConfiguredMsg": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "upnpNoGateway": "UPnP gateway not detected or disabled on your router.",
+  "upnpRefreshFailed": "UPnP refresh failed: {error}",
+  "@upnpRefreshFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsInvalidNumMin": "{label}: \"{value}\" is invalid (integer ≥ {min} expected)",
+  "@settingsInvalidNumMin": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsInvalidNumRange": "{label}: \"{value}\" is invalid (integer between {min} and {max} expected)",
+  "@settingsInvalidNumRange": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "killSwitchConfirmTitle": "Disconnect all connections?",
+  "killSwitchConfirmBody": "The kill switch immediately cuts all network sockets (peers, servers, listeners) until manually re-enabled.",
+  "killSwitchConfirmAction": "Disconnect all",
+  "settingsMaxGlobalLabel": "Maximum sources (global)",
+  "settingsMaxGlobalHint": "Total simultaneous eD2K/Kad sources across all files",
+  "settingsMaxPerFileLabel": "Maximum sources per file",
+  "settingsMaxPerFileHint": "Default cap — overridable per file (FT_MAXSOURCES)",
+  "settingsMinPerFileLabel": "Minimum sources per file",
+  "settingsMinPerFileHint": "Guaranteed per-file source quota even when the global swarm is saturated",
+  "settingsMaxQueueLabel": "Max upload queue",
+  "settingsMaxQueueHint": "Clients waiting for an upload slot (eMule QueueSize, default 5000)",
+  "settingsMinUploadLabel": "Min upload rate per slot (KB/s)",
+  "settingsMinUploadHint": "Does not open a new slot below this threshold (eMule MinUpload, default 1)",
+  "settingsDailyQuotaLabel": "Daily upload quota (GiB, 0 = unlimited)",
+  "settingsDailyQuotaHint": "Emule-Sion option: beyond the quota, no upload slot is granted. Resets daily (UTC).",
+  "settingsAutoPriorityTitle": "Auto-priority for new downloads",
+  "settingsAutoPrioritySub": "Files ≥ 1 eD2K part (9.28 MiB) start at \"high\" priority",
+  "settingsSwarmHealingTitle": "Swarm healing",
+  "settingsSwarmHealingSub": "Emule-Sion option: prioritizes the rarest swarm parts (few remaining sources) to become a backup source before they vanish",
+  "settingsExclusiveTitle": "Emule-Sion exclusive options",
+  "settingsParanoidTitle": "Paranoid mode",
+  "settingsParanoidSub": "Only serves obfuscated peers whose Secure Ident signature was verified — classic eMule clients are rejected (greatly reduces compatibility)",
+  "settingsIdentityRotationLabel": "Identity rotation (hours, 0 = disabled)",
+  "settingsIdentityRotationHelper": "Periodically regenerates the RSA key, eD2K user hash and KadID. Invalidates accumulated credits — deliberately ephemeral identity.",
+  "settingsInvalidLimits": "Invalid limits: {fields}",
+  "@settingsInvalidLimits": {
+    "placeholders": {
+      "fields": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsLimitDlField": "download limit (KB/s)",
+  "settingsLimitUlField": "upload limit (KB/s)",
+  "settingsLimitConnField": "connections/minute",
+  "settingsIdentityRotationInvalid": "Identity rotation: \"{value}\" is invalid (integer between 0 and 8760 expected)",
+  "@settingsIdentityRotationInvalid": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "rateLimitsCapacityNote": "Limits are capped at 90% (download) / 80% (upload) of the declared line capacities (Connection tab).",
+  "settingsDiagnosticTile": "Daemon diagnostics",
+  "settingsDiagnosticSub": "Health, connections and internal statistics",
+  "settingsImportPartTile": "Import a .part.met",
+  "settingsImportPartSub": "Resume an existing eMule download",
+  "settingsLabGuideTile": "Lab mode guide",
+  "settingsLabGuideSub": "Loopback test scenarios without WAN traffic",
+  "settingsDebugBarTitle": "Debug simulation bar",
+  "settingsDebugBarOn": "Shows the simulation bar at the bottom of the screen",
+  "settingsDebugBarOff": "Only available with dev tools (ENABLE_DEV_TOOLS or fake daemon)",
+  "settingsDaemonVersion": "Daemon {version} — protocol {protocol}",
+  "@settingsDaemonVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "protocol": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsAddFriendTitle": "Add a friend",
+  "settingsUserHashLabel": "UserHash (hex)",
+  "settingsUserHashHint": "32 hexadecimal characters",
+  "settingsFriendNameLabel": "Name (optional)",
+  "settingsNoFriends": "No friends configured.",
+  "settingsRemoveFriendTooltip": "Remove",
+  "settingsRetentionDaysCustom": "{days} days",
+  "@settingsRetentionDaysCustom": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsDirCustomHelper": "Custom folder (persisted to DB, applied immediately)",
+  "settingsDirPortableHelper": "Default portable folder (<bundle_root>/downloads)",
+  "netBannerKillActive": "Kill switch active: all sockets are cut — inbound and outbound connections blocked.",
+  "netBannerPolicyActive": "Every socket is subject to the active network profile's constraints (allowlist, budgets, IP filter).",
+  "upnpGatewayConnected": "Connected",
+  "upnpGatewayAbsent": "Not detected / disabled",
+  "upnpIpUnknown": "Unknown",
+  "upnpMappedHighId": "Mapped (HighID)",
+  "upnpMappedOpen": "Mapped (Open)",
+  "upnpNotMapped": "Not mapped",
+  "netModePublicChip": "PUBLIC NETWORK (WAN)",
+  "netModeLabChip": "LAB (127.0.0.1)",
+  "netModePublicDesc": "Your client can reach public eD2K servers, external peers and the global Kademlia DHT.",
+  "netModeLabDesc": "All sockets are strictly confined to loopback 127.0.0.1. Zero packets on the Internet.",
+  "ipFilterActive": "Filter active",
+  "ipFilterDisabled": "Filter disabled",
+  "netProfileLocalLabDesc": "Confined to loopback (127.0.0.1 / ::1). Zero external sockets permitted.",
+  "netProfileEd2kDesc": "Outbound TCP to public eD2K peers/servers. Rejects private LAN & loopback (anti-SSRF).",
+  "netProfileEd2kKadDesc": "Preview WAN with UDP support for Kademlia routing. Strict address validation.",
+  "ipReportTotalLines": "Total lines read: {count}",
+  "@ipReportTotalLines": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportValidEntries": "Valid entries: {count}",
+  "@ipReportValidEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportCoalesced": "Coalesced (merged) ranges: {count}",
+  "@ipReportCoalesced": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportFinalRanges": "Final active intervals: {count}",
+  "@ipReportFinalRanges": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

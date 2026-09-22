@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../../l10n/l10n.dart';
+
 /// Human description of a [NetworkProfile] shown under its name.
-String networkProfileDescription(NetworkProfile profile) {
+String networkProfileDescription(BuildContext context, NetworkProfile profile) {
   switch (profile) {
     case NetworkProfile.localLab:
-      return 'Confined to loopback (127.0.0.1 / ::1). Zero external sockets permitted.';
+      return context.l10n.netProfileLocalLabDesc;
     case NetworkProfile.publicEd2kPreview:
-      return 'Outbound TCP to public eD2K peers/servers. Rejects private LAN & loopback (anti-SSRF).';
+      return context.l10n.netProfileEd2kDesc;
     case NetworkProfile.publicEd2kKadPreview:
-      return 'Preview WAN with UDP support for Kademlia routing. Strict address validation.';
+      return context.l10n.netProfileEd2kKadDesc;
   }
 }
 

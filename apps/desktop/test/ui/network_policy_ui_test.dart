@@ -156,8 +156,11 @@ void main() {
 
       expect(viewModel.currentNetworkProfile, NetworkProfile.localLab);
 
-      // Tap Disconnect All inside dialog
+      // Tap Disconnect All inside dialog — a confirmation dialog now
+      // intercepts the action (the kill switch cuts every socket).
       await tester.tap(find.byKey(const Key('kill_switch_dialog_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tout déconnecter'));
       await tester.pumpAndSettle();
 
       expect(viewModel.isNetworkKillSwitchActive, isTrue);

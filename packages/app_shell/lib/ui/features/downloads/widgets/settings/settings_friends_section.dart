@@ -4,6 +4,8 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../../app/providers.dart';
+import '../../../../../l10n/l10n.dart';
+import '../../../settings/views/sections/settings_section_scaffold.dart';
 
 /// Friends section: userhashes granted a dedicated upload slot bypassing
 /// the queue (eMule `friends.met` / friend slot) — `friends.list/add/remove`.
@@ -38,45 +40,50 @@ class _SettingsFriendsSectionState
   }
 
   Future<void> _addFriend() async {
+    final l10n = context.l10n;
     final hashCtl = TextEditingController();
     final nameCtl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.darkSurface,
-        title: const Text('Ajouter un ami'),
+        title: Text(l10n.settingsAddFriendTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: hashCtl,
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'UserHash (hex)',
-                hintText: '32 caractères hexadécimaux',
+              decoration: InputDecoration(
+                labelText: l10n.settingsUserHashLabel,
+                hintText: l10n.settingsUserHashHint,
               ),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: nameCtl,
-              decoration: const InputDecoration(labelText: 'Nom (optionnel)'),
+              decoration:
+                  InputDecoration(labelText: l10n.settingsFriendNameLabel),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(l10n.btnCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Ajouter'),
+            child: Text(l10n.ajouter),
           ),
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
     final hash = hashCtl.text.trim().toLowerCase();
+    final name = nameCtl.text.trim();
+    hashCtl.dispose();
+    nameCtl.dispose();
+    if (confirmed != true || !mounted) return;
     if (hash.length != 32 ||
         !RegExp(r'^[0-9a-f]{32}$').hasMatch(hash)) {
       return;
@@ -84,112 +91,76 @@ class _SettingsFriendsSectionState
     try {
       await ref
           .read(muleDaemonClientProvider)
-          .addFriend(hash, name: nameCtl.text.trim());
+          .addFriend(hash, name: name);
       _load();
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final l10n = context.l10n;
+    return SettingsSectionScaffold(
+      title: l10n.settingsSectionFriends,
+      subtitle: l10n.settingsFriendsSubtitle,
+      icon: Icons.people_alt_outlined,
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppTheme.primary.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: const Icon(
-            Icons.group_outlined,
-            size: 18,
-            color: AppTheme.primary,
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonalIcon(
+            icon: const Icon(Icons.person_add_alt_1, size: 16),
+            label: Text(l10n.settingsAddFriendTitle),
+            onPressed: _addFriend,
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        const SizedBox(height: 8),
+        if (_loading)
+          const SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        else if (_friends.isEmpty)
+          Text(
+            l10n.settingsNoFriends,
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          )
+        else
+          for (final f in _friends)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
                 children: [
-                  const Expanded(
-                    child: Text(
-                      'Amis',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                  const Icon(Icons.person_outline,
+                      size: 14, color: AppColors.textMuted),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Tooltip(
+                      message: f.userHash,
+                      child: Text(
+                        f.name.isNotEmpty ? f.name : f.userHash,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.person_add_alt_1, size: 16),
-                    tooltip: 'Ajouter un ami',
-                    onPressed: _addFriend,
+                    icon: const Icon(Icons.close, size: 14),
+                    tooltip: l10n.settingsRemoveFriendTooltip,
+                    onPressed: () async {
+                      try {
+                        await ref
+                            .read(muleDaemonClientProvider)
+                            .removeFriend(f.userHash);
+                        _load();
+                      } catch (_) {}
+                    },
                   ),
                 ],
               ),
-              const Text(
-                'Slot d\'upload dédié sans passer par la file (friend slot eMule).',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textMuted,
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (_loading)
-                const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (_friends.isEmpty)
-                const Text(
-                  'Aucun ami configuré.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                )
-              else
-                for (final f in _friends)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person_outline,
-                            size: 14, color: AppColors.textMuted),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Tooltip(
-                            message: f.userHash,
-                            child: Text(
-                              f.name.isNotEmpty ? f.name : f.userHash,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textPrimary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 14),
-                          tooltip: 'Retirer',
-                          onPressed: () async {
-                            try {
-                              await ref
-                                  .read(muleDaemonClientProvider)
-                                  .removeFriend(f.userHash);
-                              _load();
-                            } catch (_) {}
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-            ],
-          ),
-        ),
+            ),
       ],
     );
   }

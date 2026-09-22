@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+import '../../../../l10n/l10n.dart';
 import 'sections/advanced_section.dart';
 import 'sections/connection_section.dart';
 import 'sections/general_section.dart';
@@ -27,6 +28,13 @@ class _SettingsViewState extends State<SettingsView> {
     (s) => s.name == widget.initialSection,
     orElse: () => _SettingsSection.general,
   );
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +55,7 @@ class _SettingsViewState extends State<SettingsView> {
               for (final s in _SettingsSection.values)
                 _RailItem(
                   icon: _iconFor(s),
-                  label: _labelFor(s),
+                  label: _labelFor(context, s),
                   selected: _section == s,
                   onTap: () => setState(() => _section = s),
                 ),
@@ -55,18 +63,24 @@ class _SettingsViewState extends State<SettingsView> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: switch (_section) {
-                _SettingsSection.general => const SettingsGeneralSection(),
-                _SettingsSection.connection => const SettingsConnectionSection(),
-                _SettingsSection.transfers => const SettingsTransfersSection(),
-                _SettingsSection.security => const SettingsSecuritySection(),
-                _SettingsSection.friends => const SettingsFriendsSection(),
-                _SettingsSection.advanced => const SettingsAdvancedSection(),
-              },
+          child: Scrollbar(
+            controller: _scrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: switch (_section) {
+                  _SettingsSection.general => const SettingsGeneralSection(),
+                  _SettingsSection.connection =>
+                    const SettingsConnectionSection(),
+                  _SettingsSection.transfers => const SettingsTransfersSection(),
+                  _SettingsSection.security => const SettingsSecuritySection(),
+                  _SettingsSection.friends => const SettingsFriendsSection(),
+                  _SettingsSection.advanced => const SettingsAdvancedSection(),
+                },
+              ),
             ),
           ),
         ),
@@ -83,13 +97,14 @@ class _SettingsViewState extends State<SettingsView> {
         _SettingsSection.advanced => Icons.build_circle_outlined,
       };
 
-  static String _labelFor(_SettingsSection s) => switch (s) {
-        _SettingsSection.general => 'Général',
-        _SettingsSection.connection => 'Connexion',
-        _SettingsSection.transfers => 'Transferts',
-        _SettingsSection.security => 'Sécurité',
-        _SettingsSection.friends => 'Amis',
-        _SettingsSection.advanced => 'Avancé',
+  static String _labelFor(BuildContext context, _SettingsSection s) =>
+      switch (s) {
+        _SettingsSection.general => context.l10n.settingsSectionGeneral,
+        _SettingsSection.connection => context.l10n.settingsSectionConnection,
+        _SettingsSection.transfers => context.l10n.settingsSectionTransfers,
+        _SettingsSection.security => context.l10n.settingsSectionSecurity,
+        _SettingsSection.friends => context.l10n.settingsSectionFriends,
+        _SettingsSection.advanced => context.l10n.settingsSectionAdvanced,
       };
 }
 

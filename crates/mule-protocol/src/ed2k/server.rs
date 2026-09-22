@@ -16,8 +16,8 @@ pub use sources::{
 pub use types::{
     ed2k_file_type_term, CallbackRequest, CallbackRequested, OfferFiles, OfferedFile,
     ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus,
-    OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT, SRV_TCPFLG_COMPRESSION,
-    SRV_TCPFLG_LARGEFILES,
+    OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT, OFFER_INCOMPLETE_CLIENT_ID,
+    OFFER_INCOMPLETE_CLIENT_PORT, SRV_TCPFLG_COMPRESSION, SRV_TCPFLG_LARGEFILES,
 };
 
 use super::error::{Ed2kErrorKind, Ed2kParseError};

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../../app/providers.dart';
+import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/network/ip_filter_tab.dart';
 import '../../../downloads/widgets/network/rate_limits_tab.dart';
 import '../../widgets/anti_ssrf_notice.dart';
@@ -26,7 +27,17 @@ class _SettingsSecuritySectionState
   final _uploadLimitController = TextEditingController();
   final _connLimitController = TextEditingController();
   final _identityRotationController = TextEditingController();
-  bool _isLoading = false;
+
+  /// Champs en cours d'édition : jamais écrasés par une resynchronisation
+  /// externe (`settings.changed`, `network.policyChanged`, autre client).
+  final Set<TextEditingController> _dirty = {};
+
+  /// Chargement initial (spinner plein cadre).
+  bool _isLoading = true;
+
+  /// Action RPC en cours (toggle filtre, import, limites) — barre fine,
+  /// le contenu reste affiché au lieu d'être remplacé par un spinner.
+  bool _busy = false;
 
   @override
   void initState() {
@@ -44,37 +55,53 @@ class _SettingsSecuritySectionState
     super.dispose();
   }
 
+  void _syncText(TextEditingController ctrl, Object? value) {
+    final v = value?.toString() ?? '';
+    if (!_dirty.contains(ctrl) && ctrl.text != v) ctrl.text = v;
+  }
+
+  void _syncFromLimits(RateLimitsModel? limits) {
+    if (limits == null) return;
+    _syncText(
+      _downloadLimitController,
+      limits.downloadBytesPerSec ~/ 1024,
+    );
+    _syncText(_uploadLimitController, limits.uploadBytesPerSec ~/ 1024);
+    _syncText(_connLimitController, limits.connectionsPerMinute);
+  }
+
+  void _syncFromSettings() {
+    final s = ref.read(settingsControllerProvider).settings;
+    _syncText(_identityRotationController, s['identityRotationHours'] ?? 0);
+  }
+
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
     final ctl = ref.read(networkPolicyControllerProvider);
     await ctl.fetchFilterStatus();
     await ctl.fetchRateLimits();
 
-    final limits = ref.read(networkPolicyControllerProvider).rateLimits;
-    if (limits != null) {
-      _downloadLimitController.text =
-          (limits.downloadBytesPerSec ~/ 1024).toString();
-      _uploadLimitController.text =
-          (limits.uploadBytesPerSec ~/ 1024).toString();
-      _connLimitController.text =
-          limits.connectionsPerMinute.toString();
+    if (mounted) {
+      _syncFromLimits(ref.read(networkPolicyControllerProvider).rateLimits);
     }
     await ref.read(settingsControllerProvider).fetch();
     if (mounted) {
-      final s = ref.read(settingsControllerProvider).settings;
-      _identityRotationController.text =
-          '${s['identityRotationHours'] ?? 0}';
+      _syncFromSettings();
+      setState(() => _isLoading = false);
     }
-    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(networkPolicyControllerProvider, (_, next) {
+      _syncFromLimits(next.rateLimits);
+    });
+    ref.listen(settingsControllerProvider, (_, __) => _syncFromSettings());
     final ctl = ref.watch(networkPolicyControllerProvider);
+    final l10n = context.l10n;
 
     return SettingsSectionScaffold(
-      title: 'Sécurité',
-      subtitle: 'Filtre IP, limites de débit et politique anti-SSRF',
+      title: l10n.settingsSectionSecurity,
+      subtitle: l10n.settingsSecuritySubtitle,
       icon: Icons.security_rounded,
       children: [
         const AntiSsrfNotice(),
@@ -82,26 +109,31 @@ class _SettingsSecuritySectionState
         if (_isLoading)
           const Center(child: CircularProgressIndicator())
         else ...[
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
           IpFilterTab(
             status: ctl.filterStatus,
             filePathController: _filePathController,
             onToggle: (enabled) async {
-              setState(() => _isLoading = true);
+              setState(() => _busy = true);
               await ctl.setFilterEnabled(enabled);
-              if (mounted) setState(() => _isLoading = false);
+              if (mounted) setState(() => _busy = false);
             },
             onImport: (path) async {
-              setState(() => _isLoading = true);
+              setState(() => _busy = true);
               final ok = await ctl.importFilterFile(path);
               if (mounted) {
-                setState(() => _isLoading = false);
+                setState(() => _busy = false);
                 if (ok) _filePathController.clear();
               }
             },
             onClear: () async {
-              setState(() => _isLoading = true);
+              setState(() => _busy = true);
               await ctl.clearFilter();
-              if (mounted) setState(() => _isLoading = false);
+              if (mounted) setState(() => _busy = false);
             },
           ),
           const SizedBox(height: 20),
@@ -110,13 +142,14 @@ class _SettingsSecuritySectionState
             uploadLimitController: _uploadLimitController,
             connLimitController: _connLimitController,
             onSave: _saveLimits,
+            onChanged: (ctrl) => _dirty.add(ctrl),
           ),
           const SizedBox(height: 20),
           const Divider(color: AppTheme.darkBorder),
           const SizedBox(height: 8),
-          const Text(
-            'Options exclusives Emule-Sion',
-            style: TextStyle(
+          Text(
+            l10n.settingsExclusiveTitle,
+            style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
@@ -126,15 +159,13 @@ class _SettingsSecuritySectionState
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             dense: true,
-            title: const Text(
-              'Mode paranoid',
-              style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+            title: Text(
+              l10n.settingsParanoidTitle,
+              style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
             ),
-            subtitle: const Text(
-              'Ne sert que les pairs obfusqués dont la signature Secure '
-              'Ident a été vérifiée — les clients eMule classiques sont '
-              'refusés (réduit fortement la compatibilité)',
-              style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+            subtitle: Text(
+              l10n.settingsParanoidSub,
+              style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
             ),
             value: ref
                     .watch(settingsControllerProvider)
@@ -150,20 +181,19 @@ class _SettingsSecuritySectionState
             keyboardType: TextInputType.number,
             style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
             decoration: InputDecoration(
-              labelText: 'Rotation d\'identité (heures, 0 = désactivée)',
-              helperText:
-                  'Régénère la clé RSA, le user hash eD2K et le KadID '
-                  'périodiquement. Invalide les crédits accumulés — identité '
-                  'volontairement éphémère.',
+              labelText: l10n.settingsIdentityRotationLabel,
+              helperText: l10n.settingsIdentityRotationHelper,
               helperStyle:
                   const TextStyle(fontSize: 11, color: AppColors.textMuted),
               isDense: true,
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.save_rounded, size: 18),
+                tooltip: l10n.settingsApply,
                 onPressed: _saveIdentityRotation,
               ),
             ),
+            onChanged: (_) => _dirty.add(_identityRotationController),
             onSubmitted: (_) => _saveIdentityRotation(),
           ),
         ],
@@ -172,31 +202,62 @@ class _SettingsSecuritySectionState
   }
 
   Future<void> _saveLimits() async {
-    final dlKb = int.tryParse(_downloadLimitController.text.trim()) ?? 0;
-    final ulKb = int.tryParse(_uploadLimitController.text.trim()) ?? 0;
-    final current = ref.read(networkPolicyControllerProvider).rateLimits;
-    final conn = int.tryParse(_connLimitController.text.trim()) ??
-        current?.connectionsPerMinute ??
-        240;
+    final l10n = context.l10n;
+    final dlKb = int.tryParse(_downloadLimitController.text.trim());
+    final ulKb = int.tryParse(_uploadLimitController.text.trim());
+    final conn = int.tryParse(_connLimitController.text.trim());
+    final invalid = <String>[
+      if (dlKb == null || dlKb < 0) l10n.settingsLimitDlField,
+      if (ulKb == null || ulKb < 0) l10n.settingsLimitUlField,
+      if (conn == null || conn <= 0) l10n.settingsLimitConnField,
+    ];
+    if (invalid.isNotEmpty) {
+      ref
+          .read(shellControllerProvider)
+          .setError(l10n.settingsInvalidLimits(invalid.join(', ')));
+      return;
+    }
 
+    final current = ref.read(networkPolicyControllerProvider).rateLimits;
     final limits = RateLimitsModel(
-      downloadBytesPerSec: dlKb * 1024,
-      uploadBytesPerSec: ulKb * 1024,
-      connectionsPerMinute: conn,
+      downloadBytesPerSec: dlKb! * 1024,
+      uploadBytesPerSec: ulKb! * 1024,
+      connectionsPerMinute: conn!,
       serverRequestsPerSec: current?.serverRequestsPerSec ?? 10,
       kadPacketsPerSec: current?.kadPacketsPerSec ?? 50,
     );
 
-    setState(() => _isLoading = true);
+    setState(() => _busy = true);
     await ref.read(networkPolicyControllerProvider).setRateLimits(limits);
-    if (mounted) setState(() => _isLoading = false);
+    // Le daemon peut clamper les limites à la capacité de ligne déclarée
+    // (eMule : limite ≤ 90 %/80 % de la capacité) — on reflète les valeurs
+    // effectivement appliquées.
+    if (mounted) {
+      _dirty
+        ..remove(_downloadLimitController)
+        ..remove(_uploadLimitController)
+        ..remove(_connLimitController);
+      _syncFromLimits(ref.read(networkPolicyControllerProvider).rateLimits);
+      setState(() => _busy = false);
+    }
   }
 
   Future<void> _saveIdentityRotation() async {
-    final hours = int.tryParse(_identityRotationController.text.trim()) ?? 0;
-    if (hours < 0 || hours > 8760) return;
-    await ref
+    final l10n = context.l10n;
+    final raw = _identityRotationController.text.trim();
+    final hours = int.tryParse(raw);
+    if (hours == null || hours < 0 || hours > 8760) {
+      ref
+          .read(shellControllerProvider)
+          .setError(l10n.settingsIdentityRotationInvalid(raw));
+      return;
+    }
+    final ok = await ref
         .read(settingsControllerProvider)
         .updateSettings({'identityRotationHours': hours});
+    if (ok && mounted) {
+      _dirty.remove(_identityRotationController);
+      _syncFromSettings();
+    }
   }
 }

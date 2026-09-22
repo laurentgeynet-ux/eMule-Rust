@@ -1102,12 +1102,15 @@ class RpcDaemonClient implements MuleDaemonClient {
   @override
   Future<List<SharedFileModel>> listSharedFiles() async {
     final resp = await _call('shares.list', {});
-    if (resp is List) {
-      return resp
-          .map((e) => SharedFileModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-    }
-    return [];
+    final raw = resp is Map<String, dynamic>
+        ? resp['sharedFiles'] as List? ?? const []
+        : resp is List
+            ? resp
+            : const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(SharedFileModel.fromJson)
+        .toList();
   }
 
   @override
@@ -1408,13 +1411,10 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<UpnpStatusModel> mapUpnpPorts({
-    int tcpPort = 39735,
-    int udpPort = 39737,
-  }) async {
+  Future<UpnpStatusModel> mapUpnpPorts({int? tcpPort, int? udpPort}) async {
     final resp = await _call('upnp.mapPorts', {
-      'tcpPort': tcpPort,
-      'udpPort': udpPort,
+      if (tcpPort != null) 'tcpPort': tcpPort,
+      if (udpPort != null) 'udpPort': udpPort,
     });
     return UpnpStatusModel.fromJson(resp as Map<String, dynamic>? ?? {});
   }

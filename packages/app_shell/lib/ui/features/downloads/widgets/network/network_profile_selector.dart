@@ -71,7 +71,7 @@ class NetworkProfileSelector extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            networkProfileDescription(p),
+                            networkProfileDescription(context, p),
                             style: TextStyle(
                               fontSize: 10,
                               color: AppColors.textPrimary

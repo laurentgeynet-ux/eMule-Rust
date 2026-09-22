@@ -247,11 +247,13 @@ pub struct OfferedFile {
 }
 
 impl OfferedFile {
-    /// Builds an offered-file entry for a *complete* shared file, following
-    /// eMule's server publishing rules (`CreateOfferedFilePacket`):
-    /// marker IDs when `srv_compression`, real ID+port when HighID, `0`
-    /// otherwise; large files get the split `FT_FILESIZE`/`FT_FILESIZE_HI`
-    /// pair only when the server supports them.
+    /// Builds an offered-file entry for a shared file, following eMule's
+    /// server publishing rules (`CreateOfferedFilePacket`): when the server
+    /// supports `SRV_TCPFLG_COMPRESSION`, incomplete files (part files) carry
+    /// the `0xFCFCFCFC`/`0xFCFC` marker pair and complete files the
+    /// `0xFBFBFBFB`/`0xFBFB` pair; otherwise a HighID publishes its real
+    /// ID+port (`0` when LowID). Large files get the split
+    /// `FT_FILESIZE`/`FT_FILESIZE_HI` pair only when the server supports them.
     pub fn for_server(
         file_hash: [u8; 16],
         file_name: &str,
@@ -259,6 +261,7 @@ impl OfferedFile {
         our_client_id: u32,
         our_tcp_port: u16,
         server_tcp_flags: u32,
+        is_partial: bool,
     ) -> Option<Self> {
         const LARGE_FILE: u64 = 0xFFFF_FFFF;
         let is_large = file_size > LARGE_FILE;
@@ -268,7 +271,11 @@ impl OfferedFile {
         }
 
         let (client_id, client_port) = if server_tcp_flags & SRV_TCPFLG_COMPRESSION != 0 {
-            (OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT)
+            if is_partial {
+                (OFFER_INCOMPLETE_CLIENT_ID, OFFER_INCOMPLETE_CLIENT_PORT)
+            } else {
+                (OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT)
+            }
         } else if our_client_id >= 16_777_216 {
             // HighID: publish our real client ID + TCP port.
             (our_client_id, our_tcp_port)

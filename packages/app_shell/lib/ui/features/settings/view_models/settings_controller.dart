@@ -66,11 +66,11 @@ class SettingsController extends ChangeNotifier {
     try {
       await client.setDefaultDownloadDirectory(path);
       await fetch();
-      onStatus?.call('Updated default download directory');
+      onStatus?.call('Dossier de téléchargement par défaut mis à jour');
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to set default download directory: $e');
+      onError?.call('Échec de la définition du dossier de téléchargement : $e');
       notifyListeners();
       return false;
     }
@@ -80,11 +80,11 @@ class SettingsController extends ChangeNotifier {
     try {
       await client.resetDefaultDownloadDirectory();
       await fetch();
-      onStatus?.call('Reset download directory to portable default');
+      onStatus?.call('Dossier de téléchargement réinitialisé (défaut portable)');
       notifyListeners();
       return true;
     } catch (e) {
-      onError?.call('Failed to reset default download directory: $e');
+      onError?.call('Échec de la réinitialisation du dossier de téléchargement : $e');
       notifyListeners();
       return false;
     }

@@ -688,10 +688,8 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<UpnpStatusModel> setUpnpEnabled(bool enabled) async => getUpnpStatus();
 
   @override
-  Future<UpnpStatusModel> mapUpnpPorts({
-    int tcpPort = 39735,
-    int udpPort = 39737,
-  }) async => getUpnpStatus();
+  Future<UpnpStatusModel> mapUpnpPorts({int? tcpPort, int? udpPort}) async =>
+      getUpnpStatus();
 
   @override
   Future<UpnpStatusModel> unmapUpnpPorts() async => getUpnpStatus();

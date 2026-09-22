@@ -100,6 +100,35 @@ void main() {
                 'updatedAtUnixMs': 1726000002000,
               },
             }));
+          } else if (method == 'shares.list') {
+            ws.add(jsonEncode({
+              'jsonrpc': '2.0',
+              'id': id,
+              'result': {
+                'sharedFiles': [
+                  {
+                    'fileHash': 'abc123',
+                    'fileName': 'done.bin',
+                    'fileSize': 5000000,
+                    'filePath': 'C:/Incoming/done.bin',
+                    'sharedAtUnixMs': 1726000005000,
+                    'enabled': true,
+                    'upPriority': 'high',
+                  },
+                  {
+                    'fileHash': 'def456',
+                    'fileName': 'partial.bin',
+                    'fileSize': 20000000,
+                    'filePath': 'C:/Incoming/001.part',
+                    'sharedAtUnixMs': 1726000006000,
+                    'enabled': true,
+                    'upPriority': 'normal',
+                    'isPartial': true,
+                    'completedParts': [0],
+                  },
+                ],
+              },
+            }));
           }
         });
       });
@@ -241,6 +270,23 @@ void main() {
       final updated = await client.pauseDownload('dl-100');
       expect(updated.status, DownloadStatus.paused);
       expect(updated.downloadRateBps, 0);
+
+      client.dispose();
+    });
+
+    test('listSharedFiles parses the sharedFiles envelope', () async {
+      final client = RpcDaemonClient();
+      await client.connect(
+        url: Uri.parse('ws://127.0.0.1:$port/rpc'),
+        token: 'valid',
+      );
+
+      final files = await client.listSharedFiles();
+      expect(files.length, 2);
+      expect(files[0].fileName, 'done.bin');
+      expect(files[0].upPriority, 'high');
+      expect(files[1].isPartial, isTrue);
+      expect(files[1].completedParts, [0]);
 
       client.dispose();
     });

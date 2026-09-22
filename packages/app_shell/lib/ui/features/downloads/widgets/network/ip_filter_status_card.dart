@@ -37,7 +37,9 @@ class IpFilterStatusCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      enabled ? 'Filtre actif' : 'Filtre désactivé',
+                      enabled
+                          ? context.l10n.ipFilterActive
+                          : context.l10n.ipFilterDisabled,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: enabled
