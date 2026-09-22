@@ -32,9 +32,13 @@ Voir `docs/architecture/rpc_protocol.md`. Résumé :
 - Endpoint `ws://<host>:<port>/rpc`, JSON-RPC 2.0, corrélation par `id`
 - Handshake `system.hello {protocolVersion, token}` → capabilities +
   `DaemonInfo` (version, `instanceId`, `sessionId`)
-- Notifications : `event.downloadUpdated`, `event.peerSessionUpdated`,
-  `server.sessionUpdated`, `server.searchResult`, `server.foundSources`,
-  `event.snapshotRequired`
+- Notifications : `event.downloadUpdated`, `event.downloadAdded/Removed/
+  Completed/Failed`, `event.peerSessionUpdated`, `server.sessionUpdated`,
+  `server.searchResult`, `server.foundSources`, `upload.uploadsUpdated`,
+  `event.statsTick`, `kad.statusChanged`, `history.entryAdded`,
+  `settings.changed`, `network.policyChanged`, `upnp.statusChanged`,
+  `event.snapshotRequired` — chacune dispatchée sur un stream typé
+  (`downloadEvents`, `upnpStatusEvents`, …)
 - Filtrage : `events.subscribe {topics: ["downloads","peers","servers","search"]}`
 
 ## Comportements transport

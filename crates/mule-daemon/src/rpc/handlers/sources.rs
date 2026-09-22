@@ -294,6 +294,7 @@ software: None,
             obf_enabled,
             obf_required,
             state.config.obfuscation_padding_max,
+            state.sx_env.clone(),
         )
         .await?;
 

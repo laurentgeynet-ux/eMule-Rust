@@ -5,6 +5,105 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Liaison RPC auditée — `upnp.statusChanged` câblé de bout en bout**
+  (`mule-daemon`, `mule-mcp`, `mule_client`, `app_shell`) — audit complet
+  du contrat JSON-RPC/WebSocket (méthodes, events, handshake, supervision)
+  et corrections :
+  - **Daemon** : nouvelle variante typée `DaemonEvent::UpnpStatusChanged`
+    (méthode `upnp.statusChanged`, topic `network`, payload = snapshot
+    `UpnpStatus` complet). Les handlers `upnp.*` passent désormais par
+    `DaemonEvent::send` — `services/events.rs` redevient la source unique
+    du format wire pour **tous** les events.
+  - **Client Dart** : nouveau stream `MuleDaemonClient.upnpStatusEvents`,
+    handler `upnp.statusChanged` dans `RpcDaemonClient`, implémentations
+    dans `FakeMuleDaemonClient` et les mocks de tests ; `UpnpStatusModel`
+    expose `cgnatDetected` (champ du snapshot auparavant ignoré).
+  - **UI** : la carte UPnP des Paramètres → Connexion s'abonne au flux et
+    se rafraîchit sur tout changement asynchrone (retries de mappage en
+    arrière-plan du daemon), plus seulement sur action utilisateur.
+  - **mule-mcp** : suppression du listener mort `kad.searchResult`
+    (jamais émis — les résultats `kad.searchKeywords` sont synchrones).
+  - Contrôle complet : ~95 méthodes dispatchées, toutes celles appelées
+    par le client Flutter ont un handler ; `cargo check`/`clippy`,
+    `rpc_contract`, `flutter analyze`/`test` verts.
+
+- **Cycle de vie `.part` / `.part.met` durci — parité `CPartFile` eMule**
+  (`mule-daemon`, `mule-protocol`) — audit complet de la gestion des
+  fichiers partiels et corrections :
+  - **Pause effective en transfert actif** : les sessions pairs vérifient
+    le statut du download avant chaque bloc planifié (début de session et
+    boucle pipeline dans `transfer.rs`) et s'arrêtent proprement ;
+    `inject_range` ne ramène vers `Downloading` que depuis
+    `Queued`/`WaitingForSources` — un bloc en vol sur un download
+    `Paused`/`Failed`/`Removed` s'écrit sans dépauser ni ressusciter
+    (sémantique eMule : écritures en vol terminées, requêtes stoppées).
+  - **Écriture garantie avant persistance** : si le descripteur `.part`
+    est absent, `inject_range` le rouvre à la demande ; en cas d'échec,
+    erreur remontée au lieu de marquer la plage reçue sans octets écrits
+    (fini les boucles verify-fail fantômes à 100 %).
+  - **Intégrité upload** : suppression du fallback synthétique `0x77` —
+    une lecture disque défaillante sur un partage laisse la requête sans
+    réponse (comportement eMule) au lieu d'empoisonner le demandeur.
+  - **Scan d'orphelins au démarrage** : `recover_orphan_part_mets` scanne
+    le temp dir pour les `*.part.met` inconnus de la base (DB perdue ou
+    fichiers déposés par eMule) et les importe via le chemin sandboxé
+    habituel — vérification des hashsets, éviction des parts corrompues,
+    statut `Paused`, zéro réseau. Le `.part` est **adopté in-place**
+    (`rename` atomique vers `{uuid}.part`, pas de copie), le met source
+    consommé ; mets malformés ignorés avec `warn`, jamais de crash.
+  - **Persistance continue des mets** : `save_active_part_mets` écrit les
+    `.part.met` des downloads non terminaux — cadence ~60 s dans le
+    heartbeat du `SwarmCoordinator` (eMule `SavePartFile`) + flush
+    explicite dans le graceful shutdown — un crash ne laisse plus un met
+    périmé.
+  - **Suppression keep-files sans résurrection** : `downloads.remove`
+    avec `deleteFiles=false` renomme le compagnon en `*.part.met.keep`
+    (invisible au scan d'orphelins, toujours importable via
+    `downloads.importPartMet` avec `partPath` explicite) ; code mort
+    `cancel_download` supprimé.
+  - **Pureté `mule-protocol` restaurée** (ADR 0003) : `ed2k::storage`
+    (`Ed2kPartFileSink`, `.resume.json`) gaté derrière `ed2k-loopback`,
+    `serde_json` rendu optionnel — la crate reste sans I/O en build
+    standard.
+
+- **Source Exchange (SX) aligné sur eMule 0.72a** (`mule-protocol`,
+  `mule-daemon`) — audit complet contre `srchybrid`
+  (`docs/ed2k/messages/source_exchange.md`) :
+  - **Négociation version/opcode fidèle** : la réponse suit
+    `byUsedVersion = min(byRequestedVersion, 4)` en SX2 et bascule en
+    `OP_ANSWERSOURCES` SX1 (version `GetSourceExchange1Version`) quand le
+    demandeur n'envoie pas SX2 — auparavant `OP_ANSWERSOURCES2` v4 était
+    systématique et droppé par les clients SX1/SX2<v4
+    (`PartFile.cpp:3629-3646`).
+  - **Sous-opcodes `OP_MULTIPACKET*`** : les requêtes SX embarquées
+    (`0x92`/`0xA4`/`0xA9`, hash porté par l'enveloppe) sont décodées et
+    dispatchées vers le même handler — le cas typique des clients eMule,
+    inbound comme sur les sessions download. `OP_REQFILENAME` /
+    `OP_FILESTATUS` / `OP_AICHFILEHASHREQ` reçoivent une
+    `OP_MULTIPACKETANSWER` groupée ; l'ext-info `0x58` (part-status du
+    demandeur, lu selon la `ExtendedRequestsVersion` négociée) alimente
+    le `reqstatus` SX.
+  - **Filtrage à l'ingestion (`AddClientSources`/`CanAddSource`)** :
+    `userhash == own`, port 0, IP mauvaise/LAN (policy réseau) ou filtrée
+    (`ipfilter`), LowID quand on est firewalled, self `client_id`+serveur,
+    cap `GetMaxSources` (défaut 400) ; persistance dédupliquée.
+  - **Sélection des sources servies (`CreateSrcInfoPacket`)** : uniquement
+    `!HasLowID && IsValidSource` avec masque compatible et ≥ 1 part utile
+    au demandeur, cap 501 ; silence si `nCount == 0` ou fichier inconnu
+    (shared **ou** download partiel servi).
+  - **Throttles eMule** : réponses rate-limitées `SOURCECLIENTREASKS`
+    40 min/client (×4 hors part-file rare ≤ `RARE_FILE` = 50) ; requêtes
+    gouvernées par `IsSourceRequestAllowed` (`SOURCECLIENTREASKF`,
+    `CONNECTION_LATENCY`, `GetMaxSourcePerFileSoft`).
+  - **Re-ask périodique** : `OP_REQUESTSOURCES(2)` rattaché au cycle de
+    reask (keep-alive queue + boucle de transfert) au lieu du seul
+    handshake.
+  - **Wire strict** : endianness SX1 v<3 en network order corrigée,
+    version 0/>4 droppée, `count × entry_size == len` exigé.
+  - **Échecs permanents** : refus de permis réseau (`AddressViolation`/
+    `IpFiltered`) marque la source `Rejected` au lieu de boucler
+    `Permit denied` dans le coordinateur.
+
 - **Kad DHT — durcissement d'interopérabilité eMule 0.72a** (audit des
   sources officielles `srchybrid/kademlia/` + diagnostic du log WAN) :
 

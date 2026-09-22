@@ -350,12 +350,16 @@ impl Ed2kEncoder {
         super::source_exchange::encode_request_sources(req)
     }
 
-    /// Encodes a Source Exchange response (`OP_ANSWERSOURCES2`).
+    /// Encodes a Source Exchange response. `is_sx2` selects
+    /// `OP_ANSWERSOURCES2` (`0x84`) or the legacy `OP_ANSWERSOURCES` (`0x82`)
+    /// envelope, matching the opcode the requester used (eMule
+    /// `bIsSX2Packet`, `PartFile.cpp:3705`).
     pub fn encode_answer_sources(
         &self,
         ans: &super::source_exchange::Ed2kAnswerSources,
+        is_sx2: bool,
         force_compress: bool,
     ) -> Result<crate::framing::RawPacket, Ed2kEncodeError> {
-        super::source_exchange::encode_answer_sources(ans, force_compress)
+        super::source_exchange::encode_answer_sources(ans, is_sx2, force_compress)
     }
 }

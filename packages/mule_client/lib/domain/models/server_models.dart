@@ -1110,6 +1110,7 @@ class UpnpStatusModel {
   final bool udpMapped;
   final int tcpPort;
   final int udpPort;
+  final bool cgnatDetected;
   final String? lastError;
   final int updatedAtUnixMs;
 
@@ -1122,6 +1123,7 @@ class UpnpStatusModel {
     this.udpMapped = false,
     this.tcpPort = 39735,
     this.udpPort = 39737,
+    this.cgnatDetected = false,
     this.lastError,
     this.updatedAtUnixMs = 0,
   });
@@ -1136,6 +1138,7 @@ class UpnpStatusModel {
       udpMapped: json['udpMapped'] == true,
       tcpPort: (json['tcpPort'] as num?)?.toInt() ?? 39735,
       udpPort: (json['udpPort'] as num?)?.toInt() ?? 39737,
+      cgnatDetected: json['cgnatDetected'] == true,
       lastError: json['lastError'] as String?,
       updatedAtUnixMs: (json['updatedAtUnixMs'] as num?)?.toInt() ?? 0,
     );

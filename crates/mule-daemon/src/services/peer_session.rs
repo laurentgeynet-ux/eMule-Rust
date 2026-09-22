@@ -344,6 +344,7 @@ impl PeerSessionManager {
             obfuscation_enabled,
             obfuscation_required,
             obfuscation_padding_max,
+            source_exchange::SxEnv::new(policy_mgr, user_hash),
         )
         .await
     }
@@ -367,6 +368,7 @@ impl PeerSessionManager {
         obfuscation_enabled: bool,
         obfuscation_required: bool,
         obfuscation_padding_max: u8,
+        sx_env: source_exchange::SxEnv,
     ) -> Result<PeerSessionSnapshot, DaemonError> {
         let address = target_addr.to_string();
         let dl_hash_bytes = hex::decode(file_hash)
@@ -461,6 +463,7 @@ impl PeerSessionManager {
                 identity_opt,
                 sui_stats,
                 rate_limiters_opt,
+                sx_env,
             )
             .await;
 
@@ -590,13 +593,14 @@ impl PeerSessionManager {
         peer_addr: SocketAddr,
         file_hash: &str,
         source_address: String,
-        peer_supports_sx: bool,
-        peer_supports_sx2: bool,
+        sx_caps: source_exchange::PeerSxCaps,
         peer_supports_aich: bool,
         peer_sec_ident: u8,
         peer_ext_req: u8,
         downloads: Arc<Mutex<DownloadService>>,
         cancel_token: mule_network_policy::CancellationToken,
+        sx_env: source_exchange::SxEnv,
+        sx_local: source_exchange::SxLocalIds,
     ) -> Result<PeerSessionSnapshot, DaemonError> {
         let address = peer_addr.to_string();
         let dl_hash_bytes = hex::decode(file_hash)
@@ -673,8 +677,7 @@ impl PeerSessionManager {
                 file_hash_str.clone(),
                 dl_hash_arr,
                 address_str.clone(),
-                peer_supports_sx,
-                peer_supports_sx2,
+                sx_caps,
                 peer_supports_aich,
                 peer_sec_ident,
                 peer_ext_req,
@@ -687,6 +690,8 @@ impl PeerSessionManager {
                 identity_opt,
                 sui_stats,
                 rate_limiters_opt,
+                sx_env,
+                sx_local,
             )
             .await;
 

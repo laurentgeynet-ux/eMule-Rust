@@ -24,6 +24,7 @@ pub mod server;
 pub mod server_udp;
 pub mod session;
 pub mod source_exchange;
+#[cfg(feature = "ed2k-loopback")]
 pub mod storage;
 pub mod tags;
 
@@ -97,6 +98,7 @@ pub use source_exchange::{
     Ed2kAnswerSources, Ed2kRequestSources, SxSource, MAX_SX_SOURCES_PER_PACKET,
     SOURCE_EXCHANGE2_VERSION,
 };
+#[cfg(feature = "ed2k-loopback")]
 pub use storage::{Ed2kBlockWriter, Ed2kPartDownloadStatus, Ed2kPartFileSink, Ed2kPartResumeState};
 pub use tags::{
     Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_FILESIZE,

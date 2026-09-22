@@ -19,7 +19,9 @@ use mule_protocol::ed2k::{
 use mule_protocol::framing::PacketCodec;
 
 use super::events::{emit_download_update, emit_event};
-use super::source_exchange::{handle_sx_answer, handle_sx_request};
+use super::source_exchange::{
+    handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
+};
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
 };
@@ -45,6 +47,17 @@ fn is_previewable_media(file_name: &str) -> bool {
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| PREVIEW_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// Statuts pour lesquels une session peer peut émettre de nouvelles requêtes
+/// de blocs. Un download pausé/échoué/retiré ne doit plus rien demander —
+/// les écritures déjà en vol sont tout de même persistées côté `inject_range`
+/// (eMule termine les blocs en vol sans dépauser le partfile).
+fn is_download_active_status(status: &str) -> bool {
+    matches!(
+        status.to_lowercase().as_str(),
+        "queued" | "downloading" | "waiting_for_sources" | "waitingforsources"
+    )
 }
 
 fn encode_block_request(
@@ -131,6 +144,9 @@ pub(crate) async fn run_transfer_loop(
     event_tx: &broadcast::Sender<String>,
     sequence: &Arc<AtomicU64>,
     downloads: &Arc<Mutex<DownloadService>>,
+    sx_caps: &PeerSxCaps,
+    sx_env: &SxEnv,
+    sx_local: &SxLocalIds,
     sui: &mut super::sui::OutboundSui,
     rate_limiters: Option<&mule_network_policy::PolicyRateLimiters>,
 ) -> Result<u64, PeerError> {
@@ -140,6 +156,12 @@ pub(crate) async fn run_transfer_loop(
     let mut out_wire = Vec::with_capacity(64);
     let mut read_buf = BytesMut::with_capacity(65536);
     let mut raw_buf = [0u8; 8192];
+    // État du pair capturé avant que `file_status` ne soit consommé par le
+    // sequencer : part-status du demandeur (`reqstatus` eMule pour les
+    // réponses SX) et complétude (`m_bCompleteSource` — eMule ne demande
+    // pas de sources à une source complète).
+    let peer_part_status: Vec<u8> = file_status.availability_mask.raw_bytes().to_vec();
+    let peer_is_complete = file_status.is_complete();
 
     // Flush any pending AICH recovery requests accumulated before this session
     // (eMule SendAICHRequest for corrupted parts).
@@ -163,6 +185,15 @@ pub(crate) async fn run_transfer_loop(
                 "Download not found in local service",
             )
         })?;
+        // The download may have been paused/stopped between scheduling and
+        // session start — never request blocks for an inactive file.
+        if !is_download_active_status(&dl.status) {
+            info!(
+                "Peer {target_addr}: download '{}' is '{}' — no block requests will be sent",
+                dl.file_name, dl.status
+            );
+            return Ok(0);
+        }
         let ranges = dl_svc.get_completed_ranges_by_hash(file_hash_str);
         // Swarm healing (Emule-Sion `swarm_healing` setting) : biaise le
         // choix de part vers les plus rares du swarm (sources connues).
@@ -355,6 +386,15 @@ pub(crate) async fn run_transfer_loop(
         sequence,
     };
 
+    // Re-ask SX périodique — eMule attache `OP_REQUESTSOURCES` au cycle de
+    // reask du client (`SendFileRequest` → `IsSourceRequestAllowed`, cadence
+    // dominée par SOURCECLIENTREASKS = 40 min). Vérifié chaque minute.
+    let mut next_sx_check = tokio::time::Instant::now() + Duration::from_secs(60);
+    let reask_caps = PeerSxCaps {
+        complete_source: peer_is_complete,
+        ..*sx_caps
+    };
+
     'transfer_loop: loop {
         let timeout_duration = if !first_data_received {
             timeouts.first_data_timeout
@@ -378,6 +418,20 @@ pub(crate) async fn run_transfer_loop(
                 } else {
                     return Err(PeerError::new(PeerFailureReason::TimeoutInactivity, "Transfer stall / inactivity timeout exceeded"));
                 }
+            }
+            _ = tokio::time::sleep_until(next_sx_check) => {
+                next_sx_check = tokio::time::Instant::now() + Duration::from_secs(60);
+                maybe_send_sx_request(
+                    stream,
+                    &encoder,
+                    target_addr,
+                    file_hash_str,
+                    dl_hash_bytes,
+                    downloads,
+                    sx_env,
+                    &reask_caps,
+                )
+                .await;
             }
             read_res = stream.read(&mut raw_buf) => {
                 match read_res {
@@ -708,11 +762,29 @@ pub(crate) async fn run_transfer_loop(
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {
-                                handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await;
+                                handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;
                             } else if packet.protocol == PR_EMULE
                                 && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                             {
-                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
+                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream, sx_env, sx_caps, Some(peer_part_status.as_slice())).await;
+                            } else if packet.protocol == PR_EMULE
+                            {
+                                // Sous-opcodes SX dans OP_MULTIPACKET* — le
+                                // pair peut aussi nous demander des sources
+                                // sur la même socket (eMule ListenSocket).
+                                super::source_exchange::handle_sx_multipacket(
+                                    &packet,
+                                    dl_hash_bytes,
+                                    Some(peer_part_status.as_slice()),
+                                    target_addr,
+                                    &encoder,
+                                    downloads,
+                                    stream,
+                                    sx_env,
+                                    sx_caps,
+                                    peer_ext_req,
+                                )
+                                .await;
                             }
 
                             // Pipeline next block
@@ -722,10 +794,23 @@ pub(crate) async fn run_transfer_loop(
                                     g.in_flight_blocks.retain(|b| !(b.peer_id == address_str && b.part_index == current_part_idx && b.start == current_req_range.start));
                                 }
 
-                                let completed = {
+                                let (completed, dl_still_active) = {
                                     let dl_svc = downloads.lock().await;
-                                    dl_svc.get_completed_ranges_by_hash(file_hash_str)
+                                    let still_active = dl_svc
+                                        .find_by_ed2k_hash(file_hash_str)
+                                        .map(|s| is_download_active_status(&s.status))
+                                        .unwrap_or(false);
+                                    (dl_svc.get_completed_ranges_by_hash(file_hash_str), still_active)
                                 };
+
+                                // The download was paused/removed/failed while
+                                // this block was in flight — stop requesting
+                                // new blocks (eMule pauses the partfile, not
+                                // just the scheduler).
+                                if !dl_still_active {
+                                    info!("Peer {target_addr}: download no longer active, ending transfer session");
+                                    break 'transfer_loop;
+                                }
 
                                 let now_ms = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)

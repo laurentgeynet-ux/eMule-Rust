@@ -6,6 +6,7 @@ use tokio::sync::{broadcast, Mutex};
 
 pub use super::events::{emit_download_update, emit_event};
 use super::handshake::perform_peer_handshake;
+use super::source_exchange::{PeerSxCaps, SxEnv, SxLocalIds};
 use super::status_query::query_file_status_and_enter_queue;
 use super::transfer::run_transfer_loop;
 pub use super::transfer::{OP_COMPRESSEDPART_I64, OP_SENDINGPART_I64};
@@ -39,6 +40,7 @@ pub(crate) async fn run_peer_connection(
     identity: Option<Arc<Mutex<crate::services::IdentityService>>>,
     sui_stats: Arc<crate::services::identity::SuiStats>,
     rate_limiters: Option<Arc<mule_network_policy::PolicyRateLimiters>>,
+    sx_env: SxEnv,
 ) -> Result<u64, PeerError> {
     // eMule advertises SecIdent=3 (v1|v2) in MiscOptions1 bits 16-19 when a
     // usable RSA key is loaded, 0 otherwise.
@@ -96,14 +98,28 @@ pub(crate) async fn run_peer_connection(
         &mut handshake_res.stream,
     )
     .await;
+    // Capacités SX négociées au handshake (eMule GetSourceExchange1Version /
+    // SupportsSourceExchange2) + identité locale pour les self-checks
+    // `CanAddSource` (eMule PartFile.cpp:2380-2403).
+    let sx_caps = PeerSxCaps {
+        sx1_version: handshake_res.peer_sx1_version,
+        sx2: handshake_res.peer_supports_sx2,
+        complete_source: false,
+    };
+    let sx_local = SxLocalIds {
+        client_id,
+        server_ip,
+        server_port,
+        tcp_port: client_port,
+        is_high_id: client_id >= 16_777_216,
+    };
     let file_status = query_file_status_and_enter_queue(
         &mut handshake_res.stream,
         target_addr,
         &file_hash_str,
         dl_hash_bytes,
         &address_str,
-        handshake_res.peer_supports_sx,
-        handshake_res.peer_supports_sx2,
+        &sx_caps,
         handshake_res.peer_supports_aich,
         handshake_res.peer_ext_req,
         &timeouts,
@@ -112,6 +128,8 @@ pub(crate) async fn run_peer_connection(
         &event_tx,
         &sequence,
         &downloads,
+        &sx_env,
+        &sx_local,
         &mut sui,
     )
     .await?;
@@ -132,6 +150,9 @@ pub(crate) async fn run_peer_connection(
         &event_tx,
         &sequence,
         &downloads,
+        &sx_caps,
+        &sx_env,
+        &sx_local,
         &mut sui,
         rate_limiters.as_deref(),
     )
@@ -150,8 +171,7 @@ pub(crate) async fn run_callback_session(
     file_hash_str: String,
     dl_hash_bytes: [u8; 16],
     address_str: String,
-    peer_supports_sx: bool,
-    peer_supports_sx2: bool,
+    sx_caps: PeerSxCaps,
     peer_supports_aich: bool,
     peer_sec_ident: u8,
     peer_ext_req: u8,
@@ -164,6 +184,8 @@ pub(crate) async fn run_callback_session(
     identity: Option<Arc<Mutex<crate::services::IdentityService>>>,
     sui_stats: Arc<crate::services::identity::SuiStats>,
     rate_limiters: Option<Arc<mule_network_policy::PolicyRateLimiters>>,
+    sx_env: SxEnv,
+    sx_local: SxLocalIds,
 ) -> Result<u64, PeerError> {
     let mut sui = super::sui::OutboundSui::new(identity).with_stats(sui_stats);
     sui.set_peer_sec_ident(peer_sec_ident);
@@ -175,8 +197,7 @@ pub(crate) async fn run_callback_session(
         &file_hash_str,
         dl_hash_bytes,
         &address_str,
-        peer_supports_sx,
-        peer_supports_sx2,
+        &sx_caps,
         peer_supports_aich,
         peer_ext_req,
         &timeouts,
@@ -185,6 +206,8 @@ pub(crate) async fn run_callback_session(
         &event_tx,
         &sequence,
         &downloads,
+        &sx_env,
+        &sx_local,
         &mut sui,
     )
     .await?;
@@ -204,6 +227,9 @@ pub(crate) async fn run_callback_session(
         &event_tx,
         &sequence,
         &downloads,
+        &sx_caps,
+        &sx_env,
+        &sx_local,
         &mut sui,
         rate_limiters.as_deref(),
     )

@@ -95,4 +95,9 @@ pub struct InboundListenerService {
     /// Our Kad UDP port, announced in `CT_EMULE_UDPPORTS` (high word) and in
     /// `OP_EMULEINFO` `ET_UDPPORT` on inbound handshake answers.
     pub(crate) kad_udp_port: u16,
+
+    /// Source Exchange partagé (policy + journaux de throttle eMule
+    /// `SetLastSrcReqTime`/`GetLastAskedForSources`) — injecté par `AppState`.
+    pub(crate) sx_env:
+        std::sync::Arc<std::sync::RwLock<Option<crate::services::peer_session::source_exchange::SxEnv>>>,
 }

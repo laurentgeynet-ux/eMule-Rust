@@ -1,7 +1,8 @@
 # Protocole RPC du daemon — JSON-RPC 2.0 sur WebSocket
 
 Document de référence du contrat entre `mule-daemon` et ses clients
-(Flutter desktop, mobile, web, `mule-cli`, MCP).
+(Flutter desktop, mobile, web, `mule-mcp`). `mule-cli` est un outil
+d'inspection local (hash, liens, `.part.met`) et ne consomme pas le RPC.
 
 > Source de vérité du code : `crates/mule-daemon/src/rpc/`
 > (`server.rs`, `methods.rs`, `types.rs`, `handlers/*`).
@@ -209,7 +210,7 @@ compter sur le flux incrémental.
 
 Le client partagé existe sous `packages/mule_client` (consommé par
 `apps/desktop` via `path:`). Il expose `MuleDaemonClient` (interface
-domaine), `RpcDaemonClient` (transport WS) et `FakeDaemonClient`.
+domaine), `RpcDaemonClient` (transport WS) et `FakeMuleDaemonClient`.
 
 Capacités implémentées : handshake `system.hello`, corrélation par `id`,
 dispatch des notifications par `method`, gap-detection via `sequence`

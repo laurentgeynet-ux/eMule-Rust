@@ -3,6 +3,12 @@
 /// Default version of Source Exchange 2 implemented by modern eMule clients.
 pub const SOURCE_EXCHANGE2_VERSION: u8 = 4;
 
+/// Maximum version advertised by eMule through the SX1 (`ET_SOURCEEXCHANGE`)
+/// hello tag — eMule 0.72a sends `CTag(ET_SOURCEEXCHANGE, 3)`
+/// (`BaseClient.cpp:715`). SX1 v3+ entries carry the user hash and use the
+/// little-endian "hybrid" IP format.
+pub const SOURCE_EXCHANGE1_MAX_VERSION: u8 = 3;
+
 /// Maximum number of sources allowed in a single SX response packet to prevent DoS.
 pub const MAX_SX_SOURCES_PER_PACKET: usize = 1000;
 
@@ -114,6 +120,17 @@ impl Ed2kAnswerSources {
     pub fn new(file_hash: [u8; 16], sources: Vec<SxSource>) -> Self {
         Self {
             version: SOURCE_EXCHANGE2_VERSION,
+            file_hash,
+            sources,
+        }
+    }
+
+    /// Creates an answer payload with an explicit SX version, matching eMule
+    /// `byUsedVersion = min(byRequestedVersion, SOURCEEXCHANGE2_VERSION)` for
+    /// SX2 or `GetSourceExchange1Version()` for SX1 (`PartFile.cpp:3631-3646`).
+    pub fn new_v(version: u8, file_hash: [u8; 16], sources: Vec<SxSource>) -> Self {
+        Self {
+            version,
             file_hash,
             sources,
         }

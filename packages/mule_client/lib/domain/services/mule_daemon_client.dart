@@ -363,6 +363,11 @@ abstract class MuleDaemonClient {
   /// Nudge stream for `network.policyChanged` (refetch `getNetworkPolicy`).
   Stream<int> get networkPolicyEvents;
 
+  /// `upnp.statusChanged` notifications carrying the full `UpnpStatus`
+  /// snapshot — emitted on every UPnP enable/map/unmap action (including
+  /// the daemon's background port-mapping retries).
+  Stream<UpnpStatusModel> get upnpStatusEvents;
+
   /// Cancel an upload or dequeue a waiting peer.
   Future<void> cancelUpload(String clientAddress);
 

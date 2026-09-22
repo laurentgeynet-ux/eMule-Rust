@@ -62,6 +62,8 @@ class RpcDaemonClient implements MuleDaemonClient {
       StreamController<SettingsChangedEvent>.broadcast();
   final StreamController<int> _networkPolicyController =
       StreamController<int>.broadcast();
+  final StreamController<UpnpStatusModel> _upnpStatusController =
+      StreamController<UpnpStatusModel>.broadcast();
 
   // Factory constructor or provider callback for custom channel (useful for testing)
   final WebSocketChannel Function(Uri uri)? channelFactory;
@@ -129,6 +131,9 @@ class RpcDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<int> get networkPolicyEvents => _networkPolicyController.stream;
+
+  @override
+  Stream<UpnpStatusModel> get upnpStatusEvents => _upnpStatusController.stream;
 
   @override
   DaemonInfo? get daemonInfo => _daemonInfo;
@@ -446,6 +451,12 @@ class RpcDaemonClient implements MuleDaemonClient {
         final params = data['params'] as Map<String, dynamic>?;
         if (params != null && !_uploadsController.isClosed) {
           _uploadsController.add(UploadsSnapshotModel.fromJson(params));
+        }
+      } else if (method == 'upnp.statusChanged') {
+        // `params` carries the full UpnpStatus snapshot (no envelope).
+        final params = data['params'] as Map<String, dynamic>?;
+        if (params != null && !_upnpStatusController.isClosed) {
+          _upnpStatusController.add(UpnpStatusModel.fromJson(params));
         }
       } else if (method == 'event.snapshotRequired') {
         // Server broadcast buffer lagged — events were dropped.
@@ -1457,6 +1468,7 @@ class RpcDaemonClient implements MuleDaemonClient {
     _historyController.close();
     _settingsController.close();
     _networkPolicyController.close();
+    _upnpStatusController.close();
   }
 }
 

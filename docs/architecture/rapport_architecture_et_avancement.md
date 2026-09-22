@@ -242,7 +242,7 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
 * **`mule-daemon`** :
   * Les monolithiques `methods.rs` et `services/` ont été divisés en modules de domaine autonomes : `rpc/handlers/` (categories, downloads, history, kad, lab, network, servers, settings, shares, sources, upnp) et `services/` (découpage de `peer_session/`, `inbound_listener/`, `downloads/`, `kad/`, `kad_udp/`, `upnp/`, `swarm_coordinator/`).
 * **`mule-protocol`** :
-  * Codecs divisés en `framing/`, `ed2k/` (avec sous-dossiers `decoder/`, `encoder/`, `obfuscation/`, `session/`, `sequencer/`, `server/`, `source_exchange/`, `storage/`) et `kad/` (`decoder/`, `encoder.rs`, `types.rs`, `opcodes.rs`).
+  * Codecs divisés en `framing/`, `ed2k/` (avec sous-dossiers `decoder/`, `encoder/`, `obfuscation/`, `session/`, `sequencer/`, `server/`, `source_exchange/`, `storage/` — ce dernier gaté derrière `ed2k-loopback` pour préserver la pureté sans I/O de la crate, ADR 0003) et `kad/` (`decoder/`, `encoder.rs`, `types.rs`, `opcodes.rs`).
 * **`mule-mcp`** :
   * Découpage des outils MCP par domaine fonctionnel (`tools/downloads/`, `tools/shares/`, `tools/kad.rs`, `tools/servers.rs`, `tools/system.rs`).
 
@@ -254,6 +254,9 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
   * Prise en compte de la version de Source Exchange annoncée dans `misc_options1` (bits 12..15) en plus de `emule_info`.
 * **Écoute Entrante & Dispatcher (`inbound_listener/dispatcher.rs`)** :
   * Gestion complète et robuste des requêtes `OP_REQUESTSOURCES` et `OP_REQUESTSOURCES2` sur les connexions entrantes avec vérification des fichiers partagés et des téléchargements locaux.
+* **Cycle de vie `.part` durci (`downloads/`, `peer_session/transfer.rs`)** :
+  * Pause respectée en transfert actif : les sessions stoppent leurs requêtes quand le download n'est plus actif, et `inject_range` ne dépause jamais (`Downloading` uniquement depuis `Queued`/`WaitingForSources`) ni ne marque une plage reçue sans écriture réussie (réouverture du `.part` ou erreur).
+  * `.part.met` persistés périodiquement (~60 s, heartbeat du coordinateur) et au graceful shutdown ; `.part.met` orphelins du temp dir récupérés au démarrage (adoption in-place, hashsets vérifiés, statut `Paused`) ; suppression keep-files tombstonée en `.part.met.keep`.
 
 ### 5.3 Stratégies « Smart » eMule 0.72a (Download & Upload)
 
@@ -269,7 +272,7 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
   * *Trickle slots* : un slot < 1 Kio/s après 60 s est rétrogradé (`Trickle`, hors quota) et le meilleur client en file est promu.
   * *Friend slots* : table `friends` + RPC `friends.*` → slot dédié (`uh:<userhash>`).
   * *Anti-leecher minimal* : rejet des clients sans `user_hash` quand la file est ≥ 90 % pleine.
-  * *Partage partiel* (`CPartFile` eMule) : un téléchargement actif est serviable dès la première part eD2K complète — `SharedFile.is_partial` + `completed_parts` ; `PARTSTATUS` n'annonce que les parts reçues, tout range hors parts complétées est refusé, hashset/AICH jamais calculés depuis un `.part` incomplet. Publiés comme sources Kad (`PublishSrc`) mais exclus des keywords ; offerts au serveur avec marqueurs `0xFCFC` (tri par priorité d'upload, cap 200) ; `shares.setEnabled`/`setUploadPriority` les refusent (le `.part` transitoire ne doit pas être persisté comme partage complet).
+  * *Partage partiel* (`CPartFile` eMule) : un téléchargement actif est serviable dès la première part eD2K complète — `SharedFile.is_partial` + `completed_parts` ; `PARTSTATUS` n'annonce que les parts reçues, tout range hors parts complétées est refusé, hashset/AICH jamais calculés depuis un `.part` incomplet. Publiés comme sources Kad (`PublishSrc`) mais exclus des keywords ; offerts au serveur avec marqueurs `0xFCFC` (tri par priorité d'upload, cap 200) ; `shares.setEnabled`/`setUploadPriority` les refusent (le `.part` transitoire ne doit pas être persisté comme partage complet) ; un échec de lecture disque laisse la requête sans réponse — jamais de données fabriquées.
   * *Partages persistants* : les downloads `Completed` sont fusionnés depuis SQLite dans `list_all_shared_files`/`get_shared_file` même hors `active` (survie au restart, eMule rehash des fichiers finis) — le fichier cible doit exister.
   * *File d'attente configurable* : `max_queue` (`AtomicUsize`, eMule `QueueSize`) piloté par `settings.set maxUploadQueue`.
 * **Paramètres runtime (eMule Préférences)** — tous persistés via `settings.set` et appliqués **à chaud** :
@@ -389,7 +392,8 @@ Audit comparatif du daemon contre les sources officielles **eMule 0.72a** (`D:\e
 | **AICH réseau complet** (`0x12`/`0x13`/`0x14`/`0x15`) | Arbre de Merkle SHA-1 à double granularité (`mule-format/src/aich/recovery.rs`) ; consensus de confiance `CAICHUntrustedHash` (≥10 IP uniques masquées `0x00F0FFFF`, ≥92 %) ; récupération au niveau bloc 180 Ko ; service des deux opcodes en upload. |
 | **`OP_OFFERFILES`** (`0x15`) | Publication des partages au serveur après `OP_IDCHANGE`, sémantique `CreateOfferedFilePacket` (marqueurs compression, HighID/LowID, `FT_FILESIZE_HI` > 4 Gio, keep-alive vide, plafond 200). |
 | **Callback LowID** (`0x1C`/`0x35`/`0x36`) | Sources LowID `lowid:<id>` rappelées via relai serveur ; adoption des connexions entrantes correspondantes comme sessions de téléchargement ; garde : pas de callback si nous sommes LowID. |
-| **Écriture `.part.met`** | Format exact `CPartFile::SavePartFile` (`0xE0`/`0xE2`, tags nommés `\x09<i>`/`\x0A<i>`, `FT_AICH_HASH` base32) ; écriture atomique `.tmp`+rename ; sauvegarde à l'ajout, à chaque part et à la pause ; fix reader pour les gap-tags nommés. |
+| **Écriture `.part.met`** | Format exact `CPartFile::SavePartFile` (`0xE0`/`0xE2`, tags nommés `\x09<i>`/`\x0A<i>`, `FT_AICH_HASH` base32) ; écriture atomique `.tmp`+rename ; sauvegarde à l'ajout, à chaque part, à la pause, **au heartbeat ~60 s et au graceful shutdown** (`save_active_part_mets`) ; fix reader pour les gap-tags nommés. |
+| **Récupération d'orphelins `.part.met`** | Au démarrage, le temp dir est scanné pour les `*.part.met` inconnus de la base (eMule charge tous les `.part.met` présents) ; adoption in-place par `rename` vers `{uuid}.part` via le chemin sandboxé d'import (vérification hashset, parts corrompues évincées, statut `Paused`, zéro réseau) ; `downloads.remove` keep-files renomme le met en `.part.met.keep` pour empêcher la résurrection. |
 | **Kad — nœud de stockage** | `kad_udp/storage.rs` : store borné (TTL 5 h, 5 000 clés, 50 entrées/clé, 20 000 entrées) ; `PublishSourceReq`/`PublishKeywordReq` validés et persistés, `SearchSourceReq`/`SearchKeywordReq` paginés ; republication périodique ~5 h (`KADEMLIAREPUBLISHTIMES`) ; **persistance SQLite** (`kad_sources_index`/`kad_keywords_index`, purge + réhydratation au démarrage). |
 | **Fin de transfert propre** (`0x56`/`0x57`) | `OP_CANCELTRANSFER` libère le slot upload immédiatement ; `OP_OUTOFPARTS` émis quand plus aucun bloc n'est à demander (`SendOutOfPartReqsAndPacket`) ; émis sur annulation. |
 | **Upload compressé** (`0x40`) | Service `OP_COMPRESSEDPART` zlib `Z_BEST_SPEED` (chunks ≤ 10 240 o) si `nDataCompVer` (MiscOptions1 bits 20-23) ; repli `SENDINGPART` ; exclusions `zip/rar/7z/cbz/cbr/ogm/ace`. |

@@ -9,7 +9,7 @@ description = "Deterministic eD2K wire protocol codec, framing and abstractions 
 [features]
 default = []
 lab-loopback = []
-ed2k-loopback = ["dep:tokio"]
+ed2k-loopback = ["dep:tokio", "dep:serde_json"]
 ed2k-reference-loopback = ["ed2k-loopback"]
 
 [dependencies]
@@ -20,7 +20,7 @@ tracing.workspace = true
 tokio = { workspace = true, optional = true, features = ["net", "io-util", "time", "sync", "rt"] }
 unicode-normalization.workspace = true
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
+serde_json = { workspace = true, optional = true }
 md4.workspace = true
 md-5.workspace = true
 num-bigint.workspace = true

@@ -20,6 +20,11 @@ pub struct AppState {
     pub network_policy: NetworkPolicyManager,
     pub server_session: ServerSessionManager,
     pub peer_session: PeerSessionManager,
+    /// Source Exchange partagé : policy réseau, identité locale et journaux
+    /// de throttle eMule (`SetLastSrcReqTime` / `GetLastAskedForSources` /
+    /// `m_ClientSrcAnswered`) — injecté dans `peer_session` et
+    /// `inbound_listener`.
+    pub sx_env: crate::services::peer_session::source_exchange::SxEnv,
     pub inbound_listener: crate::services::inbound_listener::InboundListenerService,
     pub identity: Arc<Mutex<crate::services::IdentityService>>,
     /// Shared SUI anomaly counters (identity.status `sui` object).
@@ -220,6 +225,12 @@ impl AppState {
         server_session.set_downloads(Arc::clone(&dl_arc));
         let identity_service = crate::services::IdentityService::load_or_generate(&config.data_dir);
         let user_hash = identity_service.user_hash();
+        // Environnement Source Exchange partagé entre toutes les sessions
+        // (eMule garde ces compteurs dans CUpDownClient/CPartFile).
+        let sx_env = crate::services::peer_session::source_exchange::SxEnv::new(
+            network_policy.clone(),
+            user_hash,
+        );
         let sui_pubkey_der = if identity_service.has_key() {
             Some(identity_service.public_key_bytes().to_vec())
         } else {
@@ -238,6 +249,7 @@ impl AppState {
             Arc::clone(&sui_stats),
         );
         inbound_listener.set_identity(Arc::clone(&identity));
+        inbound_listener.set_sx_env(sx_env.clone());
         inbound_listener.set_paranoid_mode(paranoid_mode);
         let upload_quota_gate = Arc::new(AtomicBool::new(true));
         inbound_listener
@@ -382,6 +394,7 @@ impl AppState {
             network_policy,
             server_session,
             peer_session,
+            sx_env,
             inbound_listener,
             identity,
             sui_stats,

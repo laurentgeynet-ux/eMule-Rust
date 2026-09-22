@@ -214,6 +214,7 @@ impl DownloadService {
             part_path,
             target_dir,
             category_id,
+            false,
         )?;
 
         let id = active_dl.download.id;
@@ -237,6 +238,117 @@ impl DownloadService {
 
         self.active.insert(id, active_dl);
         Ok(result)
+    }
+
+    /// Recovers orphaned `.part.met` files found in the effective temp
+    /// directory at startup (eMule `CPartFile` auto-load semantics): any met
+    /// whose file hash is not already tracked is imported through the same
+    /// sandboxed path as `downloads.importPartMet` (part-hash verification,
+    /// staged `{uuid}.part` copy, Paused status). Returns the number of
+    /// recovered downloads.
+    pub fn recover_orphan_part_mets(&mut self, target_dir: &Path) -> usize {
+        let temp_dir = self.effective_temp_dir();
+        let entries = match std::fs::read_dir(&temp_dir) {
+            Ok(e) => e,
+            Err(_) => return 0,
+        };
+
+        let mut recovered = 0usize;
+        for entry in entries.flatten() {
+            let met_path = entry.path();
+            let is_met = met_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.ends_with(".part.met"))
+                .unwrap_or(false);
+            if !is_met {
+                continue;
+            }
+
+            // Skip companions already owned by an active download
+            // (`{uuid}.part.met` written by save_part_met).
+            let already_tracked = match mule_format::PartMetFile::open(&met_path) {
+                Ok(met) => self.active.values().any(|a| {
+                    a.download
+                        .ed2k_hash
+                        .to_hex()
+                        .eq_ignore_ascii_case(&met.file_hash.to_hex())
+                }),
+                Err(_) => false,
+            };
+            if already_tracked {
+                continue;
+            }
+
+            match part_met::import_part_met(
+                &mut self.db,
+                &temp_dir,
+                &self.active,
+                &met_path,
+                None,
+                target_dir,
+                None,
+                true,
+            ) {
+                Ok((result, active_dl)) => {
+                    // The orphan was adopted in place ({stem}.part renamed to
+                    // {uuid}.part): drop the source met so it is not
+                    // reprocessed on the next startup.
+                    let _ = std::fs::remove_file(&met_path);
+                    let verif_status = if result.corrupted_parts > 0 {
+                        "partial_corruption"
+                    } else if result.verified_parts == result.total_parts
+                        && result.total_parts > 0
+                    {
+                        "verified_ok"
+                    } else {
+                        "unverified"
+                    };
+                    history_categories::record_history_event(
+                        &mut self.db,
+                        &active_dl.download,
+                        active_dl.ranges.covered_len(),
+                        0,
+                        0,
+                        "imported",
+                        verif_status,
+                        None,
+                    );
+                    tracing::info!(
+                        "Recovered orphaned .part.met '{}' ({}/{} parts verified) as paused download {}",
+                        result.download.file_name,
+                        result.verified_parts,
+                        result.total_parts,
+                        active_dl.download.id
+                    );
+                    self.active.insert(active_dl.download.id, active_dl);
+                    recovered += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Skipping orphaned .part.met {}: {e}",
+                        met_path.display()
+                    );
+                }
+            }
+        }
+        recovered
+    }
+
+    /// Persists `.part.met` companions for every non-terminal download —
+    /// eMule `SavePartFile` cadence, invoked periodically by the swarm
+    /// coordinator heartbeat and once on graceful shutdown so a crash never
+    /// leaves gap state staler than the last flush.
+    pub fn save_active_part_mets(&self) {
+        for act in self.active.values() {
+            if matches!(
+                act.download.status,
+                DownloadStatus::Completed | DownloadStatus::Removed
+            ) {
+                continue;
+            }
+            let _ = part_met::save_part_met(&self.db, act);
+        }
     }
 
     pub fn list_downloads(&self) -> Vec<DownloadSnapshot> {

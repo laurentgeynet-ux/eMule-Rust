@@ -206,13 +206,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let actual_addr = listener.local_addr()?;
     let endpoint = format!("ws://{actual_addr}/rpc");
 
-    let downloads = DownloadService::new(&db_path, temp_dir)?;
+    let mut downloads = DownloadService::new(&db_path, temp_dir)?;
     let initial_download_dir = downloads
         .get_setting("default_download_directory")
         .ok()
         .flatten()
         .map(PathBuf::from)
         .unwrap_or(default_download_dir);
+
+    // eMule loads every .part.met found in the temp directory at startup:
+    // orphans (lost DB state or files dropped in from eMule) are recovered
+    // as paused downloads via the sandboxed import path.
+    let recovered = downloads.recover_orphan_part_mets(&initial_download_dir);
+    if recovered > 0 {
+        println!("==> Recovered {recovered} orphaned .part.met download(s) from temp directory");
+    }
 
     let ed2k_port = ed2k_port_arg.unwrap_or(39735);
     let kad_port = kad_port_arg.unwrap_or(39737);
@@ -374,6 +382,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown_notify = state.shutdown_notify.clone();
     let upnp_cleanup = state.upnp.clone();
     let listener_cleanup = state.inbound_listener.clone();
+    let downloads_cleanup = state.downloads.clone();
     let app = create_router(state);
 
     if let Some(parent_pid) = parent_pid_arg {
@@ -396,6 +405,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             DaemonSession::remove(&data_dir_cleanup);
             listener_cleanup.stop().await;
+            // eMule saves every .part.met on exit so crash-resume state is
+            // never stale (CPartFile::~CPartFile → SavePartFile).
+            {
+                let dl = downloads_cleanup.lock().await;
+                dl.save_active_part_mets();
+            }
             let _ = tokio::time::timeout(
                 tokio::time::Duration::from_millis(500),
                 upnp_cleanup.unmap_ports(),

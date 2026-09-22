@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
@@ -29,6 +31,7 @@ class _SettingsConnectionSectionState
   bool _upnpLoading = false;
   String? _upnpMessage;
   bool _upnpIsError = false;
+  StreamSubscription<UpnpStatusModel>? _upnpSub;
   final _maxConnCtrl = TextEditingController();
   final _connPerMinCtrl = TextEditingController();
   final _tcpPortCtrl = TextEditingController();
@@ -44,6 +47,14 @@ class _SettingsConnectionSectionState
   @override
   void initState() {
     super.initState();
+    // `upnp.statusChanged` pousse le snapshot complet (enable/map/unmap,
+    // retries en arrière-plan) — la carte se rafraîchit sans action.
+    _upnpSub = ref
+        .read(muleDaemonClientProvider)
+        .upnpStatusEvents
+        .listen((s) {
+          if (mounted) setState(() => _upnpStatus = s);
+        });
     Future.microtask(() async {
       await _loadData();
       await ref.read(settingsControllerProvider).fetch();
@@ -53,6 +64,7 @@ class _SettingsConnectionSectionState
 
   @override
   void dispose() {
+    _upnpSub?.cancel();
     _maxConnCtrl.dispose();
     _connPerMinCtrl.dispose();
     _tcpPortCtrl.dispose();

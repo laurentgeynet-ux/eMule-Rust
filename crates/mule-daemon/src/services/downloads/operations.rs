@@ -3,7 +3,7 @@ use mule_format::Ed2kFileLink;
 use mule_protocol::ed2k::PartAvailabilityMask;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::history_categories::record_history_event;
@@ -283,42 +283,6 @@ pub fn resume_download(
     Ok(act.snapshot())
 }
 
-pub fn cancel_download(
-    db: &mut Database,
-    active: &mut HashMap<Uuid, ActiveDownload>,
-    id: &Uuid,
-) -> Result<DownloadSnapshot, DaemonError> {
-    let act = active
-        .get_mut(id)
-        .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
-
-    let now = now_ms();
-    act.download.status = DownloadStatus::Removed;
-    act.download.updated_at = now;
-    act.last_status_change_unix_ms = now;
-    db.update_status(id, DownloadStatus::Removed)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
-
-    let snapshot = act.snapshot();
-    let dl = act.download.clone();
-    let covered = act.ranges.covered_len();
-    let conn_att = act.connection_attempts;
-    let res_cnt = act.resume_count;
-
-    record_history_event(
-        db,
-        &dl,
-        covered,
-        conn_att,
-        res_cnt,
-        "cancelled",
-        "unverified",
-        None,
-    );
-
-    Ok(snapshot)
-}
-
 pub fn remove_download(
     db: &mut Database,
     active: &mut HashMap<Uuid, ActiveDownload>,
@@ -326,10 +290,13 @@ pub fn remove_download(
     delete_files: bool,
 ) -> Result<(), DaemonError> {
     let mut temp_path_to_delete = None;
+    let mut temp_path_to_keep = None;
     let (was_active, history_data) = if let Some(mut act) = active.remove(id) {
         let _ = act.part_file.take();
         if delete_files {
             temp_path_to_delete = Some(act.download.temp_path.clone());
+        } else {
+            temp_path_to_keep = Some(act.download.temp_path.clone());
         }
         let verif = if act.download.status == DownloadStatus::Completed {
             "verified_ok"
@@ -374,6 +341,21 @@ pub fn remove_download(
         super::part_met::delete_part_met(&temp_path);
     }
 
+    // Files kept on disk after removal: rename the companion met to
+    // `.part.met.keep` so the startup orphan scan does not resurrect the
+    // download the user deliberately removed. The pair stays importable via
+    // `downloads.importPartMet` (explicit partPath).
+    if let Some(temp_path) = temp_path_to_keep {
+        let met_path = super::part_met::part_met_path_for(&temp_path);
+        if met_path.exists() {
+            let mut keep_name = met_path.as_os_str().to_os_string();
+            keep_name.push(".keep");
+            let keep_path = PathBuf::from(keep_name);
+            let _ = std::fs::remove_file(&keep_path);
+            let _ = std::fs::rename(&met_path, &keep_path);
+        }
+    }
+
     if was_active || db_deleted {
         Ok(())
     } else {
@@ -406,9 +388,29 @@ pub fn inject_range(
         );
         return Ok(act.snapshot());
     }
+    if act.download.status == DownloadStatus::Removed {
+        tracing::debug!(
+            "Download {id} is removed; ignoring incoming range {offset}..{}",
+            offset + data.len() as u64
+        );
+        return Ok(act.snapshot());
+    }
 
     let end = offset + data.len() as u64;
 
+    // Re-open the .part file when it was closed (failed open at startup,
+    // post-verify eviction): received bytes must reach disk — the range is
+    // only recorded once the write succeeded, never as phantom coverage.
+    if act.part_file.is_none() {
+        act.part_file = Some(
+            PartFile::open_or_create(
+                &act.download.temp_path,
+                act.download.total_size,
+                AllocationPolicy::None,
+            )
+            .map_err(|e| DaemonError::Business(format!("Cannot open .part file: {e}")))?,
+        );
+    }
     if let Some(pf) = &mut act.part_file {
         pf.write_segment(offset, data)
             .map_err(|e| DaemonError::Business(format!("Write error: {e}")))?;
@@ -535,9 +537,13 @@ pub fn inject_range(
         act.download.updated_at = now_ms();
         let _ = db.update_status(id, DownloadStatus::Verifying);
         met_dirty = true;
-    } else if act.download.status != DownloadStatus::Verifying
-        && act.download.status != DownloadStatus::Completed
-    {
+    } else if matches!(
+        act.download.status,
+        DownloadStatus::Queued | DownloadStatus::WaitingForSources
+    ) {
+        // Only a pending download flips to Downloading on data arrival.
+        // Paused/Failed keep their state: eMule finishes in-flight writes
+        // without un-pausing the partfile.
         act.download.status = DownloadStatus::Downloading;
         act.download.updated_at = now_ms();
         let _ = db.update_status(id, act.download.status);

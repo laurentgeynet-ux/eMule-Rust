@@ -24,6 +24,10 @@ pub struct HandshakeResult {
     pub stream: ObfuscatedStream<TcpStream>,
     pub peer_supports_sx: bool,
     pub peer_supports_sx2: bool,
+    /// Peer's `m_bySourceExchange1Ver` — SX1 version announced in
+    /// CT_EMULE_MISCOPTIONS1 bits 12-15 or via the `ET_SOURCEEXCHANGE` tag
+    /// of `OP_EMULEINFO` (0 = no usable SX1).
+    pub peer_sx1_version: u8,
     pub peer_supports_aich: bool,
     /// Peer's `m_bySupportSecIdent` (0 = none, bit0 = v1, bit1 = v2).
     pub peer_sec_ident: u8,
@@ -316,6 +320,7 @@ pub(crate) async fn perform_peer_handshake(
     let mut received_hello_answer = false;
     let mut peer_supports_sx = false;
     let mut peer_supports_sx2 = false;
+    let mut peer_sx1_version: u8 = 0;
     let mut peer_supports_aich = false;
     let mut peer_sec_ident: u8 = 0;
     let mut peer_udp_port = None;
@@ -393,6 +398,12 @@ pub(crate) async fn perform_peer_handshake(
                                         );
                                         if info.has_source_exchange_capability() {
                                             peer_supports_sx = true;
+                                            peer_sx1_version = peer_sx1_version.max(
+                                                super::source_exchange::emule_info_sx_version(
+                                                    &info,
+                                                )
+                                                .max(1),
+                                            );
                                         }
                                         if info.has_compression_capability() {
                                             peer_supports_compression = true;
@@ -444,8 +455,10 @@ pub(crate) async fn perform_peer_handshake(
                                 match decoder.decode_hello_answer(packet.protocol, packet.opcode, &packet.payload, 0) {
                                     Ok(ans) => {
                                         let peer_info = mule_protocol::ed2k::Ed2kPeerInfo::from_hello_answer(&ans);
-                                        peer_supports_sx = peer_info.supports_source_exchange();
-                                        peer_supports_sx2 = peer_info.supports_source_exchange2();
+                                        peer_supports_sx |= peer_info.supports_source_exchange();
+                                        peer_supports_sx2 |= peer_info.supports_source_exchange2();
+                                        peer_sx1_version = peer_sx1_version
+                                            .max(peer_info.source_exchange1_version());
                                         peer_supports_aich = peer_info.supports_aich();
                                         peer_sec_ident = peer_info.secure_ident_support();
                                         peer_udp_port = peer_info.emule_udp_port;
@@ -560,6 +573,7 @@ pub(crate) async fn perform_peer_handshake(
         stream,
         peer_supports_sx,
         peer_supports_sx2,
+        peer_sx1_version,
         peer_supports_aich,
         peer_sec_ident,
         peer_udp_port,

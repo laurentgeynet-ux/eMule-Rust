@@ -89,6 +89,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
 
   @override
   Stream<int> get networkPolicyEvents => _networkPolicyController.stream;
+
+  @override
+  Stream<UpnpStatusModel> get upnpStatusEvents => _upnpStatusController.stream;
   @override
   Stream<ServerSessionModel> get serverSessionEvents =>
       _serverSessionController.stream;
@@ -500,6 +503,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       StreamController<SettingsChangedEvent>.broadcast();
   final StreamController<int> _networkPolicyController =
       StreamController<int>.broadcast();
+  final StreamController<UpnpStatusModel> _upnpStatusController =
+      StreamController<UpnpStatusModel>.broadcast();
   int _simTick = 0;
 
   void _emitLifecycle(
@@ -2047,5 +2052,6 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     _historyController.close();
     _settingsController.close();
     _networkPolicyController.close();
+    _upnpStatusController.close();
   }
 }

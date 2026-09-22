@@ -5,6 +5,7 @@ use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::types::DownloadSnapshot;
 use crate::services::peer_session::types::PeerSessionSnapshot;
 use crate::services::server_session::types::ServerSessionSnapshot;
+use crate::services::upnp::UpnpStatusSnapshot;
 use crate::services::upload_queue::UploadSessionSnapshot;
 
 /// Aggregate daemon metrics emitted on a fixed cadence (~2 s) so clients can
@@ -96,6 +97,9 @@ pub enum DaemonEvent {
     /// Network policy changed (profile, kill switch, budgets). Nudge
     /// event: clients refetch `network.getPolicy`.
     NetworkPolicyChanged { sequence: u64 },
+    /// UPnP gateway/mapping status changed (enable, map, unmap).
+    /// `params` is the full `UpnpStatus` snapshot — no `sequence`.
+    UpnpStatusChanged { snapshot: UpnpStatusSnapshot },
     /// A notification outside the typed set (search results, found
     /// sources, control events like `event.snapshotRequired`).
     Custom {
@@ -121,6 +125,7 @@ impl DaemonEvent {
             Self::HistoryEntryAdded { .. } => "history.entryAdded",
             Self::SettingsChanged { .. } => "settings.changed",
             Self::NetworkPolicyChanged { .. } => "network.policyChanged",
+            Self::UpnpStatusChanged { .. } => "upnp.statusChanged",
             Self::Custom { method, .. } => method.as_str(),
         }
     }
@@ -141,7 +146,9 @@ impl DaemonEvent {
             Self::KadStatusChanged { .. } => Some("kad"),
             Self::HistoryEntryAdded { .. } => Some("history"),
             Self::SettingsChanged { .. } => Some("settings"),
-            Self::NetworkPolicyChanged { .. } => Some("network"),
+            Self::NetworkPolicyChanged { .. } | Self::UpnpStatusChanged { .. } => {
+                Some("network")
+            }
             Self::Custom { method, .. } => match method.as_str() {
                 "server.searchResult" | "server.foundSources" => Some("search"),
                 "upnp.statusChanged" => Some("network"),
@@ -205,6 +212,9 @@ impl DaemonEvent {
                 "sequence": sequence,
                 "keys": keys,
             }),
+            Self::UpnpStatusChanged { snapshot } => {
+                serde_json::to_value(snapshot).unwrap_or_default()
+            }
             Self::Custom { payload, .. } => payload.clone(),
         };
         serde_json::to_string(&JsonRpcNotification::new(self.method(), params)).ok()

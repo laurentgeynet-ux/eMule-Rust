@@ -22,7 +22,12 @@ async fn setup_upload_test_state() -> (AppState, tempfile::TempDir, String) {
 
     let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
 
-    // 1. Register an explicitly shared file
+    // 1. Register an explicitly shared file backed by a real file on disk —
+    // the upload path only serves bytes it can actually read.
+    let shared_path = dir.path().join("test_shared_archive.iso");
+    let shared_bytes: Vec<u8> = (0..262_144u32).map(|i| (i % 251) as u8).collect();
+    std::fs::write(&shared_path, &shared_bytes).unwrap();
+
     let mut authenticated = true;
     let share_req = make_req(
         1,
@@ -31,7 +36,7 @@ async fn setup_upload_test_state() -> (AppState, tempfile::TempDir, String) {
             "fileHash": file_hash_hex,
             "fileName": "test_shared_archive.iso",
             "fileSize": 18874368,
-            "filePath": "C:\\Shared\\test_shared_archive.iso"
+            "filePath": shared_path.to_string_lossy()
         })),
     );
     let resp = handle_request(&state, share_req, &mut authenticated)

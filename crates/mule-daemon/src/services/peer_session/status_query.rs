@@ -19,7 +19,9 @@ use mule_protocol::ed2k::{
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
 use super::events::emit_event;
-use super::source_exchange::{handle_sx_answer, handle_sx_request};
+use super::source_exchange::{
+    handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
+};
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
 };
@@ -312,8 +314,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
     file_hash_str: &str,
     dl_hash_bytes: [u8; 16],
     address_str: &str,
-    peer_supports_sx: bool,
-    peer_supports_sx2: bool,
+    sx_caps: &PeerSxCaps,
     peer_supports_aich: bool,
     peer_ext_req: u8,
     timeouts: &PeerTimeouts,
@@ -322,6 +323,8 @@ pub(crate) async fn query_file_status_and_enter_queue(
     event_tx: &broadcast::Sender<String>,
     sequence: &Arc<AtomicU64>,
     downloads: &Arc<Mutex<DownloadService>>,
+    sx_env: &SxEnv,
+    sx_local: &SxLocalIds,
     sui: &mut super::sui::OutboundSui,
 ) -> Result<Ed2kFileStatus, PeerError> {
     let encoder = Ed2kEncoder::default();
@@ -508,29 +511,21 @@ pub(crate) async fn query_file_status_and_enter_queue(
         .await;
     }
 
-    // 4c. Send OP_REQUESTSOURCES / OP_REQUESTSOURCES2 if supported
-    if peer_supports_sx2 || peer_supports_sx {
-        let sx_req = if peer_supports_sx2 {
-            mule_protocol::ed2k::Ed2kRequestSources::new_v2(dl_hash_bytes)
-        } else {
-            mule_protocol::ed2k::Ed2kRequestSources::new_v1(dl_hash_bytes)
-        };
-        if let Ok(sx_pkt) = encoder.encode_request_sources(&sx_req) {
-            out_wire.clear();
-            out_wire.push(sx_pkt.protocol);
-            out_wire.extend_from_slice(&(sx_pkt.frame_len() as u32).to_le_bytes());
-            out_wire.push(sx_pkt.opcode);
-            out_wire.extend_from_slice(&sx_pkt.payload);
-            if let Err(e) = stream.write_all(&out_wire).await {
-                tracing::warn!("Failed to send SX request to {target_addr}: {e}");
-            } else {
-                tracing::info!(
-                    "[SOURCE_EXCHANGE] Sent OP_REQUESTSOURCES (version {}) to peer {target_addr} for file {file_hash_str}",
-                    sx_req.version
-                );
-            }
-        }
-    }
+    // 4c. OP_REQUESTSOURCES / OP_REQUESTSOURCES2 — eMule envoie la requête
+    // SX quand `IsSourceRequestAllowed` passe (`DownloadClient.cpp:212-255`) :
+    // pas de demande aux sources complètes, pas de spam (40 min/client, 5 min
+    // fichier rare / 20 min fichier commun), cap souple de sources.
+    maybe_send_sx_request(
+        stream,
+        &encoder,
+        target_addr,
+        file_hash_str,
+        dl_hash_bytes,
+        downloads,
+        sx_env,
+        sx_caps,
+    )
+    .await;
 
     let queued_snapshot = {
         let mut g = inner.lock().await;
@@ -645,11 +640,26 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                 } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                     && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                                 {
-                                    handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await;
+                                    handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;
                                 } else if packet.protocol == PR_EMULE
                                     && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                                 {
-                                    handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
+                                    handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream, sx_env, sx_caps, None).await;
+                                } else if packet.protocol == PR_EMULE
+                                {
+                                    super::source_exchange::handle_sx_multipacket(
+                                        &packet,
+                                        dl_hash_bytes,
+                                        None,
+                                        target_addr,
+                                        &encoder,
+                                        downloads,
+                                        stream,
+                                        sx_env,
+                                        sx_caps,
+                                        peer_ext_req,
+                                    )
+                                    .await;
                                 }
                             }
                         }
@@ -760,6 +770,26 @@ pub(crate) async fn query_file_status_and_enter_queue(
                     return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send keep-alive: {e}")));
                 }
                 last_keepalive_sent = tokio::time::Instant::now();
+                // Re-ask SX périodique — eMule attache la requête source au
+                // cycle de reask (`SendFileRequest` → `IsSourceRequestAllowed`).
+                // `complete_source` : le pair est source complète quand son
+                // part-status couvre tout le fichier — eMule ne lui demande
+                // alors pas de sources.
+                let reask_caps = PeerSxCaps {
+                    complete_source: file_status.is_complete(),
+                    ..*sx_caps
+                };
+                maybe_send_sx_request(
+                    stream,
+                    &encoder,
+                    target_addr,
+                    file_hash_str,
+                    dl_hash_bytes,
+                    downloads,
+                    sx_env,
+                    &reask_caps,
+                )
+                .await;
             }
             read_res = stream.read(&mut raw_buf) => {
                 match read_res {
@@ -822,11 +852,29 @@ pub(crate) async fn query_file_status_and_enter_queue(
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {
-                                handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await;
+                                handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;
                             } else if packet.protocol == PR_EMULE
                                 && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                             {
-                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
+                                // `reqstatus` : part-status du demandeur (son
+                                // OP_FILESTATUS) — eMule ne sert que des
+                                // sources couvrant des parts qui lui manquent.
+                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream, sx_env, sx_caps, Some(file_status.availability_mask.raw_bytes())).await;
+                            } else if packet.protocol == PR_EMULE
+                            {
+                                super::source_exchange::handle_sx_multipacket(
+                                    &packet,
+                                    dl_hash_bytes,
+                                    Some(file_status.availability_mask.raw_bytes()),
+                                    target_addr,
+                                    &encoder,
+                                    downloads,
+                                    stream,
+                                    sx_env,
+                                    sx_caps,
+                                    peer_ext_req,
+                                )
+                                .await;
                             }
                         }
                     }

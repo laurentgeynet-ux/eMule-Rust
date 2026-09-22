@@ -22,6 +22,11 @@ impl SwarmCoordinator {
         if self.last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
             self.last_heartbeat = Instant::now();
             self.emit_heartbeat().await;
+            // eMule SavePartFile cadence: persist .part.met companions for
+            // in-progress downloads so a crash never loses more than ~60 s
+            // of gap state.
+            let dl_guard = self.state.downloads.lock().await;
+            dl_guard.save_active_part_mets();
         }
 
         // 0. Decay stale download rates (reset frozen speed to 0 if inactive > 2s)
@@ -680,12 +685,37 @@ impl SwarmCoordinator {
                 ) {
                     Ok(p) => p,
                     Err(e) => {
-                        tracing::debug!("Permit denied for peer {peer_addr}: {e}");
+                        // Refus permanent (adresse invalide / ipfilter) : la
+                        // source ne sera jamais dialable — la marquer Rejected
+                        // au lieu de la retenter à chaque tick (eMule
+                        // DeadSourceList). Les refus transitoires (rate-limit,
+                        // budget) conservent le backoff normal.
+                        if matches!(
+                            e,
+                            mule_network_policy::PolicyError::AddressViolation(_)
+                                | mule_network_policy::PolicyError::IpFiltered(..)
+                        ) {
+                            tracing::info!(
+                                "[SOURCE_SCHED] Source {} for {hash_hex} permanently rejected: {e}",
+                                src.address
+                            );
+                            let mut dl_guard = self.state.downloads.lock().await;
+                            let _ = dl_guard.update_peer_source_status(
+                                &hash_hex,
+                                &src.address,
+                                PeerSourceStatus::Rejected,
+                                Some(&e.to_string()),
+                                None,
+                            );
+                        } else {
+                            tracing::debug!("Permit denied for peer {peer_addr}: {e}");
+                        }
                         continue;
                     }
                 };
 
                 let user_hash = self.state.identity.lock().await.user_hash();
+                let sx_env = self.state.sx_env.clone();
                 let dl_ref = Arc::clone(&self.state.downloads);
                 let file_hash_str = hash_hex.clone();
                 let ps = self.state.peer_session.clone();
@@ -722,6 +752,7 @@ impl SwarmCoordinator {
                             obfu_enabled,
                             obfu_required,
                             obfu_pad_max,
+                            sx_env,
                         )
                         .await
                     {

@@ -230,6 +230,15 @@ impl Ed2kPeerInfo {
                 .unwrap_or(false)
     }
 
+    /// eMule `m_bySourceExchange1Ver` — SX1 version announced in
+    /// CT_EMULE_MISCOPTIONS1 bits 12-15 (`BaseClient.cpp:479`). `0` means the
+    /// peer did not advertise legacy source exchange.
+    pub fn source_exchange1_version(&self) -> u8 {
+        self.misc_options1
+            .map(|m| ((m >> 12) & 0x0F) as u8)
+            .unwrap_or(0)
+    }
+
     /// Returns true if source exchange capability was announced in OP_EMULEINFO or CT_EMULE_MISCOPTIONS1.
     pub fn has_source_exchange_capability(&self) -> bool {
         self.emule_info

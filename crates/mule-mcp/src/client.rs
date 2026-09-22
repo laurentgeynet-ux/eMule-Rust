@@ -91,7 +91,7 @@ impl DaemonClient {
                             } else if let Some(method) = val.get("method").and_then(|m| m.as_str())
                             {
                                 debug!("Received daemon notification: {method}");
-                                if method == "server.searchResult" || method == "kad.searchResult" {
+                                if method == "server.searchResult" {
                                     if let Some(params) = val.get("params") {
                                         let _ = search_tx_clone.send(params.clone());
                                     }

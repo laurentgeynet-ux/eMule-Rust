@@ -57,6 +57,68 @@ impl InboundListenerService {
             kad_udp: Arc::new(std::sync::RwLock::new(None)),
             kad: Arc::new(std::sync::RwLock::new(None)),
             kad_udp_port: 0,
+            sx_env: Arc::new(std::sync::RwLock::new(None)),
+        }
+    }
+
+    /// Injects the shared Source Exchange environment (network policy +
+    /// throttle journals) created by `AppState`.
+    pub fn set_sx_env(
+        &mut self,
+        env: crate::services::peer_session::source_exchange::SxEnv,
+    ) {
+        *self.sx_env.write().unwrap() = Some(env);
+    }
+
+    /// Shared `SxEnv` for this listener; builds a fallback from the
+    /// listener's own network policy + user hash when `AppState` did not
+    /// inject one (tests, manual construction).
+    pub(crate) fn sx_env(
+        &self,
+    ) -> crate::services::peer_session::source_exchange::SxEnv {
+        self.sx_env.read().unwrap().clone().unwrap_or_else(|| {
+            crate::services::peer_session::source_exchange::SxEnv::new(
+                (*self.network_policy).clone(),
+                *self.user_hash.read().unwrap(),
+            )
+        })
+    }
+
+    /// Local eD2K identity view for `CanAddSource` self-checks (eMule
+    /// `PartFile.cpp:2380-2403`): current server-assigned `client_id`,
+    /// server address and our TCP listen port.
+    pub(crate) async fn sx_local_ids(
+        &self,
+        listen_port: u16,
+    ) -> crate::services::peer_session::source_exchange::SxLocalIds {
+        use crate::services::peer_session::source_exchange::SxLocalIds;
+        let session = self.server_session.read().unwrap().clone();
+        match session {
+            Some(sm) => {
+                let snap = sm.snapshot().await;
+                let (server_ip, server_port) = snap
+                    .server_address
+                    .as_deref()
+                    .and_then(|a| a.parse::<SocketAddr>().ok())
+                    .map(|sa| match sa.ip() {
+                        std::net::IpAddr::V4(v4) => {
+                            (u32::from_le_bytes(v4.octets()), sa.port())
+                        }
+                        _ => (0, sa.port()),
+                    })
+                    .unwrap_or((0, 0));
+                SxLocalIds {
+                    client_id: snap.client_id.unwrap_or(0),
+                    server_ip,
+                    server_port,
+                    tcp_port: listen_port,
+                    is_high_id: snap.is_high_id,
+                }
+            }
+            None => SxLocalIds {
+                tcp_port: listen_port,
+                ..SxLocalIds::default()
+            },
         }
     }
 

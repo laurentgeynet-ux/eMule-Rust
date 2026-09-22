@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::error::JsonRpcError;
-use crate::rpc::types::JsonRpcNotification;
+use crate::services::DaemonEvent;
 use crate::state::AppState;
 
 pub async fn handle_upnp_status(state: &AppState) -> Result<Value, JsonRpcError> {
@@ -34,13 +34,10 @@ pub async fn handle_upnp_map_ports(
     let _ = state.upnp.map_ports(tcp_port, udp_port).await;
     let updated_snap = state.upnp.snapshot().await;
 
-    let notif = JsonRpcNotification::new(
-        "upnp.statusChanged",
-        serde_json::to_value(&updated_snap).unwrap_or_default(),
-    );
-    if let Ok(json) = serde_json::to_string(&notif) {
-        let _ = state.event_tx.send(json);
+    DaemonEvent::UpnpStatusChanged {
+        snapshot: updated_snap.clone(),
     }
+    .send(&state.event_tx);
 
     Ok(serde_json::to_value(updated_snap).unwrap_or_default())
 }
@@ -49,13 +46,10 @@ pub async fn handle_upnp_unmap_ports(state: &AppState) -> Result<Value, JsonRpcE
     let _ = state.upnp.unmap_ports().await;
     let snap = state.upnp.snapshot().await;
 
-    let notif = JsonRpcNotification::new(
-        "upnp.statusChanged",
-        serde_json::to_value(&snap).unwrap_or_default(),
-    );
-    if let Ok(json) = serde_json::to_string(&notif) {
-        let _ = state.event_tx.send(json);
+    DaemonEvent::UpnpStatusChanged {
+        snapshot: snap.clone(),
     }
+    .send(&state.event_tx);
 
     Ok(serde_json::to_value(snap).unwrap_or_default())
 }
@@ -75,13 +69,10 @@ pub async fn handle_upnp_set_enabled(
     }
     let snap = state.upnp.snapshot().await;
 
-    let notif = JsonRpcNotification::new(
-        "upnp.statusChanged",
-        serde_json::to_value(&snap).unwrap_or_default(),
-    );
-    if let Ok(json) = serde_json::to_string(&notif) {
-        let _ = state.event_tx.send(json);
+    DaemonEvent::UpnpStatusChanged {
+        snapshot: snap.clone(),
     }
+    .send(&state.event_tx);
 
     Ok(serde_json::to_value(snap).unwrap_or_default())
 }

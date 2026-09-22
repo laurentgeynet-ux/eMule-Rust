@@ -13,18 +13,21 @@ use mule_crypto::legacy_sui::{
 
 use mule_protocol::ed2k::{
     Ed2kAichAnswer, Ed2kAichFileHashRes, Ed2kAichRecovery, Ed2kDecoder, Ed2kEncoder,
-    Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kPublicKey, Ed2kSecIdentState, Ed2kSendingPart,
-    Ed2kSignature, PartAvailabilityMask, OP_ACCEPTUPLOADREQ, OP_AICHFILEHASHREQ, OP_AICH_REQUEST,
-    OP_CANCELTRANSFER, OP_COMPRESSEDPART, OP_COMPRESSEDPART_I64, OP_EMULE_INFO,
-    OP_EMULE_INFO_ANSWER, OP_FILESTATUSREQ, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_OUTOFPARTS,
-    OP_PUBLICKEY, OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_REQUESTPARTS_I64,
-    OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE, OP_SIGNATURE, OP_STARTUPLOADREQ,
-    PR_ED2K, PR_EMULE,
+    Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kMessage, Ed2kMultiPacketAnswer,
+    Ed2kMultiPacketSubAnswer, Ed2kMultiPacketSubRequest, Ed2kPublicKey, Ed2kRequestSources,
+    Ed2kSecIdentState, Ed2kSendingPart, Ed2kSignature, PartAvailabilityMask, OP_ACCEPTUPLOADREQ,
+    OP_AICHFILEHASHREQ, OP_AICH_REQUEST, OP_CANCELTRANSFER, OP_COMPRESSEDPART,
+    OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_FILESTATUS, OP_FILESTATUSREQ,
+    OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_MULTIPACKET, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2,
+    OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE, OP_SIGNATURE,
+    OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
 };
 use mule_protocol::framing::PacketCodec;
 
 use super::types::{InboundListenerService, MAX_READ_BUFFER_SIZE};
 use crate::services::obfuscation_stream::ObfuscatedStream;
+use crate::services::peer_session::source_exchange as sx;
 use crate::services::upload_queue::UploadSlotState;
 
 /// Converts an IPv4 address to the `u32` used in the SUI V2 signed payload
@@ -37,6 +40,26 @@ fn ip_to_u32(ip: Option<std::net::IpAddr>) -> u32 {
     }
 }
 
+/// `ExtendedRequestsVersion` annoncée dans un `OP_EMULEINFO` (tag
+/// `ET_EXTENDEDREQUEST` `0x25`, eMule `ProcessMuleInfoPacket` →
+/// `m_byExtendedRequestsVer`). `None` quand le tag est absent.
+fn emule_info_ext_req_version(info: &mule_protocol::ed2k::Ed2kEmuleInfo) -> Option<u8> {
+    use mule_protocol::ed2k::tags::{
+        TagName, TagValue, TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST,
+    };
+    info.tags.iter().find_map(|t| {
+        if !matches!(t.name, TagName::Id(TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST)) {
+            return None;
+        }
+        match t.value {
+            TagValue::UInt32(v) => u8::try_from(v).ok(),
+            TagValue::UInt16(v) => u8::try_from(v).ok(),
+            TagValue::UInt8(v) => Some(v),
+            _ => None,
+        }
+    })
+}
+
 impl InboundListenerService {
     /// Dispatches post-handshake incoming peer requests.
     pub(crate) async fn dispatch_requests(
@@ -47,6 +70,8 @@ impl InboundListenerService {
         cancel_token: mule_network_policy::CancellationToken,
         peer_supports_compression: bool,
         peer_user_hash: Option<[u8; 16]>,
+        mut sx_caps: sx::PeerSxCaps,
+        peer_ext_req: u8,
     ) {
         let mut read_buf = BytesMut::with_capacity(65536);
         let mut raw_buf = [0u8; 8192];
@@ -73,6 +98,19 @@ impl InboundListenerService {
         let client_key = peer_user_hash
             .map(|h| format!("uh:{}", hex::encode(h)))
             .unwrap_or_else(|| remote_str.clone());
+
+        // Environnement SX partagé (policy + journaux de throttle eMule).
+        let sx_env = self.sx_env();
+        // Version de requêtes étendues négociée (eMule
+        // `m_byExtendedRequestsVer`, bornée à notre max = 2) — raffinée par
+        // le tag `ET_EXTENDEDREQUEST` de `OP_EMULEINFO` à son arrivée.
+        let mut peer_ext_req = peer_ext_req.min(2);
+        // Part-status du demandeur par fichier (eMule
+        // `CUpDownClient::m_abyPartStatus`, via `OP_FILESTATUS` standalone ou
+        // l'ext-info `OP_REQFILENAME` du multipacket) — `reqstatus` de
+        // `CreateSrcInfoPacket` pour ne servir que des sources utiles.
+        let mut peer_masks: std::collections::HashMap<[u8; 16], Vec<u8>> =
+            std::collections::HashMap::new();
 
         loop {
             tokio::select! {
@@ -494,6 +532,18 @@ impl InboundListenerService {
                                                 tag_desc.join(","),
                                                 info.unknown_tags.len()
                                             );
+                                            // eMule ProcessMuleInfoPacket :
+                                            // les tags ET_SOURCEEXCHANGE /
+                                            // ET_EXTENDEDREQUEST raffinent
+                                            // les capacités négociées.
+                                            sx_caps.sx1_version = sx_caps
+                                                .sx1_version
+                                                .max(sx::emule_info_sx_version(&info));
+                                            if let Some(v) =
+                                                emule_info_ext_req_version(&info)
+                                            {
+                                                peer_ext_req = v.min(2);
+                                            }
                                             if pkt.opcode == OP_EMULE_INFO {
                                                 let answer =
                                                     crate::services::peer_session::handshake::build_emule_info(
@@ -524,27 +574,78 @@ impl InboundListenerService {
                                         }
                                     }
                                 }
+                                OP_REQUESTSOURCES | OP_REQUESTSOURCES2 => {
+                                    // Requête SX standalone — eMule
+                                    // `ListenSocket.cpp:1165-1228`.
+                                    let target_addr = remote_str
+                                        .parse::<SocketAddr>()
+                                        .unwrap_or_else(|_| {
+                                            SocketAddr::from(([0, 0, 0, 0], 0))
+                                        });
+                                    match decoder.decode_request_sources(
+                                        pkt.protocol, pkt.opcode, &pkt.payload,
+                                    ) {
+                                        Ok(req) => {
+                                            let mask = peer_masks
+                                                .get(&req.file_hash)
+                                                .map(Vec::as_slice);
+                                            sx::respond_to_sx_request(
+                                                &req,
+                                                pkt.opcode == OP_REQUESTSOURCES2,
+                                                None,
+                                                target_addr,
+                                                &encoder,
+                                                &self.downloads,
+                                                &mut stream,
+                                                &sx_env,
+                                                &sx_caps,
+                                                mask,
+                                            )
+                                            .await;
+                                        }
+                                        Err(e) => {
+                                            warn!(
+                                                "Inbound peer {} sent malformed SX request: {e}",
+                                                remote_str
+                                            );
+                                        }
+                                    }
+                                }
+                                OP_MULTIPACKET | OP_MULTIPACKET_EXT
+                                | OP_MULTIPACKET_EXT2 => {
+                                    // eMule emballe ses requêtes fichier
+                                    // (filename, setreqfileid, SX, AICH) dans
+                                    // un OP_MULTIPACKET* — ListenSocket.cpp:970.
+                                    match mule_protocol::ed2k::decoder::decode_multipacket_request(
+                                        pkt.protocol,
+                                        pkt.opcode,
+                                        &pkt.payload,
+                                        0,
+                                        &decoder.limits,
+                                        peer_ext_req,
+                                    ) {
+                                        Ok(mp) => {
+                                            self.handle_inbound_multipacket(
+                                                &mp,
+                                                &remote_str,
+                                                &mut peer_masks,
+                                                &sx_env,
+                                                &sx_caps,
+                                                &encoder,
+                                                &mut stream,
+                                            )
+                                            .await;
+                                        }
+                                        Err(e) => {
+                                            warn!(
+                                                "Inbound peer {} sent malformed multipacket: {e}",
+                                                remote_str
+                                            );
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
-                            continue;
-                        }
-
-                        if pkt.protocol == PR_EMULE
-                            && (pkt.opcode == OP_REQUESTSOURCES || pkt.opcode == OP_REQUESTSOURCES2)
-                        {
-                            let target_addr = remote_str
-                                .parse()
-                                .unwrap_or_else(|_| std::net::SocketAddr::from(([0, 0, 0, 0], 0)));
-                            crate::services::peer_session::source_exchange::handle_sx_request(
-                                &pkt,
-                                None,
-                                target_addr,
-                                &decoder,
-                                &encoder,
-                                &self.downloads,
-                                &mut stream,
-                            )
-                            .await;
                             continue;
                         }
 
@@ -605,6 +706,27 @@ impl InboundListenerService {
                                          let _ = stream.write_all(&out).await;
                                      }
                                  }
+                            }
+                            OP_FILESTATUS => {
+                                // eMule `CUpDownClient::ProcessFileStatus` :
+                                // le demandeur annonce les parts qu'il détient
+                                // (`m_abyPartStatus`) — `reqstatus` utilisé
+                                // pour ne servir que des sources utiles en SX.
+                                if let Ok(st) = decoder.decode_file_status(
+                                    pkt.protocol, pkt.opcode, &pkt.payload, 0,
+                                ) {
+                                    let mask = &st.availability_mask;
+                                    let mut raw = vec![
+                                        0u8;
+                                        mule_protocol::ed2k::expected_mask_bytes(
+                                            mask.part_count(),
+                                        )
+                                    ];
+                                    for p in mask.available_parts() {
+                                        raw[(p / 8) as usize] |= 1 << (p % 8);
+                                    }
+                                    peer_masks.insert(st.file_hash, raw);
+                                }
                             }
                             OP_HASHSETREQUEST => {
                                 if let Ok(req) = decoder.decode_hashset_request(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
@@ -843,7 +965,11 @@ impl InboundListenerService {
                                                      break;
                                                  }
 
-                                                 // Read real bytes from disk if shared file exists on disk; fallback to synthetic fixture
+                                                 // Read real bytes from disk — never fabricate
+                                                 // data: an unreadable range is left unanswered
+                                                 // (eMule simply does not serve what it cannot
+                                                 // read), otherwise the peer would store
+                                                 // corrupted bytes and fail its part hash.
                                                  let mut payload = None;
                                                  if !shared_file.file_path.is_empty() {
                                                      let p = std::path::Path::new(&shared_file.file_path);
@@ -861,7 +987,13 @@ impl InboundListenerService {
                                                          }
                                                      }
                                                  }
-                                                 let payload = payload.unwrap_or_else(|| vec![0x77u8; length as usize]);
+                                                 let Some(payload) = payload else {
+                                                     tracing::warn!(
+                                                         "[UPLOAD_REQUEST] Cannot read [{}..{}] from '{}' — request left unanswered",
+                                                         start, end, shared_file.file_path
+                                                     );
+                                                     continue;
+                                                 };
 
                                                  // eMule CreatePackedPackets: when the
                                                  // downloader announced compression support
@@ -1024,6 +1156,153 @@ impl InboundListenerService {
         }
 
         self.upload_manager.release_slot(&client_key).await;
+    }
+
+    /// Dispatches the sub-requests of an inbound `OP_MULTIPACKET*` — eMule
+    /// `ListenSocket.cpp:970-1011`. The envelope file hash applies to every
+    /// sub-request; SX sub-requests go through the same handler as the
+    /// standalone opcodes, and filename/file-status/AICH answers are grouped
+    /// in a single `OP_MULTIPACKETANSWER` like eMule does.
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_inbound_multipacket(
+        &self,
+        mp: &mule_protocol::ed2k::Ed2kMultiPacketRequest,
+        remote_str: &str,
+        peer_masks: &mut std::collections::HashMap<[u8; 16], Vec<u8>>,
+        sx_env: &sx::SxEnv,
+        sx_caps: &sx::PeerSxCaps,
+        encoder: &Ed2kEncoder,
+        stream: &mut ObfuscatedStream<tokio::net::TcpStream>,
+    ) {
+        let file_hash = mp.file.file_hash();
+        if file_hash == [0u8; 16] {
+            // `FileIdentifier` sans MD4 (contexte Kad) — aucune réponse
+            // fichier possible.
+            return;
+        }
+        let target_addr = remote_str
+            .parse::<SocketAddr>()
+            .unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], 0)));
+        let hash_hex = hex::encode(file_hash);
+
+        let mut want_filename = false;
+        let mut want_aich = false;
+        for sub in &mp.sub_requests {
+            match sub {
+                Ed2kMultiPacketSubRequest::FileName { ext_info } => {
+                    want_filename = true;
+                    // Ext-info : part-status du demandeur → `reqstatus` SX.
+                    if let Some(ext) = ext_info {
+                        peer_masks.insert(file_hash, ext.part_status.to_vec());
+                    }
+                }
+                Ed2kMultiPacketSubRequest::SetReqFileId => {}
+                Ed2kMultiPacketSubRequest::RequestSources => {
+                    let req = Ed2kRequestSources::new_v1(file_hash);
+                    let mask = peer_masks.get(&file_hash).map(Vec::as_slice);
+                    sx::respond_to_sx_request(
+                        &req,
+                        false,
+                        None,
+                        target_addr,
+                        encoder,
+                        &self.downloads,
+                        stream,
+                        sx_env,
+                        sx_caps,
+                        mask,
+                    )
+                    .await;
+                }
+                Ed2kMultiPacketSubRequest::RequestSources2 { version, options } => {
+                    let req = Ed2kRequestSources {
+                        file_hash,
+                        version: *version,
+                        options: *options,
+                    };
+                    let mask = peer_masks.get(&file_hash).map(Vec::as_slice);
+                    sx::respond_to_sx_request(
+                        &req,
+                        true,
+                        None,
+                        target_addr,
+                        encoder,
+                        &self.downloads,
+                        stream,
+                        sx_env,
+                        sx_caps,
+                        mask,
+                    )
+                    .await;
+                }
+                Ed2kMultiPacketSubRequest::AichFileHash => want_aich = true,
+            }
+        }
+        if !want_filename && !want_aich {
+            return;
+        }
+
+        // Réponse groupée eMule (`OP_MULTIPACKETANSWER`) : nom du fichier +
+        // file-status (+ hash AICH) pour le fichier de l'enveloppe.
+        let shared_file = {
+            let dl_svc = self.downloads.lock().await;
+            dl_svc.get_shared_file(&hash_hex).unwrap_or(None)
+        };
+        let mut sub_answers: Vec<Ed2kMultiPacketSubAnswer> = Vec::new();
+        if want_filename {
+            if let Some(sf) = shared_file.as_ref().filter(|s| s.enabled) {
+                sub_answers.push(Ed2kMultiPacketSubAnswer::FileName(sf.file_name.clone()));
+                let part_count = if sf.file_size == 0 {
+                    1
+                } else {
+                    sf.file_size.div_ceil(9728000).max(1) as u16
+                };
+                let avail: Vec<u16> = if sf.is_partial {
+                    sf.completed_parts.clone()
+                } else {
+                    (0..part_count).collect()
+                };
+                let mut mask =
+                    vec![0u8; mule_protocol::ed2k::expected_mask_bytes(part_count)];
+                for p in avail {
+                    mask[(p / 8) as usize] |= 1 << (p % 8);
+                }
+                sub_answers.push(Ed2kMultiPacketSubAnswer::FileStatus {
+                    part_count,
+                    part_status: Bytes::from(mask),
+                });
+            }
+        }
+        if want_aich {
+            if let Some(sf) = shared_file
+                .as_ref()
+                .filter(|s| s.enabled && s.file_size > 0)
+            {
+                if let Some(root) = self.shared_aich_root(sf, &hash_hex).await {
+                    sub_answers.push(Ed2kMultiPacketSubAnswer::AichFileHash(root));
+                }
+            }
+        }
+        if sub_answers.is_empty() {
+            return;
+        }
+        let ans = Ed2kMultiPacketAnswer {
+            file: mp.file.clone(),
+            sub_answers,
+        };
+        match encoder.encode_message(&Ed2kMessage::MultiPacketAnswer(ans)) {
+            Ok(ans_pkt) => {
+                let mut out = Vec::with_capacity(6 + ans_pkt.payload.len());
+                out.push(ans_pkt.protocol);
+                out.extend_from_slice(&(ans_pkt.frame_len() as u32).to_le_bytes());
+                out.push(ans_pkt.opcode);
+                out.extend_from_slice(&ans_pkt.payload);
+                let _ = stream.write_all(&out).await;
+            }
+            Err(e) => {
+                warn!("Failed to encode multipacket answer for {remote_str}: {e}");
+            }
+        }
     }
 
     /// Returns the trusted AICH root of a shared file, computing (and caching)

@@ -381,6 +381,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `tests/lab_rpc_tests.rs` | Tests RPC lab |
 | `tests/lifecycle_and_locking.rs` | Tests cycle de vie et verrouillage |
 | `tests/network_policy_rpc_tests.rs` | Tests RPC politique réseau |
+| `tests/orphan_recovery_tests.rs` | Tests récupération de `.part.met` orphelins, tombstone `.keep`, flush des mets |
 | `tests/part_met_rpc_tests.rs` | Tests RPC part.met |
 | `tests/part_met_write_tests.rs` | Tests écriture .part.met |
 | `tests/peer_adversarial_tests.rs` | Tests adversariaux de pairs |
@@ -685,6 +686,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `ed2k/messages/op_filestatusreq.md` | Spec du message OP_FILESTATUSREQ |
 | `ed2k/messages/op_requestparts.md` | Spec du message OP_REQUESTPARTS |
 | `ed2k/messages/op_sendingpart.md` | Spec du message OP_SENDINGPART |
+| `ed2k/messages/source_exchange.md` | Spec Source Exchange (SX/SX2, multipacket, throttles eMule 0.72a) |
 | `ed2k/decisions/0001-ed2k-read-only.md` | ADR : eD2k en lecture seule |
 | `ed2k/decisions/0002-no-public-network.md` | ADR : pas de réseau public |
 | `ed2k/decisions/0003-wire-lab-separation.md` | ADR : séparation wire/lab |

@@ -339,13 +339,17 @@ impl InboundListenerService {
                     remote_addr,
                     &file_hash,
                     source_address,
-                    peer_info.supports_source_exchange(),
-                    peer_info.supports_source_exchange2(),
+                    crate::services::peer_session::source_exchange::peer_sx_caps(
+                        &peer_info,
+                        None,
+                    ),
                     peer_info.supports_aich(),
                     peer_info.secure_ident_support(),
                     peer_info.extended_requests_version(),
                     self.downloads.clone(),
                     cancel_token.clone(),
+                    self.sx_env(),
+                    self.sx_local_ids(actual_listen_addr.port()).await,
                 )
                 .await
                 .is_ok()
@@ -398,12 +402,12 @@ impl InboundListenerService {
                     source_address,
                     peer_info
                         .as_ref()
-                        .map(|p| p.supports_source_exchange())
-                        .unwrap_or(false),
-                    peer_info
-                        .as_ref()
-                        .map(|p| p.supports_source_exchange2())
-                        .unwrap_or(false),
+                        .map(|p| {
+                            crate::services::peer_session::source_exchange::peer_sx_caps(
+                                p, None,
+                            )
+                        })
+                        .unwrap_or_default(),
                     peer_info
                         .as_ref()
                         .map(|p| p.supports_aich())
@@ -418,6 +422,8 @@ impl InboundListenerService {
                         .unwrap_or(0),
                     self.downloads.clone(),
                     cancel_token.clone(),
+                    self.sx_env(),
+                    self.sx_local_ids(actual_listen_addr.port()).await,
                 )
                 .await;
             return;
@@ -448,6 +454,13 @@ impl InboundListenerService {
             .map(|h| h.user_hash)
             .filter(|h| *h != [0u8; 16]);
 
+        // Capacités SX + version de requêtes étendues du pair, extraites du
+        // HELLO (CT_EMULE_MISCOPTIONS*) — raffinées par OP_EMULEINFO dans le
+        // dispatcher.
+        let peer_info = callback_hello
+            .as_ref()
+            .map(mule_protocol::ed2k::Ed2kPeerInfo::from_hello);
+
         self.dispatch_requests(
             stream,
             remote_str,
@@ -455,6 +468,16 @@ impl InboundListenerService {
             cancel_token,
             peer_supports_compression,
             peer_user_hash,
+            peer_info
+                .as_ref()
+                .map(|p| {
+                    crate::services::peer_session::source_exchange::peer_sx_caps(p, None)
+                })
+                .unwrap_or_default(),
+            peer_info
+                .as_ref()
+                .map(|p| p.extended_requests_version())
+                .unwrap_or(0),
         )
         .await;
     }
@@ -612,6 +635,8 @@ impl InboundListenerService {
             cancel_token,
             peer_info.has_compression_capability(),
             peer_hash,
+            crate::services::peer_session::source_exchange::peer_sx_caps(&peer_info, None),
+            peer_info.extended_requests_version(),
         )
         .await;
         Ok(())
