@@ -1301,7 +1301,8 @@ async fn test_peer_credit_persistence_and_multiplier_formula() {
         assert_eq!(c.credit_multiplier(), 1.0);
     }
 
-    // Record download 3 MB -> ratio: 2 * 3 / (1 + 1) = 6.0x
+    // Record download 3 MB -> eMule GetScoreRatio: min(ratio 6.0,
+    // sqrt(3+2)≈2.24, linéaire (3-1)/8.2*2.34+1≈1.57) = ~1.57x
     {
         let mut dls = state.downloads.lock().await;
         dls.record_credit_download(&hash_a, &pubkey_a_hex, 3145728)
@@ -1313,7 +1314,7 @@ async fn test_peer_credit_persistence_and_multiplier_formula() {
         let c = dls.get_peer_credit(&hash_a).unwrap().unwrap();
         assert_eq!(c.uploaded_bytes, 1048576);
         assert_eq!(c.downloaded_bytes, 3145728);
-        assert!((c.credit_multiplier() - 6.0).abs() < 0.01);
+        assert!((c.credit_multiplier() - 1.57).abs() < 0.01);
     }
 
     // Record huge download -> ratio capped at 10.0x
@@ -1476,10 +1477,11 @@ async fn test_key_rotation_creates_fresh_identity_and_detaches_credits() {
     .unwrap();
     let hash1 = id1["pubkeyHash"].as_str().unwrap().to_string();
 
-    // 2. Populate credits under old identity hash1
+    // 2. Populate credits under old identity hash1 (100 MiB saturates all
+    //    three GetScoreRatio caps -> multiplier 10.0x)
     {
         let mut dls = node.downloads.lock().await;
-        dls.record_credit_download(&hash1, "mock_pubkey_hex_1", 10000000)
+        dls.record_credit_download(&hash1, "mock_pubkey_hex_1", 104857600)
             .unwrap();
         let cred = dls.get_peer_credit(&hash1).unwrap().unwrap();
         assert_eq!(cred.credit_multiplier(), 10.0);
