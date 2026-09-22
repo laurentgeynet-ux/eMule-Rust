@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../ui/features/downloads/views/downloads_screen.dart';
-import '../ui/features/downloads/widgets/settings_dialog.dart';
 import 'app_controller.dart';
 import '../ui/features/history/views/history_view.dart';
 import '../ui/features/kad/views/kad_screen.dart';
@@ -12,6 +11,7 @@ import '../ui/features/shares/views/shares_view.dart';
 import '../ui/features/uploads/views/uploads_view.dart';
 import '../ui/features/search/views/search_screen.dart';
 import '../ui/features/servers/views/servers_screen.dart';
+import '../ui/features/settings/views/settings_view.dart';
 
 /// Canonical route path for each navigation section.
 String sectionToPath(AppNavSection section) => switch (section) {
@@ -22,6 +22,7 @@ String sectionToPath(AppNavSection section) => switch (section) {
       AppNavSection.servers => '/servers',
       AppNavSection.search => '/search',
       AppNavSection.kad => '/kad',
+      AppNavSection.settings => '/settings',
     };
 
 /// Inverse of [sectionToPath]. Returns null for unknown paths.
@@ -30,7 +31,7 @@ String sectionToPath(AppNavSection section) => switch (section) {
 /// former selects a download, the latter opens the settings dialog on top
 /// of it (handled in the shell builder).
 AppNavSection? pathToSection(String path) {
-  if (path == '/settings' || path.startsWith('/downloads/')) {
+  if (path.startsWith('/downloads/')) {
     return AppNavSection.downloads;
   }
   return switch (path) {
@@ -41,6 +42,7 @@ AppNavSection? pathToSection(String path) {
     '/servers' => AppNavSection.servers,
     '/search' => AppNavSection.search,
     '/kad' => AppNavSection.kad,
+    '/settings' => AppNavSection.settings,
     _ => null,
   };
 }
@@ -57,8 +59,6 @@ AppNavSection? pathToSection(String path) {
 GoRouter createAppRouter(AppController viewModel) {
   late final GoRouter router;
 
-  var settingsDialogOpen = false;
-
   void onSectionChanged() {
     try {
       final wanted = sectionToPath(viewModel.currentSection);
@@ -73,24 +73,6 @@ GoRouter createAppRouter(AppController viewModel) {
     } catch (_) {
       // Router already disposed (app teardown / test cleanup).
     }
-  }
-
-  void openSettingsDialog(BuildContext context) {
-    settingsDialogOpen = true;
-    unawaited(() async {
-      if (!context.mounted) {
-        settingsDialogOpen = false;
-        return;
-      }
-      await showDialog<void>(
-        context: context,
-        builder: (_) => const SettingsDialog(),
-      );
-      settingsDialogOpen = false;
-      if (router.state.matchedLocation == '/settings') {
-        router.go('/downloads');
-      }
-    }());
   }
 
   router = GoRouter(
@@ -124,13 +106,6 @@ GoRouter createAppRouter(AppController viewModel) {
               Future.microtask(() => viewModel.selectDownload(null)),
             );
           }
-          if (location == '/settings' && !settingsDialogOpen) {
-            unawaited(
-              Future.microtask(() {
-                if (context.mounted) openSettingsDialog(context);
-              }),
-            );
-          }
           return DownloadsScreen(child: child);
         },
         routes: [
@@ -149,7 +124,9 @@ GoRouter createAppRouter(AppController viewModel) {
           GoRoute(
             path: '/settings',
             pageBuilder: (context, state) => NoTransitionPage(
-              child: const DownloadsView(),
+              child: SettingsView(
+                initialSection: state.uri.queryParameters['section'],
+              ),
             ),
           ),
           GoRoute(

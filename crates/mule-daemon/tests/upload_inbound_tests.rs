@@ -824,3 +824,363 @@ async fn test_inbound_secident_signature_without_challenge_rejected() {
         "Unsolicited signature without prior challenge must be rejected with state 0"
     );
 }
+
+#[tokio::test]
+async fn test_shares_rescan_discovers_new_files_and_preserves_settings() {
+    let dir = tempdir().unwrap();
+    let download_dir = dir.path().join("downloads");
+    std::fs::create_dir_all(&download_dir).unwrap();
+    std::fs::write(download_dir.join("rescan_target.bin"), b"rescan-me").unwrap();
+    // A download artifact must be skipped.
+    std::fs::write(download_dir.join("pending.part"), b"partial").unwrap();
+
+    let token = "test_token_rescan".to_string();
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable)
+        .with_default_download_dir(download_dir.clone());
+    let downloads = DownloadService::in_memory(dir.path().join("temp")).unwrap();
+    let state = AppState::new(config, downloads);
+    let mut authenticated = true;
+
+    // First rescan: the new file is discovered, the .part is skipped.
+    let resp = handle_request(
+        &state,
+        make_req(1, "shares.rescan", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.as_ref().unwrap()["added"], 1);
+
+    // List to find the registered share, then change its settings.
+    let resp = handle_request(
+        &state,
+        make_req(2, "shares.list", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap();
+    assert_eq!(shares.len(), 1);
+    assert_eq!(shares[0]["fileName"], "rescan_target.bin");
+    let hash = shares[0]["fileHash"].as_str().unwrap().to_string();
+
+    let resp = handle_request(
+        &state,
+        make_req(
+            3,
+            "shares.setUploadPriority",
+            Some(json!({ "fileHash": hash, "priority": "powershare" })),
+        ),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+    let resp = handle_request(
+        &state,
+        make_req(
+            4,
+            "shares.setEnabled",
+            Some(json!({ "fileHash": hash, "enabled": false })),
+        ),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+
+    // Second rescan: nothing new, existing entry keeps its settings.
+    let resp = handle_request(
+        &state,
+        make_req(5, "shares.rescan", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.result.as_ref().unwrap()["added"], 0);
+
+    let resp = handle_request(
+        &state,
+        make_req(6, "shares.list", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap();
+    assert_eq!(shares.len(), 1);
+    assert_eq!(shares[0]["upPriority"], "powershare");
+    assert_eq!(shares[0]["enabled"], false);
+}
+
+#[tokio::test]
+async fn test_shares_rescan_respects_share_download_dir_optout() {
+    let dir = tempdir().unwrap();
+    let download_dir = dir.path().join("downloads");
+    std::fs::create_dir_all(&download_dir).unwrap();
+    std::fs::write(download_dir.join("should_not_share.bin"), b"x").unwrap();
+
+    let token = "test_token_rescan_off".to_string();
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable)
+        .with_default_download_dir(download_dir.clone());
+    let downloads = DownloadService::in_memory(dir.path().join("temp")).unwrap();
+    let state = AppState::new(config, downloads);
+    let mut authenticated = true;
+
+    // Disable Incoming sharing via the settings RPC.
+    let resp = handle_request(
+        &state,
+        make_req(
+            1,
+            "settings.set",
+            Some(json!({ "shareDownloadDir": false })),
+        ),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+
+    let resp = handle_request(
+        &state,
+        make_req(2, "shares.rescan", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.as_ref().unwrap()["added"], 0);
+
+    let resp = handle_request(
+        &state,
+        make_req(3, "shares.list", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_partial_download_is_shared_with_completed_parts_only() {
+    let dir = tempdir().unwrap();
+    let token = "test_token_partial".to_string();
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable);
+    let downloads = DownloadService::in_memory(dir.path().join("temp")).unwrap();
+    let state = AppState::new(config, downloads);
+    let mut authenticated = true;
+
+    // Add a download > 1 eD2K part (2 * 9_728_000 bytes).
+    let resp = handle_request(
+        &state,
+        make_req(
+            1,
+            "downloads.addEd2kLink",
+            Some(json!({
+                "link": "ed2k://|file|partial.bin|19456000|0123456789ABCDEF0123456789ABCDEF|/"
+            })),
+        ),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+    let id = resp.result.as_ref().unwrap()["downloadId"].as_str().unwrap().to_string();
+
+    // No completed part yet: not shared.
+    {
+        let dl = state.downloads.lock().await;
+        assert!(dl
+            .get_shared_file("0123456789abcdef0123456789abcdef")
+            .unwrap()
+            .is_none());
+    }
+
+    // Complete part 0 (9 728 000 bytes) via inject_range.
+    {
+        let mut dl = state.downloads.lock().await;
+        let uuid = uuid::Uuid::parse_str(&id).unwrap();
+        dl.inject_range(&uuid, 0, &vec![0xABu8; 9_728_000]).unwrap();
+    }
+
+    // Now the partial share must resolve with only part 0 completed.
+    {
+        let dl = state.downloads.lock().await;
+        let sf = dl
+            .get_shared_file("0123456789abcdef0123456789abcdef")
+            .unwrap()
+            .expect("partial download with 1 complete part must be shared");
+        assert!(sf.is_partial);
+        assert_eq!(sf.completed_parts, vec![0]);
+        assert!(sf.file_path.ends_with(".part"));
+
+        // And it must appear in shares.list output.
+        let all = dl.list_all_shared_files().unwrap();
+        assert!(all.iter().any(|f| f.is_partial && f.file_hash.eq_ignore_ascii_case("0123456789abcdef0123456789abcdef")));
+    }
+}
+
+#[tokio::test]
+async fn test_settings_new_keys_roundtrip_and_live_apply() {
+    let dir = tempdir().unwrap();
+    let token = "test_token_settings".to_string();
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable);
+    let downloads = DownloadService::in_memory(dir.path().join("temp")).unwrap();
+    let state = AppState::new(config, downloads);
+    let mut authenticated = true;
+
+    let resp = handle_request(
+        &state,
+        make_req(
+            1,
+            "settings.set",
+            Some(json!({
+                "nickname": "TestNick",
+                "obfuscationEnabled": true,
+                "obfuscationRequired": true,
+                "maxConnections": 700,
+                "maxConnPerMin": 120,
+                "maxUploadQueue": 800,
+                "ussEnabled": true,
+                "ed2kPort": 4723,
+                "kadPort": 4725,
+                "udpEnabled": false,
+                "upnpEnabled": false,
+                "capacityDownloadKbs": 96,
+                "capacityUploadKbs": 100,
+                "minUploadKbs": 32,
+                "ichEnabled": false,
+                "rememberCancelled": false,
+                "rememberDownloaded": true,
+                "serverReconnect": false,
+                "serverAutoconnect": true,
+                "serverAutoremoveDead": false,
+                "serverAutoupdateList": true,
+                "serverAutoupdatePath": "C:/srv/server.met",
+                "safeConnect": true,
+                "autoPriorityNewDownloads": true,
+                "tempDir": dir.path().join("tp").display().to_string(),
+            })),
+        ),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+
+    let resp = handle_request(
+        &state,
+        make_req(2, "settings.get", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let r = resp.result.as_ref().unwrap();
+    assert_eq!(r["nickname"], "TestNick");
+    assert_eq!(r["obfuscationEnabled"], true);
+    assert_eq!(r["obfuscationRequired"], true);
+    assert_eq!(r["maxConnections"], 700);
+    assert_eq!(r["maxConnPerMin"], 120);
+    assert_eq!(r["maxUploadQueue"], 800);
+    assert_eq!(r["ussEnabled"], true);
+    assert_eq!(r["ed2kPort"], 4723);
+    assert_eq!(r["kadPort"], 4725);
+    assert_eq!(r["udpEnabled"], false);
+    assert_eq!(r["capacityDownloadKbs"], 96);
+    assert_eq!(r["capacityUploadKbs"], 100);
+    assert_eq!(r["minUploadKbs"], 32);
+    assert_eq!(r["ichEnabled"], false);
+    assert_eq!(r["rememberCancelled"], false);
+    assert_eq!(r["rememberDownloaded"], true);
+    assert_eq!(r["serverReconnect"], false);
+    assert_eq!(r["serverAutoconnect"], true);
+    assert_eq!(r["serverAutoremoveDead"], false);
+    assert_eq!(r["serverAutoupdateList"], true);
+    assert_eq!(r["serverAutoupdatePath"], "C:/srv/server.met");
+    assert_eq!(r["safeConnect"], true);
+    assert_eq!(r["autoPriorityNewDownloads"], true);
+    assert_eq!(
+        r["tempDir"],
+        dir.path().join("tp").display().to_string().as_str()
+    );
+    assert_eq!(state.ed2k_port(), 4723);
+    assert_eq!(state.kad_port(), 4725);
+    assert!(!state.udp_enabled());
+
+    // Live-applied: effective obfuscation + nickname helpers.
+    assert_eq!(state.effective_obfuscation().await, (true, true));
+    assert_eq!(state.current_nickname().await, "TestNick");
+
+    // Nickname validation: empty rejected.
+    let resp = handle_request(
+        &state,
+        make_req(3, "settings.set", Some(json!({ "nickname": "  " }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_some());
+}
+
+/// Regression: completed downloads persisted in the DB but absent from the
+/// in-memory `active` map (e.g. after a daemon restart) must still appear
+/// in `shares.list` and be resolvable by `get_shared_file` — eMule rehashes
+/// finished files into `CSharedFileList` at startup.
+#[tokio::test]
+async fn test_completed_db_download_is_shared_after_restart() {
+    let dir = tempdir().unwrap();
+    let token = "test_token_dbrestart".to_string();
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable);
+    let downloads = DownloadService::in_memory(dir.path().join("temp")).unwrap();
+    let state = AppState::new(config, downloads);
+    let mut authenticated = true;
+
+    // A finished file on disk + a Completed row in the DB, nothing in
+    // `active` (simulating a fresh daemon boot).
+    let file_path = dir.path().join("downloads").join("finished.bin");
+    std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+    std::fs::write(&file_path, b"done").unwrap();
+    let hash = mule_format::Ed2kHash([0x42; 16]);
+    {
+        let mut dl = state.downloads.lock().await;
+        dl.db_mut()
+            .insert_download(&mule_core::model::Download {
+                id: uuid::Uuid::new_v4(),
+                display_name: "finished.bin".into(),
+                total_size: 4,
+                ed2k_hash: hash,
+                aich_root: None,
+                target_path: file_path.clone(),
+                temp_path: dir.path().join("temp").join("x.part"),
+                status: mule_core::model::DownloadStatus::Completed,
+                created_at: 0,
+                updated_at: 0,
+                category_id: None,
+                priority: "normal".into(),
+                max_sources: None,
+            })
+            .unwrap();
+    }
+
+    let resp = handle_request(&state, make_req(1, "shares.list", None), &mut authenticated)
+        .await
+        .unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap();
+    assert!(
+        shares.iter().any(|s| s["fileName"] == "finished.bin"),
+        "completed DB download must appear in shares.list: {shares:?}"
+    );
+    // Peers must be able to resolve it for upload.
+    let sf = {
+        let dl = state.downloads.lock().await;
+        dl.get_shared_file(&hash.to_hex()).unwrap()
+    };
+    let sf = sf.expect("get_shared_file must resolve completed DB download");
+    assert!(!sf.is_partial);
+    assert_eq!(sf.file_path, file_path.to_string_lossy());
+}

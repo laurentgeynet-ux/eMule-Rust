@@ -238,7 +238,7 @@ pub async fn handle_servers_connect(
         })?;
 
     let user_hash = state.identity.lock().await.user_hash();
-    let ed2k_port = state.config.ed2k_port;
+    let ed2k_port = state.ed2k_port();
 
     // Start session with WAN-adapted timeouts (10s connect, 15s handshake)
     state
@@ -250,7 +250,7 @@ pub async fn handle_servers_connect(
             10000,
             15000,
             ed2k_port,
-            "http://emule-project.net".to_string(),
+            state.current_nickname().await,
             user_hash,
         )
         .await?;
@@ -383,7 +383,7 @@ pub async fn handle_servers_query_sources(
     let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
         file_hash,
         file_size,
-        state.config.obfuscation_enabled,
+        state.effective_obfuscation().await.0,
     );
     state.server_session.get_sources(req).await?;
     Ok(json!({ "sent": true }))

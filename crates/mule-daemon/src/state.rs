@@ -1,9 +1,10 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 use mule_network_policy::{NetworkPolicyManager, ResourceBudgets};
+use std::net::SocketAddr;
 
 use crate::config::DaemonConfig;
 use crate::services::downloads::types::DownloadSnapshot;
@@ -40,6 +41,17 @@ pub struct AppState {
     pub session_id: Uuid,
     pub abort_handles: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
     pub shutdown_notify: Arc<tokio::sync::Notify>,
+    /// Effective ports (persisted settings override `DaemonConfig`):
+    /// eD2K TCP listener and Kad UDP. Mirrors eMule Preferences → Connexion.
+    ed2k_port_eff: Arc<std::sync::atomic::AtomicU16>,
+    kad_port_eff: Arc<std::sync::atomic::AtomicU16>,
+    /// Whether UDP (Kad + server UDP + client UDP) is enabled at all —
+    /// eMule « UDP désactivé » checkbox.
+    udp_enabled: Arc<AtomicBool>,
+    /// Gate du quota journalier d'upload (`dailyUploadQuotaGb`, Emule-Sion) :
+    /// `false` bloque les nouvelles demandes de slot. Piloté par
+    /// `spawn_quota_watcher`.
+    upload_quota_gate: Arc<AtomicBool>,
     #[cfg(feature = "lab-tools")]
     pub active_lab_peer: Arc<Mutex<Option<(std::net::SocketAddr, tokio::task::AbortHandle)>>>,
 }
@@ -67,8 +79,105 @@ impl AppState {
         if budgets.max_active_peer_connections < max_global {
             budgets.max_active_peer_connections = max_global.min(1500);
         }
+        // Persisted Connexion overrides (eMule Preferences) applied at boot.
+        let get_usize = |key: &str| {
+            downloads
+                .get_setting(key)
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse::<usize>().ok())
+        };
+        if let Some(v) = get_usize("max_connections") {
+            budgets.max_active_peer_connections = v.clamp(1, 1500);
+        }
+        if let Some(v) = get_usize("max_conn_per_min") {
+            budgets.rate_limit_per_min = (v as u32).clamp(1, 1200);
+        }
+        let bool_setting = |key: &str| -> Option<bool> {
+            downloads
+                .get_setting(key)
+                .ok()
+                .flatten()
+                .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
+        };
+        let obf_enabled =
+            bool_setting("obfuscation_enabled").unwrap_or(config.obfuscation_enabled);
+        let obf_required =
+            bool_setting("obfuscation_required").unwrap_or(config.obfuscation_required);
+        let ed2k_port_eff = get_usize("ed2k_port")
+            .map(|v| v.clamp(1, 65535) as u16)
+            .unwrap_or(config.ed2k_port);
+        let kad_port_eff = get_usize("kad_port")
+            .map(|v| v.clamp(1, 65535) as u16)
+            .unwrap_or(config.kad_port);
+        let udp_enabled = bool_setting("udp_enabled").unwrap_or(true);
+        // Mode paranoid (Emule-Sion) : slots d'upload réservés aux pairs
+        // obfusqués avec signature SUI vérifiée.
+        let paranoid_mode = bool_setting("paranoid_mode").unwrap_or(false);
+        let max_upload_queue = get_usize("max_upload_queue");
+        let min_upload_kbs = get_usize("min_upload_kbs");
+        let upnp_enabled_boot = bool_setting("upnp_enabled").unwrap_or(config.upnp_enabled);
 
         let network_policy = NetworkPolicyManager::new(config.network_profile, budgets);
+        // Persisted rate limits (eMule MaxUpload/MaxDownload, stored via
+        // `limits.set`) applied at boot.
+        {
+            let get_u64 = |key: &str| {
+                downloads
+                    .get_setting(key)
+                    .ok()
+                    .flatten()
+                    .and_then(|s| s.parse::<u64>().ok())
+            };
+            let mut rl = mule_filter::RateLimitsConfig::default();
+            let mut has_override = false;
+            if let Some(v) = get_u64("rate_limit_download_bps") {
+                rl.download_bytes_per_sec = v;
+                has_override = true;
+            }
+            if let Some(v) = get_u64("rate_limit_upload_bps") {
+                rl.upload_bytes_per_sec = v;
+                has_override = true;
+            }
+            if let Some(v) = get_u64("rate_limit_conn_per_min") {
+                rl.connections_per_minute = v as u32;
+                has_override = true;
+            }
+            if let Some(v) = get_u64("rate_limit_server_req_per_sec") {
+                rl.server_requests_per_sec = v as u32;
+                has_override = true;
+            }
+            if let Some(v) = get_u64("rate_limit_kad_pkt_per_sec") {
+                rl.kad_packets_per_sec = v as u32;
+                has_override = true;
+            }
+            if has_override {
+                network_policy.rate_limiters().apply_config(&rl);
+            }
+        }
+        // Persisted IP filter (eMule keeps ipfilter.dat loaded across
+        // restarts): reload the file and restore the enabled flag.
+        {
+            if let Some(path) = downloads
+                .get_setting("ipfilter_path")
+                .ok()
+                .flatten()
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+            {
+                match network_policy.ip_filter().load_from_file(std::path::Path::new(&path)) {
+                    Ok(report) => {
+                        tracing::info!("[IPFILTER] Rechargé depuis {path} ({report:?})")
+                    }
+                    Err(e) => {
+                        tracing::warn!("[IPFILTER] Rechargement impossible ({path}): {e}")
+                    }
+                }
+            }
+            if bool_setting("ipfilter_enabled").unwrap_or(false) {
+                network_policy.ip_filter().set_enabled(true);
+            }
+        }
         let sequence = Arc::new(AtomicU64::new(1));
         let server_session = ServerSessionManager::new(event_tx.clone(), Arc::clone(&sequence));
         let peer_session = PeerSessionManager::new(event_tx.clone(), Arc::clone(&sequence))
@@ -90,12 +199,17 @@ impl AppState {
             Arc::clone(&dl_arc),
             user_hash,
             sui_pubkey_der,
-            config.obfuscation_enabled,
-            config.obfuscation_required,
+            obf_enabled,
+            obf_required,
             config.obfuscation_padding_max,
             Arc::clone(&sui_stats),
         );
         inbound_listener.set_identity(Arc::clone(&identity));
+        inbound_listener.set_paranoid_mode(paranoid_mode);
+        let upload_quota_gate = Arc::new(AtomicBool::new(true));
+        inbound_listener
+            .upload_manager()
+            .set_quota_gate(Arc::clone(&upload_quota_gate));
         inbound_listener.set_peer_session(peer_session.clone());
         inbound_listener.set_server_session(server_session.clone());
         let kad_id = mule_core::kad::KadId::random();
@@ -105,17 +219,17 @@ impl AppState {
             network_policy.clone(),
             network_policy.ip_filter(),
         ));
-        kad.set_ed2k_tcp_port(config.ed2k_port);
+        kad.set_ed2k_tcp_port(ed2k_port_eff);
         kad.set_fw_check_identity(user_hash);
         // Buddy relay role: TCP port the buddy client connects to, and the
         // GetMyConnectOptions-style flags byte sent in KADEMLIA_FINDBUDDY_RES
         // (bit0/1 = obfuscation supported+requested, bit2 = required).
-        let connect_opts: u8 = if config.obfuscation_enabled { 0x03 } else { 0 }
-            | if config.obfuscation_required { 0x04 } else { 0 };
-        kad.udp().set_buddy_tcp_info(config.ed2k_port, connect_opts);
+        let connect_opts: u8 = if obf_enabled { 0x03 } else { 0 }
+            | if obf_required { 0x04 } else { 0 };
+        kad.udp().set_buddy_tcp_info(ed2k_port_eff, connect_opts);
         inbound_listener.set_kad_udp(Arc::clone(kad.udp()));
         inbound_listener.set_kad(Arc::clone(&kad));
-        inbound_listener.set_kad_udp_port(config.kad_port);
+        inbound_listener.set_kad_udp_port(kad_port_eff);
         let client_udp = crate::services::ClientUdpService::new();
         client_udp.set_downloads(Arc::clone(&dl_arc));
         client_udp.set_upload_manager(inbound_listener.upload_manager().clone());
@@ -132,6 +246,14 @@ impl AppState {
         inbound_listener
             .upload_manager()
             .set_uss_gate(uss.accept_flag());
+        if let Some(q) = max_upload_queue {
+            inbound_listener.upload_manager().set_max_queue(q);
+        }
+        if let Some(min_kbs) = min_upload_kbs {
+            inbound_listener
+                .upload_manager()
+                .set_min_upload_rate((min_kbs as u64).saturating_mul(1024));
+        }
         inbound_listener
             .upload_manager()
             .set_event_channel(event_tx.clone(), Arc::clone(&sequence));
@@ -214,9 +336,9 @@ impl AppState {
         peer_session.set_identity(Arc::clone(&identity));
         peer_session.set_sui_stats(Arc::clone(&sui_stats));
         let upnp = Arc::new(crate::services::UpnpService::new(
-            config.upnp_enabled,
-            config.ed2k_port,
-            config.kad_port,
+            upnp_enabled_boot,
+            ed2k_port_eff,
+            kad_port_eff,
         ));
         Self {
             config,
@@ -238,12 +360,72 @@ impl AppState {
             session_id: Uuid::new_v4(),
             abort_handles: Arc::new(Mutex::new(Vec::new())),
             shutdown_notify: Arc::new(tokio::sync::Notify::new()),
+            ed2k_port_eff: Arc::new(std::sync::atomic::AtomicU16::new(ed2k_port_eff)),
+            kad_port_eff: Arc::new(std::sync::atomic::AtomicU16::new(kad_port_eff)),
+            udp_enabled: Arc::new(AtomicBool::new(udp_enabled)),
+            upload_quota_gate,
             #[cfg(feature = "lab-tools")]
             active_lab_peer: Arc::new(Mutex::new(None)),
         }
     }
 
     /// Registers a background task handle so it can be cleanly aborted on shutdown.
+    /// Effective obfuscation (protocol encryption) policy: persisted
+    /// `obfuscation_enabled`/`obfuscation_required` settings override the
+    /// startup `DaemonConfig` values (eMule Preferences → Security).
+    pub async fn effective_obfuscation(&self) -> (bool, bool) {
+        let dl = self.downloads.lock().await;
+        let get = |key: &str, default: bool| {
+            dl.get_setting(key)
+                .ok()
+                .flatten()
+                .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
+                .unwrap_or(default)
+        };
+        let enabled = get("obfuscation_enabled", self.config.obfuscation_enabled);
+        let required = get("obfuscation_required", self.config.obfuscation_required);
+        (enabled, required)
+    }
+
+    /// Effective eD2K TCP port (persisted `ed2k_port` or startup config).
+    pub fn ed2k_port(&self) -> u16 {
+        self.ed2k_port_eff.load(Ordering::Relaxed)
+    }
+
+    /// Effective Kad UDP port (persisted `kad_port` or startup config).
+    pub fn kad_port(&self) -> u16 {
+        self.kad_port_eff.load(Ordering::Relaxed)
+    }
+
+    /// Whether UDP services (Kad UDP, server UDP, client UDP) are enabled.
+    pub fn udp_enabled(&self) -> bool {
+        self.udp_enabled.load(Ordering::Relaxed)
+    }
+
+    /// Updates the effective ports / UDP flag (called by `settings.set`).
+    pub fn set_effective_ports(&self, ed2k: u16, kad: u16) {
+        self.ed2k_port_eff.store(ed2k, Ordering::Relaxed);
+        self.kad_port_eff.store(kad, Ordering::Relaxed);
+    }
+
+    pub fn set_udp_enabled(&self, enabled: bool) {
+        self.udp_enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    /// Effective nickname announced in eD2K hellos / server login
+    /// (eMule `nick` pref). Default: "Emule-Sion".
+    pub async fn current_nickname(&self) -> String {
+        self.downloads
+            .lock()
+            .await
+            .get_setting("nickname")
+            .ok()
+            .flatten()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "Emule-Sion".to_string())
+    }
+
     pub async fn register_task(&self, handle: tokio::task::AbortHandle) {
         let mut handles = self.abort_handles.lock().await;
         handles.push(handle);
@@ -277,5 +459,322 @@ impl AppState {
     pub fn emit_event(&self, make: impl FnOnce(u64) -> DaemonEvent) {
         let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
         make(seq).send(&self.event_tx);
+    }
+
+    /// Reads a persisted boolean setting (defaults to `default` when absent).
+    pub async fn setting_bool(&self, key: &str, default: bool) -> bool {
+        self.downloads
+            .lock()
+            .await
+            .get_setting(key)
+            .ok()
+            .flatten()
+            .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
+            .unwrap_or(default)
+    }
+
+    /// Auto-connect / auto-reconnect watcher (eMule `Autoconnect`,
+    /// `Reconnect`, `AutoDeadServer`). Every 15 s: if no server session is
+    /// active and a target is available, reconnects through the normal RPC
+    /// path (network policy, kill switch and disabled-server checks apply).
+    /// `server_autoremove_dead` deletes a target after `DeadServerRetry`
+    /// consecutive failures (eMule 0.72a default = 1). Call once after
+    /// construction.
+    pub fn spawn_server_watcher(&self) {
+        // `AppState` fields are all shared `Arc`s — a clone still points at
+        // the same services/session managers as the RPC state.
+        let state = Arc::new(self.clone());
+        let handle = tokio::spawn(async move {
+            let mut failures: u32 = 0;
+            let mut autoconnect_done = false;
+            let mut serverlist_updated = false;
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(15));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                ticker.tick().await;
+                // eMule `AutoUpdateServerList`: refresh the server list once
+                // per session from a configured local `.met` file
+                // (`server_autoupdate_path` setting — no remote fetch; the
+                // daemon deliberately has no outbound HTTP client).
+                if !serverlist_updated {
+                    serverlist_updated = true;
+                    if state.setting_bool("server_autoupdate_list", false).await {
+                        let path = {
+                            let dl = state.downloads.lock().await;
+                            dl.get_setting("server_autoupdate_path")
+                                .ok()
+                                .flatten()
+                                .unwrap_or_default()
+                        };
+                        if !path.trim().is_empty() {
+                            let params =
+                                serde_json::json!({ "filePath": path.trim() });
+                            match crate::rpc::handlers::servers::handle_servers_import_met(
+                                &state,
+                                Some(params),
+                            )
+                            .await
+                            {
+                                Ok(v) => tracing::info!("[SERVERLIST] auto-update: {v}"),
+                                Err(e) => {
+                                    tracing::warn!("[SERVERLIST] auto-update failed: {e}")
+                                }
+                            }
+                        }
+                    }
+                }
+                if state.server_session.is_active().await {
+                    failures = 0;
+                    continue;
+                }
+                // Kill switch: stay silent until the network is re-enabled.
+                if state.network_policy.state() == mule_network_policy::NetworkState::Disabled {
+                    continue;
+                }
+                let reconnect = state.setting_bool("server_reconnect", true).await;
+                let target = if reconnect {
+                    state.server_session.last_target()
+                } else {
+                    None
+                };
+                let target = match target {
+                    Some(t) => Some(t),
+                    None if !autoconnect_done
+                        && state.setting_bool("server_autoconnect", false).await =>
+                    {
+                        autoconnect_done = true;
+                        let servers = {
+                            let dl = state.downloads.lock().await;
+                            dl.list_servers().unwrap_or_default()
+                        };
+                        servers
+                            .iter()
+                            .filter(|s| {
+                                s.filter_status
+                                    != mule_core::model::ServerFilterStatus::Disabled
+                            })
+                            .max_by_key(|s| s.preference)
+                            .or_else(|| servers.first())
+                            .and_then(|s| s.address.parse::<SocketAddr>().ok())
+                            .map(|a| crate::services::server_session::ServerTarget {
+                                addr: a,
+                                name: None,
+                            })
+                    }
+                    None => continue,
+                };
+                let Some(t) = target else { continue };
+                let addr = t.addr;
+                let params = serde_json::json!({ "address": addr.to_string() });
+                match crate::rpc::handlers::servers::handle_servers_connect(&state, Some(params))
+                    .await
+                {
+                    Ok(_) => {
+                        failures = 0;
+                    }
+                    Err(e) => {
+                        failures += 1;
+                        tracing::debug!("[SERVER_RECONNECT] attempt {failures} failed: {e}");
+                        // eMule `DeadServerRetry` default = 1.
+                        if failures >= 1
+                            && state.setting_bool("server_autoremove_dead", true).await
+                        {
+                            let removed = {
+                                let mut dl = state.downloads.lock().await;
+                                dl.delete_server(&addr.to_string()).unwrap_or(false)
+                            };
+                            if removed {
+                                tracing::info!(
+                                    "[SERVER_RECONNECT] auto-removed dead server {addr} after {failures} failures"
+                                );
+                            }
+                            state.server_session.clear_last_target();
+                            failures = 0;
+                        }
+                    }
+                }
+            }
+        });
+        let abort = handle.abort_handle();
+        self.abort_handles
+            .try_lock()
+            .map(|mut h| h.push(abort))
+            .ok();
+    }
+
+    /// Régénère l'identité cryptographique locale (clé RSA SUI, user_hash
+    /// eD2K, KadID) et la propage à chaud à tous les consommateurs :
+    /// listener entrant (hellos + challenges SUI), identité firewall Kad,
+    /// table de routage Kad. Les sessions déjà établies conservent leur
+    /// identité d'origine ; les nouvelles utilisent la nouvelle.
+    /// Appelée par `identity.rotate` et par la rotation périodique
+    /// `identityRotationHours`. Les crédits associés à l'ancienne clé ne
+    /// s'appliquent plus (comportement voulu — nouvelle identité).
+    pub async fn rotate_identity(
+        &self,
+    ) -> Result<crate::services::identity::IdentityStatus, String> {
+        let new_id = crate::services::IdentityService::rotate_key(&self.config.data_dir)
+            .map_err(|e| format!("Failed to rotate identity key: {e}"))?;
+        let user_hash = new_id.user_hash();
+        let pubkey = new_id
+            .has_key()
+            .then(|| new_id.public_key_bytes().to_vec());
+        {
+            let mut guard = self.identity.lock().await;
+            *guard = new_id;
+        }
+        self.inbound_listener.set_identity_material(user_hash, pubkey);
+        self.kad.set_fw_check_identity(user_hash);
+        let new_kad_id = self.kad.rotate_local_id().await;
+        tracing::info!(
+            "[IDENTITY] Rotation effectuée — nouveau user_hash {} / KadID {}",
+            hex::encode(user_hash),
+            new_kad_id
+        );
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        if let Err(e) = self
+            .downloads
+            .lock()
+            .await
+            .set_setting("identity_last_rotation_unix", &now.to_string())
+        {
+            tracing::warn!("[IDENTITY] Échec persistance last_rotation: {e}");
+        }
+        Ok(self.identity.lock().await.status())
+    }
+
+    /// Rotation périodique de l'identité (`identityRotationHours`, défaut 0 =
+    /// désactivé). Vérifie toutes les 60 s si l'intervalle est écoulé depuis
+    /// `identity_last_rotation_unix` (persisté — survit aux redémarrages).
+    /// Call once after construction.
+    pub fn spawn_identity_rotator(&self) {
+        let state = Arc::new(self.clone());
+        let handle = tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                ticker.tick().await;
+                let (hours, last) = {
+                    let dl = state.downloads.lock().await;
+                    let h = dl
+                        .get_setting("identity_rotation_hours")
+                        .ok()
+                        .flatten()
+                        .and_then(|s| s.trim().parse::<u64>().ok())
+                        .unwrap_or(0);
+                    let l = dl
+                        .get_setting("identity_last_rotation_unix")
+                        .ok()
+                        .flatten()
+                        .and_then(|s| s.trim().parse::<i64>().ok())
+                        .unwrap_or(0);
+                    (h, l)
+                };
+                if hours == 0 {
+                    continue;
+                }
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                if last <= 0 {
+                    // Première activation : le démarrage compte comme point
+                    // de référence (évite une rotation immédiate au boot).
+                    let _ = state
+                        .downloads
+                        .lock()
+                        .await
+                        .set_setting("identity_last_rotation_unix", &now.to_string());
+                    continue;
+                }
+                if now.saturating_sub(last) < (hours * 3600) as i64 {
+                    continue;
+                }
+                match state.rotate_identity().await {
+                    Ok(_) => tracing::info!(
+                        "[IDENTITY] Rotation périodique effectuée (intervalle {} h)",
+                        hours
+                    ),
+                    Err(e) => tracing::warn!("[IDENTITY] Rotation périodique échouée: {e}"),
+                }
+            }
+        });
+        let abort = handle.abort_handle();
+        self.abort_handles
+            .try_lock()
+            .map(|mut h| h.push(abort))
+            .ok();
+    }
+
+    /// Quota journalier d'upload (`dailyUploadQuotaGb`, défaut 0 = illimité).
+    /// Toutes les 30 s : cumule le compteur `UploadManager` dans le compteur
+    /// persisté `upload_quota_used_bytes`, remis à zéro à chaque nouveau jour
+    /// UTC (`upload_quota_day` = numéro de jour Unix). Quota atteint → le gate
+    /// coupe les nouvelles demandes de slot ; quota levé/remis → gate rouvert.
+    /// Call once after construction.
+    pub fn spawn_quota_watcher(&self) {
+        let state = Arc::new(self.clone());
+        let gate = Arc::clone(&self.upload_quota_gate);
+        let uploads = self.inbound_listener.upload_manager().clone();
+        let handle = tokio::spawn(async move {
+            let mut last_total = uploads.total_uploaded_bytes();
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(30));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                ticker.tick().await;
+                let total = uploads.total_uploaded_bytes();
+                let delta = total.saturating_sub(last_total);
+                last_total = total;
+                let now_secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                let today = now_secs / 86_400;
+                let mut dl = state.downloads.lock().await;
+                let get_u64 = |key: &str| {
+                    dl.get_setting(key)
+                        .ok()
+                        .flatten()
+                        .and_then(|s| s.trim().parse::<u64>().ok())
+                };
+                let quota_gb = get_u64("daily_upload_quota_gb").unwrap_or(0);
+                let stored_day = get_u64("upload_quota_day").unwrap_or(0) as i64;
+                let mut used = if stored_day == today {
+                    get_u64("upload_quota_used_bytes").unwrap_or(0)
+                } else {
+                    0
+                };
+                if delta > 0 || stored_day != today {
+                    used = used.saturating_add(delta);
+                    if let Err(e) = dl.set_setting("upload_quota_day", &today.to_string()) {
+                        tracing::warn!("[QUOTA] Échec persistance upload_quota_day: {e}");
+                    }
+                    if let Err(e) =
+                        dl.set_setting("upload_quota_used_bytes", &used.to_string())
+                    {
+                        tracing::warn!("[QUOTA] Échec persistance upload_quota_used_bytes: {e}");
+                    }
+                }
+                let exhausted =
+                    quota_gb > 0 && used >= quota_gb.saturating_mul(1 << 30);
+                let prev = gate.swap(!exhausted, Ordering::SeqCst);
+                if prev && exhausted {
+                    tracing::warn!(
+                        "[QUOTA] Quota journalier d'upload atteint ({} Gio) — nouveaux slots refusés",
+                        quota_gb
+                    );
+                } else if !prev && !exhausted {
+                    tracing::info!("[QUOTA] Quota d'upload réouvert (compteur remis à zéro ou quota relevé)");
+                }
+            }
+        });
+        let abort = handle.abort_handle();
+        self.abort_handles
+            .try_lock()
+            .map(|mut h| h.push(abort))
+            .ok();
     }
 }

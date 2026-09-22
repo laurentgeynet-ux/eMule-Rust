@@ -97,6 +97,7 @@ pub async fn handle_request(
         "shares.list" => handle_shares_list(state).await,
         "shares.add" => handle_shares_add(state, req.params).await,
         "shares.remove" => handle_shares_remove(state, req.params).await,
+        "shares.rescan" => handle_shares_rescan(state).await,
         "shares.setEnabled" => handle_shares_set_enabled(state, req.params).await,
         "shares.setUploadPriority" => {
             handle_shares_set_upload_priority(state, req.params).await

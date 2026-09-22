@@ -59,7 +59,8 @@ impl KadUdpInner {
 
 /// Kad UDP Service managing transport and transaction lifecycles.
 pub struct KadUdpService {
-    pub(crate) local_id: KadId,
+    /// Identité Kad locale — partagée avec `KadService` (rotation à chaud).
+    pub(crate) local_id: Arc<std::sync::RwLock<KadId>>,
     pub(crate) policy_mgr: NetworkPolicyManager,
     pub(crate) inner: Arc<RwLock<KadUdpInner>>,
     pub(crate) next_tx_id: AtomicU32,
@@ -85,7 +86,10 @@ pub struct KadUdpService {
 
 impl KadUdpService {
     /// Creates a new Kad UDP service instance.
-    pub fn new(local_id: KadId, policy_mgr: NetworkPolicyManager) -> Self {
+    pub fn new(
+        local_id: Arc<std::sync::RwLock<KadId>>,
+        policy_mgr: NetworkPolicyManager,
+    ) -> Self {
         Self {
             local_id,
             policy_mgr,
@@ -226,7 +230,9 @@ impl KadUdpService {
 
         let socket_for_task = socket_arc.clone();
         let in_flight_arc = inner.in_flight.clone();
-        let local_kad_id_bytes = self.local_id.0;
+        // Arc partagé — relu à chaque datagramme pour suivre la rotation
+        // d'identité (`identityRotationHours`).
+        let local_id_arc = Arc::clone(&self.local_id);
         let policy_mgr_clone = self.policy_mgr.clone();
         let rate_limiter_arc = Arc::new(Mutex::new(IpRateLimiter::new()));
         let storage_arc = inner.storage.clone();
@@ -357,6 +363,8 @@ impl KadUdpService {
                                                             "Kad UDP: decrypted obfuscated packet from {} (recvKey=0x{:08X})",
                                                             peer_addr, dec.receiver_key
                                                         );
+                                                        let local_kad_id_bytes =
+                                                            local_id_arc.read().unwrap().0;
                                                         handlers::handle_incoming_message(
                                                             &socket_for_task,
                                                             peer_addr,
@@ -470,6 +478,8 @@ impl KadUdpService {
 
                                 match decoded {
                                     Ok(msg) => {
+                                        let local_kad_id_bytes =
+                                            local_id_arc.read().unwrap().0;
                                         handlers::handle_incoming_message(
                                             &socket_for_task,
                                             peer_addr,

@@ -228,6 +228,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_upnp_enabled(upnp_enabled)
         .with_ports(ed2k_port, kad_port);
     let state = AppState::new(config, downloads);
+    // eMule `Autoconnect`/`Reconnect`/`AutoDeadServer`: background watcher
+    // reconnecting to the last server target (or best known server) when
+    // `server_reconnect`/`server_autoconnect` settings are enabled.
+    state.spawn_server_watcher();
+    // Emule-Sion : rotation périodique d'identité (`identityRotationHours`)
+    // et quota journalier d'upload (`dailyUploadQuotaGb`).
+    state.spawn_identity_rotator();
+    state.spawn_quota_watcher();
 
     // eMule "Incoming" folder sharing: hash every file sitting in the
     // download directory and register it as shared (background task —
@@ -255,7 +263,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // If UPnP is enabled and in a preview profile, attempt background port mapping with progressive retries and periodic refresh
-    if upnp_enabled && network_profile.is_preview() {
+    let eff_ed2k_port = state.ed2k_port();
+    let eff_kad_port = state.kad_port();
+    let eff_udp = state.udp_enabled();
+    let eff_upnp = state.upnp.snapshot().await.enabled;
+    println!(
+        "==> Effective ports: TCP {eff_ed2k_port}, UDP {eff_kad_port} (udp_enabled={eff_udp}, upnp={eff_upnp})"
+    );
+
+    if eff_upnp && network_profile.is_preview() {
         let upnp_svc = state.upnp.clone();
         let cancel_token = state.network_policy.cancellation_token();
         let cancel_token_retry = cancel_token.clone();
@@ -265,7 +281,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::time::Duration::from_secs(120),
                 tokio::time::Duration::from_secs(300),
             ];
-            let mut result = upnp_svc.map_ports(ed2k_port, kad_port).await;
+            let mut result = upnp_svc.map_ports(eff_ed2k_port, eff_kad_port).await;
             if result.is_err() {
                 for delay in retry_delays {
                     tokio::select! {
@@ -273,7 +289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         _ = tokio::time::sleep(delay) => {}
                     }
                     tracing::info!("Retrying UPnP port mapping after initial failure...");
-                    result = upnp_svc.map_ports(ed2k_port, kad_port).await;
+                    result = upnp_svc.map_ports(eff_ed2k_port, eff_kad_port).await;
                     if result.is_ok() {
                         tracing::info!("UPnP port mapping succeeded on background retry!");
                         break;
@@ -289,7 +305,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Auto-initialize Kad routing table and UDP socket if in a preview profile
-    if network_profile.allows_udp_kad() {
+    if network_profile.allows_udp_kad() && eff_udp {
         let kad_svc = state.kad.clone();
         let kad_cancel = state.network_policy.cancellation_token();
         let kad_bind_ip = if network_profile.is_loopback_only() {
@@ -298,7 +314,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "0.0.0.0"
         };
         let kad_bind_addr: std::net::SocketAddr =
-            format!("{kad_bind_ip}:{kad_port}").parse().unwrap();
+            format!("{kad_bind_ip}:{eff_kad_port}").parse().unwrap();
         tokio::spawn(async move {
             kad_svc.init_from_db().await;
             if let Err(e) = kad_svc.udp().start(kad_bind_addr).await {
@@ -331,7 +347,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "0.0.0.0"
         };
         let inbound_bind_addr: std::net::SocketAddr =
-            format!("{inbound_bind_ip}:{ed2k_port}").parse().unwrap();
+            format!("{inbound_bind_ip}:{eff_ed2k_port}").parse().unwrap();
         tokio::spawn(async move {
             match listener_svc.start(inbound_bind_addr).await {
                 Ok(bound) => {

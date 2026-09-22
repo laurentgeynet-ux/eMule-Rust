@@ -49,7 +49,7 @@ impl InboundListenerService {
         let is_standard_proto = mule_protocol::ed2k::obfuscation::is_standard_protocol_marker(b);
 
         let mut stream = if is_standard_proto {
-            if self.obfuscation_required {
+            if self.obfuscation_required.load(std::sync::atomic::Ordering::Relaxed) {
                 warn!("Rejected unencrypted inbound connection from {} because obfuscation is required", remote_str);
                 return;
             }
@@ -58,14 +58,15 @@ impl InboundListenerService {
                 vec![b],
             )
         } else {
-            if !self.obfuscation_enabled {
+            if !self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) {
                 warn!("Rejected obfuscated inbound connection from {} because obfuscation is disabled", remote_str);
                 return;
             }
+            let local_user_hash = *self.user_hash.read().unwrap();
             match crate::services::obfuscation_stream::ObfuscatedStream::accept_peer_incoming(
                 socket,
                 b,
-                &self.user_hash,
+                &local_user_hash,
                 self.obfuscation_padding_max,
             )
             .await
@@ -174,7 +175,7 @@ impl InboundListenerService {
 
                 // eMule MiscOptions1 — SecIdent=3 (v1|v2) in bits 16-19 when a
                 // usable RSA key is loaded, mirroring the outbound HELLO.
-                let sec_ident: u32 = if self.sui_pubkey_der.is_some() { 3 } else { 0 };
+                let sec_ident: u32 = if self.sui_pubkey_der.read().unwrap().is_some() { 3 } else { 0 };
                 let misc1: u32 = (1 << 29)
                     | (1 << 28)
                     | (4 << 24)
@@ -195,10 +196,10 @@ impl InboundListenerService {
                     | (1 << 5)
                     | (1 << 4)
                     | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
-                if self.obfuscation_enabled {
+                if self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) {
                     misc2 |= (1 << 7) | (1 << 8); // CryptLayerSupported | CryptLayerRequested
                 }
-                if self.obfuscation_required {
+                if self.obfuscation_required.load(std::sync::atomic::Ordering::Relaxed) {
                     misc2 |= 1 << 9; // CryptLayerRequires
                 }
                 tags.push(Ed2kTag {
@@ -207,7 +208,7 @@ impl InboundListenerService {
                 });
 
                 let ans = Ed2kHelloAnswer {
-                    user_hash: self.user_hash,
+                    user_hash: *self.user_hash.read().unwrap(),
                     client_id: 0x0100007F,
                     tcp_port: actual_listen_addr.port(),
                     tags,
@@ -494,7 +495,7 @@ impl InboundListenerService {
         // its user hash (CALLBACKREQUESTED ≥23B form), use the encrypted
         // handshake; otherwise plaintext.
         let use_obfu =
-            crypt_options & 0x01 != 0 && self.obfuscation_enabled && peer_user_hash.is_some();
+            crypt_options & 0x01 != 0 && self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) && peer_user_hash.is_some();
         let mut stream = if use_obfu {
             crate::services::obfuscation_stream::ObfuscatedStream::connect_peer_outgoing(
                 stream,
@@ -511,7 +512,7 @@ impl InboundListenerService {
         let encoder = Ed2kEncoder::default();
         let decoder = Ed2kDecoder::default();
         let codec = PacketCodec::new();
-        let sec_ident: u32 = if self.sui_pubkey_der.is_some() { 3 } else { 0 };
+        let sec_ident: u32 = if self.sui_pubkey_der.read().unwrap().is_some() { 3 } else { 0 };
         let misc1: u32 = (1 << 29)
             | (1 << 28)
             | (4 << 24)
@@ -527,10 +528,10 @@ impl InboundListenerService {
             value: mule_protocol::ed2k::tags::TagValue::UInt32(misc1),
         }];
         let mut misc2: u32 = 0;
-        if self.obfuscation_enabled {
+        if self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) {
             misc2 |= (1 << 7) | (1 << 8);
         }
-        if self.obfuscation_required {
+        if self.obfuscation_required.load(std::sync::atomic::Ordering::Relaxed) {
             misc2 |= 1 << 9;
         }
         if misc2 > 0 {
@@ -541,8 +542,9 @@ impl InboundListenerService {
                 value: mule_protocol::ed2k::tags::TagValue::UInt32(misc2),
             });
         }
+        let local_user_hash = *self.user_hash.read().unwrap();
         let hello = mule_protocol::ed2k::Ed2kHello {
-            user_hash: self.user_hash,
+            user_hash: local_user_hash,
             client_id: our_client_id,
             tcp_port: self.listen_addr.lock().await.map(|a| a.port()).unwrap_or(0),
             tags,

@@ -101,6 +101,11 @@ abstract class MuleDaemonClient {
   /// Get persistent daemon settings (default download directory, etc.)
   Future<Map<String, dynamic>> getSettings();
 
+  /// Applies a settings patch via `settings.set`. Supported keys:
+  /// `defaultDownloadDir`, `historyRetentionDays`, `maxGlobalDownloadPeers`,
+  /// `maxPeersPerDownload`, `minPeersPerDownload`, `shareDownloadDir`.
+  Future<void> updateSettings(Map<String, dynamic> patch);
+
   /// Set persistent default download directory.
   Future<void> setDefaultDownloadDirectory(String path);
 
@@ -307,6 +312,10 @@ abstract class MuleDaemonClient {
   /// eMule upload priority for a shared file (powershare):
   /// "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare".
   Future<void> setSharedFileUploadPriority(String fileHash, String priority);
+
+  /// Re-scans the download (Incoming) directory and registers newly found
+  /// files as shared. Returns the number of newly added files.
+  Future<int> rescanSharedFiles();
 
   /// List configured friends (eMule `friends.met`) — userhashes granted a
   /// dedicated upload slot bypassing the queue.

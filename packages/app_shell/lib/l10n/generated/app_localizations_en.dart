@@ -880,7 +880,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get limitsAreEnforcedAsynchronouslyUsing =>
-      'Limits are enforced asynchronously using Token Buckets. 0 means unlimited.';
+      'Limits are enforced asynchronously via Token Buckets and persisted across daemon restarts. 0 means unlimited.';
 
   @override
   String get downloadLimitKbS0 => 'Download Limit (KB/s) [0 = unlimited]';
@@ -941,7 +941,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get thisPathIsUsedAs =>
-      'This path is used as the default target destination when adding new downloads. Temporary .part files remain strictly confined in data/temp/ until completed.';
+      'This path is the default destination for new downloads. .part files stay in the configured temporary directory until completed.';
 
   @override
   String get destinationDirectoryPath => 'Destination Directory Path';
@@ -971,7 +971,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get historicalTransitionEventsOlderThan =>
-      'Historical transition events older than the retention period are automatically pruned on daemon startup.';
+      'History events older than the retention period are pruned at daemon startup and on every change of this setting.';
 
   @override
   String get keepHistoryFor => 'Keep history for: ';

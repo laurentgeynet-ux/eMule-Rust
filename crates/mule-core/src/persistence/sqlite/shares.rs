@@ -25,6 +25,8 @@ fn shared_file_from_row(row: &rusqlite::Row) -> rusqlite::Result<SharedFile> {
         shared_at_unix_ms: row.get(4)?,
         enabled: enabled_int != 0,
         up_priority: row.get::<_, Option<String>>(7)?.unwrap_or_else(|| "normal".into()),
+        is_partial: false,
+        completed_parts: Vec::new(),
     })
 }
 

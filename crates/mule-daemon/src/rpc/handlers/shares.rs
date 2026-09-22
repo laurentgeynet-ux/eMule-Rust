@@ -5,7 +5,7 @@ use crate::state::AppState;
 
 pub async fn handle_shares_list(state: &AppState) -> Result<Value, JsonRpcError> {
     let dl_svc = state.downloads.lock().await;
-    let list = dl_svc.list_shared_files()?;
+    let list = dl_svc.list_all_shared_files()?;
     Ok(json!({ "sharedFiles": list }))
 }
 
@@ -48,6 +48,25 @@ pub async fn handle_shares_remove(
 
     let removed = state.downloads.lock().await.remove_shared_file(file_hash)?;
     Ok(json!({ "removed": removed }))
+}
+
+/// `shares.rescan` — re-scans the configured download (Incoming) directory
+/// and registers newly found files as shared, like eMule's manual reload of
+/// the shared-files list. Honors the `share_download_dir` opt-out.
+pub async fn handle_shares_rescan(state: &AppState) -> Result<Value, JsonRpcError> {
+    let dir = {
+        let dl = state.downloads.lock().await;
+        dl.get_setting("default_download_directory")?
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| state.config.default_download_dir.clone())
+    };
+    let added =
+        crate::services::incoming_share::scan_download_dir_shares(&state.downloads, dir.clone())
+            .await;
+    Ok(json!({
+        "added": added,
+        "dir": dir.to_string_lossy(),
+    }))
 }
 
 pub async fn handle_shares_set_enabled(
@@ -199,11 +218,10 @@ pub async fn handle_identity_status(state: &AppState) -> Result<Value, JsonRpcEr
 }
 
 pub async fn handle_identity_rotate(state: &AppState) -> Result<Value, JsonRpcError> {
-    let mut id_guard = state.identity.lock().await;
-    let new_id = crate::services::IdentityService::rotate_key(&state.config.data_dir)
-        .map_err(|e| JsonRpcError::business(format!("Failed to rotate identity key: {e}")))?;
-    *id_guard = new_id;
-    let status = id_guard.status();
+    let status = state
+        .rotate_identity()
+        .await
+        .map_err(JsonRpcError::business)?;
     Ok(serde_json::to_value(status).unwrap_or_default())
 }
 

@@ -676,6 +676,11 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<void> updateSettings(Map<String, dynamic> patch) async {
+    await _call('settings.set', patch);
+  }
+
+  @override
   Future<void> setDefaultDownloadDirectory(String path) async {
     await _call('settings.set', {'defaultDownloadDir': path});
   }
@@ -1147,6 +1152,12 @@ class RpcDaemonClient implements MuleDaemonClient {
       'fileHash': fileHash,
       'priority': priority,
     });
+  }
+
+  @override
+  Future<int> rescanSharedFiles() async {
+    final resp = await _call('shares.rescan', {});
+    return (resp as Map<String, dynamic>)['added'] as int? ?? 0;
   }
 
   @override

@@ -780,7 +780,73 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       'portableDownloadDir': 'downloads',
       'isCustom': _fakeCustomDownloadDir != null,
       'historyRetentionDays': _fakeRetentionDays,
+      'maxGlobalDownloadPeers': _fakeMaxGlobalPeers,
+      'maxPeersPerDownload': _fakeMaxPeersPerDownload,
+      'minPeersPerDownload': _fakeMinPeersPerDownload,
+      'shareDownloadDir': _fakeShareDownloadDir,
+      ..._fakeExtraSettings,
     };
+  }
+
+  int _fakeMaxGlobalPeers = 1000;
+  int _fakeMaxPeersPerDownload = 300;
+  int _fakeMinPeersPerDownload = 2;
+  bool _fakeShareDownloadDir = true;
+  final Map<String, dynamic> _fakeExtraSettings = {
+    'nickname': 'Emule-Sion',
+    'obfuscationEnabled': true,
+    'obfuscationRequired': false,
+    'maxConnections': 500,
+    'maxConnPerMin': 60,
+    'maxUploadQueue': 500,
+    'minUploadKbs': 0,
+    'ussEnabled': false,
+    'ed2kPort': 4662,
+    'kadPort': 4672,
+    'udpEnabled': true,
+    'upnpEnabled': true,
+    'capacityDownloadKbs': 0,
+    'capacityUploadKbs': 0,
+    'tempDir': '',
+    'ichEnabled': true,
+    'rememberCancelled': true,
+    'rememberDownloaded': true,
+    'serverReconnect': true,
+    'serverAutoconnect': false,
+    'serverAutoremoveDead': true,
+    'serverAutoupdateList': false,
+    'serverAutoupdatePath': '',
+    'safeConnect': false,
+    'autoPriorityNewDownloads': false,
+  };
+
+  @override
+  Future<void> updateSettings(Map<String, dynamic> patch) async {
+    if (patch['defaultDownloadDir'] is String) {
+      _fakeCustomDownloadDir = patch['defaultDownloadDir'] as String;
+    }
+    if (patch['historyRetentionDays'] is num) {
+      _fakeRetentionDays = (patch['historyRetentionDays'] as num).toInt();
+    }
+    if (patch['maxGlobalDownloadPeers'] is num) {
+      _fakeMaxGlobalPeers = (patch['maxGlobalDownloadPeers'] as num).toInt();
+    }
+    if (patch['maxPeersPerDownload'] is num) {
+      _fakeMaxPeersPerDownload =
+          (patch['maxPeersPerDownload'] as num).toInt();
+    }
+    if (patch['minPeersPerDownload'] is num) {
+      _fakeMinPeersPerDownload =
+          (patch['minPeersPerDownload'] as num).toInt();
+    }
+    if (patch['shareDownloadDir'] is bool) {
+      _fakeShareDownloadDir = patch['shareDownloadDir'] as bool;
+    }
+    patch.forEach((key, value) {
+      if (_fakeExtraSettings.containsKey(key)) {
+        _fakeExtraSettings[key] = value;
+      }
+    });
   }
 
   @override
@@ -1560,6 +1626,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       upPriority: priority,
     );
   }
+
+  @override
+  Future<int> rescanSharedFiles() async => 0;
 
   final List<FriendModel> _fakeFriends = [];
 

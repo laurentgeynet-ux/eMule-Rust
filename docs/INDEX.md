@@ -129,7 +129,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `widgets/lab/` (9 fichiers) + `lab_guide_dialog.dart` | Assistant lab : étapes fixture/lien/pair/connexion/nettoyage |
 | `widgets/network/` (9 fichiers) + `network_policy_dialog.dart`, `ip_filter_dialog.dart` | Onglets IP filter et rate limits, quotas, profil réseau, audit log |
 | `widgets/row/` (8 fichiers) | Ligne de download : variantes compacte/complète, badges, icônes, barre d'actions, pill de statut, chip de priorité (`download_priority_chip.dart`) |
-| `widgets/settings/` (9 fichiers) + `settings_dialog.dart` | Dialogue de paramètres : sections dossiers, langue, réseau, rétention, amis (`settings_friends_section.dart`) |
+| `widgets/settings/` (4 fichiers) | Briques réutilisées par la page Paramètres : dossier, langue, rétention, amis |
 | `widgets/sidebar/` (9 fichiers) | Sidebar : header brand, items nav/catégorie/filtre, carte de statut, suppression de catégorie |
 | `widgets/incompatible_version_dialog.dart` | Avertissement de version daemon incompatible |
 
@@ -141,8 +141,8 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `kad/view_models/kad_controller.dart` + `views/kad_screen.dart` + `widgets/` (12 fichiers) | Kad : table de contacts, bootstrap (dialogue + URL), import nodes.dat, badges/statuts, bannière sécurité |
 | `search/view_models/search_controller.dart` + `views/search_screen.dart` + `widgets/` (7 fichiers) | Recherche : formulaire, table de résultats, bannière connexion, états |
 | `servers/view_models/servers_controller.dart` + `views/servers_screen.dart` + `widgets/` (12 fichiers) | Serveurs : table et cartes, import server.met, session bar, badges, dialogues clear/update |
-| `settings/view_models/settings_controller.dart` + `widgets/` (4 fichiers) | Paramètres réseau : mode, notice anti-SSRF, statut UPnP |
-| `shares/views/shares_view.dart` | Onglet « Partages » (`/shares`) : liste des fichiers servis, priorité d'upload (powershare), switch activé/suspendu |
+| `settings/view_models/settings_controller.dart` + `views/settings_view.dart` + `views/sections/` (6 fichiers) + `widgets/` (4 fichiers) | Page Paramètres (`/settings`) : rail Général/Connexion/Transferts/Sécurité/Amis/Avancé ; pseudo, partage Incoming, profil/kill switch/quotas, **capacités & ports TCP/UDP, toggles UDP+UPnP**, obfuscation, connexions max, USS, limites de sources, file d'upload, IP filter, amis, outils avancés |
+| `shares/views/shares_view.dart` | Onglet « Partages » (`/shares`) : fichiers servis (persistés + partiels `.part` badge « partiel »), priorité d'upload (powershare), switch activé/suspendu, **bouton rescan Incoming** (`shares.rescan`) |
 | `uploads/view_models/uploads_controller.dart` + `views/uploads_view.dart` + `widgets/uploads_table.dart` | Uploads : vue et table des envois |
 
 ## packages/mule_client/ — Client daemon partagé
@@ -269,7 +269,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/error.rs` | Erreurs du daemon |
 | `src/lock.rs` | Verrou d'instance unique |
 | `src/session.rs` | Gestion de la session du daemon |
-| `src/state.rs` | État partagé du daemon |
+| `src/state.rs` | État partagé du daemon — ports effectifs (`ed2k_port`/`kad_port`/`udp_enabled` en atomics), `effective_obfuscation()`, `current_nickname()`, restauration des réglages persistés au boot |
 | `src/workdir.rs` | Gestion du répertoire de travail |
 | `src/ed2k/mod.rs` | Module eD2k du daemon |
 | `src/ed2k/downloader.rs` | Téléchargeur eD2k |
@@ -295,8 +295,8 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/rpc/handlers/lab.rs` | Handler : lab |
 | `src/rpc/handlers/network.rs` | Handler : politique réseau |
 | `src/rpc/handlers/servers.rs` | Handler : serveurs |
-| `src/rpc/handlers/settings.rs` | Handler : paramètres |
-| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés |
+| `src/rpc/handlers/settings.rs` | Handler : paramètres — `settings.get`/`set` couvrant tous les réglages runtime (ports, UDP, UPnP, obfuscation, capacités, USS, quotas, file upload) avec application à chaud (`apply_port_change`, `apply_udp_state`) |
+| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés — `shares.list` (incl. partiels), `add`, `remove`, `setEnabled`, `setUploadPriority`, `rescan` |
 | `src/rpc/handlers/sources.rs` | Handler : sources |
 | `src/rpc/handlers/upnp.rs` | Handler : UPnP |
 
@@ -305,7 +305,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | Fichier | Fonction |
 |---|---|
 | `src/services/mod.rs` | Module des services |
-| `src/services/incoming_share.rs` | Scan du dossier Incoming au démarrage : hash eD2K + partage automatique des fichiers (opt-out `share_download_dir`) |
+| `src/services/incoming_share.rs` | Scan du dossier Incoming (démarrage + `shares.rescan` manuel) : hash eD2K + partage automatique (opt-out `share_download_dir`) |
 | `src/services/downloads.rs` | Service de gestion des téléchargements |
 | `src/services/downloads/history_categories.rs` | Historique et catégories des downloads |
 | `src/services/downloads/operations.rs` | Opérations sur les téléchargements (pause, reprise…) |
@@ -314,7 +314,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/services/downloads/types.rs` | Types du service downloads |
 | `src/services/events.rs` | Bus d'événements internes |
 | `src/services/identity.rs` | Identité du client (user hash, ident) |
-| `src/services/inbound_listener.rs` | Écoute des connexions entrantes |
+| `src/services/inbound_listener.rs` | Écoute des connexions entrantes (obfuscation live via `set_obfuscation`) |
 | `src/services/inbound_listener/connection.rs` | Acceptation de connexions entrantes |
 | `src/services/inbound_listener/dispatcher.rs` | Dispatch des connexions entrantes |
 | `src/services/inbound_listener/types.rs` | Types du listener |
@@ -351,8 +351,8 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/services/swarm_coordinator.rs` | Coordination de l'essaim de pairs |
 | `src/services/swarm_coordinator/strategy.rs` | Stratégie de coordination (A4AF rebalance inclus) |
 | `src/services/swarm_coordinator/types.rs` | Types du coordinateur |
-| `src/services/upload_queue.rs` | File d'attente d'upload (trickle slots, friend slots, anti-leecher) |
-| `src/services/upnp.rs` | Service UPnP |
+| `src/services/upload_queue.rs` | File d'attente d'upload (trickle slots, friend slots, anti-leecher, taille configurable `set_max_queue`) |
+| `src/services/upnp.rs` | Service UPnP (`set_enabled`, `set_ports`, map/unmap, refresh périodique) |
 | `src/services/upnp/discovery.rs` | Découverte de la passerelle UPnP |
 | `src/services/upnp/mapping.rs` | Mappage de ports UPnP |
 | `src/services/upnp/types.rs` | Types UPnP |
@@ -627,6 +627,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `docs/README.md` | Portail d'orientation de la documentation technique |
 | `docs/INDEX.md` | Index exhaustif des fichiers du dépôt |
 | `docs/CHANGELOG.md` | Journal des modifications (Keep a Changelog) |
+| `docs/SETTINGS.md` | Référence complète des paramètres (`settings.get`/`set`) : clés RPC/persistées, défauts, application à chaud, équivalents eMule |
 
 ### docs/architecture/ — Architecture & Rapports
 | Fichier | Fonction |

@@ -1004,3 +1004,72 @@ fn test_no_endgame_when_remaining_exceeds_threshold() {
         "outside end-game no duplicate request is allowed"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Swarm healing (Emule-Sion) — rarest-part-first via scarcity hint
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_swarm_healing_prefers_rarest_part() {
+    let hash = sample_hash();
+    // 3 parts, all offered by a complete source (part_count == 0).
+    let file_size = ED2K_PART_SIZE as u64 * 3;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    // Part 1 is held by a single source; 0 and 2 are common.
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status)
+        .unwrap()
+        .with_part_scarcity(vec![5, 1, 5]);
+
+    let res = seq
+        .plan_next_block_for_peer64("peerA", &[], &[], 1_000)
+        .unwrap()
+        .expect("a block must be planned");
+    assert_eq!(res.0, 1, "swarm healing must pick the rarest part first");
+}
+
+#[test]
+fn test_swarm_healing_scarcity_tie_falls_back_to_progress() {
+    let hash = sample_hash();
+    let file_size = ED2K_PART_SIZE as u64 * 3;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status)
+        .unwrap()
+        .with_part_scarcity(vec![3, 3, 3]);
+
+    // Part 0 partially received → least-received tie-break picks part 1
+    // (0 bytes received) over part 0 despite the lower index.
+    let completed = vec![(0u64, 1024u64)];
+    let res = seq
+        .plan_next_block_for_peer64("peerA", &completed, &[], 1_000)
+        .unwrap()
+        .expect("a block must be planned");
+    assert_eq!(res.0, 1, "equal scarcity must fall back to least-received part");
+}
+
+#[test]
+fn test_swarm_healing_ignores_mismatched_scarcity_len() {
+    let hash = sample_hash();
+    let file_size = ED2K_PART_SIZE as u64 * 2;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    // Wrong length → hint ignored, plain progress-first.
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status)
+        .unwrap()
+        .with_part_scarcity(vec![99]);
+    let res = seq
+        .plan_next_block_for_peer64("peerA", &[], &[], 1_000)
+        .unwrap()
+        .expect("a block must be planned");
+    assert_eq!(res.0, 0);
+}

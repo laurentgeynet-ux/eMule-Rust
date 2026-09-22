@@ -113,12 +113,12 @@ Namespaces stables (voir `methods.rs` pour la liste exhaustive maintenue) :
 | `sources.*` | `list`, `addManual`, `connect`, `disconnect`, `clear`, `status`/`swarmStatus` |
 | `kad.*` | `status`, `startUdp`, `stopUdp`, `bootstrap`, `findNode`, `searchSources`, `searchKeywords`, `searchNotes`, `publish*`, `listContacts`, `importNodesDat` |
 | `network.*` | `getPolicy`, `setProfile`, `enable`, `disconnectAll`, `getAuditLog`, `setBudgets` |
-| `settings.*` / `limits.*` | `get`, `set`, `setRetentionDays`, `resetDownloadDir` |
-| `shares.*` | `list`, `add`, `remove`, `setEnabled` |
+| `settings.*` / `limits.*` | `get`, `set`, `setRetentionDays`, `resetDownloadDir` — voir `docs/SETTINGS.md` pour toutes les clés |
+| `shares.*` | `list` (incl. partiels `isPartial`/`completedParts`), `add`, `remove`, `setEnabled`, `setUploadPriority`, `rescan` |
 | `uploads.*` / `listener.*` | `list`, `status`, `cancel` ; `start`, `stop`, `status` |
 | `identity.*` / `credits.*` | `status`, `rotate` ; `list`, `stats` |
 | `upnp.*` | `status`, `mapPorts`, `unmapPorts`, `setEnabled` |
-| `filter.*` | `getStatus`, `importFile`, `setEnabled`, `clear` |
+| `filter.*` | `getStatus`, `importFile`, `setEnabled`, `clear` — `enabled`/`filePath` persistés (`ipfilter_*`) et rechargés au boot |
 | `history.*` / `categories.*` | `list`, `stats`, `clear`, `export` ; CRUD + `reorder` |
 | `events.*` | `subscribe` (filtrage par topics, voir §6) |
 | `lab.*` / `ed2k.*` / `debug.*` | feature-gated (`lab-loopback`, `ed2k-loopback`, `debug-rpc`) — **ne pas documenter comme API publique** |

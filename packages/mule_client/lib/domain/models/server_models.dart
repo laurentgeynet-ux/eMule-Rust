@@ -602,6 +602,10 @@ class SharedFileModel {
   final bool enabled;
   /// eMule upload priority: verylow|low|normal|high|veryhigh|powershare.
   final String upPriority;
+  /// `true` for an in-progress download shared as a partial file (eMule
+  /// `CPartFile`): only `completedParts` are served to peers.
+  final bool isPartial;
+  final List<int> completedParts;
 
   const SharedFileModel({
     required this.fileHash,
@@ -611,6 +615,8 @@ class SharedFileModel {
     required this.sharedAtUnixMs,
     this.enabled = true,
     this.upPriority = 'normal',
+    this.isPartial = false,
+    this.completedParts = const [],
   });
 
   factory SharedFileModel.fromJson(Map<String, dynamic> json) {
@@ -633,6 +639,12 @@ class SharedFileModel {
       upPriority: json['upPriority'] as String? ??
           json['up_priority'] as String? ??
           'normal',
+      isPartial: json['isPartial'] as bool? ?? false,
+      completedParts: (json['completedParts'] as List?)
+              ?.whereType<num>()
+              .map((n) => n.toInt())
+              .toList() ??
+          const [],
     );
   }
 }

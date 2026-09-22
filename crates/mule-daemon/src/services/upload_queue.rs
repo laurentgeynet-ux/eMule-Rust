@@ -7,7 +7,8 @@ use tokio::sync::{broadcast, Mutex};
 use crate::services::DaemonEvent;
 
 /// Maximum number of queued upload requests.
-pub const MAX_UPLOAD_QUEUE: usize = 500;
+/// eMule 0.72a `QueueSize` default (100 × QueueSizePref 50).
+pub const MAX_UPLOAD_QUEUE: usize = 5000;
 /// Maximum number of concurrent active uploads.
 pub const MAX_ACTIVE_UPLOADS: usize = 10;
 
@@ -127,6 +128,17 @@ pub struct UploadManager {
     /// Friend client keys (`uh:<userhash>`) — granted a dedicated slot even
     /// when `max_active` is reached (eMule friend slot).
     friends: Arc<std::sync::RwLock<std::collections::HashSet<String>>>,
+    /// Maximum waiting-queue length (eMule `QueueSize` pref, default 500).
+    max_queue: Arc<AtomicUsize>,
+    /// Minimum upload bandwidth per slot in bytes/sec (eMule `MinUpload`):
+    /// a new slot is only opened when existing slots still reach it.
+    min_upload_rate_bps: Arc<std::sync::atomic::AtomicU64>,
+    /// Quota journalier d'upload (Emule-Sion `dailyUploadQuotaGb`) — quand
+    /// `false`, aucune nouvelle demande de slot n'est acceptée.
+    quota_gate: Arc<std::sync::RwLock<Arc<AtomicBool>>>,
+    /// Total cumulatif des octets uploadés depuis le démarrage du daemon
+    /// (compteur source du quota journalier).
+    total_uploaded_bytes: Arc<AtomicU64>,
 }
 
 impl Default for UploadManager {
@@ -148,7 +160,24 @@ impl UploadManager {
             sequence: Arc::new(std::sync::RwLock::new(None)),
             last_progress_emit_ms: Arc::new(AtomicI64::new(0)),
             friends: Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+            max_queue: Arc::new(AtomicUsize::new(MAX_UPLOAD_QUEUE)),
+            min_upload_rate_bps: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            quota_gate: Arc::new(std::sync::RwLock::new(Arc::new(AtomicBool::new(true)))),
+            total_uploaded_bytes: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    /// Sets the minimum per-slot upload rate (eMule `MinUpload`, B/s).
+    /// `0` disables the floor.
+    pub fn set_min_upload_rate(&self, bps: u64) {
+        self.min_upload_rate_bps
+            .store(bps, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Sets the maximum waiting-queue length (eMule `QueueSize` pref).
+    pub fn set_max_queue(&self, max: usize) {
+        self.max_queue
+            .store(max.clamp(10, 5000), std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Installs the friend client-key set (`uh:<userhash>` entries).
@@ -226,6 +255,17 @@ impl UploadManager {
         *self.uss_gate.write().unwrap() = flag;
     }
 
+    /// Installe le gate du quota journalier (`dailyUploadQuotaGb`) — `false`
+    /// bloque toute nouvelle demande de slot.
+    pub fn set_quota_gate(&self, flag: Arc<AtomicBool>) {
+        *self.quota_gate.write().unwrap() = flag;
+    }
+
+    /// Octets uploadés cumulés depuis le démarrage du daemon.
+    pub fn total_uploaded_bytes(&self) -> u64 {
+        self.total_uploaded_bytes.load(Ordering::SeqCst)
+    }
+
     /// Overrides the maximum number of concurrent active upload slots.
     pub fn set_max_active(&self, max: usize) {
         self.max_active.store(max.max(1), Ordering::SeqCst);
@@ -265,10 +305,33 @@ impl UploadManager {
             }
         }
 
+        // Quota journalier atteint (`dailyUploadQuotaGb`) : aucune nouvelle
+        // demande n'est acceptée jusqu'à la remise à zéro du compteur.
+        if !self.quota_gate.read().unwrap().load(Ordering::SeqCst) {
+            return Err("Daily upload quota reached".to_string());
+        }
+
         // Grant a slot immediately while capacity remains and USS accepts
         // new clients (acceptNewClient=false when latency is too high).
         // Trickle slots keep residual bandwidth but do not occupy a full slot.
-        if Self::uploading_count(&active) < self.max_active.load(Ordering::SeqCst)
+        let min_rate = self
+            .min_upload_rate_bps
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let uploading = Self::uploading_count(&active);
+        // eMule `MinUpload`: do not open a new slot when it would push the
+        // average per-slot bandwidth below the configured floor.
+        let min_rate_ok = if min_rate > 0 && uploading > 0 {
+            let total_bps: u64 = active
+                .values()
+                .filter(|s| s.state == UploadSlotState::Uploading)
+                .map(|s| s.upload_rate_bps)
+                .sum();
+            total_bps / uploading.max(1) as u64 >= min_rate
+        } else {
+            true
+        };
+        if uploading < self.max_active.load(Ordering::SeqCst)
+            && min_rate_ok
             && self.uss_gate.read().unwrap().load(Ordering::SeqCst)
         {
             let now = std::time::SystemTime::now()
@@ -342,12 +405,13 @@ impl UploadManager {
         // never identified themselves with a user hash (`uh:` key) are
         // rejected instead of queued — identifiable clients keep priority
         // (eMule prefers accountable identities under contention).
-        if !client_key.starts_with("uh:") && q.len() >= MAX_UPLOAD_QUEUE * 9 / 10 {
+        let max_queue = self.max_queue.load(std::sync::atomic::Ordering::Relaxed);
+        if !client_key.starts_with("uh:") && q.len() >= max_queue * 9 / 10 {
             return Err("Upload queue nearly full for unidentified clients".to_string());
         }
 
-        if q.len() >= MAX_UPLOAD_QUEUE {
-            return Err(format!("Upload queue full ({MAX_UPLOAD_QUEUE} max)"));
+        if q.len() >= max_queue {
+            return Err(format!("Upload queue full ({max_queue} max)"));
         }
 
         let now = std::time::SystemTime::now()
@@ -463,6 +527,8 @@ impl UploadManager {
             let mut active = self.active_uploads.lock().await;
             if let Some(cur) = active.get_mut(client_key) {
                 cur.transferred_bytes = cur.transferred_bytes.saturating_add(bytes_sent);
+                self.total_uploaded_bytes
+                    .fetch_add(bytes_sent, Ordering::SeqCst);
                 cur.upload_rate_bps = rate_bps;
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -578,7 +644,8 @@ impl UploadManager {
     /// eMule answers `OP_QUEUEFULL` to UDP pings from unknown clients in
     /// that state (`GetWaitingUserCount() + 50 > GetQueueSize()`).
     pub async fn is_nearly_full(&self) -> bool {
-        self.waiting_len().await + 50 > MAX_UPLOAD_QUEUE
+        self.waiting_len().await + 50
+            > self.max_queue.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Returns list of all queued upload snapshots.

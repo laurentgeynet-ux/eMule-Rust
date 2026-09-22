@@ -51,7 +51,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\verify_all.ps1
 
 1. **Fidélité protocolaire** : la référence de vérité est le code source d'**eMule 0.72a** (`D:\eMule0.72a-Sources\eMule0.72a-Sources\srchybrid`). Tout changement sur opcodes, cadrage ou comportement filaire doit être vérifié contre ces sources et `docs/ed2k/`. Consulter les ADRs avant de modifier `mule-protocol`.
 2. **Tests hors-ligne uniquement** : aucun test ne doit émettre de trafic réseau sortant. Utiliser loopback (`test_qa_loopback_e2e.ps1` comme référence).
-3. **Sécurité non négociable** : ne jamais affaiblir le pipeline anti-SSRF, l'isolation loopback par défaut, le kill switch atomique ou la pseudonymisation des pairs (`mule-network-policy`).
+3. **Sécurité non négociable** : ne jamais affaiblir le pipeline anti-SSRF, l'isolation loopback par défaut, le kill switch atomique ou la pseudonymisation des pairs (`mule-network-policy`). Ne jamais produire de release publique avec `-LabMode` / `--features lab-tools` — `test_packaged_bundle.ps1` vérifie que le flavor `standard` n'expose aucune méthode `lab.*`.
 4. **Windows-first** : instructions et scripts en PowerShell, pas de bash. Chemins avec `\` ou quoting approprié.
 5. **Dépendances** : vérifier `deny.toml` avant d'ajouter une crate ; préférer les dépendances du workspace (`[workspace.dependencies]`).
 

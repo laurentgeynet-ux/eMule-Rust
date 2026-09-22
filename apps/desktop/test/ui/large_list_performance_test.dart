@@ -161,6 +161,9 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<void> setDefaultDownloadDirectory(String path) async {}
 
   @override
+  Future<void> updateSettings(Map<String, dynamic> patch) async {}
+
+  @override
   Future<void> resetDefaultDownloadDirectory() async {}
 
   @override
@@ -517,6 +520,9 @@ class LargeListMockClient implements MuleDaemonClient {
     String fileHash,
     String priority,
   ) async {}
+
+  @override
+  Future<int> rescanSharedFiles() async => 0;
 
   @override
   Future<DownloadItem> setDownloadPriority(String id, String priority) =>

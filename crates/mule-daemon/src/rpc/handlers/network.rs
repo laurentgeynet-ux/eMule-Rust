@@ -135,6 +135,14 @@ pub async fn handle_filter_import_file(
             JsonRpcError::invalid_params(&format!("Failed to parse ipfilter file: {e}"))
         })?;
 
+    // Persist the source path so the filter is reloaded at boot (eMule
+    // keeps ipfilter.dat loaded across restarts).
+    state
+        .downloads
+        .lock()
+        .await
+        .set_setting("ipfilter_path", path_str)?;
+
     Ok(json!({
         "success": true,
         "report": report,
@@ -152,11 +160,21 @@ pub async fn handle_filter_set_enabled(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'enabled' boolean"))?;
 
     state.network_policy.ip_filter().set_enabled(enabled);
+    state
+        .downloads
+        .lock()
+        .await
+        .set_setting("ipfilter_enabled", if enabled { "1" } else { "0" })?;
     handle_filter_get_status(state).await
 }
 
 pub async fn handle_filter_clear(state: &AppState) -> Result<Value, JsonRpcError> {
     state.network_policy.ip_filter().clear();
+    state
+        .downloads
+        .lock()
+        .await
+        .set_setting("ipfilter_path", "")?;
     handle_filter_get_status(state).await
 }
 
@@ -195,7 +213,16 @@ pub async fn handle_limits_set(
     params: Option<Value>,
 ) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params"))?;
-    let mut cfg = mule_filter::RateLimitsConfig::default();
+    // Seed from the live config: a partial update must not silently reset
+    // the other limiters to compile-time defaults.
+    let live = state.network_policy.rate_limiters();
+    let mut cfg = mule_filter::RateLimitsConfig {
+        download_bytes_per_sec: live.download_bucket.rate_per_sec(),
+        upload_bytes_per_sec: live.upload_bucket.rate_per_sec(),
+        connections_per_minute: (live.conn_bucket.rate_per_sec() * 60) as u32,
+        server_requests_per_sec: live.server_bucket.rate_per_sec() as u32,
+        kad_packets_per_sec: live.kad_bucket.rate_per_sec() as u32,
+    };
 
     let dl_bytes = params["downloadBytesPerSec"]
         .as_u64()
@@ -222,6 +249,27 @@ pub async fn handle_limits_set(
     }
 
     state.network_policy.rate_limiters().apply_config(&cfg);
+
+    // Persist the provided fields (eMule stores MaxUpload/MaxDownload in
+    // preferences.ini) so throttles survive daemon restarts.
+    {
+        let mut dls = state.downloads.lock().await;
+        if let Some(dl) = dl_bytes {
+            dls.set_setting("rate_limit_download_bps", &dl.to_string())?;
+        }
+        if let Some(ul) = ul_bytes {
+            dls.set_setting("rate_limit_upload_bps", &ul.to_string())?;
+        }
+        for (param, key) in [
+            ("connectionsPerMinute", "rate_limit_conn_per_min"),
+            ("serverRequestsPerSec", "rate_limit_server_req_per_sec"),
+            ("kadPacketsPerSec", "rate_limit_kad_pkt_per_sec"),
+        ] {
+            if let Some(v) = params[param].as_u64() {
+                dls.set_setting(key, &v.to_string())?;
+            }
+        }
+    }
 
     // Optional USS (Upload Speed Sense) config update.
     if let Some(uss_params) = params.get("uss") {

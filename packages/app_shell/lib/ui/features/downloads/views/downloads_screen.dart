@@ -16,6 +16,7 @@ import '../../servers/views/servers_screen.dart';
 import '../../shares/views/shares_view.dart';
 import '../../search/views/search_screen.dart';
 import '../../kad/views/kad_screen.dart';
+import '../../settings/views/settings_view.dart';
 import '../../uploads/views/uploads_view.dart';
 
 /// Adaptive app shell: full sidebar on wide layouts, compact rail on medium,
@@ -99,6 +100,7 @@ class DownloadsScreen extends ConsumerWidget {
       AppNavSection.kad => const KadView(),
       AppNavSection.uploads => const UploadsView(),
       AppNavSection.shares => const SharesView(),
+      AppNavSection.settings => const SettingsView(),
       AppNavSection.downloads => const DownloadsView(),
     };
   }

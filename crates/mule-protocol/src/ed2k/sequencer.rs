@@ -56,6 +56,12 @@ pub struct Ed2kDownloadSequencer {
     /// others so the file can be previewed while downloading
     /// (`CPartFile` gives them `PR_VERYHIGH` when preview is enabled).
     preview_priority: bool,
+    /// Swarm-healing hint (Emule-Sion extension): `part_scarcity[i]` = number
+    /// of *known sources* offering part `i` across the whole swarm. When set,
+    /// part selection prefers the rarest parts first (then least-received),
+    /// so the daemon becomes a rescue source for parts about to disappear
+    /// from the swarm. `None` keeps the plain eMule progress-first strategy.
+    part_scarcity: Option<Vec<u32>>,
 }
 
 impl Ed2kDownloadSequencer {
@@ -83,6 +89,7 @@ impl Ed2kDownloadSequencer {
             total_parts,
             status,
             preview_priority: false,
+            part_scarcity: None,
         })
     }
 
@@ -90,6 +97,16 @@ impl Ed2kDownloadSequencer {
     /// planned before all others (used for previewable media files).
     pub fn with_preview_priority(mut self, enabled: bool) -> Self {
         self.preview_priority = enabled;
+        self
+    }
+
+    /// Installs the per-part swarm scarcity counts used by the swarm-healing
+    /// strategy (`part_scarcity[i]` = sources offering part `i`). Vectors
+    /// whose length differs from `total_parts` are ignored.
+    pub fn with_part_scarcity(mut self, counts: Vec<u32>) -> Self {
+        if counts.len() == self.total_parts as usize {
+            self.part_scarcity = Some(counts);
+        }
         self
     }
 
@@ -340,7 +357,16 @@ impl Ed2kDownloadSequencer {
             }
         }
 
-        let mut best: Option<(u16, Ed2kBlockRange64, u64)> = None;
+        // Swarm healing: when per-part scarcity counts are known, parts
+        // offered by the fewest sources are selected first (rescue priority),
+        // then least-received. Otherwise plain eMule progress-first.
+        let scarcity_of = |p: u16| -> u32 {
+            self.part_scarcity
+                .as_ref()
+                .and_then(|s| s.get(p as usize).copied())
+                .unwrap_or(u32::MAX)
+        };
+        let mut best: Option<(u16, Ed2kBlockRange64, u32, u64)> = None;
 
         for part_idx in 0..self.total_parts {
             if !self.is_part_available(part_idx) {
@@ -364,17 +390,20 @@ impl Ed2kDownloadSequencer {
             if let Some(block) =
                 self.next_free_block_in_part64(part_idx, completed_ranges, in_flight_blocks, now_unix_ms)?
             {
+                let scarcity = scarcity_of(part_idx);
                 let replace = match &best {
                     None => true,
-                    Some((_, _, best_received)) => received_in_part < *best_received,
+                    Some((_, _, best_sc, best_received)) => {
+                        (scarcity, received_in_part) < (*best_sc, *best_received)
+                    }
                 };
                 if replace {
-                    best = Some((part_idx, block, received_in_part));
+                    best = Some((part_idx, block, scarcity, received_in_part));
                 }
             }
         }
 
-        if let Some((part_idx, block, _)) = best {
+        if let Some((part_idx, block, _, _)) = best {
             return Ok(Some((part_idx, block)));
         }
 
@@ -639,7 +668,13 @@ impl Ed2kDownloadSequencer {
             }
         }
 
-        let mut best: Option<(u16, Ed2kBlockRange, u64)> = None;
+        let scarcity_of = |p: u16| -> u32 {
+            self.part_scarcity
+                .as_ref()
+                .and_then(|s| s.get(p as usize).copied())
+                .unwrap_or(u32::MAX)
+        };
+        let mut best: Option<(u16, Ed2kBlockRange, u32, u64)> = None;
 
         for part_idx in 0..self.total_parts {
             if !self.is_part_available(part_idx) {
@@ -662,17 +697,20 @@ impl Ed2kDownloadSequencer {
             if let Some(block) =
                 self.next_free_block_in_part(part_idx, completed_ranges, in_flight_blocks, now_unix_ms)?
             {
+                let scarcity = scarcity_of(part_idx);
                 let replace = match &best {
                     None => true,
-                    Some((_, _, best_received)) => received_in_part < *best_received,
+                    Some((_, _, best_sc, best_received)) => {
+                        (scarcity, received_in_part) < (*best_sc, *best_received)
+                    }
                 };
                 if replace {
-                    best = Some((part_idx, block, received_in_part));
+                    best = Some((part_idx, block, scarcity, received_in_part));
                 }
             }
         }
 
-        if let Some((part_idx, block, _)) = best {
+        if let Some((part_idx, block, _, _)) = best {
             return Ok(Some((part_idx, block)));
         }
 

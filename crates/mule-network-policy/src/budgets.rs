@@ -18,7 +18,8 @@ pub struct ResourceBudgets {
     pub max_frame_size_bytes: usize,
     /// Maximum aggregate buffer memory allocated across active network sockets (default: 32 MiB).
     pub max_total_buffer_bytes: usize,
-    /// Rate limit on connection attempts per rolling minute (default: 300).
+    /// Rate limit on connection attempts per rolling minute (default: 240 —
+    /// eMule 0.72a `MaxConnectionsPerFiveSeconds` = 20 ≈ 240/min).
     pub rate_limit_per_min: u32,
 }
 
@@ -32,7 +33,7 @@ impl Default for ResourceBudgets {
             handshake_timeout_ms: 15_000,
             max_frame_size_bytes: 10 * 1024 * 1024,   // 10 MiB
             max_total_buffer_bytes: 32 * 1024 * 1024, // 32 MiB
-            rate_limit_per_min: 300,
+            rate_limit_per_min: 240,
         }
     }
 }

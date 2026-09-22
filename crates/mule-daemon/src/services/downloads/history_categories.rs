@@ -16,6 +16,24 @@ pub fn record_history_event(
     verification_result: &str,
     error_message: Option<String>,
 ) {
+    // eMule `RememberCancelledFiles`/`RememberDownloadedFiles`: skip the
+    // history entry when the corresponding toggle is disabled.
+    let gate = match event_type {
+        "cancelled" => Some("remember_cancelled"),
+        "completed" => Some("remember_downloaded"),
+        _ => None,
+    };
+    if let Some(key) = gate {
+        let enabled = db
+            .get_setting(key)
+            .ok()
+            .flatten()
+            .map(|v| !matches!(v.trim().to_lowercase().as_str(), "0" | "false" | "off"))
+            .unwrap_or(true);
+        if !enabled {
+            return;
+        }
+    }
     let now = now_ms();
     let duration_secs = ((now - download.created_at) / 1000).max(0) as u64;
     let entry = HistoryEntry {

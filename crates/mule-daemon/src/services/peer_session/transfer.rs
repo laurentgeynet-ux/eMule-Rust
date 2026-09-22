@@ -155,7 +155,7 @@ pub(crate) async fn run_transfer_loop(
     .await;
 
     // Multi-source block planner setup
-    let (file_size, completed_ranges, is_previewable) = {
+    let (file_size, completed_ranges, is_previewable, part_scarcity) = {
         let dl_svc = downloads.lock().await;
         let dl = dl_svc.find_by_ed2k_hash(file_hash_str).ok_or_else(|| {
             PeerError::new(
@@ -164,10 +164,28 @@ pub(crate) async fn run_transfer_loop(
             )
         })?;
         let ranges = dl_svc.get_completed_ranges_by_hash(file_hash_str);
-        (dl.total_bytes, ranges, is_previewable_media(&dl.file_name))
+        // Swarm healing (Emule-Sion `swarm_healing` setting) : biaise le
+        // choix de part vers les plus rares du swarm (sources connues).
+        let healing = dl_svc
+            .get_setting("swarm_healing")
+            .ok()
+            .flatten()
+            .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
+            .unwrap_or(false);
+        let scarcity = if healing {
+            dl_svc.part_source_counts(file_hash_str)
+        } else {
+            None
+        };
+        (
+            dl.total_bytes,
+            ranges,
+            is_previewable_media(&dl.file_name),
+            scarcity,
+        )
     };
 
-    let sequencer = Ed2kDownloadSequencer::new(dl_hash_bytes, file_size, file_status)
+    let mut sequencer = Ed2kDownloadSequencer::new(dl_hash_bytes, file_size, file_status)
         .map_err(|e| {
             PeerError::new(
                 PeerFailureReason::CorruptedData,
@@ -175,6 +193,9 @@ pub(crate) async fn run_transfer_loop(
             )
         })?
         .with_preview_priority(is_previewable);
+    if let Some(counts) = part_scarcity {
+        sequencer = sequencer.with_part_scarcity(counts);
+    }
 
     // Plan disjoint block
     let now_ms = std::time::SystemTime::now()

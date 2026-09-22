@@ -116,7 +116,7 @@ impl KadService {
                     c.verified
                         && c.version >= MIN_FW_TEST_KAD_VERSION
                         && c.tcp_port.is_some()
-                        && c.kad_id != self.local_id
+                        && c.kad_id != self.local_id()
                         && seen.insert(c.ip)
                 })
                 .take(UDP_FW_CLIENTS_TO_ASK)

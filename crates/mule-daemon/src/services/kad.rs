@@ -21,7 +21,10 @@ use crate::services::kad_udp::KadUdpService;
 pub use types::{KadContactEntryDto, KadStatusSnapshot, NodesDatInspectReport};
 
 pub struct KadService {
-    local_id: KadId,
+    /// Identité Kad locale — mutable à chaud : `identityRotationHours`
+    /// régénère le KadID sans redémarrer le service (partagé avec
+    /// `KadUdpService`).
+    local_id: Arc<std::sync::RwLock<KadId>>,
     routing_table: Mutex<KBucketTable>,
     downloads: Arc<Mutex<DownloadService>>,
     policy_mgr: NetworkPolicyManager,
@@ -48,8 +51,9 @@ impl KadService {
         policy_mgr: NetworkPolicyManager,
         ip_filter: Arc<IpFilter>,
     ) -> Self {
-        let routing_table = KBucketTable::new(local_id);
-        let udp = Arc::new(KadUdpService::new(local_id, policy_mgr.clone()));
+        let local_id = Arc::new(std::sync::RwLock::new(local_id));
+        let routing_table = KBucketTable::new(*local_id.read().unwrap());
+        let udp = Arc::new(KadUdpService::new(Arc::clone(&local_id), policy_mgr.clone()));
         Self {
             local_id,
             routing_table: Mutex::new(routing_table),
@@ -70,8 +74,19 @@ impl KadService {
             .store(port, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub fn local_id(&self) -> &KadId {
-        &self.local_id
+    pub fn local_id(&self) -> KadId {
+        *self.local_id.read().unwrap()
+    }
+
+    /// Régénère l'identité Kad locale (`identityRotationHours`) : nouveau
+    /// KadID aléatoire propagé au service UDP, et table de routage reconstruite
+    /// (les distances XOR dépendent de l'ID local — les anciennes entrées
+    /// seraient mal triées).
+    pub async fn rotate_local_id(&self) -> KadId {
+        let new_id = KadId::random();
+        *self.local_id.write().unwrap() = new_id;
+        *self.routing_table.lock().await = KBucketTable::new(new_id);
+        new_id
     }
 
     pub fn udp(&self) -> &Arc<KadUdpService> {
@@ -127,7 +142,7 @@ impl KadService {
         };
 
         KadStatusSnapshot {
-            local_id: self.local_id.to_hex(),
+            local_id: self.local_id().to_hex(),
             total_contacts: table.total_contacts(),
             total_replacements: table.total_replacements(),
             db_contacts_count: db_count,
@@ -302,7 +317,7 @@ impl KadService {
     pub async fn bootstrap_active_contacts(&self, sample_size: usize) -> usize {
         let sample = {
             let table = self.routing_table.lock().await;
-            table.find_closest(&self.local_id, sample_size)
+            table.find_closest(&self.local_id(), sample_size)
         };
 
         if sample.is_empty() {
@@ -579,7 +594,7 @@ impl KadService {
 
     pub async fn clear_contacts(&self) -> Result<usize, String> {
         let mut table = self.routing_table.lock().await;
-        *table = KBucketTable::new(self.local_id);
+        *table = KBucketTable::new(self.local_id());
 
         let mut dl = self.downloads.lock().await;
         dl.db_mut()
@@ -798,7 +813,7 @@ impl KadService {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
             if self
                 .udp
-                .send_publish_notes(addr, &target_kad_id.0, &self.local_id.0, &tags)
+                .send_publish_notes(addr, &target_kad_id.0, &self.local_id().0, &tags)
                 .await
                 .is_ok()
             {

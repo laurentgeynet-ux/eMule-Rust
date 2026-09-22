@@ -143,7 +143,7 @@ pub async fn handle_add_ed2k_link(
             let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
                 hash.0,
                 size,
-                state.config.obfuscation_enabled,
+                state.effective_obfuscation().await.0,
             );
             let _ = state.server_session.get_sources(req).await;
         }
@@ -181,6 +181,19 @@ pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Va
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
 
+    // eMule `SafeConnect`: refuse to resume while neither the eD2K server
+    // nor Kad is reachable — sources could only be dead cache entries.
+    if state.setting_bool("safe_connect", false).await {
+        let server_up = state.server_session.snapshot().await.status
+            == crate::services::server_session::ServerConnectionStatus::Connected;
+        let kad_ready = state.kad.get_status().await.total_contacts > 0;
+        if !server_up && !kad_ready {
+            return Err(JsonRpcError::business(
+                "Safe connect: waiting for an eD2K server or Kad before resuming downloads",
+            ));
+        }
+    }
+
     let snapshot = state.downloads.lock().await.resume_download(&id)?;
     state.broadcast_download_update(snapshot.clone());
 
@@ -200,7 +213,7 @@ pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Va
             let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
                 hash.0,
                 size,
-                state.config.obfuscation_enabled,
+                state.effective_obfuscation().await.0,
             );
             let _ = state.server_session.get_sources(req).await;
         }

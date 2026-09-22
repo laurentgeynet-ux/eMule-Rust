@@ -101,7 +101,7 @@ void main() {
       expect(find.text('public-ed2k-kad-preview'), findsOneWidget);
     });
 
-    testWidgets('network policy dialog allows inspecting budgets and switching profile',
+    testWidgets('settings Connection section allows inspecting budgets and switching profile',
         (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -127,17 +127,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Open NetworkPolicyDialog by tapping the badge
+      // The badge navigates to the Settings page — Connection section
+      // (standalone mode falls back to the section switch on General).
       await tester.tap(find.byKey(const Key('network_policy_badge')));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Connexion'));
+      await tester.pumpAndSettle();
 
-      // Verify dialog title and quotas
-      expect(find.text('Network Policy & Defense Guard'), findsOneWidget);
-      expect(find.text('Active Connectivity Profile'), findsOneWidget);
-      expect(find.text('Active Connections & Limits'), findsOneWidget);
-      expect(find.text('Peer Sockets'), findsOneWidget);
-      expect(find.text('Server Sockets'), findsOneWidget);
-      expect(find.text('Listeners'), findsOneWidget);
+      // Verify section header and quotas
+      expect(find.text('Profil de connectivité actif'), findsOneWidget);
+      expect(find.text('Connexions actives & limites'), findsOneWidget);
+      expect(find.text('Sockets pairs'), findsOneWidget);
+      expect(find.text('Sockets serveur'), findsOneWidget);
+      expect(find.text("Listeners d'écoute"), findsOneWidget);
 
       // Initial profile is public-ed2k-kad-preview
       expect(viewModel.currentNetworkProfile, NetworkProfile.publicEd2kKadPreview);

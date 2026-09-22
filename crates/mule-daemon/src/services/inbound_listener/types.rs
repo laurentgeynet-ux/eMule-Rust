@@ -47,11 +47,17 @@ pub struct InboundListenerService {
     pub(crate) is_running: Arc<AtomicBool>,
     pub(crate) listen_addr: Arc<Mutex<Option<SocketAddr>>>,
     pub(crate) listener_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
-    pub(crate) user_hash: [u8; 16],
+    /// Local eD2K user hash — mutable à chaud : `identityRotationHours`
+    /// régénère l'identité sans redémarrer le listener.
+    pub(crate) user_hash: std::sync::Arc<std::sync::RwLock<[u8; 16]>>,
     /// Local RSA-384 public key DER (PKCS#1) used as challenger key in SUI
     /// payloads. `None` when the daemon has no usable identity (e.g. quarantined
-    /// cryptkey.dat): challenges must not be issued without it.
-    pub(crate) sui_pubkey_der: Option<Vec<u8>>,
+    /// cryptkey.dat): challenges must not be issued without it. Mutable à
+    /// chaud pour suivre la rotation d'identité.
+    pub(crate) sui_pubkey_der: std::sync::Arc<std::sync::RwLock<Option<Vec<u8>>>>,
+    /// Mode « paranoid » (propre à Emule-Sion) : n'accorde de slot d'upload
+    /// qu'aux pairs obfusqués ET dont la signature SUI a été vérifiée.
+    pub(crate) paranoid_mode: Arc<AtomicBool>,
     /// Local identity (private key access) for answering inbound peer
     /// challenges — the peer signs our key, we sign its key.
     pub(crate) identity: Option<Arc<Mutex<crate::services::IdentityService>>>,
@@ -60,8 +66,8 @@ pub struct InboundListenerService {
     /// Shared SUI anomaly counters (identity.status `sui` object).
     pub(crate) sui_stats: Arc<SuiStats>,
     pub(crate) active_conns: Arc<Mutex<HashMap<IpAddr, usize>>>,
-    pub(crate) obfuscation_enabled: bool,
-    pub(crate) obfuscation_required: bool,
+    pub(crate) obfuscation_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) obfuscation_required: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub(crate) obfuscation_padding_max: u8,
     /// Peer session manager for adopting inbound connections that answer a
     /// pending LowID callback (`OP_CALLBACKREQUEST` relayed by the server).

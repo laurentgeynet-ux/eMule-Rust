@@ -7,8 +7,6 @@ import '../../../../app/shell_controller.dart';
 import '../../../../l10n/l10n.dart';
 import 'category_edit_dialog.dart';
 import 'diagnostic_dialog.dart';
-import 'import_part_met_dialog.dart';
-import 'settings_dialog.dart';
 import 'sidebar/category_delete_dialog.dart';
 import 'sidebar/sidebar_action_button.dart';
 import 'sidebar/sidebar_brand_header.dart';
@@ -219,28 +217,16 @@ class DownloadsSidebar extends ConsumerWidget {
                     isCompact: isCompact,
                   ),
                   const SizedBox(height: 4),
-                  SidebarActionButton(
+                  SidebarNavItem(
+                    title: context.l10n.actionSettings,
                     icon: Icons.settings_outlined,
-                    label: context.l10n.actionSettings,
-                    iconColor: AppColors.textSecondary,
+                    isSelected:
+                        ref.watch(shellControllerProvider).section ==
+                            AppNavSection.settings,
+                    onTap: () => ref
+                        .read(shellControllerProvider)
+                        .setSection(AppNavSection.settings),
                     isCompact: isCompact,
-                    onTap: () => showDialog(
-                      context: context,
-                      builder: (ctx) => const SettingsDialog(),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SidebarActionButton(
-                    key: const Key('btn_import_part_met'),
-                    icon: Icons.file_download_outlined,
-                    label: context.l10n.actionImportPartMet,
-                    iconColor: AppColors.accentTeal,
-                    isCompact: isCompact,
-                    onTap: () => showDialog(
-                      context: context,
-                      builder: (ctx) =>
-                          const ImportPartMetDialog(),
-                    ),
                   ),
                   const SizedBox(height: 8),
                 ],

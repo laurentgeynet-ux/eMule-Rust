@@ -147,7 +147,7 @@ impl KadUdpService {
         };
 
         let contact = KadContactWire {
-            kad_id: self.local_id.0,
+            kad_id: self.local_id.read().unwrap().0,
             ip: ip_bytes,
             udp_port: local_addr.port(),
             tcp_port,
@@ -255,7 +255,11 @@ impl KadUdpService {
         }
 
         let search_bytes =
-            KadCodec::encode_search_keyword_req(keyword_hash, start_pos, &self.local_id.0);
+            KadCodec::encode_search_keyword_req(
+                keyword_hash,
+                start_pos,
+                &self.local_id.read().unwrap().0,
+            );
 
         tracing::info!(
             "Kad sending SearchKeywordReq (0x33) to node {} for keyword {} (start_pos={}, tx_id={})",

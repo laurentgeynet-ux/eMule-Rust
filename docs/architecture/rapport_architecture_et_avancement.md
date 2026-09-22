@@ -269,6 +269,27 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
   * *Trickle slots* : un slot < 1 Kio/s après 60 s est rétrogradé (`Trickle`, hors quota) et le meilleur client en file est promu.
   * *Friend slots* : table `friends` + RPC `friends.*` → slot dédié (`uh:<userhash>`).
   * *Anti-leecher minimal* : rejet des clients sans `user_hash` quand la file est ≥ 90 % pleine.
+  * *Partage partiel* (`CPartFile` eMule) : un téléchargement actif est serviable dès la première part eD2K complète — `SharedFile.is_partial` + `completed_parts` ; `PARTSTATUS` n'annonce que les parts reçues, tout range hors parts complétées est refusé, hashset/AICH jamais calculés depuis un `.part` incomplet.
+  * *Partages persistants* : les downloads `Completed` sont fusionnés depuis SQLite dans `list_all_shared_files`/`get_shared_file` même hors `active` (survie au restart, eMule rehash des fichiers finis) — le fichier cible doit exister.
+  * *File d'attente configurable* : `max_queue` (`AtomicUsize`, eMule `QueueSize`) piloté par `settings.set maxUploadQueue`.
+* **Paramètres runtime (eMule Préférences)** — tous persistés via `settings.set` et appliqués **à chaud** :
+  * `nickname` (login serveur + hellos pairs), `shareDownloadDir` (scan Incoming + RPC `shares.rescan` manuel),
+  * `obfuscationEnabled`/`obfuscationRequired` (listener inbound live + connexions sortantes via `AppState::effective_obfuscation()`),
+  * `maxConnections`/`maxConnPerMin` (`ResourceBudgets`), `maxUploadQueue`,
+  * `ed2kPort`/`kadPort` (ports effectifs en `AtomicU16` sur `AppState` — rebind à chaud du listener TCP et de la socket Kad UDP, buddy connect-options et ports UPnP mis à jour),
+  * `udpEnabled` (stoppe/démarre `kad_udp` + `server_udp`, eMule « UDP désactivé »), `upnpEnabled` (map/unmap immédiat),
+  * `capacityDownloadKbs`/`capacityUploadKbs` (capacités de ligne ; la capacité UL est la référence USS), `ussEnabled` (`uss_config` persisté),
+  * `maxGlobalDownloadPeers`/`maxPeersPerDownload`/`minPeersPerDownload`, `historyRetentionDays`, `defaultDownloadDir`.
+  * `tempDir` (dossier `.part` effectif), `ichEnabled` (vérification MD4 des parts complétées),
+    `rememberCancelled`/`rememberDownloaded` (gating des entrées d'historique),
+    `minUploadKbs` (plancher par slot upload, eMule `MinUpload`),
+    `autoPriorityNewDownloads` (priorité `high` pour fichiers ≥ 1 part eD2K).
+  * **Watcher serveur** (`AppState::spawn_server_watcher`, tick 15 s) : `serverReconnect`
+    (reconnexion à `ServerSessionManager::last_target`, effacé sur déconnexion manuelle),
+    `serverAutoconnect` (meilleur serveur par `preference` au premier tick),
+    `serverAutoremoveDead` (suppression après 3 échecs), `serverAutoupdateList`
+    + `serverAutoupdatePath` (import `server.met` local une fois par session — aucun fetch HTTP),
+    `safeConnect` (`downloads.resume` refusé tant que ni serveur eD2K ni Kad ne sont prêts).
 
 ---
 

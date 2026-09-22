@@ -60,7 +60,20 @@ pub fn add_ed2k_link(
             .unwrap_or_default()
             .as_millis() as i64,
         category_id,
-        priority: "normal".to_string(),
+        // eMule auto-priority (`auto_priority_new_downloads`): large files
+        // (>= one full eD2K part) start at "high", the rest at "normal".
+        priority: if db
+            .get_setting("auto_priority_new_downloads")
+            .ok()
+            .flatten()
+            .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
+            .unwrap_or(false)
+            && link.size >= mule_protocol::ED2K_PART_SIZE as u64
+        {
+            "high".to_string()
+        } else {
+            "normal".to_string()
+        },
         max_sources: None,
     };
 
@@ -436,8 +449,17 @@ pub fn inject_range(
 
         // Incremental integrity check: verify the freshly completed part against
         // the known hashset (eMule PartFile::IsCorruptedPart semantics).
+        // `ich_enabled` (eMule ICH pref, default on) gates this early check —
+        // disabled, corruption is only caught by the final root-hash verify.
+        let ich_enabled = db
+            .get_setting("ich_enabled")
+            .ok()
+            .flatten()
+            .map(|v| !matches!(v.trim().to_lowercase().as_str(), "0" | "false" | "off"))
+            .unwrap_or(true);
         let hash_hex = act.download.ed2k_hash.to_hex().to_lowercase();
-        if let Ok(part_hashes) = db.get_part_hashes(&hash_hex) {
+        if ich_enabled {
+            if let Ok(part_hashes) = db.get_part_hashes(&hash_hex) {
             // For files strictly smaller than one part, the file hash IS the
             // part hash. For exact multiples of PART_SIZE eMule appends an
             // MD4(empty) trailing part, so part 0 hash != file hash there —
@@ -498,6 +520,7 @@ pub fn inject_range(
                 }
             }
         }
+    }
     }
 
     db.sync_received_ranges(id, &act.ranges)

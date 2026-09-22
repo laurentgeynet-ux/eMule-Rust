@@ -60,6 +60,8 @@ impl InboundListenerService {
         // eMule IS_IDBADGUY: a peer whose SUI signature was explicitly
         // rejected gets score 0 in the upload queue (never promoted).
         let mut sui_rejected = false;
+        // Signature SUI vérifiée avec succès (requis en mode paranoid).
+        let mut sui_verified = false;
         let mut active_challenge: Option<u32> = None;
         let mut pending_peer_challenge: Option<(u8, u32)> = None;
         let mut answered_peer_challenge = false;
@@ -114,7 +116,9 @@ impl InboundListenerService {
 
                                         // Only issue a challenge if we hold a usable local identity:
                                         // the peer signs *our* public key, so no key means no SUI.
-                                        let Some(my_pub) = &self.sui_pubkey_der else {
+                                        let Some(my_pub) =
+                                            self.sui_pubkey_der.read().unwrap().clone()
+                                        else {
                                             warn!(
                                                 "[SUI] No local identity key, not issuing challenge to {}",
                                                 remote_str
@@ -202,7 +206,9 @@ impl InboundListenerService {
                                     let reject_reason: Option<&'static str> = if flooded {
                                         Some("signature flood (duplicate source IP)")
                                     } else {
-                                        match (challenge, self.sui_pubkey_der.clone(), remote_pubkey_der.clone()) {
+                                        let local_pubkey =
+                                            self.sui_pubkey_der.read().unwrap().clone();
+                                        match (challenge, local_pubkey, remote_pubkey_der.clone()) {
                                             (Some(ch), Some(my_pub), Some(peer_der)) => {
                                                 match decoder.decode_signature(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
                                                     Ok(sig) => {
@@ -266,6 +272,7 @@ impl InboundListenerService {
                                         self.sui_stats.signatures_rejected_flood.fetch_add(1, Relaxed);
                                     }
                                     if verified_ok {
+                                        sui_verified = true;
                                         self.sui_stats.signatures_verified.fetch_add(1, Relaxed);
                                         // Verified: pin pubkey to credit record (by pubkey hash)
                                         // and grant the credit multiplier now.
@@ -491,7 +498,7 @@ impl InboundListenerService {
                                                 let answer =
                                                     crate::services::peer_session::handshake::build_emule_info(
                                                         self.kad_udp_port,
-                                                        if self.sui_pubkey_der.is_some() { 3 } else { 0 },
+                                                        if self.sui_pubkey_der.read().unwrap().is_some() { 3 } else { 0 },
                                                     );
                                                 if let Ok(ans_pkt) =
                                                     encoder.encode_emule_info_answer(&answer)
@@ -562,11 +569,17 @@ impl InboundListenerService {
                                              } else {
                                                  sf.file_size.div_ceil(9728000).max(1) as u16
                                              };
-                                             let all_parts: Vec<u16> = (0..part_count).collect();
+                                             let avail: Vec<u16> = if sf.is_partial {
+                                                 // eMule CPartFile: advertise only
+                                                 // fully-received parts (PARTSTATUS).
+                                                 sf.completed_parts.clone()
+                                             } else {
+                                                 (0..part_count).collect()
+                                             };
                                              Ed2kFileStatus {
                                                  file_hash: req.file_hash,
                                                  part_count,
-                                                 availability_mask: PartAvailabilityMask::from_parts(&all_parts, part_count),
+                                                 availability_mask: PartAvailabilityMask::from_parts(&avail, part_count),
                                              }
                                          } else {
                                              Ed2kFileStatus {
@@ -613,7 +626,7 @@ impl InboundListenerService {
                                             dl_svc.get_shared_file(&hash_hex).unwrap_or(None)
                                         };
                                         match shared_file {
-                                            Some(sf) if sf.enabled && !sf.file_path.is_empty() => {
+                                            Some(sf) if sf.enabled && !sf.is_partial && !sf.file_path.is_empty() => {
                                                 let path = sf.file_path.clone();
                                                 let res = tokio::task::spawn_blocking(move || {
                                                     let mut f = std::fs::File::open(&path)?;
@@ -703,6 +716,19 @@ impl InboundListenerService {
                                         remote_str, shared_file.file_name, hash_hex
                                     );
 
+                                    // Mode paranoid (Emule-Sion) : ne servir
+                                    // que les pairs obfusqués et dont la
+                                    // signature SUI a été vérifiée.
+                                    if self.paranoid_mode.load(std::sync::atomic::Ordering::Relaxed)
+                                        && !(stream.is_obfuscated() && sui_verified)
+                                    {
+                                        tracing::warn!(
+                                            "[PARANOID] Inbound peer {} denied upload slot (obfuscated={}, sui_verified={})",
+                                            remote_str, stream.is_obfuscated(), sui_verified
+                                        );
+                                        continue;
+                                    }
+
                                     match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected).await {
                                         Ok((UploadSlotState::Uploading, _)) => {
                                             let mut out = Vec::new();
@@ -765,10 +791,31 @@ impl InboundListenerService {
                                          }
                                      };
 
+                                     if self.paranoid_mode.load(std::sync::atomic::Ordering::Relaxed)
+                                         && !(stream.is_obfuscated() && sui_verified)
+                                     {
+                                         continue;
+                                     }
+
                                      match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected).await {
                                          Ok((UploadSlotState::Uploading, _)) => {
                                              if let Some(target_range) = req_ranges.first() {
                                                  let (start, end) = *target_range;
+                                                 // Partial share (in-progress download): only
+                                                 // ranges fully inside a completed eD2K part may
+                                                 // be served — anything else must be refused.
+                                                 if shared_file.is_partial {
+                                                     const ED2K_PART_SIZE: u64 = 9_728_000;
+                                                     let covered = shared_file.completed_parts.iter().any(|&i| {
+                                                         let ps = i as u64 * ED2K_PART_SIZE;
+                                                         let pe = ((i as u64 + 1) * ED2K_PART_SIZE)
+                                                             .min(shared_file.file_size);
+                                                         start >= ps && end <= pe
+                                                     });
+                                                     if !covered {
+                                                         continue;
+                                                     }
+                                                 }
                                                  let length = (end.saturating_sub(start)).min(184320);
 
                                                  tracing::info!(
@@ -986,6 +1033,9 @@ impl InboundListenerService {
         sf: &mule_core::model::SharedFile,
         hash_hex: &str,
     ) -> Option<[u8; 20]> {
+        if sf.is_partial {
+            return sf.aich_root;
+        }
         self.shared_aich_tree(sf, hash_hex).await.map(|(_, r)| r)
     }
 
@@ -997,6 +1047,12 @@ impl InboundListenerService {
         hash_hex: &str,
     ) -> Option<(mule_format::AichNode, [u8; 20])> {
         if sf.file_path.is_empty() || sf.file_size == 0 {
+            return None;
+        }
+        // Partial share: the AICH tree cannot be computed from an incomplete
+        // .part file — the trusted root (from the .met) is still servable via
+        // `shared_aich_root`, but no recovery set can be built.
+        if sf.is_partial {
             return None;
         }
         let path = sf.file_path.clone();
@@ -1040,9 +1096,10 @@ impl InboundListenerService {
         };
 
         if state == 2 {
-            if let Some(my_pub) = &self.sui_pubkey_der {
+            let my_pub = self.sui_pubkey_der.read().unwrap().clone();
+            if let Some(my_pub) = my_pub {
                 if let Ok(pk_pkt) = encoder.encode_public_key(&Ed2kPublicKey {
-                    key_bytes: Bytes::copy_from_slice(my_pub),
+                    key_bytes: Bytes::copy_from_slice(&my_pub),
                 }) {
                     let mut out = Vec::new();
                     out.push(pk_pkt.protocol);

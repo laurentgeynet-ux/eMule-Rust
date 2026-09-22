@@ -639,7 +639,7 @@ impl SwarmCoordinator {
                             buddy_addr,
                             &buddy_bytes,
                             &file_id,
-                            self.state.config.ed2k_port,
+                            self.state.ed2k_port(),
                         )
                         .await
                     {
@@ -689,8 +689,8 @@ impl SwarmCoordinator {
                 let dl_ref = Arc::clone(&self.state.downloads);
                 let file_hash_str = hash_hex.clone();
                 let ps = self.state.peer_session.clone();
-                let client_port = self.state.config.ed2k_port;
-                let kad_port = self.state.config.kad_port;
+                let client_port = self.state.ed2k_port();
+                let kad_port = self.state.kad_port();
 
                 let target_user_hash = src.user_hash_bytes();
                 let peer_crypt_options = src.crypt_options;
@@ -832,7 +832,7 @@ impl SwarmCoordinator {
         };
 
         let user_hash = self.state.identity.lock().await.user_hash();
-        let ed2k_port = self.state.config.ed2k_port;
+        let ed2k_port = self.state.ed2k_port();
         tracing::info!("Server failover: connecting to {name} ({addr})");
         self.last_server_reconnect = Some(Instant::now());
         self.server_attempts.insert(address.clone(), Instant::now());

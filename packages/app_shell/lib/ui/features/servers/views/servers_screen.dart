@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../app/providers.dart';
-import '../../downloads/widgets/network_policy_dialog.dart';
+import '../../../../app/shell_controller.dart';
 import '../widgets/server_met_import_dialog.dart';
 import '../widgets/server_session_bar.dart';
 import '../widgets/servers_clear_dialog.dart';
@@ -71,10 +72,12 @@ class _ServersViewState extends ConsumerState<ServersView> {
     final errorMessage = vm.errorMessage;
 
     void showPolicyDialog() {
-      showDialog(
-        context: context,
-        builder: (ctx) => const NetworkPolicyDialog(),
-      );
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.go('/settings?section=connection');
+      } else {
+        ref.read(shellControllerProvider).setSection(AppNavSection.settings);
+      }
     }
 
     return Column(

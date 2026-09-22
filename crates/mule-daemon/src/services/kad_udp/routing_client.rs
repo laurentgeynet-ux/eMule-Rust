@@ -43,7 +43,7 @@ impl KadUdpService {
         }
 
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
-        let ping_bytes = KadCodec::encode_ping(&self.local_id.0, local_port);
+        let ping_bytes = KadCodec::encode_ping(&self.local_id.read().unwrap().0, local_port);
 
         tracing::info!(
             "Kad sending Ping (0x60) to node {} (tx_id={})",
@@ -114,7 +114,8 @@ impl KadUdpService {
         }
 
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
-        let boot_bytes = KadCodec::encode_bootstrap_req(&self.local_id.0, local_port);
+        let boot_bytes =
+            KadCodec::encode_bootstrap_req(&self.local_id.read().unwrap().0, local_port);
 
         tracing::info!(
             "Kad sending BootstrapReq (0x01) to node {} (tx_id={})",

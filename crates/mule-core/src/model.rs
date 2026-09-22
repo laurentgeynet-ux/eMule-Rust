@@ -474,6 +474,19 @@ pub struct SharedFile {
     /// in the upload queue (`GetFilePrioAsNumber` semantics).
     #[serde(default = "default_up_priority")]
     pub up_priority: String,
+    /// `true` when this entry is an in-progress download (eMule `CPartFile`):
+    /// only `completed_parts` may be served to peers. Transient — never
+    /// persisted in the `shared_files` table.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub is_partial: bool,
+    /// Indices of fully-complete eD2K parts (9 728 000 B) for a partial
+    /// share; empty for regular shared files (all parts available).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completed_parts: Vec<u16>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 fn default_up_priority() -> String {
@@ -500,6 +513,8 @@ impl SharedFile {
             shared_at_unix_ms: now,
             enabled: true,
             up_priority: "normal".to_string(),
+            is_partial: false,
+            completed_parts: Vec::new(),
         }
     }
 }

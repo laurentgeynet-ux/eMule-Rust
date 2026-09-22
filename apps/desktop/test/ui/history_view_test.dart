@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:app_shell/emule_sion_app.dart';
 import 'package:app_shell/app/app_controller.dart';
-import 'package:app_shell/ui/features/downloads/widgets/settings_dialog.dart';
 import 'package:app_shell/ui/features/history/views/history_view.dart';
+import 'package:app_shell/ui/features/settings/views/settings_view.dart';
 
 void main() {
   group('HistoryView & Statistics Tests', () {
@@ -159,7 +159,7 @@ void main() {
       expect(find.text('Linux_Kernel_6.10.tar.xz'), findsNothing);
     });
 
-    testWidgets('settings dialog displays history retention policy options',
+    testWidgets('settings page displays history retention policy options',
         (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -168,29 +168,27 @@ void main() {
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
-      // Open settings dialog
+      // Navigate to the /settings page
       final settingsFinder = find.text('Settings');
       await tester.ensureVisible(settingsFinder);
       await tester.pumpAndSettle();
       await tester.tap(settingsFinder);
       await tester.pumpAndSettle();
 
-      expect(find.byType(SettingsDialog), findsOneWidget);
-      expect(find.text('History Retention Policy'), findsOneWidget);
-      expect(find.text('30 Days (Default)'), findsOneWidget);
+      expect(find.byType(SettingsView), findsOneWidget);
+      expect(find.text("Rétention de l'historique"), findsOneWidget);
+      expect(find.text('30 jours (défaut)'), findsOneWidget);
 
       // Change retention policy to 7 Days
-      await tester.tap(find.text('30 Days (Default)'));
+      await tester.ensureVisible(find.text('30 jours (défaut)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('30 jours (défaut)'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('7 Days').last);
+      await tester.tap(find.text('7 jours').last);
       await tester.pumpAndSettle();
 
       expect(viewModel.historyRetentionDays, 7);
-
-      // Close dialog
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
     });
   });
 }

@@ -3,13 +3,25 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/providers.dart';
+import '../../../../app/shell_controller.dart';
 import '../../../../l10n/l10n.dart';
+import 'package:go_router/go_router.dart';
+
 import 'add_link_dialog.dart';
 import 'diagnostic_dialog.dart';
 import 'speed_sparkline.dart';
-import 'ip_filter_dialog.dart';
 import 'lab_guide_dialog.dart';
-import 'network_policy_dialog.dart';
+
+/// Navigates to a Settings section — via the router when available,
+/// otherwise via the VM-driven section switch (standalone/test usage).
+void _goToSettings(BuildContext context, WidgetRef ref, String section) {
+  final router = GoRouter.maybeOf(context);
+  if (router != null) {
+    router.go('/settings?section=$section');
+  } else {
+    ref.read(shellControllerProvider).setSection(AppNavSection.settings);
+  }
+}
 
 /// Top action bar of the downloads workspace: menu button (compact layouts),
 /// filter title, search field, and the action/badges cluster
@@ -231,10 +243,7 @@ class DownloadsTopBar extends ConsumerWidget {
         key: const Key('network_policy_badge'),
         borderRadius: AppRadius.mdAll,
         onTap: () {
-          showDialog(
-            context: context,
-            builder: (ctx) => const NetworkPolicyDialog(),
-          );
+          _goToSettings(context, ref, 'connection');
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -310,10 +319,7 @@ class DownloadsTopBar extends ConsumerWidget {
       ),
       tooltip: context.l10n.tooltipIpFilter,
       onPressed: () {
-        showDialog(
-          context: context,
-          builder: (ctx) => const IpFilterDialog(),
-        );
+        _goToSettings(context, ref, 'security');
       },
     );
   }

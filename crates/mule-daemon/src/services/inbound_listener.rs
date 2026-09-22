@@ -41,14 +41,15 @@ impl InboundListenerService {
             is_running: Arc::new(AtomicBool::new(false)),
             listen_addr: Arc::new(Mutex::new(None)),
             listener_handle: Arc::new(Mutex::new(None)),
-            user_hash,
-            sui_pubkey_der,
+            user_hash: std::sync::Arc::new(std::sync::RwLock::new(user_hash)),
+            sui_pubkey_der: std::sync::Arc::new(std::sync::RwLock::new(sui_pubkey_der)),
+            paranoid_mode: Arc::new(AtomicBool::new(false)),
             identity: None,
             last_sig_ip: Arc::new(Mutex::new(None)),
             sui_stats,
             active_conns: Arc::new(Mutex::new(HashMap::new())),
-            obfuscation_enabled,
-            obfuscation_required,
+            obfuscation_enabled: std::sync::Arc::new(AtomicBool::new(obfuscation_enabled)),
+            obfuscation_required: std::sync::Arc::new(AtomicBool::new(obfuscation_required)),
             obfuscation_padding_max,
             peer_session: Arc::new(std::sync::RwLock::new(None)),
             server_session: Arc::new(std::sync::RwLock::new(None)),
@@ -62,6 +63,16 @@ impl InboundListenerService {
     /// Sets the Kad UDP port announced to inbound peers in handshake answers.
     pub fn set_kad_udp_port(&mut self, port: u16) {
         self.kad_udp_port = port;
+    }
+
+    /// Live-updates the obfuscation (protocol encryption) policy for inbound
+    /// connections — mirrors eMule's "Support obfuscated connections /
+    /// Require obfuscated connections" preferences.
+    pub fn set_obfuscation(&self, enabled: bool, required: bool) {
+        self.obfuscation_enabled
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
+        self.obfuscation_required
+            .store(required, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Injects the client UDP service (inbound UDP version bookkeeping).
@@ -98,6 +109,19 @@ impl InboundListenerService {
     /// Injects the local identity service so inbound challenges can be signed.
     pub fn set_identity(&mut self, identity: Arc<Mutex<crate::services::IdentityService>>) {
         self.identity = Some(identity);
+    }
+
+    /// Met à jour le matériel d'identité annoncé aux pairs entrants après une
+    /// rotation de clé (`identity.rotate` / `identityRotationHours`).
+    pub fn set_identity_material(&self, user_hash: [u8; 16], sui_pubkey_der: Option<Vec<u8>>) {
+        *self.user_hash.write().unwrap() = user_hash;
+        *self.sui_pubkey_der.write().unwrap() = sui_pubkey_der;
+    }
+
+    /// Active/désactive le mode paranoid (pairs obfusqués + SUI vérifiés
+    /// uniquement pour les slots d'upload).
+    pub fn set_paranoid_mode(&self, enabled: bool) {
+        self.paranoid_mode.store(enabled, Ordering::Relaxed);
     }
 
     /// Accesses the underlying upload manager.

@@ -739,7 +739,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Storage: data/ (Internal State) vs downloads/ (Completed Files)';
 
   @override
-  String get openFolder => 'Open Folder';
+  String get openFolder => 'Ouvrir le dossier';
 
   @override
   String internalDataDbTempPart(String workdir) {
@@ -816,83 +816,85 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String rangesLoaded(String rangeCount) {
-    return '$rangeCount ranges loaded';
+    return '$rangeCount plages chargées';
   }
 
   @override
   String totalBlockedConnectionAttempts(String hitsCount) {
-    return 'Total blocked connection attempts: $hitsCount';
+    return 'Connexions bloquées au total : $hitsCount';
   }
 
   @override
-  String get importIpfilterDat => 'Import ipfilter.dat';
+  String get importIpfilterDat => 'Importer un ipfilter.dat';
 
   @override
   String get loadALocalPeerguardianEmule =>
-      'Load a local PeerGuardian / eMule formatted ipfilter.dat file. Remote URL download is disallowed for safety.';
+      'Charge un fichier ipfilter.dat local au format PeerGuardian / eMule. Le téléchargement depuis une URL distante est interdit par sécurité (anti-SSRF).';
 
   @override
-  String get import => 'Import';
+  String get import => 'Importer';
 
   @override
-  String get clear => 'Clear';
+  String get clear => 'Effacer';
 
   @override
-  String get noNetworkEventsRecordedYet => 'No network events recorded yet.';
+  String get noNetworkEventsRecordedYet =>
+      'Aucun événement réseau enregistré pour le moment.';
 
   @override
-  String get activeConnectivityProfile => 'Active Connectivity Profile';
+  String get activeConnectivityProfile => 'Profil de connectivité actif';
 
   @override
-  String get activeConnectionsLimits => 'Active Connections & Limits';
+  String get activeConnectionsLimits => 'Connexions actives & limites';
 
   @override
-  String get peerSockets => 'Peer Sockets';
+  String get peerSockets => 'Sockets pairs';
 
   @override
-  String get serverSockets => 'Server Sockets';
+  String get serverSockets => 'Sockets serveur';
 
   @override
-  String get listeners => 'Listeners';
+  String get listeners => 'Listeners d\'écoute';
 
   @override
-  String get connectTimeout => 'Connect Timeout';
+  String get connectTimeout => 'Timeout de connexion';
 
   @override
-  String get maxFrameSize => 'Max Frame Size';
+  String get maxFrameSize => 'Taille max d\'une trame';
 
   @override
-  String get maxBufferMemory => 'Max Buffer Memory';
+  String get maxBufferMemory => 'Mémoire tampon max';
 
   @override
   String status2(String label) {
-    return 'Status: $label';
+    return 'Statut : $label';
   }
 
   @override
-  String get reEnable => 'Re-enable';
+  String get reEnable => 'Réactiver le réseau';
 
   @override
-  String get disconnectAll => 'Disconnect All';
+  String get disconnectAll => 'Tout déconnecter (kill switch)';
 
   @override
-  String get bandwidthTokenBucketQuotas => 'Bandwidth & Token Bucket Quotas';
+  String get bandwidthTokenBucketQuotas => 'Limites de débit (Token Buckets)';
 
   @override
   String get limitsAreEnforcedAsynchronouslyUsing =>
-      'Limits are enforced asynchronously using Token Buckets. 0 means unlimited.';
+      'Les limites sont appliquées de façon asynchrone par des Token Buckets et persistées au redémarrage. 0 = illimité.';
 
   @override
-  String get downloadLimitKbS0 => 'Download Limit (KB/s) [0 = unlimited]';
+  String get downloadLimitKbS0 =>
+      'Limite de téléchargement (Ko/s) [0 = illimité]';
 
   @override
-  String get uploadLimitKbS0 => 'Upload Limit (KB/s) [0 = unlimited]';
+  String get uploadLimitKbS0 => 'Limite d\'envoi (Ko/s) [0 = illimité]';
 
   @override
-  String get maxNewConnectionsMinute => 'Max New Connections / Minute';
+  String get maxNewConnectionsMinute => 'Nouvelles connexions max / minute';
 
   @override
-  String get saveLimits => 'Save Limits';
+  String get saveLimits => 'Enregistrer les limites';
 
   @override
   String get inspectDetailsPartMap => 'Inspect Details & Part Map';
@@ -937,23 +939,23 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get globalDefaultDownloadDirectory =>
-      'Global Default Download Directory';
+      'Dossier de téléchargement par défaut';
 
   @override
   String get thisPathIsUsedAs =>
-      'This path is used as the default target destination when adding new downloads. Temporary .part files remain strictly confined in data/temp/ until completed.';
+      'Ce chemin est la destination par défaut des nouveaux téléchargements. Les fichiers .part restent dans le dossier temporaire configuré jusqu\'à complétion (eMule « Répertoire »).';
 
   @override
-  String get destinationDirectoryPath => 'Destination Directory Path';
+  String get destinationDirectoryPath => 'Chemin du dossier de destination';
 
   @override
-  String get eGCDownloadsOr => 'e.g. C:\\Downloads or downloads';
+  String get eGCDownloadsOr => 'ex. C:\\Downloads ou downloads';
 
   @override
-  String get save => 'Save';
+  String get save => 'Enregistrer';
 
   @override
-  String get resetToPortableDefault => 'Reset to Portable Default';
+  String get resetToPortableDefault => 'Réinitialiser au dossier portable';
 
   @override
   String get modeReseauTraverseeBoxUpnp => 'Mode Réseau & Traversée Box (UPnP)';
@@ -966,17 +968,17 @@ class AppLocalizationsFr extends AppLocalizations {
   String get configurer => 'Configurer';
 
   @override
-  String get historyRetentionPolicy => 'History Retention Policy';
+  String get historyRetentionPolicy => 'Rétention de l\'historique';
 
   @override
   String get historicalTransitionEventsOlderThan =>
-      'Historical transition events older than the retention period are automatically pruned on daemon startup.';
+      'Les événements d\'historique plus anciens que la durée choisie sont purgés au démarrage du daemon et à chaque modification.';
 
   @override
-  String get keepHistoryFor => 'Keep history for: ';
+  String get keepHistoryFor => 'Conserver l\'historique pendant : ';
 
   @override
-  String get indefinitelyNoPruning => 'Indefinitely (No pruning)';
+  String get indefinitelyNoPruning => 'Indéfiniment (aucune purge)';
 
   @override
   String delete(String name) {
@@ -1560,13 +1562,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get testerRafraichirUpnp => 'Tester / Rafraîchir UPnP';
 
   @override
-  String get sevenDays => '7 Days';
+  String get sevenDays => '7 jours';
 
   @override
-  String get thirtyDaysDefault => '30 Days (Default)';
+  String get thirtyDaysDefault => '30 jours (défaut)';
 
   @override
-  String get ninetyDays => '90 Days';
+  String get ninetyDays => '90 jours';
 
   @override
   String twentyFourHours(

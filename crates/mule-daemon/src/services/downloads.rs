@@ -150,6 +150,19 @@ impl DownloadService {
         make(seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst)).send(tx);
     }
 
+    /// Effective temp directory: persisted `temp_dir` setting wins over the
+    /// construction-time directory (eMule "Répertoire temporaire").
+    fn effective_temp_dir(&self) -> PathBuf {
+        self.db
+            .get_setting("temp_dir")
+            .ok()
+            .flatten()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.temp_dir.clone())
+    }
+
     pub fn add_ed2k_link(
         &mut self,
         link_str: &str,
@@ -157,9 +170,11 @@ impl DownloadService {
         policy: AllocationPolicy,
         category_id: Option<String>,
     ) -> Result<DownloadSnapshot, DaemonError> {
+        let temp_dir = self.effective_temp_dir();
+        std::fs::create_dir_all(&temp_dir)?;
         let snapshot = operations::add_ed2k_link(
             &mut self.db,
-            &self.temp_dir,
+            &temp_dir,
             &mut self.active,
             link_str,
             target_dir,
@@ -189,9 +204,11 @@ impl DownloadService {
         target_dir: &Path,
         category_id: Option<String>,
     ) -> Result<ImportPartMetResult, DaemonError> {
+        let temp_dir = self.effective_temp_dir();
+        std::fs::create_dir_all(&temp_dir)?;
         let (result, active_dl) = part_met::import_part_met(
             &mut self.db,
-            &self.temp_dir,
+            &temp_dir,
             &self.active,
             met_path,
             part_path,
@@ -754,6 +771,49 @@ impl DownloadService {
         None
     }
 
+    /// Nombre de sources connues couvrant chaque part d'un download actif —
+    /// indice de rareté pour le swarm healing (`swarm_healing` setting).
+    /// `None` si le hash n'est pas un download actif.
+    ///
+    /// Convention eD2K : une source complète annonce `part_count = 0` (masque
+    /// vide) — elle couvre alors toutes les parts. Les sources dont le masque
+    /// n'a pas été rafraîchi depuis `SOURCE_FRESHNESS_MS` sont ignorées pour
+    /// ne pas compter une disponibilité périmée.
+    pub fn part_source_counts(&self, hex_hash: &str) -> Option<Vec<u32>> {
+        const ED2K_PART_SIZE: u64 = 9_728_000;
+        /// Fenêtre de fraîcheur des masques de disponibilité (30 min,
+        /// comparable au cycle de requery des sources eMule).
+        const SOURCE_FRESHNESS_MS: i64 = 30 * 60 * 1000;
+        let clean = hex_hash.trim().to_lowercase();
+        let act = self
+            .active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean)?;
+        let total_parts =
+            (act.download.total_size.div_ceil(ED2K_PART_SIZE)).max(1) as usize;
+        let max_part = total_parts.min(u16::MAX as usize);
+        let now = now_ms();
+        let mut counts = vec![0u32; total_parts];
+        for src in act.sources.values() {
+            if now - src.last_seen_unix_ms > SOURCE_FRESHNESS_MS {
+                continue;
+            }
+            if src.mask.part_count() == 0 {
+                // Source complète : couvre toutes les parts.
+                for c in counts.iter_mut() {
+                    *c = c.saturating_add(1);
+                }
+                continue;
+            }
+            for p in 0..max_part as u16 {
+                if src.mask.has_part(p) {
+                    counts[p as usize] = counts[p as usize].saturating_add(1);
+                }
+            }
+        }
+        Some(counts)
+    }
+
     /// Stores the per-part MD4 hashset for a file hash (learned from peer, link, or .part.met).
     pub fn store_part_hashes_by_hash(
         &mut self,
@@ -932,24 +992,130 @@ impl DownloadService {
             return Ok(Some(sf));
         }
         for act in self.active.values() {
-            if act
+            if !act
                 .download
                 .ed2k_hash
                 .to_hex()
                 .eq_ignore_ascii_case(file_hash)
-                && act.download.status == mule_core::DownloadStatus::Completed
             {
-                let mut sf = mule_core::model::SharedFile::new(
-                    act.download.ed2k_hash.to_hex(),
-                    &act.download.display_name,
-                    act.download.total_size,
-                    act.download.target_path.to_string_lossy().as_ref(),
-                );
+                continue;
+            }
+            if let Some(mut sf) = Self::shared_entry_for_active(act) {
                 sf.aich_root = act.download.aich_root.map(|a| a.0);
                 return Ok(Some(sf));
             }
+            return Ok(None);
+        }
+        // Completed downloads are persisted in the DB even when not loaded
+        // into `active` (e.g. after a daemon restart) — they stay shared
+        // like eMule keeps finished files in the shared list.
+        if let Some(sf) = self.shared_entry_for_completed_db(file_hash) {
+            return Ok(Some(sf));
         }
         Ok(None)
+    }
+
+    /// Resolves a completed download from the DB into a shareable entry —
+    /// only when the target file actually exists on disk.
+    fn shared_entry_for_completed_db(
+        &self,
+        file_hash: &str,
+    ) -> Option<mule_core::model::SharedFile> {
+        let dl = self
+            .db
+            .get_all_downloads()
+            .ok()?
+            .into_iter()
+            .find(|d| {
+                d.status == mule_core::DownloadStatus::Completed
+                    && d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
+            })?;
+        if !dl.target_path.is_file() {
+            return None;
+        }
+        let mut sf = mule_core::model::SharedFile::new(
+            dl.ed2k_hash.to_hex(),
+            &dl.display_name,
+            dl.total_size,
+            dl.target_path.to_string_lossy().as_ref(),
+        );
+        sf.aich_root = dl.aich_root.map(|a| a.0);
+        Some(sf)
+    }
+
+    /// Builds the shared-file view of an active download (eMule `CPartFile`
+    /// semantics): a completed download resolves to its target path; an
+    /// in-progress download resolves to its `.part` file as a partial share
+    /// exposing only its fully-received eD2K parts — `None` when no part is
+    /// complete yet.
+    fn shared_entry_for_active(
+        act: &ActiveDownload,
+    ) -> Option<mule_core::model::SharedFile> {
+        if act.download.status == mule_core::DownloadStatus::Completed {
+            return Some(mule_core::model::SharedFile::new(
+                act.download.ed2k_hash.to_hex(),
+                &act.download.display_name,
+                act.download.total_size,
+                act.download.target_path.to_string_lossy().as_ref(),
+            ));
+        }
+        const ED2K_PART_SIZE: u64 = 9_728_000;
+        let part_count =
+            act.download.total_size.div_ceil(ED2K_PART_SIZE).min(u16::MAX as u64) as u16;
+        let completed: Vec<u16> = (0..part_count)
+            .filter(|&i| {
+                let start = i as u64 * ED2K_PART_SIZE;
+                let end = ((i as u64 + 1) * ED2K_PART_SIZE).min(act.download.total_size);
+                end > start && act.ranges.contains(start..end)
+            })
+            .collect();
+        if completed.is_empty() {
+            return None;
+        }
+        let mut sf = mule_core::model::SharedFile::new(
+            act.download.ed2k_hash.to_hex(),
+            &act.download.display_name,
+            act.download.total_size,
+            act.download.temp_path.to_string_lossy().as_ref(),
+        );
+        sf.is_partial = true;
+        sf.completed_parts = completed;
+        Some(sf)
+    }
+
+    /// Every file currently servable to peers: persisted shared files plus
+    /// active downloads (completed → full file, in-progress → completed
+    /// parts only), like eMule's `CSharedFileList` including `CPartFile`s.
+    pub fn list_all_shared_files(
+        &self,
+    ) -> Result<Vec<mule_core::model::SharedFile>, DaemonError> {
+        let mut list = self.list_shared_files()?;
+        let persisted: std::collections::HashSet<String> =
+            list.iter().map(|f| f.file_hash.to_lowercase()).collect();
+        for act in self.active.values() {
+            if persisted.contains(&act.download.ed2k_hash.to_hex().to_lowercase()) {
+                continue;
+            }
+            if let Some(mut sf) = Self::shared_entry_for_active(act) {
+                sf.aich_root = act.download.aich_root.map(|a| a.0);
+                list.push(sf);
+            }
+        }
+        // Completed downloads only live in the DB after a restart — merge
+        // them too so the shared list survives reboots (eMule rehashes
+        // finished files into `CSharedFileList` at startup).
+        for d in self.db.get_all_downloads()? {
+            if d.status != mule_core::DownloadStatus::Completed {
+                continue;
+            }
+            if persisted.contains(&d.ed2k_hash.to_hex().to_lowercase()) {
+                continue;
+            }
+            if let Some(sf) = self.shared_entry_for_completed_db(&d.ed2k_hash.to_hex()) {
+                list.push(sf);
+            }
+        }
+        Ok(list)
     }
 
     pub fn get_peer_credit(

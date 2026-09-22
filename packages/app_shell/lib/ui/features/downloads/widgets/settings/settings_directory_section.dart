@@ -62,8 +62,8 @@ class SettingsDirectorySection extends StatelessWidget {
                         const BorderSide(color: AppTheme.darkBorder),
                   ),
                   helperText: isCustom
-                      ? 'Using customized directory (stored in database)'
-                      : 'Using default portable directory (<bundleRoot>/downloads)',
+                      ? 'Dossier personnalisé (persisté en base, appliqué immédiatement)'
+                      : 'Dossier portable par défaut (<racine_du_bundle>/downloads)',
                   helperStyle: TextStyle(
                     color: isCustom
                         ? AppColors.accentTeal
@@ -97,7 +97,9 @@ class SettingsDirectorySection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
           children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.restart_alt_rounded, size: 16),
@@ -108,7 +110,6 @@ class SettingsDirectorySection extends StatelessWidget {
               ),
               onPressed: isSaving ? null : onReset,
             ),
-            const SizedBox(width: 12),
             TextButton.icon(
               icon: const Icon(Icons.folder_open_rounded, size: 16),
               label: Text(context.l10n.openFolder),

@@ -405,7 +405,7 @@
   },
   "deleteTestData": "Delete Test Data",
   "storageDataInternalStateVs": "Storage: data/ (Internal State) vs downloads/ (Completed Files)",
-  "openFolder": "Open Folder",
+  "openFolder": "Ouvrir le dossier",
   "internalDataDbTempPart": "• Internal data (DB, temp .part, fixtures): {workdir}",
   "@internalDataDbTempPart": {
     "placeholders": {
@@ -466,7 +466,7 @@
       }
     }
   },
-  "rangesLoaded": "{rangeCount} ranges loaded",
+  "rangesLoaded": "{rangeCount} plages chargées",
   "@rangesLoaded": {
     "placeholders": {
       "rangeCount": {
@@ -474,7 +474,7 @@
       }
     }
   },
-  "totalBlockedConnectionAttempts": "Total blocked connection attempts: {hitsCount}",
+  "totalBlockedConnectionAttempts": "Connexions bloquées au total : {hitsCount}",
   "@totalBlockedConnectionAttempts": {
     "placeholders": {
       "hitsCount": {
@@ -482,20 +482,20 @@
       }
     }
   },
-  "importIpfilterDat": "Import ipfilter.dat",
-  "loadALocalPeerguardianEmule": "Load a local PeerGuardian / eMule formatted ipfilter.dat file. Remote URL download is disallowed for safety.",
-  "import": "Import",
-  "clear": "Clear",
-  "noNetworkEventsRecordedYet": "No network events recorded yet.",
-  "activeConnectivityProfile": "Active Connectivity Profile",
-  "activeConnectionsLimits": "Active Connections & Limits",
-  "peerSockets": "Peer Sockets",
-  "serverSockets": "Server Sockets",
-  "listeners": "Listeners",
-  "connectTimeout": "Connect Timeout",
-  "maxFrameSize": "Max Frame Size",
-  "maxBufferMemory": "Max Buffer Memory",
-  "status2": "Status: {label}",
+  "importIpfilterDat": "Importer un ipfilter.dat",
+  "loadALocalPeerguardianEmule": "Charge un fichier ipfilter.dat local au format PeerGuardian / eMule. Le téléchargement depuis une URL distante est interdit par sécurité (anti-SSRF).",
+  "import": "Importer",
+  "clear": "Effacer",
+  "noNetworkEventsRecordedYet": "Aucun événement réseau enregistré pour le moment.",
+  "activeConnectivityProfile": "Profil de connectivité actif",
+  "activeConnectionsLimits": "Connexions actives & limites",
+  "peerSockets": "Sockets pairs",
+  "serverSockets": "Sockets serveur",
+  "listeners": "Listeners d'écoute",
+  "connectTimeout": "Timeout de connexion",
+  "maxFrameSize": "Taille max d'une trame",
+  "maxBufferMemory": "Mémoire tampon max",
+  "status2": "Statut : {label}",
   "@status2": {
     "placeholders": {
       "label": {
@@ -503,14 +503,14 @@
       }
     }
   },
-  "reEnable": "Re-enable",
-  "disconnectAll": "Disconnect All",
-  "bandwidthTokenBucketQuotas": "Bandwidth & Token Bucket Quotas",
-  "limitsAreEnforcedAsynchronouslyUsing": "Limits are enforced asynchronously using Token Buckets. 0 means unlimited.",
-  "downloadLimitKbS0": "Download Limit (KB/s) [0 = unlimited]",
-  "uploadLimitKbS0": "Upload Limit (KB/s) [0 = unlimited]",
-  "maxNewConnectionsMinute": "Max New Connections / Minute",
-  "saveLimits": "Save Limits",
+  "reEnable": "Réactiver le réseau",
+  "disconnectAll": "Tout déconnecter (kill switch)",
+  "bandwidthTokenBucketQuotas": "Limites de débit (Token Buckets)",
+  "limitsAreEnforcedAsynchronouslyUsing": "Les limites sont appliquées de façon asynchrone par des Token Buckets et persistées au redémarrage. 0 = illimité.",
+  "downloadLimitKbS0": "Limite de téléchargement (Ko/s) [0 = illimité]",
+  "uploadLimitKbS0": "Limite d'envoi (Ko/s) [0 = illimité]",
+  "maxNewConnectionsMinute": "Nouvelles connexions max / minute",
+  "saveLimits": "Enregistrer les limites",
   "inspectDetailsPartMap": "Inspect Details & Part Map",
   "remove2": "Remove",
   "removeFromDownloads": "Remove \"{fileName}\" from downloads?",
@@ -556,19 +556,19 @@
     }
   },
   "downloadSettingsStorage": "Download Settings & Storage",
-  "globalDefaultDownloadDirectory": "Global Default Download Directory",
-  "thisPathIsUsedAs": "This path is used as the default target destination when adding new downloads. Temporary .part files remain strictly confined in data/temp/ until completed.",
-  "destinationDirectoryPath": "Destination Directory Path",
-  "eGCDownloadsOr": "e.g. C:\\Downloads or downloads",
-  "save": "Save",
-  "resetToPortableDefault": "Reset to Portable Default",
+  "globalDefaultDownloadDirectory": "Dossier de téléchargement par défaut",
+  "thisPathIsUsedAs": "Ce chemin est la destination par défaut des nouveaux téléchargements. Les fichiers .part restent dans le dossier temporaire configuré jusqu'à complétion (eMule « Répertoire »).",
+  "destinationDirectoryPath": "Chemin du dossier de destination",
+  "eGCDownloadsOr": "ex. C:\\Downloads ou downloads",
+  "save": "Enregistrer",
+  "resetToPortableDefault": "Réinitialiser au dossier portable",
   "modeReseauTraverseeBoxUpnp": "Mode Réseau & Traversée Box (UPnP)",
   "basculeEntreLaboratoireLocalEt": "Bascule entre laboratoire local et réseau public mondial.",
   "configurer": "Configurer",
-  "historyRetentionPolicy": "History Retention Policy",
-  "historicalTransitionEventsOlderThan": "Historical transition events older than the retention period are automatically pruned on daemon startup.",
-  "keepHistoryFor": "Keep history for: ",
-  "indefinitelyNoPruning": "Indefinitely (No pruning)",
+  "historyRetentionPolicy": "Rétention de l'historique",
+  "historicalTransitionEventsOlderThan": "Les événements d'historique plus anciens que la durée choisie sont purgés au démarrage du daemon et à chaque modification.",
+  "keepHistoryFor": "Conserver l'historique pendant : ",
+  "indefinitelyNoPruning": "Indéfiniment (aucune purge)",
   "delete": "Delete \"{name}\"?",
   "@delete": {
     "placeholders": {
@@ -929,9 +929,9 @@
     }
   },
   "testerRafraichirUpnp": "Tester / Rafraîchir UPnP",
-  "sevenDays": "7 Days",
-  "thirtyDaysDefault": "30 Days (Default)",
-  "ninetyDays": "90 Days",
+  "sevenDays": "7 jours",
+  "thirtyDaysDefault": "30 jours (défaut)",
+  "ninetyDays": "90 jours",
   "twentyFourHours": "24h: {last24hCompletedCount} | 7d: {last7dCompletedCount}",
   "@twentyFourHours": {
     "placeholders": {

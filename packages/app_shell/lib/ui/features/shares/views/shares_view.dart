@@ -18,6 +18,34 @@ class SharesView extends ConsumerStatefulWidget {
 class _SharesViewState extends ConsumerState<SharesView> {
   List<SharedFileModel> _files = const [];
   bool _loading = true;
+  bool _rescanning = false;
+
+  /// Re-scans the Incoming directory on the daemon (eMule "reload shared
+  /// files" semantics), then refreshes the list.
+  Future<void> _rescan() async {
+    setState(() => _rescanning = true);
+    String? error;
+    int added = 0;
+    try {
+      added = await ref.read(muleDaemonClientProvider).rescanSharedFiles();
+    } catch (e) {
+      error = e.toString();
+    }
+    if (!mounted) return;
+    setState(() => _rescanning = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error != null
+              ? 'Rescan échoué : $error'
+              : added > 0
+                  ? '$added nouveau(x) fichier(s) partagé(s)'
+                  : 'Rescan terminé — aucun nouveau fichier',
+        ),
+      ),
+    );
+    await _load();
+  }
 
   static const _priorities = [
     ('verylow', 'Très basse'),
@@ -72,9 +100,15 @@ class _SharesViewState extends ConsumerState<SharesView> {
               ),
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.refresh, size: 18),
-                tooltip: 'Rafraîchir',
-                onPressed: _load,
+                icon: _rescanning
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 18),
+                tooltip: 'Rescanner le dossier Incoming',
+                onPressed: _rescanning ? null : _rescan,
               ),
             ],
           ),
@@ -137,7 +171,8 @@ class _ShareRow extends ConsumerWidget {
                 Tooltip(
                   message: file.filePath,
                   child: Text(
-                    '${Formatters.formatBytes(file.fileSize)} — ${file.fileHash}',
+                    '${Formatters.formatBytes(file.fileSize)} — ${file.fileHash}'
+                    '${file.isPartial ? ' — partiel (${file.completedParts.length} part(s))' : ''}',
                     style: const TextStyle(
                       fontSize: 10,
                       color: AppColors.textMuted,
@@ -165,15 +200,17 @@ class _ShareRow extends ConsumerWidget {
               items: _SharesViewState._priorities
                   .map((p) => DropdownMenuItem(value: p.$1, child: Text(p.$2)))
                   .toList(),
-              onChanged: (v) async {
-                if (v == null) return;
-                try {
-                  await ref
-                      .read(muleDaemonClientProvider)
-                      .setSharedFileUploadPriority(file.fileHash, v);
-                  onChanged();
-                } catch (_) {}
-              },
+              onChanged: file.isPartial
+                  ? null
+                  : (v) async {
+                      if (v == null) return;
+                      try {
+                        await ref
+                            .read(muleDaemonClientProvider)
+                            .setSharedFileUploadPriority(file.fileHash, v);
+                        onChanged();
+                      } catch (_) {}
+                    },
             ),
           ),
           const SizedBox(width: 12),
@@ -181,14 +218,16 @@ class _ShareRow extends ConsumerWidget {
             message: file.enabled ? 'Partagé' : 'Suspendu',
             child: Switch(
               value: file.enabled,
-              onChanged: (v) async {
-                try {
-                  await ref
-                      .read(muleDaemonClientProvider)
-                      .setSharedFileEnabled(file.fileHash, v);
-                  onChanged();
-                } catch (_) {}
-              },
+              onChanged: file.isPartial
+                  ? null
+                  : (v) async {
+                      try {
+                        await ref
+                            .read(muleDaemonClientProvider)
+                            .setSharedFileEnabled(file.fileHash, v);
+                        onChanged();
+                      } catch (_) {}
+                    },
             ),
           ),
         ],

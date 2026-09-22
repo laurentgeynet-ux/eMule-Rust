@@ -5,6 +5,91 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Options exclusives Emule-Sion** (aucun équivalent eMule/aMule) :
+  - `paranoidMode` : slots d'upload réservés aux pairs **obfusqués avec
+    signature Secure Ident vérifiée** — applique le gate devant
+    `request_upload_slot` (`OP_STARTUPLOADREQ`, `OP_REQUESTPARTS*`).
+  - `identityRotationHours` : rotation périodique de l'identité —
+    nouvelle clé RSA (`cryptkey.dat`), nouveau `user_hash` eD2K et
+    nouveau `KadID` propagés à chaud (listener, SUI, firewall-check,
+    table de routage Kad). Timestamp persisté
+    (`identity_last_rotation_unix`), watcher 60 s. Les crédits sont
+    volontairement détachés à chaque rotation.
+  - `dailyUploadQuotaGb` : quota volumétrique d'upload par jour —
+    compteur cumulatif persisté (`upload_quota_used_bytes`,
+    `upload_quota_day`), gate atomique bloquant les nouveaux slots au
+    seuil, remise à zéro au changement de jour UTC (watcher 30 s).
+  - `swarmHealing` : biaise la planification des blocs vers les **parts
+    les plus rares du swarm** (compteur de sources connues par part,
+    `Ed2kDownloadSequencer::with_part_scarcity`) — le client devient
+    source de secours avant la disparition d'une part. Les sources
+    complètes (`part_count = 0`) couvrent toutes les parts ; les masques
+    périmés (> 30 min) sont ignorés. eD2K reste pull-only : aucun push,
+    tie-break sur octets reçus.
+
+- **Persistance corrigée** :
+  - `limits.set` persistait déjà les 5 buckets ; une mise à jour
+    **partielle** réinitialisait en live les limiteurs non fournis aux
+    défauts — la config part désormais du snapshot live des buckets.
+    L'UI envoyait aussi `serverRequestsPerSec`/`kadPacketsPerSec` en dur
+    (10/50) — elle envoie maintenant les valeurs courantes.
+  - **Filtre IP** : `filter.setEnabled` et `filter.importFile` ne
+    persistaient rien — `ipfilter_enabled` + `ipfilter_path` sont
+    désormais écrits en SQLite et rechargés au boot
+    (`filter.clear` oublie le chemin), comme eMule rechargeant
+    `ipfilter.dat`.
+
+- **Défauts alignés sur eMule 0.72a** : file d'upload 5000
+  (`QueueSize`), `minUploadKbs` 1 (`MinUpload`), connexions/min 240
+  (`MaxConnectionsPerFiveSeconds` = 20), UPnP désactivé par défaut,
+  suppression des serveurs morts dès le 1er échec (`DeadServerRetry`).
+  UI Connexion : boutons « Appliquer », capacités acceptent `0`
+  (illimité).
+
+- **Fix partages après redémarrage** : les téléchargements `Completed`
+  persistés en SQLite mais absents de la map `active` (boot frais) sont
+  désormais fusionnés dans `list_all_shared_files` et résolus par
+  `get_shared_file` — comme eMule qui rehash ses fichiers finis dans
+  `CSharedFileList` au démarrage. Sans ce fix, l'onglet Partages était
+  vide et les fichiers complétés n'étaient pas serviables en upload après
+  un restart. Le fichier cible doit exister sur disque.
+
+- **Paramètres eMule complétés** (`docs/SETTINGS.md` pour la référence) :
+  - **Serveurs** (section Connexion) : `serverReconnect` — watcher 15 s
+    reconnectant au dernier serveur via le chemin RPC normal ;
+    `serverAutoconnect` — connexion au meilleur serveur au démarrage ;
+    `serverAutoremoveDead` — suppression après 3 échecs ;
+    `serverAutoupdateList` + `serverAutoupdatePath` — import d'un
+    `server.met` local au boot (pas de fetch HTTP, anti-SSRF) ;
+    `safeConnect` — `downloads.resume` bloqué tant que ni eD2K ni Kad
+    ne sont disponibles.
+  - **Général** : `tempDir` (dossier `.part` configurable),
+    `ichEnabled` (vérification MD4 des parts), `rememberCancelled` /
+    `rememberDownloaded` (gating des entrées d'historique).
+  - **Transferts** : `minUploadKbs` (plancher par slot upload, eMule
+    `MinUpload` — n'ouvre pas de slot sous la moyenne configurée),
+    `autoPriorityNewDownloads` (fichiers ≥ 1 part en priorité `high`).
+
+- **Refonte complète des Paramètres** : le dialog fourre-tout est remplacé
+  par un **onglet dédié `/settings`** (`SettingsView`) avec rail de sections
+  à gauche, style « Préférences » eMule :
+  - **Général** : dossier de téléchargement, bascule `shareDownloadDir`
+    (partage auto du dossier Incoming — nouveau paramètre exposé via
+    `settings.get`/`settings.set`), rétention de l'historique, langue.
+  - **Connexion** : profil réseau lab/WAN, bannière kill switch, budgets de
+    sockets, accès à la config UPnP/ports (ex-`NetworkPolicyDialog` +
+    `NetworkModeDialog` fusionnés).
+  - **Transferts** : `maxGlobalDownloadPeers`, `maxPeersPerDownload`,
+    `minPeersPerDownload` — réglages RPC auparavant invisibles en UI.
+  - **Sécurité** : filtre IP (`ipfilter.dat`) + limites de débit
+    (ex-`IpFilterDialog` intégré) + notice anti-SSRF.
+  - **Amis** : friend slots (section déplacée de l'ancien dialog).
+  - **Avancé** : diagnostic, import `.part.met`, guide lab, barre debug,
+    version du daemon.
+  - Client : nouvelle méthode `updateSettings(patch)` → `settings.set`.
+  - `SettingsDialog` supprimé (code mort) ; l'item « Settings » de la
+    sidebar navigue vers `/settings`.
+
 - **Stratégies « smart » eMule 0.72a** (download + upload) :
   - **Preview (first/last part)** : `Ed2kDownloadSequencer::with_preview_priority`
     sert les parts 0 et N-1 en priorité (`PR_VERYHIGH` eMule) pour les fichiers
@@ -44,6 +129,49 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   conservent leur priorité/état ; désactivable via le setting
   `share_download_dir = "0"`. Artefacts de téléchargement exclus
   (`.part`, `.met`, `.tmp`…). Log `[INCOMING_SHARE]`.
+  - **Rescan manuel** : RPC `shares.rescan` + client `rescanSharedFiles()`
+    ; le bouton refresh de l'onglet Partages déclenche désormais un vrai
+    rescan du dossier Incoming (hash des nouveaux fichiers, réglages
+    `enabled`/`upPriority` existants préservés) puis recharge la liste,
+    avec SnackBar de résultat. Tests offline dans
+    `upload_inbound_tests.rs` (découverte, préservation, opt-out).
+
+- **Partage des téléchargements en cours (eMule `CPartFile`)** : un
+  téléchargement actif devient serviable dès qu'une part eD2K complète
+  (9 728 000 B) est reçue — `get_shared_file` résout un `SharedFile`
+  `is_partial` pointant vers le `.part`, avec `completed_parts` = indices
+  des parts vérifiées. Le dispatcher n'annonce que ces parts dans
+  `PARTSTATUS` (`OP_FILESTATUS`), refuse tout range hors parts complétées
+  (`OP_REQUESTPARTS`), et ne calcule jamais de hashset/AICH depuis un
+  fichier incomplet (le hashset du `.met` reste servi, root AICH connu
+  uniquement). `shares.list` inclut désormais les partiels (badge
+  « partiel (n parts) » dans l'onglet Partages, contrôles
+  priorité/activation désactivés dessus).
+
+- **Paramètres eMule supplémentaires câblés** (`settings.get`/`settings.set`,
+  appliqués à chaud) :
+  - **Général** : `nickname` — pseudo annoncé aux serveurs et pairs
+    (remplace les valeurs codées en dur « Emule-Sion »).
+  - **Connexion → Protocole & limites** : `obfuscationEnabled` /
+    `obfuscationRequired` (protocol encryption — listener inbound live via
+    `set_obfuscation`, connexions sortantes via `effective_obfuscation()`,
+    byte connect-options buddy Kad mis à jour) ; `maxConnections` et
+    `maxConnPerMin` (budgets `network_policy` appliqués immédiatement) ;
+    `ussEnabled` (Upload Speed Sense, persisté dans `uss_config`).
+  - **Transferts** : `maxUploadQueue` — taille de la file d'attente upload
+    (eMule `QueueSize`, défaut 500, clamp 10–5000).
+  - **Connexion → Capacités & ports** (panneau eMule complet) :
+    `capacityDownloadKbs`/`capacityUploadKbs` (capacités de ligne, la
+    capacité émission sert de référence à USS) ; `ed2kPort`/`kadPort`
+    **rebind à chaud** (listener TCP stoppé/redémarré si actif, socket Kad
+    UDP rebind, `kad.set_ed2k_tcp_port`, buddy connect-options,
+    `upnp.set_ports`) ; `udpEnabled` (stoppe/démarre `kad_udp` +
+    `server_udp`, eMule « UDP désactivé ») ; `upnpEnabled` (map/unmap
+    immédiat). Ports effectifs en atomics sur `AppState`
+    (`ed2k_port()`/`kad_port()`/`udp_enabled()`), persistés et appliqués au
+    boot (`state.rs` lit les settings avant de binder) — tous les call
+    sites (`servers`, `sources`, `swarm_coordinator`) utilisent désormais
+    les valeurs effectives.
 
 - **Alignement fin eMule 0.72a — file d'upload et gestion des sources** :
   - **Formule de crédit exacte** (`ClientCredits::GetScoreRatio`) :

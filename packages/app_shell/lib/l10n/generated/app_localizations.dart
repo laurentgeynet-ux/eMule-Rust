@@ -1403,7 +1403,7 @@ abstract class AppLocalizations {
   /// No description provided for @openFolder.
   ///
   /// In fr, this message translates to:
-  /// **'Open Folder'**
+  /// **'Ouvrir le dossier'**
   String get openFolder;
 
   /// No description provided for @internalDataDbTempPart.
@@ -1523,145 +1523,145 @@ abstract class AppLocalizations {
   /// No description provided for @rangesLoaded.
   ///
   /// In fr, this message translates to:
-  /// **'{rangeCount} ranges loaded'**
+  /// **'{rangeCount} plages chargées'**
   String rangesLoaded(String rangeCount);
 
   /// No description provided for @totalBlockedConnectionAttempts.
   ///
   /// In fr, this message translates to:
-  /// **'Total blocked connection attempts: {hitsCount}'**
+  /// **'Connexions bloquées au total : {hitsCount}'**
   String totalBlockedConnectionAttempts(String hitsCount);
 
   /// No description provided for @importIpfilterDat.
   ///
   /// In fr, this message translates to:
-  /// **'Import ipfilter.dat'**
+  /// **'Importer un ipfilter.dat'**
   String get importIpfilterDat;
 
   /// No description provided for @loadALocalPeerguardianEmule.
   ///
   /// In fr, this message translates to:
-  /// **'Load a local PeerGuardian / eMule formatted ipfilter.dat file. Remote URL download is disallowed for safety.'**
+  /// **'Charge un fichier ipfilter.dat local au format PeerGuardian / eMule. Le téléchargement depuis une URL distante est interdit par sécurité (anti-SSRF).'**
   String get loadALocalPeerguardianEmule;
 
   /// No description provided for @import.
   ///
   /// In fr, this message translates to:
-  /// **'Import'**
+  /// **'Importer'**
   String get import;
 
   /// No description provided for @clear.
   ///
   /// In fr, this message translates to:
-  /// **'Clear'**
+  /// **'Effacer'**
   String get clear;
 
   /// No description provided for @noNetworkEventsRecordedYet.
   ///
   /// In fr, this message translates to:
-  /// **'No network events recorded yet.'**
+  /// **'Aucun événement réseau enregistré pour le moment.'**
   String get noNetworkEventsRecordedYet;
 
   /// No description provided for @activeConnectivityProfile.
   ///
   /// In fr, this message translates to:
-  /// **'Active Connectivity Profile'**
+  /// **'Profil de connectivité actif'**
   String get activeConnectivityProfile;
 
   /// No description provided for @activeConnectionsLimits.
   ///
   /// In fr, this message translates to:
-  /// **'Active Connections & Limits'**
+  /// **'Connexions actives & limites'**
   String get activeConnectionsLimits;
 
   /// No description provided for @peerSockets.
   ///
   /// In fr, this message translates to:
-  /// **'Peer Sockets'**
+  /// **'Sockets pairs'**
   String get peerSockets;
 
   /// No description provided for @serverSockets.
   ///
   /// In fr, this message translates to:
-  /// **'Server Sockets'**
+  /// **'Sockets serveur'**
   String get serverSockets;
 
   /// No description provided for @listeners.
   ///
   /// In fr, this message translates to:
-  /// **'Listeners'**
+  /// **'Listeners d\'écoute'**
   String get listeners;
 
   /// No description provided for @connectTimeout.
   ///
   /// In fr, this message translates to:
-  /// **'Connect Timeout'**
+  /// **'Timeout de connexion'**
   String get connectTimeout;
 
   /// No description provided for @maxFrameSize.
   ///
   /// In fr, this message translates to:
-  /// **'Max Frame Size'**
+  /// **'Taille max d\'une trame'**
   String get maxFrameSize;
 
   /// No description provided for @maxBufferMemory.
   ///
   /// In fr, this message translates to:
-  /// **'Max Buffer Memory'**
+  /// **'Mémoire tampon max'**
   String get maxBufferMemory;
 
   /// No description provided for @status2.
   ///
   /// In fr, this message translates to:
-  /// **'Status: {label}'**
+  /// **'Statut : {label}'**
   String status2(String label);
 
   /// No description provided for @reEnable.
   ///
   /// In fr, this message translates to:
-  /// **'Re-enable'**
+  /// **'Réactiver le réseau'**
   String get reEnable;
 
   /// No description provided for @disconnectAll.
   ///
   /// In fr, this message translates to:
-  /// **'Disconnect All'**
+  /// **'Tout déconnecter (kill switch)'**
   String get disconnectAll;
 
   /// No description provided for @bandwidthTokenBucketQuotas.
   ///
   /// In fr, this message translates to:
-  /// **'Bandwidth & Token Bucket Quotas'**
+  /// **'Limites de débit (Token Buckets)'**
   String get bandwidthTokenBucketQuotas;
 
   /// No description provided for @limitsAreEnforcedAsynchronouslyUsing.
   ///
   /// In fr, this message translates to:
-  /// **'Limits are enforced asynchronously using Token Buckets. 0 means unlimited.'**
+  /// **'Les limites sont appliquées de façon asynchrone par des Token Buckets et persistées au redémarrage. 0 = illimité.'**
   String get limitsAreEnforcedAsynchronouslyUsing;
 
   /// No description provided for @downloadLimitKbS0.
   ///
   /// In fr, this message translates to:
-  /// **'Download Limit (KB/s) [0 = unlimited]'**
+  /// **'Limite de téléchargement (Ko/s) [0 = illimité]'**
   String get downloadLimitKbS0;
 
   /// No description provided for @uploadLimitKbS0.
   ///
   /// In fr, this message translates to:
-  /// **'Upload Limit (KB/s) [0 = unlimited]'**
+  /// **'Limite d\'envoi (Ko/s) [0 = illimité]'**
   String get uploadLimitKbS0;
 
   /// No description provided for @maxNewConnectionsMinute.
   ///
   /// In fr, this message translates to:
-  /// **'Max New Connections / Minute'**
+  /// **'Nouvelles connexions max / minute'**
   String get maxNewConnectionsMinute;
 
   /// No description provided for @saveLimits.
   ///
   /// In fr, this message translates to:
-  /// **'Save Limits'**
+  /// **'Enregistrer les limites'**
   String get saveLimits;
 
   /// No description provided for @inspectDetailsPartMap.
@@ -1727,37 +1727,37 @@ abstract class AppLocalizations {
   /// No description provided for @globalDefaultDownloadDirectory.
   ///
   /// In fr, this message translates to:
-  /// **'Global Default Download Directory'**
+  /// **'Dossier de téléchargement par défaut'**
   String get globalDefaultDownloadDirectory;
 
   /// No description provided for @thisPathIsUsedAs.
   ///
   /// In fr, this message translates to:
-  /// **'This path is used as the default target destination when adding new downloads. Temporary .part files remain strictly confined in data/temp/ until completed.'**
+  /// **'Ce chemin est la destination par défaut des nouveaux téléchargements. Les fichiers .part restent dans le dossier temporaire configuré jusqu\'à complétion (eMule « Répertoire »).'**
   String get thisPathIsUsedAs;
 
   /// No description provided for @destinationDirectoryPath.
   ///
   /// In fr, this message translates to:
-  /// **'Destination Directory Path'**
+  /// **'Chemin du dossier de destination'**
   String get destinationDirectoryPath;
 
   /// No description provided for @eGCDownloadsOr.
   ///
   /// In fr, this message translates to:
-  /// **'e.g. C:\\Downloads or downloads'**
+  /// **'ex. C:\\Downloads ou downloads'**
   String get eGCDownloadsOr;
 
   /// No description provided for @save.
   ///
   /// In fr, this message translates to:
-  /// **'Save'**
+  /// **'Enregistrer'**
   String get save;
 
   /// No description provided for @resetToPortableDefault.
   ///
   /// In fr, this message translates to:
-  /// **'Reset to Portable Default'**
+  /// **'Réinitialiser au dossier portable'**
   String get resetToPortableDefault;
 
   /// No description provided for @modeReseauTraverseeBoxUpnp.
@@ -1781,25 +1781,25 @@ abstract class AppLocalizations {
   /// No description provided for @historyRetentionPolicy.
   ///
   /// In fr, this message translates to:
-  /// **'History Retention Policy'**
+  /// **'Rétention de l\'historique'**
   String get historyRetentionPolicy;
 
   /// No description provided for @historicalTransitionEventsOlderThan.
   ///
   /// In fr, this message translates to:
-  /// **'Historical transition events older than the retention period are automatically pruned on daemon startup.'**
+  /// **'Les événements d\'historique plus anciens que la durée choisie sont purgés au démarrage du daemon et à chaque modification.'**
   String get historicalTransitionEventsOlderThan;
 
   /// No description provided for @keepHistoryFor.
   ///
   /// In fr, this message translates to:
-  /// **'Keep history for: '**
+  /// **'Conserver l\'historique pendant : '**
   String get keepHistoryFor;
 
   /// No description provided for @indefinitelyNoPruning.
   ///
   /// In fr, this message translates to:
-  /// **'Indefinitely (No pruning)'**
+  /// **'Indéfiniment (aucune purge)'**
   String get indefinitelyNoPruning;
 
   /// No description provided for @delete.
@@ -2819,19 +2819,19 @@ abstract class AppLocalizations {
   /// No description provided for @sevenDays.
   ///
   /// In fr, this message translates to:
-  /// **'7 Days'**
+  /// **'7 jours'**
   String get sevenDays;
 
   /// No description provided for @thirtyDaysDefault.
   ///
   /// In fr, this message translates to:
-  /// **'30 Days (Default)'**
+  /// **'30 jours (défaut)'**
   String get thirtyDaysDefault;
 
   /// No description provided for @ninetyDays.
   ///
   /// In fr, this message translates to:
-  /// **'90 Days'**
+  /// **'90 jours'**
   String get ninetyDays;
 
   /// No description provided for @twentyFourHours.

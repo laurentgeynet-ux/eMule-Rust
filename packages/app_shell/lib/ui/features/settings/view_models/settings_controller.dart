@@ -49,6 +49,19 @@ class SettingsController extends ChangeNotifier {
     }
   }
 
+  /// Applies a raw `settings.set` patch then refreshes the map.
+  Future<bool> updateSettings(Map<String, dynamic> patch) async {
+    try {
+      await client.updateSettings(patch);
+      await fetch();
+      onStatus?.call('Paramètres mis à jour');
+      return true;
+    } catch (e) {
+      onError?.call('Échec de la mise à jour des paramètres : $e');
+      return false;
+    }
+  }
+
   Future<bool> setDefaultDownloadDirectory(String path) async {
     try {
       await client.setDefaultDownloadDirectory(path);
