@@ -515,6 +515,17 @@ impl PeerSessionManager {
                     .unwrap_or_default()
                     .as_millis() as i64;
 
+                // Real consecutive-failure count (the UPDATE increments it on
+                // Failed) so the backoff actually escalates instead of being
+                // stuck at the first step.
+                let next_fail_count = dl_svc
+                    .list_peer_sources(&file_hash_str)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|s| s.address == address_str)
+                    .map(|s| s.fail_count + 1)
+                    .unwrap_or(1);
+
                 let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
@@ -530,7 +541,7 @@ impl PeerSessionManager {
                                 // Keep status as Allowed (not Failed) with a 10-minute re-ask cooldown.
                                 (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
                             } else {
-                                let cd = calculate_backoff_cooldown_ms(1);
+                                let cd = calculate_backoff_cooldown_ms(next_fail_count);
                                 (PeerSourceStatus::Failed, Some(now_ms + cd))
                             }
                         }
@@ -726,6 +737,14 @@ impl PeerSessionManager {
                     .unwrap_or_default()
                     .as_millis() as i64;
 
+                let next_fail_count = dl_svc
+                    .list_peer_sources(&file_hash_str)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|s| s.address == source_address)
+                    .map(|s| s.fail_count + 1)
+                    .unwrap_or(1);
+
                 let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
@@ -736,7 +755,7 @@ impl PeerSessionManager {
                             if err_msg.as_deref() == Some("Disconnected in queue") {
                                 (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
                             } else {
-                                let cd = calculate_backoff_cooldown_ms(1);
+                                let cd = calculate_backoff_cooldown_ms(next_fail_count);
                                 (PeerSourceStatus::Failed, Some(now_ms + cd))
                             }
                         }

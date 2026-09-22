@@ -1127,9 +1127,15 @@ impl SwarmCoordinator {
             }
         }
 
-        // Addresses that just reported NNP/FNF for a file.
-        let mut nnp_addrs: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for srcs in per_file.values() {
+        // Addresses that just reported NNP/FNF, indexed by the file(s) that
+        // flagged them. The flag is per-(file, address): a source that said
+        // "no needed parts" for file A must never have its cooldown cleared
+        // on file A — only on other files where it might be useful.
+        let mut nnp_files_by_addr: std::collections::HashMap<
+            String,
+            std::collections::HashSet<String>,
+        > = std::collections::HashMap::new();
+        for (hash, srcs) in &per_file {
             for s in srcs {
                 let flagged = s
                     .last_error
@@ -1140,11 +1146,14 @@ impl SwarmCoordinator {
                     })
                     .unwrap_or(false);
                 if flagged {
-                    nnp_addrs.insert(s.address.clone());
+                    nnp_files_by_addr
+                        .entry(s.address.clone())
+                        .or_default()
+                        .insert(hash.clone());
                 }
             }
         }
-        if nnp_addrs.is_empty() {
+        if nnp_files_by_addr.is_empty() {
             return;
         }
 
@@ -1152,7 +1161,11 @@ impl SwarmCoordinator {
         // scheduler can dial it right away (eMule `SwapToAnotherFile`).
         for (hash, srcs) in &per_file {
             for s in srcs {
-                if !nnp_addrs.contains(&s.address) {
+                let flagging_files = match nnp_files_by_addr.get(&s.address) {
+                    Some(f) => f,
+                    None => continue,
+                };
+                if flagging_files.contains(hash) {
                     continue;
                 }
                 let viable = matches!(

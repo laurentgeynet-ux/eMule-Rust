@@ -142,7 +142,7 @@ pub fn reset_peer_source_cooldown(
         .as_millis() as i64;
 
     let rows = conn.execute(
-        "UPDATE peer_sources SET cooldown_until_unix_ms = NULL, status = 'allowed', last_seen_unix_ms = ?1
+        "UPDATE peer_sources SET cooldown_until_unix_ms = NULL, status = 'allowed', last_error = NULL, last_seen_unix_ms = ?1
          WHERE file_hash = ?2 AND address = ?3",
         params![now, file_hash, address],
     )?;
