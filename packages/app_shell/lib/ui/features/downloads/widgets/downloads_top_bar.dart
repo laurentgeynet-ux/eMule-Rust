@@ -6,10 +6,12 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../app/providers.dart';
 import '../../../../app/shell_controller.dart';
 import '../../../../l10n/l10n.dart';
 import '../../../../l10n/generated/app_localizations.dart';
+
 import 'package:go_router/go_router.dart';
 
 import 'add_link_dialog.dart';
@@ -28,16 +30,13 @@ void _goToSettings(BuildContext context, WidgetRef ref, String section) {
 }
 
 /// Top action bar of the downloads workspace: menu button (compact layouts),
-/// filter title, search field, and the action/badges cluster
+/// search field, and the action/badges cluster
 /// (diagnostics, lab tools, speeds, network policy, dev tools, refresh,
 /// add link).
 class DownloadsTopBar extends ConsumerWidget {
-    final bool isSmall;
+  final bool isSmall;
 
-  const DownloadsTopBar({
-    super.key,
-    this.isSmall = false,
-  });
+  const DownloadsTopBar({super.key, this.isSmall = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -50,41 +49,53 @@ class DownloadsTopBar extends ConsumerWidget {
           if (isSmall) ...[
             Builder(
               builder: (ctx) => IconButton(
-                icon: const Icon(Icons.menu_rounded, color: AppColors.textSecondary),
+                icon: const Icon(
+                  Icons.menu_rounded,
+                  color: AppColors.textSecondary,
+                ),
                 tooltip: context.l10n.tooltipOpenDrawer,
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
           ],
-          // Filter title
-          if (!isSmall) ...[
-            Text(
-              ref.watch(shellControllerProvider).filter.labelOf(context),
-              style: AppTextStyles.sectionTitle,
-            ),
-            const SizedBox(width: AppSpacing.lg),
-          ],
-
-          // Search Field
-          SizedBox(
-            width: isSmall ? 130 : 180,
-            height: 36,
-            child: TextField(
-              onChanged: ref.read(shellControllerProvider).setSearchQuery,
-              style: const TextStyle(fontSize: 13),
-              decoration: InputDecoration(
-                hintText: context.l10n.searchPlaceholder,
-                hintStyle: const TextStyle(fontSize: 12, color: AppColors.textFaint),
-                isDense: true,
-                prefixIcon: const Icon(Icons.search, size: 16, color: AppColors.textFaint),
-                prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                filled: true,
-                fillColor: AppColors.card,
-                border: OutlineInputBorder(
-                  borderRadius: AppRadius.mdAll,
-                  borderSide: BorderSide.none,
+          // Search Field — flexible : s'étire jusqu'à 300 px sur grand
+          // écran, se rétracte (min 140 px) sur petite fenêtre.
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 140, maxWidth: 300),
+              child: SizedBox(
+                height: 36,
+                child: TextField(
+                  onChanged: ref.read(shellControllerProvider).setSearchQuery,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: context.l10n.searchPlaceholder,
+                    hintStyle: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textFaint,
+                    ),
+                    isDense: true,
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      size: 16,
+                      color: AppColors.textFaint,
+                    ),
+                    prefixIconConstraints: const BoxConstraints(
+                      minWidth: 30,
+                      minHeight: 30,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 8,
+                    ),
+                    filled: true,
+                    fillColor: AppColors.card,
+                    border: OutlineInputBorder(
+                      borderRadius: AppRadius.mdAll,
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -97,7 +108,8 @@ class DownloadsTopBar extends ConsumerWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (ref.watch(isLabModeAvailableProvider)) _buildLabButton(context, ref),
+                  if (ref.watch(isLabModeAvailableProvider))
+                    _buildLabButton(context, ref),
                   const SizedBox(width: AppSpacing.sm - 2),
                   _buildTransferMonitor(context, ref),
                   const SizedBox(width: AppSpacing.sm),
@@ -175,8 +187,9 @@ class DownloadsTopBar extends ConsumerWidget {
   /// par l'état « Désactivé » (tap → Settings → Connexion).
   /// Sinon tap → Historique & Statistiques.
   Widget _buildTransferMonitor(BuildContext context, WidgetRef ref) {
-    final killSwitch =
-        ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
+    final killSwitch = ref
+        .watch(networkPolicyControllerProvider)
+        .isKillSwitchActive;
     final stats = ref.watch(statsControllerProvider).latest;
     final l10n = context.l10n;
 
@@ -190,8 +203,7 @@ class DownloadsTopBar extends ConsumerWidget {
     }
 
     return Tooltip(
-      message:
-          killSwitch ? l10n.tooltipPolicyKill : l10n.tooltipSessionTotals,
+      message: killSwitch ? l10n.tooltipPolicyKill : l10n.tooltipSessionTotals,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -205,6 +217,7 @@ class DownloadsTopBar extends ConsumerWidget {
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
+            constraints: const BoxConstraints(minHeight: 36),
             decoration: BoxDecoration(
               color: killSwitch
                   ? AppColors.tintRed.withValues(alpha: 0.15)
@@ -226,8 +239,10 @@ class DownloadsTopBar extends ConsumerWidget {
                 SizedBox(
                   key: const Key('session_totals_badge'),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     child: killSwitch
                         ? _killSwitchState(l10n)
                         : _sessionTotals(stats),
@@ -238,7 +253,11 @@ class DownloadsTopBar extends ConsumerWidget {
                   key: const Key('lifetime_totals_badge'),
                   child: Padding(
                     padding: const EdgeInsets.only(
-                        left: 10, right: 10, top: 6, bottom: 6),
+                      left: 10,
+                      right: 10,
+                      top: 6,
+                      bottom: 6,
+                    ),
                     child: _lifetimeTotals(stats),
                   ),
                 ),
@@ -250,32 +269,34 @@ class DownloadsTopBar extends ConsumerWidget {
     );
   }
 
-  Widget _segmentDivider() => Container(
-        width: 0.5,
-        height: 16,
-        color: AppColors.border,
-      );
+  Widget _segmentDivider() =>
+      Container(width: 0.5, height: 16, color: AppColors.border);
 
   /// Segment 1 — débits instantanés (↓ DL / ↑ UL) + sparkline.
   Widget _ratesSegment(WidgetRef ref) {
-    final dl =
-        ref.watch(downloadsStoreControllerProvider).totalDownloadSpeed;
+    final dl = ref.watch(downloadsStoreControllerProvider).totalDownloadSpeed;
     final ul = ref.watch(uploadsControllerProvider).totalUploadRateBps;
     return Padding(
       padding: const EdgeInsets.only(left: 10, right: 10, top: 6, bottom: 6),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.arrow_downward_rounded,
-              size: 13, color: AppTheme.statusDownloading),
+          const Icon(
+            Icons.arrow_downward_rounded,
+            size: 13,
+            color: AppTheme.statusDownloading,
+          ),
           const SizedBox(width: 3),
           Text(
             Formatters.formatSpeed(dl),
             style: _metricStyle(AppTheme.statusDownloading, bold: true),
           ),
           const SizedBox(width: 8),
-          const Icon(Icons.arrow_upward_rounded,
-              size: 13, color: AppColors.accentTeal),
+          const Icon(
+            Icons.arrow_upward_rounded,
+            size: 13,
+            color: AppColors.accentTeal,
+          ),
           const SizedBox(width: 3),
           Text(
             Formatters.formatSpeed(ul),
@@ -297,16 +318,22 @@ class DownloadsTopBar extends ConsumerWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.arrow_downward_rounded,
-            size: 13, color: AppTheme.statusDownloading),
+        const Icon(
+          Icons.arrow_downward_rounded,
+          size: 13,
+          color: AppTheme.statusDownloading,
+        ),
         const SizedBox(width: 3),
         Text(
           Formatters.formatBytes(stats?.sessionDownloadedBytes ?? 0),
           style: _metricStyle(AppTheme.statusDownloading),
         ),
         const SizedBox(width: 8),
-        const Icon(Icons.arrow_upward_rounded,
-            size: 13, color: AppColors.accentTeal),
+        const Icon(
+          Icons.arrow_upward_rounded,
+          size: 13,
+          color: AppColors.accentTeal,
+        ),
         const SizedBox(width: 3),
         Text(
           Formatters.formatBytes(stats?.sessionUploadedBytes ?? 0),
@@ -321,19 +348,28 @@ class DownloadsTopBar extends ConsumerWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.functions_rounded,
-            size: 12, color: AppColors.textFaint),
+        const Icon(
+          Icons.functions_rounded,
+          size: 12,
+          color: AppColors.textFaint,
+        ),
         const SizedBox(width: 4),
-        const Icon(Icons.arrow_downward_rounded,
-            size: 13, color: AppColors.textSecondary),
+        const Icon(
+          Icons.arrow_downward_rounded,
+          size: 13,
+          color: AppColors.textSecondary,
+        ),
         const SizedBox(width: 3),
         Text(
           Formatters.formatBytes(stats?.lifetimeDownloadedBytes ?? 0),
           style: _metricStyle(AppColors.textSecondary),
         ),
         const SizedBox(width: 8),
-        const Icon(Icons.arrow_upward_rounded,
-            size: 13, color: AppColors.textSecondary),
+        const Icon(
+          Icons.arrow_upward_rounded,
+          size: 13,
+          color: AppColors.textSecondary,
+        ),
         const SizedBox(width: 3),
         Text(
           Formatters.formatBytes(stats?.lifetimeUploadedBytes ?? 0),
@@ -360,14 +396,16 @@ class DownloadsTopBar extends ConsumerWidget {
   /// Chiffres en fonte tabulaire : la largeur ne bouge pas quand la
   /// valeur change (0 → 9 999), évite le jitter du moniteur.
   TextStyle _metricStyle(Color color, {bool bold = false}) => TextStyle(
-        fontSize: 11,
-        fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-        color: color,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      );
+    fontSize: 11,
+    fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+    color: color,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  );
 
   Widget _buildKillSwitchButton(BuildContext context, WidgetRef ref) {
-    final killSwitch = ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
+    final killSwitch = ref
+        .watch(networkPolicyControllerProvider)
+        .isKillSwitchActive;
     return IconButton(
       key: const Key('network_kill_switch_button'),
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -457,7 +495,11 @@ class DownloadsTopBar extends ConsumerWidget {
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       padding: EdgeInsets.zero,
       visualDensity: VisualDensity.compact,
-      icon: const Icon(Icons.refresh_rounded, color: AppColors.textMuted, size: 18),
+      icon: const Icon(
+        Icons.refresh_rounded,
+        color: AppColors.textMuted,
+        size: 18,
+      ),
       tooltip: context.l10n.tooltipRefresh,
       onPressed: ref.read(appControllerProvider).refresh,
     );
@@ -465,16 +507,14 @@ class DownloadsTopBar extends ConsumerWidget {
 
   Widget _buildAddLinkButton(BuildContext context, WidgetRef ref) {
     void showAddDialog() {
-      showDialog(
-        context: context,
-        builder: (ctx) => const AddLinkDialog(),
-      );
+      showDialog(context: context, builder: (ctx) => const AddLinkDialog());
     }
 
     if (isSmall) {
       return IconButton.filled(
         icon: const Icon(Icons.add_rounded, size: 18),
         tooltip: context.l10n.btnAddLink,
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         style: IconButton.styleFrom(backgroundColor: AppColors.accent),
         onPressed: showAddDialog,
       );
@@ -484,7 +524,8 @@ class DownloadsTopBar extends ConsumerWidget {
       label: Text(context.l10n.btnAddLink),
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.accent,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
       ),
       onPressed: showAddDialog,
     );

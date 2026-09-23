@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 import 'package:flutter/material.dart';
-import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../../l10n/l10n.dart';
 

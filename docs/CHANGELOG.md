@@ -5,6 +5,83 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Observabilité locale complète** (`mule-daemon`, `mule-mcp`,
+  `app_shell`, `mule_client`, `ui_kit`) :
+  - **Logs rotatifs structurés** : `data/logs/daemon.<date>.log` en
+    JSONL (rotation quotidienne, 7 fichiers retenus, writer
+    non-bloquant `tracing-appender`) ; console lisible conservée ;
+    l'ancien `daemon.log` plat est supprimé au démarrage.
+  - **Capture des panics** : hook `std::panic` → `logs/crash.log`
+    synchrone + `tracing::error!`.
+  - **Niveau de log à chaud** : `settings.set` accepte `logLevel`
+    (niveau simple ou spec `EnvFilter` complète), rechargé sans
+    redémarrage et jamais persisté ; exposé via `settings.get` /
+    `system.status` et via un sélecteur Paramètres → Avancé.
+  - **Spans RPC** : `#[instrument]` sur le dispatch (`rpc.method`) et
+    les handlers downloads (`download_id`, hash tronqué).
+  - **mule-mcp** : layer fichier `logs/mcp.<date>.log` (même rotation),
+    stdout réservé au JSON-RPC.
+  - **Hygiène PII** : ~200 sites de logs convertis — adresses de
+    pairs/serveurs pseudonymisées de façon déterministe par session
+    (`peer-NN:port`, `server-NN:port`, `peer-NN` pour IPs nues) via
+    `SessionPseudonymizer` (`mule-filter`) ; loopback lisible en clair.
+    Helpers `log_peer_addr` / `log_server_addr` / `log_addr_str` /
+    `log_peer_ip` + nouveau `pseudonymize_ip`. Script d'audit
+    réutilisable `scripts/dev_audit_addr_logs.py`.
+  - **Flutter** : `AppLogger` (`ui_kit`) — niveaux, ring buffer 500
+    entrées, `debugPrint` dev-only, hooks `FlutterError.onError` /
+    `PlatformDispatcher.onError` ; branché dans les `catch` des
+    contrôleurs ; export diagnostics (compteurs en sanitized, 50
+    dernières entrées en full).
+
+- **Verbosity production réduite** (`mule-daemon`) : ~61 sites
+  `info` → `debug` sur les chemins par paquet/par bloc — réceptions et
+  envois Kad (`kad_udp`, `routing_client`, `search_client`), blocs
+  upload/download, log par requête RPC (polling UI), tentatives de
+  connexion du scheduler par tick et résumés `[SOURCE_SCHED]`. Le warn
+  de fin de session pair est trié par gravité : `HashMismatch` /
+  `InvalidRange` / `CorruptedData` restent `warn`, le churn normal
+  (timeouts, refusés, `NoNeededParts`, `IpFilter`…) passe en `debug`.
+  Restent en `info` : cycle de vie (connexions, handshakes, slots
+  upload), jalons de download, buddy/callback Kad, failover serveur,
+  drops IP-filter, heartbeat consolidé (1×/60 s).
+
+- **IP filter — corrections RPC** (`mule-daemon`) :
+  `filter.importFile` renvoie désormais la même shape `FilterStatus`
+  que `getStatus`/`setEnabled`/`clear` (le client Dart parsait le
+  wrapper `{success, report, stats}` en status plat → l'import
+  semblait sans effet) ; restauration au boot de `ipfilter_enabled=0`
+  persisté (le défaut `true` réactivait le filtre au redémarrage).
+  Régression couverte par `filter_rpc_tests.rs`.
+
+- **Branding** : `EMule-Rust` → `eMule-Rust` partout (~122 fichiers :
+  UI, métadonnées Windows, docs, scripts). Identifiants techniques
+  conservés (`eMuleRust.exe`, `emule-rust`, `PR_EMULE`…) ;
+  compatibilité UPnP avec l'ancien préfixe de description conservée
+  (`LEGACY_DESCRIPTION_PREFIX`).
+
+- **UI téléchargements — top bar harmonisée** (`app_shell`) : le titre
+  de filtre « Tous les téléchargements » est retiré (redondant avec la
+  sidebar et le hint de recherche) ; le champ de recherche devient
+  flexible (140 → 300 px) au lieu d'une largeur fixe ; hauteurs
+  harmonisées à 36 px (recherche, moniteur de transfert, bouton
+  Ajouter). Ripple translucide des lignes de download supprimé
+  (splash/highlight `InkWell` désactivés, sélection conservée).
+
+- **Palette standard de la barre de parts** (`ui_kit`) : les teintes
+  pastel Tailwind sont remplacées par des couleurs plates standard —
+  bleu `#2196F3` reçu, vert `#4CAF50` vérifié/progression, rouge
+  `#F44336` sans source, jaune `#FFEB3B` bloc en vol, et la formule de
+  bleu authentique eMule `RGB(0, 210-22·(n-1), 255)` pour
+  rare→commun. Partagé avec la carte part-map.
+
+- **Build — déploiement automatique** (`scripts`) : l'étape Deploy de
+  `build_windows_release.ps1` résout sa cible via `-DeployDir` >
+  `$env:EMULE_DEPLOY_DIR` > fichier `.deploy-dir` à la racine
+  (gitignoré, chemin machine) ; les processus lancés depuis la cible
+  sont arrêtés avant la copie (exe verrouillés) ; le merge-copy
+  préserve `data\`, `downloads\` et `ipfilter*`.
+
 ## [0.2.0] - 2026-09-23
 
 Version finale de la ligne 0.2.x — inclut l'intégralité de `0.2.0-RC1`

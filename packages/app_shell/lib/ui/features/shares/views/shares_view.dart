@@ -391,12 +391,12 @@ class _ShareRow extends ConsumerWidget {
                   ? Icons.label_rounded
                   : Icons.label_outline_rounded,
               color: category != null
-                  ? category!.parsedColor
+                  ? category.parsedColor
                   : AppColors.textMuted,
               size: 18,
             ),
             tooltip: category != null
-                ? context.l10n.tooltipCategoryName(category!.name)
+                ? context.l10n.tooltipCategoryName(category.name)
                 : context.l10n.tooltipAssignCategory,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
