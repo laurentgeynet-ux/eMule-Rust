@@ -3,10 +3,11 @@
 
 //! Incoming-folder sharing (eMule `CSharedFileList` semantics).
 //!
-//! eMule shares every file sitting in its "Incoming" directory. We mirror
-//! that: at startup, each regular file in the configured download directory
-//! is hashed with the eD2K algorithm (MD4 part hashes + root hash) and
-//! registered as a shared file so remote peers can request it.
+//! eMule shares every file sitting in its "Incoming" directory, including
+//! nested subdirectories. We mirror that: at startup, each regular file
+//! under the configured download directory (recursively) is hashed with
+//! the eD2K algorithm (MD4 part hashes + root hash) and registered as a
+//! shared file so remote peers can request it.
 //!
 //! Disabled via the `share_download_dir` setting (`"0"`). Files that are
 //! already shared keep their `enabled` flag and upload priority — the scan
@@ -26,7 +27,8 @@ pub const SETTING_SHARE_DOWNLOAD_DIR: &str = "share_download_dir";
 /// artifacts, never shareable payloads).
 const SKIP_EXTENSIONS: &[&str] = &["part", "met", "part.met", "bak", "tmp", "ts", "emuletd"];
 
-/// Scans `dir` once and registers every regular file as a shared file.
+/// Scans `dir` recursively and registers every regular file as a shared
+/// file (eMule shares subdirectories too).
 ///
 /// Hashing runs on the blocking pool (eD2K hashing is I/O + MD4 bound).
 /// Returns the number of newly registered files.
@@ -48,14 +50,17 @@ pub async fn scan_download_dir_shares(
         return 0;
     }
 
-    let entries: Vec<PathBuf> = match std::fs::read_dir(&dir) {
-        Ok(rd) => rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| is_shareable_file(p))
-            .collect(),
+    // eMule shares subdirectories recursively — collect all shareable
+    // files under `dir` on the blocking pool (arbitrary depth, I/O bound).
+    let walk_dir = dir.clone();
+    let entries: Vec<PathBuf> = match tokio::task::spawn_blocking(move || {
+        collect_shareable_files(&walk_dir)
+    })
+    .await
+    {
+        Ok(v) => v,
         Err(e) => {
-            tracing::debug!("[INCOMING_SHARE] cannot scan {}: {e}", dir.display());
+            tracing::warn!("[INCOMING_SHARE] directory walk failed: {e}");
             return 0;
         }
     };
@@ -130,6 +135,47 @@ pub async fn scan_download_dir_shares(
         );
     }
     added
+}
+
+/// Depth-first walk collecting every shareable file under `dir`.
+/// Subdirectories are recursed into (eMule semantics); hidden entries and
+/// symlinks are skipped — the latter prevents filesystem cycles.
+fn collect_shareable_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let rd = match std::fs::read_dir(&d) {
+            Ok(rd) => rd,
+            Err(e) => {
+                tracing::debug!("[INCOMING_SHARE] cannot scan {}: {e}", d.display());
+                continue;
+            }
+        };
+        for entry in rd.flatten() {
+            let Ok(ft) = entry.file_type() else {
+                continue;
+            };
+            if ft.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if ft.is_dir() {
+                let hidden = entry
+                    .file_name()
+                    .to_str()
+                    .map(|n| n.starts_with('.'))
+                    .unwrap_or(true);
+                if !hidden {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if is_shareable_file(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out
 }
 
 /// A file is shareable when it is a regular, non-hidden file whose

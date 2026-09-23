@@ -919,6 +919,52 @@ async fn test_shares_rescan_discovers_new_files_and_preserves_settings() {
 }
 
 #[tokio::test]
+async fn test_shares_rescan_is_recursive() {
+    let dir = tempdir().unwrap();
+    let download_dir = dir.path().join("downloads");
+    let nested = download_dir.join("Album").join("CD1");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("track01.flac"), b"nested-audio").unwrap();
+    std::fs::write(download_dir.join("toplevel.bin"), b"top").unwrap();
+    // Hidden directories must not be shared.
+    let hidden = download_dir.join(".hidden");
+    std::fs::create_dir_all(&hidden).unwrap();
+    std::fs::write(hidden.join("secret.bin"), b"nope").unwrap();
+
+    let token = "test_token_recursive".to_string();
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable)
+        .with_default_download_dir(download_dir);
+    let downloads = DownloadService::in_memory(dir.path().join("temp")).unwrap();
+    let state = AppState::new(config, downloads);
+    let mut authenticated = true;
+
+    let resp = handle_request(
+        &state,
+        make_req(1, "shares.rescan", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.as_ref().unwrap()["added"], 2);
+
+    let resp = handle_request(&state, make_req(2, "shares.list", None), &mut authenticated)
+        .await
+        .unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"]
+        .as_array()
+        .unwrap();
+    let names: Vec<&str> = shares
+        .iter()
+        .map(|s| s["fileName"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"track01.flac"));
+    assert!(names.contains(&"toplevel.bin"));
+    assert!(!names.contains(&"secret.bin"));
+}
+
+#[tokio::test]
 async fn test_shares_rescan_respects_share_download_dir_optout() {
     let dir = tempdir().unwrap();
     let download_dir = dir.path().join("downloads");
