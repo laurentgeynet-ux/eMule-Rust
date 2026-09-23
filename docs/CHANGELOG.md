@@ -62,11 +62,13 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 - **UI téléchargements — top bar harmonisée** (`app_shell`) : le titre
   de filtre « Tous les téléchargements » est retiré (redondant avec la
-  sidebar et le hint de recherche) ; le champ de recherche devient
-  flexible (140 → 300 px) au lieu d'une largeur fixe ; hauteurs
-  harmonisées à 36 px (recherche, moniteur de transfert, bouton
-  Ajouter). Ripple translucide des lignes de download supprimé
-  (splash/highlight `InkWell` désactivés, sélection conservée).
+  sidebar et le hint de recherche) ; le champ de recherche n'a plus de
+  taille fixe — il occupe 2/10 de l'espace libre via `Expanded(flex: 2)`
+  pendant que le cluster d'actions garde 8/10 et ne scrolle qu'en
+  fenêtre très étroite ; hauteurs harmonisées à 36 px (recherche,
+  moniteur de transfert, bouton Ajouter). Ripple translucide des lignes
+  de download supprimé (splash/highlight `InkWell` désactivés,
+  sélection conservée).
 
 - **Palette standard de la barre de parts** (`ui_kit`) : les teintes
   pastel Tailwind sont remplacées par des couleurs plates standard —

@@ -59,49 +59,50 @@ class DownloadsTopBar extends ConsumerWidget {
             ),
             const SizedBox(width: AppSpacing.sm),
           ],
-          // Search Field — flexible : s'étire jusqu'à 300 px sur grand
-          // écran, se rétracte (min 140 px) sur petite fenêtre.
-          Flexible(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 140, maxWidth: 300),
-              child: SizedBox(
-                height: 36,
-                child: TextField(
-                  onChanged: ref.read(shellControllerProvider).setSearchQuery,
-                  style: const TextStyle(fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: context.l10n.searchPlaceholder,
-                    hintStyle: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textFaint,
-                    ),
-                    isDense: true,
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      size: 16,
-                      color: AppColors.textFaint,
-                    ),
-                    prefixIconConstraints: const BoxConstraints(
-                      minWidth: 30,
-                      minHeight: 30,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 8,
-                    ),
-                    filled: true,
-                    fillColor: AppColors.card,
-                    border: OutlineInputBorder(
-                      borderRadius: AppRadius.mdAll,
-                      borderSide: BorderSide.none,
-                    ),
+          // Search Field — pure proportion (2/10 de l'espace libre),
+          // aucune taille fixe : il grandit et rétrécit avec la fenêtre.
+          Expanded(
+            flex: 2,
+            child: SizedBox(
+              height: 36,
+              child: TextField(
+                onChanged: ref.read(shellControllerProvider).setSearchQuery,
+                style: const TextStyle(fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: context.l10n.searchPlaceholder,
+                  hintStyle: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textFaint,
+                  ),
+                  isDense: true,
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    size: 16,
+                    color: AppColors.textFaint,
+                  ),
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 8,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.card,
+                  border: OutlineInputBorder(
+                    borderRadius: AppRadius.mdAll,
+                    borderSide: BorderSide.none,
                   ),
                 ),
               ),
             ),
           ),
 
+          // Cluster d'actions — 8/10 de l'espace libre, ancré à droite,
+          // scrollable horizontalement seulement si la fenêtre est étroite.
           Expanded(
+            flex: 8,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               reverse: true,
