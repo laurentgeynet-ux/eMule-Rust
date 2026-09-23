@@ -80,6 +80,10 @@ Vidal, Barry Dunne), toutes deux sous GPL-2.0+. Voir le fichier
 [`docs/ed2k/references.md`](docs/ed2k/references.md) pour la
 correspondance fichier-par-fichier.
 
-## 📄 Licence
+## 📄 Licence & Auteur
 
-Distribué sous **GPL-2.0-or-later** — voir [`LICENSE`](LICENSE).
+Développé par **Laurent Geynet** « Loulach »
+(<Dev.iptvmediacenter@gmail.com>).
+
+Distribué sous **GPL-2.0-or-later** — voir [`LICENSE`](LICENSE) et
+[`AUTHORS`](AUTHORS).

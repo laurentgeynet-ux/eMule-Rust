@@ -26,7 +26,8 @@ traitée comme un incident de sécurité :
 
 Utiliser de préférence **GitHub Security Advisories** (onglet
 *Security* → *Report a vulnerability*) sur le dépôt, ou contacter le
-mainteneur par un canal privé.
+mainteneur par e-mail : **Laurent Geynet « Loulach »**
+<Dev.iptvmediacenter@gmail.com>.
 
 Inclure si possible :
 

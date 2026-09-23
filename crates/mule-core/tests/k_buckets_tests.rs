@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 EMule-Rust Contributors
+// Copyright (C) 2026 Laurent Geynet (Loulach)
 
 use mule_core::kad::{KBucketTable, KadContact, KadId, K_BUCKET_SIZE};
 use mule_core::persistence::Database;

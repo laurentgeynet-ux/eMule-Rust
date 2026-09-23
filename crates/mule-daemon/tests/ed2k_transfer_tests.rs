@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 EMule-Rust Contributors
+// Copyright (C) 2026 Laurent Geynet (Loulach)
 
 //! Integration test verifying eD2K block transfer, interruption at 50%, cold restart, gap-only resumption,
 //! and final root eD2K hash verification.

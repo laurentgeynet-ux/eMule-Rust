@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 EMule-Rust Contributors
+// Copyright (C) 2026 Laurent Geynet (Loulach)
 
 use mule_format::met::tags::*;
 use mule_format::{MetError, ServerEntry, ServerMetFile, SERVER_MET_VERSION};
