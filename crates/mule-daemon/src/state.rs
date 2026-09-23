@@ -316,9 +316,12 @@ impl AppState {
                     }
                 }
             }
-            if bool_setting("ipfilter_enabled").unwrap_or(false) {
-                network_policy.ip_filter().set_enabled(true);
-            }
+            // Restaure le flag dans les deux sens : sans la branche `false`,
+            // un filtre désactivé avant arrêt repassait silencieusement à
+            // `true` (défaut `IpFilter::new`) au boot.
+            network_policy
+                .ip_filter()
+                .set_enabled(bool_setting("ipfilter_enabled").unwrap_or(true));
         }
         // Réécriture des limites clampées au boot : la persistance reflète
         // la valeur effectivement appliquée (cohérence avec `limits.set`,

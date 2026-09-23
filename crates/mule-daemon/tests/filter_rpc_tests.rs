@@ -82,7 +82,8 @@ async fn test_filter_import_status_and_clear_rpc() {
         .unwrap();
     }
 
-    // 4. Import file via filter.importFile
+    // 4. Import file via filter.importFile — même shape que getStatus
+    //    (le rapport d'import est exposé via `last_import_report`).
     let import_req = make_req(
         3,
         "filter.importFile",
@@ -93,10 +94,11 @@ async fn test_filter_import_status_and_clear_rpc() {
         .unwrap();
     assert!(resp.error.is_none());
     let res = resp.result.unwrap();
-    assert_eq!(res["success"], true);
-    assert_eq!(res["report"]["valid_entries_parsed"], 3);
-    assert_eq!(res["report"]["coalesced_count"], 1); // 2 adjacent ranges merged
-    assert_eq!(res["report"]["final_range_count"], 2);
+    assert_eq!(res["enabled"], true);
+    assert_eq!(res["range_count"], 2);
+    assert_eq!(res["last_import_report"]["valid_entries_parsed"], 3);
+    assert_eq!(res["last_import_report"]["coalesced_count"], 1); // 2 adjacent ranges merged
+    assert_eq!(res["last_import_report"]["final_range_count"], 2);
 
     // 5. Check filter stats
     let stats_req = make_req(4, "filter.getStats", None);
@@ -106,12 +108,25 @@ async fn test_filter_import_status_and_clear_rpc() {
     let res = resp.result.unwrap();
     assert_eq!(res["range_count"], 2);
 
-    // 6. Disable filter
+    // 6. Disable/enable filter — les plages et le rapport survivent au
+    //    toggle (régression : la carte UI disparaissait au ré-enable).
     let set_enabled_req = make_req(5, "filter.setEnabled", Some(json!({ "enabled": false })));
     let resp = handle_request(&state, set_enabled_req, &mut authenticated)
         .await
         .unwrap();
-    assert_eq!(resp.result.unwrap()["enabled"], false);
+    let res = resp.result.unwrap();
+    assert_eq!(res["enabled"], false);
+    assert_eq!(res["range_count"], 2);
+    assert_eq!(res["last_import_report"]["final_range_count"], 2);
+
+    let set_enabled_req = make_req(7, "filter.setEnabled", Some(json!({ "enabled": true })));
+    let resp = handle_request(&state, set_enabled_req, &mut authenticated)
+        .await
+        .unwrap();
+    let res = resp.result.unwrap();
+    assert_eq!(res["enabled"], true);
+    assert_eq!(res["range_count"], 2);
+    assert_eq!(res["last_import_report"]["final_range_count"], 2);
 
     // 7. Clear filter
     let clear_req = make_req(6, "filter.clear", None);

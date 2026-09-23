@@ -205,7 +205,7 @@ pub async fn handle_filter_import_file(
         )));
     }
 
-    let report = state
+    state
         .network_policy
         .ip_filter()
         .load_from_file(path)
@@ -221,11 +221,11 @@ pub async fn handle_filter_import_file(
         .await
         .set_setting("ipfilter_path", path_str)?;
 
-    Ok(json!({
-        "success": true,
-        "report": report,
-        "stats": state.network_policy.ip_filter().stats()
-    }))
+    // Même shape que `filter.getStatus`/`setEnabled`/`clear` : le client
+    // parse un `FilterStatusModel` à plat — le rapport de l'import est
+    // déjà exposé via `stats.last_import_report` (stocké par
+    // `load_from_file`).
+    handle_filter_get_status(state).await
 }
 
 pub async fn handle_filter_set_enabled(
