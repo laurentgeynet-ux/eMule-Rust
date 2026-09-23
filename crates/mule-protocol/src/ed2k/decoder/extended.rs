@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Loulach
+// Copyright (C) 2026 Laurent Geynet "Loulach"
 
 //! Decoders for eMule 0.72a extended messages: `FileIdentifier`-based hashsets
 //! (`OP_HASHSETREQUEST2`/`OP_HASHSETANSWER2`), grouped `MULTIPACKET*` requests

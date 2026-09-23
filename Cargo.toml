@@ -16,7 +16,7 @@ members = [
 version = "0.2.0"
 edition = "2021"
 license = "GPL-2.0-or-later"
-authors = ["Loulach <Dev.iptvmediacenter@gmail.com>"]
+authors = ["Laurent Geynet \"Loulach\" <Dev.iptvmediacenter@gmail.com>"]
 
 [workspace.dependencies]
 bytes = "1"

@@ -82,7 +82,8 @@ correspondance fichier-par-fichier.
 
 ## 📄 Licence & Auteur
 
-Développé par **Loulach** (<Dev.iptvmediacenter@gmail.com>).
+Développé par **Laurent Geynet "Loulach"**
+(<Dev.iptvmediacenter@gmail.com>).
 
 Distribué sous **GPL-2.0-or-later** — voir [`LICENSE`](LICENSE) et
 [`AUTHORS`](AUTHORS).

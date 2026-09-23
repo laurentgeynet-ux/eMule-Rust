@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Loulach
+// Copyright (C) 2026 Laurent Geynet "Loulach"
 
 //! Loopback-confined eD2K block transfer download coordinator.
 //! Phase 6.4: Zero public network, strictly TCP 127.0.0.1.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Loulach
+// Copyright (C) 2026 Laurent Geynet "Loulach"
 
 import '../../domain/models/category_item.dart';
 import '../../domain/models/daemon_info.dart';

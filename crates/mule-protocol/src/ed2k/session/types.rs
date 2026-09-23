@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Loulach
+// Copyright (C) 2026 Laurent Geynet "Loulach"
 
 //! Types and error definitions for eD2K sessions.
 

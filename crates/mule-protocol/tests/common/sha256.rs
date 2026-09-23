@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Loulach
+// Copyright (C) 2026 Laurent Geynet "Loulach"
 
 //! Dedicated, isolated SHA-256 implementation exclusively for test fixture integrity validation.
 //! Tested and grounded against official NIST FIPS 180-4 test vectors.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Loulach
+// Copyright (C) 2026 Laurent Geynet "Loulach"
 
 //! `FileIdentifier` — identification composite d'un fichier introduite par eMule 0.50
 //! et généralisée en 0.72a (`FileIdentifier.h` / `FileIdentifier.cpp`).
