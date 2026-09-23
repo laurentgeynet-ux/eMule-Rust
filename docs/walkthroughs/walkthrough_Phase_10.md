@@ -1,11 +1,11 @@
 # Guide d'Exécution & Validation — Phase 10 : Infrastructure des Serveurs eD2K
 
-Ce document constitue le guide technique de référence pour la **Phase 10** du projet **Emule-Sion**, dédiée à l'intégration complète de la pile client-serveur eD2K :
+Ce document constitue le guide technique de référence pour la **Phase 10** du projet **EMule-Rust**, dédiée à l'intégration complète de la pile client-serveur eD2K :
 * **Phase 10.0** : Décodage binaire de fichiers `server.met`, modèle de domaine, persistance SQLite WAL et interface d'administration locale sans sockets externes.
 * **Phase 10.1** : Connexion TCP réelle aux serveurs eD2K (Lugdunum / eMule Sunrise), négociation de session, identification, obtention du HighID/LowID et suivi de santé (ping/heartbeat).
 * **Phase 10.2** : Moteur de recherche distant sur catalogue serveur et résolution dynamique des sources de téléchargement.
 
-L'ensemble des développements respecte la règle d'or d'Emule-Sion : **contrôle total de l'utilisateur, vérification défensive de chaque octet réseau et gestion irréprochable du cycle de vie des sockets**.
+L'ensemble des développements respecte la règle d'or d'EMule-Rust : **contrôle total de l'utilisateur, vérification défensive de chaque octet réseau et gestion irréprochable du cycle de vie des sockets**.
 
 ---
 
@@ -53,7 +53,7 @@ flowchart TB
 
 ## 2. Phase 10.0 : Annuaire Local, Parser `server.met` & Persistance
 
-### 2.1 Format Binaire `server.met` ([server_met.rs](file:///d:/Projet/Emule-Sion/crates/mule-format/src/met/server_met.rs))
+### 2.1 Format Binaire `server.met` ([server_met.rs](file:///d:/Projet/EMule-Rust/crates/mule-format/src/met/server_met.rs))
 
 Le format historique d'eMule débute par un octet magique `0xE0` suivi du nombre de serveurs encodé sur 32 bits (Little-Endian) :
 * Pour chaque serveur :
@@ -62,12 +62,12 @@ Le format historique d'eMule débute par un octet magique `0xE0` suivi du nombre
   * **Nombre de tags de métadonnées** : 4 octets.
   * **Tags TLV** : Nom du serveur (`TAG_SERVER_NAME = 0x01`), Ping (`TAG_SERVER_PING = 0x0C`), Utilisateurs (`TAG_SERVER_USERS = 0x0E`), Fichiers (`TAG_SERVER_FILES = 0x0F`), Description, Préférence.
 
-Le parser [`ServerMetReader`](file:///d:/Projet/Emule-Sion/crates/mule-format/src/met/server_met.rs) applique des contrôles stricts anti-déni de service :
+Le parser [`ServerMetReader`](file:///d:/Projet/EMule-Rust/crates/mule-format/src/met/server_met.rs) applique des contrôles stricts anti-déni de service :
 * Bornage absolu à 10 000 serveurs par fichier.
 * Rejet des tags corrompus avec rapport d'erreurs détaillé.
 * Normalisation Unicode NFC des chaînes avec assainissement des caractères de contrôle.
 
-### 2.2 Persistance SQLite ([sqlite/servers.rs](file:///d:/Projet/Emule-Sion/crates/mule-core/src/persistence/sqlite/servers.rs))
+### 2.2 Persistance SQLite ([sqlite/servers.rs](file:///d:/Projet/EMule-Rust/crates/mule-core/src/persistence/sqlite/servers.rs))
 
 Les serveurs sont stockés dans la table SQLite `servers` avec gestion de l'unicité sur `(ip, port)` :
 * Statut d'activation (`enabled`), préférence (`Low`, `Normal`, `High`), échecs consécutifs (`failed_count`).
@@ -77,7 +77,7 @@ Les serveurs sont stockés dans la table SQLite `servers` avec gestion de l'unic
 
 ## 3. Phase 10.1 : Connexion TCP Réelle & Négociation de Session
 
-### 3.1 Machine d'États de Session Serveur ([server_session.rs](file:///d:/Projet/Emule-Sion/crates/mule-daemon/src/services/server_session.rs))
+### 3.1 Machine d'États de Session Serveur ([server_session.rs](file:///d:/Projet/EMule-Rust/crates/mule-daemon/src/services/server_session.rs))
 
 Le gestionnaire de session garantit l'invariant : **au plus une connexion serveur active simultanément**.
 
@@ -91,7 +91,7 @@ stateDiagram-v2
     Connected --> Connected: Heartbeat périodique (Ping / ServerStatus)
 ```
 
-### 3.2 Paquets Wire Traités ([crates/mule-protocol/src/ed2k/server/](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/ed2k/server/))
+### 3.2 Paquets Wire Traités ([crates/mule-protocol/src/ed2k/server/](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/server/))
 
 | Opcode | Nom | Direction | Description |
 | :--- | :--- | :--- | :--- |
@@ -111,13 +111,13 @@ L'adresse IP assignée dans `OP_IDCHANGE` détermine la qualité de connectivit�
 
 ## 4. Phase 10.2 : Moteur de Recherche & Résolution de Sources
 
-### 4.1 Recherche de Fichiers Distante ([search.rs](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/ed2k/server/search.rs))
+### 4.1 Recherche de Fichiers Distante ([search.rs](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/server/search.rs))
 
 L'envoi de la requête `OP_SEARCHREQUEST` (`0x16`) permet d'interroger la base de données du serveur :
 * Expression arborescente encodée en préfixe (opérateurs booléens AND, OR, NOT, filtres de taille minimale/maximale, extensions de fichier).
 * Réception en flux de `OP_SEARCHRESULT` (`0x33`) : chaque entrée contient le nom du fichier, la taille exacte en octets, le hash eD2K racine (16 octets) et le nombre de sources complètes et partielles connues.
 
-### 4.2 Requête de Sources auprès du Serveur ([sources.rs](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/ed2k/server/sources.rs))
+### 4.2 Requête de Sources auprès du Serveur ([sources.rs](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/server/sources.rs))
 
 Dès qu'un téléchargement est actif :
 1. Le client émet `OP_GETSOURCES` (`0x19`) en transmettant le hash eD2K (16 octets) et la taille du fichier.

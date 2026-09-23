@@ -231,7 +231,7 @@ impl ReferencePeerConfig {
     }
 }
 
-/// Comprehensive interoperability and divergence report between Emule-Sion and reference peer.
+/// Comprehensive interoperability and divergence report between EMule-Rust and reference peer.
 #[derive(Debug, Clone)]
 pub struct DivergenceReport {
     /// Explicit compatibility profile active during the session.
@@ -398,7 +398,7 @@ impl ReferenceInteropClient {
             opcode_name: opcode_to_str(OP_HELLO),
             payload_len: 30,
             tags_summary: vec![
-                "TAG_NAME:EmuleSion".to_string(),
+                "TAG_NAME:eMuleRust".to_string(),
                 "TAG_VERSION:60".to_string(),
             ],
             file_hash_hex: None,

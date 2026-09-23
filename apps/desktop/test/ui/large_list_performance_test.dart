@@ -743,7 +743,7 @@ void main() {
       final viewModel = AppController(client: mockClient);
       await viewModel.initialize(url: Uri.parse('ws://mock:4660/rpc'));
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Verify initial viewport renders visible items — with the list

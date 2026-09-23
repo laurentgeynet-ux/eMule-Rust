@@ -4,7 +4,7 @@
 
 Le message `OP_FILESTATUS` est émis par un pair eD2K en réponse à une requête `OP_FILESTATUSREQ`. Il annonce le nombre total de parts constituant le fichier ainsi qu'un masque binaire (bitfield) indiquant quelles parts sont détenues et partagées par ce pair.
 
-Dans l'architecture Emule-Sion, ce message joue deux rôles :
+Dans l'architecture EMule-Rust, ce message joue deux rôles :
 
 - **Production (`peer_session`)** : chaque `FILESTATUS` reçu — réponse initiale *et* keep-alive en file d'attente — enregistre le masque dans le store de disponibilité (`record_source_availability`) et déclenche `downloadUpdated`. C'est la source unique de la barre de parts (`availableSourceCount` → dégradé rouge/bleu façon `CPartFile::DrawStatusBar`) : seules les sources **ayant répondu** comptent (eMule `GetPartStatus() != NULL`), les masques périmés > 30 min sont ignorés, et `part_count == 0` est traité comme **source complète** (eMule `ProcessFileStatus` → `memset(m_abyPartStatus, 1, …)`).
 - **Lab / contrôle (`Ed2kSession`)** : la machine d'états dédiée reste strictement d'observation sur boucle locale — elle alimente les statistiques de disponibilité (`sourceCount = 1`) sans jamais initier de demande de bloc (`OP_REQUESTPARTS`), sans allouer de tampon, et sans ouvrir ni écrire dans un fichier `.part`.
@@ -53,7 +53,7 @@ Dans le protocole standard eDonkey2000 / eMule, les parts sont indexées à part
 
 ### 3.3 Règle Stricte des Bits Inutilisés (Trailing Bits)
 Lorsque $N \pmod 8 \neq 0$, le dernier octet du masque contient $8 - (N \pmod 8)$ bits non assignés dans ses positions de poids fort.
-- **Politique Emule-Sion** : **Rejet Strict**. Tous les bits au-delà de l'indice $(N \pmod 8) - 1$ dans le dernier octet **doivent obligatoirement être nuls** (`0`).
+- **Politique EMule-Rust** : **Rejet Strict**. Tous les bits au-delà de l'indice $(N \pmod 8) - 1$ dans le dernier octet **doivent obligatoirement être nuls** (`0`).
 - Si un bit inutilisé est positionné à 1, le message est immédiatement rejeté avec l'erreur `Ed2kErrorKind::InvalidBitfieldTrailingBits`.
 
 ---

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Generates CycloneDX 1.5 JSON Software Bill of Materials (SBOM) for Emule-Sion.
+    Generates CycloneDX 1.5 JSON Software Bill of Materials (SBOM) for EMule-Rust.
 .DESCRIPTION
     1. Generates sbom/rust.cdx.json from Cargo.lock and cargo metadata.
     2. Generates sbom/flutter.cdx.json from apps/desktop/pubspec.lock.
@@ -8,11 +8,11 @@
     4. Generates sbom/sbom.cdx.json consolidating the application distribution components.
     5. Produces license-audit.json and license-audit.md checking compliance against deny.toml.
 .EXAMPLE
-    powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\generate_sbom.ps1 -BundleDir dist\EmuleSion-Windows
+    powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\generate_sbom.ps1 -BundleDir dist\eMuleRust-Windows
 #>
 
 param(
-    [string]$BundleDir = "dist\EmuleSion-Windows",
+    [string]$BundleDir = "dist\eMuleRust-Windows",
     [string]$OutputDir = ""
 )
 
@@ -31,7 +31,7 @@ $NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $AppVersion = "0.1.3-lab"
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  Emule-Sion CycloneDX 1.5 SBOM Generator         " -ForegroundColor Cyan
+Write-Host "  EMule-Rust CycloneDX 1.5 SBOM Generator         " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # -----------------------------------------------------------------------------
@@ -172,7 +172,7 @@ $RustSbom = [ordered]@{
             type = "application"
             name = "mule-daemon"
             version = $AppVersion
-            description = "Emule-Sion Rust daemon & protocol core"
+            description = "EMule-Rust Rust daemon & protocol core"
         }
     }
     components = $RustComponents
@@ -337,9 +337,9 @@ $FlutterSbom = [ordered]@{
         timestamp = $NowIso
         component = [ordered]@{
             type = "application"
-            name = "EmuleSion"
+            name = "eMuleRust"
             version = $AppVersion
-            description = "Emule-Sion Flutter Desktop Client"
+            description = "EMule-Rust Flutter Desktop Client"
         }
     }
     components = $FlutterComponents
@@ -372,7 +372,7 @@ if (Test-Path $BundlePath) {
         $licenseId = "UNKNOWN"
         $licenseEvidence = "unknown"
 
-        if ($relPath -eq "EmuleSion.exe" -or $relPath -eq "bin/mule-daemon.exe" -or $relPath -eq "bin/mule-cli.exe" -or $relPath -eq "portable.flag") {
+        if ($relPath -eq "eMuleRust.exe" -or $relPath -eq "bin/mule-daemon.exe" -or $relPath -eq "bin/mule-cli.exe" -or $relPath -eq "portable.flag") {
             $licenseId = "GPL-2.0-or-later"
             $licenseEvidence = "declared"
         } elseif ($relPath -eq "flutter_windows.dll" -or $relPath -eq "data/app.so") {
@@ -434,9 +434,9 @@ $BundleSbom = [ordered]@{
         timestamp = $NowIso
         component = [ordered]@{
             type = "application"
-            name = "EmuleSion-Windows"
+            name = "eMuleRust-Windows"
             version = $AppVersion
-            description = "Emule-Sion Standalone Windows Release Bundle"
+            description = "EMule-Rust Standalone Windows Release Bundle"
         }
     }
     components = $BundleComponents
@@ -466,9 +466,9 @@ $ConsolidatedSbom = [ordered]@{
         timestamp = $NowIso
         component = [ordered]@{
             type = "application"
-            name = "Emule-Sion"
+            name = "EMule-Rust"
             version = $AppVersion
-            description = "Emule-Sion Closed Loopback eD2K Client & Node"
+            description = "EMule-Rust Closed Loopback eD2K Client & Node"
         }
     }
     components = $AllComponents
@@ -492,7 +492,7 @@ $IncompatibleItems = $AuditEntries | Where-Object { $_.isCompatible -eq $false }
 $AuditSummary = [ordered]@{
     schemaVersion = 1
     generatedAtUtc = $NowIso
-    product = "Emule-Sion"
+    product = "EMule-Rust"
     version = $AppVersion
     policyFile = "deny.toml"
     allowedLicenses = ($AllowedLicenses | Sort-Object)
@@ -516,7 +516,7 @@ Write-Host " -> Generated: $AuditJsonPath" -ForegroundColor Green
 
 # Generate Markdown report
 $MdLines = [System.Collections.Generic.List[string]]::new()
-$MdLines.Add("# Rapport d'Audit des Licences et Dependances - Emule-Sion v$AppVersion")
+$MdLines.Add("# Rapport d'Audit des Licences et Dependances - EMule-Rust v$AppVersion")
 $MdLines.Add("")
 $MdLines.Add("**Genere le :** $NowIso (UTC)  ")
 $MdLines.Add("**Politique de reference :** `deny.toml`  ")

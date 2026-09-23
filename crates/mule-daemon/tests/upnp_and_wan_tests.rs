@@ -268,50 +268,50 @@ fn test_upnp_mapping_ownership_inspection() {
 
     let our_endpoint = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 31), 39735);
 
-    // 1. Exact match: identical protocol, port, local client IP, internal port and Emule-Sion prefix
+    // 1. Exact match: identical protocol, port, local client IP, internal port and EMule-Rust prefix
     assert_eq!(
         inspect_mapping_entry(
             PortMappingProtocol::TCP,
             39735,
             "192.168.1.31",
             39735,
-            "Emule-Sion eD2K TCP",
+            "EMule-Rust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "Emule-Sion",
+            "EMule-Rust",
         ),
         Some(MappingOwnership::ExactMatch)
     );
 
-    // 2. Stale lease: Emule-Sion prefix but old client IP (e.g. DHCP lease change)
+    // 2. Stale lease: EMule-Rust prefix but old client IP (e.g. DHCP lease change)
     assert_eq!(
         inspect_mapping_entry(
             PortMappingProtocol::TCP,
             39735,
             "192.168.1.50",
             39735,
-            "Emule-Sion eD2K TCP",
+            "EMule-Rust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "Emule-Sion",
+            "EMule-Rust",
         ),
         Some(MappingOwnership::StaleLease)
     );
 
-    // 3. Stale lease: Emule-Sion prefix but changed internal port
+    // 3. Stale lease: EMule-Rust prefix but changed internal port
     assert_eq!(
         inspect_mapping_entry(
             PortMappingProtocol::TCP,
             39735,
             "192.168.1.31",
             4662,
-            "Emule-Sion eD2K TCP",
+            "EMule-Rust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "Emule-Sion",
+            "EMule-Rust",
         ),
         Some(MappingOwnership::StaleLease)
     );
@@ -327,7 +327,7 @@ fn test_upnp_mapping_ownership_inspection() {
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "Emule-Sion",
+            "EMule-Rust",
         ),
         Some(MappingOwnership::ForeignConflict)
     );
@@ -343,7 +343,7 @@ fn test_upnp_mapping_ownership_inspection() {
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "Emule-Sion",
+            "EMule-Rust",
         ),
         Some(MappingOwnership::ForeignConflict)
     );
@@ -355,11 +355,11 @@ fn test_upnp_mapping_ownership_inspection() {
             39735,
             "192.168.1.31",
             39735,
-            "Emule-Sion Kad UDP",
+            "EMule-Rust Kad UDP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "Emule-Sion",
+            "EMule-Rust",
         ),
         None
     );
@@ -371,11 +371,11 @@ fn test_upnp_mapping_ownership_inspection() {
             8080,
             "192.168.1.31",
             8080,
-            "Emule-Sion eD2K TCP",
+            "EMule-Rust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "Emule-Sion",
+            "EMule-Rust",
         ),
         None
     );

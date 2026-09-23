@@ -34,7 +34,7 @@ class WindowSetup {
         size: hasBounds ? Size(w, h) : defaultSize,
         minimumSize: minSize,
         center: !hasBounds || x == null || y == null,
-        title: 'Emule-Sion',
+        title: 'EMule-Rust',
         titleBarStyle: TitleBarStyle.normal,
       ),
       () async {

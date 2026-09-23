@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Emule-Sion RC Environment & Supervision Test Matrix Harness.
+    EMule-Rust RC Environment & Supervision Test Matrix Harness.
 .DESCRIPTION
     Validates the packaged release candidate against edge cases:
     1. Unicode & Non-ASCII Paths with spaces.
@@ -22,12 +22,12 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 
 if ([string]::IsNullOrWhiteSpace($BundleDir)) {
-    if (Test-Path (Join-Path $Root "dist\EmuleSion-Standard-Windows")) {
-        $BundleDir = "dist\EmuleSion-Standard-Windows"
-    } elseif (Test-Path (Join-Path $Root "dist\EmuleSion-Qa-Loopback-Windows")) {
-        $BundleDir = "dist\EmuleSion-Qa-Loopback-Windows"
+    if (Test-Path (Join-Path $Root "dist\eMuleRust-Standard-Windows")) {
+        $BundleDir = "dist\eMuleRust-Standard-Windows"
+    } elseif (Test-Path (Join-Path $Root "dist\eMuleRust-Qa-Loopback-Windows")) {
+        $BundleDir = "dist\eMuleRust-Qa-Loopback-Windows"
     } else {
-        $BundleDir = "dist\EmuleSion-Windows"
+        $BundleDir = "dist\eMuleRust-Windows"
     }
 }
 
@@ -37,7 +37,7 @@ if (!(Test-Path $SourceBundle)) {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  Emule-Sion RC Environment & Supervision Matrix  " -ForegroundColor Cyan
+Write-Host "  EMule-Rust RC Environment & Supervision Matrix  " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # Helper to send JSON-RPC over WebSocket
@@ -76,7 +76,7 @@ function Connect-And-Handshake([string]$endpoint, [string]$token) {
     return @{ Socket = $ws; HelloResponse = ($resp | ConvertFrom-Json) }
 }
 
-$TestRoot = Join-Path $env:TEMP "EmuleSion-MatrixTests-$([guid]::NewGuid().ToString().Substring(0,8))"
+$TestRoot = Join-Path $env:TEMP "eMuleRust-MatrixTests-$([guid]::NewGuid().ToString().Substring(0,8))"
 New-Item -ItemType Directory -Path $TestRoot -Force | Out-Null
 
 try {
@@ -298,12 +298,12 @@ try {
     # TEST 5: Bundle Relocation & Autonomous Resolution
     # -------------------------------------------------------------------------
     Write-Host "`n[5/6] Test: Relocated Bundle (Autonomous outside repo)..." -ForegroundColor Yellow
-    $RelocDir = Join-Path $TestRoot "RelocatedEmuleSion"
+    $RelocDir = Join-Path $TestRoot "RelocatedeMuleRust"
     Copy-Item -Path $SourceBundle -Destination $RelocDir -Recurse -Force
 
-    $RelocExe = Join-Path $RelocDir "EmuleSion.exe"
+    $RelocExe = Join-Path $RelocDir "eMuleRust.exe"
     $RelocDaemon = Join-Path $RelocDir "bin\mule-daemon.exe"
-    if (!(Test-Path $RelocExe)) { throw "EmuleSion.exe missing in relocated bundle" }
+    if (!(Test-Path $RelocExe)) { throw "eMuleRust.exe missing in relocated bundle" }
     if (!(Test-Path $RelocDaemon)) { throw "bin\mule-daemon.exe missing in relocated bundle" }
 
     $RelocWorkdir = Join-Path $TestRoot "reloc-workdir"
@@ -337,7 +337,7 @@ try {
     # -------------------------------------------------------------------------
     Write-Host "`n[6/6] Test: Unwritable Directory Error Handling..." -ForegroundColor Yellow
     # Target a forbidden non-existent drive or invalid path
-    $InvalidPath = "Z:\NonExistentDrive_EmuleSion_Test\SubDir"
+    $InvalidPath = "Z:\NonExistentDrive_eMuleRust_Test\SubDir"
 
     $pinfoInvalid = [System.Diagnostics.ProcessStartInfo]::new($DaemonBin, "--workdir `"$InvalidPath`"")
     $pinfoInvalid.UseShellExecute = $false

@@ -259,7 +259,7 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
             "serverAutoupdateList": read("server_autoupdate_list", false),
             "safeConnect": read("safe_connect", false),
             "autoPriorityNewDownloads": read("auto_priority_new_downloads", false),
-            // Options propres à Emule-Sion (pas d'équivalent eMule).
+            // Options propres à EMule-Rust (pas d'équivalent eMule).
             "identityRotationHours": u64_setting("identity_rotation_hours"),
             "dailyUploadQuotaGb": u64_setting("daily_upload_quota_gb"),
             "uploadQuotaUsedBytes": u64_setting("upload_quota_used_bytes"),
@@ -716,7 +716,7 @@ pub async fn handle_settings_set(
             .set_setting("temp_dir", dir_str)?;
         keys.push("tempDir");
     }
-    // --- Options propres à Emule-Sion ---
+    // --- Options propres à EMule-Rust ---
     if let Some(val) = params.get("identityRotationHours") {
         let v = val
             .as_u64()

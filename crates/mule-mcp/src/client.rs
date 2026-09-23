@@ -40,12 +40,12 @@ impl DaemonClient {
         let (endpoint, token) =
             Self::resolve_connection(explicit_url, explicit_token, explicit_workdir, explicit_app)
                 .await?;
-        info!("Connecting to Emule-Sion daemon at {}", endpoint);
+        info!("Connecting to EMule-Rust daemon at {}", endpoint);
 
         let (ws_stream, _) = tokio_tungstenite::connect_async(&endpoint)
             .await
             .map_err(|e| {
-                format!("Failed to connect to daemon at {endpoint}: {e}. Is Emule-Sion running?")
+                format!("Failed to connect to daemon at {endpoint}: {e}. Is EMule-Rust running?")
             })?;
 
         let (mut ws_write, mut ws_read) = ws_stream.split();
@@ -129,9 +129,9 @@ impl DaemonClient {
         client
             .call("system.hello", hello_params)
             .await
-            .map_err(|e| format!("Handshake with Emule-Sion daemon failed: {e}"))?;
+            .map_err(|e| format!("Handshake with EMule-Rust daemon failed: {e}"))?;
 
-        info!("Successfully connected and authenticated with Emule-Sion daemon");
+        info!("Successfully connected and authenticated with EMule-Rust daemon");
         Ok(client)
     }
 
@@ -172,7 +172,7 @@ impl DaemonClient {
 
         let session = DaemonSession::read(&workdir).map_err(|e| {
             format!(
-                "No active Emule-Sion daemon session found in {} ({e}). Please start EmuleSion.",
+                "No active EMule-Rust daemon session found in {} ({e}). Please start eMuleRust.",
                 workdir.display()
             )
         })?;

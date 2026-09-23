@@ -12,7 +12,7 @@ import 'core/daemon_lifecycle.dart';
 import 'l10n/generated/app_localizations.dart';
 
 /// Root application widget shared by desktop, mobile and web entry points.
-class EmuleSionApp extends StatefulWidget {
+class eMuleRustApp extends StatefulWidget {
   final AppController viewModel;
   final DaemonLifecycle? supervisor;
 
@@ -20,7 +20,7 @@ class EmuleSionApp extends StatefulWidget {
   /// "Change daemon" action that invokes this callback.
   final VoidCallback? onChangeDaemon;
 
-  const EmuleSionApp({
+  const eMuleRustApp({
     super.key,
     required this.viewModel,
     this.supervisor,
@@ -28,10 +28,10 @@ class EmuleSionApp extends StatefulWidget {
   });
 
   @override
-  State<EmuleSionApp> createState() => _EmuleSionAppState();
+  State<eMuleRustApp> createState() => _eMuleRustAppState();
 }
 
-class _EmuleSionAppState extends State<EmuleSionApp> {
+class _eMuleRustAppState extends State<eMuleRustApp> {
   AppLifecycleListener? _lifecycleListener;
   late final GoRouter _router = createAppRouter(widget.viewModel);
 
@@ -75,7 +75,7 @@ class _EmuleSionAppState extends State<EmuleSionApp> {
       ],
       child: Consumer(
         builder: (context, ref, _) => MaterialApp.router(
-          title: 'Emule-Sion',
+          title: 'EMule-Rust',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.dark(),
           locale: ref.watch(localeControllerProvider).locale,

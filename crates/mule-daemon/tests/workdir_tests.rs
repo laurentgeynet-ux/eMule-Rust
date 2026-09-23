@@ -129,7 +129,7 @@ fn test_workdir_priority_tier3_portable_flag_adjacent_to_exe() {
     // Create portable.flag adjacent to exe
     File::create(bundle_dir.join(PORTABLE_FLAG_FILENAME)).unwrap();
 
-    let exe_path = bundle_dir.join("EmuleSion.exe");
+    let exe_path = bundle_dir.join("eMuleRust.exe");
 
     let mut env = HashMap::new();
     env.insert("LOCALAPPDATA".to_string(), "C:\\AppData\\Local".to_string());
@@ -147,7 +147,7 @@ fn test_workdir_priority_tier3_portable_flag_adjacent_to_exe() {
 #[test]
 fn test_workdir_priority_tier3_portable_flag_in_bundle_root_parent_of_bin() {
     let temp = tempdir().unwrap();
-    let bundle_root = temp.path().join("EmuleSion-Portable");
+    let bundle_root = temp.path().join("eMuleRust-Portable");
     let bin_dir = bundle_root.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
 
@@ -177,7 +177,7 @@ fn test_workdir_priority_tier4_installed_default_when_no_flags_or_overrides() {
     std::fs::create_dir_all(&app_dir).unwrap();
 
     // NO portable.flag
-    let exe_path = app_dir.join("EmuleSion.exe");
+    let exe_path = app_dir.join("eMuleRust.exe");
 
     let mut env = HashMap::new();
     env.insert(
@@ -195,11 +195,11 @@ fn test_workdir_priority_tier4_installed_default_when_no_flags_or_overrides() {
     {
         assert_eq!(
             resolved.workdir,
-            PathBuf::from("C:\\Users\\QA\\AppData\\Local\\EmuleSion")
+            PathBuf::from("C:\\Users\\QA\\AppData\\Local\\eMuleRust")
         );
         assert_eq!(
             resolved.default_download_dir,
-            PathBuf::from("C:\\Users\\QA\\Downloads\\EmuleSion")
+            PathBuf::from("C:\\Users\\QA\\Downloads\\eMuleRust")
         );
     }
 }

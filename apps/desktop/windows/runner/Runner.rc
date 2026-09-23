@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "org.emulesion" "\0"
-            VALUE "FileDescription", "Emule-Sion" "\0"
+            VALUE "CompanyName", "org.eMuleRust" "\0"
+            VALUE "FileDescription", "EMule-Rust" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "EmuleSion" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 org.emulesion. All rights reserved." "\0"
-            VALUE "OriginalFilename", "EmuleSion.exe" "\0"
-            VALUE "ProductName", "Emule-Sion" "\0"
+            VALUE "InternalName", "eMuleRust" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 org.eMuleRust. All rights reserved." "\0"
+            VALUE "OriginalFilename", "eMuleRust.exe" "\0"
+            VALUE "ProductName", "EMule-Rust" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

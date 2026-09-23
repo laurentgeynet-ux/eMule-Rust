@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
-pub const SERVER_NAME: &str = "emule-sion";
+pub const SERVER_NAME: &str = "emule-rust";
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

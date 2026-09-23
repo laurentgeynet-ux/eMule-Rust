@@ -14,10 +14,10 @@ class TraySetup {
     try {
       final iconPath = _assetPath();
       await trayManager.setIcon(iconPath);
-      await trayManager.setToolTip('Emule-Sion');
+      await trayManager.setToolTip('EMule-Rust');
       await trayManager.setContextMenu(
         Menu(items: [
-          MenuItem(key: 'show', label: 'Show Emule-Sion'),
+          MenuItem(key: 'show', label: 'Show EMule-Rust'),
           MenuItem.separator(),
           MenuItem(key: 'quit', label: 'Quit'),
         ]),

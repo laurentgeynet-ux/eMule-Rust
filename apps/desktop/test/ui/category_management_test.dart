@@ -26,7 +26,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Verify Categories section in sidebar
@@ -53,7 +53,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Click on 'Linux ISOs' in sidebar
@@ -103,7 +103,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Click Add Category button (+) in sidebar
@@ -140,7 +140,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Initially, Linux Kernel has no category
@@ -164,7 +164,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       final isoCat = viewModel.categories.firstWhere((c) => c.name.contains('ISOs'));

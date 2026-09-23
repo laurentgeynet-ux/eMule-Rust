@@ -26,7 +26,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Find Recherche eD2K in sidebar
@@ -56,7 +56,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Connect to a server first
@@ -106,7 +106,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Connect to server
@@ -148,7 +148,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Connect and search
@@ -175,7 +175,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Start Kad UDP socket
@@ -220,7 +220,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Connect and search

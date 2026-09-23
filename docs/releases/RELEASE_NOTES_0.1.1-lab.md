@@ -1,8 +1,8 @@
-# Notes de Release — Emule-Sion 0.1.1-lab
+# Notes de Release — EMule-Rust 0.1.1-lab
 
 ## 1. Vue d'Ensemble & Contexte
 
-La version **0.1.1-lab** d'**Emule-Sion** constitue la Release Candidate (RC) consolidée et durcie pour les phases 7.1 (Mode Portable & Ergonomie Développeur) et 7.2 (Outils de Laboratoire Sécurisés & Expérimentation Locale).
+La version **0.1.1-lab** d'**EMule-Rust** constitue la Release Candidate (RC) consolidée et durcie pour les phases 7.1 (Mode Portable & Ergonomie Développeur) et 7.2 (Outils de Laboratoire Sécurisés & Expérimentation Locale).
 
 Cette mise à jour apporte des garanties structurelles renforcées entre le produit nominal et les fonctionnalités de laboratoire, formalise la taxonomie d'erreurs JSON-RPC, interdit toute fuite de secret dans les outils de diagnostic, et établit une politique stricte d'exécution de scripts PowerShell (`-ExecutionPolicy RemoteSigned`).
 
@@ -15,7 +15,7 @@ Une cascade unique de résolution a été formalisée et synchronisée de maniè
 1. Argument CLI `--workdir <chemin>` (priorité absolue : CI, diagnostic isolé, multi-instances).
 2. Variable d'environnement `EMULE_SION_WORKDIR` (configuration développeur sans modifier les arguments).
 3. Détection de `portable.flag` à la racine du bundle (mode autonome ZIP/clé USB/QA, dossier local `data/`).
-4. Repli standard UAC Windows `%LOCALAPPDATA%\EmuleSion` (installation classique multi-utilisateurs).
+4. Repli standard UAC Windows `%LOCALAPPDATA%\eMuleRust` (installation classique multi-utilisateurs).
 *Rétrocompatibilité : l'ancien alias déprécié `MULE_DATA_DIR` est reconnu temporairement comme solution de repli avec avertissement de journalisation.*
 
 ### 2.2 Double Verrouillage des Capacités de Laboratoire
@@ -28,7 +28,7 @@ $$\text{isLabModeAvailable} = (\text{workdirMode} == \text{Portable}) \land (\te
 ### 2.3 Taxonomie Formelle des Erreurs JSON-RPC
 Unification et codification des codes d'erreur selon la spécification JSON-RPC 2.0 et extension métier isolée :
 - Codes standard : `-32700` (ParseError), `-32600` (InvalidRequest), `-32601` (MethodNotFound), `-32602` (InvalidParams), `-32603` (InternalError).
-- Codes applicatifs Emule-Sion :
+- Codes applicatifs EMule-Rust :
   - `-32000` : `CODE_AUTH_FAILED` — Authentification WebSocket invalide ou absente.
   - `-32001` : `CODE_PROTOCOL_MISMATCH` — Version protocolaire incompatible.
   - `-32002` : `CODE_FORBIDDEN_IN_INSTALLED_MODE` — Tentative d'exécution d'une commande lab en mode installé.
@@ -67,7 +67,7 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 10. `data/flutter_assets/shaders/ink_sparkle.frag`
 11. `data/flutter_assets/shaders/stretch_effect.frag`
 12. `data/icudtl.dat`
-13. `EmuleSion.exe`
+13. `eMuleRust.exe`
 14. `flutter_windows.dll`
 15. `native_assets.json` (résolution des assets natifs Flutter)
 16. `portable.flag`
@@ -81,8 +81,8 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 ### 3.2 Spécifications des Deux Archives de Release
 
 #### A. Build Standard Locale
-- **Dossier d'assemblage** : `dist/EmuleSion-Standard-Windows/`
-- **Archive scellée** : `EmuleSion-v0.1.1-lab-standard-windows-x64.zip` (14 488 636 octets)
+- **Dossier d'assemblage** : `dist/eMuleRust-Standard-Windows/`
+- **Archive scellée** : `eMuleRust-v0.1.1-lab-standard-windows-x64.zip` (14 488 636 octets)
 - **Empreinte SHA-256** : `381239d6d94c3d74e00fe0d737644574d4083e1a1dbcfa1bc80b1df9e0f79f81`
 - **Manifeste `version.json`** :
   ```json
@@ -94,12 +94,12 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 - **Capacités RPC annoncées** : `["downloads", "download-events"]`
 - **Routes `lab.*`** : Absentes (rejet avec `-32601 MethodNotFound`).
 - **Texte de diffusion recommandé** :
-  > **Emule-Sion v0.1.1-lab — Standard**  
+  > **EMule-Rust v0.1.1-lab — Standard**  
   > Build interne locale sans outils de laboratoire compilés. Elle inclut le daemon local, l’interface Flutter Desktop, la persistance et les fonctions de gestion de téléchargements. Les routes de test, le pair loopback et les fonctions de simulation ne sont pas présents.
 
 #### B. Build QA Loopback
-- **Dossier d'assemblage** : `dist/EmuleSion-Qa-Loopback-Windows/`
-- **Archive scellée** : `EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip` (14 702 418 octets)
+- **Dossier d'assemblage** : `dist/eMuleRust-Qa-Loopback-Windows/`
+- **Archive scellée** : `eMuleRust-v0.1.1-lab-qa-loopback-windows-x64.zip` (14 702 418 octets)
 - **Empreinte SHA-256** : `2360a460bb4fdd179bb9c43a5e4f0ca0a552492fead22153fc3e12e81e90ed59`
 - **Manifeste `version.json`** :
   ```json
@@ -111,14 +111,14 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 - **Capacités RPC annoncées** : `["downloads", "download-events", "lab-tools"]`
 - **Routes `lab.*`** : Actives (`lab.status`, `lab.createFixture`, etc.).
 - **Texte de diffusion recommandé** :
-  > **Emule-Sion v0.1.1-lab — QA Loopback**  
+  > **EMule-Rust v0.1.1-lab — QA Loopback**  
   > Build interne de validation incluant les outils de laboratoire `lab-tools`. Les échanges de test sont strictement limités à `127.0.0.1` ; aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. Utiliser uniquement pour les scénarios QA guidés.
 
 ---
 
 ## 4. Attestation d'Interopérabilité et Engagements Hermétiques
 
-L'attestation formelle d'Emule-Sion reste rigoureusement inchangée :
+L'attestation formelle d'EMule-Rust reste rigoureusement inchangée :
 
 > **Formulation d'attestation obligatoire :**
 > *« Compatibilité eD2K expérimentale validée sur corpus statique et pair de référence émulé, en environnement loopback fermé. Le harnais Tier 3 pour un binaire eMule/aMule externe épinglé est disponible, mais son test live reste ignoré par défaut tant qu’un binaire vérifié n’est pas fourni. »*
@@ -163,7 +163,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_rc_matrix
 ## 6. Scoreboard Final de Validation
 
 ```
-=== SCOREBOARD EMULE-SION 0.1.1-LAB ===
+=== SCOREBOARD EMULE-RUST 0.1.1-LAB ===
 
 Rust Crates :
   - mule-core           :  12 tests réussis

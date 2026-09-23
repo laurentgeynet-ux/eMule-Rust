@@ -32,7 +32,7 @@ impl WorkDirectoryResolver {
     /// 1. `--workdir <path>` (explicit CLI argument)
     /// 2. `EMULE_SION_WORKDIR` (env var, with legacy `MULE_DATA_DIR` fallback)
     /// 3. `portable.flag` adjacent to executable or bundle root -> `<bundle_root>/data` & `<bundle_root>/downloads`
-    /// 4. System default (%LOCALAPPDATA%\EmuleSion on Windows, ~/.emule_sion on Unix; downloads in %USERPROFILE%\Downloads\EmuleSion)
+    /// 4. System default (%LOCALAPPDATA%\eMuleRust on Windows, ~/.emule_sion on Unix; downloads in %USERPROFILE%\Downloads\eMuleRust)
     pub fn resolve(
         cli_workdir: Option<PathBuf>,
         cli_downloads_dir: Option<PathBuf>,
@@ -184,13 +184,13 @@ impl WorkDirectoryResolver {
             if let Some(local_appdata) = get_env("LOCALAPPDATA") {
                 let trimmed = local_appdata.trim();
                 if !trimmed.is_empty() {
-                    return PathBuf::from(trimmed).join("EmuleSion");
+                    return PathBuf::from(trimmed).join("eMuleRust");
                 }
             }
             if let Some(appdata) = get_env("APPDATA") {
                 let trimmed = appdata.trim();
                 if !trimmed.is_empty() {
-                    return PathBuf::from(trimmed).join("EmuleSion");
+                    return PathBuf::from(trimmed).join("eMuleRust");
                 }
             }
         }
@@ -217,13 +217,13 @@ impl WorkDirectoryResolver {
             if let Some(userprofile) = get_env("USERPROFILE") {
                 let trimmed = userprofile.trim();
                 if !trimmed.is_empty() {
-                    return PathBuf::from(trimmed).join("Downloads").join("EmuleSion");
+                    return PathBuf::from(trimmed).join("Downloads").join("eMuleRust");
                 }
             }
             if let Some(home) = get_env("HOME") {
                 let trimmed = home.trim();
                 if !trimmed.is_empty() {
-                    return PathBuf::from(trimmed).join("Downloads").join("EmuleSion");
+                    return PathBuf::from(trimmed).join("Downloads").join("eMuleRust");
                 }
             }
         }
@@ -233,7 +233,7 @@ impl WorkDirectoryResolver {
             if let Some(home) = get_env("HOME") {
                 let trimmed = home.trim();
                 if !trimmed.is_empty() {
-                    return PathBuf::from(trimmed).join("Downloads").join("EmuleSion");
+                    return PathBuf::from(trimmed).join("Downloads").join("eMuleRust");
                 }
             }
         }

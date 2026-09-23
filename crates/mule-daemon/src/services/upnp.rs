@@ -177,7 +177,7 @@ impl UpnpService {
                         tcp_port,
                         local_tcp_addr,
                         3600,
-                        "Emule-Sion eD2K TCP",
+                        "EMule-Rust eD2K TCP",
                     );
 
                     let udp_ok = add_port_safe(
@@ -186,7 +186,7 @@ impl UpnpService {
                         udp_port,
                         local_udp_addr,
                         3600,
-                        "Emule-Sion Kad UDP",
+                        "EMule-Rust Kad UDP",
                     );
 
                     if !tcp_ok && !udp_ok {
@@ -255,7 +255,7 @@ impl UpnpService {
         Err(last_err)
     }
 
-    /// Removes previously mapped ports from the gateway if verified to still belong to Emule-Sion.
+    /// Removes previously mapped ports from the gateway if verified to still belong to EMule-Rust.
     pub async fn unmap_ports(&self) -> Result<(), String> {
         let (gw_opt, tcp_port, udp_port, tcp_mapped, udp_mapped) = {
             let snap = self.snapshot.read().await;
@@ -284,7 +284,7 @@ impl UpnpService {
                             PortMappingProtocol::TCP,
                             tcp_port,
                             SocketAddrV4::new(lip, tcp_port),
-                            "Emule-Sion",
+                            "EMule-Rust",
                         ) {
                             MappingOwnership::ExactMatch => true,
                             MappingOwnership::StaleLease => {
@@ -316,7 +316,7 @@ impl UpnpService {
                             PortMappingProtocol::UDP,
                             udp_port,
                             SocketAddrV4::new(lip, udp_port),
-                            "Emule-Sion",
+                            "EMule-Rust",
                         ) {
                             MappingOwnership::ExactMatch => true,
                             MappingOwnership::StaleLease => {

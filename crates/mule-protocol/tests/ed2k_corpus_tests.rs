@@ -206,7 +206,7 @@ fn test_decode_hello_v1_tags() {
             assert_eq!(hello.unknown_tags.len(), 0);
 
             let name_tag = hello.find_tag("name").expect("name tag missing");
-            assert_eq!(name_tag.value, TagValue::String("EmuleSion".to_string()));
+            assert_eq!(name_tag.value, TagValue::String("eMuleRust".to_string()));
 
             let version_tag = hello.find_tag("version").expect("version tag missing");
             assert_eq!(version_tag.value, TagValue::UInt32(60));

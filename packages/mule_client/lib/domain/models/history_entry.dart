@@ -1,4 +1,4 @@
-/// Historical record of a download transition event in Emule-Sion.
+/// Historical record of a download transition event in EMule-Rust.
 class HistoryEntry {
   final int id;
   final String downloadId;

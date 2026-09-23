@@ -26,7 +26,7 @@
                      {
                          "name":  "hello-v1-tags",
                          "file":  "hello_v1_tags.bin",
-                         "sha256":  "ab600e0f9f0cf2dc5fe1ac4b214cf454d525c4cad4c4de39a375f676e2d16c85",
+                         "sha256":  "0114b1dc6327b8eab7215c2e23e4dc860a9167a117cfda7e46d1a5bc835350fc",
                          "protocolByte":  "0xE3",
                          "opcode":  "0x01",
                          "direction":  "peer-to-peer",
@@ -41,7 +41,7 @@
                                                  "tags":  [
                                                               {
                                                                   "name":  "name",
-                                                                  "value":  "EmuleSion"
+                                                                  "value":  "eMuleRust"
                                                               },
                                                               {
                                                                   "name":  "version",

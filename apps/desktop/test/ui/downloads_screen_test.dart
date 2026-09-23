@@ -29,7 +29,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Déconnecté : eD2K rouge, Kad rouge, pas de ligne serveur.
@@ -58,11 +58,11 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Brand and sidebar
-      expect(find.text('Emule-Sion'), findsOneWidget);
+      expect(find.text('EMule-Rust'), findsOneWidget);
       expect(find.text('Tous les téléchargements'), findsAtLeastNWidgets(1));
       expect(
         find.descendant(
@@ -97,7 +97,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Click on 'Paused' filter in sidebar
@@ -138,7 +138,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Type "debian" in search field
@@ -155,7 +155,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Details panel should not be visible initially
@@ -177,7 +177,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Tap "+ Add Link"
@@ -229,7 +229,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Loopback Lab Mode badge is visible with security tooltip
@@ -259,7 +259,7 @@ void main() {
       );
       addTearDown(devVm.dispose);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: devVm));
+      await tester.pumpWidget(eMuleRustApp(viewModel: devVm));
       await tester.pumpAndSettle();
 
       // DEV badge and bug icon are visible
@@ -288,7 +288,7 @@ void main() {
       final emptyVm = AppController(client: emptyFake);
       addTearDown(emptyVm.dispose);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));
+      await tester.pumpWidget(eMuleRustApp(viewModel: emptyVm));
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
@@ -316,7 +316,7 @@ void main() {
       final emptyVm = AppController(client: emptyFake);
       addTearDown(emptyVm.dispose);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));
+      await tester.pumpWidget(eMuleRustApp(viewModel: emptyVm));
       await tester.pumpAndSettle();
 
       // "All Downloads" is selected and should NOT be inside an Opacity widget
@@ -340,7 +340,7 @@ void main() {
         onStop: () => stopInvoked = true,
       );
 
-      await tester.pumpWidget(EmuleSionApp(
+      await tester.pumpWidget(eMuleRustApp(
         viewModel: viewModel,
         supervisor: testSupervisor,
       ));

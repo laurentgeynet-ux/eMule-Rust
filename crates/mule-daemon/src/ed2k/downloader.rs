@@ -44,7 +44,7 @@ pub async fn run_ed2k_download(
     let tags = vec![
         Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_NAME),
-            value: TagValue::String("EmuleSionDaemon".to_string()),
+            value: TagValue::String("eMuleRustDaemon".to_string()),
         },
         Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_VERSION),

@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Automated Phase 7.3 E2E QA loopback test for the packaged Emule-Sion distribution.
+    Automated Phase 7.3 E2E QA loopback test for the packaged EMule-Rust distribution.
 .DESCRIPTION
     Phase 7.3 - Industrialisation Locale et Validation E2E QA:
     Executes in a sterile, temporary directory outside the Git repository:
-    1. Extracts EmuleSion-v0.1.2-lab-qa-loopback-windows-x64.zip into a temporary sandbox.
+    1. Extracts eMuleRust-v0.1.2-lab-qa-loopback-windows-x64.zip into a temporary sandbox.
     2. Validates portable.flag and boots the packaged mule-daemon binary in portable mode.
     3. Verifies loopback network confinement (127.0.0.1) and JSON-RPC handshake (lab-tools announced).
     4. Nominal Transfer (sample_1mb):
@@ -45,7 +45,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 if ([string]::IsNullOrWhiteSpace($BundleDir)) {
-    $BundleDir = Join-Path $Root "dist\EmuleSion-Qa-Loopback-Windows"
+    $BundleDir = Join-Path $Root "dist\eMuleRust-Qa-Loopback-Windows"
 }
 
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
@@ -57,7 +57,7 @@ if ([string]::IsNullOrWhiteSpace($ZipPath)) {
             if ($parsed.version) { $bundleVer = $parsed.version }
         } catch {}
     }
-    $ZipPath = Join-Path $Root "dist\EmuleSion-v${bundleVer}-qa-loopback-windows-x64.zip"
+    $ZipPath = Join-Path $Root "dist\eMuleRust-v${bundleVer}-qa-loopback-windows-x64.zip"
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
@@ -68,8 +68,8 @@ Write-Host "==================================================" -ForegroundColor
 # 1. Setup Isolated Temporary Environment Outside Repository
 # -----------------------------------------------------------------------------
 $TestId = [guid]::NewGuid().ToString("N").Substring(0, 8)
-$IsolatedTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "EmuleSion-QaE2E-$TestId"
-$BundleCopyDir = Join-Path $IsolatedTempRoot "bundle\EmuleSion-Windows"
+$IsolatedTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "eMuleRust-QaE2E-$TestId"
+$BundleCopyDir = Join-Path $IsolatedTempRoot "bundle\eMuleRust-Windows"
 $WorkDir = Join-Path $BundleCopyDir "data"
 $DownloadsDir = Join-Path $BundleCopyDir "downloads"
 $CustomDownloadsDir = Join-Path $IsolatedTempRoot "custom_downloads"

@@ -22,7 +22,7 @@ Status: **Phase A1 implémentée** — SUI bidirectionnel complet : vérificatio
 - Taille de clé : `RSAKEYSIZE = 384` bits (eMule 0.72a `opcodes.h:96`, aMule `Constants.h:49`).
 - Longueur de signature = longueur du module = **48 octets** pour RSA-384. La validation de taille doit être dérivée du module du pair (`modulus_len_bytes`), jamais une plage fixe `48..=96`.
 
-**Implication Emule-Sion :** la crate `rsa` de RustCrypto supporte `Pkcs1v15Sign` + `Sha1`. ✅ Spike validé : `rsa 0.9.10` génère des clés 384 bits (`RsaPrivateKey::new`) et accepte `from_components` ; `Pkcs1v15Sign::new::<Sha1>()` exige l'entrée **pré-hachée** (20 octets) — voir `mule-crypto::legacy_sui`.
+**Implication EMule-Rust :** la crate `rsa` de RustCrypto supporte `Pkcs1v15Sign` + `Sha1`. ✅ Spike validé : `rsa 0.9.10` génère des clés 384 bits (`RsaPrivateKey::new`) et accepte `from_components` ; `Pkcs1v15Sign::new::<Sha1>()` exige l'entrée **pré-hachée** (20 octets) — voir `mule-crypto::legacy_sui`.
 
 ### Finding: contenu signé — la clé publique du *challenger* précède le challenge
 
@@ -49,7 +49,7 @@ V2 :  pubkey_challenger[keylen] || challenge u32 LE
 - Génération : `InvertibleRSAFunction::Initialize(rng, 384)` puis `privkey.DEREncode()` dans un `Base64Encoder` → **le fichier est du texte Base64 contenant le DER Crypto++ de la clé privée** (`RSASSA_PKCS1v15_SHA_Signer` = `InvertibleRSAFunction` sérialisée : n, e, d, p, q, dp, dq, u en BER).
 - Lecture : `FileSource(..., true, new Base64Decoder)` → decode Base64 puis parse BER/DER.
 - Clé publique wire : `pubkey.DEREncode(asink)` dans un buffer de 80 octets = **structure BER `SEQUENCE { n INTEGER, e INTEGER }`** (CryptoPP `GetMaterial().Save` produit le même encodage). C'est cette forme DER (≤ 80 octets) qui circule dans `OP_PUBLICKEY` et qui est hachée pour l'identité de crédit.
-- Comportement fichier vide → régénération ; absent → `CreateKeyPair`. La politique Emule-Sion (quarantaine au lieu d'écrasement) reste plus sûre et est conservée.
+- Comportement fichier vide → régénération ; absent → `CreateKeyPair`. La politique EMule-Rust (quarantaine au lieu d'écrasement) reste plus sûre et est conservée.
 
 ### Finding: `OP_SECIDENTSTATE` — sémantique du byte `state`
 
@@ -64,7 +64,7 @@ Wire : `<state u8><challenge u32 LE>` — **nSize doit être exactement 5**, sin
 | 2 | `IS_KEYANDSIGNEEDED` | Le challenger n'a pas notre clé : envoyer `OP_PUBLICKEY` puis `OP_SIGNATURE` |
 
 - Émis seulement si `CryptoAvailable()` et (`SecIDKeyLen == 0` → 2, ou `m_dwLastSignatureIP != GetIP()` → 1). Si `nValue == 0`, **aucun paquet n'est envoyé** (pas de state 0 explicite sauf crypto indisponible côté challenger → en fait 0 n'est jamais émis dans ce chemin ; `m_SecureIdentState = IS_UNAVAILABLE` est aussi la valeur initiale).
-- Challenge généré par `rand()+1` côté eMule — **non cryptographiquement sûr** ; Emule-Sion doit utiliser `OsRng` tout en restant compatible (c'est juste un u32 à relire).
+- Challenge généré par `rand()+1` côté eMule — **non cryptographiquement sûr** ; EMule-Rust doit utiliser `OsRng` tout en restant compatible (c'est juste un u32 à relire).
 
 ### Finding: `OP_SIGNATURE` V2 — byte `byChaIPKind` en queue
 
@@ -148,7 +148,7 @@ Compteurs atomiques partagés (`mule-daemon::services::identity::SuiStats`), inc
 ### Réserves Tier 3 (à confirmer contre eMule/aMule réel)
 
 - ✅ **Challenge avant `OP_PUBLICKEY` (ordre des paquets)** : confirmé sur réseau réel — plusieurs pairs eMule émettent `OP_SECIDENTSTATE(state=2)` immédiatement après le handshake, avant leur clé. Le signataire doit différer le challenge jusqu'à réception de la clé (implémenté inbound + outbound).
-- ✅ **Format `cryptkey.dat` legacy Emule-Sion** : confirmé — l'ancien fichier de 80 octets binaires n'est pas du Base64/DER ; détecté comme `LegacyBlob` et migré (quarantaine + nouvelle clé).
+- ✅ **Format `cryptkey.dat` legacy EMule-Rust** : confirmé — l'ancien fichier de 80 octets binaires n'est pas du Base64/DER ; détecté comme `LegacyBlob` et migré (quarantaine + nouvelle clé).
 
 - Endianness `ip_u32` V2 (`from_be_bytes` + LE actuellement).
 - `kind=10` utilise l'IP du socket local ; eMule utilise l'IP publique — LowID/CGNAT non validé.

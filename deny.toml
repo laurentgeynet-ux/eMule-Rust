@@ -1,4 +1,4 @@
-# Configuration for cargo-deny — Emule-Sion Dependency & Security Policy
+# Configuration for cargo-deny — EMule-Rust Dependency & Security Policy
 
 [graph]
 targets = [

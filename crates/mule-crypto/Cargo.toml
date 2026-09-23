@@ -1,6 +1,6 @@
 [package]
 name = "mule-crypto"
-description = "Cryptographic primitives for Emule-Sion: legacy eMule SUI (RSA-384) and modern identity (Ed25519/X25519)"
+description = "Cryptographic primitives for EMule-Rust: legacy eMule SUI (RSA-384) and modern identity (Ed25519/X25519)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

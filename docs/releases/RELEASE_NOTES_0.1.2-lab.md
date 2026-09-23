@@ -1,11 +1,11 @@
-# Notes de Release — Emule-Sion 0.1.2-lab
+# Notes de Release — EMule-Rust 0.1.2-lab
 
 ## 1. Vue d'Ensemble & Contexte
 
-La version **0.1.2-lab** d'**Emule-Sion** constitue le jalon de consolidation fonctionnelle et de certification qualité (QA) locale. Cette version transforme le projet en un produit QA portable, reproductible et vérifiable de bout en bout, de la génération de fixtures jusqu'au fichier finalisé, sans recourir à un terminal ni ouvrir de socket réseau sur l'extérieur.
+La version **0.1.2-lab** d'**EMule-Rust** constitue le jalon de consolidation fonctionnelle et de certification qualité (QA) locale. Cette version transforme le projet en un produit QA portable, reproductible et vérifiable de bout en bout, de la génération de fixtures jusqu'au fichier finalisé, sans recourir à un terminal ni ouvrir de socket réseau sur l'extérieur.
 
 > **Formulation d'attestation d'interopérabilité :**  
-> *« Emule-Sion est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
+> *« EMule-Rust est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
 
 ---
 
@@ -102,7 +102,7 @@ Chaque bundle Windows x64 contient exactement **22 fichiers** contrôlés dans `
 10. `data/flutter_assets/shaders/ink_sparkle.frag`
 11. `data/flutter_assets/shaders/stretch_effect.frag`
 12. `data/icudtl.dat`
-13. `EmuleSion.exe`
+13. `eMuleRust.exe`
 14. `flutter_windows.dll`
 15. `native_assets.json`
 16. `portable.flag`
@@ -116,25 +116,25 @@ Chaque bundle Windows x64 contient exactement **22 fichiers** contrôlés dans `
 ### 5.2 Détails des Distributions
 
 #### A. Build Standard Locale
-- **Dossier d'assemblage** : `dist/EmuleSion-Standard-Windows/`
-- **Archive scellée** : `EmuleSion-v0.1.2-lab-standard-windows-x64.zip` (14 599 546 octets)
+- **Dossier d'assemblage** : `dist/eMuleRust-Standard-Windows/`
+- **Archive scellée** : `eMuleRust-v0.1.2-lab-standard-windows-x64.zip` (14 599 546 octets)
 - **Empreinte SHA-256** : `f7efc509c577ffa62240a0798e6b41993f0a5883683cca39bbdaaeca7800a7cf`
 - **Commit provenance** : `76005757e488523dfe4960da4569f7257cb80c8b`
 - **Capacités RPC annoncées** : `["downloads", "download-events"]`
 - **Routes `lab.*`** : Inactives (rejet avec `-32601 MethodNotFound`).
 - **Texte de diffusion recommandé** :
-  > **Emule-Sion v0.1.2-lab — Standard**  
+  > **EMule-Rust v0.1.2-lab — Standard**  
   > Build interne locale sans outils de laboratoire compilés. Elle inclut le démon local, l’interface Flutter Desktop, la séparation `data/` vs `downloads/`, la persistance SQLite et la gestion de téléchargements. Les routes de test, le pair loopback et les fonctions de simulation ne sont pas présents.
 
 #### B. Build QA Loopback
-- **Dossier d'assemblage** : `dist/EmuleSion-Qa-Loopback-Windows/`
-- **Archive scellée** : `EmuleSion-v0.1.2-lab-qa-loopback-windows-x64.zip` (14 815 380 octets)
+- **Dossier d'assemblage** : `dist/eMuleRust-Qa-Loopback-Windows/`
+- **Archive scellée** : `eMuleRust-v0.1.2-lab-qa-loopback-windows-x64.zip` (14 815 380 octets)
 - **Empreinte SHA-256** : `05f27c1e08af97278d28444eb5be24e002c3c4b157098d054e4458769642c2cc`
 - **Commit provenance** : `76005757e488523dfe4960da4569f7257cb80c8b`
 - **Capacités RPC annoncées** : `["downloads", "download-events", "lab-tools"]`
 - **Routes `lab.*`** : Actives (`lab.status`, `lab.createFixture`, `lab.startLoopbackPeer`, etc.).
 - **Texte de diffusion recommandé** :
-  > **Emule-Sion v0.1.2-lab — QA Loopback**  
+  > **EMule-Rust v0.1.2-lab — QA Loopback**  
   > Build interne de validation incluant les outils de laboratoire `lab-tools`. Les échanges de test sont strictement limités à `127.0.0.1` ; aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. Utiliser pour les scénarios QA guidés et les tests E2E automatisés.
 
 ---
@@ -172,7 +172,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_qa_loopba
 ## 7. Scoreboard Final de Validation
 
 ```
-=== SCOREBOARD EMULE-SION 0.1.2-LAB ===
+=== SCOREBOARD EMULE-RUST 0.1.2-LAB ===
 
 Rust Crates :
   - mule-core           :  12 tests réussis

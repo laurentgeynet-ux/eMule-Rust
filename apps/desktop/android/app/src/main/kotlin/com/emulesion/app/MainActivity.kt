@@ -1,4 +1,4 @@
-package com.emulesion.app
+package com.eMuleRust.app
 
 import io.flutter.embedding.android.FlutterActivity
 

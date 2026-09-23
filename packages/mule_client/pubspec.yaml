@@ -1,5 +1,5 @@
 name: mule_client
-description: "Shared daemon client for Emule-Sion: JSON-RPC/WebSocket client, fake client, and domain models."
+description: "Shared daemon client for EMule-Rust: JSON-RPC/WebSocket client, fake client, and domain models."
 publish_to: 'none'
 version: 0.1.0
 

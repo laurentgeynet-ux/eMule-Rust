@@ -16,7 +16,7 @@ members = [
 version = "0.2.0-RC1"
 edition = "2021"
 license = "GPL-2.0-or-later"
-authors = ["Emule-Sion Contributors"]
+authors = ["EMule-Rust Contributors"]
 
 [workspace.dependencies]
 bytes = "1"

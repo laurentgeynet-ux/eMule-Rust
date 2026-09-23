@@ -1,6 +1,6 @@
 # Walkthrough — Phase 7.2 : Parcours de test local guidé & Ergonomie RC
 
-La **Phase 7.2** dote Emule-Sion d'un parcours de test local loopback de bout en bout, utilisable directement depuis l'interface graphique **sans jamais toucher à un terminal**, tout en garantissant une isolation stricte sur `127.0.0.1` et en protégeant les installations standards `%LOCALAPPDATA%`.
+La **Phase 7.2** dote EMule-Rust d'un parcours de test local loopback de bout en bout, utilisable directement depuis l'interface graphique **sans jamais toucher à un terminal**, tout en garantissant une isolation stricte sur `127.0.0.1` et en protégeant les installations standards `%LOCALAPPDATA%`.
 
 ---
 
@@ -13,8 +13,8 @@ Pour éliminer tout risque de traversée incontrôlée de l'arborescence (anti-f
 - **Zéro traversée récursive ascendante** au-delà de cette règle.
 
 ### Vérification
-- **Rust** : `test_workdir_non_bin_subfolder_does_not_traverse_parent_for_portable_flag` dans [crates/mule-daemon/tests/workdir_tests.rs](file:///d:/Projet/Emule-Sion/crates/mule-daemon/tests/workdir_tests.rs).
-- **Dart** : `WorkDirectoryResolver` dans [apps/desktop/test/services/work_directory_resolver_test.dart](file:///d:/Projet/Emule-Sion/apps/desktop/test/services/work_directory_resolver_test.dart).
+- **Rust** : `test_workdir_non_bin_subfolder_does_not_traverse_parent_for_portable_flag` dans [crates/mule-daemon/tests/workdir_tests.rs](file:///d:/Projet/EMule-Rust/crates/mule-daemon/tests/workdir_tests.rs).
+- **Dart** : `WorkDirectoryResolver` dans [apps/desktop/test/services/work_directory_resolver_test.dart](file:///d:/Projet/EMule-Rust/apps/desktop/test/services/work_directory_resolver_test.dart).
 
 ---
 
@@ -31,7 +31,7 @@ Le daemon expose désormais une suite complète d'opérations de laboratoire dé
 | `lab.cleanupTestData` | Supprime les fixtures locales et purge les fichiers `.part` incomplets dans `<workdir>/temp` et `<workdir>/part`. | **Interdit et rejeté** en mode `InstalledDefault` (`%LOCALAPPDATA%`). |
 
 ### Vérification Rust
-- Tests d'intégration complets dans [crates/mule-daemon/tests/lab_rpc_tests.rs](file:///d:/Projet/Emule-Sion/crates/mule-daemon/tests/lab_rpc_tests.rs) :
+- Tests d'intégration complets dans [crates/mule-daemon/tests/lab_rpc_tests.rs](file:///d:/Projet/EMule-Rust/crates/mule-daemon/tests/lab_rpc_tests.rs) :
   - `test_lab_rpc_lifecycle_in_portable_mode` (création de fixtures, liaison canonique, démarrage/arrêt du pair, nettoyage).
   - `test_lab_cleanup_refused_in_installed_default_mode` (vérification de la protection anti-suppression en mode installé).
 - **221 tests Rust validés**, Clippy : 0 avertissement.
@@ -67,7 +67,7 @@ Un dialogue pas-à-pas en 5 étapes pour exécuter un cycle complet de test sans
 ## 5. Correctif critique : Persistance de la suppression d'un téléchargement
 
 ### Problème identifié
-En mode Standard (`%LOCALAPPDATA%`) ou en mode Portable, la suppression d'un téléchargement depuis l'interface le faisait disparaître visuellement de l'écran courant. En revanche, lors de la fermeture puis de la réouverture d'Emule-Sion, le téléchargement réapparaissait immédiatement dans la liste.
+En mode Standard (`%LOCALAPPDATA%`) ou en mode Portable, la suppression d'un téléchargement depuis l'interface le faisait disparaître visuellement de l'écran courant. En revanche, lors de la fermeture puis de la réouverture d'EMule-Rust, le téléchargement réapparaissait immédiatement dans la liste.
 
 ### Cause racine
 1. Dans `crates/mule-daemon/src/services/downloads.rs`, `remove_download` retirait le téléchargement de la mémoire vive (`self.active.remove(id)`), mais **n'exécutait aucune requête SQL de suppression dans la base SQLite locale** (`mule.db`).
@@ -77,16 +77,16 @@ En mode Standard (`%LOCALAPPDATA%`) ou en mode Portable, la suppression d'un té
 
 ### Corrections implémentées
 1. **Suppression atomique en base (`mule-core`)** :
-   - Ajout de `delete_download(&mut self, download_id: &Uuid) -> Result<bool, CoreError>` dans [`sqlite.rs`](file:///d:/Projet/Emule-Sion/crates/mule-core/src/persistence/sqlite.rs).
+   - Ajout de `delete_download(&mut self, download_id: &Uuid) -> Result<bool, CoreError>` dans [`sqlite.rs`](file:///d:/Projet/EMule-Rust/crates/mule-core/src/persistence/sqlite.rs).
    - Transaction SQLite atomique supprimant les lignes associées dans `received_ranges`, `verified_parts`, puis `downloads`.
-   - Test unitaire dédié : `test_database_delete_download_persists_across_reopen` dans [`part_file_and_persistence.rs`](file:///d:/Projet/Emule-Sion/crates/mule-core/tests/part_file_and_persistence.rs).
+   - Test unitaire dédié : `test_database_delete_download_persists_across_reopen` dans [`part_file_and_persistence.rs`](file:///d:/Projet/EMule-Rust/crates/mule-core/tests/part_file_and_persistence.rs).
 2. **Gestion du descripteur et des fichiers temporaires (`mule-daemon`)** :
    - Fermeture explicite du descripteur de fichier Windows (`active.part_file.take()`) avant toute suppression sur le disque, prévenant l'erreur de verrouillage Windows `ERROR_SHARING_VIOLATION` (code 32).
    - Suppression systématique en base de données via `self.db.delete_download(id)`.
    - Suppression du fichier `.part` physique dans `temp/` si `delete_files == true`.
-   - Test de contrat RPC : `test_downloads_remove_persistence_across_daemon_restart` dans [`rpc_contract.rs`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/tests/rpc_contract.rs).
+   - Test de contrat RPC : `test_downloads_remove_persistence_across_daemon_restart` dans [`rpc_contract.rs`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/tests/rpc_contract.rs).
 3. **Dialogue de confirmation enrichi (`apps/desktop`)** :
-   - Mise à jour de [`download_row.dart`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/ui/features/downloads/widgets/download_row.dart) avec une case à cocher « Supprimer également les fichiers temporaires/partiels du disque » (cochée par défaut).
+   - Mise à jour de [`download_row.dart`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/ui/features/downloads/widgets/download_row.dart) avec une case à cocher « Supprimer également les fichiers temporaires/partiels du disque » (cochée par défaut).
    - Transmission du booléen `deleteFiles` au daemon.
 
 ---
@@ -109,8 +109,8 @@ En mode Standard (`%LOCALAPPDATA%`) ou en mode Portable, la suppression d'un té
 ==================================================
   Pipeline de packaging (scripts\build_windows_release.ps1)
 ==================================================
--> Bundle standard autonome : dist\EmuleSion-Standard-Windows (EmuleSion-v0.1.1-lab-standard-windows-x64.zip)
--> Bundle QA Loopback : dist\EmuleSion-Qa-Loopback-Windows (EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip)
+-> Bundle standard autonome : dist\eMuleRust-Standard-Windows (eMuleRust-v0.1.1-lab-standard-windows-x64.zip)
+-> Bundle QA Loopback : dist\eMuleRust-Qa-Loopback-Windows (eMuleRust-v0.1.1-lab-qa-loopback-windows-x64.zip)
 -> SBOM CycloneDX 1.5 consolidé : 240 composants audités
 -> Hachages SHA-256 vérifiés et cohérents à 100%
 
@@ -176,7 +176,7 @@ Conformément aux exigences de stabilité du contrat d'API :
   - Endpoint banalisé : `ws://loopback:4660/rpc`.
   - Token d'authentification : strictement exclu (zéro token).
 - **Export Local Développeur (« Copy Full (Local Dev) »)** : conserve les chemins complets pour le débogage local en environnement contrôlé.
-  - **Garantie de non-divulgation vérifiée par test automatisé** : un test de widget unitaire dédié dans [`test/ui/diagnostic_dialog_test.dart`](file:///d:/Projet/Emule-Sion/apps/desktop/test/ui/diagnostic_dialog_test.dart) valide formellement que ni `auth.token`, ni aucun jeton secret ou en-tête d'authentification n'apparaît dans le texte copié.
+  - **Garantie de non-divulgation vérifiée par test automatisé** : un test de widget unitaire dédié dans [`test/ui/diagnostic_dialog_test.dart`](file:///d:/Projet/EMule-Rust/apps/desktop/test/ui/diagnostic_dialog_test.dart) valide formellement que ni `auth.token`, ni aucun jeton secret ou en-tête d'authentification n'apparaît dans le texte copié.
 
 ### E. Préconditions et chaîne de progression dans l'Étape 4 (`LabGuideDialog`)
 - Vérification de la cohérence de taille entre le téléchargement sélectionné et la fixture générée (avertissement visuel immédiat en cas de divergence).
@@ -196,7 +196,7 @@ Conformément aux exigences de stabilité du contrat d'API :
 | Propriété / Critère | Build Standard de Production | Build QA Loopback (`-Flavor qa-loopback`) |
 |---|---|---|
 | **Commande de génération** | `powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1 -Flavor standard` | `powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1 -Flavor qa-loopback` |
-| **Dossier d'assemblage** | `dist\EmuleSion-Standard-Windows` | `dist\EmuleSion-Qa-Loopback-Windows` |
+| **Dossier d'assemblage** | `dist\eMuleRust-Standard-Windows` | `dist\eMuleRust-Qa-Loopback-Windows` |
 | **Arbre Git requis** | 100% propre (`git status --porcelain` vide) | 100% propre (`git status --porcelain` vide) |
 | **Manifeste `version.json`** | `"distributionFlavor": "standard"`, `"labToolsEnabled": false` | `"distributionFlavor": "qa-loopback"`, `"labToolsEnabled": true` |
 | **Capacités annoncées** | `["downloads", "download-events"]` | `["downloads", "download-events", "lab-tools"]` |
@@ -206,7 +206,7 @@ Conformément aux exigences de stabilité du contrat d'API :
 | **UI Flutter (Mode Portable)** | Outils de lab masqués (`isLabModeAvailable == false`) | Outils de lab et guide interactif actifs |
 | **Vérification smoke test** | **Succès** (22/22 hachages conformes, session 127.0.0.1, -32601 vérifié) | **Succès** (22/22 hachages conformes, session 127.0.0.1, lab.status OK) |
 | **Matrice de robustesse** | 7/7 tests réussis (`scripts\test_rc_matrix.ps1`) | 7/7 tests réussis (`scripts\test_rc_matrix.ps1`) |
-| **Archive livrable** | `EmuleSion-v0.1.1-lab-standard-windows-x64.zip` | `EmuleSion-v0.1.1-lab-qa-loopback-windows-x64.zip` |
+| **Archive livrable** | `eMuleRust-v0.1.1-lab-standard-windows-x64.zip` | `eMuleRust-v0.1.1-lab-qa-loopback-windows-x64.zip` |
 | **Empreinte SHA-256** | `2f258ef49383aa23e7ce7af350544466369ef57f69c5b3add7bfdd7d8ca33332` | `02e58f05f808d4a2726a5476f0fdf94f3c54e9fa09b38790cde8156ac05bbde4` |
 | **Tag Git Scellé** | `v0.1.1-lab` (`6166c71`) | `v0.1.1-lab` (`6166c71`) |
 
@@ -217,14 +217,14 @@ Conformément aux exigences de stabilité du contrat d'API :
 ### A. Cause racine diagnostiquée et corrigée pour les valeurs « N/A / Unknown »
 1. **Rupture de propagation `DaemonInfo`** : `DownloadsViewModel` n'initialisait son champ interne `_daemonInfo` que dans la méthode `initialize()`. Or, lors du lancement nominal de l'application supervisée, `supervisor != null`, donc `initialize()` n'était jamais invoqué. `DaemonSupervisor` se connectait via `RpcDaemonClient.connect()` qui stockait bien les données dans `client.daemonInfo`, mais `DownloadsViewModel` ne lisait pas `client.daemonInfo` lors des événements `SupervisorState.connected` ou `instanceChanged`.
    - **Correction** :
-     - Ajout du getter `DaemonInfo? get daemonInfo` sur l'interface abstraite [`MuleDaemonClient`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/domain/services/mule_daemon_client.dart).
+     - Ajout du getter `DaemonInfo? get daemonInfo` sur l'interface abstraite [`MuleDaemonClient`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/domain/services/mule_daemon_client.dart).
      - Écoute active dans `DownloadsViewModel` pour synchroniser `_daemonInfo = client.daemonInfo` lors de chaque connexion et rafraîchissement.
-     - Conservation de l'instance active de session [`DaemonSessionFile`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/services/daemon_supervisor.dart) dans le superviseur pour fournir les PID, endpoints et version du protocole instantanément.
+     - Conservation de l'instance active de session [`DaemonSessionFile`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/services/daemon_supervisor.dart) dans le superviseur pour fournir les PID, endpoints et version du protocole instantanément.
 
 2. **Préservation du `WorkDirMode` entre Flutter et le daemon enfant** :
    - Lorsque Flutter lançait `mule-daemon.exe --workdir <dataDir>`, le daemon interprétait la présence de `--workdir` comme `WorkDirMode::ExplicitCli`.
    - **Correction** :
-     - Ajout de l'argument `--mode / --workdir-mode` dans le parsing CLI de [`mule-daemon`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/src/main.rs).
+     - Ajout de l'argument `--mode / --workdir-mode` dans le parsing CLI de [`mule-daemon`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/src/main.rs).
      - Détection automatique dans `mule-daemon` : si `--workdir` est fourni sans `--mode`, le daemon vérifie si le parent direct contient `portable.flag` et promeut automatiquement le mode en `WorkDirMode::Portable`.
      - `DaemonSupervisor` passe explicitement `--mode Portable` au lancement.
      - `isLabModeAvailable` accepte à la fois la réponse du daemon et la détection locale du superviseur.
@@ -237,7 +237,7 @@ Conformément aux exigences de stabilité du contrat d'API :
   - Si le mode Lab est absent (build standard ou mode installé) : **« Diagnostics »** en blueGrey avec icône analytics.
 
 ### C. Abréviation ergonomique des identifiants de téléchargement
-- Dans [`DownloadRow`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/ui/features/downloads/widgets/download_row.dart), l'identifiant UUID brut de 36 caractères est désormais abrégé au format `ID: 4dab69c4…` (8 caractères + ellipse).
+- Dans [`DownloadRow`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/ui/features/downloads/widgets/download_row.dart), l'identifiant UUID brut de 36 caractères est désormais abrégé au format `ID: 4dab69c4…` (8 caractères + ellipse).
 - **Tooltip natif** : survol affichant l'UUID complet (`Full ID: 4dab69c4-aa9e-46fa-81e0-0ea0b9974f07`).
 - **Bouton de copie** : icône discrète permettant de copier l'UUID complet dans le presse-papiers en un clic avec confirmation SnackBar.
 
@@ -257,9 +257,9 @@ Conformément aux exigences de stabilité du contrat d'API :
 - **Bouton de copie inline** : un bouton compact `[Copy]` à droite de la ligne copie instantanément le chemin brut réel dans le presse-papiers avec notification visuelle (`Workdir path copied to clipboard`).
 
 ### B. Nouveau vecteur de frontière : `pattern_9728001` (9,28 Mo + 1 octet)
-- **Rust (`mule-daemon`)** : ajout de `"pattern_9728001"` et `"part_9728001"` dans [`handle_lab_create_fixture`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/src/rpc/methods.rs). Génère une fixture de 9 728 001 octets (exactement 1 part complète + 1 part résiduelle d'un octet) avec motif répétitif `(i % 256) as u8`.
+- **Rust (`mule-daemon`)** : ajout de `"pattern_9728001"` et `"part_9728001"` dans [`handle_lab_create_fixture`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/src/rpc/methods.rs). Génère une fixture de 9 728 001 octets (exactement 1 part complète + 1 part résiduelle d'un octet) avec motif répétitif `(i % 256) as u8`.
 - **UI (`LabGuideDialog`)** : puce dédiée `9.28 MB + 1 Byte (pattern_9728001)` à l'Étape 1 du guide.
-- **Test Rust** : `test_lab_create_fixture_pattern_9728001` dans [`lab_rpc_tests.rs`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/tests/lab_rpc_tests.rs).
+- **Test Rust** : `test_lab_create_fixture_pattern_9728001` dans [`lab_rpc_tests.rs`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/tests/lab_rpc_tests.rs).
 
 ### C. Pipeline d'automatisation QA de bout en bout (`scripts/test_qa_loopback_e2e.ps1`)
 Un script automatisé complet qui valide sans aucune intervention humaine le bundle packagé réel :
@@ -306,33 +306,33 @@ Pour garantir une séparation nette entre l'état d'exécution interne du daemon
 | **1. CLI explicite** | Argument `--workdir <dir>` | Argument `--downloads-dir <dir>` ou `<workdir>/downloads` si omis |
 | **2. Variables d'environnement** | `$EMULE_DATA_DIR` ou `$MULE_DATA_DIR` | `$EMULE_DOWNLOADS_DIR` ou `<workdir>/downloads` si omis |
 | **3. Mode Portable (`portable.flag`)** | `<bundleRoot>/data` | `<bundleRoot>/downloads` (à côté du bundle mais distinct des binaires et de l'état interne) |
-| **4. Mode Installé Standard** | `%LOCALAPPDATA%\EmuleSion` (Unix: `~/.local/share/EmuleSion`) | `%USERPROFILE%\Downloads\EmuleSion` (Unix: `~/Downloads/EmuleSion`) |
+| **4. Mode Installé Standard** | `%LOCALAPPDATA%\eMuleRust` (Unix: `~/.local/share/eMuleRust`) | `%USERPROFILE%\Downloads\eMuleRust` (Unix: `~/Downloads/eMuleRust`) |
 
 ### B. Modifications Backend Rust (`mule-daemon`)
-- **[`workdir.rs`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/src/workdir.rs)** :
+- **[`workdir.rs`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/src/workdir.rs)** :
   - Introduction de la structure `ResolvedDirectories { workdir: ResolvedWorkDir, default_download_dir: PathBuf }`.
   - Implémentation de `WorkDirectoryResolver::resolve` et `resolve_with_context` appliquant les 4 paliers.
   - Tests unitaires complets dans `tests/workdir_tests.rs` (8 tests passés).
-- **[`config.rs`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/src/config.rs) & [`main.rs`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/src/main.rs)** :
+- **[`config.rs`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/src/config.rs) & [`main.rs`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/src/main.rs)** :
   - Support de l'argument CLI `--downloads-dir <path>`.
   - Intégration de `default_download_dir` dans `DaemonConfig`.
-- **Méthodes RPC ([`methods.rs`](file:///d:/Projet/Emule-Sion/crates/mule-daemon/src/rpc/methods.rs))** :
+- **Méthodes RPC ([`methods.rs`](file:///d:/Projet/EMule-Rust/crates/mule-daemon/src/rpc/methods.rs))** :
   - `system.hello` et `system.status` annoncent désormais `"defaultDownloadDir"`.
   - `downloads.addEd2kLink` : si `targetDirectory` est omis, vide ou égal à `"."`, la cible est automatiquement résolue vers `state.config.default_download_dir`.
   - `lab.cleanupTestData` : ne touche jamais au répertoire `downloads/`.
 
 ### C. Modifications Interface Flutter (`apps/desktop`)
-- **[`work_directory_resolver.dart`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/services/work_directory_resolver.dart)** :
+- **[`work_directory_resolver.dart`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/services/work_directory_resolver.dart)** :
   - Alignement exact de la logique de résolution Dart avec la spécification Rust (4 paliers de priorité).
-- **[`daemon_info.dart`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/domain/models/daemon_info.dart) & DTOs** :
+- **[`daemon_info.dart`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/domain/models/daemon_info.dart) & DTOs** :
   - Réception et parsing du champ `defaultDownloadDir`.
-- **Dialogue d'ajout de lien ([`AddLinkDialog`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/ui/features/downloads/widgets/add_link_dialog.dart))** :
+- **Dialogue d'ajout de lien ([`AddLinkDialog`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/ui/features/downloads/widgets/add_link_dialog.dart))** :
   - Pré-remplissage du champ dossier de destination avec le répertoire de téléchargement résolu par défaut.
   - Ajout du bouton natif `[ Browse... ]` via dialogue système PowerShell `FolderBrowserDialog` pour sélectionner confortablement un répertoire personnalisé.
-- **Dialogue de diagnostic ([`DiagnosticDialog`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/ui/features/downloads/widgets/diagnostic_dialog.dart))** :
+- **Dialogue de diagnostic ([`DiagnosticDialog`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/ui/features/downloads/widgets/diagnostic_dialog.dart))** :
   - Affichage dissocié de **« Internal Data »** (`.../data`) et de **« Downloads »** (`.../downloads`).
   - Boutons de copie individuels inline avec infobulles explicites.
-- **Guide de laboratoire ([`LabGuideDialog`](file:///d:/Projet/Emule-Sion/apps/desktop/lib/ui/features/downloads/widgets/lab_guide_dialog.dart))** :
+- **Guide de laboratoire ([`LabGuideDialog`](file:///d:/Projet/EMule-Rust/apps/desktop/lib/ui/features/downloads/widgets/lab_guide_dialog.dart))** :
   - Carte récapitulative « Storage Overview » distinguant l'état interne (`data/`) et les fichiers complétés (`downloads/`), avec bouton direct « Open Folder ».
   - Affichage précis de la destination du fichier à l'Étape 4.
   - Mention explicite à l'Étape 5 que le nettoyage ne supprime pas les fichiers téléchargés dans `downloads/`.

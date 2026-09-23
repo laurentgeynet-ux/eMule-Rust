@@ -22,7 +22,7 @@ import '../ui/features/shares/view_models/shares_controller.dart';
 import '../ui/features/uploads/view_models/uploads_controller.dart';
 
 /// Daemon client (real `RpcDaemonClient` or `FakeMuleDaemonClient`).
-/// Overridden by the `ProviderScope` created in [EmuleSionApp].
+/// Overridden by the `ProviderScope` created in [eMuleRustApp].
 final muleDaemonClientProvider = Provider<MuleDaemonClient>(
   (ref) => throw UnimplementedError('muleDaemonClientProvider not overridden'),
 );
@@ -42,7 +42,7 @@ final localeControllerProvider = ChangeNotifierProvider<LocaleController>(
 );
 
 /// Application composition root (daemon session + per-domain controllers).
-/// Overridden by the `ProviderScope` created in [EmuleSionApp].
+/// Overridden by the `ProviderScope` created in [eMuleRustApp].
 final appControllerProvider = ChangeNotifierProvider<AppController>(
   (ref) => throw UnimplementedError('appControllerProvider not overridden'),
 );

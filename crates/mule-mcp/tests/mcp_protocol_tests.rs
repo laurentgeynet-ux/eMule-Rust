@@ -237,5 +237,5 @@ async fn test_unreachable_daemon_error_reporting() {
     .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("Is Emule-Sion running"));
+    assert!(err.contains("Is EMule-Rust running"));
 }

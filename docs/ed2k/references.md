@@ -1,6 +1,6 @@
 # Références Historiques et Codebases eD2K / eMule
 
-Ce document recense les dépôts sources, révisions historiques et fichiers de référence exploités pour la spécification du protocole eD2K dans Emule-Sion.
+Ce document recense les dépôts sources, révisions historiques et fichiers de référence exploités pour la spécification du protocole eD2K dans EMule-Rust.
 
 ---
 
@@ -38,7 +38,7 @@ Ce document recense les dépôts sources, révisions historiques et fichiers de 
 
 ## 2. Table de Correspondance des Types Fondamentaux
 
-| Concept Wire eD2K | Représentation Source C++ | Type Emule-Sion (`mule-protocol`) | Notes |
+| Concept Wire eD2K | Représentation Source C++ | Type EMule-Rust (`mule-protocol`) | Notes |
 | :--- | :--- | :--- | :--- |
 | **Protocol Byte** | `uint8` (`0xE3`, `0xC5`, `0xD4`) | `u8` (`PR_ED2K`, `PR_EMULE`, `PR_EMULE_COMPRESSED`) | 1er octet de chaque trame |
 | **Packet Length** | `uint32` (little-endian) | `u32` | Longueur = 1 (opcode) + payload |

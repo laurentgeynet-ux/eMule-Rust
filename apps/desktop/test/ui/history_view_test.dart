@@ -29,7 +29,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Verify sidebar contains History & Statistics button
@@ -66,7 +66,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Navigate to History & Statistics (may be below the sidebar fold)
@@ -96,7 +96,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Navigate to History & Statistics (may be below the sidebar fold)
@@ -132,7 +132,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Navigate to History & Statistics (may be below the sidebar fold)
@@ -165,7 +165,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpWidget(eMuleRustApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
       // Navigate to the /settings page

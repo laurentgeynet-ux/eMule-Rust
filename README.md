@@ -1,6 +1,6 @@
-# Emule-Sion 🚀
+# EMule-Rust 🚀
 
-**Emule-Sion** est une réimplémentation moderne, hautement sécurisée et performante des protocoles pair-à-pair historiques **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur natif **Model Context Protocol (MCP)** pour agents d'intelligence artificielle.
+**EMule-Rust** est une réimplémentation moderne, hautement sécurisée et performante des protocoles pair-à-pair historiques **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur natif **Model Context Protocol (MCP)** pour agents d'intelligence artificielle.
 
 Le projet est conçu en **Rust** (moteur de stockage éparse, démon Tokio asynchrone, codecs filaires bornés, allocateur de swarm dynamique) et en **Flutter Desktop** (interface Windows native réactive en Clean Architecture MVVM).
 
@@ -61,4 +61,4 @@ flutter test
 ```powershell
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
 ```
-Le bundle autonome portable est généré dans `dist/EmuleSion-Windows/`.
+Le bundle autonome portable est généré dans `dist/eMuleRust-Windows/`.

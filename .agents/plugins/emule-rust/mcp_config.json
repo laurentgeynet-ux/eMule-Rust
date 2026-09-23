@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "emule-rust": {
+      "command": "C:/Emule-Sion/target/release/mule-mcp.exe",
+      "args": [
+        "--app",
+        "C:/Users/Lou/Desktop/eMuleRust"
+      ]
+    }
+  }
+}

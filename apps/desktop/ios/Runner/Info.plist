@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Emule-Sion</string>
+	<string>EMule-Rust</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Emule-Sion</string>
+	<string>EMule-Rust</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -70,7 +70,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.emulesion.ed2k</string>
+			<string>com.eMuleRust.ed2k</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>ed2k</string>

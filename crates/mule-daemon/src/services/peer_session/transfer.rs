@@ -198,7 +198,7 @@ pub(crate) async fn run_transfer_loop(
             return Ok(0);
         }
         let ranges = dl_svc.get_completed_ranges_by_hash(file_hash_str);
-        // Swarm healing (Emule-Sion `swarm_healing` setting) : biaise le
+        // Swarm healing (EMule-Rust `swarm_healing` setting) : biaise le
         // choix de part vers les plus rares du swarm (sources connues).
         let healing = dl_svc
             .get_setting("swarm_healing")

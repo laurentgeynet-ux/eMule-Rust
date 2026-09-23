@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "reference": {
     "kind": "emulated-reference-peer",
-    "implementation": "EmuleSion in-process test harness (EmulatedReferencePeer / ReferenceCompatibleTestPeer)",
+    "implementation": "eMuleRust in-process test harness (EmulatedReferencePeer / ReferenceCompatibleTestPeer)",
     "basedOn": [
       {
         "project": "SomeSupport/eMule",

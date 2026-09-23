@@ -53,7 +53,7 @@ pub struct AppState {
     /// Whether UDP (Kad + server UDP + client UDP) is enabled at all —
     /// eMule « UDP désactivé » checkbox.
     udp_enabled: Arc<AtomicBool>,
-    /// Gate du quota journalier d'upload (`dailyUploadQuotaGb`, Emule-Sion) :
+    /// Gate du quota journalier d'upload (`dailyUploadQuotaGb`, EMule-Rust) :
     /// `false` bloque les nouvelles demandes de slot. Piloté par
     /// `spawn_quota_watcher`.
     upload_quota_gate: Arc<AtomicBool>,
@@ -123,7 +123,7 @@ impl AppState {
             .map(|v| v.clamp(1, 65535) as u16)
             .unwrap_or(config.kad_port);
         let udp_enabled = bool_setting("udp_enabled").unwrap_or(true);
-        // Mode paranoid (Emule-Sion) : slots d'upload réservés aux pairs
+        // Mode paranoid (EMule-Rust) : slots d'upload réservés aux pairs
         // obfusqués avec signature SUI vérifiée.
         let paranoid_mode = bool_setting("paranoid_mode").unwrap_or(false);
         let max_upload_queue = get_usize("max_upload_queue");

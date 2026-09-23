@@ -10,7 +10,7 @@ class AppLocalizationsFr extends AppLocalizations {
   AppLocalizationsFr([String locale = 'fr']) : super(locale);
 
   @override
-  String get appName => 'Emule-Sion';
+  String get appName => 'EMule-Rust';
 
   @override
   String get appTagline => 'Client eD2K moderne';
@@ -1451,8 +1451,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get selectionnerServerMet => 'Sélectionner un server.met';
 
   @override
-  String get parDefautEmuleSionEst =>
-      'Par défaut, Emule-Sion est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.';
+  String get parDefauteMuleRustEst =>
+      'Par défaut, EMule-Rust est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.';
 
   @override
   String get modifierLeProfil => 'Modifier le profil';
@@ -1581,7 +1581,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get memeEnModePublicLa =>
-      'Même en mode public, la politique réseau d\'Emule-Sion bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.';
+      'Même en mode public, la politique réseau d\'EMule-Rust bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.';
 
   @override
   String get fermer => 'Fermer';
@@ -1691,7 +1691,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get daemonConnectDescription =>
-      'Emule-Sion Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.';
+      'EMule-Rust Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.';
 
   @override
   String get daemonUrlLabel => 'Adresse du daemon';
@@ -2053,7 +2053,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get settingsDailyQuotaHint =>
-      'Option Emule-Sion : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).';
+      'Option EMule-Rust : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).';
 
   @override
   String get settingsAutoPriorityTitle =>
@@ -2068,10 +2068,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get settingsSwarmHealingSub =>
-      'Option Emule-Sion : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition';
+      'Option EMule-Rust : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition';
 
   @override
-  String get settingsExclusiveTitle => 'Options exclusives Emule-Sion';
+  String get settingsExclusiveTitle => 'Options exclusives EMule-Rust';
 
   @override
   String get settingsParanoidTitle => 'Mode paranoid';

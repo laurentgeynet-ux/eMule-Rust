@@ -55,7 +55,7 @@ pub struct InboundListenerService {
     /// cryptkey.dat): challenges must not be issued without it. Mutable à
     /// chaud pour suivre la rotation d'identité.
     pub(crate) sui_pubkey_der: std::sync::Arc<std::sync::RwLock<Option<Vec<u8>>>>,
-    /// Mode « paranoid » (propre à Emule-Sion) : n'accorde de slot d'upload
+    /// Mode « paranoid » (propre à EMule-Rust) : n'accorde de slot d'upload
     /// qu'aux pairs obfusqués ET dont la signature SUI a été vérifiée.
     pub(crate) paranoid_mode: Arc<AtomicBool>,
     /// Local identity (private key access) for answering inbound peer

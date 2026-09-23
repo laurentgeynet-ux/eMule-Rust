@@ -838,7 +838,7 @@ impl InboundListenerService {
                                         remote_str, shared_file.file_name, hash_hex
                                     );
 
-                                    // Mode paranoid (Emule-Sion) : ne servir
+                                    // Mode paranoid (EMule-Rust) : ne servir
                                     // que les pairs obfusqués et dont la
                                     // signature SUI a été vérifiée.
                                     if self.paranoid_mode.load(std::sync::atomic::Ordering::Relaxed)

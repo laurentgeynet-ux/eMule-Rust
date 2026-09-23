@@ -52,7 +52,7 @@ class ServersErrorBanner extends StatelessWidget {
                 ),
                 if (isPolicyError) ...[
                   const SizedBox(height: 2),
-                  Text(context.l10n.parDefautEmuleSionEst,
+                  Text(context.l10n.parDefauteMuleRustEst,
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.textSecondary,

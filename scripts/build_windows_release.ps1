@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Builds, signs, and packages the complete standalone Emule-Sion Windows distribution.
+    Builds, signs, and packages the complete standalone EMule-Rust Windows distribution.
 .DESCRIPTION
     Phase 7 — Industrialisation Locale & Release Candidate:
     1. Verifies clean Git repository state (rejects dirty state unless -AllowDirty is set).
     2. Collects exact toolchain versions (rustc, cargo, flutter, dart).
     3. Compiles mule-daemon and Flutter Desktop in release mode.
-    4. Assembles standalone distribution in dist/EmuleSion-Windows.
-    5. Generates CycloneDX 1.5 SBOM files in dist/EmuleSion-Windows/sbom.
+    4. Assembles standalone distribution in dist/eMuleRust-Windows.
+    5. Generates CycloneDX 1.5 SBOM files in dist/eMuleRust-Windows/sbom.
     6. Signs executables and DLLs with Authenticode (if -Sign is set).
     7. Computes SHA-256 hashes of all artifacts post-signing and writes SHA256SUMS.txt and version.json.
     8. Packages distribution into ZIP archive and calculates its SHA-256 hash.
@@ -25,7 +25,7 @@ param(
     [switch]$AllowDirty = $false,
     [switch]$SkipZip = $false,
     [switch]$LabMode = $false,
-    [string]$DeployDir = "C:\Users\Lou\Desktop\EmuleSion"
+    [string]$DeployDir = "C:\Users\Lou\Desktop\eMuleRust"
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,19 +38,19 @@ if ($LabMode -or $Flavor -eq "qa-loopback") {
     $LabToolsEnabled = $true
     $LabMode = $true
     if ([string]::IsNullOrWhiteSpace($OutputDir)) {
-        $OutputDir = "dist\EmuleSion-Qa-Loopback-Windows"
+        $OutputDir = "dist\eMuleRust-Qa-Loopback-Windows"
     }
 } else {
     $DistributionFlavor = "standard"
     $LabToolsEnabled = $false
     $LabMode = $false
     if ([string]::IsNullOrWhiteSpace($OutputDir)) {
-        $OutputDir = "dist\EmuleSion-Standard-Windows"
+        $OutputDir = "dist\eMuleRust-Standard-Windows"
     }
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  Emule-Sion Windows Release Candidate Pipeline   " -ForegroundColor Cyan
+Write-Host "  EMule-Rust Windows Release Candidate Pipeline   " -ForegroundColor Cyan
 Write-Host "  Flavor: $DistributionFlavor (LabTools: $LabToolsEnabled)" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
@@ -152,14 +152,14 @@ New-Item -ItemType Directory -Path $DestPath -Force | Out-Null
 # Copy Flutter release binaries and assets
 Copy-Item -Path "$FlutterReleaseDir\*" -Destination $DestPath -Recurse -Force
 
-# Standardize executable naming: EmuleSion.exe is the sole desktop UI binary
+# Standardize executable naming: eMuleRust.exe is the sole desktop UI binary
 $PrimaryExe = Join-Path $DestPath "desktop.exe"
-$BrandedExe = Join-Path $DestPath "EmuleSion.exe"
+$BrandedExe = Join-Path $DestPath "eMuleRust.exe"
 if (Test-Path $PrimaryExe) {
     Move-Item -Path $PrimaryExe -Destination $BrandedExe -Force
 }
 if (!(Test-Path $BrandedExe)) {
-    throw "Expected EmuleSion.exe not found in $DestPath"
+    throw "Expected eMuleRust.exe not found in $DestPath"
 }
 
 # Create bin/ directory and bundle mule-daemon.exe and mule-cli.exe
@@ -280,7 +280,7 @@ Write-Host " -> Generated: $SumsPath ($($SumsLines.Count) file entries)" -Foregr
 # Write version.json manifest
 $VersionInfo = [ordered]@{
     schemaVersion = 1
-    product = "Emule-Sion"
+    product = "EMule-Rust"
     version = $AppVersion
     distributionFlavor = $DistributionFlavor
     labToolsEnabled = $LabToolsEnabled
@@ -310,31 +310,31 @@ Write-Host " -> Generated: $VersionJsonPath" -ForegroundColor Green
 # -----------------------------------------------------------------------------
 Write-Host "`nCross-checking bundle consistency (disk <-> version.json <-> SHA256SUMS.txt <-> SBOM)..." -ForegroundColor Yellow
 
-$PrimaryUiPath = Join-Path $DestPath "EmuleSion.exe"
+$PrimaryUiPath = Join-Path $DestPath "eMuleRust.exe"
 if (!(Test-Path $PrimaryUiPath)) {
-    throw "GATE FAILURE: EmuleSion.exe missing from bundle destination!"
+    throw "GATE FAILURE: eMuleRust.exe missing from bundle destination!"
 }
 $ActualUiHash = (Get-FileHash $PrimaryUiPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
-# Verify EmuleSion.exe in version.json
-$VersionUi = $ArtifactsList | Where-Object { $_.path -eq "EmuleSion.exe" }
+# Verify eMuleRust.exe in version.json
+$VersionUi = $ArtifactsList | Where-Object { $_.path -eq "eMuleRust.exe" }
 if (!$VersionUi -or $VersionUi.sha256 -ne $ActualUiHash) {
-    throw "GATE FAILURE: EmuleSion.exe hash mismatch between disk and version.json!"
+    throw "GATE FAILURE: eMuleRust.exe hash mismatch between disk and version.json!"
 }
 
-# Verify EmuleSion.exe in SHA256SUMS.txt
-$SumUiLine = $SumsLines | Where-Object { $_ -match '\s+EmuleSion\.exe$' }
+# Verify eMuleRust.exe in SHA256SUMS.txt
+$SumUiLine = $SumsLines | Where-Object { $_ -match '\s+eMuleRust\.exe$' }
 if (!$SumUiLine -or !$SumUiLine.StartsWith($ActualUiHash)) {
-    throw "GATE FAILURE: EmuleSion.exe hash mismatch between disk and SHA256SUMS.txt!"
+    throw "GATE FAILURE: eMuleRust.exe hash mismatch between disk and SHA256SUMS.txt!"
 }
 
-# Verify EmuleSion.exe in windows-bundle.cdx.json
+# Verify eMuleRust.exe in windows-bundle.cdx.json
 $SbomBundlePath = Join-Path $DestPath "sbom\windows-bundle.cdx.json"
 if (Test-Path $SbomBundlePath) {
     $SbomObj = Get-Content $SbomBundlePath -Raw | ConvertFrom-Json
-    $SbomUi = $SbomObj.components | Where-Object { $_.name -eq "EmuleSion.exe" }
+    $SbomUi = $SbomObj.components | Where-Object { $_.name -eq "eMuleRust.exe" }
     if (!$SbomUi) {
-        throw "GATE FAILURE: EmuleSion.exe missing from windows-bundle.cdx.json components!"
+        throw "GATE FAILURE: eMuleRust.exe missing from windows-bundle.cdx.json components!"
     }
 }
 
@@ -344,7 +344,7 @@ Write-Host " -> Cross-check Passed: 100% consistent across disk, version.json, S
 # 9. Packaging ZIP Archive & Archive SHA-256
 # -----------------------------------------------------------------------------
 if (!$SkipZip) {
-    $ZipName = "EmuleSion-v${AppVersion}-${DistributionFlavor}-windows-x64.zip"
+    $ZipName = "eMuleRust-v${AppVersion}-${DistributionFlavor}-windows-x64.zip"
     $ZipPath = Join-Path (Split-Path $DestPath -Parent) $ZipName
     
     Write-Host "`nCreating distribution archive: $ZipName..." -ForegroundColor Yellow

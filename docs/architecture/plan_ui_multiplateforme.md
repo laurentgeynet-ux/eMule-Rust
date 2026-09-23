@@ -1,4 +1,4 @@
-# Plan UI/UX multiplateforme — Emule-Sion
+# Plan UI/UX multiplateforme — EMule-Rust
 
 Objectif : passer de l'UI de test actuelle à une application sérieuse
 **Windows / Linux / Android / iOS / Web**, toutes pilotées par le même

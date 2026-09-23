@@ -89,7 +89,7 @@ String formatShareableDiagnostics({
       : 'Public (${networkProfile.toKebabCase()})';
 
   final sb = StringBuffer();
-  sb.writeln('=== Emule-Sion Diagnostics (Sanitized) ===');
+  sb.writeln('=== EMule-Rust Diagnostics (Sanitized) ===');
   sb.writeln('Workdir Mode: $workdirMode');
   sb.writeln('Workdir Path: $maskedWorkdir');
   sb.writeln('Confinement: $confinement');
@@ -122,7 +122,7 @@ String formatFullDiagnostics({
       : 'Public (${networkProfile.toKebabCase()})';
 
   final sb = StringBuffer();
-  sb.writeln('=== Emule-Sion Diagnostics (Full Local) ===');
+  sb.writeln('=== EMule-Rust Diagnostics (Full Local) ===');
   sb.writeln('Workdir Mode: $workdirMode');
   sb.writeln('Workdir Path: $workdirPath');
   sb.writeln('Confinement: $confinement');

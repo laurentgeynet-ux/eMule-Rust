@@ -1,5 +1,5 @@
 name: ui_kit
-description: "Shared design system for Emule-Sion apps: theme tokens, formatters, strings, reusable widgets."
+description: "Shared design system for EMule-Rust apps: theme tokens, formatters, strings, reusable widgets."
 publish_to: 'none'
 version: 0.1.0
 

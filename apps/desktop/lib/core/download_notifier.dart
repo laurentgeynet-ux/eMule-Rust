@@ -21,7 +21,7 @@ class DownloadNotifier {
       return;
     }
     try {
-      await localNotifier.setup(appName: 'Emule-Sion');
+      await localNotifier.setup(appName: 'EMule-Rust');
       _ready = true;
     } catch (_) {
       return; // notifier unavailable (e.g. missing dbus on Linux)

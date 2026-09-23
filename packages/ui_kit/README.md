@@ -1,6 +1,6 @@
 # ui_kit
 
-Design system partagé des applications Emule-Sion : tokens de thème,
+Design system partagé des applications EMule-Rust : tokens de thème,
 formatters, chaînes et widgets réutilisables. Consommé par
 `apps/desktop` et destiné à `apps/mobile` / `apps/web`.
 

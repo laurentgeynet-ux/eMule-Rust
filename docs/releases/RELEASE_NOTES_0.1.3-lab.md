@@ -1,14 +1,14 @@
-# Notes de Release — Emule-Sion 0.1.3-lab
+# Notes de Release — EMule-Rust 0.1.3-lab
 
 ## 1. Vue d'Ensemble & Contexte
 
-La version **0.1.3-lab** d'**Emule-Sion** constitue le jalon d'intégration et de consolidation majeure du projet. Elle réunit :
+La version **0.1.3-lab** d'**EMule-Rust** constitue le jalon d'intégration et de consolidation majeure du projet. Elle réunit :
 1. **La complétion du protocole eD2K réel (Tier 3.1 à Tier 3.6)** validé contre l'exécutable officiel eMule 0.50a en environnement loopback hermétique.
 2. **L'intégralité des fonctionnalités de Phase 8** : inspection détaillée, Part Map interactive, catégories locales avec hiérarchie de destination à 4 niveaux, historique SQLite avec rétention et exports caviardés, et import expérimental défensif de fichiers `.part.met` avec rapport d'audit.
 3. **L'industrialisation et le packaging Windows certifiés** : deux saveurs étanches (`standard` et `qa-loopback`), validation de migration de schéma SQLite depuis Phase 7, portabilité vérifiée et matrice de supervision RC complète.
 
 > **Déclaration Explicite de Confinement & Attestation d'Interopérabilité :**  
-> *« Emule-Sion est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
+> *« EMule-Rust est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
 
 ---
 
@@ -66,8 +66,8 @@ La version **0.1.3-lab** d'**Emule-Sion** constitue le jalon d'intégration et d
 
 | Saveur | Fichier Archive ZIP | Taille (octets) | Empreinte SHA-256 |
 | :--- | :--- | :--- | :--- |
-| **Standard** | `EmuleSion-v0.1.3-lab-standard-windows-x64.zip` | 14 830 472 | `406F8A8DB03389D43DE20ECDC6AE7638226194B51C4422CEAE0D21D96FA3EB25` |
-| **QA Loopback** | `EmuleSion-v0.1.3-lab-qa-loopback-windows-x64.zip` | 15 036 190 | `EDF14B8ABA85C90E393C01B8B988E984CC9010F5B365C55407206CA327A1DC70` |
+| **Standard** | `eMuleRust-v0.1.3-lab-standard-windows-x64.zip` | 14 830 472 | `406F8A8DB03389D43DE20ECDC6AE7638226194B51C4422CEAE0D21D96FA3EB25` |
+| **QA Loopback** | `eMuleRust-v0.1.3-lab-qa-loopback-windows-x64.zip` | 15 036 190 | `EDF14B8ABA85C90E393C01B8B988E984CC9010F5B365C55407206CA327A1DC70` |
 
 ### 3.2 Composition et Concordance Quadripartite
 Chaque archive contient **22 fichiers** rigoureusement contrôlés, vérifiés conformes à 100% entre les fichiers physiques, `version.json`, `SHA256SUMS.txt` et le SBOM CycloneDX 1.5 (`sbom/sbom.cdx.json` regroupant 240 composants audités contre `deny.toml`).

@@ -1,4 +1,4 @@
-# Notes de Version — Emule-Sion v0.2.0-RC1
+# Notes de Version — EMule-Rust v0.2.0-RC1
 
 **Date de publication :** 23 Septembre 2026  
 **Statut :** Release Candidate — alignement comportemental eMule 0.72a, UX & résilience Kad

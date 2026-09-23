@@ -57,7 +57,7 @@ async fn test_reference_interop_handshake_nominal_and_anonymized_traces() {
 
     let local_hash = [0x11; 16];
     let (interop_client, peer_info) =
-        ReferenceInteropClient::connect_and_handshake(config, local_hash, "EmuleSionRefTest")
+        ReferenceInteropClient::connect_and_handshake(config, local_hash, "eMuleRustRefTest")
             .await
             .expect("handshake with reference test peer succeeds");
 
@@ -107,7 +107,7 @@ async fn test_reference_interop_file_status_exchange_and_bitmask() {
     let (mut interop_client, _peer_info) = ReferenceInteropClient::connect_and_handshake(
         config,
         local_hash,
-        "EmuleSionFileStatusTest",
+        "eMuleRustFileStatusTest",
     )
     .await
     .expect("handshake succeeds");
@@ -173,7 +173,7 @@ async fn test_reference_interop_block_transfer_canonical_opcodes() {
     let config = ReferencePeerConfig::new(peer_addr).expect("valid config");
     let local_hash = [0x33; 16];
     let (mut interop_client, _peer_info) =
-        ReferenceInteropClient::connect_and_handshake(config, local_hash, "EmuleSionTransferTest")
+        ReferenceInteropClient::connect_and_handshake(config, local_hash, "eMuleRustTransferTest")
             .await
             .expect("handshake succeeds");
 

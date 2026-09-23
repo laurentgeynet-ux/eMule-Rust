@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Automated post-packaging smoke test for the Emule-Sion standalone distribution.
+    Automated post-packaging smoke test for the EMule-Rust standalone distribution.
 .DESCRIPTION
     Phase 7.4 — Smoke test post-packaging:
     Executes in a sterile, temporary directory outside the Git repository:
@@ -42,9 +42,9 @@ $ExpectedFlavor = $Flavor
 
 if ([string]::IsNullOrWhiteSpace($BundleDir)) {
     if ($Flavor -eq "qa-loopback") {
-        $BundleDir = "dist\EmuleSion-Qa-Loopback-Windows"
+        $BundleDir = "dist\eMuleRust-Qa-Loopback-Windows"
     } else {
-        $BundleDir = "dist\EmuleSion-Standard-Windows"
+        $BundleDir = "dist\eMuleRust-Standard-Windows"
     }
 }
 
@@ -58,11 +58,11 @@ if ([string]::IsNullOrWhiteSpace($ZipPath)) {
             if ($parsed.version) { $bundleVer = $parsed.version }
         } catch {}
     }
-    $ZipPath = Join-Path $Root "dist\EmuleSion-v${bundleVer}-${ExpectedFlavor}-windows-x64.zip"
+    $ZipPath = Join-Path $Root "dist\eMuleRust-v${bundleVer}-${ExpectedFlavor}-windows-x64.zip"
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  Emule-Sion Post-Packaging E2E Smoke Test        " -ForegroundColor Cyan
+Write-Host "  EMule-Rust Post-Packaging E2E Smoke Test        " -ForegroundColor Cyan
 Write-Host "  Flavor: $ExpectedFlavor                         " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
@@ -70,9 +70,9 @@ Write-Host "==================================================" -ForegroundColor
 # 1. Setup Isolated Temporary Environment Outside Repository
 # -----------------------------------------------------------------------------
 $TestId = [guid]::NewGuid().ToString("N").Substring(0, 8)
-$IsolatedTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "EmuleSion-SmokeTest-$ExpectedFlavor-$TestId"
-$BundleCopyDir = Join-Path $IsolatedTempRoot "bundle\EmuleSion-Windows"
-$WorkDir = Join-Path $IsolatedTempRoot "workdir\EmuleSion"
+$IsolatedTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "eMuleRust-SmokeTest-$ExpectedFlavor-$TestId"
+$BundleCopyDir = Join-Path $IsolatedTempRoot "bundle\eMuleRust-Windows"
+$WorkDir = Join-Path $IsolatedTempRoot "workdir\eMuleRust"
 
 Write-Host "`n[1/6] Creating isolated test sandbox at:" -ForegroundColor Yellow
 Write-Host "  $IsolatedTempRoot" -ForegroundColor Gray
@@ -140,7 +140,7 @@ try {
 
     $VersionJson = Get-Content $VersionFile -Raw | ConvertFrom-Json
     if ($VersionJson.schemaVersion -ne 1) { throw "Unexpected schemaVersion: $($VersionJson.schemaVersion)" }
-    if ($VersionJson.product -ne "Emule-Sion") { throw "Unexpected product name: $($VersionJson.product)" }
+    if ($VersionJson.product -ne "EMule-Rust") { throw "Unexpected product name: $($VersionJson.product)" }
     if ($VersionJson.protocolVersion -ne 1) { throw "Unexpected protocolVersion: $($VersionJson.protocolVersion)" }
     if ($VersionJson.gitCommit.Length -ne 40) { throw "gitCommit must be a full 40-character SHA hash: $($VersionJson.gitCommit)" }
     if (!$VersionJson.toolchains.rustc) { throw "toolchains.rustc missing from version.json" }
@@ -171,28 +171,28 @@ try {
         }
     }
 
-    # Verify primary UI executable EmuleSion.exe
-    $PackagedUi = Join-Path $BundleCopyDir "EmuleSion.exe"
-    if (!(Test-Path $PackagedUi)) { throw "Primary UI executable 'EmuleSion.exe' missing from bundle root!" }
+    # Verify primary UI executable eMuleRust.exe
+    $PackagedUi = Join-Path $BundleCopyDir "eMuleRust.exe"
+    if (!(Test-Path $PackagedUi)) { throw "Primary UI executable 'eMuleRust.exe' missing from bundle root!" }
 
-    $uiArtifact = $VersionJson.artifacts | Where-Object { $_.path -eq "EmuleSion.exe" }
-    if (!$uiArtifact) { throw "EmuleSion.exe missing from version.json artifacts list!" }
+    $uiArtifact = $VersionJson.artifacts | Where-Object { $_.path -eq "eMuleRust.exe" }
+    if (!$uiArtifact) { throw "eMuleRust.exe missing from version.json artifacts list!" }
 
     if ($SbomBundleObj) {
-        $sbomUiComp = $SbomBundleObj.components | Where-Object { $_.name -eq "EmuleSion.exe" }
-        if (!$sbomUiComp) { throw "EmuleSion.exe missing from windows-bundle.cdx.json components!" }
+        $sbomUiComp = $SbomBundleObj.components | Where-Object { $_.name -eq "eMuleRust.exe" }
+        if (!$sbomUiComp) { throw "eMuleRust.exe missing from windows-bundle.cdx.json components!" }
     }
-    Write-Host " -> 4-way cross-check verified: EmuleSion.exe consistent across disk, version.json, SHA256SUMS, and SBOM." -ForegroundColor Green
+    Write-Host " -> 4-way cross-check verified: eMuleRust.exe consistent across disk, version.json, SHA256SUMS, and SBOM." -ForegroundColor Green
 
-    # Launch EmuleSion.exe briefly to test initialization
-    Write-Host " -> Testing EmuleSion.exe process initialization..." -ForegroundColor Gray
+    # Launch eMuleRust.exe briefly to test initialization
+    Write-Host " -> Testing eMuleRust.exe process initialization..." -ForegroundColor Gray
     $uiProc = Start-Process -FilePath $PackagedUi -PassThru
     Start-Sleep -Milliseconds 1500
     if ($uiProc.HasExited) {
-        throw "EmuleSion.exe crashed on launch! Exit code: $($uiProc.ExitCode)"
+        throw "eMuleRust.exe crashed on launch! Exit code: $($uiProc.ExitCode)"
     }
     Stop-Process -Id $uiProc.Id -Force
-    Write-Host " -> EmuleSion.exe process started and initialized cleanly without crash." -ForegroundColor Green
+    Write-Host " -> eMuleRust.exe process started and initialized cleanly without crash." -ForegroundColor Green
 
     # -------------------------------------------------------------------------
     # 4. Boot Packaged Daemon in Isolated Workdir

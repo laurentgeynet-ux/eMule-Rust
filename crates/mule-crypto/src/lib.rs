@@ -1,4 +1,4 @@
-//! Cryptographic primitives for Emule-Sion.
+//! Cryptographic primitives for EMule-Rust.
 //!
 //! Boundary rules:
 //! - This crate owns all key generation, signing and verification logic.

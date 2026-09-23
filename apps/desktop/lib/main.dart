@@ -53,5 +53,5 @@ void main() async {
     viewModel.initialize(url: Uri.parse('ws://127.0.0.1:4660/rpc'));
   }
 
-  runApp(EmuleSionApp(viewModel: viewModel, supervisor: supervisor));
+  runApp(eMuleRustApp(viewModel: viewModel, supervisor: supervisor));
 }

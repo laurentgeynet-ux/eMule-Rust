@@ -90,7 +90,7 @@ fn test_tier3_divergence_report_anonymity_enforcement() {
     let mut clean_report =
         Tier3DivergenceReport::new("eMule0.50a-test", "abcdef0123456789", "Emule050a");
     clean_report.handshake_status = "passed".to_string();
-    clean_report.record_tag("Nick", "EmuleSionTester");
+    clean_report.record_tag("Nick", "eMuleRustTester");
     clean_report.record_tag("Version", "60");
     clean_report.record_divergence(
         "handshake_tags",

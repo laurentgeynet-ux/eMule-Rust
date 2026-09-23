@@ -1,7 +1,7 @@
 //! Tier 3 External Reference Orchestration module.
 //!
 //! Exposes environment management, binary validation, process guard, and divergence reporting
-//! for executing pinned external binaries against Emule-Sion.
+//! for executing pinned external binaries against EMule-Rust.
 
 pub mod environment;
 pub mod harness;

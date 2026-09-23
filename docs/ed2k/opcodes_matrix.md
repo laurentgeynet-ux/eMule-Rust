@@ -4,7 +4,7 @@
 
 Le protocole eDonkey2000 originel et ses extensions successives (eMule, aMule, cDonkey, MLDonkey) ont introduit des évolutions, des réassignations et des formats alternatifs selon les générations logicielles et les octets de protocole (`0xE3`, `0xC5`, `0xD4`).
 
-Cette matrice formalise les attributions exactes, les directions, les formats sur le fil et le niveau de support dans **Emule-Sion**, en se fondant sur les sources de référence versionnées :
+Cette matrice formalise les attributions exactes, les directions, les formats sur le fil et le niveau de support dans **EMule-Rust**, en se fondant sur les sources de référence versionnées :
 - **eMule 0.72a** *(référence de vérité actuelle)* : `D:\eMule0.72a-Sources\eMule0.72a-Sources\srchybrid` (`opcodes.h`, `DownloadClient.cpp`, `ListenSocket.cpp`, `UploadClient.cpp`, `kademlia/`).
 - **eMule 0.50a** *(références historiques citées dans les tableaux)* : `SomeSupport/eMule` (`srchybrid/opcodes.h`, `DownloadClient.cpp`, `ListenSocket.cpp`, `UploadClient.cpp`).
 - **aMule 2.3.3** : `src/DownloadClient.cpp`, `src/UploadClient.cpp`.
@@ -14,7 +14,7 @@ Cette matrice formalise les attributions exactes, les directions, les formats su
 
 ## 2. Matrice Comparative des Opcodes et Formats Wire
 
-| Message Symbolique | Variante & Source | Protocole Wire | Opcode Wire | Direction | Structure & Layout Payload | Support Emule-Sion | Règle / Invariant Associé |
+| Message Symbolique | Variante & Source | Protocole Wire | Opcode Wire | Direction | Structure & Layout Payload | Support EMule-Rust | Règle / Invariant Associé |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`OP_HELLO`** | Standard eD2K & eMule 0.72a | `PR_ED2K` (`0xE3`) | `0x01` | Client $\rightarrow$ Pair | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Rejet si hash nul ou version incompatible |
 | **`OP_HELLO_ANSWER`** | Standard eD2K & eMule 0.72a | `PR_ED2K` (`0xE3`) | `0x4C` | Pair $\rightarrow$ Client | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Préservation des tags inconnus sans désérialisation non sécurisée |
@@ -65,7 +65,7 @@ filedata->WriteUInt32(block->EndOffset + 1);
 La borne `EndOffset` en mémoire interne d'eMule est inclusive (`0..184319`), mais **la valeur écrite sur le fil est augmentée de 1 (`EndOffset + 1`)**, ce qui en fait une borne **strictement exclusive** sur le fil :
 $$\text{bytes\_count} = \text{wire\_end} - \text{wire\_start}$$
 
-### Prise en Compte dans Emule-Sion
+### Prise en Compte dans EMule-Rust
 - **Constructeur canonique** : `Ed2kBlockRange::from_wire_bounds(start, end)` vérifie `start < end` et transmet directement l'intervalle semi-ouvert `[start, end)`.
 - **Compatibilité legacy** : `Ed2kBlockRange::from_legacy_inclusive_wire_bounds(start, end_inclusive)` permet de convertir des sources documentaires ou de vieux clients transmettant une borne inclusive (`end_inclusive.checked_add(1)`).
 - **Bloc résiduel de fin de fichier** :

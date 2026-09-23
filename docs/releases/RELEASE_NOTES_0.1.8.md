@@ -1,4 +1,4 @@
-# Notes de Version — Emule-Sion v0.1.8
+# Notes de Version — EMule-Rust v0.1.8
 
 **Date de publication :** 19 Septembre 2026  
 **Statut :** Release de Performance, Stabilité d'Essaim & Observabilité
@@ -7,7 +7,7 @@
 
 ## 1. Synthèse de la Version
 
-La version **v0.1.8** d'Emule-Sion apporte des optimisations déterminantes pour le téléchargement multi-pairs en essaim réel face à des clients eMule officiels, le respect strict des mécanismes de files d'attente distantes (*Queue Ranking*), l'équité des téléversements et une observabilité de niveau industriel :
+La version **v0.1.8** d'EMule-Rust apporte des optimisations déterminantes pour le téléchargement multi-pairs en essaim réel face à des clients eMule officiels, le respect strict des mécanismes de files d'attente distantes (*Queue Ranking*), l'équité des téléversements et une observabilité de niveau industriel :
 
 1. **Agrégation Multi-Pairs du Débit (`sync_transfer_rates`)** :
    - Fin des chutes brutales de débit à 0 B/s : la vitesse de téléchargement par fichier est calculée dynamiquement comme la somme instantanée de tous les pairs actifs transférant des blocs pour ce hash.
@@ -32,7 +32,7 @@ La version **v0.1.8** d'Emule-Sion apporte des optimisations déterminantes pour
    - `[SYSTEM_HEARTBEAT]` : Synthèse consolidée de l'état du démon émise toutes les 60 secondes.
 
 6. **Cartographie Exhaustive du Dépôt** :
-   - Fichier [`docs/INDEX.md`](file:///d:/Projet/Emule-Sion/docs/INDEX.md) inventoriant et documentant chaque fichier versionné du projet.
+   - Fichier [`docs/INDEX.md`](file:///d:/Projet/EMule-Rust/docs/INDEX.md) inventoriant et documentant chaque fichier versionné du projet.
 
 ---
 

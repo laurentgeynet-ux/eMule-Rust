@@ -178,7 +178,7 @@ pub struct UploadManager {
     /// Minimum upload bandwidth per slot in bytes/sec (eMule `MinUpload`):
     /// a new slot is only opened when existing slots still reach it.
     min_upload_rate_bps: Arc<std::sync::atomic::AtomicU64>,
-    /// Quota journalier d'upload (Emule-Sion `dailyUploadQuotaGb`) — quand
+    /// Quota journalier d'upload (EMule-Rust `dailyUploadQuotaGb`) — quand
     /// `false`, aucune nouvelle demande de slot n'est acceptée.
     quota_gate: Arc<std::sync::RwLock<Arc<AtomicBool>>>,
     /// Total cumulatif des octets uploadés depuis le démarrage du daemon

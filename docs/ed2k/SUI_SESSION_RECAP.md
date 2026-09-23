@@ -1,4 +1,4 @@
-# Récapitulatif de session — Chiffrement et identité cryptographique Emule-Sion
+# Récapitulatif de session — Chiffrement et identité cryptographique EMule-Rust
 
 Date : 2026-09-19
 Périmètre : audit de l'existant, spécification wire SUI dérivée des sources eMule/aMule, corrections appliquées, architecture cible.
@@ -35,7 +35,7 @@ Fichier : `crates/mule-daemon/src/services/inbound_listener/dispatcher.rs` (lign
 
 **Opcodes inversés** dans `crates/mule-protocol/src/ed2k/opcodes.rs` :
 
-| Opcode | eMule officiel (`opcodes.h`) | Emule-Sion (avant → après) |
+| Opcode | eMule officiel (`opcodes.h`) | EMule-Rust (avant → après) |
 |---|---|---|
 | `OP_PUBLICKEY` | `0x85` | `0x85` ✓ |
 | `OP_SIGNATURE` | **`0x86`** | `0x87` → `0x86` ✓ |
@@ -59,7 +59,7 @@ Référence complète : `docs/ed2k/SUI_WIRE_FORMAT.md`. Sources : repo `irwir/eM
 - Clé privée `InvertibleRSAFunction` sérialisée en **DER puis encodée Base64** — fichier texte, pas binaire.
 - Contenu DER : composantes `n, e, d, p, q, dp, dq, u` (BER sequence).
 - Clé publique wire = `pubkey.DEREncode()` dans ≤ 80 octets = `SEQUENCE { n INTEGER, e INTEGER }`. C'est ce blob DER qui circule dans `OP_PUBLICKEY` et qui est épinglé dans les crédits.
-- Politique Emule-Sion : fichier corrompu → **quarantaine horodatée**, jamais d'écrasement silencieux (perte de crédits historiques).
+- Politique EMule-Rust : fichier corrompu → **quarantaine horodatée**, jamais d'écrasement silencieux (perte de crédits historiques).
 
 ### 2.3 Contenu signé
 
@@ -69,7 +69,7 @@ V2 : pubkey_challenger[keylen] || challenge u32 LE || ip u32 LE || kind u8  → 
 ```
 
 - Le signataire signe **la clé publique du challenger** (liaison bilatérale), suivie du challenge reçu.
-- `challenge` : u32, émis par le challenger dans `OP_SECIDENTSTATE` (`m_dwCryptRndChallengeFor` côté émetteur, `From` côté récepteur). eMule utilise `rand()+1` (non crypto) — Emule-Sion utilisera `OsRng`, compatible.
+- `challenge` : u32, émis par le challenger dans `OP_SECIDENTSTATE` (`m_dwCryptRndChallengeFor` côté émetteur, `From` côté récepteur). eMule utilise `rand()+1` (non crypto) — EMule-Rust utilisera `OsRng`, compatible.
 
 ### 2.4 Messages wire
 
@@ -107,7 +107,7 @@ Deux cryptographies séparées, jamais les mêmes clés :
 | Besoin | Mécanisme | Rôle |
 |---|---|---|
 | Compatibilité eMule/aMule | **RSA-384 + PKCS1v15/SHA-1** (legacy SUI) | Prouver la possession du `user_hash`, préserver les crédits |
-| Identité moderne Emule-Sion | **Ed25519** | Signatures des extensions propriétaires |
+| Identité moderne EMule-Rust | **Ed25519** | Signatures des extensions propriétaires |
 | Échange de clés / canaux | **X25519 + HKDF + ChaCha20-Poly1305** | Sessions éphémères chiffrées |
 | Intégrité moderne | BLAKE3 / SHA-256 | Complément à MD4/AICH legacy |
 
@@ -145,7 +145,7 @@ Règles : les décodeurs restent purs (format seulement) ; `mule-crypto` est la 
 
 ### 3.5 Canal moderne (Ed25519)
 
-Jamais de surcharge silencieuse d'`OP_SIGNATURE` : négociation de capacité Emule-Sion explicite + sous-protocole versionné séparé. Les keypairs Ed25519 et X25519 sont **distincts** (la conversion directe de seed est incorrecte).
+Jamais de surcharge silencieuse d'`OP_SIGNATURE` : négociation de capacité EMule-Rust explicite + sous-protocole versionné séparé. Les keypairs Ed25519 et X25519 sont **distincts** (la conversion directe de seed est incorrecte).
 
 ---
 
@@ -161,7 +161,7 @@ Objectif plus large : chiffrer les transmissions et anonymiser via routage multi
 **Corrections apportées à l'analyse initiale** :
 1. Nonce ChaCha20-Poly1305 : jamais de nonce constant par clé (compteur ou nonce aléatoire par paquet).
 2. Pas de conversion naïve Ed25519→X25519 : deux keypairs séparés.
-3. Les relais doivent être des clients Emule-Sion — les 280 contacts KAD (eMule officiels) ignoreront tout opcode propriétaire. Problème de découverte des capacités = prérequis majeur non résolu.
+3. Les relais doivent être des clients EMule-Rust — les 280 contacts KAD (eMule officiels) ignoreront tout opcode propriétaire. Problème de découverte des capacités = prérequis majeur non résolu.
 4. Oignon UDP adapté aux requêtes KAD/chat (< MTU) ; transfert de blocs = tunnels TCP multi-sauts.
 5. Arti/Tor écarté pour le transfert de fichiers (saturation, cellules 512 o, exit nodes bloquant le P2P).
 

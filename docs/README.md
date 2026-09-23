@@ -1,6 +1,6 @@
-# Portail de Documentation — Emule-Sion 🚀
+# Portail de Documentation — EMule-Rust 🚀
 
-Bienvenue sur la documentation technique d'**Emule-Sion**, une réimplémentation moderne, modulaire et hautement sécurisée des protocoles **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur d'outils **Model Context Protocol (MCP)** pour agents IA.
+Bienvenue sur la documentation technique d'**EMule-Rust**, une réimplémentation moderne, modulaire et hautement sécurisée des protocoles **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur d'outils **Model Context Protocol (MCP)** pour agents IA.
 
 Le projet est architecturé en **Rust** (moteur de téléchargement, codec filaire, démon asynchrone Tokio et serveur MCP) et en **Flutter Desktop** (interface graphique Windows en Clean Architecture MVVM).
 

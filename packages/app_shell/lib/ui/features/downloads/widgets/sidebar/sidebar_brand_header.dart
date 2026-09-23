@@ -28,16 +28,14 @@ class SidebarBrandHeader extends StatelessWidget {
         children: [
           Tooltip(
             message: '${context.l10n.appName} - ${context.l10n.appTagline}',
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.cloud_download_rounded,
-                color: AppTheme.primary,
-                size: 26,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.asset(
+                'assets/brand_icon.png',
+                package: 'app_shell',
+                width: 38,
+                height: 38,
+                fit: BoxFit.cover,
               ),
             ),
           ),

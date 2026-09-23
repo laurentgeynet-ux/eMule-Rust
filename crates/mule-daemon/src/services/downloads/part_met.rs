@@ -369,7 +369,7 @@ pub fn import_part_met(
     };
 
     let report = format!(
-        "=== Emule-Sion .part.met Import Audit Report ===\n\
+        "=== EMule-Rust .part.met Import Audit Report ===\n\
          Format Version: {met_version_str}\n\
          File Name: {}\n\
          Declared Total Size: {total_size} bytes\n\

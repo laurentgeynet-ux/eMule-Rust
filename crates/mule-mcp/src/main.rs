@@ -17,9 +17,9 @@ use mule_mcp::{
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "mule-mcp")]
-#[command(about = "Model Context Protocol (MCP) server for Emule-Sion")]
+#[command(about = "Model Context Protocol (MCP) server for EMule-Rust")]
 struct Cli {
-    /// Explicit WebSocket RPC URL of the Emule-Sion daemon (e.g. ws://127.0.0.1:4660/rpc)
+    /// Explicit WebSocket RPC URL of the EMule-Rust daemon (e.g. ws://127.0.0.1:4660/rpc)
     #[arg(long)]
     url: Option<String>,
 
@@ -27,11 +27,11 @@ struct Cli {
     #[arg(long)]
     token: Option<String>,
 
-    /// Path to Emule-Sion workdir where session.json and auth.token reside
+    /// Path to EMule-Rust workdir where session.json and auth.token reside
     #[arg(long)]
     workdir: Option<PathBuf>,
 
-    /// Path to EmuleSion.exe executable or application bundle root
+    /// Path to eMuleRust.exe executable or application bundle root
     #[arg(long)]
     app: Option<PathBuf>,
 }
@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let cli = Cli::parse();
-    info!("Starting Emule-Sion MCP Server v{SERVER_VERSION}...");
+    info!("Starting EMule-Rust MCP Server v{SERVER_VERSION}...");
 
     // Attempt non-fatal initial connection to daemon
     let initial_client = match DaemonClient::connect(
@@ -93,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(c)
         }
         Err(e) => {
-            warn!("Emule-Sion daemon not currently reachable ({e}). MCP server will connect on demand.");
+            warn!("EMule-Rust daemon not currently reachable ({e}). MCP server will connect on demand.");
             None
         }
     };
@@ -183,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let tool_result = match client_res {
                     Ok(client) => execute_tool(&client, tool_name, args).await,
                     Err(e) => ToolCallResult::error(format!(
-                        "Could not connect to Emule-Sion daemon: {e}. Please ensure Emule-Sion is running."
+                        "Could not connect to EMule-Rust daemon: {e}. Please ensure EMule-Rust is running."
                     )),
                 };
 

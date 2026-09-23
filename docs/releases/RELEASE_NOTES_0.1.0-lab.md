@@ -1,8 +1,8 @@
-# Notes de Release — Emule-Sion 0.1.0-lab
+# Notes de Release — EMule-Rust 0.1.0-lab
 
 ## 1. Vue d'Ensemble
 
-La release **0.1.0-lab** constitue le premier jalon stable et figé du projet **Emule-Sion**. Elle formalise et verrouille l'ensemble des travaux de décodage filaire eD2K, le moteur de stockage éparse, la supervision locale et les mécanismes de validation d'interopérabilité sans dépendre d'aucun réseau externe.
+La release **0.1.0-lab** constitue le premier jalon stable et figé du projet **EMule-Rust**. Elle formalise et verrouille l'ensemble des travaux de décodage filaire eD2K, le moteur de stockage éparse, la supervision locale et les mécanismes de validation d'interopérabilité sans dépendre d'aucun réseau externe.
 
 ---
 
@@ -80,7 +80,7 @@ flutter test
 ## 6. Scoreboard Final des Validations
 
 ```
-=== SCOREBOARD EMULE-SION 0.1.0-LAB ===
+=== SCOREBOARD EMULE-RUST 0.1.0-LAB ===
 
 Rust Crates :
   - mule-core     :  12 tests réussis
@@ -103,7 +103,7 @@ ANONYMISATION     : 100 % validée mécaniquement (Unicode NFC + bidi/ctrl écha
 ## 7. Livrables de la Release Candidate (Industrialisation Locale)
 
 Le bundle autonome Windows x64 est généré par `scripts/build_windows_release.ps1` :
-- **Exécutable Principal** : `EmuleSion.exe` (binaire UI Flutter Desktop Windows autonome).
+- **Exécutable Principal** : `eMuleRust.exe` (binaire UI Flutter Desktop Windows autonome).
 - **Démon d'Arrière-Plan** : `bin/mule-daemon.exe` (moteur local supervisé).
 - **Manifeste de Traçabilité** : `version.json` (commit Git exact, horodatage UTC, versions des toolchains, `gitDirty: false`).
 - **Sommes de Contrôle** : `SHA256SUMS.txt` pour les fichiers du bundle.
@@ -113,6 +113,6 @@ Le bundle autonome Windows x64 est généré par `scripts/build_windows_release.
   - `sbom/windows-bundle.cdx.json` : composants binaires Windows assemblés.
   - `sbom/sbom.cdx.json` : 239 composants consolidés.
   - `sbom/license-audit.md` : rapport de conformité confirmant 100% de compatibilité avec `deny.toml`.
-- **Archive Scellée** : `EmuleSion-v0.1.0-lab-windows-x64.zip` (16 386 637 octets) et son empreinte cryptographique `EmuleSion-v0.1.0-lab-windows-x64.zip.sha256` :
+- **Archive Scellée** : `eMuleRust-v0.1.0-lab-windows-x64.zip` (16 386 637 octets) et son empreinte cryptographique `eMuleRust-v0.1.0-lab-windows-x64.zip.sha256` :
   `09023bb37bfb45d5a028ada95f5681a4e42df451badd04ca4b9d4ecc99836245`
 - **Validation QA** : Protocole détaillé dans [docs/QA_RECEPTION_PROTOCOL.md](docs/QA_RECEPTION_PROTOCOL.md) et scripts de test automatisés (`scripts/test_packaged_bundle.ps1`, `scripts/test_rc_matrix.ps1`).

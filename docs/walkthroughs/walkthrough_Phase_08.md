@@ -1,6 +1,6 @@
 # Walkthrough — Phase 8.1 & 8.2 : Inspection, Destinations, Historique et Statistiques Locales
 
-Phase 8 enrichit le client de bureau **Emule-Sion** avec une gestion locale complète des transferts et de l'audit, tout en maintenant strictement la frontière locale loopback (`127.0.0.1`), la séparation entre les données temporaires de travail (`data/temp/`) et les répertoires finaux (`downloads/`), ainsi qu'une politique de zéro télémétrie.
+Phase 8 enrichit le client de bureau **EMule-Rust** avec une gestion locale complète des transferts et de l'audit, tout en maintenant strictement la frontière locale loopback (`127.0.0.1`), la séparation entre les données temporaires de travail (`data/temp/`) et les répertoires finaux (`downloads/`), ainsi qu'une politique de zéro télémétrie.
 
 ---
 
@@ -130,7 +130,7 @@ Phase 8.2 apporte une traçabilité complète et des métriques d'activité agr�
 
 ## 4. Catégories Locales & Hiérarchie de Destination (Phase 8.3)
 
-Phase 8.3 dote Emule-Sion d'un système complet d'organisation locale des téléchargements avec attribution de priorités et de destinations par défaut.
+Phase 8.3 dote EMule-Rust d'un système complet d'organisation locale des téléchargements avec attribution de priorités et de destinations par défaut.
 
 ### 1. Invariant absolu de sécurité :
 - **La suppression d'une catégorie ne supprime JAMAIS aucun fichier ni aucun téléchargement.**
@@ -162,7 +162,7 @@ $$\text{targetDirectory (explicite)} > \text{defaultDestination (catégorie)} > 
 
 ```
 +-------------------------------------------------------------------------------------------------+
-|                                         Emule-Sion GUI                                          |
+|                                         EMule-Rust GUI                                          |
 |   +-----------------------+   +----------------------+   +-------------------+   +----------+   |
 |   |   SettingsDialog      |   |   HistoryView        |   | DownloadDetail    |   | Category |   |
 |   |   - Destination glob. |   |   - Stats 4 fenêtres |   |   - Part map      |   | Dialog   |   |
@@ -275,7 +275,7 @@ No issues found!
   Phase 7.3 : Automated QA Loopback E2E Pipeline  
 ==================================================
 
-[1/7] Creating isolated test sandbox at: C:\Users\Lou\AppData\Local\Temp\EmuleSion-QaE2E-bff77102
+[1/7] Creating isolated test sandbox at: C:\Users\Lou\AppData\Local\Temp\eMuleRust-QaE2E-bff77102
  -> portable.flag verified in bundle root.
 [2/7] Booting packaged daemon binary in portable mode:
  -> Loopback confinement verified on ws://127.0.0.1:4660/rpc.
@@ -342,8 +342,8 @@ Phase 8.5 finalise le cycle produit complet en livrant des archives portables Wi
 
 | Caractéristique | Saveur Standard (`standard`) | Saveur QA Loopback (`qa-loopback`) |
 | :--- | :--- | :--- |
-| **Archive livrable** | `EmuleSion-v0.1.2-lab-standard-windows-x64.zip` | `EmuleSion-v0.1.2-lab-qa-loopback-windows-x64.zip` |
-| **Dossier de staging** | `dist/EmuleSion-Standard-Windows` | `dist/EmuleSion-Qa-Loopback-Windows` |
+| **Archive livrable** | `eMuleRust-v0.1.2-lab-standard-windows-x64.zip` | `eMuleRust-v0.1.2-lab-qa-loopback-windows-x64.zip` |
+| **Dossier de staging** | `dist/eMuleRust-Standard-Windows` | `dist/eMuleRust-Qa-Loopback-Windows` |
 | **Feature `lab-tools`** | **Désactivée** (compilation sans code de test) | **Activée** (génération de fixtures et simulation) |
 | **Méthodes RPC `lab.*`** | Absentes (-32601 MethodNotFound) | Présentes et fonctionnelles |
 | **Capacités RPC** | `downloads`, `download-events`, `history`, `categories`, `import_part_met` | `downloads`, `download-events`, `history`, `categories`, `import_part_met`, `lab-tools` |
@@ -396,13 +396,13 @@ flutter test    : 74 tests passés avec 100% de succès.
 #### Smoke Test Post-Packaging (`scripts/test_packaged_bundle.ps1`)
 ```
 ==================================================
-  Emule-Sion Post-Packaging E2E Smoke Test        
+  EMule-Rust Post-Packaging E2E Smoke Test        
   Flavors: standard & qa-loopback
 ==================================================
  -> Archive SHA-256 vérifié à 100% contre .zip.sha256.
  -> Extraction sterile en sandbox isolée sous AppData/Local/Temp.
  -> 22/22 hachages de fichiers validés avec exactitude via SHA256SUMS.txt.
- -> Processus EmuleSion.exe démarré et initialisé proprement sans plantage.
+ -> Processus eMuleRust.exe démarré et initialisé proprement sans plantage.
  -> Confinement loopback (127.0.0.1:4660) et token d'authentification 256 bits vérifiés.
  -> Contrats JSON-RPC validés (system.hello, system.status, system.stop).
  -> Absence absolue des méthodes lab.* dans la saveur standard (-32601 MethodNotFound).
@@ -433,7 +433,7 @@ flutter test    : 74 tests passés avec 100% de succès.
 #### Matrice d'Environnement & Supervision RC (`scripts/test_rc_matrix.ps1`)
 ```
 ==================================================
-  Emule-Sion RC Environment & Supervision Matrix  
+  EMule-Rust RC Environment & Supervision Matrix  
 ==================================================
 [1/6] Répertoires Unicode, caractères non-ASCII et espaces : PASS
 [2/6] Conflit de port TCP 4660 & bascule dynamique sur port éphémère : PASS

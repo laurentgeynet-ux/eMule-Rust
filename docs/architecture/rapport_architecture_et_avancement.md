@@ -1,6 +1,6 @@
-# Rapport Détaillé : Architecture & État d'Avancement du Projet Emule-Sion
+# Rapport Détaillé : Architecture & État d'Avancement du Projet EMule-Rust
 
-**Projet :** Emule-Sion  
+**Projet :** EMule-Rust  
 **Date :** 23 Septembre 2026  
 **Version Workspace :** `v0.2.0-RC1` (Desktop `v0.2.0-RC1+1`)  
 **Auteurs :** Analyse d'ingénierie logicielle & architecture système  
@@ -10,12 +10,12 @@
 
 ## 1. Introduction & Vision du Projet
 
-**Emule-Sion** est une réimplémentation moderne, modulaire et hautement sécurisée des protocoles historiques de partage pair-à-pair **eD2K (eDonkey2000)** et de table de hachage distribuée **Kademlia (Kad DHT)**, ainsi qu'un écosystème outillé pour les agents IA via le protocole **MCP (Model Context Protocol)**.
+**EMule-Rust** est une réimplémentation moderne, modulaire et hautement sécurisée des protocoles historiques de partage pair-à-pair **eD2K (eDonkey2000)** et de table de hachage distribuée **Kademlia (Kad DHT)**, ainsi qu'un écosystème outillé pour les agents IA via le protocole **MCP (Model Context Protocol)**.
 
 Le système est architecturé en trois composantes majeures :
 1. **Un moteur bas niveau en Rust (`crates/`)** : gestionnaire de stockage éparse, codecs filaires bornés, machine d'états protocolaire, démon local asynchrone (Tokio), swarm dynamique équitable (water-filling), routage DHT Kad v2 avec métrique numérique 128-bit, persistance SQLite WAL, politique réseau défensive en 7 couches avec anti-SSRF et limitation de débit.
 2. **Une interface graphique de bureau en Flutter Desktop (Windows)** : interface réactive Clean Architecture (MVVM), ergonomique et modulaire connectée au démon via une liaison bidirectionnelle WebSocket JSON-RPC 2.0.
-3. **Un serveur d'outils d'agent IA (`mule-mcp`)** : serveur MCP natif exposant l'intégralité du contrôle d'Emule-Sion (téléchargements, swarm, serveurs, Kad DHT, upload/shares, identité et politique réseau) sous forme d'outils invocables par des assistants IA.
+3. **Un serveur d'outils d'agent IA (`mule-mcp`)** : serveur MCP natif exposant l'intégralité du contrôle d'EMule-Rust (téléchargements, swarm, serveurs, Kad DHT, upload/shares, identité et politique réseau) sous forme d'outils invocables par des assistants IA.
 
 ### 1.1 Philosophie Fondamentale : Confinement & Déterminisme de Laboratoire
 
@@ -309,7 +309,7 @@ Toutes les exigences issues de l'audit de sécurité des connexions réseau ont 
 
 2. **Couche Kademlia (UDP)** :
    * Filtrage immédiat de chaque datagramme entrant contre la politique anti-SSRF (`classify_ip`) et l'IPFilter.
-   * Limiteur de débit par IP (`IpRateLimiter`) empêchant l'utilisation d'Emule-Sion comme réflecteur d'attaque par déni de service (DRDoS).
+   * Limiteur de débit par IP (`IpRateLimiter`) empêchant l'utilisation d'EMule-Rust comme réflecteur d'attaque par déni de service (DRDoS).
    * Bornage strict du conteneur des transactions en vol : timeout de 3 s, cap de 200 entrées, guard RAII `InFlightTxGuard` retirant l'entrée à l'abandon de la future (annulation par timeout externe incluse), et purge des entrées âgées de plus de `timeout+2 s` à chaque insertion — aucune fuite ne peut saturer la map ni détourner une réponse.
    * Invariant de verrouillage : `in_flight` n'est jamais tenu pendant un await sur `routing_table` (handlers `HelloRes`/`BootstrapRes`), et `routing_table` n'est jamais tenu pendant un await sur `in_flight`/`downloads`/`firewall` (`KadService::get_status`) — un cycle d'ordonnancement contraire a gelé le pipeline Kad en session WAN réelle et a été corrigé.
 
@@ -362,22 +362,22 @@ flutter test
 
 ## 9. Inventaire Exhaustif des Guides Techniques & Walkthroughs (`docs/`)
 
-Chaque phase et sous-système d'Emule-Sion dispose d'un guide technique d'exécution et de validation détaillé, accessible via l'index maître [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/INDEX.md) :
+Chaque phase et sous-système d'EMule-Rust dispose d'un guide technique d'exécution et de validation détaillé, accessible via l'index maître [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/INDEX.md) :
 
 | Document | Phase Couverte | Contenu Clé |
 | :--- | :--- | :--- |
-| [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/INDEX.md) | **Toutes (1 à 15)** | Index maître, orientation thématique et commandes de validation globales. |
-| [`docs/walkthroughs/walkthrough_Phase_01_a_03c.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_01_a_03c.md) | **Phase 1 à 3C** | Fondations Rust, démon Tokio, UI initiale, durcissement produit, verrous `fs4`, tokens CSPRNG, packaging. |
-| [`docs/walkthroughs/walkthrough_Tier3_eMule050a.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Tier3_eMule050a.md) | **Tier 3.1 à 3.6** | Interopérabilité loopback eMule 0.50a officiel, handshake, bitfields, blocs 9.28 Mo, résidu 1 octet, crash recovery. |
-| [`docs/walkthroughs/walkthrough_Phase_07.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_07.md) | **Phase 7.2** | Mode portable hybride, étanchéité `data/` vs `downloads/`, persistance de suppression SQLite, pipeline QA E2E. |
-| [`docs/walkthroughs/walkthrough_Phase_08.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_08.md) | **Phase 8.1 à 8.5** | Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`, packaging multi-saveurs. |
-| [`docs/walkthroughs/walkthrough_Phase_09.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_09.md) | **Phase 9.0 & 9.1** | Politique réseau défensive (7 couches, permis RAII, Kill Switch), IP Filter (`ipfilter.dat`), Token Bucket, pseudonymisation salée. |
-| [`docs/walkthroughs/walkthrough_Phase_10.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_10.md) | **Phase 10.0 à 10.2** | Local `server.met` parsing, session TCP serveur eD2K réelle (Lugdunum), HighID/LowID, recherche et sources serveur. |
-| [`docs/walkthroughs/walkthrough_Phase_11.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_11.md) | **Phase 11** | Swarm multi-sources, allocateur dynamique Water-Filling Max-Min, démarrage basse latence (30s/60s/300s), tags fixes eD2K. |
-| [`docs/walkthroughs/walkthrough_Phase_12.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_12.md) | **Phase 12** | Fondations Kad DHT, KadId 128-bit, K-Buckets LRU, transport UDP, bootstrap local et écran Kad UI. |
-| [`docs/walkthroughs/walkthrough_Phase_13.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_13.md) | **Phase 13** | Source Exchange v4 (SX1/SX2), blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif MCP (83 outils). |
-| [`docs/walkthroughs/walkthrough_Phase_14.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_14.md) | **Phase 14** | Convergence recherche Kad DHT (CUInt128 DWORDs, opcode 0x3B, anti-stall decay) et refactorisation Clean Architecture. |
-| [`docs/walkthroughs/walkthrough_Phase_15.md`](file:///d:/Projet/Emule-Sion/docs/walkthroughs/walkthrough_Phase_15.md) | **Phase 15** | Téléchargement multi-pairs réel (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue`), logs stratégiques, `INDEX.md`. |
+| [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/INDEX.md) | **Toutes (1 à 15)** | Index maître, orientation thématique et commandes de validation globales. |
+| [`docs/walkthroughs/walkthrough_Phase_01_a_03c.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_01_a_03c.md) | **Phase 1 à 3C** | Fondations Rust, démon Tokio, UI initiale, durcissement produit, verrous `fs4`, tokens CSPRNG, packaging. |
+| [`docs/walkthroughs/walkthrough_Tier3_eMule050a.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Tier3_eMule050a.md) | **Tier 3.1 à 3.6** | Interopérabilité loopback eMule 0.50a officiel, handshake, bitfields, blocs 9.28 Mo, résidu 1 octet, crash recovery. |
+| [`docs/walkthroughs/walkthrough_Phase_07.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_07.md) | **Phase 7.2** | Mode portable hybride, étanchéité `data/` vs `downloads/`, persistance de suppression SQLite, pipeline QA E2E. |
+| [`docs/walkthroughs/walkthrough_Phase_08.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_08.md) | **Phase 8.1 à 8.5** | Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`, packaging multi-saveurs. |
+| [`docs/walkthroughs/walkthrough_Phase_09.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_09.md) | **Phase 9.0 & 9.1** | Politique réseau défensive (7 couches, permis RAII, Kill Switch), IP Filter (`ipfilter.dat`), Token Bucket, pseudonymisation salée. |
+| [`docs/walkthroughs/walkthrough_Phase_10.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_10.md) | **Phase 10.0 à 10.2** | Local `server.met` parsing, session TCP serveur eD2K réelle (Lugdunum), HighID/LowID, recherche et sources serveur. |
+| [`docs/walkthroughs/walkthrough_Phase_11.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_11.md) | **Phase 11** | Swarm multi-sources, allocateur dynamique Water-Filling Max-Min, démarrage basse latence (30s/60s/300s), tags fixes eD2K. |
+| [`docs/walkthroughs/walkthrough_Phase_12.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_12.md) | **Phase 12** | Fondations Kad DHT, KadId 128-bit, K-Buckets LRU, transport UDP, bootstrap local et écran Kad UI. |
+| [`docs/walkthroughs/walkthrough_Phase_13.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_13.md) | **Phase 13** | Source Exchange v4 (SX1/SX2), blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif MCP (83 outils). |
+| [`docs/walkthroughs/walkthrough_Phase_14.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_14.md) | **Phase 14** | Convergence recherche Kad DHT (CUInt128 DWORDs, opcode 0x3B, anti-stall decay) et refactorisation Clean Architecture. |
+| [`docs/walkthroughs/walkthrough_Phase_15.md`](file:///d:/Projet/EMule-Rust/docs/walkthroughs/walkthrough_Phase_15.md) | **Phase 15** | Téléchargement multi-pairs réel (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue`), logs stratégiques, `INDEX.md`. |
 
 ---
 
@@ -473,7 +473,7 @@ Session centrée sur le pilotage fin de l'upload, la fidélité eMule des limite
 
 ## 13. Conclusion
 
-Le projet **Emule-Sion** a franchi avec succès les jalons de conception les plus exigeants :
+Le projet **EMule-Rust** a franchi avec succès les jalons de conception les plus exigeants :
 * L'architecture a atteint le stade **v0.2.0-RC1** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
 * Les fonctionnalités de transfert multi-sources, de décompression continue zlib, de Source Exchange v1/v2, et de convergence Kad DHT avec calcul métrique 128 bits eMule sont pleinement opérationnelles.
 * La Phase 16 a ajouté l'interopérabilité réseau essentielle : vérification par hashset, AICH réseau, publication serveur (`OP_OFFERFILES`), callback LowID, écriture `.part.met`, nœud de stockage Kad, upload compressé et multi-slots.

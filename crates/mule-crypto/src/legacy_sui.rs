@@ -4,7 +4,7 @@
 //! the signature scheme is `CryptoPP::RSASSA_PKCS1v15_SHA` and the signed payload
 //! is `challenger_pubkey_der || challenge_u32_le [|| ip_u32_le || kind_u8]`.
 //!
-//! Compatibility only — never reuse this for modern Emule-Sion cryptography.
+//! Compatibility only — never reuse this for modern EMule-Rust cryptography.
 
 use rsa::pkcs1v15::Pkcs1v15Sign;
 use rsa::traits::PublicKeyParts;

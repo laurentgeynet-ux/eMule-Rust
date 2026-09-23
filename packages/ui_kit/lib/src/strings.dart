@@ -1,4 +1,4 @@
-/// Centralized UI strings for the Emule-Sion desktop application.
+/// Centralized UI strings for the EMule-Rust desktop application.
 /// All user-facing strings are strictly in English to ensure international consistency
 /// and provide a clean foundation for future i18n/localization files.
 @Deprecated(
@@ -7,7 +7,7 @@
 )
 abstract final class AppStrings {
   // Application branding
-  static const String appName = 'Emule-Sion';
+  static const String appName = 'EMule-Rust';
   static const String appTagline = 'Modern eD2K Client';
 
   // Network & Mode Badges

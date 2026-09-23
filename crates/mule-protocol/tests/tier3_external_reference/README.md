@@ -1,6 +1,6 @@
 # Tier 3 External Reference Orchestration Harness
 
-This module implements the **Tier 3 External Reference Orchestration Adapter** for Emule-Sion.
+This module implements the **Tier 3 External Reference Orchestration Adapter** for EMule-Rust.
 
 ## Official Project Attestation Statement
 

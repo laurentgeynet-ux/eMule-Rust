@@ -34,7 +34,7 @@ class WorkDirectoryResolver {
   /// 1. [customDir] (explicit CLI override), [customDownloadsDir]
   /// 2. [environment] EMULE_SION_WORKDIR (or legacy MULE_DATA_DIR)
   /// 3. portable.flag adjacent to executable or bundle root -> `<bundle_root>/data` & `<bundle_root>/downloads`
-  /// 4. System default (%LOCALAPPDATA%\EmuleSion on Windows, ~/.emule_sion on Unix; %USERPROFILE%\Downloads\EmuleSion)
+  /// 4. System default (%LOCALAPPDATA%\eMuleRust on Windows, ~/.emule_sion on Unix; %USERPROFILE%\Downloads\eMuleRust)
   static ResolvedDirectories resolve({
     Directory? customDir,
     Directory? customDownloadsDir,
@@ -138,16 +138,16 @@ class WorkDirectoryResolver {
       final localAppData = env['LOCALAPPDATA']?.trim();
       final appData = env['APPDATA']?.trim();
       if (localAppData != null && localAppData.isNotEmpty) {
-        defaultWorkdir = Directory('$localAppData\\EmuleSion');
+        defaultWorkdir = Directory('$localAppData\\eMuleRust');
       } else if (appData != null && appData.isNotEmpty) {
-        defaultWorkdir = Directory('$appData\\EmuleSion');
+        defaultWorkdir = Directory('$appData\\eMuleRust');
       } else {
         defaultWorkdir = Directory('.mule_data');
       }
 
       final userProfile = env['USERPROFILE']?.trim();
       if (userProfile != null && userProfile.isNotEmpty) {
-        defaultDownloads = explicitDownloads ?? Directory('$userProfile\\Downloads\\EmuleSion');
+        defaultDownloads = explicitDownloads ?? Directory('$userProfile\\Downloads\\eMuleRust');
       } else {
         defaultDownloads = explicitDownloads ?? Directory('${defaultWorkdir.path}\\downloads');
       }
@@ -155,7 +155,7 @@ class WorkDirectoryResolver {
       final home = env['HOME']?.trim();
       if (home != null && home.isNotEmpty) {
         defaultWorkdir = Directory('$home/.emule_sion');
-        defaultDownloads = explicitDownloads ?? Directory('$home/Downloads/EmuleSion');
+        defaultDownloads = explicitDownloads ?? Directory('$home/Downloads/eMuleRust');
       } else {
         defaultWorkdir = Directory('.mule_data');
         defaultDownloads = explicitDownloads ?? Directory('.mule_data/downloads');

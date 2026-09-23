@@ -183,12 +183,12 @@ complétude du pair exclue) et commune (160 min + 20 min).
 ## 8. Re-ask périodique
 
 eMule rattache `OP_REQUESTSOURCES` au cycle `SendFileRequest` (reask
-~29-40 min). Emule-Sion émet la requête sur les keep-alives de file
+~29-40 min). EMule-Rust émet la requête sur les keep-alives de file
 d'attente et chaque minute dans la boucle de transfert
 (`maybe_send_sx_request`), uniquement si `IsSourceRequestAllowed` passe
 — puis `SetLastAskedForSources` + `SetLastAnsweredTimeTimeout` miroir.
 
-## 9. Décodage Emule-Sion
+## 9. Décodage EMule-Rust
 
 - `decode_request_sources` : bornes strictes (≥16 B / ≥19 B), opcode
   vérifié, protocoles `PR_EMULE`/`PR_ED2K`.

@@ -6,7 +6,7 @@ pub fn list_tools() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             name: "emule_status".to_string(),
-            description: "Get overall Emule-Sion daemon status, uptime, transfer speeds, active downloads count, server connection, and Kad status.".to_string(),
+            description: "Get overall EMule-Rust daemon status, uptime, transfer speeds, active downloads count, server connection, and Kad status.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {}
@@ -14,7 +14,7 @@ pub fn list_tools() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "emule_get_settings".to_string(),
-            description: "Get Emule-Sion daemon configuration, default paths, limits, and retention policy.".to_string(),
+            description: "Get EMule-Rust daemon configuration, default paths, limits, and retention policy.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {}
@@ -76,7 +76,7 @@ pub fn list_tools() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "emule_shutdown".to_string(),
-            description: "Gracefully shut down the Emule-Sion background daemon.".to_string(),
+            description: "Gracefully shut down the EMule-Rust background daemon.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {}

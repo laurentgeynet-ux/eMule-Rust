@@ -91,7 +91,7 @@ pub fn detect_local_ipv4_for_gateway(gateway_addr: SocketAddr) -> Option<Ipv4Add
 pub enum MappingOwnership {
     /// The existing rule on the gateway is identical and already maps to our exact internal endpoint and description.
     ExactMatch,
-    /// The existing rule belongs to Emule-Sion on this machine, but targets an old local IP or port (stale lease to update).
+    /// The existing rule belongs to EMule-Rust on this machine, but targets an old local IP or port (stale lease to update).
     StaleLease,
     /// The rule belongs to another application or another host on the LAN. Must NOT be touched.
     ForeignConflict,

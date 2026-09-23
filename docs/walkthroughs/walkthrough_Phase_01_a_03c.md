@@ -1,6 +1,6 @@
 # Guide d'Exécution, de Validation et de Dépannage — Phase 3C : Durcissement Produit
 
-Ce document constitue le guide technique de référence pour la **Phase 3C** du projet **Emule-Sion** (Durcissement produit & préparation à la production locale). Il détaille l'architecture de supervision, la gestion des sessions locales, les verrous d'exclusivité, la chaîne de packaging Windows sécurisée, les suites de tests et le guide complet de dépannage.
+Ce document constitue le guide technique de référence pour la **Phase 3C** du projet **EMule-Rust** (Durcissement produit & préparation à la production locale). Il détaille l'architecture de supervision, la gestion des sessions locales, les verrous d'exclusivité, la chaîne de packaging Windows sécurisée, les suites de tests et le guide complet de dépannage.
 
 L'ensemble des procédures et démonstrations présentées ici est **100 % déterministe, reproductible et exécutable hors-ligne**, sans solliciter de serveurs eD2K ou nœuds Kad publics.
 
@@ -25,7 +25,7 @@ La Phase 3C consolide l'intégration entre le démon Rust (`mule-daemon`) et l'i
 └──────────────┼───────────────────────────┼─────────────┘
                │                           │
 ┌──────────────┼───────────────────────────▼─────────────┐
-│  %APPDATA%/EmuleSion (Répertoire de travail local)     │
+│  %APPDATA%/eMuleRust (Répertoire de travail local)     │
 │  ├── mule.lock          (Verrou exclusif fs4)          │
 │  ├── session.json       (Métadonnées d'instance publiques)│
 │  ├── auth.token         (Token secret isolé, ACL local)│
@@ -71,7 +71,7 @@ La Phase 3C consolide l'intégration entre le démon Rust (`mule-daemon`) et l'i
 
 5. **Pipeline de build et packaging sécurisé (`scripts/build_windows_release.ps1`)** :
    - Conforme à la politique d'exécution PowerShell sans recours à `-ExecutionPolicy Bypass`.
-   - Assemble le bundle autonome dans `dist/EmuleSion-Windows/` avec le manifeste de traçabilité `version.json`.
+   - Assemble le bundle autonome dans `dist/eMuleRust-Windows/` avec le manifeste de traçabilité `version.json`.
 
 ---
 
@@ -119,7 +119,7 @@ Toutes les commandes ci-dessous doivent s'exécuter avec succès :
 
 ### 3.2 Client Flutter Desktop (Analyse & Tests)
 ```powershell
-cd d:\Projet\Emule-Sion\apps\desktop
+cd d:\Projet\EMule-Rust\apps\desktop
 
 # 1. Analyse statique Flutter
 & "C:\Users\Lou\flutter\bin\flutter.bat" analyze
@@ -144,10 +144,10 @@ cd d:\Projet\Emule-Sion\apps\desktop
 ### Option A : Mode Automatique / Production Locale (Recommandé)
 Dans ce mode, Flutter supervise directement le démon :
 ```powershell
-cd d:\Projet\Emule-Sion\apps\desktop
+cd d:\Projet\EMule-Rust\apps\desktop
 flutter run -d windows
 ```
-- Flutter découvre `%APPDATA%\EmuleSion\session.json`.
+- Flutter découvre `%APPDATA%\eMuleRust\session.json`.
 - Si aucune instance n'est trouvée, il démarre automatiquement `mule-daemon.exe` en arrière-plan.
 - La connexion WebSocket JSON-RPC 2.0 s'établit et la pastille de statut passe au vert (`Connecté`).
 
@@ -156,14 +156,14 @@ Idéal pour observer les logs bruts du démon en temps réel :
 
 **Terminal 1 (Démon Rust) :**
 ```powershell
-cd d:\Projet\Emule-Sion
-cargo run -p mule-daemon -- --workdir "$env:APPDATA\EmuleSion"
+cd d:\Projet\EMule-Rust
+cargo run -p mule-daemon -- --workdir "$env:APPDATA\eMuleRust"
 ```
 *Le démon affiche son PID, l'acquisition du verrou `mule.lock`, son port d'écoute et la création de `session.json`.*
 
 **Terminal 2 (Application Flutter) :**
 ```powershell
-cd d:\Projet\Emule-Sion\apps\desktop
+cd d:\Projet\EMule-Rust\apps\desktop
 flutter run -d windows
 ```
 *Flutter détecte la session existante et s'y connecte immédiatement.*
@@ -171,7 +171,7 @@ flutter run -d windows
 ### Option C : Mode Maquette Isolée (Fake Client)
 Pour itérer rapidement sur l'interface graphique sans démon backend :
 ```powershell
-cd d:\Projet\Emule-Sion\apps\desktop
+cd d:\Projet\EMule-Rust\apps\desktop
 flutter run -d windows --dart-define=USE_FAKE_DAEMON=true
 ```
 
@@ -261,8 +261,8 @@ Pour valider l'indépendance et la robustesse des composants, trois scénarios d
    1. Arrêter le démon.
    2. Supprimer les fichiers de session :
       ```powershell
-      Remove-Item "$env:APPDATA\EmuleSion\session.json" -ErrorAction SilentlyContinue
-      Remove-Item "$env:APPDATA\EmuleSion\auth.token" -ErrorAction SilentlyContinue
+      Remove-Item "$env:APPDATA\eMuleRust\session.json" -ErrorAction SilentlyContinue
+      Remove-Item "$env:APPDATA\eMuleRust\auth.token" -ErrorAction SilentlyContinue
       ```
    3. Relancer l'application.
 
@@ -279,10 +279,10 @@ Pour valider l'indépendance et la robustesse des composants, trois scénarios d
 
 ```powershell
 # Confirmer la fermeture des processus
-Get-Process mule-daemon,desktop,EmuleSion -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process mule-daemon,desktop,eMuleRust -ErrorAction SilentlyContinue | Stop-Process -Force
 
 # Supprimer le répertoire de travail
-Remove-Item -Recurse -Force "$env:APPDATA\EmuleSion"
+Remove-Item -Recurse -Force "$env:APPDATA\eMuleRust"
 ```
 
 ---
@@ -292,7 +292,7 @@ Remove-Item -Recurse -Force "$env:APPDATA\EmuleSion"
 Pour générer le livrable complet sans contourner la politique de sécurité PowerShell du système :
 
 ```powershell
-cd d:\Projet\Emule-Sion
+cd d:\Projet\EMule-Rust
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
 ```
 
@@ -300,8 +300,8 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_
 > **Pourquoi `RemoteSigned` plutôt que `Bypass` ?**
 > `RemoteSigned` autorise l'exécution des scripts créés localement sur votre machine tout en exigeant une signature numérique de confiance pour les scripts téléchargés depuis Internet. Pour une distribution grand public, le script et les exécutables peuvent être signés à l'aide d'un certificat de signature de code Authenticode (`Set-AuthenticodeSignature`).
 
-### Contenu du bundle généré dans `dist\EmuleSion-Windows\` :
-- `EmuleSion.exe` : Exécutable Flutter Desktop principal.
+### Contenu du bundle généré dans `dist\eMuleRust-Windows\` :
+- `eMuleRust.exe` : Exécutable Flutter Desktop principal.
 - `bin/mule-daemon.exe` : Démon Core autonome packagé aux côtés de l'UI.
 - `flutter_windows.dll` et dépendances natives.
 - `data/` : Assets, icônes et polices de l'application.
@@ -783,7 +783,7 @@ Deux documents de référence formalisent les structures binaires eD2K historiqu
 ### 16.6 Bilan Global des Tests et Clôture Phase 6.4
 
 ```
-=== DÉCOMPTE COMPLET DES TESTS ATTESTÉS (WORKSPACE EMULE-SION) ===
+=== DÉCOMPTE COMPLET DES TESTS ATTESTÉS (WORKSPACE EMULE-RUST) ===
 
 1. mule-core : 12 tests
 2. mule-daemon : 12 tests
@@ -816,9 +816,9 @@ Le jalon 6.5 couronne le travail de conformité protocolaire eD2K en validant fo
    - **Tier 3 (Binaire Référence Externe)** : Harnais pilotant un exécutable officiel eMule/aMule épinglé (SHA-256, flags CLI, cycle de vie teardown) documenté dans `reference_manifest.json`.
 
 3. **Matrice Comparative des Opcodes et Formats Wire** :
-   Les opcodes eD2K ont fait l'objet de réattributions et de variantes selon les époques. Emule-Sion fige les correspondances exactes selon la matrice suivante :
+   Les opcodes eD2K ont fait l'objet de réattributions et de variantes selon les époques. EMule-Rust fige les correspondances exactes selon la matrice suivante :
 
-| Message Symbolique | Variante & Source | Protocole Wire | Opcode Wire | Direction | Structure & Layout Payload | Support Emule-Sion | Règle / Invariant Associé |
+| Message Symbolique | Variante & Source | Protocole Wire | Opcode Wire | Direction | Structure & Layout Payload | Support EMule-Rust | Règle / Invariant Associé |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`OP_HELLO`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x01` | Client $\rightarrow$ Pair | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Rejet si hash nul ou version incompatible |
 | **`OP_HELLO_ANSWER`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x4C` | Pair $\rightarrow$ Client | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Préservation des tags inconnus sans désérialisation non sécurisée |
@@ -1007,7 +1007,7 @@ En l'absence de binaire de référence externe épinglé dans l'environnement lo
 
 ### 19.1 Matrice d'Invariance Multi-Profil
 
-Testée dans [`test_multi_profile_invariance_matrix`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Testée dans [`test_multi_profile_invariance_matrix`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - Les quatre opcodes surchargés historiquement (`0x47`, `0x4B`, `0x4F`, `0x49`) sont exécutés contre les quatre profils officiels :
   - **`Emule050a` & `Amule233`** : acceptent `0x47` (`RequestParts`) et `0x4F` (`FileStatusReq`) ; préservent `0x4B` et `0x49` comme paquets `Raw`.
   - **`LegacyEdonkey`** : accepte `0x4B` (`RequestParts`) et `0x49` (`FileStatusReq`) ; préserve `0x47` et `0x4F` comme paquets `Raw`.
@@ -1016,7 +1016,7 @@ Testée dans [`test_multi_profile_invariance_matrix`](file:///d:/Projet/Emule-Si
 
 ### 19.2 Cas Limites : Bloc Résiduel de 1 Octet et Sentinelles de Slots
 
-Testé dans [`test_boundary_cases_1_byte_residual_and_u32_sentinels`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Testé dans [`test_boundary_cases_1_byte_residual_and_u32_sentinels`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - **Bloc résiduel de 1 octet** : plage exacte `[9_728_000, 9_728_001)` sur un fichier de `9_728_001` octets (part complète de 9 728 000 octets + 1 octet terminal).
 - **Sentinelles de slots wire** : dans le format wire eMule 40 octets (3 slots), un bloc résiduel valide suivi des sentinelles `(0, 0)` et `(u32::MAX, u32::MAX)` est décodé correctement en ignorant les slots sentinelles.
 - **Refus des sentinelles pures** : une trame ne contenant que des sentinelles est rejetée (`MalformedField`).
@@ -1025,7 +1025,7 @@ Testé dans [`test_boundary_cases_1_byte_residual_and_u32_sentinels`](file:///d:
 
 ### 19.3 Traces Normalisées JSON & Rapports CI Machine-Readable
 
-Testé dans [`test_reference_interop_normalized_json_snapshots_and_ci_report`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Testé dans [`test_reference_interop_normalized_json_snapshots_and_ci_report`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - Normalisation conforme au schéma strict de traces :
   ```json
   {
@@ -1037,7 +1037,7 @@ Testé dans [`test_reference_interop_normalized_json_snapshots_and_ci_report`](f
     "outcome": "accepted"
   }
   ```
-- Rapport synthétique CI via [`DivergenceReport::format_ci_summary()`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/ed2k/reference.rs#L204-L222) affichant le profil, le nombre de traces, les opcodes observés, les détections d'opcodes canoniques, et la validation d'anonymisation sans fuite de données d'environnement hôte.
+- Rapport synthétique CI via [`DivergenceReport::format_ci_summary()`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/reference.rs#L204-L222) affichant le profil, le nombre de traces, les opcodes observés, les détections d'opcodes canoniques, et la validation d'anonymisation sans fuite de données d'environnement hôte.
 
 ---
 
@@ -1073,7 +1073,7 @@ Pour prévenir toute ambiguïté ou affirmation prématurée d'interopérabilit�
 
 ### 20.2 Matrice de Rejet des Combinaisons Protocole / Opcode Illégales
 
-Vérifiée dans [`test_illegal_protocol_opcode_combinations`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Vérifiée dans [`test_illegal_protocol_opcode_combinations`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - **Protocole compressé `0xD4`** : inconditionnellement rejeté avec `Ed2kErrorKind::CompressedProtocolUnsupported`.
 - **Octets magiques non assignés (`0x00`, `0x42`, `0xFF`)** : rejetés immédiatement avec `Ed2kErrorKind::UnsupportedProtocol`.
 - **Extension eMule `0xC5`** : décodée en paquet `Raw` sans déclencher de mutation d'état critique.
@@ -1081,14 +1081,14 @@ Vérifiée dans [`test_illegal_protocol_opcode_combinations`](file:///d:/Projet/
 
 ### 20.3 Tests Métamorphiques sur les Tags TLV eD2K
 
-Vérifiés dans [`test_metamorphic_tag_permutations_and_unknown_tags`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Vérifiés dans [`test_metamorphic_tag_permutations_and_unknown_tags`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - **Invariance de permutation** : permuter l'ordre de sérialisation des tags TLV dans un paquet préserve strictement l'invariant sémantique d'interrogation (`find_tag()`).
 - **Mutation & tags inconnus** : l'injection de tags métadonnées inconnus préserve intacts les tags connus requis par le protocole.
 - **Contrôle strict des limites** : jusqu'à la limite autorisée (`MAX_TAGS_PER_PACKET`), la longueur déclarée de la trame et les allocations tampons restent rigoureusement synchronisées, et tout dépassement est promptement rejeté.
 
 ### 20.4 Audit d'Anonymisation Adversariale des Traces
 
-Vérifié dans [`test_reference_interop_anonymization_adversarial_patterns`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Vérifié dans [`test_reference_interop_anonymization_adversarial_patterns`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - **Acceptation Unicode international** : les textes contenant des accents, emojis, idéogrammes CJK ou écritures RTL (arabe/hébreu) sont acceptés sans faux positif.
 - **Rejet de 13 vecteurs adversaires d'environnement** :
   - Chemins absolus Windows (`C:\`, `D:\`) et UNC (`\\server\share`).
@@ -1098,7 +1098,7 @@ Vérifié dans [`test_reference_interop_anonymization_adversarial_patterns`](fil
 
 ### 20.5 Écriture Sécurisée des Artefacts CI en Répertoire Temporaire
 
-Vérifié dans [`test_safe_ci_artifact_writer_in_tempdir`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Vérifié dans [`test_safe_ci_artifact_writer_in_tempdir`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - Fonction `DivergenceReport::write_ci_report_secure` : exécute un contrôle pré-vol d'anonymisation (`validate_anonymity`) **avant** toute écriture sur disque.
 - En cas de trace compromise, l'écriture échoue immédiatement et **aucun fichier** n'est créé sur le disque.
 - Les fichiers générés (`ci_divergence_summary.txt` et `ci_wire_traces.jsonl`) sont cantonnés aux répertoires temporaires isolés (`tempfile::tempdir()`).
@@ -1117,7 +1117,7 @@ La version interne **`0.1.0-lab`** fige l'état de l'implémentation avant toute
 
 ### 21.1 Normalisation Unicode NFC & Sécurité Visuelle Anti-Spoofing
 
-Vérifié dans [`test_unicode_nfc_and_visual_sanitization_for_ci_reports`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Vérifié dans [`test_unicode_nfc_and_visual_sanitization_for_ci_reports`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - **Principe de distinction** : les octets bruts sont préservés pour toute comparaison cryptographique ou réseau, tandis qu'une version d'affichage sécurisée est générée pour les rapports CI et les affichages console via `sanitize_unicode_for_display()`.
 - **Normalisation canonique** : application systématique de la forme Unicode NFC via le crate `unicode-normalization`.
 - **Échappement transparent des attaques bidi / invisibles** :
@@ -1128,8 +1128,8 @@ Vérifié dans [`test_unicode_nfc_and_visual_sanitization_for_ci_reports`](file:
 
 ### 21.2 Propriété Formelle de Non-Mutation d'État
 
-Vérifié dans [`test_non_mutation_property_on_raw_and_unhandled_frames`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/tests/ed2k_session_tests.rs) :
-- Introduction de la structure [`SessionSnapshot`](file:///d:/Projet/Emule-Sion/crates/mule-protocol/src/ed2k/session.rs) figeant :
+Vérifié dans [`test_non_mutation_property_on_raw_and_unhandled_frames`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_session_tests.rs) :
+- Introduction de la structure [`SessionSnapshot`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/session.rs) figeant :
   - `state_name` ("Ready")
   - `is_ready` (true)
   - `pending_status_count`
@@ -1142,16 +1142,16 @@ Vérifié dans [`test_non_mutation_property_on_raw_and_unhandled_frames`](file:/
   4. Seul le compteur de diagnostics isolé `unhandled_packets_count` est incrémenté.
 
 ### 21.3 Documents de Référence de la Release 0.1.0-lab
-- [`CHANGELOG.md`](file:///d:/Projet/Emule-Sion/CHANGELOG.md) : Historique technique détaillé de l'ensemble des phases 1 à 6.6.
-- [`RELEASE_NOTES_0.1.0-lab.md`](file:///d:/Projet/Emule-Sion/RELEASE_NOTES_0.1.0-lab.md) : Synthèse d'attestation, liste des éléments volontairement absents, versions exactes des dépendances et commandes de reproduction.
+- [`CHANGELOG.md`](file:///d:/Projet/EMule-Rust/CHANGELOG.md) : Historique technique détaillé de l'ensemble des phases 1 à 6.6.
+- [`RELEASE_NOTES_0.1.0-lab.md`](file:///d:/Projet/EMule-Rust/RELEASE_NOTES_0.1.0-lab.md) : Synthèse d'attestation, liste des éléments volontairement absents, versions exactes des dépendances et commandes de reproduction.
 - Tag Git : `v0.1.0-lab`.
 
 ---
 
-### 21.4 Bilan Global Final des Tests (Workspace Emule-Sion 0.1.0-lab)
+### 21.4 Bilan Global Final des Tests (Workspace EMule-Rust 0.1.0-lab)
 
 ```
-=== DÉCOMPTE COMPLET DES TESTS DU WORKSPACE EMULE-SION ===
+=== DÉCOMPTE COMPLET DES TESTS DU WORKSPACE EMULE-RUST ===
 
 1. mule-core : 12 tests
    - part_file_and_persistence.rs  :  2 tests ok
@@ -1212,7 +1212,7 @@ flowchart TD
     A[Git Clean Repo State] --> B[Compiler Inspection: rustc, cargo, flutter, dart]
     B --> C[Compile Rust mule-daemon --release]
     B --> D[Compile Flutter Desktop Windows --release]
-    C --> E[Assemble Bundle: dist/EmuleSion-Windows]
+    C --> E[Assemble Bundle: dist/eMuleRust-Windows]
     D --> E
     E --> F[Generate CycloneDX 1.5 SBOM: rust, flutter, windows-bundle, consolidated]
     F --> G{Authenticode Signing?}
@@ -1220,41 +1220,41 @@ flowchart TD
     G -- No --> I[Mark signed: false]
     H --> J[Post-Signing SHA-256 Hashes: SHA256SUMS.txt & version.json]
     I --> J
-    J --> K[Package Archive: EmuleSion-v0.1.0-lab-windows-x64.zip & .sha256]
+    J --> K[Package Archive: eMuleRust-v0.1.0-lab-windows-x64.zip & .sha256]
     K --> L[E2E Smoke Test in Isolated Temp Directory outside Repo]
     L --> M[100% Cryptographic Match + Loopback Confirmed + RPC Verified]
 ```
 
 ### 22.1 Sous-jalon 7.1 : Traçabilité, Provenance et Empreintes Cryptographiques
-1. **Manifeste de version machine `dist/EmuleSion-Windows/version.json`** :
+1. **Manifeste de version machine `dist/eMuleRust-Windows/version.json`** :
    - Schéma standardisé (`schemaVersion: 1`).
    - Provenance Git stricte : empreinte SHA-1 complète de commit 40 caractères (`d56d03d2df9365c3907b0ed67e382ebfc8cdb2b5`) et booléen `gitDirty: false` (le build échoue immédiatement si l'arbre est sale, sauf flag explicite `-AllowDirty`).
    - Horodatage UTC ISO 8601 (`builtAtUtc: 2026-09-13T21:31:34Z`).
    - Cible binaire : `x86_64-pc-windows-msvc`, mode `release`.
    - Versions exactes des chaînes de compilation : `rustc 1.98.1`, `cargo 1.98.1`, `Flutter 3.47.2`, `Dart 3.13.2`.
-   - Standardisation du binaire principal : `EmuleSion.exe` (binaire UI Flutter Desktop Windows autonome, `desktop.exe` supprimé du livrable) et `bin/mule-daemon.exe` (moteur local supervisé).
+   - Standardisation du binaire principal : `eMuleRust.exe` (binaire UI Flutter Desktop Windows autonome, `desktop.exe` supprimé du livrable) et `bin/mule-daemon.exe` (moteur local supervisé).
    - Inventaire exhaustif des 20 fichiers constitutifs du bundle avec chemins relatifs normalisés `/`, tailles en octets et empreintes SHA-256 en minuscules.
    - Anonymisation totale : zéro chemin absolu hôte, zéro nom d'utilisateur, zéro jeton d'authentification.
 2. **Sommes de contrôle `SHA256SUMS.txt`** :
    - Fichier universel normalisé au format GNU coreutils (`<sha256>  <relative/path>`) couvrant les 20 fichiers du bundle.
 3. **Archive de distribution ZIP et Empreinte d'archive** :
-   - Génération de `dist/EmuleSion-v0.1.0-lab-windows-x64.zip` (16,4 Mo) avec compression optimale.
-   - Calcul et écriture automatique de l'empreinte de contrôle post-compression dans `dist/EmuleSion-v0.1.0-lab-windows-x64.zip.sha256` :
+   - Génération de `dist/eMuleRust-v0.1.0-lab-windows-x64.zip` (16,4 Mo) avec compression optimale.
+   - Calcul et écriture automatique de l'empreinte de contrôle post-compression dans `dist/eMuleRust-v0.1.0-lab-windows-x64.zip.sha256` :
      `09023bb37bfb45d5a028ada95f5681a4e42df451badd04ca4b9d4ecc99836245`
 
 ### 22.2 Sous-jalon 7.2 : SBOM CycloneDX 1.5 Pragmatique & Audit de Licences
 1. **Générateur modulaire sans dépendance NPM externe (`scripts/generate_sbom.ps1`)** :
-   - `dist/EmuleSion-Windows/sbom/rust.cdx.json` : 191 composants Rust extraits directement depuis `Cargo.lock` et `cargo metadata` (noms, versions, licences SPDX déduites, hashes, PURL).
-   - `dist/EmuleSion-Windows/sbom/flutter.cdx.json` : 33 composants Dart/Flutter extraits depuis `pubspec.lock`.
-   - `dist/EmuleSion-Windows/sbom/windows-bundle.cdx.json` : 14 binaires et bibliothèques dynamiques assemblés (`EmuleSion.exe`, `bin/mule-daemon.exe`, `flutter_windows.dll`, `app.so`, etc.).
-   - `dist/EmuleSion-Windows/sbom/sbom.cdx.json` : SBOM consolidé CycloneDX 1.5 fusionnant les 238 composants du produit complet.
+   - `dist/eMuleRust-Windows/sbom/rust.cdx.json` : 191 composants Rust extraits directement depuis `Cargo.lock` et `cargo metadata` (noms, versions, licences SPDX déduites, hashes, PURL).
+   - `dist/eMuleRust-Windows/sbom/flutter.cdx.json` : 33 composants Dart/Flutter extraits depuis `pubspec.lock`.
+   - `dist/eMuleRust-Windows/sbom/windows-bundle.cdx.json` : 14 binaires et bibliothèques dynamiques assemblés (`eMuleRust.exe`, `bin/mule-daemon.exe`, `flutter_windows.dll`, `app.so`, etc.).
+   - `dist/eMuleRust-Windows/sbom/sbom.cdx.json` : SBOM consolidé CycloneDX 1.5 fusionnant les 238 composants du produit complet.
 2. **Classification formelle `licenseEvidence: "declared" | "inferred" | "unknown"`** :
    - Chaque composant dispose de la propriété standardisée `licenseEvidence`.
    - `declared` (222 composants, 93.3 %) : licence explicitement déclarée dans les métadonnées de paquet (`Cargo.toml`, fichier `LICENSE` dans `.pub-cache`).
    - `inferred` (16 composants, 6.7 %) : licence déduite via heuristiques et écosystème officiel documenté (ex: `BSD-3-Clause` Google Flutter engine, Apache 2.0 pour les shaders).
    - `unknown` (0 composant, 0.0 %) : aucun composant orphelin non identifié.
 3. **Audit de conformité automatique (`deny.toml`)** :
-   - Génération automatique de `dist/EmuleSion-Windows/sbom/license-audit.json` et `license-audit.md`.
+   - Génération automatique de `dist/eMuleRust-Windows/sbom/license-audit.json` et `license-audit.md`.
    - 100 % des composants respectent les critères stricts d'autorisation définis dans `deny.toml`.
    - 133 composants sous licence multiple (dual-licensing permissif, ex: `MIT OR Apache-2.0`).
    - 0 composant non-conforme.
@@ -1270,10 +1270,10 @@ flowchart TD
 
 ### 22.4 Sous-jalon 7.4 : Validation Post-Packaging & Matrice de Supervision
 1. **Smoke Test E2E Post-Packaging (`scripts/test_packaged_bundle.ps1`)** :
-   - Bac à sable temporaire dans `%TEMP%\EmuleSion-SmokeTest-<UUID>`.
+   - Bac à sable temporaire dans `%TEMP%\eMuleRust-SmokeTest-<UUID>`.
    - Copie complète du bundle assemblé.
    - Vérification de l'intégrité cryptographique à 100 % : ré-évaluation de chaque fichier contre `SHA256SUMS.txt` (20/20 fichiers conformes).
-   - Validation de la présence du binaire principal `EmuleSion.exe`.
+   - Validation de la présence du binaire principal `eMuleRust.exe`.
    - Validation du schéma de `version.json`.
    - Démarrage de `bin/mule-daemon.exe --workdir <tmp>`.
    - Confinement strict sur le loopback (`ws://127.0.0.1:4660/rpc`).
@@ -1297,7 +1297,7 @@ flowchart TD
 
 ```
 ========================================================================
-           BILAN GÉNÉRAL DE VALIDATION - EMULE-SION RC v0.1.0-lab
+           BILAN GÉNÉRAL DE VALIDATION - EMULE-RUST RC v0.1.0-lab
 ========================================================================
 
 1. SUITE DE TESTS UNITAIRES ET D'INTÉGRATION :
@@ -1312,7 +1312,7 @@ flowchart TD
 2. VALIDATION DU PACKAGING & MATRICE DE SUPERVISION :
    - Smoke Test E2E      : 20/20 fichiers vérifiés à 100 %, loopback 127.0.0.1, RPC validé
    - Matrice Environnement: 6/6 scénarios passés (Unicode, port occupé, lock, crash, reloc, unwritable)
-   - Binaire standardisé : EmuleSion.exe vérifié
+   - Binaire standardisé : eMuleRust.exe vérifié
    - Démontage propre    : Code sortie 0, suppression session.json, 0 écriture git
    ---------------------------------------------------------------------
    SOUS-TOTAL VALIDATION : 2/2 suites de packaging passées à 100 %
@@ -1322,7 +1322,7 @@ flowchart TD
    - Flutter analyze     : flutter analyze -> 0 problème
    - CycloneDX SBOM      : 238 composants répertoriés dans dist/.../sbom/sbom.cdx.json
    - Audit de licences   : licenseEvidence classé (222 declared, 16 inferred, 0 unknown, 0 non-conforme)
-   - Archive livrable    : EmuleSion-v0.1.0-lab-windows-x64.zip (16 386 637 octets)
+   - Archive livrable    : eMuleRust-v0.1.0-lab-windows-x64.zip (16 386 637 octets)
    - Empreinte archive   : 09023bb37bfb45d5a028ada95f5681a4e42df451badd04ca4b9d4ecc99836245
 
 ========================================================================

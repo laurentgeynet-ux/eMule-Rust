@@ -21,7 +21,7 @@ void main() {
       final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
 
-      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
       final explicitDir = Directory('${tempDir.path}/custom_dir');
 
       final env = {
@@ -43,7 +43,7 @@ void main() {
       final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
 
-      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
       final envPath = '${tempDir.path}/from_env';
 
       final env = {
@@ -64,7 +64,7 @@ void main() {
       final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
 
-      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
       final legacyPath = '${tempDir.path}/from_legacy_env';
 
       final env = {
@@ -85,7 +85,7 @@ void main() {
       final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
 
-      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
 
       final env = {
         'LOCALAPPDATA': 'C:\\Users\\QA\\AppData\\Local',
@@ -122,7 +122,7 @@ void main() {
 
     test('Tier 4: installed default %LOCALAPPDATA% is used when no flags or overrides exist', () {
       final appDir = Directory('${tempDir.path}/installed_app')..createSync();
-      final fakeExe = File('${appDir.path}/EmuleSion.exe');
+      final fakeExe = File('${appDir.path}/eMuleRust.exe');
 
       final env = {
         'LOCALAPPDATA': 'C:\\Users\\QA\\AppData\\Local',
@@ -135,7 +135,7 @@ void main() {
 
       expect(resolved.mode, WorkDirMode.installedDefault);
       if (Platform.isWindows) {
-        expect(resolved.directory.path, 'C:\\Users\\QA\\AppData\\Local\\EmuleSion');
+        expect(resolved.directory.path, 'C:\\Users\\QA\\AppData\\Local\\eMuleRust');
       }
     });
 
@@ -162,7 +162,7 @@ void main() {
     test('Portable mode resolves defaultDownloadDirectory to <bundleRoot>/downloads', () {
       final bundleDir = Directory('${tempDir.path}/bundle_downloads')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
-      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
 
       final resolved = WorkDirectoryResolver.resolve(
         executableFile: fakeExe,
@@ -178,7 +178,7 @@ void main() {
     test('Explicit customDownloadsDir overrides defaultDownloadDirectory', () {
       final bundleDir = Directory('${tempDir.path}/bundle_custom_dl')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
-      final fakeExe = File('${bundleDir.path}/EmuleSion.exe');
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
       final customDl = Directory('${tempDir.path}/my_special_downloads');
 
       final resolved = WorkDirectoryResolver.resolve(
@@ -190,9 +190,9 @@ void main() {
       expect(resolved.defaultDownloadDirectory.path, customDl.path);
     });
 
-    test('InstalledDefault Windows resolves defaultDownloadDirectory to %USERPROFILE%\\Downloads\\EmuleSion', () {
+    test('InstalledDefault Windows resolves defaultDownloadDirectory to %USERPROFILE%\\Downloads\\eMuleRust', () {
       final appDir = Directory('${tempDir.path}/installed_windows_dl')..createSync();
-      final fakeExe = File('${appDir.path}/EmuleSion.exe');
+      final fakeExe = File('${appDir.path}/eMuleRust.exe');
 
       final env = {
         'LOCALAPPDATA': 'C:\\Users\\QA\\AppData\\Local',
@@ -206,8 +206,8 @@ void main() {
 
       expect(resolved.mode, WorkDirMode.installedDefault);
       if (Platform.isWindows) {
-        expect(resolved.workdir.path, 'C:\\Users\\QA\\AppData\\Local\\EmuleSion');
-        expect(resolved.defaultDownloadDirectory.path, 'C:\\Users\\QA\\Downloads\\EmuleSion');
+        expect(resolved.workdir.path, 'C:\\Users\\QA\\AppData\\Local\\eMuleRust');
+        expect(resolved.defaultDownloadDirectory.path, 'C:\\Users\\QA\\Downloads\\eMuleRust');
       }
     });
   });

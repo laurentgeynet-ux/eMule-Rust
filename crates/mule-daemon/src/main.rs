@@ -240,7 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // reconnecting to the last server target (or best known server) when
     // `server_reconnect`/`server_autoconnect` settings are enabled.
     state.spawn_server_watcher();
-    // Emule-Sion : rotation périodique d'identité (`identityRotationHours`)
+    // EMule-Rust : rotation périodique d'identité (`identityRotationHours`)
     // et quota journalier d'upload (`dailyUploadQuotaGb`).
     state.spawn_identity_rotator();
     state.spawn_quota_watcher();

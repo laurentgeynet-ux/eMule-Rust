@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A single divergence record observed between Emule-Sion and the external reference binary.
+/// A single divergence record observed between EMule-Rust and the external reference binary.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DivergenceEntry {
     pub area: String,

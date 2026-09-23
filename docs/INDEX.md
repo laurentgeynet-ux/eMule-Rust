@@ -1,6 +1,6 @@
 # Index des fichiers du projet
 
-Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client eDonkey/eMule écrit en Rust (daemon + crates protocolaires) avec une application de bureau Flutter.
+Index exhaustif des fichiers versionnés du dépôt **EMule-Rust** — un client eDonkey/eMule écrit en Rust (daemon + crates protocolaires) avec une application de bureau Flutter.
 
 ---
 
@@ -25,8 +25,8 @@ Index exhaustif des fichiers versionnés du dépôt **Emule-Sion** — un client
 | Fichier | Fonction |
 |---|---|
 | `.agents/mcp_config.json` | Configuration du serveur MCP |
-| `.agents/plugins/emule-sion/mcp_config.json` | Configuration MCP du plugin emule-sion |
-| `.agents/plugins/emule-sion/plugin.json` | Manifeste du plugin agent |
+| `.agents/plugins/emule-rust/mcp_config.json` | Configuration MCP du plugin emule-rust |
+| `.agents/plugins/emule-rust/plugin.json` | Manifeste du plugin agent |
 
 ## apps/desktop/ — Application Flutter (Windows)
 
