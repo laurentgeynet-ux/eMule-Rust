@@ -46,7 +46,11 @@ pub fn upsert_peer_sources(
         .map_err(|e| DaemonError::Business(format!("DB error upserting peer sources: {e}")))?;
     let count = db
         .list_peer_sources(file_hash)
-        .map(|s| s.len() as u32)
+        .map(|s| {
+            s.iter()
+                .filter(|x| x.status.is_srclist_visible())
+                .count() as u32
+        })
         .unwrap_or(0);
     let clean_hex = file_hash.trim().to_lowercase();
     for a in active.values_mut() {

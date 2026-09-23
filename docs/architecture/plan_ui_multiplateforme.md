@@ -102,7 +102,7 @@ C'est l'app la plus aboutie ; la finir en premier.
 | Fichiers | `file_picker` | import `.met`, `.part.met`, choix dossier destination |
 | Notifs | `flutter_local_notifications` | "Téléchargement terminé" |
 | Graphes | `fl_chart` | courbe débit up/down temps réel (dashboard eMule) |
-| Intégrité | — | badge version protocole/daemon (déjà : "v0.1.9 (proto v1)") + `incompatible_version_dialog` sur `-32001` |
+| Intégrité | — | badge version protocole/daemon (déjà : "v0.2.0-RC1 (proto v1)") + `incompatible_version_dialog` sur `-32001` |
 
 Linux : vérifier `tray_manager` + AppIndicator ; empaquetage
 (`flutter_distributor` → .deb/.AppImage) en phase release.

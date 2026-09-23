@@ -218,6 +218,12 @@ abstract class AppLocalizations {
   /// **'Rechercher dans les téléchargements...'**
   String get searchPlaceholder;
 
+  /// No description provided for @searchPlaceholderShares.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rechercher dans les partages...'**
+  String get searchPlaceholderShares;
+
   /// No description provided for @btnAddLink.
   ///
   /// In fr, this message translates to:
@@ -987,7 +993,7 @@ abstract class AppLocalizations {
   /// No description provided for @sansCategorieNone.
   ///
   /// In fr, this message translates to:
-  /// **'Sans catégorie (None)'**
+  /// **'Sans catégorie'**
   String get sansCategorieNone;
 
   /// No description provided for @hash.
@@ -3426,7 +3432,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMaxConnHint.
   ///
   /// In fr, this message translates to:
-  /// **'Budget global de sockets pairs (eMule MaxConnections)'**
+  /// **'Budget global de sockets pairs, 1–65000 (eMule MaxConnections — non borné)'**
   String get settingsMaxConnHint;
 
   /// No description provided for @settingsConnPerMinLabel.
@@ -3438,7 +3444,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsConnPerMinHint.
   ///
   /// In fr, this message translates to:
-  /// **'Nouvelles connexions sortantes par minute (eMule ≈ 240)'**
+  /// **'Nouvelles connexions sortantes par minute, 1–1200 (eMule ≈ 240)'**
   String get settingsConnPerMinHint;
 
   /// No description provided for @settingsServersTitle.
@@ -3576,7 +3582,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMaxGlobalHint.
   ///
   /// In fr, this message translates to:
-  /// **'Nombre total de sources eD2K/Kad simultanées, tous fichiers confondus'**
+  /// **'Quota de sources activées par l\'allocateur swarm, tous fichiers confondus — distinct du budget de sockets (Connexion)'**
   String get settingsMaxGlobalHint;
 
   /// No description provided for @settingsMaxPerFileLabel.
@@ -3612,7 +3618,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMaxQueueHint.
   ///
   /// In fr, this message translates to:
-  /// **'Clients en attente d\'un slot upload (eMule QueueSize, défaut 5000)'**
+  /// **'Clients en attente d\'un slot upload, 10–5000 (eMule QueueSize, défaut 5000)'**
   String get settingsMaxQueueHint;
 
   /// No description provided for @settingsMinUploadLabel.
@@ -3624,7 +3630,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMinUploadHint.
   ///
   /// In fr, this message translates to:
-  /// **'N\'ouvre pas de nouveau slot sous ce seuil (eMule MinUpload, défaut 1)'**
+  /// **'Pas de nouveau slot si la moyenne/slot passe sous ce seuil ; 0 = désactivé (eMule MinUpload, défaut 1)'**
   String get settingsMinUploadHint;
 
   /// No description provided for @settingsDailyQuotaLabel.
@@ -3726,8 +3732,32 @@ abstract class AppLocalizations {
   /// No description provided for @rateLimitsCapacityNote.
   ///
   /// In fr, this message translates to:
-  /// **'Les limites sont bornées à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).'**
+  /// **'Ces plafonds brident le trafic réel (token buckets), bornés à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).'**
   String get rateLimitsCapacityNote;
+
+  /// No description provided for @rateLimitsUssActiveNote.
+  ///
+  /// In fr, this message translates to:
+  /// **'USS est actif : l\'envoi est piloté automatiquement selon la latence mesurée. La limite d\'envoi ci-dessous borne son plafond — 0 = aucun plafond.'**
+  String get rateLimitsUssActiveNote;
+
+  /// No description provided for @limitsEffective.
+  ///
+  /// In fr, this message translates to:
+  /// **'Effectif actuel : {value} Ko/s'**
+  String limitsEffective(int value);
+
+  /// No description provided for @limitsEffectiveRatio.
+  ///
+  /// In fr, this message translates to:
+  /// **'Plafonné par le ratio eD2K — effectif : {value} Ko/s'**
+  String limitsEffectiveRatio(int value);
+
+  /// No description provided for @limitsUssDriven.
+  ///
+  /// In fr, this message translates to:
+  /// **'Piloté par USS — limite dynamique actuelle : {value} Ko/s. La valeur saisie borne le plafond USS.'**
+  String limitsUssDriven(int value);
 
   /// No description provided for @settingsDiagnosticTile.
   ///

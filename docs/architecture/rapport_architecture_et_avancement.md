@@ -1,8 +1,8 @@
 # Rapport Détaillé : Architecture & État d'Avancement du Projet Emule-Sion
 
 **Projet :** Emule-Sion  
-**Date :** 19 Septembre 2026  
-**Version Workspace :** `v0.1.9` (Desktop `v0.1.9+1`)  
+**Date :** 23 Septembre 2026  
+**Version Workspace :** `v0.2.0-RC1` (Desktop `v0.2.0-RC1+1`)  
 **Auteurs :** Analyse d'ingénierie logicielle & architecture système  
 **Statut :** Document d'audit et de synthèse technique mis à jour
 
@@ -208,7 +208,7 @@ Refactorisé selon une architecture modulaire propre :
   * Sécurité & Réseau : `emule_get_network_policy`, `emule_set_network_profile`, `emule_network_disconnect_all`, `emule_import_ip_filter`, `emule_set_network_budgets`, `emule_upnp_status`, `emule_upnp_map_ports`, `emule_get_identity`, `emule_rotate_identity`, `emule_list_credits`.
 
 ### 3.8 `apps/desktop` — Interface Utilisateur Flutter Desktop Windows
-Développée en Clean Architecture et MVVM (`v0.1.9+1`) :
+Développée en Clean Architecture et MVVM (`v0.2.0-RC1+1`) :
 * **Téléchargements** : Part Map interactive bloc par bloc (9,28 Mo) avec tooltips d'offset, métriques de vitesse en direct (calculée et synchronisée avec le débit agrégé du swarm), glisser-déposer de `.part.met`, gestion de catégories.
 * **Recherche Unifiée** : sélecteur bi-moteur (*Serveurs eD2K* / *Réseau Kad DHT*), filtres de taille et ajout direct aux téléchargements.
 * **Serveurs** : état de connexion, import de listes `server.met`, ping de latence et interrogation de sources.
@@ -231,7 +231,8 @@ Développée en Clean Architecture et MVVM (`v0.1.9+1`) :
 | **v0.1.6** | 18/09/2026 | **Source Exchange v4 (SX1 & SX2)** : échange de sources pair-à-pair complet. **Gestion des blocs compressés** : décompression zlib en continu (`OP_COMPRESSEDPART`). **Intégration MCP (`mule-mcp`)** : crate dédié avec 83 outils MCP pour assistants IA. | ✅ Validé & Mergé |
 | **v0.1.7** | 19/09/2026 | **Convergence Recherche Kad DHT** : métrique de distance numérique DWORDs (CUInt128), endianness IP wire corrigée, convergence itérative vers `SEARCHTOLERANCE` (0x01000000), résolution collision d'opcodes sur 0x3B, timeout UDP optimisé (3s). **Refactorisation Clean Architecture** : éclatement modulaire de `mule-daemon`, `mule-protocol`, `mule-core`, `mule-mcp`. | ✅ Validé & Mergé |
 | **v0.1.8** | 19/09/2026 | **Téléchargement Multi-Pairs & Swarm eMule** : agrégation des débits en direct (`sync_transfer_rates`), gestion conforme des files d'attente distantes (`Disconnected in queue` avec re-ask à 10–15m), protection du plafond de quota water-filling, dispatcher de téléversement (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`). **Cartographie** : inventaire exhaustif `INDEX.md`. | ✅ Compilé, testé et validé en conditions réelles |
-| **v0.1.9** *(Actuel)* | 20/09/2026 | **Interopérabilité eMule 0.72a (Phase 16)** : AICH + hashsets par part, `.part.met`, multi-slots upload + crédits SUI, USS, socket client-UDP, `OP_OFFERFILES`, callback LowID, nœud de stockage Kad, `FIREWALLUDP` (WAN validé), buddy callback Kad, obfuscation serveur DH768+RC4 + paquets compressés `0xD4` (WAN validé). | ✅ Validé WAN réel |
+| **v0.1.9** | 20/09/2026 | **Interopérabilité eMule 0.72a (Phase 16)** : AICH + hashsets par part, `.part.met`, multi-slots upload + crédits SUI, USS, socket client-UDP, `OP_OFFERFILES`, callback LowID, nœud de stockage Kad, `FIREWALLUDP` (WAN validé), buddy callback Kad, obfuscation serveur DH768+RC4 + paquets compressés `0xD4` (WAN validé). | ✅ Validé WAN réel |
+| **v0.2.0-RC1** *(Actuel)* | 23/09/2026 | **Audit bridages & bootstrap Kad résilient** : slots upload 10→100 (`MAX_UP_CLIENTS_ALLOWED`), 4 slots garantis, pacing sources aligné `MaxConnPer5Sec`, inbound lié à `maxConnections`, file de bootstrap façon `s_liBootstrapList` (drain 2 s/15 s, `nodes.dat` auto-chargé). **USS eMule-fidèle** (Last Common Route Finder ICMP Windows). **UX** : débits upload mesurés temps réel, onglet Partages (catégories `shares.setCategory`, recherche, tri par total uploadé), chip de priorité 3 couleurs, barre de parts agrandie, localisation FR exhaustive, icône applicative. | ✅ Tests Rust + Flutter verts |
 
 ---
 
@@ -340,7 +341,7 @@ Le projet dispose d'une suite complète de 87 outils MCP intégrés (`crates/mul
 Toutes les vérifications s'exécutent de manière reproductible et hors-ligne :
 
 ```powershell
-# 1. Compilation du workspace complet (Rust v0.1.9)
+# 1. Compilation du workspace complet (Rust v0.2.0-RC1)
 cargo check --workspace --all-targets --all-features
 
 # 2. Linter Rust
@@ -473,10 +474,11 @@ Session centrée sur le pilotage fin de l'upload, la fidélité eMule des limite
 ## 13. Conclusion
 
 Le projet **Emule-Sion** a franchi avec succès les jalons de conception les plus exigeants :
-* L'architecture a atteint le stade **v0.1.9** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
+* L'architecture a atteint le stade **v0.2.0-RC1** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
 * Les fonctionnalités de transfert multi-sources, de décompression continue zlib, de Source Exchange v1/v2, et de convergence Kad DHT avec calcul métrique 128 bits eMule sont pleinement opérationnelles.
 * La Phase 16 a ajouté l'interopérabilité réseau essentielle : vérification par hashset, AICH réseau, publication serveur (`OP_OFFERFILES`), callback LowID, écriture `.part.met`, nœud de stockage Kad, upload compressé et multi-slots.
 * La Phase 17 a porté la fidélité comportementale côté utilisateur : partages partiels dès la création, compteurs sidebar temps réel (`shares.changed`, `kad.statusChanged` via maintenance), sélecteurs de fichiers natifs, et barre de parts byte-précise alignée sur `CPartFile::DrawStatusBar` (`receivedMask`, `pendingRanges`, disponibilité `OP_FILESTATUS` réelle).
 * La Phase 18 a consolidé l'expérience utilisateur : débits d'upload réellement mesurés (par slot et par partage), renommage de fichiers (`downloads.rename`/`shares.rename`), ratio anti-leech eMule (`emule_ud_ratio`), interrupteurs réseau eD2K/Kad, pseudo « eMule-Rust », localisation française exhaustive et nouvelle icône applicative.
+* La Phase 19 (v0.2.0-RC1) a levé les derniers bridages hérités des versions de test — slots upload alignés sur `MAX_UP_CLIENTS_ALLOWED` (100), pacing de connexions sources au rythme eMule — et rendu l'amorçage Kad résilient via une file de candidats drainée en continu (`s_liBootstrapList`) avec auto-chargement de `nodes.dat`. Côté UI, l'onglet Partages gagne catégories, recherche et statistiques d'upload par fichier.
 * L'intégration d'un serveur **MCP natif** confère au projet une dimension d'observabilité et d'automatisation par intelligence artificielle unique dans le paysage des clients P2P.
 * Les garanties de sécurité défensive (anti-SSRF, isolation loopback par défaut, validation d'IP WAN, kill switch atomique) assurent une robustesse de niveau industriel.

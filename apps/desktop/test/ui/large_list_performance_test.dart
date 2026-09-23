@@ -538,6 +538,12 @@ class LargeListMockClient implements MuleDaemonClient {
   ) async {}
 
   @override
+  Future<void> setSharedFileCategory(
+    String fileHash,
+    String? categoryId,
+  ) async {}
+
+  @override
   Future<int> rescanSharedFiles() async => 0;
 
   @override

@@ -71,6 +71,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchPlaceholder => 'Search downloads...';
 
   @override
+  String get searchPlaceholderShares => 'Search shared files...';
+
+  @override
   String get btnAddLink => 'Add Link';
 
   @override
@@ -489,7 +492,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noneMinimalInitialDiskUse => 'None (Minimal initial disk use)';
 
   @override
-  String get sansCategorieNone => 'Uncategorized (None)';
+  String get sansCategorieNone => 'Uncategorized';
 
   @override
   String hash(String hash) {
@@ -1898,14 +1901,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsMaxConnHint =>
-      'Global peer-socket budget (eMule MaxConnections)';
+      'Global peer-socket budget, 1–65000 (eMule MaxConnections — unbounded)';
 
   @override
   String get settingsConnPerMinLabel => 'Connections / min';
 
   @override
   String get settingsConnPerMinHint =>
-      'New outbound connections per minute (eMule ≈ 240)';
+      'New outbound connections per minute, 1–1200 (eMule ≈ 240)';
 
   @override
   String get settingsServersTitle => 'eD2K servers';
@@ -1991,7 +1994,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsMaxGlobalHint =>
-      'Total simultaneous eD2K/Kad sources across all files';
+      'Sources activated by the swarm allocator across all files — distinct from the socket budget (Connection)';
 
   @override
   String get settingsMaxPerFileLabel => 'Maximum sources per file';
@@ -2012,14 +2015,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsMaxQueueHint =>
-      'Clients waiting for an upload slot (eMule QueueSize, default 5000)';
+      'Clients waiting for an upload slot, 10–5000 (eMule QueueSize, default 5000)';
 
   @override
   String get settingsMinUploadLabel => 'Min upload rate per slot (KB/s)';
 
   @override
   String get settingsMinUploadHint =>
-      'Does not open a new slot below this threshold (eMule MinUpload, default 1)';
+      'No new slot if per-slot average drops below this threshold; 0 = disabled (eMule MinUpload, default 1)';
 
   @override
   String get settingsDailyQuotaLabel =>
@@ -2082,7 +2085,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get rateLimitsCapacityNote =>
-      'Limits are capped at 90% (download) / 80% (upload) of the declared line capacities (Connection tab).';
+      'These ceilings throttle real traffic (token buckets), capped at 90% (download) / 80% (upload) of the declared line capacities (Connection tab).';
+
+  @override
+  String get rateLimitsUssActiveNote =>
+      'USS is active: upload is driven automatically from measured latency. The upload limit below bounds its ceiling — 0 = no ceiling.';
+
+  @override
+  String limitsEffective(int value) {
+    return 'Currently applied: $value KB/s';
+  }
+
+  @override
+  String limitsEffectiveRatio(int value) {
+    return 'Capped by the eD2K ratio — applied: $value KB/s';
+  }
+
+  @override
+  String limitsUssDriven(int value) {
+    return 'Driven by USS — current dynamic limit: $value KB/s. The value you set bounds the USS ceiling.';
+  }
 
   @override
   String get settingsDiagnosticTile => 'Daemon diagnostics';

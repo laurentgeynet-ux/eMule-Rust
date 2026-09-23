@@ -270,12 +270,20 @@ impl InboundListenerService {
                         let peer_kad_port = (ports >> 16) as u16;
                         if peer_kad_port > 0 {
                             let low_id = hello.client_id < 16_777_216;
+                            let kad_version =
+                                mule_protocol::ed2k::Ed2kPeerInfo::from_hello(hello)
+                                    .kad_version();
                             if let IpAddr::V4(ip4) = remote_addr.ip() {
                                 let kad_svc = self.kad.read().unwrap().clone();
                                 if let Some(k) = kad_svc {
                                     tokio::spawn(async move {
-                                        k.maybe_bootstrap_from_peer(ip4, peer_kad_port, low_id)
-                                            .await;
+                                        k.maybe_bootstrap_from_peer(
+                                            ip4,
+                                            peer_kad_port,
+                                            low_id,
+                                            kad_version,
+                                        )
+                                        .await;
                                     });
                                 }
                             }

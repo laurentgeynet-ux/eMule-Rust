@@ -15,7 +15,7 @@ use tracing::{info, warn};
 use mule_network_policy::{ConnectionPurpose, NetworkPolicyManager};
 
 pub use types::{
-    InboundListenerService, InboundListenerSnapshot, MAX_INBOUND_CONNECTIONS, MAX_INBOUND_PER_IP,
+    InboundListenerService, InboundListenerSnapshot, MAX_INBOUND_PER_IP,
     MAX_READ_BUFFER_SIZE,
 };
 
@@ -249,8 +249,16 @@ impl InboundListenerService {
                                 let ip = remote_addr.ip();
                                 let mut conns = service_self.active_conns.lock().await;
                                 let total_conns: usize = conns.values().sum();
-                                if total_conns >= MAX_INBOUND_CONNECTIONS {
-                                    warn!("Rejected inbound connection from {}: global limit reached ({MAX_INBOUND_CONNECTIONS})", remote_addr);
+                                // Le plafond inbound suit le budget sockets
+                                // (`maxConnections`, live) comme chez eMule —
+                                // plus de constante cachée si l'utilisateur
+                                // augmente le budget.
+                                let inbound_cap = service_self
+                                    .network_policy
+                                    .budgets()
+                                    .max_active_peer_connections;
+                                if total_conns >= inbound_cap {
+                                    warn!("Rejected inbound connection from {}: global limit reached ({inbound_cap})", remote_addr);
                                     drop(socket);
                                     continue;
                                 }

@@ -1191,6 +1191,17 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<void> setSharedFileCategory(
+    String fileHash,
+    String? categoryId,
+  ) async {
+    await _call('shares.setCategory', {
+      'fileHash': fileHash,
+      'categoryId': categoryId,
+    });
+  }
+
+  @override
   Future<int> rescanSharedFiles() async {
     final resp = await _call('shares.rescan', {});
     return (resp as Map<String, dynamic>)['added'] as int? ?? 0;

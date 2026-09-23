@@ -20,6 +20,7 @@
   "filterFailed": "Failed",
   "uncategorized": "Uncategorized",
   "searchPlaceholder": "Search downloads...",
+  "searchPlaceholderShares": "Search shared files...",
   "btnAddLink": "Add Link",
   "btnAddEd2kLink": "Add eD2K Link",
   "btnAddDownload": "Add Download",
@@ -181,7 +182,7 @@
   "sparseInstantGrowsDynamically": "Sparse (Instant, grows dynamically)",
   "preallocateFullSizeAvoidsFragmentation": "Preallocate (Full size, avoids fragmentation)",
   "noneMinimalInitialDiskUse": "None (Minimal initial disk use)",
-  "sansCategorieNone": "Uncategorized (None)",
+  "sansCategorieNone": "Uncategorized",
   "hash": "Hash: {hash}",
   "@hash": {
     "placeholders": {
@@ -1042,9 +1043,9 @@
   "settingsUssTitle": "USS — Upload Speed Sense",
   "settingsUssSub": "Dynamically adjusts the upload limit based on measured latency",
   "settingsMaxConnLabel": "Max connections",
-  "settingsMaxConnHint": "Global peer-socket budget (eMule MaxConnections)",
+  "settingsMaxConnHint": "Global peer-socket budget, 1–65000 (eMule MaxConnections — unbounded)",
   "settingsConnPerMinLabel": "Connections / min",
-  "settingsConnPerMinHint": "New outbound connections per minute (eMule ≈ 240)",
+  "settingsConnPerMinHint": "New outbound connections per minute, 1–1200 (eMule ≈ 240)",
   "settingsServersTitle": "eD2K servers",
   "settingsServerReconnectTitle": "Automatic reconnection",
   "settingsServerReconnectSub": "Reconnects to the last server after a connection loss (eMule \"Reconnect\")",
@@ -1110,15 +1111,15 @@
   "killSwitchConfirmBody": "The kill switch immediately cuts all network sockets (peers, servers, listeners) until manually re-enabled.",
   "killSwitchConfirmAction": "Disconnect all",
   "settingsMaxGlobalLabel": "Maximum sources (global)",
-  "settingsMaxGlobalHint": "Total simultaneous eD2K/Kad sources across all files",
+  "settingsMaxGlobalHint": "Sources activated by the swarm allocator across all files — distinct from the socket budget (Connection)",
   "settingsMaxPerFileLabel": "Maximum sources per file",
   "settingsMaxPerFileHint": "Default cap — overridable per file (FT_MAXSOURCES)",
   "settingsMinPerFileLabel": "Minimum sources per file",
   "settingsMinPerFileHint": "Guaranteed per-file source quota even when the global swarm is saturated",
   "settingsMaxQueueLabel": "Max upload queue",
-  "settingsMaxQueueHint": "Clients waiting for an upload slot (eMule QueueSize, default 5000)",
+  "settingsMaxQueueHint": "Clients waiting for an upload slot, 10–5000 (eMule QueueSize, default 5000)",
   "settingsMinUploadLabel": "Min upload rate per slot (KB/s)",
-  "settingsMinUploadHint": "Does not open a new slot below this threshold (eMule MinUpload, default 1)",
+  "settingsMinUploadHint": "No new slot if per-slot average drops below this threshold; 0 = disabled (eMule MinUpload, default 1)",
   "settingsDailyQuotaLabel": "Daily upload quota (GiB, 0 = unlimited)",
   "settingsDailyQuotaHint": "Emule-Sion option: beyond the quota, no upload slot is granted. Resets daily (UTC).",
   "settingsAutoPriorityTitle": "Auto-priority for new downloads",
@@ -1149,7 +1150,32 @@
       }
     }
   },
-  "rateLimitsCapacityNote": "Limits are capped at 90% (download) / 80% (upload) of the declared line capacities (Connection tab).",
+  "rateLimitsCapacityNote": "These ceilings throttle real traffic (token buckets), capped at 90% (download) / 80% (upload) of the declared line capacities (Connection tab).",
+  "rateLimitsUssActiveNote": "USS is active: upload is driven automatically from measured latency. The upload limit below bounds its ceiling — 0 = no ceiling.",
+  "limitsEffective": "Currently applied: {value} KB/s",
+  "@limitsEffective": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "limitsEffectiveRatio": "Capped by the eD2K ratio — applied: {value} KB/s",
+  "@limitsEffectiveRatio": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "limitsUssDriven": "Driven by USS — current dynamic limit: {value} KB/s. The value you set bounds the USS ceiling.",
+  "@limitsUssDriven": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "settingsDiagnosticTile": "Daemon diagnostics",
   "settingsDiagnosticSub": "Health, connections and internal statistics",
   "settingsImportPartTile": "Import a .part.met",

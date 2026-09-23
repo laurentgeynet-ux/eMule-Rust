@@ -115,7 +115,7 @@ class _DownloadSourcesExpansionState
   Widget build(BuildContext context) {
     final ctl = ref.watch(peerSourcesControllerProvider);
     final hash = _hash;
-    final sources = ctl.getSourcesForHash(hash);
+    final sources = ctl.getVisibleSourcesForHash(hash);
     final swarm = ctl.getSwarmForHash(hash);
     final detail = ctl.getDetailForId(widget.item.id) ?? widget.item;
 

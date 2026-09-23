@@ -119,11 +119,11 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `view_models/categories_controller.dart` | Contrôleur des catégories |
 | `view_models/lab_controller.dart` | Contrôleur du lab |
 | `view_models/network_policy_controller.dart` | Contrôleur de la politique réseau |
-| `view_models/peer_sources_controller.dart` | Contrôleur des sources de pairs |
+| `view_models/peer_sources_controller.dart` | Contrôleur des sources de pairs — `getVisibleSourcesForHash` filtre la deadlist eMule (échec/rejeté/filtré masqués) |
 | `views/downloads_screen.dart` | Écran principal des téléchargements |
 | `widgets/downloads_list.dart`, `downloads_top_bar.dart`, `downloads_sidebar.dart`, `downloads_empty_state.dart` | Liste, barre d'outils, sidebar et état vide |
 | `widgets/download_row.dart`, `download_details_panel.dart`, `download_detail_dialog.dart` | Ligne de download et panneau/dialogue de détail |
-| `widgets/download_sources_expansion.dart` | Expansion des sources d'un download |
+| `widgets/download_sources_expansion.dart` | Expansion des sources d'un download — n'affiche que la srclist eMule (vivantes), pas les entrées deadlist |
 | `widgets/speed_sparkline.dart`, `debug_simulation_bar.dart` | Sparkline de débit, barre de simulation |
 | `widgets/add_link_dialog.dart` + `widgets/add_link/` | Dialogue d'ajout de lien ed2k (`ed2k_link_parser`, dropdowns catégorie/allocation, preview) |
 | `widgets/category_edit_dialog.dart` + `widgets/category/` | Édition de catégorie (color picker, dropdown priorité) |
@@ -146,7 +146,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `search/view_models/search_controller.dart` + `views/search_screen.dart` + `widgets/` (7 fichiers) | Recherche : formulaire, table de résultats, bannière connexion, états |
 | `servers/view_models/servers_controller.dart` + `views/servers_screen.dart` + `widgets/` (12 fichiers) | Serveurs : table et cartes, import server.met, session bar, badges, dialogues clear/update |
 | `settings/view_models/settings_controller.dart` + `views/settings_view.dart` + `views/sections/` (6 fichiers) + `widgets/` (3 fichiers) | Page Paramètres (`/settings`) : rail Général/Connexion/Transferts/Sécurité/Amis/Avancé ; pseudo, partage Incoming, **interrupteurs Réseau eD2K/Kad** (`network_toggles_card`), kill switch/quotas, **capacités & ports TCP/UDP, toggles UDP+UPnP**, obfuscation, connexions max, USS, limites de sources, file d'upload, IP filter, amis, outils avancés |
-| `shares/views/shares_view.dart` + `shares/view_models/shares_controller.dart` | Onglet « Partages » (`/shares`) : fichiers servis (persistés + partiels `.part` badge « partiel », **downloads actifs toujours publiés dès la création**), **débit d'upload courant + total cumulé par fichier** (`uploadRateBps`/`uploadedBytes`), renommage (`shares.rename`), priorité d'upload (powershare), switch activé/suspendu, **bouton rescan Incoming** (`shares.rescan`) ; le contrôleur alimente le badge sidebar live (refetch `shares.list` sur events lifecycle/progression downloads + `shares.changed` + `upload.uploadsUpdated` debouncé) |
+| `shares/views/shares_view.dart` + `shares/view_models/shares_controller.dart` | Onglet « Partages » (`/shares`) : fichiers servis (persistés + partiels `.part` badge « partiel », **downloads actifs toujours publiés dès la création**), **débit d'upload courant + total cumulé par fichier** (`uploadRateBps`/`uploadedBytes`), **groupage par catégorie** (`shared_files.category_id` via `shares.setCategory`, tri par total uploadé décroissant, « Sans catégorie » en dernier), **moteur de recherche** (nom + hash), renommage (`shares.rename`), priorité d'upload (powershare), switch activé/suspendu, **bouton rescan Incoming** (`shares.rescan`) ; le contrôleur alimente le badge sidebar live (refetch `shares.list` sur events lifecycle/progression downloads + `shares.changed` + `upload.uploadsUpdated` debouncé) |
 | `uploads/view_models/uploads_controller.dart` + `views/uploads_view.dart` + `widgets/uploads_table.dart` | Uploads : vue et table des envois |
 
 ## packages/mule_client/ — Client daemon partagé
@@ -300,7 +300,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/rpc/handlers/network.rs` | Handler : politique réseau (`network.*`) + limites de débit (`limits.get`/`set` — clamp capacité eMule 90 %/80 %, ratio anti-leech `emule_ud_ratio` 3×/4×/5× sous 20 Ko/s d'upload) |
 | `src/rpc/handlers/servers.rs` | Handler : serveurs |
 | `src/rpc/handlers/settings.rs` | Handler : paramètres — `settings.get`/`set` couvrant tous les réglages runtime (ports, UDP, UPnP, obfuscation, capacités — clamp eMule 90 %/80 % sur les limites, USS, quotas, file upload) avec application à chaud (`apply_port_change`, `apply_udp_state`, `apply_capacity_clamp`) ; write-probe sur les dossiers, warning sur clés inconnues |
-| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés — `shares.list` (incl. partiels + stats d'upload `uploadRateBps`/`uploadedBytes`), `add`, `remove`, `rename`, `setEnabled`, `setUploadPriority` (mutations refusées sur `is_partial`), `rescan` ; emit `shares.changed` sur chaque mutation |
+| `src/rpc/handlers/shares.rs` | Handler : fichiers partagés — `shares.list` (incl. partiels + stats d'upload `uploadRateBps`/`uploadedBytes` + `categoryId`/`upPriority`), `add`, `remove`, `rename`, `setEnabled`, `setUploadPriority` (mutations refusées sur `is_partial`), `setCategory` (acceptée sur partiels — catégorie du download sous-jacent), `rescan` ; emit `shares.changed` sur chaque mutation |
 | `src/rpc/handlers/sources.rs` | Handler : sources |
 | `src/rpc/handlers/upnp.rs` | Handler : UPnP |
 
@@ -335,6 +335,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/services/client_udp.rs` | Socket client-UDP eD2K (reasks/keep-alive 0x90-0x93) |
 | `src/services/server_udp.rs` | Socket UDP serveur (GLOBGETSOURCES2/GLOBFOUNDSOURCES) + failover dans `swarm_coordinator/strategy.rs` |
 | `src/services/uss.rs` | USS — limite upload dynamique par latence (loi `LastCommonRouteFinder`, gate `accept_new_client` sur la file) ; replafonne le bucket download via `emule_ud_ratio` à chaque tick (eMule `bDynamic`) |
+| `src/services/uss_icmp.rs` | USS — traceroute ICMP Windows (`IcmpSendEcho*`) pour le *Last Common Route Finder* eMule : découvre le dernier routeur commun et sa latence de référence |
 | `src/services/kad_udp/storage.rs` | Nœud de stockage Kad (TTL, bornes anti-flood) |
 | `src/services/kad_udp/types.rs` | Types Kad UDP |
 | `src/services/obfuscation_stream.rs` | Flux réseau obfusqué (protocol obfuscation) |
@@ -668,6 +669,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `docs/releases/RELEASE_NOTES_0.1.2-lab.md` | Notes de version 0.1.2-lab |
 | `docs/releases/RELEASE_NOTES_0.1.3-lab.md` | Notes de version 0.1.3-lab |
 | `docs/releases/RELEASE_NOTES_0.1.8.md` | Notes de version 0.1.8 |
+| `docs/releases/RELEASE_NOTES_0.2.0-RC1.md` | Notes de version 0.2.0-RC1 |
 
 ### docs/qa/ — Assurance Qualité & Conformité
 | Fichier | Fonction |

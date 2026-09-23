@@ -23,6 +23,7 @@
   "filterFailed": "Échoués",
   "uncategorized": "Sans catégorie",
   "searchPlaceholder": "Rechercher dans les téléchargements...",
+  "searchPlaceholderShares": "Rechercher dans les partages...",
   "btnAddLink": "Ajouter un lien",
   "btnAddEd2kLink": "Ajouter un lien eD2K",
   "btnAddDownload": "Ajouter un téléchargement",
@@ -194,7 +195,7 @@
   "sparseInstantGrowsDynamically": "Sparse (instantané, croît dynamiquement)",
   "preallocateFullSizeAvoidsFragmentation": "Pré-allouer (taille complète, évite la fragmentation)",
   "noneMinimalInitialDiskUse": "Aucune (usage disque initial minimal)",
-  "sansCategorieNone": "Sans catégorie (None)",
+  "sansCategorieNone": "Sans catégorie",
   "hash": "Hash : {hash}",
   "@hash": {
     "placeholders": {
@@ -1042,9 +1043,9 @@
   "settingsUssTitle": "USS — Détection de la vitesse d'envoi",
   "settingsUssSub": "Ajuste dynamiquement la limite d'upload selon la latence mesurée",
   "settingsMaxConnLabel": "Connexions max",
-  "settingsMaxConnHint": "Budget global de sockets pairs (eMule MaxConnections)",
+  "settingsMaxConnHint": "Budget global de sockets pairs, 1–65000 (eMule MaxConnections — non borné)",
   "settingsConnPerMinLabel": "Connexions / min",
-  "settingsConnPerMinHint": "Nouvelles connexions sortantes par minute (eMule ≈ 240)",
+  "settingsConnPerMinHint": "Nouvelles connexions sortantes par minute, 1–1200 (eMule ≈ 240)",
   "settingsServersTitle": "Serveurs eD2K",
   "settingsServerReconnectTitle": "Reconnexion automatique",
   "settingsServerReconnectSub": "Reconnecte au dernier serveur après une perte de connexion (eMule « Reconnect »)",
@@ -1110,15 +1111,15 @@
   "killSwitchConfirmBody": "Le kill switch coupe immédiatement toutes les sockets réseau (pairs, serveurs, listeners) jusqu'à réactivation manuelle.",
   "killSwitchConfirmAction": "Tout déconnecter",
   "settingsMaxGlobalLabel": "Sources maximum (global)",
-  "settingsMaxGlobalHint": "Nombre total de sources eD2K/Kad simultanées, tous fichiers confondus",
+  "settingsMaxGlobalHint": "Quota de sources activées par l'allocateur swarm, tous fichiers confondus — distinct du budget de sockets (Connexion)",
   "settingsMaxPerFileLabel": "Sources maximum par fichier",
   "settingsMaxPerFileHint": "Plafond par défaut — surchargeable par fichier (FT_MAXSOURCES)",
   "settingsMinPerFileLabel": "Sources minimum par fichier",
   "settingsMinPerFileHint": "Quota de sources garanti par fichier même si le swarm global est saturé",
   "settingsMaxQueueLabel": "File d'attente upload max",
-  "settingsMaxQueueHint": "Clients en attente d'un slot upload (eMule QueueSize, défaut 5000)",
+  "settingsMaxQueueHint": "Clients en attente d'un slot upload, 10–5000 (eMule QueueSize, défaut 5000)",
   "settingsMinUploadLabel": "Débit upload min par slot (Ko/s)",
-  "settingsMinUploadHint": "N'ouvre pas de nouveau slot sous ce seuil (eMule MinUpload, défaut 1)",
+  "settingsMinUploadHint": "Pas de nouveau slot si la moyenne/slot passe sous ce seuil ; 0 = désactivé (eMule MinUpload, défaut 1)",
   "settingsDailyQuotaLabel": "Quota upload quotidien (Gio, 0 = illimité)",
   "settingsDailyQuotaHint": "Option Emule-Sion : au-delà du quota, plus aucun slot d'upload n'est accordé. Remise à zéro chaque jour (UTC).",
   "settingsAutoPriorityTitle": "Priorité auto des nouveaux downloads",
@@ -1149,7 +1150,32 @@
       }
     }
   },
-  "rateLimitsCapacityNote": "Les limites sont bornées à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).",
+  "rateLimitsCapacityNote": "Ces plafonds brident le trafic réel (token buckets), bornés à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).",
+  "rateLimitsUssActiveNote": "USS est actif : l'envoi est piloté automatiquement selon la latence mesurée. La limite d'envoi ci-dessous borne son plafond — 0 = aucun plafond.",
+  "limitsEffective": "Effectif actuel : {value} Ko/s",
+  "@limitsEffective": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "limitsEffectiveRatio": "Plafonné par le ratio eD2K — effectif : {value} Ko/s",
+  "@limitsEffectiveRatio": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "limitsUssDriven": "Piloté par USS — limite dynamique actuelle : {value} Ko/s. La valeur saisie borne le plafond USS.",
+  "@limitsUssDriven": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "settingsDiagnosticTile": "Diagnostic du daemon",
   "settingsDiagnosticSub": "État de santé, connexions et statistiques internes",
   "settingsImportPartTile": "Importer un .part.met",

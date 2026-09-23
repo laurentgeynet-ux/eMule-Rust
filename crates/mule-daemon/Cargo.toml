@@ -43,6 +43,14 @@ reqwest.workspace = true
 flate2.workspace = true
 time.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# IcmpSendEcho (iphlpapi) — ICMP echo/traceroute without raw sockets or
+# admin rights, for the USS last-common-host discovery (eMule LCRF).
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+] }
+
 [dev-dependencies]
 tokio-tungstenite.workspace = true
 tempfile.workspace = true

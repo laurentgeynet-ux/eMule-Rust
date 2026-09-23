@@ -372,6 +372,20 @@ fn test_budget_mutation_and_validation() {
     let err = manager.set_budgets(invalid_budgets).unwrap_err();
     assert!(matches!(err, PolicyError::InvalidBudgets(_)));
 
+    // Borne haute eMule-like (65000 accepté, au-delà rejeté)
+    let max_ok = ResourceBudgets {
+        max_active_peer_connections: mule_network_policy::MAX_PEER_CONNECTIONS_CAP,
+        ..Default::default()
+    };
+    assert!(manager.set_budgets(max_ok).is_ok());
+    let over_cap = ResourceBudgets {
+        max_active_peer_connections:
+            mule_network_policy::MAX_PEER_CONNECTIONS_CAP + 1,
+        ..Default::default()
+    };
+    let err = manager.set_budgets(over_cap).unwrap_err();
+    assert!(matches!(err, PolicyError::InvalidBudgets(_)));
+
     // Invalid budget update (max_total_buffer_bytes < max_frame_size_bytes)
     let invalid_buf = ResourceBudgets {
         max_total_buffer_bytes: 100,

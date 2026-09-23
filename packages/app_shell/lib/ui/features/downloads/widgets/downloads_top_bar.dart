@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/providers.dart';
 import '../../../../app/shell_controller.dart';
 import '../../../../l10n/l10n.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'add_link_dialog.dart';
@@ -94,10 +96,8 @@ class DownloadsTopBar extends ConsumerWidget {
                 children: [
                   if (ref.watch(isLabModeAvailableProvider)) _buildLabButton(context, ref),
                   const SizedBox(width: AppSpacing.sm - 2),
-                  _buildSpeedBadge(ref),
+                  _buildTransferMonitor(context, ref),
                   const SizedBox(width: AppSpacing.sm),
-                  _buildSessionTotalsBadge(context, ref),
-                  _buildLifetimeTotalsBadge(context, ref),
                   _buildKillSwitchButton(context, ref),
                   _buildIpFilterButton(context, ref),
                   if (ref.watch(devToolsEnabledProvider)) ...[
@@ -164,187 +164,204 @@ class DownloadsTopBar extends ConsumerWidget {
     );
   }
 
-  Widget _buildSpeedBadge(WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: AppDecorations.chip(),
+  /// Moniteur de transfert unifié : débits live + sparkline 60 s +
+  /// totaux de session + cumuls « depuis l'installation », regroupés
+  /// dans une seule pill segmentée par des séparateurs hairline.
+  /// Chiffres en fonte tabulaire (pas de jitter quand la valeur change).
+  /// Kill switch actif → pill teintée rouge, segment session remplacé
+  /// par l'état « Désactivé » (tap → Settings → Connexion).
+  /// Sinon tap → Historique & Statistiques.
+  Widget _buildTransferMonitor(BuildContext context, WidgetRef ref) {
+    final killSwitch =
+        ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
+    final stats = ref.watch(statsControllerProvider).latest;
+    final l10n = context.l10n;
+
+    void openHistory() {
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        router.go('/history');
+      } else {
+        ref.read(shellControllerProvider).setSection(AppNavSection.history);
+      }
+    }
+
+    return Tooltip(
+      message:
+          killSwitch ? l10n.tooltipPolicyKill : l10n.tooltipSessionTotals,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: AppRadius.lgAll,
+          onTap: () {
+            if (killSwitch) {
+              _goToSettings(context, ref, 'connection');
+            } else {
+              openHistory();
+            }
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
+              color: killSwitch
+                  ? AppColors.tintRed.withValues(alpha: 0.15)
+                  : AppColors.card,
+              borderRadius: AppRadius.lgAll,
+              border: Border.all(
+                color: killSwitch
+                    ? AppColors.tintRed.withValues(alpha: 0.5)
+                    : AppColors.border,
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _ratesSegment(ref),
+                _segmentDivider(),
+                SizedBox(
+                  key: const Key('session_totals_badge'),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: killSwitch
+                        ? _killSwitchState(l10n)
+                        : _sessionTotals(stats),
+                  ),
+                ),
+                _segmentDivider(),
+                SizedBox(
+                  key: const Key('lifetime_totals_badge'),
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                        left: 10, right: 10, top: 6, bottom: 6),
+                    child: _lifetimeTotals(stats),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _segmentDivider() => Container(
+        width: 0.5,
+        height: 16,
+        color: AppColors.border,
+      );
+
+  /// Segment 1 — débits instantanés (↓ DL / ↑ UL) + sparkline.
+  Widget _ratesSegment(WidgetRef ref) {
+    final dl =
+        ref.watch(downloadsStoreControllerProvider).totalDownloadSpeed;
+    final ul = ref.watch(uploadsControllerProvider).totalUploadRateBps;
+    return Padding(
+      padding: const EdgeInsets.only(left: 10, right: 10, top: 6, bottom: 6),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.arrow_downward_rounded, size: 13, color: AppTheme.statusDownloading),
+          const Icon(Icons.arrow_downward_rounded,
+              size: 13, color: AppTheme.statusDownloading),
           const SizedBox(width: 3),
           Text(
-            Formatters.formatSpeed(ref.watch(downloadsStoreControllerProvider).totalDownloadSpeed),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.statusDownloading,
-            ),
+            Formatters.formatSpeed(dl),
+            style: _metricStyle(AppTheme.statusDownloading, bold: true),
           ),
           const SizedBox(width: 8),
-          const Icon(Icons.arrow_upward_rounded, size: 13, color: AppColors.textFaint),
+          const Icon(Icons.arrow_upward_rounded,
+              size: 13, color: AppColors.accentTeal),
           const SizedBox(width: 3),
           Text(
-            Formatters.formatSpeed(ref.watch(uploadsControllerProvider).totalUploadRateBps),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textFaint,
-            ),
+            Formatters.formatSpeed(ul),
+            style: _metricStyle(AppColors.accentTeal, bold: true),
           ),
           const SizedBox(width: 8),
-          SpeedSparkline(tracker: ref.read(speedTrackerProvider)),
+          SpeedSparkline(
+            tracker: ref.read(speedTrackerProvider),
+            width: 64,
+            height: 18,
+          ),
         ],
       ),
     );
   }
 
-  /// Session transfer totals (event.statsTick). Replaces the network
-  /// profile badge — the profile remains visible in Settings → Connexion.
-  /// When the kill switch is engaged the chip keeps its red warning state
-  /// and still leads to the policy section.
-  Widget _buildSessionTotalsBadge(BuildContext context, WidgetRef ref) {
-    final killSwitch = ref.watch(networkPolicyControllerProvider).isKillSwitchActive;
-    final stats = ref.watch(statsControllerProvider).latest;
-    final accent = killSwitch ? AppColors.tintRed : AppColors.tintCyan;
-    final accentText = killSwitch ? AppColors.danger : AppColors.accentCyan;
-    return Tooltip(
-      message: killSwitch
-          ? context.l10n.tooltipPolicyKill
-          : context.l10n.tooltipSessionTotals,
-      child: InkWell(
-        key: const Key('session_totals_badge'),
-        borderRadius: AppRadius.mdAll,
-        onTap: () {
-          if (killSwitch) {
-            _goToSettings(context, ref, 'connection');
-          } else {
-            final router = GoRouter.maybeOf(context);
-            if (router != null) {
-              router.go('/history');
-            } else {
-              ref
-                  .read(shellControllerProvider)
-                  .setSection(AppNavSection.history);
-            }
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: killSwitch ? 0.2 : 0.12),
-            borderRadius: AppRadius.mdAll,
-            border: Border.all(
-              color: accent.withValues(alpha: killSwitch ? 0.5 : 0.3),
-              width: 0.5,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (killSwitch) ...[
-                Icon(Icons.shield_rounded, size: 13, color: accentText),
-                const SizedBox(width: 5),
-                Text(
-                  context.l10n.killSwitchBadgeDisabled,
-                  style: AppTextStyles.badgeLabel.copyWith(color: accentText),
-                ),
-              ] else ...[
-                const Icon(
-                  Icons.arrow_downward_rounded,
-                  size: 13,
-                  color: AppTheme.statusDownloading,
-                ),
-                const SizedBox(width: 3),
-                Text(
-                  Formatters.formatBytes(stats?.sessionDownloadedBytes ?? 0),
-                  style: AppTextStyles.badgeLabel.copyWith(
-                    color: AppTheme.statusDownloading,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.arrow_upward_rounded,
-                  size: 13,
-                  color: AppColors.accentTeal,
-                ),
-                const SizedBox(width: 3),
-                Text(
-                  Formatters.formatBytes(stats?.sessionUploadedBytes ?? 0),
-                  style: AppTextStyles.badgeLabel.copyWith(
-                    color: AppColors.accentTeal,
-                  ),
-                ),
-              ],
-            ],
-          ),
+  /// Segment 2 — totaux de la session courante.
+  Widget _sessionTotals(DaemonStatsModel? stats) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.arrow_downward_rounded,
+            size: 13, color: AppTheme.statusDownloading),
+        const SizedBox(width: 3),
+        Text(
+          Formatters.formatBytes(stats?.sessionDownloadedBytes ?? 0),
+          style: _metricStyle(AppTheme.statusDownloading),
         ),
-      ),
+        const SizedBox(width: 8),
+        const Icon(Icons.arrow_upward_rounded,
+            size: 13, color: AppColors.accentTeal),
+        const SizedBox(width: 3),
+        Text(
+          Formatters.formatBytes(stats?.sessionUploadedBytes ?? 0),
+          style: _metricStyle(AppColors.accentTeal),
+        ),
+      ],
     );
   }
 
-  /// Cumul « depuis l'installation » (persisté côté daemon, remise à
-  /// zéro dans Settings → Avancé). Tap → Historique & Statistiques.
-  Widget _buildLifetimeTotalsBadge(BuildContext context, WidgetRef ref) {
-    final stats = ref.watch(statsControllerProvider).latest;
-    return Tooltip(
-      message: context.l10n.tooltipLifetimeTotals,
-      child: InkWell(
-        key: const Key('lifetime_totals_badge'),
-        borderRadius: AppRadius.mdAll,
-        onTap: () {
-          final router = GoRouter.maybeOf(context);
-          if (router != null) {
-            router.go('/history');
-          } else {
-            ref
-                .read(shellControllerProvider)
-                .setSection(AppNavSection.history);
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: AppDecorations.chip(),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.functions_rounded,
-                size: 12,
-                color: AppColors.textFaint,
-              ),
-              const SizedBox(width: 4),
-              const Icon(
-                Icons.arrow_downward_rounded,
-                size: 13,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                Formatters.formatBytes(stats?.lifetimeDownloadedBytes ?? 0),
-                style: AppTextStyles.badgeLabel.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.arrow_upward_rounded,
-                size: 13,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                Formatters.formatBytes(stats?.lifetimeUploadedBytes ?? 0),
-                style: AppTextStyles.badgeLabel.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
+  /// Segment 3 — cumuls « depuis l'installation » (plus discrets).
+  Widget _lifetimeTotals(DaemonStatsModel? stats) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.functions_rounded,
+            size: 12, color: AppColors.textFaint),
+        const SizedBox(width: 4),
+        const Icon(Icons.arrow_downward_rounded,
+            size: 13, color: AppColors.textSecondary),
+        const SizedBox(width: 3),
+        Text(
+          Formatters.formatBytes(stats?.lifetimeDownloadedBytes ?? 0),
+          style: _metricStyle(AppColors.textSecondary),
         ),
-      ),
+        const SizedBox(width: 8),
+        const Icon(Icons.arrow_upward_rounded,
+            size: 13, color: AppColors.textSecondary),
+        const SizedBox(width: 3),
+        Text(
+          Formatters.formatBytes(stats?.lifetimeUploadedBytes ?? 0),
+          style: _metricStyle(AppColors.textSecondary),
+        ),
+      ],
     );
   }
+
+  Widget _killSwitchState(AppLocalizations l10n) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.shield_rounded, size: 13, color: AppColors.danger),
+        const SizedBox(width: 5),
+        Text(
+          l10n.killSwitchBadgeDisabled,
+          style: AppTextStyles.badgeLabel.copyWith(color: AppColors.danger),
+        ),
+      ],
+    );
+  }
+
+  /// Chiffres en fonte tabulaire : la largeur ne bouge pas quand la
+  /// valeur change (0 → 9 999), évite le jitter du moniteur.
+  TextStyle _metricStyle(Color color, {bool bold = false}) => TextStyle(
+        fontSize: 11,
+        fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+        color: color,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
 
   Widget _buildKillSwitchButton(BuildContext context, WidgetRef ref) {
     final killSwitch = ref.watch(networkPolicyControllerProvider).isKillSwitchActive;

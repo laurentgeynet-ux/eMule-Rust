@@ -189,15 +189,25 @@ class _SettingsTransfersSectionState
     final patch = <String, dynamic>{};
     final applied = <TextEditingController>[];
     var invalid = false;
-    void add(TextEditingController ctrl, String label, int min, String key) {
+    void add(
+      TextEditingController ctrl,
+      String label,
+      int min,
+      String key, [
+      int? max,
+    ]) {
       final raw = ctrl.text.trim();
       if (raw.isEmpty) return; // champ vide = valeur inchangée
       final n = int.tryParse(raw);
-      if (n == null || n < min) {
+      if (n == null || n < min || (max != null && n > max)) {
         invalid = true;
         ref
             .read(shellControllerProvider)
-            .setError(l10n.settingsInvalidNumMin(label, raw, min));
+            .setError(
+              max != null
+                  ? l10n.settingsInvalidNumRange(label, raw, min, max)
+                  : l10n.settingsInvalidNumMin(label, raw, min),
+            );
       } else {
         patch[key] = n;
         applied.add(ctrl);
@@ -207,9 +217,15 @@ class _SettingsTransfersSectionState
     add(_maxGlobalCtrl, l10n.settingsMaxGlobalLabel, 1, 'maxGlobalDownloadPeers');
     add(_maxPerFileCtrl, l10n.settingsMaxPerFileLabel, 1, 'maxPeersPerDownload');
     add(_minPerFileCtrl, l10n.settingsMinPerFileLabel, 0, 'minPeersPerDownload');
-    add(_maxQueueCtrl, l10n.settingsMaxQueueLabel, 10, 'maxUploadQueue');
+    add(_maxQueueCtrl, l10n.settingsMaxQueueLabel, 10, 'maxUploadQueue', 5000);
     add(_minUploadCtrl, l10n.settingsMinUploadLabel, 0, 'minUploadKbs');
-    add(_dailyQuotaCtrl, l10n.settingsDailyQuotaLabel, 0, 'dailyUploadQuotaGb');
+    add(
+      _dailyQuotaCtrl,
+      l10n.settingsDailyQuotaLabel,
+      0,
+      'dailyUploadQuotaGb',
+      1048576,
+    );
 
     if (invalid || patch.isEmpty) return;
 

@@ -42,9 +42,18 @@ pub struct KadService {
     ed2k_tcp_port: std::sync::atomic::AtomicU16,
     /// Local eD2K user hash used in firewall-test connection hellos.
     fw_user_hash: std::sync::RwLock<[u8; 16]>,
-    /// Last time we bootstrapped Kad from a connected eD2K peer
-    /// (eMule "bootstrap from clients") — throttles the per-peer hook.
-    last_peer_bootstrap: std::sync::Mutex<Option<std::time::Instant>>,
+    /// Horodatage du dernier `BOOTSTRAP_REQ` émis — partagé entre les
+    /// envois immédiats (handshakes eD2K) et le drain de la file de
+    /// candidats, comme `CKademlia::m_tBootstrap` d'eMule.
+    last_bootstrap: std::sync::Mutex<Option<std::time::Instant>>,
+    /// File de candidats bootstrap — équivalent de
+    /// `CKademlia::s_liBootstrapList` (eMule 0.72a, Kademlia.cpp:287) :
+    /// les pairs eD2K annonçant un port UDP Kad s'y enregistrent, puis la
+    /// boucle de drain les essaie un par un tant que la table de routage
+    /// reste pauvre (~2 s entre essais quand elle est vide, 15 s sinon).
+    /// Chaque candidat n'est tenté qu'une fois (`RemoveHead`) ; de
+    /// nouveaux handshakes ré-alimentent la file. Cap à 50 comme eMule.
+    bootstrap_candidates: Mutex<std::collections::VecDeque<(SocketAddr, u8)>>,
     /// Canal d'événements broadcast + compteur de séquence partagé —
     /// injecté par `set_event_channel` pour émettre `kad.statusChanged`
     /// quand la table de routage évolue hors des actions RPC (paquets
@@ -86,7 +95,8 @@ impl KadService {
             in_flight_searches: Arc::new(Mutex::new(std::collections::HashSet::new())),
             ed2k_tcp_port: std::sync::atomic::AtomicU16::new(0),
             fw_user_hash: std::sync::RwLock::new([0u8; 16]),
-            last_peer_bootstrap: std::sync::Mutex::new(None),
+            last_bootstrap: std::sync::Mutex::new(None),
+            bootstrap_candidates: Mutex::new(std::collections::VecDeque::new()),
             event_channel: std::sync::RwLock::new(None),
         }
     }
@@ -335,24 +345,91 @@ impl KadService {
         if !valid_contacts.is_empty() {
             let mut dl = self.downloads.lock().await;
             let _ = dl.db_mut().batch_upsert_kad_contacts(&valid_contacts);
+            // La table vient de s'enrichir hors RPC — nudge immédiat pour
+            // que le badge Kad de l'UI reflète la connexion sans attendre
+            // le prochain tick de maintenance (30 s).
+            self.emit_status_changed();
         }
 
         Ok(valid_contacts.len())
     }
 
-    /// Bootstraps Kad from a connected eD2K peer that advertised a Kad UDP
-    /// port (eMule "bootstrap from clients": any Kad-capable client can seed
-    /// the routing table). Only runs while the routing table is thin
-    /// (< 50 contacts). Throttled: every 10 s while the table is empty,
-    /// every 60 s once it has contacts.
-    pub async fn maybe_bootstrap_from_peer(&self, ip: Ipv4Addr, kad_udp_port: u16, low_id: bool) {
-        const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
-        const EMPTY_TABLE_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
-        // A LowID peer is firewalled: its advertised Kad UDP port is not
-        // reachable, so a bootstrap request can only time out.
-        if low_id {
+    /// Nombre de candidats bootstrap en attente dans la file de drain
+    /// (diagnostics et tests — `s_liBootstrapList.GetCount()` d'eMule).
+    pub async fn pending_bootstrap_candidates(&self) -> usize {
+        self.bootstrap_candidates.lock().await.len()
+    }
+
+    /// Ajoute un candidat bootstrap à la file de drain — dédupliqué par
+    /// adresse, borné à 50 entrées comme `s_liBootstrapList` (le plus
+    /// ancien sort quand la file est pleine).
+    pub async fn add_bootstrap_candidate(&self, addr: SocketAddr, kad_version: u8) {
+        let mut pool = self.bootstrap_candidates.lock().await;
+        if pool.iter().any(|(a, _)| *a == addr) {
             return;
         }
+        if pool.len() >= 50 {
+            pool.pop_front();
+        }
+        pool.push_back((addr, kad_version));
+    }
+
+    /// Charge `<data_dir>/nodes.dat` en candidats bootstrap — équivalent
+    /// d'eMule qui lit le fichier d'amorçage dans `s_liBootstrapList` au
+    /// démarrage. Les contacts prouvent leur vivacité en répondant au
+    /// `BOOTSTRAP_REQ` du drain : aucun zombie n'entre dans la table.
+    /// No-op si le fichier est absent ou invalide.
+    pub async fn load_nodes_dat_candidates(&self, path: &std::path::Path) {
+        let Ok(bytes) = tokio::fs::read(path).await else {
+            return;
+        };
+        match nodes_dat::parse_valid_nodes_contacts(&bytes, &self.policy_mgr, &self.ip_filter) {
+            Ok(contacts) => {
+                let count = contacts.len();
+                for c in contacts {
+                    self.add_bootstrap_candidate(
+                        SocketAddr::new(IpAddr::V4(c.ip), c.udp_port),
+                        c.version,
+                    )
+                    .await;
+                }
+                if count > 0 {
+                    tracing::info!(
+                        "Kad: {count} bootstrap candidates loaded from {}",
+                        path.display()
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Kad: ignored nodes.dat at {}: {e}", path.display());
+            }
+        }
+    }
+
+    /// Enregistre un pair eD2K annonçant un port UDP Kad comme candidat
+    /// bootstrap puis tente un envoi immédiat — eMule
+    /// `CKademlia::Bootstrap(ip, port)` : gate `!IsConnected()` + throttle
+    /// global de 10 s. Si l'envoi échoue, le candidat reste dans
+    /// `bootstrap_candidates` et la boucle de drain le retente (avant, un
+    /// simple timeout laissait Kad mort avec une table vide).
+    /// `kad_version < 2` (`KADEMLIA_VERSION2_47a`) est ignoré : ces pairs
+    /// ne parlent pas les paquets KADEMLIA2.
+    pub async fn maybe_bootstrap_from_peer(
+        &self,
+        ip: Ipv4Addr,
+        kad_udp_port: u16,
+        low_id: bool,
+        kad_version: u8,
+    ) {
+        const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration =
+            std::time::Duration::from_secs(10);
+        // A LowID peer is firewalled: its advertised Kad UDP port is not
+        // reachable, so a bootstrap request can only time out.
+        if low_id || kad_version < 2 {
+            return;
+        }
+        let addr = SocketAddr::new(IpAddr::V4(ip), kad_udp_port);
+        self.add_bootstrap_candidate(addr, kad_version).await;
         let contacts = {
             let table = self.routing_table.lock().await;
             table.total_contacts()
@@ -360,15 +437,10 @@ impl KadService {
         if contacts >= 50 {
             return;
         }
-        let min_interval = if contacts == 0 {
-            EMPTY_TABLE_MIN_INTERVAL
-        } else {
-            PEER_BOOTSTRAP_MIN_INTERVAL
-        };
         {
-            let mut last = self.last_peer_bootstrap.lock().unwrap();
+            let mut last = self.last_bootstrap.lock().unwrap();
             if last
-                .map(|t| t.elapsed() < min_interval)
+                .map(|t| t.elapsed() < PEER_BOOTSTRAP_MIN_INTERVAL)
                 .unwrap_or(false)
             {
                 return;
@@ -456,6 +528,7 @@ impl KadService {
                 let mut dl = self.downloads.lock().await;
                 let _ = dl.db_mut().batch_upsert_kad_contacts(&all_valid);
             }
+            self.emit_status_changed();
         }
 
         tracing::info!(
@@ -472,6 +545,72 @@ impl KadService {
         self: &Arc<Self>,
         cancel_token: CancellationToken,
     ) -> tokio::task::JoinHandle<()> {
+        // Drain de la file de candidats bootstrap — eMule
+        // `CKademlia::Process` (Kademlia.cpp:287) vide `s_liBootstrapList`
+        // à raison d'un `BOOTSTRAP_REQ` toutes les 2 s tant que la table
+        // est vide, toutes les 15 s quand elle a des contacts mais reste
+        // pauvre. Partage `last_bootstrap` avec les envois immédiats pour
+        // ne pas envoyer deux requêtes en rafale. Sans cette boucle, un
+        // timeout sur le premier candidat laissait Kad mort à 0 contact.
+        let drain_kad = Arc::clone(self);
+        let drain_cancel = cancel_token.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+            loop {
+                tokio::select! {
+                    _ = drain_cancel.cancelled() => break,
+                    _ = tick.tick() => {
+                        if !drain_kad.udp.get_snapshot().await.is_active {
+                            continue;
+                        }
+                        // Gate `!IsConnected()` d'eMule : `HasHadContact` —
+                        // on draine tant qu'aucun contact n'a jamais
+                        // répondu (vérifié), même si la table contient
+                        // des contacts non vérifiés (zombies importés).
+                        let (contacts, has_verified) = {
+                            let table = drain_kad.routing_table.lock().await;
+                            let has_v = !table
+                                .find_verified_closest(&drain_kad.local_id(), 1)
+                                .is_empty();
+                            (table.total_contacts(), has_v)
+                        };
+                        if has_verified {
+                            continue;
+                        }
+                        let min_interval = if contacts == 0 {
+                            std::time::Duration::from_secs(2)
+                        } else {
+                            std::time::Duration::from_secs(15)
+                        };
+                        {
+                            let last = drain_kad.last_bootstrap.lock().unwrap();
+                            if last
+                                .map(|t| t.elapsed() < min_interval)
+                                .unwrap_or(false)
+                            {
+                                continue;
+                            }
+                        }
+                        let (candidate, remaining) = {
+                            let mut pool = drain_kad.bootstrap_candidates.lock().await;
+                            let c = pool.pop_front();
+                            (c, pool.len())
+                        };
+                        let Some((addr, kad_version)) = candidate else {
+                            continue;
+                        };
+                        *drain_kad.last_bootstrap.lock().unwrap() =
+                            Some(std::time::Instant::now());
+                        tracing::info!(
+                            "Kad: bootstrap drain — trying {addr} (kad v{kad_version}, table {contacts} contacts, {remaining} candidates left)"
+                        );
+                        let _ = drain_kad
+                            .bootstrap_from_node(&addr.ip().to_string(), addr.port())
+                            .await;
+                    }
+                }
+            }
+        });
         let kad = Arc::clone(self);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));

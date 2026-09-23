@@ -269,6 +269,17 @@ impl PeerSourceStatus {
             Self::Failed => "failed",
         }
     }
+
+    /// Sémantique eMule `srclist` : une source dont la connexion échoue,
+    /// qui répond « fichier absent » ou qui est bloquée par le filtre IP
+    /// sort de la liste affichée et part en deadlist — cf.
+    /// `CUpDownClient::Disconnected` (`RemoveSource` + `AddDeadSource`).
+    /// Les entrées `Failed`/`Rejected`/`Filtered` restent persistées pour
+    /// le backoff de re-essai, mais ne sont ni affichées ni comptées dans
+    /// `GetSourceCount()`.
+    pub fn is_srclist_visible(&self) -> bool {
+        !matches!(self, Self::Failed | Self::Rejected | Self::Filtered)
+    }
 }
 
 impl std::str::FromStr for PeerSourceStatus {
@@ -492,6 +503,12 @@ pub struct SharedFile {
     /// fichier (B/s) — mesuré, 0 quand aucun slot actif.
     #[serde(default)]
     pub upload_rate_bps: u64,
+    /// Catégorie associée (`categories.id`) — `None` = non classé. Pour
+    /// les partages synthétisés depuis un download (partiel ou complété
+    /// en DB), reflète `downloads.category_id` ; pour les partages
+    /// autonomes, persisté dans `shared_files.category_id`.
+    #[serde(default)]
+    pub category_id: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -526,6 +543,7 @@ impl SharedFile {
             completed_parts: Vec::new(),
             uploaded_bytes: 0,
             upload_rate_bps: 0,
+            category_id: None,
         }
     }
 }
@@ -642,6 +660,29 @@ mod tests {
         credit.uploaded_bytes = 10 * 1_048_576;
         let m = credit.credit_multiplier();
         assert!((m - 2.0).abs() < 0.01, "Expected ~2.0 for 10MiB/10MiB, got {m}");
+    }
+
+    #[test]
+    fn peer_source_status_srclist_visibility_matches_emule() {
+        // Sources vivantes (srclist eMule) : en attente, file d'attente /
+        // re-demande, connexion en cours, connectée.
+        for s in [
+            PeerSourceStatus::Candidate,
+            PeerSourceStatus::Allowed,
+            PeerSourceStatus::Tried,
+            PeerSourceStatus::Connected,
+        ] {
+            assert!(s.is_srclist_visible(), "{s:?} doit rester visible");
+        }
+        // Deadlist eMule : échec de connexion, FNF, filtre IP — persistées
+        // pour le backoff mais masquées de la liste.
+        for s in [
+            PeerSourceStatus::Failed,
+            PeerSourceStatus::Rejected,
+            PeerSourceStatus::Filtered,
+        ] {
+            assert!(!s.is_srclist_visible(), "{s:?} doit être masqué");
+        }
     }
 }
 

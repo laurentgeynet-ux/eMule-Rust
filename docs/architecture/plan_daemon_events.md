@@ -144,6 +144,6 @@ sauf deux, corrigés :
   un event dans les réponses RPC en vol.
 - **`shares.changed`** (topic `shares`) — nouveau nudge émis par
   `handlers/shares.rs` sur `add`/`remove`/`rescan`/`setEnabled`/
-  `setUploadPriority` (couvre les mutations RPC et MCP) ; nouveau
+  `setUploadPriority`/`setCategory` (couvre les mutations RPC et MCP) ; nouveau
   stream `sharesEvents` côté client et `SharesController` dans
   `app_shell` (badge « Partages » live).

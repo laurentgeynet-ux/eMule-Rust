@@ -333,6 +333,15 @@ pub async fn handle_limits_set(
         .or_else(|| params["uploadLimit"].as_u64().map(|kb| kb * 1024));
     if ul_bytes.is_some() {
         state.uss.note_manual_limit(ul_cfg);
+        // eMule : quand DynUp (USS) est actif, la limite upload configurée
+        // est son plafond (`LastCommonRouteFinder` borne la limite
+        // dynamique à MaxUpload). 0 = plafond illimité.
+        if state.uss.snapshot().enabled {
+            state
+                .uss
+                .update_config(|c| c.max_upload_bps = ul_cfg)
+                .await;
+        }
     }
     state.uss.note_manual_download_limit(dl_cfg);
 
@@ -524,6 +533,15 @@ pub async fn apply_capacity_clamp(state: &AppState) -> Result<(), JsonRpcError> 
     state
         .uss
         .note_manual_limit(clamped_ul);
+    // Le plafond USS suit la limite upload configurée (même règle que
+    // `limits.set` : MaxUpload borne la limite dynamique quand USS est
+    // actif). 0 = plafond illimité.
+    if state.uss.snapshot().enabled {
+        state
+            .uss
+            .update_config(|c| c.max_upload_bps = clamped_ul)
+            .await;
+    }
     state
         .uss
         .note_manual_download_limit(clamped_dl);

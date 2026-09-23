@@ -326,6 +326,11 @@ abstract class MuleDaemonClient {
   /// "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare".
   Future<void> setSharedFileUploadPriority(String fileHash, String priority);
 
+  /// `shares.setCategory` — assign (or clear with `null`) a category to a
+  /// shared file; for shares synthesized from a download the download's
+  /// category is updated.
+  Future<void> setSharedFileCategory(String fileHash, String? categoryId);
+
   /// Re-scans the download (Incoming) directory and registers newly found
   /// files as shared. Returns the number of newly added files.
   Future<int> rescanSharedFiles();

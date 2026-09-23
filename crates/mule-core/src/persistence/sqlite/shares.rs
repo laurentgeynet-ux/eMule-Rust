@@ -29,20 +29,22 @@ fn shared_file_from_row(row: &rusqlite::Row) -> rusqlite::Result<SharedFile> {
         completed_parts: Vec::new(),
         uploaded_bytes: 0,
         upload_rate_bps: 0,
+        category_id: row.get::<_, Option<String>>(8)?,
     })
 }
 
 pub fn upsert_shared_file(conn: &mut Connection, file: &SharedFile) -> Result<(), CoreError> {
     conn.execute(
-        "INSERT INTO shared_files (file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        "INSERT INTO shared_files (file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority, category_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(file_hash) DO UPDATE SET
             file_name = excluded.file_name,
             file_size = excluded.file_size,
             file_path = excluded.file_path,
             enabled = excluded.enabled,
             up_priority = excluded.up_priority,
-            aich_root = COALESCE(excluded.aich_root, shared_files.aich_root)",
+            aich_root = COALESCE(excluded.aich_root, shared_files.aich_root),
+            category_id = COALESCE(excluded.category_id, shared_files.category_id)",
         params![
             file.file_hash,
             file.file_name,
@@ -52,6 +54,7 @@ pub fn upsert_shared_file(conn: &mut Connection, file: &SharedFile) -> Result<()
             if file.enabled { 1 } else { 0 },
             file.aich_root.map(|a| a.to_vec()),
             file.up_priority,
+            file.category_id,
         ],
     )?;
     Ok(())
@@ -72,7 +75,7 @@ pub fn set_shared_aich_root(
 
 pub fn list_shared_files(conn: &Connection) -> Result<Vec<SharedFile>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority
+        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority, category_id
          FROM shared_files
          ORDER BY shared_at_unix_ms DESC",
     )?;
@@ -90,7 +93,7 @@ pub fn get_shared_file(
     file_hash: &str,
 ) -> Result<Option<SharedFile>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority
+        "SELECT file_hash, file_name, file_size, file_path, shared_at_unix_ms, enabled, aich_root, up_priority, category_id
          FROM shared_files
          WHERE file_hash = ?1",
     )?;
@@ -132,6 +135,21 @@ pub fn set_shared_file_enabled(
     let rows = conn.execute(
         "UPDATE shared_files SET enabled = ?1 WHERE file_hash = ?2",
         params![if enabled { 1 } else { 0 }, file_hash],
+    )?;
+    Ok(rows > 0)
+}
+
+/// Associe (ou retire, `None`) une catégorie à un partage persisté.
+/// UPDATE direct — contrairement à l'upsert COALESCE, permet de
+/// désassigner explicitement (`category_id` → NULL).
+pub fn set_shared_file_category(
+    conn: &mut Connection,
+    file_hash: &str,
+    category_id: Option<&str>,
+) -> Result<bool, CoreError> {
+    let rows = conn.execute(
+        "UPDATE shared_files SET category_id = ?1 WHERE file_hash = ?2",
+        params![category_id, file_hash],
     )?;
     Ok(rows > 0)
 }

@@ -59,7 +59,7 @@ Réponse :
 
 ```jsonc
 {"jsonrpc":"2.0","id":0,"result":{
-  "daemonVersion": "0.1.9",
+  "daemonVersion": "0.2.0-RC1",
   "protocolVersion": 1,
   "instanceId": "<uuid>",
   "sessionId": "<uuid>",
@@ -116,7 +116,7 @@ Namespaces stables (voir `methods.rs` pour la liste exhaustive maintenue) :
 | `network.*` | `getPolicy`, `setProfile`, `enable`, `disconnectAll`, `getAuditLog`, `setBudgets` |
 | `settings.*` / `limits.*` | `get`, `set`, `setRetentionDays`, `resetDownloadDir` — voir `docs/SETTINGS.md` pour toutes les clés |
 | `stats.*` | `resetLifetimeTotals` → `{reset: true}` — remet à zéro les compteurs cumulés « depuis l'installation » (`lifetime_*_bytes`, mémoire + SQLite) ; les totaux de session sont conservés |
-| `shares.*` | `list` → `{sharedFiles[]}` (incl. partiels `isPartial`/`completedParts` + stats d'upload par fichier `uploadRateBps`/`uploadedBytes` — débit mesuré agrégé sur les slots actifs, total persisté dans `share_upload_stats`), `add`, `remove`, `rename` (`{fileHash, newName}` — fichier disque + entrée, délègue à `downloads.rename` quand le hash adosse un download), `setEnabled`, `setUploadPriority` (les deux derniers refusent les partiels), `rescan` |
+| `shares.*` | `list` → `{sharedFiles[]}` (incl. partiels `isPartial`/`completedParts` + stats d'upload par fichier `uploadRateBps`/`uploadedBytes` — débit mesuré agrégé sur les slots actifs, total persisté dans `share_upload_stats` — et `categoryId`/`upPriority`), `add`, `remove`, `rename` (`{fileHash, newName}` — fichier disque + entrée, délègue à `downloads.rename` quand le hash adosse un download), `setEnabled`, `setUploadPriority` (les deux refusent les partiels), `setCategory` (`{fileHash, categoryId|null}` — accepté sur les partiels : la catégorie du download sous-jacent fait foi), `rescan` |
 | `uploads.*` / `listener.*` | `list`, `status`, `cancel` ; `start`, `stop`, `status` |
 | `identity.*` / `credits.*` | `status`, `rotate` ; `list`, `stats` |
 | `upnp.*` | `status`, `mapPorts`, `unmapPorts`, `setEnabled` |
@@ -165,7 +165,7 @@ souscription et sérialise son payload via `to_wire_json()` ; tous les
 | `upload.uploadsUpdated` | `{sequence, active: [UploadSessionSnapshot], queue: [UploadSessionSnapshot], uploadRateBps}` | `uploads` | par mutation + progression throttlée ~500 ms |
 | `event.statsTick` | `{sequence, stats: {downloadBps, uploadBps, downloadsActive, peersConnected, serverConnected, kadContacts, kadUdpBound, sessionDownloadedBytes, sessionUploadedBytes, lifetimeDownloadedBytes, lifetimeUploadedBytes}}` | `stats` | cadence ~2 s, suspendu sans abonné |
 | `kad.statusChanged` | `{sequence}` (nudge → refetch `kad.status`) | `kad` | par mutation (udp, bootstrap, contacts) + boucle de maintenance quand `total_contacts` change réellement (≤30 s) |
-| `shares.changed` | `{sequence}` (nudge → refetch `shares.list`) | `shares` | par `add`/`remove`/`rescan`/`setEnabled`/`setUploadPriority` (couvre les mutations RPC et MCP) |
+| `shares.changed` | `{sequence}` (nudge → refetch `shares.list`) | `shares` | par `add`/`remove`/`rescan`/`setEnabled`/`setUploadPriority`/`setCategory` (couvre les mutations RPC et MCP) |
 | `history.entryAdded` | `{sequence}` (nudge → refetch `history.list`) | `history` | par entrée d'historique |
 | `settings.changed` | `{sequence, keys: [String]}` | `settings` | par `settings.set*` |
 | `network.policyChanged` | `{sequence}` (nudge → refetch `network.getPolicy`) | `network` | profil, kill switch, budgets |

@@ -35,6 +35,23 @@ class PeerSourcesMockClient implements MuleDaemonClient {
       discoveredAtUnixMs: 1700000000000,
       lastSeenUnixMs: 1700000000000,
     ),
+    // Deadlist eMule : échec de connexion — persisté pour le backoff,
+    // masqué dans la liste des sources.
+    PeerSourceModel(
+      fileHash: '0123456789abcdef0123456789abcdef',
+      address: '203.0.113.9:4662',
+      ip: 3395909897,
+      port: 4662,
+      status: PeerSourceStatus.failed,
+      origin: PeerSourceOrigin.server,
+      failCount: 2,
+      lastError: 'Connection timed out',
+      cooldownUntilUnixMs: DateTime.now()
+          .add(const Duration(minutes: 15))
+          .millisecondsSinceEpoch,
+      discoveredAtUnixMs: 1700000000000,
+      lastSeenUnixMs: 1700000000000,
+    ),
   ];
 
   final StreamController<PeerSessionModel> _sessionEventsController =
@@ -579,6 +596,12 @@ class PeerSourcesMockClient implements MuleDaemonClient {
   ) async {}
 
   @override
+  Future<void> setSharedFileCategory(
+    String fileHash,
+    String? categoryId,
+  ) async {}
+
+  @override
   Future<int> rescanSharedFiles() async => 0;
 
   @override
@@ -823,11 +846,15 @@ void main() {
       // Verify section title is visible
       expect(find.text('SOURCES ED2K & PAIRS DE SESSION'), findsOneWidget);
 
-      // Verify sources listed with status badges
+      // Source vivante (allowed) affichée — sémantique eMule srclist.
       expect(find.text('127.0.0.1:39735'), findsOneWidget);
-      expect(find.text('198.51.100.22:39735'), findsOneWidget);
       expect(find.text('Autorisé'), findsOneWidget);
-      expect(find.text('Filtré IP'), findsOneWidget);
+      // Entrées deadlist masquées : filtrée IP et échec en cooldown ne
+      // doivent pas apparaître (eMule les retire de la liste).
+      expect(find.text('198.51.100.22:39735'), findsNothing);
+      expect(find.text('203.0.113.9:4662'), findsNothing);
+      expect(find.text('Filtré IP'), findsNothing);
+      expect(find.text('Échec'), findsNothing);
 
       // Test adding a manual source
       final manualInput = find.byType(TextField);

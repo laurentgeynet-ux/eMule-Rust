@@ -73,7 +73,11 @@ impl DownloadService {
 
             let source_count = db
                 .list_peer_sources(&dl.ed2k_hash.to_hex())
-                .map(|s| s.len() as u32)
+                .map(|s| {
+                    s.iter()
+                        .filter(|x| x.status.is_srclist_visible())
+                        .count() as u32
+                })
                 .unwrap_or(0);
             active.insert(
                 dl.id,
@@ -858,14 +862,35 @@ impl DownloadService {
         error: Option<&str>,
         cooldown_until_unix_ms: Option<i64>,
     ) -> Result<bool, DaemonError> {
-        peers_servers::update_peer_source_status(
+        let res = peers_servers::update_peer_source_status(
             &mut self.db,
             file_hash,
             address,
             status,
             error,
             cooldown_until_unix_ms,
-        )
+        )?;
+        self.refresh_source_count(file_hash);
+        Ok(res)
+    }
+
+    /// Compteur « srclist » façon eMule `GetSourceCount()` : seules les
+    /// sources vivantes comptent — les entrées deadlist (échec, FNF,
+    /// filtre IP) restent persistées mais ne gonflent pas le compteur.
+    /// Rafraîchi à chaque transition de statut ou suppression.
+    fn refresh_source_count(&mut self, file_hash: &str) {
+        let clean_hex = file_hash.trim().to_lowercase();
+        if let Ok(list) = self.db.list_peer_sources(file_hash) {
+            let count = list
+                .iter()
+                .filter(|s| s.status.is_srclist_visible())
+                .count() as u32;
+            for a in self.active.values_mut() {
+                if a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
+                    a.source_count = count;
+                }
+            }
+        }
     }
 
     pub fn update_peer_source_details(
@@ -897,11 +922,15 @@ impl DownloadService {
         file_hash: &str,
         address: &str,
     ) -> Result<bool, DaemonError> {
-        peers_servers::delete_peer_source(&mut self.db, file_hash, address)
+        let res = peers_servers::delete_peer_source(&mut self.db, file_hash, address)?;
+        self.refresh_source_count(file_hash);
+        Ok(res)
     }
 
     pub fn clear_peer_sources(&mut self, file_hash: &str) -> Result<usize, DaemonError> {
-        peers_servers::clear_peer_sources(&mut self.db, file_hash)
+        let res = peers_servers::clear_peer_sources(&mut self.db, file_hash)?;
+        self.refresh_source_count(file_hash);
+        Ok(res)
     }
 
     pub fn find_by_ed2k_hash(&self, hex_hash: &str) -> Option<DownloadSnapshot> {
@@ -1254,6 +1283,7 @@ impl DownloadService {
             dl.target_path.to_string_lossy().as_ref(),
         );
         sf.aich_root = dl.aich_root.map(|a| a.0);
+        sf.category_id = dl.category_id.clone();
         Some(sf)
     }
 
@@ -1266,12 +1296,14 @@ impl DownloadService {
     /// advertises nothing servable yet.
     fn shared_entry_for_active(act: &ActiveDownload) -> mule_core::model::SharedFile {
         if act.download.status == mule_core::DownloadStatus::Completed {
-            return mule_core::model::SharedFile::new(
+            let mut sf = mule_core::model::SharedFile::new(
                 act.download.ed2k_hash.to_hex(),
                 &act.download.display_name,
                 act.download.total_size,
                 act.download.target_path.to_string_lossy().as_ref(),
             );
+            sf.category_id = act.download.category_id.clone();
+            return sf;
         }
         const ED2K_PART_SIZE: u64 = 9_728_000;
         let part_count =
@@ -1291,6 +1323,7 @@ impl DownloadService {
         );
         sf.is_partial = true;
         sf.completed_parts = completed;
+        sf.category_id = act.download.category_id.clone();
         sf
     }
 
@@ -1326,6 +1359,77 @@ impl DownloadService {
             }
         }
         Ok(list)
+    }
+
+    /// `shares.setCategory` — associe (ou retire) une catégorie à un
+    /// fichier partagé identifié par son hash eD2K. Met à jour les deux
+    /// sources possibles : la ligne `shared_files` persistée et/ou le
+    /// download (actif ou complété en DB) dont le partage est synthétisé
+    /// — `list_all_shared_files` reflète la catégorie depuis l'une ou
+    /// l'autre.
+    pub fn set_shared_file_category(
+        &mut self,
+        file_hash: &str,
+        category_id: Option<String>,
+    ) -> Result<(), DaemonError> {
+        let cat = category_id
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        if let Some(ref cid) = cat {
+            if self.get_category(cid)?.is_none() {
+                return Err(DaemonError::Business(format!(
+                    "Category '{cid}' not found"
+                )));
+            }
+        }
+        let mut touched = false;
+        // Download actif connu par ce hash.
+        let active_id = self
+            .active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash))
+            .map(|a| a.download.id);
+        if let Some(id) = active_id {
+            self.db
+                .set_download_category(&id, cat.as_deref())
+                .map_err(|e| {
+                    DaemonError::Business(format!("DB error setting category: {e}"))
+                })?;
+            if let Some(a) = self.active.get_mut(&id) {
+                a.download.category_id = cat.clone();
+            }
+            touched = true;
+        } else {
+            // Download complété présent seulement en DB.
+            let db_id = self
+                .db
+                .get_all_downloads()?
+                .into_iter()
+                .find(|d| d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash))
+                .map(|d| d.id);
+            if let Some(id) = db_id {
+                self.db
+                    .set_download_category(&id, cat.as_deref())
+                    .map_err(|e| {
+                        DaemonError::Business(format!("DB error setting category: {e}"))
+                    })?;
+                touched = true;
+            }
+        }
+        // Partage persisté autonome (fichier ajouté hors download).
+        if self
+            .db
+            .set_shared_file_category(file_hash, cat.as_deref())
+            .map_err(|e| DaemonError::Business(format!("DB error setting share category: {e}")))?
+        {
+            touched = true;
+        }
+        if !touched {
+            return Err(DaemonError::Business(format!(
+                "Shared file '{file_hash}' not found"
+            )));
+        }
+        Ok(())
     }
 
     pub fn get_peer_credit(

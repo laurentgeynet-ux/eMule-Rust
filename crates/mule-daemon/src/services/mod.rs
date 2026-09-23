@@ -15,6 +15,7 @@ pub mod swarm_coordinator;
 pub mod upload_queue;
 pub mod upnp;
 pub mod uss;
+mod uss_icmp;
 
 pub use client_udp::{ClientUdpService, UdpReaskResult, UdpReaskTarget};
 pub use events::DaemonEvent;

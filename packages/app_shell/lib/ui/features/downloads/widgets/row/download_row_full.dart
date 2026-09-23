@@ -40,8 +40,6 @@ class DownloadRowFull extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = AppTheme.getStatusColor(item.status);
-
     return Row(
       children: [
         Container(
@@ -138,17 +136,7 @@ class DownloadRowFull extends StatelessWidget {
                   color: AppColors.textSecondary,
                 ),
               ),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: item.progress,
-                  minHeight: 6,
-                  backgroundColor: AppColors.fillLight,
-                  valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                ),
-              ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 6),
               PartAvailabilityBar(
                 parts: item.parts,
                 totalBytes: item.totalBytes,
@@ -156,7 +144,7 @@ class DownloadRowFull extends StatelessWidget {
                 progress: item.progress,
                 muted: item.status == DownloadStatus.paused ||
                     item.status == DownloadStatus.failed,
-                height: 9,
+                height: 14,
               ),
             ],
           ),

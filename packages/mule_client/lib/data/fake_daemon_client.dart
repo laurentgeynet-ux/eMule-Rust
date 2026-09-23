@@ -1690,7 +1690,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         upPriority: f.upPriority,
         isPartial: f.isPartial,
         completedParts: f.completedParts,
-        uploadedBytes: _shareUploadTotals[key] ?? 0,
+        categoryId: f.categoryId,
+        uploadedBytes: _shareUploadTotals[key] ?? f.uploadedBytes,
         uploadRateBps:
             _lastActiveUpload?.fileHash.toLowerCase() == key
                 ? _lastActiveUpload!.uploadRateBps
@@ -1705,6 +1706,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     required String fileName,
     required int fileSize,
     required String filePath,
+    int uploadedBytes = 0,
+    String? categoryId,
   }) async {
     _fakeSharedFiles.removeWhere((f) => f.fileHash == fileHash);
     final file = SharedFileModel(
@@ -1714,6 +1717,8 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       filePath: filePath,
       sharedAtUnixMs: DateTime.now().millisecondsSinceEpoch,
       enabled: true,
+      uploadedBytes: uploadedBytes,
+      categoryId: categoryId,
     );
     _fakeSharedFiles.add(file);
     return file;
@@ -1737,6 +1742,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       sharedAtUnixMs: cur.sharedAtUnixMs,
       enabled: cur.enabled,
       upPriority: cur.upPriority,
+      uploadedBytes: cur.uploadedBytes,
+      uploadRateBps: cur.uploadRateBps,
+      categoryId: cur.categoryId,
     );
     // Garder le download complété associé cohérent (même hash).
     final dl = _downloads.values
@@ -1767,6 +1775,9 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
         sharedAtUnixMs: cur.sharedAtUnixMs,
         enabled: enabled,
         upPriority: cur.upPriority,
+        uploadedBytes: cur.uploadedBytes,
+        uploadRateBps: cur.uploadRateBps,
+        categoryId: cur.categoryId,
       );
       _fakeSharedFiles[idx] = updated;
       return updated;
@@ -1790,7 +1801,45 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       sharedAtUnixMs: cur.sharedAtUnixMs,
       enabled: cur.enabled,
       upPriority: priority,
+      uploadedBytes: cur.uploadedBytes,
+      uploadRateBps: cur.uploadRateBps,
+      categoryId: cur.categoryId,
     );
+  }
+
+  @override
+  Future<void> setSharedFileCategory(
+    String fileHash,
+    String? categoryId,
+  ) async {
+    final idx = _fakeSharedFiles.indexWhere((f) => f.fileHash == fileHash);
+    if (idx == -1) throw Exception('File not found in shares');
+    final cur = _fakeSharedFiles[idx];
+    _fakeSharedFiles[idx] = SharedFileModel(
+      fileHash: cur.fileHash,
+      fileName: cur.fileName,
+      fileSize: cur.fileSize,
+      filePath: cur.filePath,
+      sharedAtUnixMs: cur.sharedAtUnixMs,
+      enabled: cur.enabled,
+      upPriority: cur.upPriority,
+      uploadedBytes: cur.uploadedBytes,
+      uploadRateBps: cur.uploadRateBps,
+      categoryId: categoryId,
+    );
+    // Un partage synthétisé depuis un download suit la catégorie de
+    // celui-ci — garder le fake cohérent avec le daemon.
+    final dl = _downloads.values
+        .where((d) => d.ed2kHash == fileHash)
+        .firstOrNull;
+    if (dl != null) {
+      _downloads[dl.id] = dl.copyWith(
+        categoryId: categoryId,
+        clearCategoryId: categoryId == null,
+        updatedAt: DateTime.now(),
+      );
+      _emitUpdate(_downloads[dl.id]!);
+    }
   }
 
   @override

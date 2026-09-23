@@ -187,14 +187,17 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
         let max_conn = dls
             .get_setting("max_connections")?
             .and_then(|s| s.parse::<usize>().ok())
+            .map(|v| v.clamp(1, mule_network_policy::MAX_PEER_CONNECTIONS_CAP))
             .unwrap_or(state.network_policy.budgets().max_active_peer_connections);
         let conn_per_min = dls
             .get_setting("max_conn_per_min")?
             .and_then(|s| s.parse::<u32>().ok())
+            .map(|v| v.clamp(1, 1200))
             .unwrap_or(state.network_policy.budgets().rate_limit_per_min);
         let max_queue = dls
             .get_setting("max_upload_queue")?
             .and_then(|s| s.parse::<usize>().ok())
+            .map(|v| v.clamp(10, 5000))
             .unwrap_or(crate::services::upload_queue::MAX_UPLOAD_QUEUE);
         (
             dir,
@@ -463,9 +466,16 @@ pub async fn handle_settings_set(
     let mut budgets = state.network_policy.budgets();
     let mut budgets_changed = false;
     if let Some(val) = params.get("maxConnections") {
+        // Même borne qu'au démarrage (`state.rs`) : le budget réseau est
+        // plafonné à [1, 65000] — eMule ne borne pas MaxConnections sous
+        // NT+, on garde un garde-fou anti-faute de frappe. On clampe avant
+        // de persister pour que la valeur stockée reste identique à celle
+        // réellement appliquée — sinon `set_budgets` rejetait après
+        // l'écriture en base.
         let v = val
             .as_u64()
             .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'maxConnections'"))?
+            .clamp(1, mule_network_policy::MAX_PEER_CONNECTIONS_CAP as u64)
             as usize;
         state
             .downloads
@@ -480,7 +490,7 @@ pub async fn handle_settings_set(
         let v = val
             .as_u64()
             .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'maxConnPerMin'"))?
-            as u32;
+            .clamp(1, 1200) as u32;
         state
             .downloads
             .lock()
@@ -498,10 +508,12 @@ pub async fn handle_settings_set(
     }
 
     if let Some(val) = params.get("maxUploadQueue") {
+        // Clamp identique à `UploadManager::set_max_queue` ([10, 5000],
+        // eMule QueueSize) avant persistance : stockée = appliquée.
         let v = val
             .as_u64()
             .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'maxUploadQueue'"))?
-            as usize;
+            .clamp(10, 5000) as usize;
         state
             .downloads
             .lock()
@@ -777,7 +789,8 @@ pub async fn handle_settings_set(
 
         let mut b = state.network_policy.budgets();
         if b.max_active_peer_connections < current_max_g {
-            b.max_active_peer_connections = current_max_g.min(1500);
+            b.max_active_peer_connections =
+                current_max_g.min(mule_network_policy::MAX_PEER_CONNECTIONS_CAP);
             let _ = state.network_policy.set_budgets(b);
         }
     }

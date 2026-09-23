@@ -10,7 +10,7 @@ pub mod validator;
 pub use audit::{
     redact_socket_addr, AuditDecision, AuditEventType, NetworkAuditEntry, NetworkAuditLog,
 };
-pub use budgets::ResourceBudgets;
+pub use budgets::{ResourceBudgets, MAX_PEER_CONNECTIONS_CAP};
 pub use cancellation::CancellationToken;
 pub use manager::{
     emule_ud_ratio, NetworkPolicyManager, PolicyError, PolicyRateLimiters,

@@ -311,6 +311,18 @@ enum PeerSourceStatus {
         return 'failed';
     }
   }
+
+  /// Sémantique eMule `srclist` : une source dont la connexion échoue,
+  /// qui répond « fichier absent » ou qui est bloquée par le filtre IP
+  /// sort de la liste affichée et part en deadlist. Les entrées
+  /// `failed`/`rejected`/`filtered` restent persistées pour le backoff
+  /// de re-essai mais ne sont pas affichées dans la liste des sources.
+  bool get isListedInSourceList => switch (this) {
+    PeerSourceStatus.failed ||
+    PeerSourceStatus.rejected ||
+    PeerSourceStatus.filtered => false,
+    _ => true,
+  };
 }
 
 enum PeerSourceOrigin {
@@ -612,6 +624,10 @@ class SharedFileModel {
   /// Current measured upload rate aggregated over this file's active
   /// upload sessions (B/s); 0 when no peer is pulling it.
   final int uploadRateBps;
+  /// Optional category id (`categories.id`) assigned via
+  /// `shares.setCategory`; `null` = uncategorized. For shares
+  /// synthesized from a download, reflects the download's category.
+  final String? categoryId;
 
   const SharedFileModel({
     required this.fileHash,
@@ -625,6 +641,7 @@ class SharedFileModel {
     this.completedParts = const [],
     this.uploadedBytes = 0,
     this.uploadRateBps = 0,
+    this.categoryId,
   });
 
   factory SharedFileModel.fromJson(Map<String, dynamic> json) {
@@ -659,6 +676,8 @@ class SharedFileModel {
       uploadRateBps: (json['uploadRateBps'] as num?)?.toInt() ??
           (json['upload_rate_bps'] as num?)?.toInt() ??
           0,
+      categoryId:
+          json['categoryId'] as String? ?? json['category_id'] as String?,
     );
   }
 }

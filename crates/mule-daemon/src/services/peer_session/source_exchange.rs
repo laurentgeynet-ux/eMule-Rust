@@ -265,11 +265,22 @@ fn valid_source_count(sources: &[mule_core::model::PeerSource]) -> usize {
 }
 
 /// Cap souple eMule `GetMaxSourcePerFileSoft()` — `max_sources * 9/10`
-/// (`PartFile.h:281`), défaut `400 * 9/10 = 360`.
-fn max_source_soft(snap: Option<&crate::services::downloads::types::DownloadSnapshot>) -> usize {
+/// (`PartFile.h:281`). Sans override par fichier (FT_MAXSOURCES), le
+/// réglage global `max_peers_per_download` fait foi — comme eMule qui
+/// retombe sur `thePrefs.maxsourceperfile`.
+fn max_source_soft(
+    snap: Option<&crate::services::downloads::types::DownloadSnapshot>,
+    dl_svc: &crate::services::downloads::DownloadService,
+) -> usize {
+    let global = dl_svc
+        .get_setting("max_peers_per_download")
+        .ok()
+        .flatten()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MAX_SOURCES_PER_FILE);
     snap.and_then(|d| d.max_sources)
         .map(|m| (m as usize) * 9 / 10)
-        .unwrap_or(DEFAULT_MAX_SOURCES_PER_FILE * 9 / 10)
+        .unwrap_or(global * 9 / 10)
 }
 
 /// Évalue `IsSourceRequestAllowed` puis émet `OP_REQUESTSOURCES(2)` vers le
@@ -293,7 +304,7 @@ pub(crate) async fn maybe_send_sx_request(
         (
             sources.len(),
             valid_source_count(&sources),
-            max_source_soft(dl_svc.find_by_ed2k_hash(file_hash_str).as_ref()),
+            max_source_soft(dl_svc.find_by_ed2k_hash(file_hash_str).as_ref(), &dl_svc),
         )
     };
     if !is_source_request_allowed(
@@ -413,6 +424,15 @@ pub async fn handle_sx_answer(
             .find_by_ed2k_hash(file_hash_str)
             .and_then(|d| d.max_sources)
             .map(|m| m as usize)
+            .or_else(|| {
+                // eMule `GetMaxSources()` : sans override par fichier, le
+                // réglage global `max_peers_per_download` fait foi.
+                dl_svc
+                    .get_setting("max_peers_per_download")
+                    .ok()
+                    .flatten()
+                    .and_then(|s| s.trim().parse::<usize>().ok())
+            })
             .unwrap_or(DEFAULT_MAX_SOURCES_PER_FILE);
         (
             dl_svc

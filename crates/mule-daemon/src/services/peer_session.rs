@@ -384,26 +384,7 @@ impl PeerSessionManager {
         // Enforce max active peers
         {
             let g = self.inner.lock().await;
-            if g.sessions.len() >= g.max_global_peers {
-                return Err(DaemonError::Business(
-                    "Global peer connection limit reached".into(),
-                ));
-            }
-            let file_peers_count = g
-                .sessions
-                .values()
-                .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash))
-                .count();
-            if file_peers_count >= g.max_peers_per_download {
-                return Err(DaemonError::Business(
-                    "Maximum concurrent peer connections reached for this download".into(),
-                ));
-            }
-            if g.sessions.contains_key(&address) {
-                return Err(DaemonError::Business(
-                    "Peer session is already running".into(),
-                ));
-            }
+            g.check_session_slot(file_hash, &address)?;
         }
 
         let cancel_token = permit.cancellation_token().clone();
@@ -615,26 +596,7 @@ impl PeerSessionManager {
 
         {
             let g = self.inner.lock().await;
-            if g.sessions.len() >= g.max_global_peers {
-                return Err(DaemonError::Business(
-                    "Global peer connection limit reached".into(),
-                ));
-            }
-            let file_peers_count = g
-                .sessions
-                .values()
-                .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash))
-                .count();
-            if file_peers_count >= g.max_peers_per_download {
-                return Err(DaemonError::Business(
-                    "Maximum concurrent peer connections reached for this download".into(),
-                ));
-            }
-            if g.sessions.contains_key(&address) {
-                return Err(DaemonError::Business(
-                    "Peer session is already running".into(),
-                ));
-            }
+            g.check_session_slot(file_hash, &address)?;
         }
 
         let initial_snapshot = PeerSessionSnapshot {

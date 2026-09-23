@@ -93,6 +93,17 @@ class SharesController extends ChangeNotifier {
     await fetch();
   }
 
+  /// `shares.setCategory` — associe (ou retire avec `null`) une catégorie
+  /// au fichier partagé ; pour un partage synthétisé depuis un download,
+  /// c'est la catégorie du download qui est mise à jour.
+  Future<void> setSharedFileCategory(
+    String fileHash,
+    String? categoryId,
+  ) async {
+    await client.setSharedFileCategory(fileHash, categoryId);
+    await fetch();
+  }
+
   /// `shares.remove` — retire le partage et supprime le fichier du disque
   /// (le daemon refuse pour les partages partiels de downloads en cours).
   Future<void> removeSharedFile(String fileHash) async {

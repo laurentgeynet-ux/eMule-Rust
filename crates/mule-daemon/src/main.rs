@@ -323,12 +323,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let kad_bind_addr: std::net::SocketAddr =
             format!("{kad_bind_ip}:{eff_kad_port}").parse().unwrap();
+        let nodes_dat_path = state.config.data_dir.join("nodes.dat");
         tokio::spawn(async move {
             kad_svc.init_from_db().await;
             if let Err(e) = kad_svc.udp().start(kad_bind_addr).await {
                 tracing::warn!("Failed to auto-start Kad UDP on {kad_bind_addr}: {e}");
             } else {
                 tracing::info!("Kad UDP socket auto-started on {kad_bind_addr}");
+                // nodes.dat à la racine du dossier data : amorçage
+                // optionnel — eMule le lit dans `s_liBootstrapList` à
+                // chaque démarrage ; les contacts prouvent leur vivacité
+                // en répondant au BOOTSTRAP_REQ du drain.
+                kad_svc.load_nodes_dat_candidates(&nodes_dat_path).await;
                 kad_svc.bootstrap_active_contacts(15).await;
                 kad_svc.start_background_maintenance(kad_cancel);
             }

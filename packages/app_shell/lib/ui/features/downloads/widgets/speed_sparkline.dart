@@ -41,6 +41,15 @@ class _SparklinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Subtle baseline track so the graph area reads even when idle.
+    canvas.drawLine(
+      Offset(0, size.height - 0.5),
+      Offset(size.width, size.height - 0.5),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.08)
+        ..strokeWidth = 0.5,
+    );
+
     final maxDl = downloadSamples.fold<double>(
         0, (a, b) => a > b ? a : b);
     final maxUl =
@@ -106,7 +115,14 @@ class _SparklinePainter extends CustomPainter {
       canvas.drawPath(
           fillPath,
           Paint()
-            ..color = color.withValues(alpha: 0.15)
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                color.withValues(alpha: 0.35),
+                color.withValues(alpha: 0.02),
+              ],
+            ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
             ..style = PaintingStyle.fill);
     }
     canvas.drawPath(path, line);

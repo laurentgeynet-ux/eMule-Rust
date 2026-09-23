@@ -10,7 +10,15 @@ use crate::services::DaemonEvent;
 /// eMule 0.72a `QueueSize` default (100 × QueueSizePref 50).
 pub const MAX_UPLOAD_QUEUE: usize = 5000;
 /// Maximum number of concurrent active uploads.
-pub const MAX_ACTIVE_UPLOADS: usize = 10;
+/// eMule 0.72a `MAX_UP_CLIENTS_ALLOWED` (Opcodes.h) — plafond absolu de
+/// slots upload, quels que soient les autres réglages.
+pub const MAX_ACTIVE_UPLOADS: usize = 100;
+/// eMule `AcceptNewClient` : les `max(MIN_UP_CLIENTS_ALLOWED, 4)` = 4
+/// premiers slots sont toujours accordés — le plancher de débit moyen
+/// (`min_upload_rate`) ne peut pas geler l'upload quand des clients
+/// attendent. Au-delà, chaque nouveau slot exige que la moyenne par slot
+/// reste au-dessus du plancher.
+const GUARANTEED_UPLOAD_SLOTS: usize = 4;
 
 /// eMule trickle threshold: an active slot whose measured rate stays below
 /// 1 KiB/s past the grace period is demoted to a trickle slot — it keeps a
@@ -388,32 +396,11 @@ impl UploadManager {
         // Grant a slot immediately while capacity remains and USS accepts
         // new clients (acceptNewClient=false when latency is too high).
         // Trickle slots keep residual bandwidth but do not occupy a full slot.
-        let min_rate = self
-            .min_upload_rate_bps
-            .load(std::sync::atomic::Ordering::Relaxed);
-        let uploading = Self::uploading_count(&active);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        // eMule `MinUpload`: do not open a new slot when it would push the
-        // average per-slot bandwidth below the configured floor. Le débit
-        // effectif (décroissant quand un pair ne demande plus) évite qu'un
-        // slot inactif ne bloque indéfiniment l'ouverture d'un nouveau.
-        let min_rate_ok = if min_rate > 0 && uploading > 0 {
-            let total_bps: u64 = active
-                .values()
-                .filter(|s| s.state == UploadSlotState::Uploading)
-                .map(|s| s.effective_rate_bps(now))
-                .sum();
-            total_bps / uploading.max(1) as u64 >= min_rate
-        } else {
-            true
-        };
-        if uploading < self.max_active.load(Ordering::SeqCst)
-            && min_rate_ok
-            && self.uss_gate.read().unwrap().load(Ordering::SeqCst)
-        {
+        if self.can_open_slot(&active, now) {
             let snap = UploadSessionSnapshot {
                 client_key: client_key.to_string(),
                 client_address: client_address.to_string(),
@@ -556,6 +543,39 @@ impl UploadManager {
             .count()
     }
 
+    /// eMule `CUploadQueue::AcceptNewClient` : ouvre un slot si
+    /// `uploading < max_active` **et** le veto USS est levé **et** soit
+    /// les `GUARANTEED_UPLOAD_SLOTS` premiers slots (`max(MIN_UP_CLIENTS_ALLOWED, 4)`),
+    /// soit la moyenne de débit par slot reste ≥ `min_upload_rate`.
+    /// Partagé par `request_upload` (nouveau client) et `promote_waiting`
+    /// (promotion de file) pour éviter la divergence des deux chemins.
+    fn can_open_slot(
+        &self,
+        active: &std::collections::HashMap<String, UploadSessionSnapshot>,
+        now: i64,
+    ) -> bool {
+        let uploading = Self::uploading_count(active);
+        if uploading >= self.max_active.load(Ordering::SeqCst) {
+            return false;
+        }
+        if !self.uss_gate.read().unwrap().load(Ordering::SeqCst) {
+            return false;
+        }
+        if uploading < GUARANTEED_UPLOAD_SLOTS {
+            return true;
+        }
+        let min_rate = self.min_upload_rate_bps.load(Ordering::Relaxed);
+        if min_rate == 0 {
+            return true;
+        }
+        let total_bps: u64 = active
+            .values()
+            .filter(|s| s.state == UploadSlotState::Uploading)
+            .map(|s| s.effective_rate_bps(now))
+            .sum();
+        total_bps / uploading.max(1) as u64 >= min_rate
+    }
+
     /// Promotes waiting clients while full slots remain. Caller must hold
     /// the `active_uploads` lock and pass it in.
     async fn promote_waiting(
@@ -563,17 +583,22 @@ impl UploadManager {
         active: &mut std::collections::HashMap<String, UploadSessionSnapshot>,
     ) {
         let mut q = self.queue.lock().await;
-        while Self::uploading_count(active) < self.max_active.load(Ordering::SeqCst) {
+        loop {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+            // Même éligibilité qu'`AcceptNewClient` : plancher de débit
+            // par slot et veto USS s'appliquent aussi à la promotion.
+            if !self.can_open_slot(active, now) {
+                break;
+            }
             let Some(next) = q.pop_front() else {
                 break;
             };
             if active.contains_key(&next.client_key) {
                 continue;
             }
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as i64;
 
             let snap = UploadSessionSnapshot {
                 client_key: next.client_key.clone(),

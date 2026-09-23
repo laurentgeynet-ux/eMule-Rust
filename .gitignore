@@ -31,3 +31,6 @@ packages/*/.pub-cache/
 packages/*/build/
 packages/*/pubspec.lock
 packages/*/.flutter-plugins-dependencies
+
+# Runtime crash-reporting (Sentry Native sessions)
+.sentry-native/

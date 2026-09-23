@@ -13,10 +13,10 @@ use crate::services::downloads::DownloadService;
 use crate::services::upload_queue::UploadManager;
 use mule_network_policy::NetworkPolicyManager;
 
-/// Maximum concurrent inbound connections globally.
-pub const MAX_INBOUND_CONNECTIONS: usize = 500;
-
-/// Maximum concurrent inbound connections from a single IP.
+/// Maximum concurrent inbound connections from a single IP (anti-flood).
+/// Note : le plafond global inbound n'est pas une constante — il suit le
+/// budget `max_active_peer_connections` (live), comme eMule où toutes les
+/// connexions pairs comptent dans `maxconnections`.
 pub const MAX_INBOUND_PER_IP: usize = 5;
 
 /// Maximum buffer size for inbound connection framing (256 KiB) to prevent OOM.

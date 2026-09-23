@@ -38,14 +38,20 @@ impl Default for ResourceBudgets {
     }
 }
 
+/// Borne de sanité pour les connexions pairs simultanées — eMule n'impose
+/// aucun plafond fixe (`GetMaxWindowsTCPConnections` = `UNLIMITED` sous
+/// Windows NT+), on garde un garde-fou contre les fautes de frappe.
+/// En pratique la limite réelle reste `max_total_buffer_bytes`.
+pub const MAX_PEER_CONNECTIONS_CAP: usize = 65_000;
+
 impl ResourceBudgets {
     /// Validates that configured budgets stay within safe upper and lower bounds.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.max_active_peer_connections == 0 {
             return Err("max_active_peer_connections must be at least 1");
         }
-        if self.max_active_peer_connections > 1500 {
-            return Err("max_active_peer_connections cannot exceed 1500");
+        if self.max_active_peer_connections > MAX_PEER_CONNECTIONS_CAP {
+            return Err("max_active_peer_connections cannot exceed 65000");
         }
         if self.max_active_server_connections == 0 {
             return Err("max_active_server_connections must be at least 1");

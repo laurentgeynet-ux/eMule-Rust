@@ -120,7 +120,8 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
             file_size INTEGER NOT NULL,
             file_path TEXT NOT NULL,
             shared_at_unix_ms INTEGER NOT NULL,
-            enabled INTEGER NOT NULL DEFAULT 1
+            enabled INTEGER NOT NULL DEFAULT 1,
+            category_id TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_shared_files_enabled ON shared_files(enabled);
@@ -321,6 +322,7 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     let mut rows_sf = stmt_sf.query([])?;
     let mut has_aich_root = false;
     let mut has_up_priority = false;
+    let mut has_sf_category_id = false;
     while let Some(row) = rows_sf.next()? {
         let col_name: String = row.get(1)?;
         if col_name == "aich_root" {
@@ -328,6 +330,9 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
         }
         if col_name == "up_priority" {
             has_up_priority = true;
+        }
+        if col_name == "category_id" {
+            has_sf_category_id = true;
         }
     }
     if !has_aich_root {
@@ -337,6 +342,9 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
         conn.execute_batch(
             "ALTER TABLE shared_files ADD COLUMN up_priority TEXT NOT NULL DEFAULT 'normal';",
         )?;
+    }
+    if !has_sf_category_id {
+        conn.execute_batch("ALTER TABLE shared_files ADD COLUMN category_id TEXT;")?;
     }
 
     Ok(())

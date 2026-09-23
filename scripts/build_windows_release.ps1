@@ -244,7 +244,12 @@ if ($Sign) {
 Write-Host "`n[8/8] Computing post-signing cryptographic hashes and manifest..." -ForegroundColor Yellow
 
 $NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$AppVersion = "0.1.3-lab"
+
+# Read the real workspace version from the root Cargo.toml
+$AppVersion = try {
+    ((Get-Content (Join-Path $Root "Cargo.toml") -Raw) -match '(?m)^version\s*=\s*"([^"]+)"') | Out-Null
+    $Matches[1]
+} catch { "0.0.0" }
 
 $ArtifactsList = [System.Collections.Generic.List[PSCustomObject]]::new()
 $SumsLines = [System.Collections.Generic.List[string]]::new()

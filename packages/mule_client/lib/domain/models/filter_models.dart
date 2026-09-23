@@ -76,6 +76,12 @@ class RateLimitsModel {
   /// upload/download ratio (« don't be a Lam3r :) »).
   final bool downloadRatioApplied;
 
+  /// USS (Upload Speed Sense) state — when enabled, the upload bucket is
+  /// driven by the dynamic control loop and `uploadBytesPerSec` reflects
+  /// its current working point, not the configured limit.
+  final bool ussEnabled;
+  final int ussCurrentLimitBytesPerSec;
+
   const RateLimitsModel({
     required this.downloadBytesPerSec,
     required this.uploadBytesPerSec,
@@ -85,11 +91,14 @@ class RateLimitsModel {
     this.downloadConfiguredBytesPerSec = 0,
     this.uploadConfiguredBytesPerSec = 0,
     this.downloadRatioApplied = false,
+    this.ussEnabled = false,
+    this.ussCurrentLimitBytesPerSec = 0,
   });
 
   factory RateLimitsModel.fromJson(Map<String, dynamic> json) {
     final dl = json['downloadBytesPerSec'] as int? ?? 0;
     final ul = json['uploadBytesPerSec'] as int? ?? 0;
+    final uss = json['uss'];
     return RateLimitsModel(
       downloadBytesPerSec: dl,
       uploadBytesPerSec: ul,
@@ -101,6 +110,12 @@ class RateLimitsModel {
       uploadConfiguredBytesPerSec:
           json['uploadConfiguredBytesPerSec'] as int? ?? ul,
       downloadRatioApplied: json['downloadRatioApplied'] as bool? ?? false,
+      ussEnabled: uss is Map<String, dynamic>
+          ? uss['enabled'] as bool? ?? false
+          : false,
+      ussCurrentLimitBytesPerSec: uss is Map<String, dynamic>
+          ? uss['currentLimitBytesPerSec'] as int? ?? 0
+          : 0,
     );
   }
 

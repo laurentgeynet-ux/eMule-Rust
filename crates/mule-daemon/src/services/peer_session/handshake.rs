@@ -545,7 +545,7 @@ pub(crate) async fn perform_peer_handshake(
                                                             let k_clone = Arc::clone(kad);
                                                             if let IpAddr::V4(ip4) = target_addr.ip() {
                                                                 tokio::spawn(async move {
-                                                                    k_clone.maybe_bootstrap_from_peer(ip4, peer_kad_port, low_id).await;
+                                                                    k_clone.maybe_bootstrap_from_peer(ip4, peer_kad_port, low_id, peer_kad_version).await;
                                                                 });
                                                             }
                                                         }

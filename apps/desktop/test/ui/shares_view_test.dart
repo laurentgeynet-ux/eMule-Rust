@@ -95,8 +95,12 @@ void main() {
       await tester.tap(renameBtn);
       await tester.pumpAndSettle();
 
-      // Dialogue pré-rempli avec le nom courant.
-      final field = find.byType(TextField);
+      // Dialogue pré-rempli avec le nom courant (le champ de recherche de
+      // la vue existe aussi — on cible le dialogue).
+      final field = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      );
       expect(field, findsOneWidget);
       await tester.enterText(field, 'new_name.iso');
       await tester.tap(find.text('Renommer'));
@@ -122,7 +126,13 @@ void main() {
           .byKey(const Key('rename_share_ccdd11223344556677889900aabbeeff')));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), 'bad/name.bin');
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextField),
+        ),
+        'bad/name.bin',
+      );
       await tester.tap(find.text('Renommer'));
       await tester.pumpAndSettle();
 
@@ -130,6 +140,65 @@ void main() {
       expect(find.textContaining('invalide'), findsOneWidget);
       expect((await fakeClient.listSharedFiles()).single.fileName,
           'valid.bin');
+    });
+
+    testWidgets(
+        'search filters shares and groups by category sorted by uploaded total',
+        (WidgetTester tester) async {
+      final cat = await fakeClient.createCategory(
+        name: 'Films',
+        color: '#38BDF8',
+      );
+      await viewModel.categoriesCtl.fetch();
+      // Deux fichiers dans la catégorie + un non classé ; l'ordre dans le
+      // groupe suit le total uploadé décroissant.
+      await fakeClient.addSharedFile(
+        fileHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        fileName: 'less-uploaded.avi',
+        fileSize: 100,
+        filePath: r'C:\incoming\less-uploaded.avi',
+        uploadedBytes: 10,
+        categoryId: cat.id,
+      );
+      await fakeClient.addSharedFile(
+        fileHash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        fileName: 'most-uploaded.avi',
+        fileSize: 100,
+        filePath: r'C:\incoming\most-uploaded.avi',
+        uploadedBytes: 5000,
+        categoryId: cat.id,
+      );
+      await fakeClient.addSharedFile(
+        fileHash: 'cccccccccccccccccccccccccccccccc',
+        fileName: 'uncategorized-file.bin',
+        fileSize: 100,
+        filePath: r'C:\incoming\uncategorized-file.bin',
+      );
+      await pumpShares(tester);
+
+      // En-tête de catégorie + groupe « Sans catégorie ».
+      expect(find.text('Films'), findsOneWidget);
+      expect(find.text('Sans catégorie'), findsOneWidget);
+
+      // Dans « Films », le plus uploadé est rendu en premier.
+      final dyMost =
+          tester.getTopLeft(find.text('most-uploaded.avi')).dy;
+      final dyLess =
+          tester.getTopLeft(find.text('less-uploaded.avi')).dy;
+      expect(dyMost, lessThan(dyLess));
+      // Le groupe « Sans catégorie » arrive après la catégorie nommée.
+      final dyUncat =
+          tester.getTopLeft(find.text('uncategorized-file.bin')).dy;
+      expect(dyUncat, greaterThan(dyLess));
+
+      // Recherche : seul le fichier correspondant reste.
+      final search = find.byType(TextField);
+      expect(search, findsOneWidget);
+      await tester.enterText(search, 'most-uploaded');
+      await tester.pumpAndSettle();
+      expect(find.text('most-uploaded.avi'), findsOneWidget);
+      expect(find.text('less-uploaded.avi'), findsNothing);
+      expect(find.text('uncategorized-file.bin'), findsNothing);
     });
 
     testWidgets('share row shows upload rate and total, refreshed live',

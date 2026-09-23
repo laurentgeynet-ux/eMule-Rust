@@ -10,8 +10,13 @@ pub const COORDINATOR_TICK_INTERVAL: Duration = Duration::from_secs(3);
 /// Minimum elapsed time before re-querying sources for the same file hash.
 pub const SOURCE_REQUERY_INTERVAL: Duration = Duration::from_secs(300);
 
-/// Maximum number of new peer connections to initiate per file per tick (burst prevention).
-pub const MAX_CONNECT_PER_TICK: usize = 5;
+/// Maximum number of new peer connections to initiate per file per tick
+/// (anti-burst par fichier). Le pacing global reste assuré par
+/// `ResourceBudgets.rate_limit_per_min` (240/min = eMule
+/// `MaxConnectionsPerFiveSeconds` 20 ≈ 4/s) appliqué à chaque
+/// `request_tcp_connect` — 12/tick à 3 s ≈ 4/s, donc un fichier seul peut
+/// consommer tout le rythme eMule sans le dépasser.
+pub const MAX_CONNECT_PER_TICK: usize = 12;
 
 /// Interval between periodic system heartbeats (60 seconds).
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);

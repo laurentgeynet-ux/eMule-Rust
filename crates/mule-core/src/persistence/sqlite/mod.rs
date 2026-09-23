@@ -446,6 +446,15 @@ impl Database {
         shares::list_share_uploaded_bytes(&self.conn)
     }
 
+    /// Associe (ou retire, `None`) une catégorie à un partage persisté.
+    pub fn set_shared_file_category(
+        &mut self,
+        file_hash: &str,
+        category_id: Option<&str>,
+    ) -> Result<bool, CoreError> {
+        shares::set_shared_file_category(&mut self.conn, file_hash, category_id)
+    }
+
     /// Sets the upload priority (`up_priority`) of a shared file.
     pub fn set_shared_up_priority(
         &mut self,

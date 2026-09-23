@@ -206,6 +206,30 @@ pub async fn handle_shares_set_upload_priority(
     }
 }
 
+/// `shares.setCategory` — associe (ou retire avec `categoryId: null`) une
+/// catégorie à un fichier partagé. Fonctionne aussi sur les partages
+/// synthétisés depuis un download (partiel ou complété) : la catégorie du
+/// download fait alors foi et est mise à jour.
+pub async fn handle_shares_set_category(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let file_hash = params["fileHash"]
+        .as_str()
+        .or_else(|| params["hash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+    let category_id = params["categoryId"].as_str().map(String::from);
+
+    state
+        .downloads
+        .lock()
+        .await
+        .set_shared_file_category(file_hash, category_id)?;
+    emit_shares_changed(state);
+    Ok(json!({ "ok": true, "fileHash": file_hash }))
+}
+
 pub async fn handle_listener_start(
     state: &AppState,
     params: Option<Value>,

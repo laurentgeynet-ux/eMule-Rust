@@ -42,7 +42,7 @@ class _DownloadSourcesCardState extends State<DownloadSourcesCard> {
   Widget build(BuildContext context) {
     final ctl = widget.controller;
     final hash = widget.item.ed2kHash ?? '';
-    final sources = ctl.getSourcesForHash(hash);
+    final sources = ctl.getVisibleSourcesForHash(hash);
     final session = ctl.session;
     final isConnectedToThis =
         session.fileHash == hash &&

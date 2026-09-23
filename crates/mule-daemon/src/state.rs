@@ -87,7 +87,8 @@ impl AppState {
 
         let mut budgets = ResourceBudgets::default();
         if budgets.max_active_peer_connections < max_global {
-            budgets.max_active_peer_connections = max_global.min(1500);
+            budgets.max_active_peer_connections =
+                max_global.min(mule_network_policy::MAX_PEER_CONNECTIONS_CAP);
         }
         // Persisted Connexion overrides (eMule Preferences) applied at boot.
         let get_usize = |key: &str| {
@@ -98,7 +99,8 @@ impl AppState {
                 .and_then(|s| s.parse::<usize>().ok())
         };
         if let Some(v) = get_usize("max_connections") {
-            budgets.max_active_peer_connections = v.clamp(1, 1500);
+            budgets.max_active_peer_connections =
+                v.clamp(1, mule_network_policy::MAX_PEER_CONNECTIONS_CAP);
         }
         if let Some(v) = get_usize("max_conn_per_min") {
             budgets.rate_limit_per_min = (v as u32).clamp(1, 1200);

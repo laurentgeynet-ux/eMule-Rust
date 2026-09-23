@@ -5,6 +5,191 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+## [0.2.0-RC1] - 2026-09-23
+
+- **Onglet Partages — catégories, recherche et stats d'upload**
+  (`mule-core`, `mule-daemon`, `mule_client`, `app_shell`) :
+  - **Catégorie par fichier partagé** : nouvelle colonne
+    `shared_files.category_id` (migration `ALTER TABLE` idempotente) +
+    RPC `shares.setCategory`. Un partage synthétisé depuis un download
+    suit la catégorie de celui-ci (`shared_files` ou `downloads`
+    selon la source) — menu « étiquette » sur chaque ligne pour
+    assigner/retirer.
+  - **Vue remaniée** : fichiers groupés par catégorie (en-têtes
+    pastille + nom, ordre `sortOrder`), groupe « Sans catégorie » en
+    dernier ; à l'intérieur de chaque groupe, tri par **total uploadé
+    décroissant** (le plus servi en haut).
+  - **Moteur de recherche** : champ dans la barre de titre, filtre sur
+    nom de fichier et hash eD2K.
+  - **Stats d'upload par fichier** : débit mesuré courant (↑ B/s) et
+    total cumulé (Σ) affichés sur chaque ligne, rafraîchis via
+    `uploadsEvents` debouncé.
+  - `SharedFileModel` étendu (`categoryId`, `upPriority`,
+    `uploadedBytes`, `uploadRateBps`) + client RPC/fake ; les
+    mutations fake préservent tous les champs.
+
+- **UI téléchargements — chip de priorité modernisée**
+  (`app_shell`) : pill arrondie teintée + icônes sémantiques
+  (double-flèche haut/bas, tiret) et **3 couleurs distinctes** —
+  ambre = High, bleu ciel = Normal, ardoise = Low. Le menu popup
+  reprend les mêmes icônes colorées.
+
+- **UI téléchargements — barre de progression dédupliquée**
+  (`app_shell`) : le `LinearProgressIndicator` au-dessus de
+  `PartAvailabilityBar` était redondant — la barre de chunks dessine
+  déjà le liseré vert d'avancement eMule (`DrawStatusBar`). Supprimée
+  dans les layouts full et compact ; la barre de chunks passe à 14 px
+  (12 px compact) pour occuper toute la hauteur.
+
+- **Amorçage Kad résilient — file de candidats façon eMule
+  `s_liBootstrapList`** (`mule-daemon`) : un timeout sur le premier
+  bootstrap laissait Kad mort avec une table de routage vide — la
+  maintenance ne s'activait que si `total_contacts > 0`, donc aucune
+  retentative n'avait jamais lieu.
+  - **File de candidats** (`bootstrap_candidates`, cap 50, dédupliquée) :
+    chaque pair eD2K annonçant un port UDP Kad s'y enregistre au
+    handshake (entrant comme sortant), filtré `kad_version >= 2`
+    (`KADEMLIA_VERSION2_47a`) — les pairs pré-0.47a ne parlent pas
+    KADEMLIA2.
+  - **Boucle de drain** : tâche de fond qui vide la file à raison d'un
+    `BOOTSTRAP_REQ` toutes les **2 s** tant que la table est vide,
+    **15 s** quand elle a des contacts non vérifiés — calqué sur
+    `CKademlia::Process` (Kademlia.cpp:287). Chaque candidat n'est tenté
+    qu'une fois (`RemoveHead`) ; les handshakes ré-alimentent la file.
+  - **Gate `!IsConnected()` fidèle** : le drain tourne tant qu'aucun
+    contact n'a jamais répondu (`HasHadContact` eMule = contact
+    *vérifié*), même si la table contient des zombies non vérifiés —
+    avant, 50 contacts morts auraient figé le drain.
+  - **Throttle partagé** `last_bootstrap` (= `m_tBootstrap` eMule) :
+    envois immédiats au handshake (10 s) et drain partagent le même
+    horodatage — pas de rafale de requêtes.
+  - **`nodes.dat` auto-chargé** au démarrage (`<data_dir>/nodes.dat`) en
+    candidats bootstrap : les contacts prouvent leur vivacité en
+    répondant au drain au lieu d'entrer zombies dans la table.
+  - **Événement `kad.statusChanged`** émis dès qu'un bootstrap apprend
+    des contacts — le badge UI passe « Connecté » sans attendre le tick
+    de 30 s.
+  - Test : `test_bootstrap_drain_retries_candidates_until_success`
+    (candidat mort → timeout → candidat vivant → table peuplée).
+
+- **Bridages internes alignés sur eMule 0.72a** (`mule-daemon`) :
+  chasse aux plafonds en dur hérités des premières versions de test.
+  - **Slots upload** : `MAX_ACTIVE_UPLOADS` passe de **10 → 100** =
+    `MAX_UP_CLIENTS_ALLOWED` d'eMule (`Opcodes.h`) — le cap de 10
+    brisait le scaling sur connexions rapides.
+  - **Slots garantis** : les 4 premiers slots s'ouvrent sans condition
+    de débit (`max(MIN_UP_CLIENTS_ALLOWED, 4)` d'eMule
+    `AcceptNewClient`) — auparavant le plancher `minUploadKbs` pouvait
+    geler l'upload dès le 2ᵉ client.
+  - **Promotion de file** : `promote_waiting` applique désormais la même
+    éligibilité qu'`AcceptNewClient` (plancher de débit + veto USS) via
+    `can_open_slot` partagé — avant, la promotion ignorait les deux
+    contrôles.
+  - **Pacing connexions sources** : `MAX_CONNECT_PER_TICK` 5 → 12 —
+    suppression du double bridage (coordinateur 5/3s ≈ 100/min *plus
+    restrictif* que le budget `rate_limit_per_min` 240/min). Un fichier
+    seul atteint maintenant le rythme eMule `MaxConnPer5Sec`=20 (~4/s) ;
+    le budget token-bucket reste le garde-fou global.
+  - **Cap inbound** : `MAX_INBOUND_CONNECTIONS` (500, constante morte)
+    supprimé — le listener suit le budget `max_active_peer_connections`
+    live, comme eMule où toutes les connexions pairs comptent dans
+    `maxconnections`. Le cap par IP (5, anti-flood) est conservé.
+  - **Soft-cap SX** : `max_source_soft` et le cap d'ingestion des
+    réponses SX retombent sur le réglage `maxPeersPerDownload` persisté
+    au lieu de la constante 400 (eMule : `GetMaxSourcePerFile` →
+    `thePrefs.maxsourceperfile`).
+  - **Refactor** : la vérification des quotas de session (global +
+    par fichier + doublon d'adresse), dupliquée entre `connect` et
+    `accept_callback`, est factorisée en
+    `SwarmInnerState::check_session_slot`.
+
+- **Audit complet des réglages — câblage, doublons, bornes eMule 0.72a**
+  (`mule-daemon`, `mule-network-policy`, `app_shell`, `SETTINGS.md`) :
+  inventaire des 36 clés `settings.set`/`settings.get` et de tous les
+  champs UI — chaque champ est câblé (persisté + appliqué à chaud ou
+  relu au tick) et présent dans une seule section.
+  - `maxConnections` : le plafond passe de **1500 → 65000**
+    (`MAX_PEER_CONNECTIONS_CAP`) — eMule ne borne pas `maxconnections`
+    sous Windows NT+ (`GetMaxWindowsTCPConnections()` → `UNLIMITED`) ;
+    65000 reste un garde-fou anti-faute de frappe. La valeur est
+    désormais **clampée avant persistance** (auparavant persistée brute
+    puis rejetée par `set_budgets` → incohérence stockée/appliqué).
+  - `maxUploadQueue` : clamp `[10, 5000]` (eMule `QueueSize`) appliqué
+    avant persistance — stockée = appliquée.
+  - `settings.get` renvoie les valeurs **effectives** (clampées) pour
+    `maxConnections`, `maxConnPerMin`, `maxUploadQueue` — fini les
+    valeurs persistées hors borne ré-affichées.
+  - UI : bornes de saisie ajoutées (`maxQueue` ≤ 5000, quota ≤ 1 048 576
+    Gio, `maxConnections` ≤ 65 000) ; hints clarifiés —
+    `maxGlobalDownloadPeers` (quota d'allocation swarm) explicitement
+    distingué de `maxConnections` (budget de sockets) ;
+    `minUploadKbs = 0` documenté comme seuil désactivé (extension —
+    eMule force `MinUpload ≥ 1`).
+  - Écarts assumés et documentés dans `SETTINGS.md` : `kadPort = 0`
+    n'est pas accepté — la désactivation UDP passe par `udpEnabled`
+    (équivalent du « port 0 » d'eMule, en interrupteur dédié).
+
+- **Liste des sources alignée sur eMule `srclist`/deadlist** (`mule-core`,
+  `mule-daemon`, `app_shell`, `mule_client`) : le panneau déroulé d'un
+  téléchargement affichait *toutes* les lignes persistées de
+  `peer_sources`, y compris les échecs en cooldown, les sources rejetées
+  (FNF) et les filtrées IP — eMule les retire de `srclist` et les place
+  en `DeadSourceList` invisible (`CUpDownClient::Disconnected` →
+  `RemoveSource` + `AddDeadSource`). Nouveau prédicat partagé
+  `PeerSourceStatus::is_srclist_visible()` /
+  `PeerSourceStatus.isListedInSourceList` : seuls `candidate`, `allowed`,
+  `tried`, `connected` restent affichés ; `failed`, `rejected`,
+  `filtered` restent persistés pour le backoff mais sont masqués. Les
+  pairs déjà rendus dans la section « sessions actives » ne sont plus
+  répétés dans la liste (`PeerSourcesController::getVisibleSourcesForHash`,
+  dédupliqué par adresse). Le compteur `sourceCount` des snapshots ne
+  compte désormais que les sources visibles (comme `GetSourceCount()`
+  d'eMule) et est rafraîchi à chaque transition de statut ou suppression.
+
+- **USS aligné sur eMule `LastCommonRouteFinder`** (`mule-daemon`) : la
+  cible de ping USS n'est plus le serveur eD2K distant mais le **dernier
+  routeur commun** — routes ICMP tracées (`IcmpSendEcho`, TTL croissant,
+  non privilégié) vers un échantillon de pairs connus (serveur, clients
+  d'upload, sources de download — IPs publiques, ≤ 8), puis ping du saut
+  le plus profond partagé par toutes les routes (typiquement le routeur
+  d'agrégation du FAI). Mesure la congestion du lien montant local comme
+  eMule, au lieu d'un RTT de bout en bout. Cible cachée 15 min, re-résolue
+  après re-baseline ; repli `uss.pingHost` puis sonde TCP-connect vers le
+  serveur (plateformes sans `IcmpSendEcho`). `uss.pingTarget` expose
+  désormais le schéma (`icmp:`/`tcp:`). Nouveau module `uss_icmp`,
+  dépendance `windows` (target-specific) ajoutée.
+
+- **Champ « limite d'envoi » qui revenait à sa valeur USS** (`mule-daemon`,
+  `app_shell`, `mule_client`) : quand USS est activé, sa boucle de contrôle
+  réécrit le bucket upload à chaque tick — un `limits.set` manuel était
+  écrasé en ~1 s et le champ affichait la valeur effective (ex. 51 Ko/s)
+  au lieu de la configurée. Deux correctifs : les champs de
+  `RateLimitsTab` affichent désormais la limite *configurée* persistée
+  (`uploadConfiguredBytesPerSec`/`downloadConfiguredBytesPerSec`) avec un
+  helper indiquant la valeur effective (« Piloté par USS : X Ko/s » ou
+  « plafonné par le ratio eD2K ») ; et côté daemon, `limits.set` sur
+  l'upload met à jour `uss.max_upload_bps` quand USS est actif — la
+  limite saisie devient le plafond du pilotage dynamique (sémantique
+  eMule : `MaxUpload` borne DynUp, 0 = plafond illimité).
+
+- **Guide lab masqué en release** (`app_shell`) : la tuile « Guide du
+  mode laboratoire » de Settings → Avancé n'apparaît désormais que si
+  `isLabModeAvailableProvider` est vrai (daemon portable avec capacité
+  `lab-tools`, ou dev tools) — le flavor `standard` n'exposant aucune
+  méthode `lab.*`, l'entrée était inutile en production.
+
+- **Moniteur de transfert unifié dans la top bar** (`app_shell`,
+  `ui_kit`) : les trois chips disjoints (débits live + sparkline, totaux
+  de session, cumuls lifetime) sont fusionnés en une seule pill
+  segmentée par des séparateurs hairline — `↓ DL/s ↑ UL/s │ sparkline │
+  session │ Σ lifetime`. Chiffres en fonte tabulaire
+  (`FontFeature.tabularFigures`) : la largeur ne bouge plus quand la
+  valeur change. Kill switch actif → pill teintée rouge avec transition
+  animée (`AnimatedContainer`) et segment session remplacé par l'état
+  « Désactivé ». Sparkline enrichi : ligne de base discrète quand le
+  graphe est vide + remplissage download en dégradé vertical au lieu
+  d'un alpha plat.
+
 - **Localisation FR complète de l'interface** (`app_shell`,
   `mule_client`) : `app_fr.arb` contenait ~340 valeurs encore en anglais
   (sidebar entière, badges, dialogues) — toutes traduites ; les valeurs

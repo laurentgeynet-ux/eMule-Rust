@@ -62,11 +62,17 @@ class _SettingsSecuritySectionState
 
   void _syncFromLimits(RateLimitsModel? limits) {
     if (limits == null) return;
+    // On affiche la limite *configurée* (persistée), pas l'effectif du
+    // bucket : celui-ci peut être borné par le ratio eD2K ou piloté par
+    // USS — la différence est expliquée en helper dans RateLimitsTab.
     _syncText(
       _downloadLimitController,
-      limits.downloadBytesPerSec ~/ 1024,
+      limits.downloadConfiguredBytesPerSec ~/ 1024,
     );
-    _syncText(_uploadLimitController, limits.uploadBytesPerSec ~/ 1024);
+    _syncText(
+      _uploadLimitController,
+      limits.uploadConfiguredBytesPerSec ~/ 1024,
+    );
     _syncText(_connLimitController, limits.connectionsPerMinute);
   }
 
@@ -141,6 +147,7 @@ class _SettingsSecuritySectionState
             downloadLimitController: _downloadLimitController,
             uploadLimitController: _uploadLimitController,
             connLimitController: _connLimitController,
+            limits: ctl.rateLimits,
             onSave: _saveLimits,
             onChanged: (ctrl) => _dirty.add(ctrl),
           ),
@@ -222,6 +229,8 @@ class _SettingsSecuritySectionState
     final limits = RateLimitsModel(
       downloadBytesPerSec: dlKb! * 1024,
       uploadBytesPerSec: ulKb! * 1024,
+      downloadConfiguredBytesPerSec: dlKb * 1024,
+      uploadConfiguredBytesPerSec: ulKb * 1024,
       connectionsPerMinute: conn!,
       serverRequestsPerSec: current?.serverRequestsPerSec ?? 10,
       kadPacketsPerSec: current?.kadPacketsPerSec ?? 50,

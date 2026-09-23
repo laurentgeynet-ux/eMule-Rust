@@ -63,14 +63,14 @@ pipeline anti-SSRF sont inchangés.
 | Clé | Persistée | Type | Défaut | Effet | eMule |
 |---|---|---|---|---|---|
 | `ed2kPort` | `ed2k_port` | u16 1–65535 | `39735` | **Rebind à chaud** du listener TCP + `kad.set_ed2k_tcp_port` + buddy connect-options + `upnp.set_ports` | Port TCP (eMule randomise 4096–65095 au 1er démarrage) |
-| `kadPort` | `kad_port` | u16 1–65535 | `39737` | Rebind à chaud de la socket Kad UDP | Port UDP (idem, randomisé par eMule) |
-| `udpEnabled` | `udp_enabled` | bool | `true` | Stoppe/démarre `kad_udp` + `server_udp` | « UDP désactivé » |
+| `kadPort` | `kad_port` | u16 1–65535 | `39737` | Rebind à chaud de la socket Kad UDP | Port UDP (idem, randomisé par eMule). **Différence** : eMule accepte 0 = UDP off ; chez nous la désactivation passe par `udpEnabled` |
+| `udpEnabled` | `udp_enabled` | bool | `true` | Stoppe/démarre `kad_udp` + `server_udp` — équivalent du « port UDP = 0 » d'eMule | « UDP désactivé » |
 | `upnpEnabled` | `upnp_enabled` | bool | `false` | `map_ports`/`unmap_ports` immédiat | `EnableUPnP` (défaut eMule : off) |
 | `capacityDownloadKbs` | `capacity_download_kbs` | Ko/s | `0` | Capacité de ligne descendante — borne la limite DL à 90 % de la capacité (clamp eMule `Preferences.cpp`), réappliqué à chaque `limits.set` et normalisé au boot | Capacité Réception |
 | `capacityUploadKbs` | `capacity_upload_kbs` | Ko/s | `0` | Capacité montante — borne la limite UL à 80 % de la capacité ; référence USS (`note_manual_limit`) | Capacité Émission |
 | `obfuscationEnabled` | `obfuscation_enabled` | bool | config | Listener inbound live (`AtomicBool`), connexions sortantes, byte buddy Kad | « Support obfuscated connections » |
 | `obfuscationRequired` | `obfuscation_required` | bool | config | idem — pairs sans chiffrement rejetés | « Require obfuscated connections » |
-| `maxConnections` | `max_connections` | usize | `500` | `ResourceBudgets.max_active_peer_connections` (live) | MaxConnections |
+| `maxConnections` | `max_connections` | usize 1–65000 | `500` | `ResourceBudgets.max_active_peer_connections` (live). Budget de **sockets TCP pairs** — distinct de `maxGlobalDownloadPeers` (quota d'allocation) | MaxConnections (non borné sous NT+, `GetMaxWindowsTCPConnections()` → `UNLIMITED` ; 65000 = borne de sanité) |
 | `maxConnPerMin` | `max_conn_per_min` | u32 | `240` | `ResourceBudgets.rate_limit_per_min` (live) | MaxConnPerFiveSeconds = 20 ≈ 240/min (granularité min) |
 | `ussEnabled` | `uss_config` (JSON) | bool | `false` | `UssService.update_config` — limite d'upload pilotée par latence | « USS » |
 | `paranoidMode` | `paranoid_mode` | bool | `false` | Slots d'upload réservés aux pairs **obfusqués + signature SUI vérifiée** ; rejette les clients eMule classiques (live, `dispatcher`) | — (spécifique Emule-Sion) |
@@ -80,11 +80,11 @@ pipeline anti-SSRF sont inchangés.
 
 | Clé | Persistée | Type | Défaut | Effet | eMule |
 |---|---|---|---|---|---|
-| `maxGlobalDownloadPeers` | `max_global_download_peers` | usize | `500` | Quota global du swarm + budget sockets | Sources max |
+| `maxGlobalDownloadPeers` | `max_global_download_peers` | usize | `500` | Quota de **sources activées** par l'allocateur swarm, tous fichiers confondus — couche allocation, pas sockets (cf. `maxConnections`) | — (eMule n'a pas de quota global équivalent ; `MaxSourcesPerFile` seul) |
 | `maxPeersPerDownload` | `max_peers_per_download` | usize | `400` | Plafond de sources par fichier (surchargeable via `downloads.setMaxSources` / `FT_MAXSOURCES`) | `MaxSourcesPerFile` |
 | `minPeersPerDownload` | `min_peers_per_download` | usize | `5` | Quota garanti sous saturation | — |
 | `maxUploadQueue` | `max_upload_queue` | usize 10–5000 | `5000` | `UploadManager.max_queue` (live) | `QueueSize` (défaut eMule 5000) |
-| `minUploadKbs` | `min_upload_kbs` | Ko/s 0–100000 | `1` | Plancher par slot : pas de nouveau slot si la moyenne descend sous le seuil (live) | `MinUpload` (défaut eMule 1) |
+| `minUploadKbs` | `min_upload_kbs` | Ko/s 0–100000 | `1` | Plancher par slot : pas de nouveau slot si la moyenne descend sous le seuil (live). **0 = seuil désactivé** — les slots s'ouvrent tant que `max_active` n'est pas atteint (extension ; eMule force `MinUpload ≥ 1`) | `MinUpload` (défaut eMule 1, plancher obligatoire) |
 | `autoPriorityNewDownloads` | `auto_priority_new_downloads` | bool | `false` | Fichiers ≥ 9 728 000 B créés en priorité `high` | auto-priorité |
 | `dailyUploadQuotaGb` | `daily_upload_quota_gb` | Gio 0–1048576 | `0` | Quota volumétrique/jour : atteint → plus aucune nouvelle demande de slot accordée (watcher 30 s). Compteur persisté `upload_quota_used_bytes`, remise à zéro au changement de jour UTC (`upload_quota_day`) | — (spécifique Emule-Sion, aucun équivalent eMule) |
 | `swarmHealing` | `swarm_healing` | bool | `false` | Biaise la sélection de part vers les **parts les plus rares du swarm** (compteur de sources connues par part) — le client devient source de secours avant la disparition d'une part. Tie-break : octets reçus | — (spécifique Emule-Sion ; eD2K est pull-only, aucun push possible) |
@@ -120,7 +120,24 @@ restaure le download sans le re-saisir. Quand USS est actif, le plafond
 suit la limite dynamique à chaque tick de la boucle de contrôle (eMule
 utilise le débit mesuré quand DynUp est actif). `limits.get` expose
 `downloadConfiguredBytesPerSec` / `uploadConfiguredBytesPerSec` (valeurs
-configurées) et `downloadRatioApplied` (plafond ratio actif).
+configurées) et `downloadRatioApplied` (plafond ratio actif). L'onglet
+affiche la valeur **configurée** dans les champs et signale l'effectif en
+helper quand il diffère (ratio eD2K ou pilotage USS).
+
+**USS — cible de ping** (eMule `LastCommonRouteFinder`) : quand USS est
+activé, le daemon trace des routes ICMP (`IcmpSendEcho`, TTL croissant —
+non privilégié) vers un échantillon de pairs connus (serveur connecté,
+clients d'upload actifs, sources de téléchargement, ≤ 8 IPs publiques) et
+ping le **saut le plus profond commun à toutes les routes** — typiquement
+le routeur d'agrégation du FAI, là où la congestion du lien montant local
+se mesure réellement. Le dernier routeur commun est recalculé au plus
+toutes les 15 min et après 60 échecs de ping consécutifs (re-baseline).
+Repli : `uss.pingHost` explicite, puis sonde TCP-connect vers le serveur
+eD2K connecté (sur les plateformes sans `IcmpSendEcho`). La cible active
+est visible dans `limits.get` → `uss.pingTarget` (`icmp:x.x.x.x` ou
+`tcp:ip:port`). Quand USS est actif, la limite d'envoi saisie borne le
+plafond du pilotage dynamique (`uss.max_upload_bps`, eMule : `MaxUpload`
+borne DynUp ; `0` = sans plafond).
 
 ### Filtre IP (RPC `filter.*`, section Sécurité)
 
@@ -151,7 +168,10 @@ son état activé survivent aux redémarrages du daemon.
   ils portent les marqueurs `0xFCFCFCFC`/`0xFCFC`.
   `shares.setEnabled`/`setUploadPriority` les rejettent — un partage
   transitoire persisté figerait le chemin `.part` et le servirait comme
-  complet après restart. Chaque mutation `shares.*` émet le nudge
+  complet après restart. `shares.setCategory` est en revanche accepté :
+  la catégorie est portée par le download sous-jacent (colonne
+  `downloads.category_id`), pas par une entrée `shared_files`
+  transitoire. Chaque mutation `shares.*` émet le nudge
   `shares.changed` (badge « Partages » live).
 - **Partages après restart** : les downloads `Completed` sont lus depuis
   SQLite même hors de la map `active` — la liste de partage survit aux

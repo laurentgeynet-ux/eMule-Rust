@@ -59,6 +59,32 @@ class PeerSourcesController extends ChangeNotifier {
     return _sources[fileHash] ?? [];
   }
 
+  /// Sources visibles façon eMule « srclist » : candidates, en attente de
+  /// re-demande, en connexion ou connectées. Les entrées deadlist
+  /// (échec, rejeté, filtré IP) restent persistées pour le backoff mais
+  /// ne sont pas affichées — comme la `DeadSourceList` d'eMule.
+  ///
+  /// Les pairs déjà rendus dans la section des sessions actives
+  /// (swarm ou session courante) ne sont pas répétés dans la liste.
+  List<PeerSourceModel> getVisibleSourcesForHash(String fileHash) {
+    final shown = <String>{
+      for (final p in getSwarmForHash(fileHash).peers)
+        if (p.peerAddress != null) p.peerAddress!,
+    };
+    final s = _session;
+    if (s.fileHash == fileHash &&
+        s.status != PeerConnectionStatus.disconnected &&
+        s.peerAddress != null) {
+      shown.add(s.peerAddress!);
+    }
+    return getSourcesForHash(fileHash)
+        .where(
+          (src) =>
+              src.status.isListedInSourceList && !shown.contains(src.address),
+        )
+        .toList();
+  }
+
   /// Live swarm sessions (connected peers, rates, queue ranks) for a file.
   SwarmStatusModel getSwarmForHash(String fileHash) {
     return _swarms[fileHash] ?? SwarmStatusModel.empty;

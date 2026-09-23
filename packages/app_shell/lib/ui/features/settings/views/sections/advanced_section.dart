@@ -43,15 +43,19 @@ class SettingsAdvancedSection extends ConsumerWidget {
             builder: (_) => const ImportPartMetDialog(),
           ),
         ),
-        _AdvancedTile(
-          icon: Icons.science_outlined,
-          title: l10n.settingsLabGuideTile,
-          subtitle: l10n.settingsLabGuideSub,
-          onTap: () => showDialog(
-            context: context,
-            builder: (_) => const LabGuideDialog(),
+        // Guide lab : uniquement quand les outils lab sont réellement
+        // disponibles (daemon portable avec capacité `lab-tools`, ou dev
+        // tools) — masqué en release standard.
+        if (ref.watch(isLabModeAvailableProvider))
+          _AdvancedTile(
+            icon: Icons.science_outlined,
+            title: l10n.settingsLabGuideTile,
+            subtitle: l10n.settingsLabGuideSub,
+            onTap: () => showDialog(
+              context: context,
+              builder: (_) => const LabGuideDialog(),
+            ),
           ),
-        ),
         _AdvancedTile(
           icon: Icons.restart_alt_rounded,
           title: l10n.settingsLifetimeResetTile,
