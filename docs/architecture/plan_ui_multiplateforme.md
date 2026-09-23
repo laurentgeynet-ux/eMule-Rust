@@ -62,7 +62,7 @@ en dur ; tout passe par `ui_kit`.
 | `go_router` | Routes `/downloads`, `/history`, `/servers`, `/search`, `/kad` dans un `ShellRoute` (`lib/app/router.dart`) ; sync bidirectionnelle `currentSection` ↔ URL | ✅ |
 | Shell adaptatif | `DownloadsScreen` = shell : sidebar (≥1100 px) / rail compact (750–1100 px) / drawer (<750 px) ; bannières globales + debug bar mutualisés | ✅ |
 | Routes détail | `/downloads/:id`, `/settings` | 🔲 |
-| `url_strategy` | `usePathUrlStrategy()` pour le web (URLs sans `#`) — à faire au lancement d'`apps/web` | 🔲 |
+| `url_strategy` | `usePathUrlStrategy()` pour le web (URLs sans `#`) — actif dans `apps/web/main.dart` | ✅ |
 | ed2k:// links | Handler de protocole + `app_links` | 🔲 |
 
 ## Phase 4 — Migration Riverpod (state management)
@@ -125,13 +125,14 @@ daemon **distant** (PC/serveur de l'utilisateur).
 
 Pilote le daemon à distance depuis un navigateur.
 
-| Tâche | Détail |
-|---|---|
-| `apps/web` | `flutter create --platforms web`, deps `mule_client` + `ui_kit` |
-| TLS | le navigateur exige `wss://` en contexte HTTPS → reverse proxy (nginx/caddy) devant axum, ou `rustls` dans le daemon |
-| Auth | page login → `system.hello` token ; session token en `flutter_secure_storage` (web : localStorage chiffré limité, préférer mémoire) |
-| CORS | axum `CorsLayer` restreint à l'origine du frontend |
-| Perf | `events.subscribe` avec topics (Phase 1) pour limiter la bande passante ; canvaskit vs skwasm selon perf mesurée |
+| Tâche | Détail | Statut |
+|---|---|---|
+| `apps/web` | `flutter create --platforms web`, deps `mule_client` + `ui_kit` | ✅ |
+| Serving | le daemon sert lui-même le build Flutter statique (`ServeDir` + fallback SPA) via `web_dir` (`--web-dir`/`MULE_WEB_DIR`/auto-détection bundle & dev) — l'utilisateur ouvre `http://127.0.0.1:4660/` sans serveur externe ; `Interface Web.bat` dans le bundle | ✅ |
+| Auth | token `system.hello` via `?token=`, champ du formulaire ou prefs ; **zéro-config** quand servi par le daemon : `GET /session-config.js` injecte `window.MULE_SESSION` (endpoint+token) — route limitée au bind loopback | ✅ |
+| TLS | le navigateur exige `wss://` en contexte HTTPS → `rustls` natif dans le daemon **en cours** (branche `Android`) ; alternative : reverse proxy (nginx/caddy) devant axum | 🔲 |
+| CORS/Origin | check `Origin` sur `/rpc` si bind non-loopback (le port sert aussi les routes HTTP) | 🔲 |
+| Perf | `events.subscribe` avec topics (Phase 1) pour limiter la bande passante | ✅ ; choix canvaskit vs skwasm selon perf mesurée 🔲 |
 
 ## Phase 9 — Qualité & pipeline
 

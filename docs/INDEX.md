@@ -68,10 +68,10 @@ Index exhaustif des fichiers versionnés du dépôt **EMule-Rust** — un client
 
 | Fichier | Fonction |
 |---|---|
-| `lib/main.dart` | Point d'entrée de l'app web |
-| `lib/daemon_connect_screen.dart` | Écran de connexion au daemon |
+| `lib/main.dart` | Point d'entrée de l'app web — résolution du daemon : `?daemon=` > `window.MULE_SESSION` (injecté par `session-config.js` quand servi par le daemon) > dart-define > prefs > formulaire ; token via `?token=`/formulaire/prefs |
+| `lib/daemon_connect_screen.dart` | Écran de connexion au daemon (URL ws/wss + champ token optionnel) |
 | `pubspec.yaml` / `pubspec.lock` / `analysis_options.yaml` | Configuration Flutter |
-| `web/` | Boilerplate web (index.html, manifest, icônes) |
+| `web/` | Boilerplate web (index.html + `<script src="session-config.js">`, manifest, icônes) |
 
 ## packages/app_shell/ — Shell UI partagé (MVVM)
 
@@ -98,7 +98,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `lib/core/daemon_lifecycle.dart` | Cycle de vie de la connexion daemon |
 | `lib/core/folder_picker.dart` (+`_io`, `_stub`) | Sélecteur de dossier (abstraction + impl natif/stub) |
 | `lib/core/file_picker_helper.dart` (+`_io`, `_stub`) | Sélecteur de fichier natif (`pickFile`, `file_picker` 12.3) — ipfilter.dat, server.met, nodes.dat, .part.met |
-| `lib/core/system_actions.dart` (+`_io`, `_stub`) | Actions système (ouvrir dossier, révéler fichier…) |
+| `lib/core/system_actions.dart` (+`_io`, `_stub`) | Actions système (ouvrir dossier, révéler fichier, ouvrir URL navigateur) |
 | `lib/core/work_dirs.dart` | Répertoires de travail (downloads, incoming…) |
 
 ### Localisation (`lib/l10n/`)
@@ -121,7 +121,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `view_models/network_policy_controller.dart` | Contrôleur de la politique réseau |
 | `view_models/peer_sources_controller.dart` | Contrôleur des sources de pairs — `getVisibleSourcesForHash` filtre la deadlist eMule (échec/rejeté/filtré masqués) |
 | `views/downloads_screen.dart` | Écran principal des téléchargements |
-| `widgets/downloads_list.dart`, `downloads_top_bar.dart`, `downloads_sidebar.dart`, `downloads_empty_state.dart` | Liste, barre d'outils, sidebar et état vide |
+| `widgets/downloads_list.dart`, `downloads_top_bar.dart`, `downloads_sidebar.dart`, `downloads_empty_state.dart` | Liste, barre d'outils, sidebar (dont bouton « Interface web » ouvrant l'UI servie par le daemon) et état vide |
 | `widgets/download_row.dart`, `download_details_panel.dart`, `download_detail_dialog.dart` | Ligne de download et panneau/dialogue de détail |
 | `widgets/download_sources_expansion.dart` | Expansion des sources d'un download — n'affiche que la srclist eMule (vivantes), pas les entrées deadlist |
 | `widgets/speed_sparkline.dart`, `debug_simulation_bar.dart` | Sparkline de débit, barre de simulation |
@@ -183,7 +183,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `lib/src/tokens.dart` | Design tokens (espacements, rayons, couleurs) |
 | `lib/src/formatters.dart` | `Formatters` : bytes, vitesses, ETA, pourcentages |
 | `lib/src/strings.dart` | `AppStrings` : chaînes UI centralisées (base i18n) |
-| `lib/src/part_availability_bar.dart` | Barre `DrawStatusBar` eMule 0.72a byte-précise (CustomPaint) : ardoise = reçu, rouge = aucune source, dégradé bleu rare→commun, jaune = en vol, strip vert = progression |
+| `lib/src/part_availability_bar.dart` | Barre `DrawStatusBar` eMule 0.72a byte-précise (CustomPaint), palette désaturée Tailwind : ardoise = reçu, rouge doux = aucune source, dégradé sky rare→commun, ambre = en vol, strip vert doux = progression ; constantes `partHaveColor`/`partVerifiedColor`/`partMissingColor`/`partPendingColor`/`partProgressColor` partagées avec la carte part-map |
 | `pubspec.yaml` | Manifeste du package |
 | `README.md` | Contenu et règles du design system |
 
@@ -267,9 +267,9 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 
 | Fichier | Fonction |
 |---|---|
-| `src/main.rs` | Point d'entrée du daemon (init logging `tracing` → stdout + `data/daemon.log`, filtre `RUST_LOG`, défaut `info`) |
+| `src/main.rs` | Point d'entrée du daemon (init logging `tracing` → stdout + `data/daemon.log`, filtre `RUST_LOG`, défaut `info` ; résolution `--web-dir`/`MULE_WEB_DIR` + auto-détection du dossier UI web) |
 | `src/lib.rs` | Racine de la bibliothèque daemon |
-| `src/config.rs` | Chargement de la configuration |
+| `src/config.rs` | Chargement de la configuration (dont `web_dir` — UI web statique servie par le daemon) |
 | `src/error.rs` | Erreurs du daemon |
 | `src/lock.rs` | Verrou d'instance unique |
 | `src/session.rs` | Gestion de la session du daemon |
@@ -286,7 +286,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | Fichier | Fonction |
 |---|---|
 | `src/rpc/mod.rs` | Module RPC |
-| `src/rpc/server.rs` | Serveur RPC (transport) |
+| `src/rpc/server.rs` | Serveur RPC (transport) + service statique de l'UI web (`ServeDir`, fallback SPA `index.html`) + `GET /session-config.js` (injecte endpoint+token, loopback uniquement) |
 | `src/rpc/methods.rs` | Définition des méthodes RPC |
 | `src/rpc/types.rs` | Types du protocole RPC |
 | `src/rpc/events.rs` | Événements RPC (notifications) |
@@ -702,7 +702,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 
 | Fichier | Fonction |
 |---|---|
-| `build_windows_release.ps1` | Build de release Windows |
+| `build_windows_release.ps1` | Build de release Windows (desktop + web bundlé sous `web/`, launcher `Interface Web.bat`, `-SkipWeb`/`-WebBaseHref`) |
 | `generate_sbom.ps1` | Génération du SBOM (Bill of Materials) |
 | `test_packaged_bundle.ps1` | Test du bundle packagé |
 | `test_qa_loopback_e2e.ps1` | Test E2E loopback QA |

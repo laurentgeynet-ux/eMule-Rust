@@ -15,6 +15,8 @@ d'inspection local (hash, liens, `.part.met`) et ne consomme pas le RPC.
 |---|---|
 | Endpoint | `ws://<host>:<port>/rpc` |
 | Health check | `GET /health` → `{"status":"healthy","daemonVersion":"x.y.z"}` |
+| UI web statique | `GET /` → `index.html` + assets Flutter (`ServeDir`, si `web_dir` configuré — voir §8) |
+| Config de session | `GET /session-config.js` → `window.MULE_SESSION` (endpoint+token), loopback uniquement |
 | Framing | un message texte WebSocket = une requête **ou** une réponse **ou** une notification JSON |
 | Encodage | UTF-8 JSON |
 
@@ -235,11 +237,32 @@ compter sur le flux incrémental.
 
 ## 8. Sécurité / exposition réseau
 
+**UI web servie par le daemon** — quand `web_dir` est configuré
+(`--web-dir`, `MULE_WEB_DIR` ou auto-détection `<exe>/../web`,
+`<exe>/web`, `../../apps/web/build/web`), le même listener axum sert le
+build Flutter statique (`ServeDir` + fallback `index.html` pour les
+deep links SPA) et `GET /session-config.js`. Cette dernière route
+émet `window.MULE_SESSION = {endpoint, token}` permettant à
+`apps/web` de se connecter sans saisie — **elle n'est montée que si
+l'adresse de bind est loopback**, de sorte que `auth_token` ne soit
+jamais servi sur une interface non locale. Hors loopback (ou en
+l'absence du script), le formulaire de connexion exige la saisie du
+token (param `?token=` ou champ dédié).
+
 - Le endpoint n'est pas TLS : pour `apps/web` en HTTPS il faudra `wss://`
-  (terminaison TLS devant axum : reverse proxy, ou `rustls`).
+  (terminaison TLS devant axum : reverse proxy, ou `rustls` en natif —
+  en cours sur la branche `Android`).
 - `auth_token` transmis en clair dans `system.hello` → acceptable en
-  loopback/LAN, obligatoire derrière TLS si exposé.
-- Prévoir une liste d'origines si le même port sert aussi des routes HTTP.
+  loopback/LAN, obligatoire derrière TLS si exposé. Ne jamais binder
+  `0.0.0.0` en clair sur Internet : le token donne le contrôle total du
+  daemon (ajout/suppression de downloads, `system.stop`).
+- `session-config.js` livre le token en clair — c'est voulu et sûr
+  uniquement parce que la route est restreinte au bind loopback
+  (même machine, pas de fuite réseau). Toute évolution vers un bind
+  non-loopback doit conserver cette garde ou exiger TLS.
+- Le même port sert désormais des routes HTTP (`/`, `/health`,
+  `/session-config.js`) : prévoir une liste d'origines (CORS/Origin
+  check) si le daemon est exposé hors loopback.
 - Les handlers `lab.*`/`ed2k.*`/`debug.*` sont compilés sous features —
   s'assurer qu'aucun build de production ne les active.
 

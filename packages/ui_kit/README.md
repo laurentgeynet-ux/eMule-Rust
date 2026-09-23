@@ -11,7 +11,7 @@ formatters, chaînes et widgets réutilisables. Consommé par
 | `AppTheme` | Couleurs brand/status (`primary`, `darkSurface`, `statusDownloading`…), `dark()` ThemeData, `getStatusColor(DownloadStatus)` |
 | `Formatters` | `formatBytes`, `formatSpeed`, `formatEta`, `formatPercent` |
 | `AppStrings` | Chaînes UI centralisées (EN) — base avant i18n `gen_l10n` |
-| `PartAvailabilityBar` + `partColorFor` | Bandeau eMule `DrawStatusBar` byte-précis : ardoise = reçu, rouge = aucune source, bleu clair→pur = rare→commun, jaune = bloc en vol, strip vert = progression |
+| `PartAvailabilityBar` + `partColorFor` | Bandeau eMule `DrawStatusBar` byte-précis, palette désaturée Tailwind : ardoise = reçu, rouge doux = aucune source, dégradé sky rare→commun, ambre = bloc en vol, strip vert = progression |
 
 ## Usage
 
@@ -23,7 +23,7 @@ Text(Formatters.formatBytes(item.receivedBytes));
 PartAvailabilityBar(
   parts: item.parts,
   totalBytes: item.totalBytes,
-  pendingRanges: item.pendingRanges, // blocs en vol → jaune
+  pendingRanges: item.pendingRanges, // blocs en vol → ambre
   progress: item.progress,           // strip vert en haut
   muted: item.status == DownloadStatus.paused,
 );

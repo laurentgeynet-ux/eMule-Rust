@@ -471,7 +471,24 @@ Session centrée sur le pilotage fin de l'upload, la fidélité eMule des limite
 
 ---
 
-## 13. Conclusion
+## 13. Phase 20 — Interface Web Servie par le Daemon, Lancement Zéro-Config & Palette Assouplie
+
+Session centrée sur l'accès utilisateur à l'interface web — sans serveur statique ni ligne de commande — et sur le confort visuel de la barre de parts :
+
+| Fonction | Détail |
+| :--- | :--- |
+| **UI web servie par le daemon** | Le listener axum sert désormais le build Flutter statique (`tower_http::services::ServeDir` + fallback `index.html` pour les deep links `usePathUrlStrategy`). Résolution du dossier : `--web-dir` / `MULE_WEB_DIR`, puis auto-détection `<exe>/../web` (bundle `bin/` → `web/`), `<exe>/web`, `../../apps/web/build/web` (dev cargo). L'utilisateur ouvre `http://127.0.0.1:4660/` dans son navigateur — rien d'autre à installer ni lancer. |
+| **Auth transparente loopback** | `GET /session-config.js` émet `window.MULE_SESSION = {endpoint, token}` : l'UI se connecte à son propre daemon sans saisie. La route n'est montée que si l'adresse de bind est loopback — `auth_token` n'est jamais servi sur une interface réseau non locale. |
+| **App web multi-connexion** | Résolution du daemon : `?daemon=` > `MULE_SESSION` > dart-define > prefs > formulaire ; token via `?token=`, champ optionnel du formulaire ou prefs ; `autoReconnect` activé sur `RpcDaemonClient`. |
+| **Bouton « Interface web » desktop** | Entrée dans la sidebar ouvrant le navigateur par défaut sur l'URL HTTP dérivée de l'endpoint de session — `SystemActions.openUrl` (impl io `Process.start`, stub web no-op, pattern conditionnel existant). |
+| **Bundle de release** | `build_windows_release.ps1` compile `apps/web` (`flutter build web --release`, `-SkipWeb`, `-WebBaseHref`), copie les assets sous `web/`, génère `Interface Web.bat` à la racine (démarre `bin\mule-daemon.exe` si absent puis ouvre `http://127.0.0.1:4660/`) et trace `includesWebUi` dans `version.json`. |
+| **Palette assouplie des parts** | Les primaires saturés de `PartAvailabilityBar` sont remplacés par des teintes Tailwind alignées sur `AppTheme` : Slate 400 = reçu, Teal 400 = vérifié, Red 400 = sans source, Amber 400 = bloc en vol, Green 400 = strip de progression, dégradé Sky 300→800 pour rare→commun (remplace le bleu électrique `RGB(0,g,255)`). Constantes publiques `partHaveColor`/`partVerifiedColor`/`partMissingColor`/`partPendingColor`/`partProgressColor` partagées avec la carte « eD2K Part Map » (plus de couleurs dupliquées en dur). |
+
+**Validation** : `cargo check` + `clippy -D warnings` sur `mule-daemon` ; `flutter analyze` propre sur `apps/web` et `ui_kit` ; build web release OK ; l10n régénérées. Non exécutés : smoke test HTTP en live, `cargo test --workspace` complet, rebuild du bundle packagé.
+
+---
+
+## 14. Conclusion
 
 Le projet **EMule-Rust** a franchi avec succès les jalons de conception les plus exigeants :
 * L'architecture a atteint le stade **v0.2.0-RC1** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
@@ -480,5 +497,6 @@ Le projet **EMule-Rust** a franchi avec succès les jalons de conception les plu
 * La Phase 17 a porté la fidélité comportementale côté utilisateur : partages partiels dès la création, compteurs sidebar temps réel (`shares.changed`, `kad.statusChanged` via maintenance), sélecteurs de fichiers natifs, et barre de parts byte-précise alignée sur `CPartFile::DrawStatusBar` (`receivedMask`, `pendingRanges`, disponibilité `OP_FILESTATUS` réelle).
 * La Phase 18 a consolidé l'expérience utilisateur : débits d'upload réellement mesurés (par slot et par partage), renommage de fichiers (`downloads.rename`/`shares.rename`), ratio anti-leech eMule (`emule_ud_ratio`), interrupteurs réseau eD2K/Kad, pseudo « eMule-Rust », localisation française exhaustive et nouvelle icône applicative.
 * La Phase 19 (v0.2.0-RC1) a levé les derniers bridages hérités des versions de test — slots upload alignés sur `MAX_UP_CLIENTS_ALLOWED` (100), pacing de connexions sources au rythme eMule — et rendu l'amorçage Kad résilient via une file de candidats drainée en continu (`s_liBootstrapList`) avec auto-chargement de `nodes.dat`. Côté UI, l'onglet Partages gagne catégories, recherche et statistiques d'upload par fichier.
+* La Phase 20 a rendu l'interface web utilisable par un utilisateur final : le daemon sert lui-même le build Flutter (`ServeDir` + auto-détection du dossier), `session-config.js` authentifie sans saisie en loopback, `Interface Web.bat` lance l'ensemble en un double-clic, et le desktop expose un bouton « Interface web ». La barre de parts adopte une palette désaturée alignée sur le thème.
 * L'intégration d'un serveur **MCP natif** confère au projet une dimension d'observabilité et d'automatisation par intelligence artificielle unique dans le paysage des clients P2P.
 * Les garanties de sécurité défensive (anti-SSRF, isolation loopback par défaut, validation d'IP WAN, kill switch atomique) assurent une robustesse de niveau industriel.

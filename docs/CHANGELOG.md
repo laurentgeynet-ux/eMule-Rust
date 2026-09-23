@@ -5,6 +5,41 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Interface web servie par le daemon — connexion zéro-config**
+  (`mule-daemon`, `apps/web`, `app_shell`, `scripts`) :
+  - **ServeDir embarqué** (`tower-http`) : le daemon sert le build
+    Flutter web sur son port HTTP. Résolution du dossier :
+    `--web-dir` / `MULE_WEB_DIR` > auto-détection `<exe>/../web`
+    (bundle `bin/` → `web/`), `<exe>/web`, `../../apps/web/build/web`
+    (dev cargo). `index.html` en fallback SPA (deep links
+    `usePathUrlStrategy`).
+  - **Auth transparente** : `GET /session-config.js` émet
+    `window.MULE_SESSION` (endpoint + token) — réponse limitée aux
+    binds **loopback** pour ne jamais exposer `auth_token` sur une
+    interface réseau.
+  - **App web** : lit `MULE_SESSION` au démarrage (connexion sans
+    saisie quand servie par le daemon), nouveau param `?token=`,
+    champ token optionnel dans le formulaire de connexion,
+    `autoReconnect` activé sur le client RPC.
+  - **Desktop** : bouton « Interface web » dans la sidebar → ouvre le
+    navigateur sur l'URL HTTP dérivée de l'endpoint de session
+    (`SystemActions.openUrl`, pattern conditionnel io/stub).
+  - **Bundle** : `build_windows_release.ps1` compile `apps/web`
+    (`-SkipWeb`, `-WebBaseHref`), copie les assets sous `web/`,
+    génère `Interface Web.bat` à la racine (démarre le daemon si
+    absent puis ouvre `http://127.0.0.1:4660/`), et ajoute
+    `includesWebUi` à `version.json`.
+
+- **Palette assouplie de la barre de progression des parts**
+  (`ui_kit`, `app_shell`) : la sémantique `DrawStatusBar` eMule est
+  conservée mais les primaires saturés sont remplacés par des teintes
+  Tailwind déjà utilisées par `AppTheme` — Slate 400 = reçu,
+  Teal 400 = vérifié, Red 400 = sans source, Amber 400 = bloc en vol,
+  Green 400 = strip de progression, dégradé Sky 300→800 pour
+  rare→commun. Les constantes `partHaveColor`/`partVerifiedColor`/
+  `partMissingColor`/`partPendingColor`/`partProgressColor` sont
+  publiques et partagées avec la carte part-map.
+
 ## [0.2.0-RC1] - 2026-09-23
 
 - **Onglet Partages — catégories, recherche et stats d'upload**
