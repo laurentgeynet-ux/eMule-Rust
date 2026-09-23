@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Laurent Geynet (Loulach)
+// Copyright (C) 2026 Loulach
 
 /// Opens a native file picker. Stub for web (no filesystem paths).
 Future<String?> pickFile({

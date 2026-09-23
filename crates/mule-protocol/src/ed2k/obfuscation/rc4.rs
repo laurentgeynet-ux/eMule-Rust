@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Laurent Geynet (Loulach)
+// Copyright (C) 2026 Loulach
 
 //! RC4 stream cipher implementation conforming to eMule protocol obfuscation (`RC4-drop1024`).
 

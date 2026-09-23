@@ -18,7 +18,7 @@ Index exhaustif des fichiers versionnés du dépôt **EMule-Rust** — un client
 | `.github/copilot-instructions.md` | Lien physique vers `AGENTS.md` (compatibilité GitHub Copilot) |
 | `deny.toml` | Configuration cargo-deny (audit des licences/vulnérabilités) |
 | `LICENSE` | Licence du projet : GPL-2.0-or-later (texte canonique FSF) |
-| `AUTHORS` | Titulaire du copyright et mainteneur (Laurent Geynet « Loulach ») |
+| `AUTHORS` | Titulaire du copyright et mainteneur (Loulach) |
 | `NOTICE` | Attributions : sources adaptées (eMule © Merkur, aMule, eDonkey2000, Kademlia) |
 | `CONTRIBUTING.md` | Guide de contribution (flux de branches, validation, conventions) |
 | `SECURITY.md` | Politique de sécurité et signalement des vulnérabilités |

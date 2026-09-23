@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Laurent Geynet (Loulach)
+// Copyright (C) 2026 Loulach
 
 //! USS (Upload Speed Sense) — dynamic upload limiter based on measured
 //! network latency, adapted from eMule's `LastCommonRouteFinder`.

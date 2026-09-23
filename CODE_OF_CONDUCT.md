@@ -66,7 +66,7 @@ ligne.
 Les cas de comportement abusif, harcelant ou autrement inacceptable
 peuvent être signalés aux dirigeants de la communauté responsables de
 l'application via les outils de signalement du dépôt GitHub (Security
-Advisories) ou par e-mail au mainteneur : **Laurent Geynet « Loulach »**
+Advisories) ou par e-mail au mainteneur : **Loulach**
 <Dev.iptvmediacenter@gmail.com>. Toutes les plaintes seront
 examinées et feront l'objet d'une enquête rapide et équitable.
 

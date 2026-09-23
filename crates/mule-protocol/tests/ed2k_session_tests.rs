@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Laurent Geynet (Loulach)
+// Copyright (C) 2026 Loulach
 
 //! Comprehensive eD2K closed loopback session tests (Phase 6.2).
 //! Strictly confined to 127.0.0.1.

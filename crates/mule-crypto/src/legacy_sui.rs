@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Laurent Geynet (Loulach)
+// Copyright (C) 2026 Loulach
 
 //! Legacy eMule Secure User Identification (SUI) — RSA-384, RSASSA-PKCS1v15-SHA1.
 //!

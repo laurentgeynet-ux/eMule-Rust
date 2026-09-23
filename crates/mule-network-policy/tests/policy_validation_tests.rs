@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Laurent Geynet (Loulach)
+// Copyright (C) 2026 Loulach
 
 use mule_network_policy::{
     redact_socket_addr, AuditDecision, AuditEventType, ConnectionPurpose, NetworkPolicyManager,

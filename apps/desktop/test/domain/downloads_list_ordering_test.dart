@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (C) 2026 Laurent Geynet (Loulach)
+// Copyright (C) 2026 Loulach
 
 import 'package:app_shell/ui/features/downloads/view_models/downloads_store_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
