@@ -84,7 +84,7 @@ impl KadUdpService {
 
         let search_bytes = KadCodec::encode_search_source_req(target_file_hash, 0, file_size);
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending SearchSourceReq (0x34) to node {} for file {} (size={}, tx_id={})",
             log_peer_addr(target),
             hex::encode(target_file_hash),
@@ -127,7 +127,7 @@ impl KadUdpService {
                             _ => None,
                         })
                         .await;
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received SearchSourceRes from node {} with {} sources (first batch {}, tx_id={})",
                             log_peer_addr(target),
                             sources.len(),
@@ -197,7 +197,7 @@ impl KadUdpService {
 
         let pub_bytes = KadCodec::encode_publish_source_req(target_file_hash, &contact, file_size);
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending PublishSourceReq (0x23) to node {} for file {} (tx_id={})",
             log_peer_addr(target),
             hex::encode(target_file_hash),
@@ -232,7 +232,7 @@ impl KadUdpService {
                 match res {
                     Some(Ok(KadMessage::PublishSourceRes(pub_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received PublishSourceRes from node {} with status {} (tx_id={})",
                             log_peer_addr(target),
                             pub_res.status,
@@ -242,7 +242,7 @@ impl KadUdpService {
                     }
                     Some(Ok(KadMessage::PublishKeywordRes(pub_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received PublishRes from node {} with status {} (tx_id={})",
                             log_peer_addr(target),
                             pub_res.status,
@@ -300,7 +300,7 @@ impl KadUdpService {
             &self.local_id.read().unwrap().0,
         );
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending SearchKeywordReq (0x33) to node {} for keyword {} (start_pos={}, tx_id={})",
             log_peer_addr(target),
             hex::encode(keyword_hash),
@@ -340,7 +340,7 @@ impl KadUdpService {
                             _ => None,
                         })
                         .await;
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received SearchKeywordRes from node {} with {} entries (first batch {}, tx_id={})",
                             log_peer_addr(target),
                             entries.len(),
@@ -390,7 +390,7 @@ impl KadUdpService {
 
         let pub_bytes = KadCodec::encode_publish_keyword_req(keyword_hash, entries);
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending PublishKeywordReq (0x43) to node {} for keyword {} with {} entries (tx_id={})",
             log_peer_addr(target),
             hex::encode(keyword_hash),
@@ -426,7 +426,7 @@ impl KadUdpService {
                 match res {
                     Some(Ok(KadMessage::PublishKeywordRes(pub_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received PublishKeywordRes from node {} with status {} (tx_id={})",
                             log_peer_addr(target),
                             pub_res.status,
@@ -436,7 +436,7 @@ impl KadUdpService {
                     }
                     Some(Ok(KadMessage::PublishSourceRes(pub_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received PublishRes from node {} with status {} (tx_id={})",
                             log_peer_addr(target),
                             pub_res.status,
@@ -491,7 +491,7 @@ impl KadUdpService {
 
         let req_bytes = KadCodec::encode_search_notes_req(file_hash, file_size);
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending SearchNotesReq (0x35) to node {} for file {} (size={}, tx_id={})",
             log_peer_addr(target),
             hex::encode(file_hash),
@@ -531,7 +531,7 @@ impl KadUdpService {
                             _ => None,
                         })
                         .await;
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received SearchNotesRes from node {} with {} notes (first batch {}, tx_id={})",
                             log_peer_addr(target),
                             notes.len(),
@@ -585,7 +585,7 @@ impl KadUdpService {
             return Err("Failed to encode notes tag list (oversized)".to_string());
         };
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending PublishNotesReq (0x45) to node {} for file {} with {} tags (tx_id={})",
             log_peer_addr(target),
             hex::encode(file_hash),
@@ -619,7 +619,7 @@ impl KadUdpService {
                 match res {
                     Some(Ok(KadMessage::PublishNotesRes(pub_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received PublishNotesRes from node {} with load {} (tx_id={})",
                             log_peer_addr(target),
                             pub_res.load,

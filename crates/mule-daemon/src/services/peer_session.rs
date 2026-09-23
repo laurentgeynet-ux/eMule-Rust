@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
-use tracing::{info, warn, Instrument};
+use tracing::{debug, info, warn, Instrument};
 
 use mule_core::model::{PeerFailureReason, PeerSourceStatus};
 use mule_network_policy::SocketPermit;
@@ -527,7 +527,18 @@ impl PeerSessionManager {
                         final_status = PeerConnectionStatus::Disconnected;
                     }
                     Err(e) => {
-                        warn!("Peer connection to {} ended with error: {:?}", log_addr, e);
+                        // Churn normal du swarm (sources mortes, timeouts, file pleine) -> debug ;
+                        // seules les anomalies d'intégrité restent en warn.
+                        match e.reason {
+                            PeerFailureReason::HashMismatch
+                            | PeerFailureReason::InvalidRange
+                            | PeerFailureReason::CorruptedData => {
+                                warn!("Peer connection to {} ended with error: {:?}", log_addr, e);
+                            }
+                            _ => {
+                                debug!("Peer connection to {} ended with error: {:?}", log_addr, e);
+                            }
+                        }
                         err_msg = Some(e.message.clone());
                         failure_reason = Some(e.reason);
                     }

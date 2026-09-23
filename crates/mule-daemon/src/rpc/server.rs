@@ -161,7 +161,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                 let tx_out_clone = tx_out.clone();
 
                                 tokio::spawn(async move {
-                                    tracing::info!("RPC incoming request: method={}, id={:?}", req.method, req.id);
+                                    tracing::debug!("RPC incoming request: method={}, id={:?}", req.method, req.id);
                                     let mut auth_val = auth_clone.load(std::sync::atomic::Ordering::SeqCst);
                                     if let Some(resp) = handle_request(&state_clone, req, &mut auth_val).await {
                                         auth_clone.store(auth_val, std::sync::atomic::Ordering::SeqCst);

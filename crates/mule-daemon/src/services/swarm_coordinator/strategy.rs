@@ -746,7 +746,7 @@ impl SwarmCoordinator {
                 let obfu_pad_max = self.state.config.obfuscation_padding_max;
                 let nickname = nickname.clone();
 
-                tracing::info!(
+                tracing::debug!(
                     "Swarm coordinator initiating peer connection to {peer} for {file_hash_str} (quota={target_quota}, active={active_count}, obfu_target_hash={:?}, crypt_opts=0x{:02x})",
                     target_user_hash.is_some(),
                     peer_crypt_options
@@ -785,7 +785,7 @@ impl SwarmCoordinator {
             }
 
             if connected_this_tick > 0 {
-                tracing::info!(
+                tracing::debug!(
                     "[SOURCE_SCHED] File {hash_hex}: dialed {connected_this_tick} new sources this tick \
                      (candidates={total_candidates}, slots_needed={needed}, active={active_count}, \
                      skipped: cooldown={skipped_cooldown}, already_connected={skipped_connected})"

@@ -49,7 +49,7 @@ impl KadUdpService {
         let local_port = socket.local_addr().map(|a| a.port()).unwrap_or(0);
         let ping_bytes = KadCodec::encode_ping(&self.local_id.read().unwrap().0, local_port);
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending Ping (0x60) to node {} (tx_id={})",
             log_peer_addr(target),
             tx_id
@@ -76,7 +76,7 @@ impl KadUdpService {
                 match res {
                     Some(Ok(KadMessage::Pong(pong))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!("Kad received Pong (0x61) from node {} in {} ms (client_port={})", log_peer_addr(target), elapsed.as_millis(), pong.client_port);
+                        tracing::debug!("Kad received Pong (0x61) from node {} in {} ms (client_port={})", log_peer_addr(target), elapsed.as_millis(), pong.client_port);
                         Ok((pong, elapsed))
                     }
                     Some(Ok(_)) => Err("Unexpected Kad response type".to_string()),
@@ -121,7 +121,7 @@ impl KadUdpService {
         let boot_bytes =
             KadCodec::encode_bootstrap_req(&self.local_id.read().unwrap().0, local_port);
 
-        tracing::info!(
+        tracing::debug!(
             "Kad sending BootstrapReq (0x01) to node {} (tx_id={})",
             log_peer_addr(target),
             tx_id
@@ -146,7 +146,7 @@ impl KadUdpService {
                 match res {
                     Some(Ok(KadMessage::BootstrapRes(boot_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!("Kad received BootstrapRes (0x09) from node {} with {} contacts", log_peer_addr(target), boot_res.contacts.len());
+                        tracing::debug!("Kad received BootstrapRes (0x09) from node {} with {} contacts", log_peer_addr(target), boot_res.contacts.len());
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -233,7 +233,7 @@ impl KadUdpService {
         };
 
         let find_bytes = KadCodec::encode_find_node_req(&target_kad_id.0, &receiver_kad_id.0);
-        tracing::info!(
+        tracing::debug!(
             "Kad sending FindNodeReq (0x21) to node {} for target {} (receiver={}, tx_id={})",
             log_peer_addr(target),
             target_kad_id.to_hex(),
@@ -267,7 +267,7 @@ impl KadUdpService {
                 match res {
                     Some(Ok(KadMessage::BootstrapRes(boot_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!(
+                        tracing::debug!(
                             "Kad received FindNode response from node {} with {} contacts",
                             log_peer_addr(target),
                             boot_res.contacts.len()
