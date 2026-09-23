@@ -4,47 +4,52 @@ import 'package:flutter/material.dart';
 
 import 'package:mule_client/mule_client.dart';
 
-/// eMule 0.72a `CPartFile::DrawStatusBar` palette, adapted to the dark
-/// theme (eMule's light theme uses black `crHave`; we use a light slate so
-/// received bytes stay visible on a dark background).
+/// eMule 0.72a `CPartFile::DrawStatusBar` semantics over a desaturated
+/// palette (Tailwind shades shared with `AppTheme`): same meaning as the
+/// original colors, softer on the dark theme. Shared with the part-map
+/// card so both views stay in sync.
 
 /// Received bytes (eMule `crHave`).
-const Color _haveColor = Color(0xFF90A4AE); // blueGrey 300
+const Color partHaveColor = Color(0xFF94A3B8); // Slate 400
 
 /// Hash-verified bytes — extra local state eMule folds into `crHave`.
-const Color _verifiedColor = Colors.tealAccent;
+const Color partVerifiedColor = Color(0xFF2DD4BF); // Teal 400
 
-/// Missing gap in a part no source advertises (eMule `crMissing` red).
-const Color _missingColor = Colors.redAccent;
+/// Missing gap in a part no source advertises (eMule `crMissing`).
+const Color partMissingColor = Color(0xFFF87171); // Red 400
 
-/// Requested but not yet received block (eMule `crPending` RGB(255,208,0)).
-const Color _pendingColor = Color(0xFFFFD000);
+/// Requested but not yet received block (eMule `crPending`).
+const Color partPendingColor = Color(0xFFFBBF24); // Amber 400
 
 /// Overall progress strip at the top of the bar (eMule `crProgress`).
-const Color _progressColor = Color(0xFF00E000);
+const Color partProgressColor = Color(0xFF4ADE80); // Green 400
 
 const int _kPartSizeBytes = 9728000; // eD2K ED2K_PART_SIZE
 const int _kMaskCells = 64;
 
-/// eMule availability gradient for a missing gap:
-/// `RGB(0, 210 - 22*(freq-1), 255)` — rare parts are light cyan-blue,
-/// common parts approach pure blue. 0 sources → red.
+/// Muted variant of eMule's `RGB(0, 210 - 22*(freq-1), 255)` availability
+/// gradient: rare parts are light sky, common parts sink to deep sky.
+/// 0 sources → [partMissingColor].
 Color availabilityColor(int sourceCount) {
   if (sourceCount <= 0) {
-    return _missingColor;
+    return partMissingColor;
   }
-  final g = (210 - 22 * (sourceCount - 1)).clamp(0, 255);
-  return Color.fromARGB(255, 0, g, 255);
+  final t = ((sourceCount - 1) / 9).clamp(0.0, 1.0);
+  return Color.lerp(
+    const Color(0xFF7DD3FC), // Sky 300 — rare
+    const Color(0xFF075985), // Sky 800 — common
+    t,
+  )!;
 }
 
 /// Whole-part color for the part-map card: verified → teal, fully received
 /// → "have" slate, otherwise the availability color of the missing gap.
 Color partColorFor(DownloadPartInfo part) {
   if (part.isVerified) {
-    return _verifiedColor;
+    return partVerifiedColor;
   }
   if (part.state == 'completed') {
-    return _haveColor;
+    return partHaveColor;
   }
   return availabilityColor(part.availableSourceCount);
 }
@@ -54,10 +59,10 @@ Color partColorFor(DownloadPartInfo part) {
 /// Per pixel column, the byte's cell is resolved from
 /// [DownloadPartInfo.receivedMask]: received cells are painted slate (teal
 /// when the part hash is verified), missing cells are painted with the
-/// part's availability color (red = no source, blue gradient rare→common).
-/// [pendingRanges] (in-flight block requests) overlay in yellow, and a
-/// thin green strip at the top shows overall progress — exactly like
-/// eMule 0.72a `DrawStatusBar`.
+/// part's availability color (soft red = no source, sky gradient
+/// rare→common). [pendingRanges] (in-flight block requests) overlay in
+/// amber, and a thin green strip at the top shows overall progress —
+/// same layout as eMule 0.72a `DrawStatusBar`, muted palette.
 class PartAvailabilityBar extends StatelessWidget {
   final List<DownloadPartInfo> parts;
   final int totalBytes;
@@ -165,13 +170,13 @@ class _PartBarPainter extends CustomPainter {
     final part = parts[idx];
 
     if (part.size <= 0) {
-      return _haveColor;
+      return partHaveColor;
     }
     final cell = ((byte - part.startOffset) * _kMaskCells ~/ part.size)
         .clamp(0, _kMaskCells - 1);
     final received = (_effectiveMask(part) >> cell) & 1 == 1;
     if (received) {
-      return part.isVerified ? _verifiedColor : _haveColor;
+      return part.isVerified ? partVerifiedColor : partHaveColor;
     }
     return availabilityColor(part.availableSourceCount);
   }
@@ -210,7 +215,7 @@ class _PartBarPainter extends CustomPainter {
         if (runColor != null) {
           canvas.drawRect(
             Rect.fromLTRB(runStart, 0, x.toDouble(), h),
-            paint..color = runColor!,
+            paint..color = runColor,
           );
         }
         runStart = x.toDouble();
@@ -220,12 +225,13 @@ class _PartBarPainter extends CustomPainter {
     if (runColor != null) {
       canvas.drawRect(
         Rect.fromLTRB(runStart, 0, w, h),
-        paint..color = runColor!,
+        paint..color = runColor,
       );
     }
 
-    // 2. Pending (requested, in-flight) blocks — eMule yellow.
-    paint.color = muted ? _pendingColor.withValues(alpha: dim) : _pendingColor;
+    // 2. Pending (requested, in-flight) blocks — amber.
+    paint.color =
+        muted ? partPendingColor.withValues(alpha: dim) : partPendingColor;
     for (final r in pendingRanges) {
       final left = (r.start / totalBytes * w).clamp(0.0, w);
       final right = (r.end / totalBytes * w).clamp(0.0, w);
@@ -234,12 +240,12 @@ class _PartBarPainter extends CustomPainter {
       }
     }
 
-    // 3. Thin progress strip on top — eMule green load bar.
+    // 3. Thin progress strip on top — soft green load bar.
     final stripH = math.min(3.0, h * 0.4);
     final doneW = (w * progress.clamp(0.0, 1.0));
     canvas.drawRect(
       Rect.fromLTRB(0, 0, doneW, stripH),
-      paint..color = _progressColor,
+      paint..color = partProgressColor,
     );
     canvas.drawRect(
       Rect.fromLTRB(doneW, 0, w, stripH),
