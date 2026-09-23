@@ -5,16 +5,30 @@ amule-ref/
 **/*.rs.bk
 *.pdb
 
-# Flutter / Dart
-apps/desktop/.dart_tool/
-apps/desktop/.pub-cache/
-apps/desktop/.pub/
-apps/desktop/build/
-apps/desktop/.flutter-plugins-dependencies
+# Flutter / Dart — toutes les apps (desktop, web, mobile) et packages
+**/build/
+**/.dart_tool/
+**/.pub-cache/
+**/.pub/
+**/.flutter-plugins-dependencies
+**/coverage/
+packages/*/pubspec.lock
+
+# Android
+**/android/.gradle/
+**/android/local.properties
+**/android/app/.cxx/
+**/android/gradlew
+**/android/gradlew.bat
+**/gradle-wrapper.jar
+**/GeneratedPluginRegistrant.java
+key.properties
+**/*.keystore
+**/*.jks
 
 # IDE & Tooling
 .vscode/
-.idea/
+**/.idea/
 *.iml
 *.ipr
 *.iws
@@ -24,13 +38,6 @@ apps/desktop/.flutter-plugins-dependencies
 Thumbs.db
 *.log
 scratch/
-
-# Shared Dart packages
-packages/*/.dart_tool/
-packages/*/.pub-cache/
-packages/*/build/
-packages/*/pubspec.lock
-packages/*/.flutter-plugins-dependencies
 
 # Runtime crash-reporting (Sentry Native sessions)
 .sentry-native/
