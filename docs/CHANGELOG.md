@@ -5,6 +5,18 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-23
+
+Version finale de la ligne 0.2.x — inclut l'intégralité de `0.2.0-RC1`
+plus les ajouts suivants.
+
+- **Publication open source** (dépôt) : ajout de `LICENSE`
+  (GPL-2.0-or-later), `CONTRIBUTING.md`, `SECURITY.md` ; `.gitignore`
+  généralisé à toutes les apps Flutter (`**/build/`, `**/.dart_tool/`,
+  artefacts Android, keystores) ; dépersonnalisation des configs
+  `.agents/` (exemples `*.example.json`) ; `DeployDir` du script de
+  build rendu opt-in (plus de chemin personnel par défaut).
+
 - **Interface web servie par le daemon — connexion zéro-config**
   (`mule-daemon`, `apps/web`, `app_shell`, `scripts`) :
   - **ServeDir embarqué** (`tower-http`) : le daemon sert le build

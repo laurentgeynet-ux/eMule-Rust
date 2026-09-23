@@ -28,7 +28,7 @@ param(
     [switch]$LabMode = $false,
     [switch]$SkipWeb = $false,
     [string]$WebBaseHref = "/",
-    [string]$DeployDir = "C:\Users\Lou\Desktop\eMuleRust"
+    [string]$DeployDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -420,5 +420,7 @@ if (![string]::IsNullOrWhiteSpace($DeployDir)) {
 Write-Host "`n==================================================" -ForegroundColor Green
 Write-Host "  Release Candidate Packaging Succeeded!          " -ForegroundColor Green
 Write-Host "  Destination: $DestPath" -ForegroundColor Cyan
-Write-Host "  Deployed to: $DeployDir" -ForegroundColor Cyan
+if (![string]::IsNullOrWhiteSpace($DeployDir)) {
+    Write-Host "  Deployed to: $DeployDir" -ForegroundColor Cyan
+}
 Write-Host "==================================================" -ForegroundColor Green

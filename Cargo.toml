@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0-RC1"
+version = "0.2.0"
 edition = "2021"
 license = "GPL-2.0-or-later"
 authors = ["EMule-Rust Contributors"]

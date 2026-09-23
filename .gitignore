@@ -41,3 +41,7 @@ scratch/
 
 # Runtime crash-reporting (Sentry Native sessions)
 .sentry-native/
+
+# Config locale des agents IA (chemins machine) — voir *.example.json
+.agents/mcp_config.json
+.agents/plugins/emule-rust/mcp_config.json
