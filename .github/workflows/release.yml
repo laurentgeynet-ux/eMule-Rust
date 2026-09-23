@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build & publish Windows bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Signature Authenticode optionnelle — nécessite les secrets :
+      #   WINDOWS_CERT_BASE64    (certificat .pfx encodé en base64)
+      #   WINDOWS_CERT_PASSWORD  (mot de passe du .pfx)
+      - name: Import signing certificate (optional)
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CERT_PASS: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          if ($env:CERT_B64) {
+            $bytes = [Convert]::FromBase64String($env:CERT_B64)
+            $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+            [IO.File]::WriteAllBytes($pfx, $bytes)
+            $cert = Import-PfxCertificate -FilePath $pfx `
+              -CertStoreLocation Cert:\CurrentUser\My `
+              -Password (ConvertTo-SecureString $env:CERT_PASS -AsPlainText -Force)
+            "THUMB=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Write-Host "Certificate imported: $($cert.Thumbprint)"
+          } else {
+            Write-Host "No signing certificate configured — unsigned build"
+          }
+
+      - name: Build standard bundle (release)
+        shell: pwsh
+        run: |
+          $signArgs = @()
+          if ($env:THUMB) { $signArgs = @('-Sign', '-CertificateThumbprint', $env:THUMB) }
+          powershell -NoProfile -ExecutionPolicy Bypass `
+            -File scripts\build_windows_release.ps1 @signArgs
+
+      - name: Verify packaged bundle (no lab.* exposure)
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass `
+            -File scripts\test_packaged_bundle.ps1
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $zip = Get-ChildItem dist\*-standard-windows-x64.zip | Select-Object -First 1
+          if (!$zip) { throw "Distribution ZIP not found in dist/" }
+          $assets = @($zip.FullName, "$($zip.FullName).sha256")
+          $sbom = Get-ChildItem dist\eMuleRust-Standard-Windows\sbom\*.json -ErrorAction SilentlyContinue
+          foreach ($s in $sbom) { $assets += $s.FullName }
+          gh release create $tag $assets `
+            --title "EMule-Rust $tag" `
+            --notes-file docs/releases/RELEASE_NOTES_$($tag.TrimStart('v')).md `
+            --verify-tag

@@ -1,0 +1,37 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pub
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pub
+    directory: /apps/web
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pub
+    directory: /packages/app_shell
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pub
+    directory: /packages/mule_client
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pub
+    directory: /packages/ui_kit
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
