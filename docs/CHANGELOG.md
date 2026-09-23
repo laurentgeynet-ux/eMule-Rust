@@ -46,6 +46,11 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   upload), jalons de download, buddy/callback Kad, failover serveur,
   drops IP-filter, heartbeat consolidé (1×/60 s).
 
+- **Partages — scan récursif du dossier Incoming** (`mule-daemon`) :
+  les fichiers dans les sous-dossiers du répertoire de téléchargement
+  sont désormais partagés (sémantique eMule) ; symlinks et dossiers
+  cachés ignorés. Régression : `test_shares_rescan_is_recursive`.
+
 - **IP filter — corrections RPC** (`mule-daemon`) :
   `filter.importFile` renvoie désormais la même shape `FilterStatus`
   que `getStatus`/`setEnabled`/`clear` (le client Dart parsait le
