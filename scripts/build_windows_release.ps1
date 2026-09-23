@@ -15,6 +15,9 @@
     6. Signs executables and DLLs with Authenticode (if -Sign is set).
     7. Computes SHA-256 hashes of all artifacts post-signing and writes SHA256SUMS.txt and version.json.
     8. Packages distribution into ZIP archive and calculates its SHA-256 hash.
+    9. Deploys the bundle to the configured install directory. Target resolution order:
+       -DeployDir parameter > EMULE_DEPLOY_DIR env var > .deploy-dir file at repo root
+       (machine-local, gitignored). Running instances inside the target are stopped first.
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
     powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1 -Sign -CertificateThumbprint "<thumbprint>"
@@ -38,6 +41,16 @@ $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+
+# Deploy target resolution: -DeployDir > EMULE_DEPLOY_DIR env var > .deploy-dir file
+# (machine-local path, gitignored — one line containing the install directory).
+if ([string]::IsNullOrWhiteSpace($DeployDir)) {
+    if (![string]::IsNullOrWhiteSpace($env:EMULE_DEPLOY_DIR)) {
+        $DeployDir = $env:EMULE_DEPLOY_DIR
+    } elseif (Test-Path "$Root\.deploy-dir") {
+        $DeployDir = (Get-Content "$Root\.deploy-dir" -Raw).Trim()
+    }
+}
 
 if ($LabMode -or $Flavor -eq "qa-loopback") {
     $DistributionFlavor = "qa-loopback"
@@ -416,6 +429,20 @@ if (!$SkipZip) {
 if (![string]::IsNullOrWhiteSpace($DeployDir)) {
     Write-Host "`nDeploying bundle to $DeployDir..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $DeployDir -Force | Out-Null
+
+    # Stop running instances deployed from $DeployDir — locked binaries would fail the copy.
+    $DeployRoot = (Resolve-Path $DeployDir).Path.TrimEnd('\')
+    $running = Get-Process | Where-Object {
+        $_.Path -and $_.Path.StartsWith($DeployRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    if ($running) {
+        Write-Host " -> Stopping $($running.Count) running process(es) under $DeployDir..." -ForegroundColor Yellow
+        $running | Stop-Process -Force
+        Start-Sleep -Seconds 2
+    }
+
+    # Merge-copy: only bundle files are overwritten; runtime dirs (data\, downloads\,
+    # ipfilter*) present in the target but absent from the bundle are preserved.
     Copy-Item -Path "$DestPath\*" -Destination $DeployDir -Recurse -Force
     Write-Host " -> Deployed to: $DeployDir" -ForegroundColor Green
 }
