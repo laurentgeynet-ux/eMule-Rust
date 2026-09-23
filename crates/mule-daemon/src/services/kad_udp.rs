@@ -396,7 +396,7 @@ impl KadUdpService {
                                             if let Some(dec) = decrypt_kad_udp_packet(&buf[..len], key) {
                                                 match KadCodec::decode(&dec.payload) {
                                                     Ok(msg) => {
-                                                        tracing::info!(
+                                                        tracing::debug!(
                                                             "Kad UDP: decrypted obfuscated packet from {} (recvKey=0x{:08X})",
                                                             log_peer_addr(peer_addr), dec.receiver_key
                                                         );
@@ -467,7 +467,7 @@ impl KadUdpService {
                                 }
 
                                 let packet_slice = &buf[..len];
-                                tracing::info!(
+                                tracing::debug!(
                                     "Kad UDP recv {} bytes from {} (proto=0x{:02X}, opcode=0x{:02X})",
                                     len,
                                     log_peer_addr(peer_addr),

@@ -42,7 +42,7 @@ pub async fn handle_incoming_message(
 ) {
     match msg {
         KadMessage::Ping(_ping) => {
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received Ping from {peer}, replying with Pong",
                 peer = log_peer_addr(peer_addr)
             );
@@ -60,7 +60,7 @@ pub async fn handle_incoming_message(
                     break;
                 }
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received Pong from {peer} (matched_tx={matched_tx:?})",
                 peer = log_peer_addr(peer_addr)
             );
@@ -71,7 +71,7 @@ pub async fn handle_incoming_message(
             }
         }
         KadMessage::HelloReq(hello) => {
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received HelloReq from {peer} (kad_v{}, tcp={}, misc={:?}), replying with HelloRes",
                 hello.version,
                 hello.tcp_port,
@@ -144,7 +144,7 @@ pub async fn handle_incoming_message(
                 }
                 (matched_tx, matched_tx.and_then(|id| inf.remove(&id)))
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received HelloRes from {peer} (kad_v{}, tcp={}, udp_tag={}, matched_tx={matched_id:?})",
                 hello_res.version,
                 hello_res.tcp_port,
@@ -189,7 +189,7 @@ pub async fn handle_incoming_message(
                     t.mark_seen(&id, now_unix_ms());
                 }
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received HelloResAck from {peer} (kad_id={})",
                 hex::encode(ack.kad_id),
                 peer = log_peer_addr(peer_addr)
@@ -207,13 +207,13 @@ pub async fn handle_incoming_message(
             // (used as the advertised address when publishing sources).
             let ip = std::net::Ipv4Addr::from(res.ip.to_le_bytes());
             firewall.lock().await.observed_ip = Some(ip);
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received FirewalledRes from {peer} (observed ip={ip})",
                 peer = log_peer_addr(peer_addr)
             );
         }
         KadMessage::FirewalledAckRes => {
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received FirewalledAckRes from {peer} (TCP port reachable)",
                 peer = log_peer_addr(peer_addr)
             );
@@ -232,7 +232,7 @@ pub async fn handle_incoming_message(
                     .collect(),
                 None => Vec::new(),
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received BootstrapReq from {peer} (requester_id={}), replying with {} contacts",
                 hex::encode(req.kad_id),
                 contacts.len()
@@ -276,7 +276,7 @@ pub async fn handle_incoming_message(
                     .collect(),
                 None => Vec::new(),
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received Req (0x21) from {peer} for target {}, replying with {} verified contacts",
                 hex::encode(req.target_id),
                 contacts.len()
@@ -301,7 +301,7 @@ pub async fn handle_incoming_message(
                 }
                 (matched_tx, matched_tx.and_then(|id| inf.remove(&id)))
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received BootstrapRes/FindNodeRes from {peer} with {} contacts (matched_tx={matched_id:?})",
                 boot_res.contacts.len()
             , peer = log_peer_addr(peer_addr));
@@ -334,7 +334,7 @@ pub async fn handle_incoming_message(
                 let mut store = storage.lock().await;
                 store.get_sources(&req.target_file_hash, req.start_pos)
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received SearchSourceReq from {peer} for file {}, replying with {} stored sources",
                 hex::encode(req.target_file_hash),
                 sources.len()
@@ -356,7 +356,7 @@ pub async fn handle_incoming_message(
                     break;
                 }
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received SearchSourceRes from {peer} with {} sources for file {} (matched_tx={matched_tx:?})",
                 search_res.sources.len(),
                 hex::encode(search_res.target_file_hash)
@@ -432,7 +432,7 @@ pub async fn handle_incoming_message(
             } else {
                 1
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received PublishSourceReq from {peer} for file {} (status={})",
                 hex::encode(req.target_file_hash),
                 status,
@@ -459,7 +459,7 @@ pub async fn handle_incoming_message(
                     break;
                 }
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received PublishRes (0x4B) from {peer} with status {} (matched_tx={matched_tx:?})",
                 pub_res.status
             , peer = log_peer_addr(peer_addr));
@@ -490,7 +490,7 @@ pub async fn handle_incoming_message(
                 let mut store = storage.lock().await;
                 store.get_keyword_entries(&req.keyword_hash, req.start_pos)
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received SearchKeywordReq from {peer} for keyword {}, replying with {} stored entries",
                 hex::encode(req.keyword_hash),
                 entries.len()
@@ -512,7 +512,7 @@ pub async fn handle_incoming_message(
                     break;
                 }
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received SearchKeywordRes from {peer} with {} entries for keyword {} (matched_tx={matched_tx:?})",
                 search_res.entries.len(),
                 hex::encode(search_res.keyword_hash)
@@ -562,7 +562,7 @@ pub async fn handle_incoming_message(
             if status == 0 {
                 persist_keyword_entries(downloads, &keyword_hash, &to_persist).await;
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received PublishKeywordReq from {peer} for keyword {} (status={})",
                 hex::encode(req.keyword_hash),
                 status,
@@ -582,7 +582,7 @@ pub async fn handle_incoming_message(
                     break;
                 }
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received PublishKeywordRes from {peer} with status {} (matched_tx={matched_tx:?})",
                 pub_res.status
             , peer = log_peer_addr(peer_addr));
@@ -607,7 +607,7 @@ pub async fn handle_incoming_message(
                 )
             };
             if delivered {
-                tracing::info!(
+                tracing::debug!(
                     "Kad UDP: received FIREWALLUDP from {peer} (error={}, tested_port={})",
                     fw.error_code,
                     fw.udp_port,
@@ -718,7 +718,7 @@ pub async fn handle_incoming_message(
                 );
                 return;
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received SearchNotesReq from {peer} for file {}, replying with {} notes",
                 hex::encode(req.target_file_hash),
                 notes.len(),
@@ -744,7 +744,7 @@ pub async fn handle_incoming_message(
                     break;
                 }
             }
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received SearchNotesRes from {peer} with {} notes for file {} (matched_tx={matched_tx:?})",
                 res.notes.len(),
                 hex::encode(res.target_file_hash)
@@ -815,7 +815,7 @@ pub async fn handle_incoming_message(
                 let store = storage.lock().await;
                 store.note_load(&req.target_file_hash)
             };
-            tracing::info!(
+            tracing::debug!(
                 "Kad UDP: received PublishNotesReq from {peer} for file {} (accepted={}, load={})",
                 hex::encode(req.target_file_hash),
                 accepted,

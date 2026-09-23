@@ -327,7 +327,7 @@ pub(crate) async fn run_transfer_loop(
         emit_event(event_tx, sequence, &snap);
     }
 
-    info!(
+    tracing::debug!(
         "Requested sub-block [{}, {}) from peer {}",
         req_range.start,
         req_range.end,
@@ -568,7 +568,7 @@ pub(crate) async fn run_transfer_loop(
                                     let dl_svc = downloads.lock().await;
                                     if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
                                         let peer_bps = inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0);
-                                        tracing::info!(
+                                        tracing::debug!(
                                             "[DL_PROGRESS] File '{}' ({:.1}% - {:.1}/{:.1} MB) | Total Rate: {:.1} KB/s (Peer: {:.1} KB/s) | Active peer: {}",
                                             dl.file_name,
                                             dl.progress * 100.0,
@@ -750,7 +750,7 @@ pub(crate) async fn run_transfer_loop(
                                     let dl_svc = downloads.lock().await;
                                     if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
                                         let peer_bps = inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0);
-                                        tracing::info!(
+                                        tracing::debug!(
                                             "[DL_PROGRESS] File '{}' ({:.1}% - {:.1}/{:.1} MB) | Total Rate: {:.1} KB/s (Peer: {:.1} KB/s) | Active peer: {}",
                                             dl.file_name,
                                             dl.progress * 100.0,
@@ -867,7 +867,7 @@ pub(crate) async fn run_transfer_loop(
                                             tracing::warn!("Failed to send chained OP_REQUESTPARTS to {peer}: {e}", peer = log_peer_addr(target_addr));
                                             break;
                                         }
-                                        tracing::info!("Peer {peer}: requested next sub-block [{}, {}) in part {}", next_r.start, next_r.end, next_p, peer = log_peer_addr(target_addr));
+                                        tracing::debug!("Peer {peer}: requested next sub-block [{}, {}) in part {}", next_r.start, next_r.end, next_p, peer = log_peer_addr(target_addr));
                                         last_activity = tokio::time::Instant::now();
                                     }
                                 } else {

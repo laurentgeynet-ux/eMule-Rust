@@ -388,7 +388,7 @@ impl InboundListenerService {
                                                 out.push(res_pkt.opcode);
                                                 out.extend_from_slice(&res_pkt.payload);
                                                 let _ = stream.write_all(&out).await;
-                                                tracing::info!(
+                                                tracing::debug!(
                                                     "[AICH] Served master hash to {} for {}",
                                                     log_addr_str(&remote_str), hash_hex
                                                 );
@@ -451,7 +451,7 @@ impl InboundListenerService {
                                             out.extend_from_slice(&ans_pkt.payload);
                                             let _ = stream.write_all(&out).await;
                                             if answer.recovery.is_some() {
-                                                tracing::info!(
+                                                tracing::debug!(
                                                     "[AICH] Served recovery data for part {} of {} to {}",
                                                     req.part, hash_hex, log_addr_str(&remote_str)
                                                 );
@@ -790,7 +790,7 @@ impl InboundListenerService {
                                             out.push(ans_pkt.opcode);
                                             out.extend_from_slice(&ans_pkt.payload);
                                             let _ = stream.write_all(&out).await;
-                                            tracing::info!(
+                                            tracing::debug!(
                                                 "[HASHSET] Served {} part hashes to {} for {}",
                                                 answer.part_hashes.len(),
                                                 log_addr_str(&remote_str),
@@ -942,7 +942,7 @@ impl InboundListenerService {
                                                  }
                                                  let length = (end.saturating_sub(start)).min(184320);
 
-                                                 tracing::info!(
+                                                 tracing::debug!(
                                                      "[UPLOAD_REQUEST] Inbound peer {} requested block [{}..{}] for file '{}' (hash: {})",
                                                      log_addr_str(&remote_str), start, end, shared_file.file_name, hash_hex
                                                  );
@@ -1061,7 +1061,7 @@ impl InboundListenerService {
                                                          sent = true;
                                                      }
                                                      if sent {
-                                                         tracing::info!(
+                                                         tracing::debug!(
                                                              "[UPLOAD_BLOCK] Sent compressed block ({} -> {} bytes) to {} for file '{}' (offset {}..{})",
                                                              payload.len(), compressed.len(), log_addr_str(&remote_str), shared_file.file_name, start, start + length
                                                          );
@@ -1072,7 +1072,7 @@ impl InboundListenerService {
                                                                  let mut dl_svc = self.downloads.lock().await;
                                                                  if dl_svc.record_credit_upload(ph, &pk_hex, length).is_ok() {
                                                                      let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length);
-                                                                     tracing::info!(
+                                                                     tracing::debug!(
                                                                          "[CREDITS_AWARDED] Awarded {} uploaded bytes to verified peer {} (pubkey hash: {}, total: {} bytes)",
                                                                          length, log_addr_str(&remote_str), ph, total_up
                                                                      );
@@ -1111,7 +1111,7 @@ impl InboundListenerService {
                                                      out.extend_from_slice(&send_pkt.payload);
                                                      let _ = stream.write_all(&out).await;
 
-                                                     tracing::info!(
+                                                     tracing::debug!(
                                                          "[UPLOAD_BLOCK] Sent {} bytes to {} for file '{}' (offset {}..{})",
                                                          length, log_addr_str(&remote_str), shared_file.file_name, start, start + length
                                                      );
@@ -1124,7 +1124,7 @@ impl InboundListenerService {
                                                             let mut dl_svc = self.downloads.lock().await;
                                                             if dl_svc.record_credit_upload(ph, &pk_hex, length).is_ok() {
                                                                 let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length);
-                                                                tracing::info!(
+                                                                tracing::debug!(
                                                                     "[CREDITS_AWARDED] Awarded {} uploaded bytes to verified peer {} (pubkey hash: {}, total: {} bytes)",
                                                                     length, log_addr_str(&remote_str), ph, total_up
                                                                 );

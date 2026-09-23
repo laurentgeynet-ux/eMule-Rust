@@ -230,6 +230,11 @@ target, champs, spans) ; la console reste lisible en texte.
   pseudonymisées de façon déterministe par session (`peer-NN:port`,
   `server-NN:port` via `mule-filter`) ; loopback reste en clair pour le
   lab. Le token d'auth n'est jamais écrit dans les logs.
+- **Volume en production** : les traces par paquet (Kad Ping/Pong/Req/Res,
+  réceptions UDP brutes) et par bloc (`UPLOAD_BLOCK`, requêtes de
+  sous-blocs, progression) sont au niveau `debug`. Au défaut `info`, le
+  journal ne contient que les événements de session (handshakes, slots,
+  jalons de téléchargement) et un heartbeat consolidé toutes les 60 s.
 
 Le serveur MCP (`mule-mcp`) suit le même schéma dans son propre
 `logs/mcp.<date>.log` ; stdout reste réservé au JSON-RPC MCP.

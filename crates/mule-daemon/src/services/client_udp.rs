@@ -373,7 +373,7 @@ impl ClientUdpService {
             return;
         }
 
-        tracing::info!(
+        tracing::debug!(
             "Client UDP: {:?} from {peer}",
             result,
             peer = log_peer_addr(peer_addr)

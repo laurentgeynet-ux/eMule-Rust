@@ -282,12 +282,12 @@ pub(crate) async fn handle_aich_answer(
                     {
                         Ok(report) => {
                             if report.corrupted_blocks == 0 {
-                                info!(
+                                tracing::debug!(
                                     "AICH recovery from {peer}: part {} of {file_hash_str} fully verified",
                                     report.part
                                 , peer = log_peer_addr(target_addr));
                             } else {
-                                info!(
+                                tracing::debug!(
                                     "AICH recovery from {peer}: part {} of {file_hash_str}, {} corrupted block(s) evicted",
                                     report.part, report.corrupted_blocks
                                 , peer = log_peer_addr(target_addr));
@@ -661,7 +661,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                     } else {
                                         0
                                     };
-                                    tracing::info!("Peer {peer} responded with queue ranking {rank} during status query", peer = log_peer_addr(target_addr));
+                                    tracing::debug!("Peer {peer} responded with queue ranking {rank} during status query", peer = log_peer_addr(target_addr));
                                     let queue_update = {
                                         let mut g = inner.lock().await;
                                         if let Some(session) = g.sessions.get_mut(address_str) {
@@ -885,7 +885,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                 } else {
                                     0
                                 };
-                                info!("Queue rank from peer {}: {}", log_peer_addr(target_addr), rank);
+                                tracing::debug!("Queue rank from peer {}: {}", log_peer_addr(target_addr), rank);
                                 let queue_update = {
                                     let mut g = inner.lock().await;
                                     if let Some(session) = g.sessions.get_mut(address_str) {
