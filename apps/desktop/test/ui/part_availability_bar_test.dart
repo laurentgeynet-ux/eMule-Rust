@@ -4,24 +4,22 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 void main() {
-  group('PartAvailabilityBar colors (eMule 0.72a DrawStatusBar)', () {
-    test('availabilityColor: red when no source, blue gradient rare→common', () {
-      expect(availabilityColor(0), Colors.redAccent);
+  group('PartAvailabilityBar colors (eMule 0.72a DrawStatusBar, muted palette)', () {
+    test('availabilityColor: red when no source, sky gradient rare→common', () {
+      expect(availabilityColor(0), partMissingColor);
+
+      // Muted variant of eMule formula RGB(0, 210-22*(freq-1), 255):
+      // Sky 300 = rare → Sky 800 = common (Tailwind shades).
+      expect(availabilityColor(1), const Color(0xFF7DD3FC));
+      expect(availabilityColor(10), const Color(0xFF075985));
 
       int g(Color c) => (c.g * 255.0).round().clamp(0, 255);
 
-      // eMule formula RGB(0, 210-22*(freq-1), 255): rare = light cyan-blue.
-      final rare = availabilityColor(1);
-      expect(g(rare), 210);
-      expect(rare.b, 1.0);
+      // More sources → gradient darkens monotonically.
+      expect(g(availabilityColor(5)), lessThan(g(availabilityColor(1))));
 
-      // More sources → greener channel decreases → approaches pure blue.
-      final common = availabilityColor(10);
-      expect(g(common), lessThan(g(rare)));
-      expect(common.b, 1.0);
-
-      // Very common clamps at 0 (pure blue).
-      expect(g(availabilityColor(100)), 0);
+      // Very common clamps at Sky 800.
+      expect(availabilityColor(100), const Color(0xFF075985));
     });
 
     test('partColorFor maps verified/completed/missing states', () {
@@ -36,18 +34,18 @@ void main() {
         availableSourceCount: 0,
       );
 
-      expect(partColorFor(base), Colors.redAccent);
+      expect(partColorFor(base), partMissingColor);
       expect(
         partColorFor(base.copyWith3(availableSourceCount: 4)),
         availabilityColor(4),
       );
       expect(
         partColorFor(base.copyWith3(state: 'completed')),
-        const Color(0xFF90A4AE),
+        partHaveColor,
       );
       expect(
         partColorFor(base.copyWith3(isVerified: true, state: 'verified')),
-        Colors.tealAccent,
+        partVerifiedColor,
       );
     });
   });
