@@ -37,6 +37,12 @@ pub struct ActiveSession {
     pub obf_failed: std::collections::HashSet<String>,
 }
 
+impl Default for ActiveSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ActiveSession {
     pub fn new() -> Self {
         Self {
@@ -65,6 +71,7 @@ pub fn spawn_connection_task(
     sequence_clone: Arc<AtomicU64>,
     downloads_clone: Option<Arc<Mutex<DownloadService>>>,
     inbound_clone: Option<crate::services::inbound_listener::InboundListenerService>,
+    kad_clone: Option<Arc<crate::services::kad::KadService>>,
     prefer_obfuscation: bool,
     obfuscation_padding_max: u8,
 ) -> tokio::task::JoinHandle<()> {
@@ -363,6 +370,16 @@ pub fn spawn_connection_task(
                                                         is_connecting = false;
                                                         g.snapshot.client_id = Some(idc.client_id);
                                                         g.snapshot.is_high_id = idc.is_high_id();
+                                                        // A HighID encodes our public IPv4 (eD2K convention:
+                                                        // id = a<<24|b<<16|c<<8|d) — Kad uses it as the
+                                                        // advertised address in PUBLISH_SOURCE contacts.
+                                                        if let Some(kad) = &kad_clone {
+                                                            kad.set_public_ipv4(if idc.is_high_id() {
+                                                                Some(std::net::Ipv4Addr::from(idc.client_id))
+                                                            } else {
+                                                                None
+                                                            });
+                                                        }
                                                         g.snapshot.status = ServerConnectionStatus::Connected;
                                                         if g.snapshot.connected_at_unix_ms.is_none() {
                                                             let now = std::time::SystemTime::now()
@@ -464,6 +481,8 @@ pub fn spawn_connection_task(
                                                                     user_hash: None,
                                                                     crypt_options: 0,
                                                                     buddy_id: None,
+software: None,
+                                                                    availability: None,
                                                                 });
                                                             }
 
@@ -536,7 +555,9 @@ pub fn spawn_connection_task(
                                                                     fail_count: 0,
                                                                     last_error: None,
                                                                     cooldown_until_unix_ms: None,
-                                                                    user_hash: src.user_hash.map(|h| hex::encode(h)),
+                                                                    user_hash: src.user_hash.map(hex::encode),
+software: None,
+                                                                    availability: None,
                                                                     crypt_options: src.obf_settings,
                                                                     buddy_id: None,
                                                                 });
@@ -653,10 +674,17 @@ pub fn spawn_connection_task(
                 }
             }
             ServerResponse::CallbackFail { client_id } => {
-                                                        warn!(
-                                                            "OP_CALLBACK_FAIL: server could not relay callback to client {:?}",
-                                                            client_id
-                                                        );
+                                                        // eMule servers send OP_CALLBACK_FAIL
+                                                        // with an empty payload — the target
+                                                        // client_id is not echoed back.
+                                                        match client_id {
+                                                            Some(id) => warn!(
+                                                                "OP_CALLBACK_FAIL: server could not relay callback to LowID client {id}"
+                                                            ),
+                                                            None => warn!(
+                                                                "OP_CALLBACK_FAIL: server could not relay a pending callback (target offline or unreachable)"
+                                                            ),
+                                                        }
                                                     }
                                                     ServerResponse::Other { opcode, .. } => {
                                                         info!("Received other server opcode: 0x{:02x}", opcode);
@@ -753,10 +781,15 @@ async fn publish_shared_files(
     const MAX_OFFER_FILES: usize = 200;
 
     let Some(dl_service) = downloads else { return };
-    let shared = {
+    let mut shared = {
         let dl_svc = dl_service.lock().await;
-        dl_svc.list_shared_files().unwrap_or_default()
+        dl_svc.list_all_shared_files().unwrap_or_default()
     };
+    // eMule `SendListToServer`: files are offered sorted by upload priority
+    // (highest first), capped at the server soft limit (≤200).
+    shared.sort_by_key(|sf| {
+        std::cmp::Reverse(crate::services::upload_queue::file_prio_num(&sf.up_priority))
+    });
 
     let mut files = Vec::with_capacity(shared.len().min(MAX_OFFER_FILES));
     for sf in shared.iter().filter(|sf| sf.enabled) {
@@ -777,6 +810,7 @@ async fn publish_shared_files(
             client_id,
             client_port,
             tcp_flags,
+            sf.is_partial,
         ) {
             files.push(of);
         }

@@ -65,7 +65,7 @@ pub async fn handle_kad_import_nodes_dat(
         .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
-
+    emit_kad_changed(state);
     Ok(json!({
         "importedCount": imported_count,
         "status": status,
@@ -89,6 +89,10 @@ pub async fn handle_kad_list_contacts(
     }))
 }
 
+fn emit_kad_changed(state: &AppState) {
+    state.emit_event(|sequence| crate::services::DaemonEvent::KadStatusChanged { sequence });
+}
+
 pub async fn handle_kad_clear_contacts(state: &AppState) -> Result<Value, JsonRpcError> {
     let cleared = state
         .kad
@@ -96,6 +100,7 @@ pub async fn handle_kad_clear_contacts(state: &AppState) -> Result<Value, JsonRp
         .await
         .map_err(JsonRpcError::business)?;
 
+    emit_kad_changed(state);
     Ok(json!({
         "cleared": cleared,
     }))
@@ -127,7 +132,7 @@ pub async fn handle_kad_start_udp(
         .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
-
+    emit_kad_changed(state);
     Ok(json!({
         "boundAddress": local_addr.to_string(),
         "status": status,
@@ -199,7 +204,7 @@ pub async fn handle_kad_bootstrap(
         .map_err(JsonRpcError::business)?;
 
     let status = state.kad.get_status().await;
-
+    emit_kad_changed(state);
     Ok(json!({
         "success": true,
         "receivedContacts": received_count,
@@ -433,7 +438,7 @@ pub async fn handle_kad_bootstrap_from_url(
     });
 
     let status = state.kad.get_status().await;
-
+    emit_kad_changed(state);
     Ok(json!({
         "url": url,
         "importedCount": imported_count,

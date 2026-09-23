@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/fake_daemon_client.dart';
-import 'package:desktop/domain/models/download_item.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/downloads/widgets/import_part_met_dialog.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_shell/app/providers.dart';
+import 'package:app_shell/ui/features/downloads/widgets/import_part_met_dialog.dart';
+import 'package:app_shell/l10n/generated/app_localizations.dart';
 
 void main() {
   group('ImportPartMetDialog Widget Tests', () {
     late FakeMuleDaemonClient fakeClient;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: fakeClient);
+      viewModel = AppController(client: fakeClient);
       await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
     });
 
@@ -27,29 +29,41 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: ImportPartMetDialog(viewModel: viewModel),
+            body: ImportPartMetDialog(),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
       // Title and security banner
-      expect(find.text('Import .part.met (Experimental)'), findsOneWidget);
+      expect(find.text('Importer un .part.met (expérimental)'), findsOneWidget);
       expect(
-        find.textContaining('The download will be staged into data/temp/ and initialized in Paused state.'),
+        find.textContaining('Le téléchargement sera préparé dans data/temp/ et initialisé en pause'),
         findsOneWidget,
       );
 
       // Input labels
-      expect(find.text('Path to .part.met file'), findsOneWidget);
-      expect(find.text('Associated .part file path (optional, auto-detected)'), findsOneWidget);
-      expect(find.text('Target Download Directory'), findsOneWidget);
-      expect(find.text('Category (Optional)'), findsOneWidget);
+      expect(find.text('Chemin du fichier .part.met'), findsOneWidget);
+      expect(find.text('Chemin du fichier .part associé (optionnel, auto-détecté)'), findsOneWidget);
+      expect(find.text('Dossier de destination du téléchargement'), findsOneWidget);
+      expect(find.text('Catégorie (optionnel)'), findsOneWidget);
 
       // Action buttons
-      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Annuler'), findsOneWidget);
       expect(find.byKey(const Key('inspect_button')), findsOneWidget);
       expect(find.byKey(const Key('import_submit_button')), findsOneWidget);
     });
@@ -61,11 +75,23 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: ImportPartMetDialog(viewModel: viewModel),
+            body: ImportPartMetDialog(),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
@@ -87,7 +113,7 @@ void main() {
       expect(find.text('001.bin'), findsOneWidget); // Parsed file name
       expect(find.text('31d6cfe0d16ae931b73c59d7e0c089c0'), findsOneWidget); // Hash
       expect(find.text('9.3 MB'), findsWidgets); // Size
-      expect(find.text('1 part(s)'), findsOneWidget); // Part count
+      expect(find.text('1 partie(s)'), findsOneWidget); // Part count
     });
 
     testWidgets('executes import and adds download strictly in paused state',
@@ -97,11 +123,23 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: ImportPartMetDialog(viewModel: viewModel),
+            body: ImportPartMetDialog(),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
@@ -144,7 +182,7 @@ void main() {
       expect(imported.status, DownloadStatus.paused);
       expect(imported.sourceCount, 0);
       expect(imported.tempPath, contains('data/temp/'));
-      expect(viewModel.statusNotification, contains('Imported "archive.bin"'));
+      expect(viewModel.statusNotification, contains('"archive.bin" importé'));
     });
   });
 }

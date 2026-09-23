@@ -560,10 +560,11 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
     assert_eq!(initial_snapshot.pending_block_count, 1);
     assert_eq!(initial_snapshot.unhandled_packets_count, 0);
 
-    // 4. Inject Raw frame 1: 0xC5 PR_EMULE extension
+    // 4. Inject Raw frame 1: 0xC5 PR_EMULE extension (0xEE = opcode non
+    //    assigné ; 0x60 ne convient plus depuis OP_QUEUERANKING)
     let pkt_c5 = RawPacket {
         protocol: PR_EMULE,
-        opcode: 0x60,
+        opcode: 0xEE,
         payload: Bytes::from_static(b"kademlia_non_mutating_packet"),
     };
     let res1 = session
@@ -617,18 +618,19 @@ fn test_non_mutation_property_on_raw_and_unhandled_frames() {
     );
     assert_eq!(snap2.unhandled_packets_count, 2);
 
-    // 6. Inject Raw frame 3: Unknown opcode 0xFE
+    // 6. Inject Raw frame 3: Unknown opcode 0xF0 (0xFE est désormais
+    //    OP_PORTTEST en 0.72a)
     let pkt_fe = RawPacket {
         protocol: PR_ED2K,
-        opcode: 0xFE,
+        opcode: 0xF0,
         payload: Bytes::from_static(b"future_unknown_opcode"),
     };
     let res3 = session
         .on_packet_received(&pkt_fe)
-        .expect("0xFE processed as Raw");
+        .expect("0xF0 processed as Raw");
     assert!(
         matches!(res3, Some(Ed2kMessage::Raw(_))),
-        "0xFE must decode to Raw"
+        "0xF0 must decode to Raw"
     );
 
     let snap3 = session.snapshot();

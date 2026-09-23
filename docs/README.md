@@ -15,9 +15,14 @@ docs/
 ├── README.md                      # Ce portail d'accueil général
 ├── INDEX.md                       # Inventaire cartographié de TOUS les fichiers du dépôt
 ├── CHANGELOG.md                   # Journal des modifications (Keep a Changelog)
+├── SETTINGS.md                    # Référence des paramètres (settings.*, limits.*) & journalisation
 │
 ├── architecture/                  # Architecture système & rapports techniques
-│   └── rapport_architecture_et_avancement.md
+│   ├── rapport_architecture_et_avancement.md
+│   ├── rpc_protocol.md
+│   ├── conventions_ui.md
+│   ├── plan_daemon_events.md
+│   └── plan_ui_multiplateforme.md
 │
 ├── walkthroughs/                  # Guides d'exécution & d'interopérabilité (Phases 1 à 15)
 │   ├── README.md                  # Index maître des walkthroughs
@@ -64,6 +69,9 @@ docs/
 
 ### 1. Architecture Système & Démon
 * **[Rapport Global d'Architecture & d'Avancement](architecture/rapport_architecture_et_avancement.md)** : Vue d'ensemble détaillée des 7 crates Rust, du superviseur Flutter et de la Clean Architecture.
+* **[Protocole RPC du daemon](architecture/rpc_protocol.md)** : Contrat JSON-RPC 2.0/WebSocket — handshake, méthodes, events, codes d'erreur, versioning.
+* **[Plan UI multiplateforme](architecture/plan_ui_multiplateforme.md)** : Roadmap desktop/mobile/web en 10 phases (packages partagés, Riverpod, i18n).
+* **[Référence des Paramètres](SETTINGS.md)** : Toutes les clés `settings.*`/`limits.*` — défauts, effets, équivalents eMule — plus la journalisation du daemon (`daemon.log`, `RUST_LOG`).
 * **[Cartographie Globale des Fichiers](INDEX.md)** : Répertoire exhaustif de chaque fichier du dépôt.
 * **[Journal des Changements](CHANGELOG.md)** : Historique des versions et évolutions.
 
@@ -83,7 +91,7 @@ docs/
 
 ### 3. Assurance Qualité & Spécifications Filaire
 * **[Protocole de Réception QA](qa/QA_RECEPTION_PROTOCOL.md)** : Guide de test pour la qualification d'une release.
-* **[Matrice de Compatibilité Protocolaires](qa/compatibility-matrix.md)** : Synthèse des profils `Emule050a`, `Amule233`, etc.
+* **[Matrice de Compatibilité Protocolaires](qa/compatibility-matrix.md)** : Synthèse des profils `Emule072a`, `Emule050a` (historique), `Amule233`, etc.
 * **[Spécifications eD2K & ADRs](ed2k/compatibility-notes.md)** : Décisions de conception et encodage filaire.
 
 ---

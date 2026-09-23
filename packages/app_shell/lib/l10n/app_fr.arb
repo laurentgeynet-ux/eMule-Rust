@@ -1,0 +1,1598 @@
+{
+  "@@locale": "fr",
+  "appName": "Emule-Sion",
+  "@appName": {
+    "description": "Application brand name."
+  },
+  "appTagline": "Client eD2K moderne",
+  "loopbackLabMode": "Mode Lab Loopback",
+  "tooltipLoopbackLabMode": "Mode laboratoire.\nLes connexions sont limitées à 127.0.0.1.\n\nAucun serveur eD2K public, nœud Kad ou pair externe.",
+  "devModeBadge": "DEV",
+  "sectionDownloads": "TÉLÉCHARGEMENTS",
+  "sectionCategories": "CATÉGORIES",
+  "sectionAuditActivity": "AUDIT & ACTIVITÉ",
+  "navHistoryStats": "Historique & Statistiques",
+  "navServers": "Serveurs eD2K",
+  "navSearch": "Recherche eD2K",
+  "navKad": "Kad DHT",
+  "navUploads": "Envois",
+  "filterAll": "Tous les téléchargements",
+  "filterActive": "Actifs",
+  "filterPaused": "En pause",
+  "filterCompleted": "Terminés",
+  "filterFailed": "Échoués",
+  "uncategorized": "Sans catégorie",
+  "searchPlaceholder": "Rechercher dans les téléchargements...",
+  "searchPlaceholderShares": "Rechercher dans les partages...",
+  "btnAddLink": "Ajouter un lien",
+  "btnAddEd2kLink": "Ajouter un lien eD2K",
+  "btnAddDownload": "Ajouter un téléchargement",
+  "btnCancel": "Annuler",
+  "btnClose": "Fermer",
+  "btnSave": "Enregistrer",
+  "btnDelete": "Supprimer",
+  "btnRetry": "Réessayer",
+  "btnCopy": "Copier",
+  "btnCopied": "Copié",
+  "actionSettings": "Paramètres",
+  "actionImportPartMet": "Importer un .part.met",
+  "actionGuidedLabTest": "Test local guidé",
+  "tooltipAddCategory": "Ajouter une catégorie",
+  "tooltipRefresh": "Actualiser les téléchargements",
+  "tooltipDevTools": "Outils de simulation & débogage",
+  "tooltipResume": "Reprendre",
+  "tooltipPause": "Mettre en pause",
+  "tooltipDelete": "Supprimer",
+  "emptyStateTitle": "Aucun téléchargement dans cette vue",
+  "emptyStateSubtitle": "Ajoutez un lien eD2K pour créer un téléchargement local.\nCe build lab fonctionne en loopback uniquement.",
+  "zeroSpeedDual": "↓ 0 B/s   ↑ 0 B/s",
+  "daemonConnected": "Daemon connecté",
+  "daemonConnecting": "Connexion au daemon...",
+  "daemonReconnecting": "Reconnexion...",
+  "daemonError": "Erreur du daemon",
+  "daemonDisconnected": "Daemon déconnecté",
+  "daemonVersionLine": "Daemon v{version} (proto v{protocol})",
+  "@daemonVersionLine": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "protocol": {
+        "type": "String"
+      }
+    }
+  },
+  "dialogAddTitle": "Ajouter un téléchargement eD2K",
+  "dialogFieldLabel": "URL du lien eD2K",
+  "dialogFieldHint": "ed2k://|file|name|size|hash|/",
+  "dialogValidationPrefix": "Doit commencer par « ed2k://|file| »",
+  "dialogValidationParts": "Doit contenir : nom, taille et hash",
+  "diagnosticsBadge": "Diagnostics",
+  "tooltipDiagnostics": "Cliquer pour inspecter les diagnostics système & répertoire de travail.",
+  "tooltipSystemDiagnostics": "Diagnostics système & confinement (127.0.0.1)",
+  "tooltipOpenDrawer": "Ouvrir le menu de navigation",
+  "tooltipLabGuide": "Flux de test local guidé",
+  "killSwitchBadgeDisabled": "Désactivé",
+  "tooltipPolicyKill": "Le sous-système réseau est DÉSACTIVÉ (kill switch engagé). Cliquer pour voir la politique et réactiver.",
+  "tooltipSessionTotals": "Totaux de session — octets téléchargés / envoyés depuis le démarrage du daemon.\nCliquer pour ouvrir Historique & Statistiques.",
+  "tooltipLifetimeTotals": "Totaux cumulés depuis l'installation — téléchargé / envoyé.\nCliquer pour ouvrir Historique & Statistiques. Remise à zéro dans Paramètres → Avancé.",
+  "settingsLifetimeResetTile": "Remise à zéro des totaux cumulés",
+  "settingsLifetimeResetSub": "Remet à zéro les compteurs téléchargé / envoyé depuis l'installation affichés dans la barre du haut. Les totaux de session sont conservés.",
+  "lifetimeResetConfirmTitle": "Remettre à zéro les totaux ?",
+  "lifetimeResetConfirmBody": "Les compteurs cumulés de téléchargement et d'envoi depuis l'installation seront remis à zéro. Les totaux de la session en cours ne sont pas modifiés.",
+  "lifetimeResetConfirmButton": "Remettre à zéro",
+  "renameFileTooltip": "Renommer le fichier",
+  "renameFileTitle": "Renommer le fichier",
+  "renameFileLabel": "Nouveau nom de fichier",
+  "renameFileInvalid": "Nom invalide — non vide, pas '.'/'..', ne finit pas par '.' et sans < > : \" / \\ | ? *",
+  "renameFileFailed": "Le renommage a échoué côté daemon (nom déjà pris ou fichier verrouillé)",
+  "renameFileApply": "Renommer",
+  "tooltipKillSwitchEnable": "Réactiver le sous-système réseau",
+  "tooltipKillSwitchDisable": "Kill switch : déconnecter immédiatement toutes les sockets",
+  "tooltipIpFilter": "Filtre IP & limites de débit",
+  "addEd2kDownload": "Ajouter un téléchargement eD2K",
+  "ed2kLink": "Lien eD2K",
+  "category": "Catégorie",
+  "targetDirectory": "Dossier de destination",
+  "defaultDownloadsFolder": "Dossier de téléchargements par défaut",
+  "browse": "Parcourir...",
+  "diskAllocation": "Allocation disque",
+  "cancel": "Annuler",
+  "addDownload": "Ajouter le téléchargement",
+  "eGMoviesMusicLinux": "ex : Films, Musique, ISOs Linux",
+  "inheritGlobalDestination": "Hériter de la destination globale",
+  "devSimulationTools": "Outils de simulation dev :",
+  "selected": "Sélectionné : \"{fileName}\"",
+  "@selected": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "inject256KbChunk": "Injecter un bloc de 256 Ko",
+  "inject1MbChunk": "Injecter un bloc de 1 Mo",
+  "clickAnyDownloadRowAbove": "Cliquez sur une ligne de téléchargement ci-dessus pour la sélectionner pour les tests d'injection.",
+  "closeDebugBar": "Fermer la barre de débogage",
+  "systemLabDiagnostics": "Diagnostics système & lab",
+  "workingDirectoryMode": "Répertoire de travail & mode",
+  "mode": "Mode",
+  "isolatedDataFolder": "(Dossier de données isolé)",
+  "internalData": "Données internes",
+  "downloads": "Téléchargements",
+  "daemonProcess": "Daemon & processus",
+  "processPid": "PID du processus",
+  "rpcEndpoint": "Endpoint RPC",
+  "daemonVersion": "Version du daemon",
+  "instanceId": "ID d'instance",
+  "sessionId": "ID de session",
+  "daemonLog": "Journal du daemon",
+  "capabilities": "Capacités",
+  "none": "Aucune",
+  "copyShareableSanitized": "Copier version partageable (anonymisée)",
+  "sanitizedShareableDiagnosticsCopied": "Diagnostics anonymisés partageables copiés",
+  "copyFullLocalDev": "Copier version complète (dev local)",
+  "fullDiagnosticsCopiedToClipboard": "Diagnostics complets copiés dans le presse-papiers",
+  "openLabGuide": "Ouvrir le guide lab",
+  "close": "Fermer",
+  "details": "Détails : {fileName}",
+  "@details": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "inspectFullDetails": "Inspecter tous les détails",
+  "downloadId": "ID du téléchargement",
+  "totalSize": "Taille totale",
+  "verifiedBytes": "Octets vérifiés",
+  "status": "Statut",
+  "sources": "Sources",
+  "downloadNotFound": "Téléchargement introuvable",
+  "theRequestedDownloadIsNo": "Le téléchargement demandé n'est plus disponible.",
+  "importPartMetExperimental": "Importer un .part.met (expérimental)",
+  "importAnExistingPartialOr": "Importer un téléchargement eMule partiel ou terminé en toute sécurité.",
+  "pathToPartMetFile": "Chemin du fichier .part.met",
+  "inspect": "Inspecter",
+  "associatedPartFilePathOptional": "Chemin du fichier .part associé (optionnel, auto-détecté)",
+  "autoDetectedNextToMet": "Auto-détecté à côté du fichier .met",
+  "targetDownloadDirectory": "Dossier de destination du téléchargement",
+  "targetDirectory2": "Dossier de destination",
+  "categoryOptional": "Catégorie (optionnel)",
+  "importDownload": "Importer le téléchargement",
+  "compatibilityAlert": "Alerte de compatibilité",
+  "retry": "Réessayer",
+  "ipFilterRateLimiters": "Filtre IP & limiteurs de débit",
+  "localDefensiveIpFilterIpfilter": "Filtre IP défensif local (ipfilter.dat) et quotas de bande passante par seaux de jetons",
+  "connectedDownloadToLoopbackSource": "Téléchargement connecté à la source loopback ({peerAddr})",
+  "@connectedDownloadToLoopbackSource": {
+    "placeholders": {
+      "peerAddr": {
+        "type": "String"
+      }
+    }
+  },
+  "cleanupCompletedFileSDeleted": "Nettoyage terminé : {deletedFilesCount} fichier(s) supprimé(s) dans {folders} ({freedBytes} libérés).",
+  "@cleanupCompletedFileSDeleted": {
+    "placeholders": {
+      "deletedFilesCount": {
+        "type": "String"
+      },
+      "folders": {
+        "type": "String"
+      },
+      "freedBytes": {
+        "type": "String"
+      }
+    }
+  },
+  "guidedLocalLoopbackTestFlow": "Flux de test loopback local guidé",
+  "fullEndToEndEd2k": "Test eD2K complet de bout en bout sur 127.0.0.1 sans toucher à un terminal.",
+  "networkPolicyDefenseGuard": "Politique réseau & garde défensive",
+  "defensiveSocketAuthorizationAntiSsrf": "Autorisation défensive des sockets, isolation anti-SSRF et quotas de ressources",
+  "redactedNetworkAuditLogRecent": "Journal d'audit réseau anonymisé (décisions récentes)",
+  "sparseInstantGrowsDynamically": "Sparse (instantané, croît dynamiquement)",
+  "preallocateFullSizeAvoidsFragmentation": "Pré-allouer (taille complète, évite la fragmentation)",
+  "noneMinimalInitialDiskUse": "Aucune (usage disque initial minimal)",
+  "sansCategorieNone": "Sans catégorie",
+  "hash": "Hash : {hash}",
+  "@hash": {
+    "placeholders": {
+      "hash": {
+        "type": "String"
+      }
+    }
+  },
+  "rrggbb": "#RRGGBB",
+  "normalDefault": "Normale (défaut)",
+  "low": "Basse",
+  "normal": "Normal",
+  "high": "Haute",
+  "changeTargetDestination": "Changer la destination",
+  "selectTargetDestinationFolderFor": "Choisir le dossier de destination pour \"{fileName}\" :",
+  "@selectTargetDestinationFolderFor": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "targetDirectoryPath": "Chemin du dossier de destination",
+  "eGDownloadsOrC": "ex : downloads ou C:\\TargetDir",
+  "theFolderMustExistAnd": "Le dossier doit exister et être accessible en écriture. Les données .part actives restent dans data/temp/ jusqu'à la fin.",
+  "saveDestination": "Enregistrer la destination",
+  "copiedToClipboard": "{label} copié dans le presse-papiers",
+  "@copiedToClipboard": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "resume": "Reprendre",
+  "pause": "Pause",
+  "retryLoopbackSource": "Réessayer la source loopback",
+  "openCompletedFile": "Ouvrir le fichier terminé",
+  "remove": "Supprimer...",
+  "diagnosticsRedactedExport": "Diagnostics & export anonymisé",
+  "exportSanitizedDiagnosticsZeroAuth": "Exporter les diagnostics anonymisés (zéro secret de jeton d'auth, vérification du confinement loopback 127.0.0.1, noms d'utilisateur et chemins masqués).",
+  "copyRedactedDiagnostic": "Copier le diagnostic anonymisé",
+  "downloadDiagnosticCopiedToClipboard": "Diagnostic du téléchargement copié (anonymisé : aucun secret)",
+  "identityEd2kLinks": "Identité & liens eD2K",
+  "downloadUuid": "UUID du téléchargement",
+  "ed2kHashMd4": "Hash eD2K (MD4)",
+  "canonicalEd2kLink": "Lien eD2K canonique",
+  "transferMetricsSpeed": "Métriques de transfert & vitesse",
+  "received": "Reçu",
+  "remaining": "Restant",
+  "verified": "Vérifié",
+  "currentRate": "Débit actuel",
+  "averageRate": "Débit moyen",
+  "eta": "ETA",
+  "attempts": "Tentatives",
+  "lastError": "Dernière erreur : {lastError}",
+  "@lastError": {
+    "placeholders": {
+      "lastError": {
+        "type": "String"
+      }
+    }
+  },
+  "ed2kPartMapPartsOf": "Carte des parts eD2K ({length} parts de 9,28 Mo)",
+  "@ed2kPartMapPartsOf": {
+    "placeholders": {
+      "length": {
+        "type": "String"
+      }
+    }
+  },
+  "partBreakdownIsInitializing": "Initialisation de la répartition des parts...",
+  "part": "Part #{partIndex} Plage : {startOffset} - {endOffset} Taille : {size} Reçu : {receivedBytes} Statut : {status}",
+  "@part": {
+    "placeholders": {
+      "partIndex": {
+        "type": "String"
+      },
+      "startOffset": {
+        "type": "String"
+      },
+      "endOffset": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      },
+      "receivedBytes": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "availableSourceCount": {
+        "type": "String"
+      }
+    }
+  },
+  "verified2": "Vérifiées ({verifiedCount})",
+  "@verified2": {
+    "placeholders": {
+      "verifiedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "completed": "Terminées ({completedCount})",
+  "@completed": {
+    "placeholders": {
+      "completedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "downloading": "En téléchargement ({downloadingCount})",
+  "@downloading": {
+    "placeholders": {
+      "downloadingCount": {
+        "type": "String"
+      }
+    }
+  },
+  "missing": "Manquantes ({missingCount})",
+  "@missing": {
+    "placeholders": {
+      "missingCount": {
+        "type": "String"
+      }
+    }
+  },
+  "noSource": "Aucune source ({unavailableCount})",
+  "@noSource": {
+    "placeholders": {
+      "unavailableCount": {
+        "type": "String"
+      }
+    }
+  },
+  "storageTargetDestination": "Stockage & destination",
+  "temporaryPartPathConfined": "Chemin .part temporaire (confiné)",
+  "finalTargetDestination": "Destination finale",
+  "changeDestination": "Changer la destination",
+  "noteChangingDestinationRedirectsWhere": "Note : changer la destination redirige l'endroit où le fichier terminé est assemblé. Les blocs .part en cours restent en sécurité dans le dossier temporaire.",
+  "removeDownload": "Supprimer le téléchargement ?",
+  "removeFromTheDownloadsManager": "Retirer \"{fileName}\" du gestionnaire de téléchargements ?",
+  "@removeFromTheDownloadsManager": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "theDownloadEntryInSqlite": "• L'entrée du téléchargement dans SQLite sera définitivement supprimée.\n• Les fichiers temporaires (.part et .part.met) dans data/temp/ seront supprimés.\n• Si le téléchargement est terminé, une option ci-dessous permet aussi de supprimer le fichier final dans le dossier de destination.",
+  "deleteTemporaryPartFileFrom": "Supprimer le fichier .part temporaire de data/temp/",
+  "confirmRemove": "Confirmer la suppression",
+  "sourcesEd2kSessionPeer": "SOURCES ED2K & PAIRS DE SESSION",
+  "ajouterSourceIpPortEx": "Ajouter source IP:port (ex: 127.0.0.1:39735)",
+  "ajouter": "Ajouter",
+  "demanderAuServeur": "Demander au serveur",
+  "demanderAuReseauKad": "Demander au réseau Kad",
+  "actualiserLaListe": "Actualiser la liste",
+  "sessionActive": "Session active : {peerAddress}",
+  "@sessionActive": {
+    "placeholders": {
+      "peerAddress": {
+        "type": "String"
+      }
+    }
+  },
+  "recu": "Reçu : {transferredBytes} ({transferRateBps})",
+  "@recu": {
+    "placeholders": {
+      "transferredBytes": {
+        "type": "String"
+      },
+      "transferRateBps": {
+        "type": "String"
+      }
+    }
+  },
+  "deconnecter": "Déconnecter",
+  "cooldownS": "Cooldown {cooldownSecondsRemaining}s",
+  "@cooldownS": {
+    "placeholders": {
+      "cooldownSecondsRemaining": {
+        "type": "String"
+      }
+    }
+  },
+  "forcer": "Forcer",
+  "noCategory": "Sans catégorie",
+  "totalSize2": "Taille totale :",
+  "estAcquiredGapsComplement": "Acquis est. / complément des trous :",
+  "partCount": "Nombre de parts :",
+  "ed2kHash": "Hash eD2K",
+  "importSuccessfulTheDownloadIs": "Import réussi ! Le téléchargement est en pause et les parts vérifiées ont été préparées.",
+  "auditReport": "Rapport d'audit",
+  "auditReportCopiedToClipboard": "Rapport d'audit copié dans le presse-papiers",
+  "copyReport": "Copier le rapport",
+  "done": "Terminé",
+  "theDownloadWillBeStaged": "Le téléchargement sera préparé dans data/temp/ et initialisé en pause. L'import ne contacte aucun pair eD2K.",
+  "confirmCleanup": "Confirmer le nettoyage",
+  "thisWillRemoveFixtureFile": "Cela supprimera {fixtureCount} fichier(s) fixture dans <workdir>/fixtures/ et nettoiera les fichiers .part temporaires.",
+  "@thisWillRemoveFixtureFile": {
+    "placeholders": {
+      "fixtureCount": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteTestData": "Supprimer les données de test",
+  "storageDataInternalStateVs": "Stockage : data/ (état interne) vs downloads/ (fichiers terminés)",
+  "openFolder": "Ouvrir le dossier",
+  "internalDataDbTempPart": "• Données internes (DB, .part temporaires, fixtures) : {workdir}",
+  "@internalDataDbTempPart": {
+    "placeholders": {
+      "workdir": {
+        "type": "String"
+      }
+    }
+  },
+  "completedDownloads": "• Téléchargements terminés : {downloadsDir}",
+  "@completedDownloads": {
+    "placeholders": {
+      "downloadsDir": {
+        "type": "String"
+      }
+    }
+  },
+  "cleanTestDataFixturesIncomplete": "Nettoyer les données de test (fixtures & parts incomplètes)",
+  "cleanupTestData": "Nettoyer les données de test",
+  "connectDownloadToLoopbackSource": "Connecter le téléchargement à la source loopback",
+  "noDownloadsInQueueAdd": "Aucun téléchargement en file. Ajoutez un lien eD2K à l'étape 2.",
+  "targetDownloadTask": "Tâche de téléchargement cible",
+  "warningDownloadSize": "Attention : la taille du téléchargement ({totalBytes}) ne correspond pas à la fixture ({fixtureSize}).",
+  "@warningDownloadSize": {
+    "placeholders": {
+      "totalBytes": {
+        "type": "String"
+      },
+      "fixtureSize": {
+        "type": "String"
+      }
+    }
+  },
+  "startLoopbackPeerInStep": "Démarrez le pair loopback à l'étape 3 avant de connecter.",
+  "finalFile": "Fichier final : {downloadsDir}\\{fileName}",
+  "@finalFile": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      },
+      "downloadsDir": {
+        "type": "String"
+      }
+    }
+  },
+  "generateLocalTestFixture": "Générer une fixture de test locale",
+  "obtainCanonicalEd2kLinkAdd": "Obtenir le lien eD2K canonique & ajouter aux téléchargements",
+  "copyLink": "Copier le lien",
+  "ed2kLinkCopiedToClipboard": "Lien eD2K copié dans le presse-papiers",
+  "downloadTaskCreatedInUi": "Tâche de téléchargement créée dans l'UI",
+  "completeStep1ToGenerate": "Terminez l'étape 1 pour générer d'abord une fixture eD2K.",
+  "loopbackTestPeer1270": "Pair de test loopback (127.0.0.1)",
+  "lastImportReport": "Dernier rapport d'import",
+  "invalidLinesSkipped": "Lignes invalides ignorées : {invalidLines}",
+  "@invalidLinesSkipped": {
+    "placeholders": {
+      "invalidLines": {
+        "type": "String"
+      }
+    }
+  },
+  "rangesLoaded": "{rangeCount} plages chargées",
+  "@rangesLoaded": {
+    "placeholders": {
+      "rangeCount": {
+        "type": "String"
+      }
+    }
+  },
+  "totalBlockedConnectionAttempts": "Connexions bloquées au total : {hitsCount}",
+  "@totalBlockedConnectionAttempts": {
+    "placeholders": {
+      "hitsCount": {
+        "type": "String"
+      }
+    }
+  },
+  "importIpfilterDat": "Importer un ipfilter.dat",
+  "loadALocalPeerguardianEmule": "Charge un fichier ipfilter.dat local au format PeerGuardian / eMule. Le téléchargement depuis une URL distante est interdit par sécurité (anti-SSRF).",
+  "import": "Importer",
+  "clear": "Effacer",
+  "noNetworkEventsRecordedYet": "Aucun événement réseau enregistré pour le moment.",
+  "activeConnectionsLimits": "Connexions actives & limites",
+  "peerSockets": "Sockets pairs",
+  "serverSockets": "Sockets serveur",
+  "listeners": "Listeners d'écoute",
+  "connectTimeout": "Timeout de connexion",
+  "maxFrameSize": "Taille max d'une trame",
+  "maxBufferMemory": "Mémoire tampon max",
+  "status2": "Statut : {label}",
+  "@status2": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "reEnable": "Réactiver le réseau",
+  "disconnectAll": "Tout déconnecter (kill switch)",
+  "bandwidthTokenBucketQuotas": "Limites de débit (Token Buckets)",
+  "limitsAreEnforcedAsynchronouslyUsing": "Les limites sont appliquées de façon asynchrone par des Token Buckets et persistées au redémarrage. 0 = illimité.",
+  "downloadLimitKbS0": "Limite de téléchargement (Ko/s) [0 = illimité]",
+  "uploadLimitKbS0": "Limite d'envoi (Ko/s) [0 = illimité]",
+  "maxNewConnectionsMinute": "Nouvelles connexions max / minute",
+  "saveLimits": "Enregistrer les limites",
+  "inspectDetailsPartMap": "Inspecter détails & carte des parts",
+  "remove2": "Retirer",
+  "removeFromDownloads": "Retirer \"{fileName}\" des téléchargements ?",
+  "@removeFromDownloads": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteDownloadedPartTempFiles": "Supprimer les fichiers .part/temp téléchargés du disque",
+  "deleteSharedCompletedFile": "Supprimer aussi le fichier partagé dans le dossier de destination",
+  "id": "ID : {id}",
+  "@id": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "src": "{sourceCount} src",
+  "@src": {
+    "placeholders": {
+      "sourceCount": {
+        "type": "String"
+      }
+    }
+  },
+  "fullId": "ID complet : {id}",
+  "@fullId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "downloadIdCopiedToClipboard": "ID du téléchargement copié dans le presse-papiers",
+  "sources2": "{sourceCount} sources",
+  "@sources2": {
+    "placeholders": {
+      "sourceCount": {
+        "type": "String"
+      }
+    }
+  },
+  "downloadSettingsStorage": "Paramètres de téléchargement & stockage",
+  "globalDefaultDownloadDirectory": "Dossier de téléchargement par défaut",
+  "thisPathIsUsedAs": "Ce chemin est la destination par défaut des nouveaux téléchargements. Les fichiers .part restent dans le dossier temporaire configuré jusqu'à complétion (eMule « Répertoire »).",
+  "destinationDirectoryPath": "Chemin du dossier de destination",
+  "eGCDownloadsOr": "ex. C:\\Downloads ou downloads",
+  "save": "Enregistrer",
+  "resetToPortableDefault": "Réinitialiser au dossier portable",
+  "modeReseauTraverseeBoxUpnp": "Mode Réseau & Traversée Box (UPnP)",
+  "basculeEntreLaboratoireLocalEt": "Bascule entre laboratoire local et réseau public mondial.",
+  "configurer": "Configurer",
+  "historyRetentionPolicy": "Rétention de l'historique",
+  "historicalTransitionEventsOlderThan": "Les événements d'historique plus anciens que la durée choisie sont purgés au démarrage du daemon et à chaque modification.",
+  "keepHistoryFor": "Conserver l'historique pendant : ",
+  "indefinitelyNoPruning": "Indéfiniment (aucune purge)",
+  "delete": "Supprimer \"{name}\" ?",
+  "@delete": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deletingThisCategoryWillMove": "Deleting this category will move all associated downloads to \"Sans catégorie\" (Uncategorized).\n\nNo downloads or files will be deleted.",
+  "deleteCategory": "Supprimer la catégorie",
+  "categoryOptions": "Options de catégorie",
+  "editCategory": "Modifier la catégorie",
+  "clearDownloadHistory": "Effacer l'historique des téléchargements ?",
+  "areYouSureYouWant": "Voulez-vous vraiment supprimer définitivement tout l'historique et les statistiques de téléchargement ? Cette action est irréversible.",
+  "clearAllHistory": "Effacer tout l'historique",
+  "noDownloadHistoryRecordedYet": "Aucun historique de téléchargement enregistré",
+  "completedResumedFailedAndRemoved": "Les événements de transfert terminés, repris, échoués et supprimés apparaîtront ici.",
+  "eventDetail": "Détail de l'événement : {fileName}",
+  "@eventDetail": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "viewDetails": "Voir les détails",
+  "of2": "{transferredBytes} sur {totalBytes}",
+  "@of2": {
+    "placeholders": {
+      "transferredBytes": {
+        "type": "String"
+      },
+      "totalBytes": {
+        "type": "String"
+      }
+    }
+  },
+  "hash2": "Hash : {ed2kHash}",
+  "@hash2": {
+    "placeholders": {
+      "ed2kHash": {
+        "type": "String"
+      }
+    }
+  },
+  "of3": "sur {totalBytes}",
+  "@of3": {
+    "placeholders": {
+      "totalBytes": {
+        "type": "String"
+      }
+    }
+  },
+  "res": "{resumeCount} res. / {connectionAttempts} att.",
+  "@res": {
+    "placeholders": {
+      "resumeCount": {
+        "type": "String"
+      },
+      "connectionAttempts": {
+        "type": "String"
+      }
+    }
+  },
+  "exportHistory": "Exporter l'historique ({toUpperCase})",
+  "@exportHistory": {
+    "placeholders": {
+      "toUpperCase": {
+        "type": "String"
+      }
+    }
+  },
+  "reportIsSanitizedAllLocal": "Le rapport est anonymisé : tous les noms d'utilisateur et chemins locaux sont masqués.",
+  "copyToClipboard": "Copier dans le presse-papiers",
+  "exportCopiedToClipboard": "Export copié dans le presse-papiers",
+  "filterByEvent": "Filtrer par événement :",
+  "allEvents": "Tous les événements",
+  "completed2": "Terminés",
+  "failed": "Échoués",
+  "resumed": "Repris",
+  "verifying": "Vérification",
+  "removed": "Supprimés",
+  "recordS": "{length} enregistrement(s)",
+  "@recordS": {
+    "placeholders": {
+      "length": {
+        "type": "String"
+      }
+    }
+  },
+  "totalCompleted": "Total terminés",
+  "activityWindows": "Fenêtres d'activité",
+  "resumesRetries": "Reprises & tentatives",
+  "failuresLogged": "{totalFailedCount} échecs enregistrés",
+  "@failuresLogged": {
+    "placeholders": {
+      "totalFailedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "integrityHealth": "Intégrité",
+  "historyLocalStatistics": "Historique & statistiques locales",
+  "exportHistoryReport": "Exporter le rapport d'historique",
+  "exportAsJsonSanitized": "Exporter en JSON (anonymisé)",
+  "exportAsCsvSanitized": "Exporter en CSV (anonymisé)",
+  "exportReport": "Exporter le rapport",
+  "clearHistory": "Effacer l'historique",
+  "refresh": "Actualiser",
+  "amorcerLeReseauKadBootstrap": "Amorcer le réseau Kad (Bootstrap)",
+  "adresseIp": "Adresse IP",
+  "portUdp": "Port UDP",
+  "annuler": "Annuler",
+  "lancerLAmorcage": "Lancer l'amorçage",
+  "amorcerKadDepuisUneUrl": "Amorcer Kad depuis une URL",
+  "telechargezUnFichierNodesDat": "Téléchargez un fichier nodes.dat distant pour amorcer votre table de routage Kad Kademlia (ex: https://upd.emule-security.org/nodes.dat) :",
+  "urlDuNodesDat": "URL du nodes.dat",
+  "noteSeulsLesProtocolesHttp": "Note : Seuls les protocoles HTTP/HTTPS publics sont acceptés. Le trafic vers les réseaux locaux (RFC1918) et loopback est rejeté par sécurité (anti-SSRF).",
+  "telechargerEtAmorcer": "Télécharger et Amorcer",
+  "effacerLaTableDeRoutage": "Effacer la table de routage Kad ?",
+  "tousLesContactsKadEn": "Tous les contacts Kad en mémoire et dans la base SQLite locale seront supprimés.\nAucun paquet réseau ne sera envoyé.",
+  "effacer": "Effacer",
+  "kadId128BitXor": "ID Kad (XOR 128 bits)",
+  "adresseIpPorts": "Adresse IP & Ports",
+  "version": "Version",
+  "statut": "Statut",
+  "echecs": "Échecs",
+  "derniereVue": "Dernière vue",
+  "actions": "Actions",
+  "v": "v{version}",
+  "@v": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "envoyerKadPing0x60": "Envoyer un ping Kad (0x60)",
+  "aucunContactKad": "Aucun contact Kad",
+  "importezUnFichierNodesDat": "Importez un fichier nodes.dat pour amorcer la table de routage K-buckets.",
+  "importerNodesDat": "Importer nodes.dat",
+  "filtrerParKadIdIp": "Filtrer par Kad ID, IP ou Port...",
+  "effacerLaTable": "Effacer la table",
+  "importerUnFichierNodesDat": "Importer un fichier nodes.dat",
+  "specifiezLeCheminAbsoluVers": "Spécifiez le chemin absolu vers un fichier nodes.dat (v0, v1 ou v2).",
+  "inspecter": "Inspecter",
+  "formatNodesDatVDetecte": "Format nodes.dat v{version} détecté",
+  "@formatNodesDatVDetecte": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "contactsDeclares": "• Contacts déclarés : {declaredCount}",
+  "@contactsDeclares": {
+    "placeholders": {
+      "declaredCount": {
+        "type": "String"
+      }
+    }
+  },
+  "contactsValidesAdmissibles": "• Contacts valides & admissibles : {validContactsCount}",
+  "@contactsValidesAdmissibles": {
+    "placeholders": {
+      "validContactsCount": {
+        "type": "String"
+      }
+    }
+  },
+  "rejetesParLaPolitiqueReseau": "• Rejetés par la politique réseau : {rejectedByPolicyCount}",
+  "@rejetesParLaPolitiqueReseau": {
+    "placeholders": {
+      "rejectedByPolicyCount": {
+        "type": "String"
+      }
+    }
+  },
+  "rejetesParLeFiltreIp": "• Rejetés par le filtre IP : {rejectedByFilterCount}",
+  "@rejetesParLeFiltreIp": {
+    "placeholders": {
+      "rejectedByFilterCount": {
+        "type": "String"
+      }
+    }
+  },
+  "importerLesContacts": "Importer les contacts",
+  "idKadLocal": "ID Kad Local :",
+  "arreterUdp": "Arrêter UDP",
+  "socketUdp": "Socket UDP",
+  "paquetsTxRx": "Paquets TX / RX",
+  "contactsActifs": "Contacts actifs",
+  "bucketsActifs": "Buckets actifs",
+  "contactsEnBase": "Contacts en base",
+  "profil": "Profil",
+  "reseauKadDhtKademlia": "Réseau Kad DHT (Kademlia)",
+  "actualiser": "Actualiser",
+  "amorcerBootstrap": "Amorcer (Bootstrap)",
+  "amorcerDepuisUrl": "Amorcer depuis URL",
+  "allerAKad": "Aller à Kad",
+  "allerAuxServeurs": "Aller aux Serveurs",
+  "nonConnecteAUnServeur": "Non connecté à un serveur eD2K.",
+  "connectezVousDAbordPour": "Connectez-vous d'abord pour effectuer une recherche.",
+  "vousNEtesActuellementPas": "Vous n'êtes actuellement pas connecté à un serveur eD2K. Connectez-vous d'abord pour effectuer une recherche.",
+  "extensionExIsoZipAvi": "Extension (ex : iso, zip, avi)",
+  "tailleMinMo": "Taille Min (Mo)",
+  "tailleMaxMo": "Taille Max (Mo)",
+  "effacerFiltres": "Effacer les filtres",
+  "serveurEd2k": "Serveur eD2K",
+  "globalUdp": "Global (UDP)",
+  "nomDuFichier": "Nom du fichier",
+  "taille": "Taille",
+  "hachageEd2k": "Hash eD2K",
+  "cliquerPourCopierLeHash": "Cliquer pour copier le hash : {fileHash}",
+  "@cliquerPourCopierLeHash": {
+    "placeholders": {
+      "fileHash": {
+        "type": "String"
+      }
+    }
+  },
+  "hachageCopie": "Hachage copié : {fileHash}",
+  "@hachageCopie": {
+    "placeholders": {
+      "fileHash": {
+        "type": "String"
+      }
+    }
+  },
+  "termine": "Terminé",
+  "telecharger": "Télécharger",
+  "demanderSourcesAuServeur": "Demander sources au serveur",
+  "copierLienEd2k": "Copier le lien eD2K",
+  "lienEd2kCopieDansLe": "Lien eD2K copié dans le presse-papier",
+  "afficher": "Afficher",
+  "rechercheEnCoursSur": "Recherche en cours sur {targetLabel}...",
+  "@rechercheEnCoursSur": {
+    "placeholders": {
+      "targetLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "rechercheSurLeReseauEd2k": "Recherche sur le Réseau eD2K",
+  "resultatS": "{resultCount} résultat(s)",
+  "@resultatS": {
+    "placeholders": {
+      "resultCount": {
+        "type": "String"
+      }
+    }
+  },
+  "effacerLesResultats": "Effacer les résultats",
+  "effacerLesResultats2": "Effacer les résultats ({resultCount})",
+  "@effacerLesResultats2": {
+    "placeholders": {
+      "resultCount": {
+        "type": "String"
+      }
+    }
+  },
+  "effacerTousLesServeurs": "Effacer tous les serveurs ?",
+  "cetteOperationSupprimeLaListe": "Cette operation supprime la liste des serveurs enregistres dans votre base locale.",
+  "aucunServeurEd2kEnregistre": "Aucun serveur eD2K enregistre",
+  "importezUnFichierServerMet": "Importez un fichier server.met local pour inspecter et gerer vos serveurs.",
+  "selectionnerServerMet": "Sélectionner un server.met",
+  "parDefautEmuleSionEst": "Par défaut, Emule-Sion est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.",
+  "modifierLeProfil": "Modifier le profil",
+  "rechercherUnServeurNomIp": "Rechercher un serveur (nom, IP, port)...",
+  "toutEffacer": "Tout effacer",
+  "securiteProfil": "Sécurité / Profil",
+  "etatFiltre": "État / Filtre",
+  "nomDuServeur": "Nom du Serveur",
+  "ipPort": "IP : Port",
+  "ping": "Ping",
+  "description": "Description",
+  "preference": "Préférence",
+  "seConnecter": "Se connecter",
+  "supprimer": "Supprimer",
+  "gestionLocaleDesServeursEd2k": "Gestion Locale des Serveurs eD2K",
+  "importerServerMet": "Importer un server.met",
+  "mettreAJourDepuisUrl": "Mettre à jour depuis URL",
+  "mettreAJourDepuisUne": "Mettre à jour depuis une URL",
+  "indiquezLAdresseHttpOu": "Indiquez l'adresse HTTP ou HTTPS d'un fichier server.met distant pour mettre à jour automatiquement votre annuaire de serveurs.",
+  "urlDuServerMet": "URL du server.met",
+  "noteLesAdressesIpDe": "Note : Les adresses IP de réseaux privés (LAN/RFC1918) et loopback sont rejetées par sécurité (anti-SSRF).",
+  "telechargerEtMettreAJour": "Télécharger et Mettre à jour",
+  "ms": "{ping} ms",
+  "@ms": {
+    "placeholders": {
+      "ping": {
+        "type": "String"
+      }
+    }
+  },
+  "v2": "v{version}",
+  "@v2": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "importerUnFichierServerMet": "Importer un fichier server.met local",
+  "indiquezLeCheminAbsoluVers": "Indiquez le chemin absolu vers votre fichier server.met local :",
+  "cheminDuFichierServerMet": "Chemin du fichier server.met",
+  "apercuDuFichierServerMet": "Apercu du fichier server.met",
+  "fichier": "Fichier : {filePath}",
+  "@fichier": {
+    "placeholders": {
+      "filePath": {
+        "type": "String"
+      }
+    }
+  },
+  "total": "Total",
+  "autorises": "Autorisés",
+  "bloquesFiltreIp": "Bloqués (filtre IP)",
+  "lesServeursMarquesEnRouge": "Les serveurs marques en rouge correspondent a des plages de votre filtre IP local. Ils seront importes avec le statut bloque.",
+  "bloque": "Bloqué",
+  "autorise": "Autorisé",
+  "confirmerImportation": "Confirmer l'importation",
+  "aucunServeurConnecte": "Aucun serveur connecté",
+  "utilisateurs": "{currentUsers} utilisateurs • {currentFiles} fichiers",
+  "@utilisateurs": {
+    "placeholders": {
+      "currentUsers": {
+        "type": "String"
+      },
+      "currentFiles": {
+        "type": "String"
+      }
+    }
+  },
+  "garantieDeSecuriteAntiSsrf": "Garantie de Sécurité Anti-SSRF",
+  "memeEnModePublicLa": "Même en mode public, la politique réseau d'Emule-Sion bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.",
+  "fermer": "Fermer",
+  "revenirEnModeConfineLab": "Revenir en Mode Confiné (Lab 127.0.0.1)",
+  "activerLeModeReseauPublic": "Activer le Mode Réseau Public (WAN)",
+  "statutUpnpIgdBoxRouteur": "Statut UPnP IGD (Box / Routeur NAT)",
+  "passerelleBoxDetectee": "Passerelle / Box détectée :",
+  "adresseIpExterneWan": "Adresse IP Externe (WAN) :",
+  "portTcpEd2k": "Port TCP eD2K ({tcpPort}) :",
+  "@portTcpEd2k": {
+    "placeholders": {
+      "tcpPort": {
+        "type": "String"
+      }
+    }
+  },
+  "portUdpKad": "Port UDP Kad ({udpPort}) :",
+  "@portUdpKad": {
+    "placeholders": {
+      "udpPort": {
+        "type": "String"
+      }
+    }
+  },
+  "testerRafraichirUpnp": "Tester / Rafraîchir UPnP",
+  "sevenDays": "7 jours",
+  "thirtyDaysDefault": "30 jours (défaut)",
+  "ninetyDays": "90 jours",
+  "twentyFourHours": "24 h : {last24hCompletedCount} | 7 j : {last7dCompletedCount}",
+  "@twentyFourHours": {
+    "placeholders": {
+      "last24hCompletedCount": {
+        "type": "String"
+      },
+      "last7dCompletedCount": {
+        "type": "String"
+      }
+    }
+  },
+  "receivedOfTotal": "{receivedBytes} sur {totalBytes} ({progress})",
+  "@receivedOfTotal": {
+    "placeholders": {
+      "receivedBytes": {
+        "type": "String"
+      },
+      "totalBytes": {
+        "type": "String"
+      },
+      "progress": {
+        "type": "String"
+      }
+    }
+  },
+  "serverEnable": "Activer",
+  "serverDisable": "Désactiver",
+  "eventType": "Type d'événement",
+  "statusLabel": "Statut",
+  "transferred": "Transféré",
+  "duration": "Durée",
+  "resumes": "Reprises",
+  "verificationResult": "Résultat de la vérification",
+  "sanitizedPath": "Chemin anonymisé",
+  "timestamp": "Horodatage",
+  "errorMessage": "Message d'erreur",
+  "language": "Langue",
+  "languageDescription": "Langue de l'interface utilisateur",
+  "french": "Français",
+  "english": "English",
+  "daemonConnectTitle": "Connexion au daemon",
+  "daemonConnectDescription": "Emule-Sion Web pilote un mule-daemon distant. Indiquez l'adresse WebSocket du daemon.",
+  "daemonUrlLabel": "Adresse du daemon",
+  "daemonUrlHint": "ws://192.168.1.10:4660/rpc",
+  "daemonUrlInvalid": "Adresse invalide — format attendu : ws://hôte:port/rpc",
+  "connect": "Se connecter",
+  "changeDaemon": "Changer de daemon",
+  "sectionUploads": "Envois",
+  "uploadsActive": "UPLOADS ACTIFS",
+  "uploadsQueue": "FILE D'ATTENTE",
+  "uploadsActiveEmpty": "Aucun upload actif",
+  "uploadsQueueEmpty": "File d'attente vide",
+  "uploadsClient": "Client",
+  "uploadsFile": "Fichier",
+  "uploadsRate": "Débit",
+  "uploadsRank": "Rang",
+  "uploadsCancelTooltip": "Annuler l'upload",
+  "settingsSectionGeneral": "Général",
+  "settingsSectionConnection": "Connexion",
+  "settingsSectionTransfers": "Transferts",
+  "settingsSectionSecurity": "Sécurité",
+  "settingsSectionFriends": "Amis",
+  "settingsSectionAdvanced": "Avancé",
+  "settingsGeneralSubtitle": "Identité, dossiers, partage automatique, historique et langue",
+  "settingsConnectionSubtitle": "Profil réseau, isolation, budgets de sockets et UPnP",
+  "settingsTransfersSubtitle": "Limites de connexions aux sources du swarm",
+  "settingsSecuritySubtitle": "Filtre IP, limites de débit et politique anti-SSRF",
+  "settingsFriendsSubtitle": "Slot d'upload dédié sans passer par la file (friend slot eMule)",
+  "settingsAdvancedSubtitle": "Diagnostic, outils de laboratoire et informations daemon",
+  "settingsApply": "Appliquer",
+  "settingsSaving": "Enregistrement…",
+  "settingsNicknameLabel": "Pseudo (nickname)",
+  "settingsNicknameHelper": "Annoncé aux serveurs eD2K et aux pairs (eMule « nick » ; vide = défaut)",
+  "settingsShareDownloadDirTitle": "Partager automatiquement le dossier de téléchargement",
+  "settingsShareDownloadDirSub": "Les fichiers du dossier Incoming sont hashés et servis aux pairs au démarrage du daemon (comme le dossier Incoming d'eMule).",
+  "settingsTempDirLabel": "Dossier temporaire (.part)",
+  "settingsTempDirHelper": "Où sont stockés les fichiers en cours (eMule « Répertoire temporaire » ; vide = dossier du daemon)",
+  "settingsIchTitle": "ICH — vérification intelligente des parts",
+  "settingsIchSub": "Vérifie chaque part complétée par MD4 (eMule « ICH » ; désactiver saute la vérification intermédiaire)",
+  "settingsRememberCancelledTitle": "Mémoriser les fichiers annulés",
+  "settingsRememberCancelledSub": "Ajoute une entrée d'historique à l'annulation (eMule « Remember cancelled files »)",
+  "settingsRememberDownloadedTitle": "Mémoriser les fichiers téléchargés",
+  "settingsRememberDownloadedSub": "Ajoute une entrée d'historique à la complétion (eMule « Remember downloaded files »)",
+  "settingsDirEmptyError": "Le chemin du dossier ne peut pas être vide.",
+  "settingsDirSaved": "Dossier de téléchargement par défaut mis à jour.",
+  "settingsDirProbeFailed": "Le test d'écriture dans le dossier a échoué.",
+  "settingsDirResetDone": "Dossier portable par défaut restauré.",
+  "settingsDirResetFailed": "Échec de la réinitialisation du dossier de téléchargement.",
+  "settingsCapPortsTitle": "Capacités & ports",
+  "settingsCapDlLabel": "Capacité réception (Ko/s)",
+  "settingsCapDlHint": "Vitesse de ligne descendante — borne la limite de download à 90 % (0 = aucune)",
+  "settingsCapUlLabel": "Capacité émission (Ko/s)",
+  "settingsCapUlHint": "Vitesse de ligne montante — référence USS, borne la limite d'upload à 80 % (0 = aucune)",
+  "settingsTcpPortLabel": "Port TCP",
+  "settingsTcpPortHint": "Port client eD2K — rebind immédiat du listener",
+  "settingsUdpPortLabel": "Port UDP",
+  "settingsUdpPortHint": "Port Kad/UDP — socket rebind à chaud",
+  "settingsUdpEnabledTitle": "UDP activé",
+  "settingsUdpEnabledSub": "Kad UDP, requêtes serveur UDP et re-ask UDP (eMule « UDP désactivé »)",
+  "settingsUpnpToggleTitle": "Configurer les ports grâce à l'UPnP",
+  "settingsUpnpToggleSub": "Mappe/démappe automatiquement TCP+UDP sur la box",
+  "settingsProtocolTitle": "Protocole & limites",
+  "settingsObfEnabledTitle": "Connexions obfusquées supportées",
+  "settingsObfEnabledSub": "Chiffrement de protocole eD2K/Kad (eMule « Support obfuscated connections »)",
+  "settingsObfRequiredTitle": "Obfuscation requise",
+  "settingsObfRequiredSub": "Rejette les pairs sans chiffrement (eMule « Require obfuscated connections »)",
+  "settingsUssTitle": "USS — Détection de la vitesse d'envoi",
+  "settingsUssSub": "Ajuste dynamiquement la limite d'upload selon la latence mesurée",
+  "settingsMaxConnLabel": "Connexions max",
+  "settingsMaxConnHint": "Budget global de sockets pairs, 1–65000 (eMule MaxConnections — non borné)",
+  "settingsConnPerMinLabel": "Connexions / min",
+  "settingsConnPerMinHint": "Nouvelles connexions sortantes par minute, 1–1200 (eMule ≈ 240)",
+  "settingsServersTitle": "Serveurs eD2K",
+  "settingsServerReconnectTitle": "Reconnexion automatique",
+  "settingsServerReconnectSub": "Reconnecte au dernier serveur après une perte de connexion (eMule « Reconnect »)",
+  "settingsServerAutoconnectTitle": "Connexion au démarrage",
+  "settingsServerAutoconnectSub": "Se connecte automatiquement au meilleur serveur connu au lancement (eMule « Autoconnect »)",
+  "settingsServerAutoremoveTitle": "Supprimer les serveurs morts",
+  "settingsServerAutoremoveSub": "Retire un serveur de la liste dès le premier échec de reconnexion (eMule « DeadServerRetry » = 1)",
+  "settingsSafeConnectTitle": "Connexion sûre",
+  "settingsSafeConnectSub": "Bloque la reprise des downloads tant que ni le serveur eD2K ni Kad ne sont disponibles",
+  "settingsServerAutoupdateTitle": "Mettre à jour la liste au démarrage",
+  "settingsServerAutoupdateSub": "Importe le fichier server.met ci-dessous au lancement du daemon",
+  "settingsServerMetLabel": "Fichier server.met",
+  "settingsServerMetHint": "Chemin local du fichier .met importé au démarrage (aucun fetch HTTP)",
+  "upnpConfiguredMsg": "UPnP configuré (IP WAN : {ip}).",
+  "@upnpConfiguredMsg": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "upnpNoGateway": "Passerelle UPnP non détectée ou désactivée sur votre box.",
+  "upnpRefreshFailed": "Échec de rafraîchissement UPnP : {error}",
+  "@upnpRefreshFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsInvalidNumMin": "{label} : « {value} » invalide (entier ≥ {min} attendu)",
+  "@settingsInvalidNumMin": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsInvalidNumRange": "{label} : « {value} » invalide (entier entre {min} et {max} attendu)",
+  "@settingsInvalidNumRange": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "value": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "killSwitchConfirmTitle": "Couper toutes les connexions ?",
+  "killSwitchConfirmBody": "Le kill switch coupe immédiatement toutes les sockets réseau (pairs, serveurs, listeners) jusqu'à réactivation manuelle.",
+  "killSwitchConfirmAction": "Tout déconnecter",
+  "settingsMaxGlobalLabel": "Sources maximum (global)",
+  "settingsMaxGlobalHint": "Quota de sources activées par l'allocateur swarm, tous fichiers confondus — distinct du budget de sockets (Connexion)",
+  "settingsMaxPerFileLabel": "Sources maximum par fichier",
+  "settingsMaxPerFileHint": "Plafond par défaut — surchargeable par fichier (FT_MAXSOURCES)",
+  "settingsMinPerFileLabel": "Sources minimum par fichier",
+  "settingsMinPerFileHint": "Quota de sources garanti par fichier même si le swarm global est saturé",
+  "settingsMaxQueueLabel": "File d'attente upload max",
+  "settingsMaxQueueHint": "Clients en attente d'un slot upload, 10–5000 (eMule QueueSize, défaut 5000)",
+  "settingsMinUploadLabel": "Débit upload min par slot (Ko/s)",
+  "settingsMinUploadHint": "Pas de nouveau slot si la moyenne/slot passe sous ce seuil ; 0 = désactivé (eMule MinUpload, défaut 1)",
+  "settingsDailyQuotaLabel": "Quota upload quotidien (Gio, 0 = illimité)",
+  "settingsDailyQuotaHint": "Option Emule-Sion : au-delà du quota, plus aucun slot d'upload n'est accordé. Remise à zéro chaque jour (UTC).",
+  "settingsAutoPriorityTitle": "Priorité auto des nouveaux downloads",
+  "settingsAutoPrioritySub": "Les fichiers ≥ 1 part eD2K (9,28 Mio) démarrent en priorité « high »",
+  "settingsSwarmHealingTitle": "Sauvetage de swarm (swarm healing)",
+  "settingsSwarmHealingSub": "Option Emule-Sion : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition",
+  "settingsExclusiveTitle": "Options exclusives Emule-Sion",
+  "settingsParanoidTitle": "Mode paranoid",
+  "settingsParanoidSub": "Ne sert que les pairs obfusqués dont la signature Secure Ident a été vérifiée — les clients eMule classiques sont refusés (réduit fortement la compatibilité)",
+  "settingsIdentityRotationLabel": "Rotation d'identité (heures, 0 = désactivée)",
+  "settingsIdentityRotationHelper": "Régénère la clé RSA, le user hash eD2K et le KadID périodiquement. Invalide les crédits accumulés — identité volontairement éphémère.",
+  "settingsInvalidLimits": "Limites invalides : {fields}",
+  "@settingsInvalidLimits": {
+    "placeholders": {
+      "fields": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsLimitDlField": "limite de réception (Ko/s)",
+  "settingsLimitUlField": "limite d'émission (Ko/s)",
+  "settingsLimitConnField": "connexions/minute",
+  "settingsIdentityRotationInvalid": "Rotation d'identité : « {value} » invalide (entier entre 0 et 8760 attendu)",
+  "@settingsIdentityRotationInvalid": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "rateLimitsCapacityNote": "Ces plafonds brident le trafic réel (token buckets), bornés à 90 % (réception) / 80 % (émission) des capacités de ligne déclarées (onglet Connexion).",
+  "rateLimitsUssActiveNote": "USS est actif : l'envoi est piloté automatiquement selon la latence mesurée. La limite d'envoi ci-dessous borne son plafond — 0 = aucun plafond.",
+  "limitsEffective": "Effectif actuel : {value} Ko/s",
+  "@limitsEffective": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "limitsEffectiveRatio": "Plafonné par le ratio eD2K — effectif : {value} Ko/s",
+  "@limitsEffectiveRatio": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "limitsUssDriven": "Piloté par USS — limite dynamique actuelle : {value} Ko/s. La valeur saisie borne le plafond USS.",
+  "@limitsUssDriven": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsDiagnosticTile": "Diagnostic du daemon",
+  "settingsDiagnosticSub": "État de santé, connexions et statistiques internes",
+  "settingsImportPartTile": "Importer un .part.met",
+  "settingsImportPartSub": "Reprendre un téléchargement eMule existant",
+  "settingsLabGuideTile": "Guide du mode laboratoire",
+  "settingsLabGuideSub": "Scénarios de test loopback sans trafic WAN",
+  "settingsDebugBarTitle": "Barre de simulation debug",
+  "settingsDebugBarOn": "Affiche la barre de simulation en bas de l'écran",
+  "settingsDebugBarOff": "Disponible uniquement avec les dev tools (ENABLE_DEV_TOOLS ou fake daemon)",
+  "settingsDaemonVersion": "Daemon {version} — protocole {protocol}",
+  "@settingsDaemonVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "protocol": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsAddFriendTitle": "Ajouter un ami",
+  "settingsUserHashLabel": "UserHash (hex)",
+  "settingsUserHashHint": "32 caractères hexadécimaux",
+  "settingsFriendNameLabel": "Nom (optionnel)",
+  "settingsNoFriends": "Aucun ami configuré.",
+  "settingsRemoveFriendTooltip": "Retirer",
+  "settingsRetentionDaysCustom": "{days} jours",
+  "@settingsRetentionDaysCustom": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsDirCustomHelper": "Dossier personnalisé (persisté en base, appliqué immédiatement)",
+  "settingsDirPortableHelper": "Dossier portable par défaut (<racine_du_bundle>/downloads)",
+  "netBannerKillActive": "Kill switch actif : toutes les sockets sont coupées, connexions entrantes et sortantes bloquées.",
+  "netBannerPolicyActive": "Chaque socket est soumise aux contraintes du profil réseau actif (permis, budgets, filtre IP).",
+  "upnpGatewayConnected": "Connectée",
+  "upnpGatewayAbsent": "Non détectée / Désactivée",
+  "upnpIpUnknown": "Inconnue",
+  "upnpMappedHighId": "Mappé (HighID)",
+  "upnpMappedOpen": "Mappé (Ouvert)",
+  "upnpNotMapped": "Non mappé",
+  "ipFilterActive": "Filtre actif",
+  "ipFilterDisabled": "Filtre désactivé",
+  "networksCardTitle": "Réseaux",
+  "networkEd2kTitle": "Réseau eD2K",
+  "networkKadTitle": "Réseau Kad",
+  "netProfileEd2kDesc": "TCP sortant vers des pairs/serveurs eD2K publics. Rejette le LAN privé & la boucle locale (anti-SSRF).",
+  "netProfileKadDesc": "DHT Kademlia — UDP sortant pour le routage WAN. Activer Kad active aussi eD2K.",
+  "ipReportTotalLines": "Lignes lues : {count}",
+  "@ipReportTotalLines": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportValidEntries": "Entrées valides : {count}",
+  "@ipReportValidEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportCoalesced": "Plages fusionnées : {count}",
+  "@ipReportCoalesced": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ipReportFinalRanges": "Intervalles actifs finaux : {count}",
+  "@ipReportFinalRanges": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "connDisconnected": "Déconnecté",
+  "connConnecting": "Connexion",
+  "connConnectingEllipsis": "Connexion...",
+  "connConnected": "Connecté",
+  "connDisconnecting": "Déconnexion...",
+  "connError": "Erreur",
+  "peerHandshaking": "Handshake eD2K...",
+  "peerQueued": "En file d'attente",
+  "peerTransferring": "Téléchargement",
+  "dlStatusQueued": "En file",
+  "dlStatusWaitingForSources": "Recherche de sources",
+  "dlStatusAllocating": "Allocation",
+  "dlStatusDownloading": "Téléchargement",
+  "dlStatusPaused": "En pause",
+  "dlStatusVerifying": "Vérification",
+  "dlStatusCompleting": "Finalisation",
+  "dlStatusCompleted": "Terminé",
+  "dlStatusFailed": "Échoué",
+  "profileLocalLab": "Lab local (loopback uniquement)",
+  "profilePublicEd2k": "eD2K public (preview)",
+  "profilePublicEd2kKad": "eD2K + Kad publics (preview)",
+  "subsystemDisabled": "Désactivé (kill switch)",
+  "subsystemReady": "Prêt (preview)",
+  "subsystemShuttingDown": "Arrêt en cours",
+  "daemonIdle": "Inactif",
+  "daemonDiscovering": "Recherche du daemon...",
+  "daemonStarting": "Démarrage du daemon...",
+  "daemonProtocolMismatch": "Version de protocole incompatible",
+  "daemonAuthError": "Échec d'authentification",
+  "navShares": "Partages",
+  "badgeEd2kHighId": "eD2K · HighID",
+  "badgeEd2kLowId": "eD2K · LowID",
+  "badgeEd2kConnecting": "eD2K · Connexion…",
+  "badgeEd2kDisconnecting": "eD2K · Déconnexion…",
+  "badgeEd2kDisconnected": "eD2K · Déconnecté",
+  "badgeKadStopped": "Kad · Arrêté",
+  "badgeKadConnected": "Kad · Connecté",
+  "badgeKadBootstrapping": "Kad · Amorçage",
+  "daemonCardTooltipTitle": "État du daemon",
+  "daemonCardTooltipServer": "Serveur : {name}",
+  "daemonCardTooltipDiagnostics": "Cliquer pour voir les diagnostics",
+  "sharesTitle": "Fichiers partagés",
+  "sharesFileCount": "{count} fichier(s)",
+  "sharesRescanTooltip": "Rescanner le dossier Incoming",
+  "sharesEmptyState": "Aucun fichier partagé.\nLes fichiers du dossier Incoming et les téléchargements en cours ou terminés sont partagés automatiquement.",
+  "sharesPartialParts": " — partiel ({count} part(s))",
+  "sharesTotalSentTooltip": "Total envoyé pour ce fichier",
+  "sharePrioVeryLow": "Très basse",
+  "sharePrioVeryHigh": "Très haute",
+  "sharesEnabledTooltip": "Partagé",
+  "sharesDisabledTooltip": "Suspendu",
+  "sharesRenameDisabledTooltip": "Téléchargement en cours — renommez-le depuis l'onglet Téléchargements",
+  "sharesRenameTooltip": "Renommer le fichier",
+  "sharesDeleteDisabledTooltip": "Téléchargement en cours — supprimez-le depuis l'onglet Téléchargements",
+  "sharesDeleteTooltip": "Supprimer le fichier du disque",
+  "sharesDeleteTitle": "Supprimer le fichier ?",
+  "sharesDeleteBody": "{name} sera définitivement supprimé du disque et retiré des partages.",
+  "sourcesMaxDialogTitle": "Sources max (FT_MAXSOURCES)",
+  "sourcesMaxHint": "Vide = limite globale",
+  "sourcesMaxHelper": "Nombre max de sources pour ce fichier (1-10000)",
+  "apply": "Appliquer",
+  "srcNoHash": "Pas de hash eD2K pour ce fichier.",
+  "srcLoading": "Chargement des sources...",
+  "srcNone": "Aucune source enregistrée pour ce fichier.",
+  "srcConnected": "Connectés ({count})",
+  "srcKnown": "Sources connues ({count})",
+  "srcCount": "Sources ({count})",
+  "srcPriorityLabel": "Priorité : {priority}",
+  "srcMaxTooltip": "Sources max pour ce fichier (FT_MAXSOURCES)",
+  "srcMaxShort": "Src max : {value}",
+  "peerRetry": "Réessayer",
+  "peerConnect": "Connecter",
+  "pendingDestination": "Destination en attente...",
+  "pendingCalculation": "Calcul en cours...",
+  "tooltipDownloadPriority": "Priorité du téléchargement",
+  "tooltipAssignCategory": "Assigner une catégorie",
+  "tooltipCategoryName": "Catégorie : {name}",
+  "peerSrcAllowed": "Autorisé",
+  "peerSrcFiltered": "Filtré IP",
+  "peerSrcRejected": "Rejeté profil",
+  "peerSrcTried": "Essayé",
+  "peerSrcFailed": "Échec",
+  "peerSrcCandidate": "Candidat",
+  "importPartOnDisk": "Fichier .part sur le disque :",
+  "importPartPresent": "Présent ({size})",
+  "importPartMissing": "MANQUANT (fichier .part introuvable)",
+  "openFileExplorerTooltip": "Ouvrir le fichier terminé dans l'explorateur",
+  "openFileDisabledTooltip": "Disponible une fois le téléchargement et la vérification terminés",
+  "addLinkDuplicate": "Ce fichier est déjà dans la liste des téléchargements (\"{name}\")",
+  "pickDownloadDir": "Sélectionner le dossier de téléchargement",
+  "addLinkGenericError": "Erreur lors de l'ajout du téléchargement",
+  "catPickDir": "Sélectionner le dossier de téléchargement par défaut de la catégorie",
+  "catNameRequired": "Le nom de la catégorie ne peut pas être vide",
+  "catEditTitle": "Modifier la catégorie",
+  "catNewTitle": "Nouvelle catégorie",
+  "catNameLabel": "Nom de la catégorie *",
+  "catColorLabel": "Étiquette de couleur",
+  "catDestLabel": "Destination par défaut (optionnel)",
+  "catPrioLabel": "Priorité par défaut (optionnel)",
+  "catSaveChanges": "Enregistrer les modifications",
+  "catCreate": "Créer la catégorie",
+  "opFailed": "L'opération a échoué",
+  "uploadsScore": "Score",
+  "uploadsCredit": "Crédit",
+  "uploadsBanned": "Client banni (score 0)",
+  "kadVerified": "Vérifié",
+  "kadNotVerified": "Non vérifié",
+  "kadBootstrapDescPublic": "Entrez l'adresse IP publique et le port UDP d'un nœud Kad pour amorcer la table de routage (ex : 212.83.184.225).",
+  "kadBootstrapDescLab": "Entrez l'adresse IP et le port UDP d'un nœud d'amorçage (en profil LocalLab, seul 127.0.0.1 est permis).",
+  "kadStartUdpPublic": "Démarrer UDP Kad",
+  "kadStartUdpLab": "Démarrer UDP Loopback",
+  "kadUdpActive": "Actif ({addr})",
+  "kadUdpInactive": "Inactif",
+  "kadTimeNever": "Jamais",
+  "kadTimeMinutesAgo": "Il y a {min}m",
+  "kadTimeHoursAgo": "Il y a {hours}h",
+  "kadTimeDaysAgo": "Il y a {days}j",
+  "kadBannerPublic": "Réseau Kad DHT mondial actif sur {addr} | Routage Kademlia ouvert | Protection anti-SSRF active.",
+  "kadBannerLab": "Socket UDP actif : {addr} (mode laboratoire confiné) | Kill switch instantané.",
+  "kadBannerStartPublic": "Transport UDP Kad : cliquez sur « Démarrer UDP » pour vous connecter au réseau Kademlia mondial.",
+  "kadBannerStartLab": "Transport UDP Kad confiné : seul le trafic loopback (127.0.0.1) est autorisé dans le profil LocalLab.",
+  "searchExplainKad": "Les requêtes KADEMLIA2_SEARCH_KEYWORD interrogent les nœuds Kad stockant l'index du mot-clé MD4.",
+  "searchExplainGlobal": "Les requêtes OP_GLOBSEARCHREQ3/REQ2 sont envoyées en UDP à tous les serveurs connus (port TCP+4). REQ3 est utilisé quand le serveur annonce EXT_GETFILES + LARGEFILES.",
+  "searchExplainServer": "Les requêtes OP_SEARCHREQUEST interrogent directement l'index du serveur eD2K connecté.",
+  "searchNoResults": "Aucun résultat trouvé pour « {term} »",
+  "searchPromptKeywords": "Entrez des mots-clés ci-dessus pour lancer une recherche",
+  "searchEnableTarget": "Activez {target} pour commencer à chercher des fichiers",
+  "searchTryOther": "Essayez avec d'autres termes ou élargissez vos filtres de taille",
+  "searchHideFilters": "Masquer les filtres",
+  "searchShowFilters": "Afficher les filtres avancés",
+  "searchHintKad": "Mots-clés Kad (min. 3 lettres)...",
+  "searchHintServer": "Nom de fichier ou mots-clés...",
+  "searchButtonSearching": "Recherche...",
+  "searchButton": "Rechercher",
+  "searchTargetServer": "Serveur eD2K",
+  "searchTargetKad": "Réseau Kad DHT",
+  "searchTargetLabelKad": "le réseau Kad DHT",
+  "searchTargetLabelGlobal": "les serveurs eD2K (UDP)",
+  "searchTargetLabelServer": "le serveur eD2K",
+  "searchTargetEnableGlobal": "la liste de serveurs eD2K",
+  "searchTargetEnableServer": "un serveur eD2K",
+  "kadActiveBanner": "Kad DHT actif • Contacts : {contacts} ({buckets} k-buckets) • Bind : {addr} • Profil : {profile}",
+  "unknown": "Inconnu",
+  "kadInactiveBanner": "Le réseau Kad DHT n'est pas encore actif. Démarrez le socket Kad ou effectuez un bootstrap.",
+  "searchGlobalBanner": "Recherche globale UDP — interroge tous les serveurs connus (REQ3 si le serveur supporte EXT_GETFILES + LARGEFILES).",
+  "searchConnectedBanner": "Connecté à {name} ({addr}) • Client ID : {id} ({idType})",
+  "serverUnnamed": "Sans nom",
+  "serverDisconnectBtn": "Déconnecter",
+  "serverBannerConnected": "Connexions eD2K disponibles. Vérifiez votre profil réseau (LocalLab vs PublicEd2kPreview) avant de vous connecter. Les adresses dans votre filtre IP sont automatiquement signalées.",
+  "serverBannerDisconnected": "Avertissement réseau : importer ou gérer une liste de serveurs n'établit aucune connexion réseau sortante. Les adresses figurant dans votre filtre IP actif sont automatiquement signalées.",
+  "serverBlockedByFilter": "Bloqué par le filtre IP",
+  "serverDisabledBadge": "Désactivé",
+  "historyIntegrityErrors": "Erreurs d'intégrité détectées",
+  "labStep2Desc": "Utilise le hash pour créer une tâche de téléchargement suivie dans le client.",
+  "labAddedToDownloads": "Ajouté aux téléchargements !",
+  "labAddToDownloads": "Ajouter aux téléchargements",
+  "labStep4Desc": "Ordonne au client de se connecter à la source 127.0.0.1 pour transférer les blocs.",
+  "labDlDone": "Téléchargement terminé et vérifié ({size})",
+  "labDlTransferring": "Transfert : {received} / {total} ({speed})",
+  "labDlReady": "État : {state} — prêt à se connecter au pair loopback.",
+  "labAlreadyCompleted": "Déjà terminé",
+  "labConnectToSource": "Connecter à la source",
+  "labStep1Desc": "Crée un fichier déterministe dans <workdir>/fixtures/ et calcule son hash eD2K.",
+  "labGenerating": "Génération...",
+  "labGenerateFixture": "Générer la fixture",
+  "labStep3Desc": "Lance un pair eD2K local hébergeant les fixtures de test.",
+  "labStopPeer": "Arrêter le pair loopback",
+  "labStartPeer": "Démarrer le pair loopback",
+  "labPeerActive": "Actif sur {addr} (sert {count} fichier(s))",
+  "labPeerOffline": "Pair hors ligne",
+  "labStep5Desc": "Purge les fichiers générés dans <workdir>/fixtures et les partiels dans <workdir>/temp. Les téléchargements terminés dans downloads/ sont préservés.",
+  "labCleanupSafe": "Sans risque en mode portable.",
+  "labCleanupRestricted": "Le nettoyage est restreint en mode installé pour protéger les fichiers utilisateur.",
+  "labErrCreateFixture": "Échec de la création de la fixture : {error}",
+  "labErrAddDownload": "Échec de l'ajout du téléchargement : {error}",
+  "labErrPeerOp": "Échec de l'opération sur le pair : {error}",
+  "labErrConnectDownload": "Échec de la connexion du téléchargement : {error}",
+  "labErrCleanup": "Échec du nettoyage : {error}",
+  "notAvailable": "Non disponible",
+  "copyFullPath": "Copier le chemin complet",
+  "copiedPathInternal": "Chemin des données internes copié",
+  "copyDownloadsPath": "Copier le chemin du dossier de téléchargements",
+  "copiedDownloadsPath": "Chemin des téléchargements copié",
+  "copyDaemonLogPath": "Copier le chemin du journal du daemon",
+  "copiedDaemonLogPath": "Chemin du journal du daemon copié",
+  "diagNetworkProfile": "Profil réseau : {profile}",
+  "msgDownloadAdded": "Fichier \"{name}\" ajouté aux téléchargements",
+  "msgDownloadDuplicate": "Ce fichier est déjà dans la liste des téléchargements (\"{name}\", statut : {status})",
+  "msgImportedFile": "\"{name}\" importé ({verified}/{parts} parts vérifiées)",
+  "msgErrImportPartMet": "Échec de l'import .part.met : {error}",
+  "msgErrPause": "Échec de la pause : {error}",
+  "msgErrResume": "Échec de la reprise : {error}",
+  "msgErrRename": "Échec du renommage : {error}",
+  "msgErrRemove": "Échec de la suppression : {error}",
+  "msgErrFetchDetails": "Échec de la récupération des détails : {error}",
+  "msgDestinationChanged": "Destination changée : {dir}",
+  "msgErrChangeDestination": "Échec du changement de destination : {error}",
+  "msgRetryLoopback": "Nouvelle tentative loopback pour \"{name}\"",
+  "msgErrRetryConn": "Échec de la nouvelle tentative : {error}",
+  "msgErrOpenFile": "Impossible d'ouvrir le fichier terminé : {error}",
+  "msgDownloadCompleted": "Téléchargement terminé : {name}",
+  "msgDownloadFailed": "Échec du téléchargement : {name}",
+  "msgCategoryCreated": "Catégorie \"{name}\" créée",
+  "msgErrCategoryCreate": "Échec de la création de la catégorie : {error}",
+  "msgCategoryUpdated": "Catégorie \"{name}\" mise à jour",
+  "msgErrCategoryUpdate": "Échec de la mise à jour de la catégorie : {error}",
+  "msgCategoryDeleted": "Catégorie \"{name}\" supprimée",
+  "msgErrCategoryDelete": "Échec de la suppression de la catégorie : {error}",
+  "msgErrCategoryReorder": "Échec du réordonnancement des catégories : {error}",
+  "msgAssignedToCategory": "Assigné à la catégorie \"{name}\"",
+  "categoryFallback": "Catégorie",
+  "msgProfileSwitched": "Profil réseau basculé : {profile}",
+  "msgErrProfileSwitch": "Échec du changement de profil réseau : {error}",
+  "msgKillSwitchOn": "Kill switch activé : toutes les connexions réseau ont été coupées",
+  "msgErrKillSwitch": "Échec du kill switch : {error}",
+  "msgNetworkReactivated": "Réseau réactivé",
+  "msgErrNetworkReactivate": "Échec de la réactivation du réseau : {error}",
+  "msgBudgetsUpdated": "Budgets de ressources mis à jour",
+  "msgErrBudgets": "Échec de la mise à jour des budgets de ressources : {error}",
+  "msgIpFilterImported": "Filtre IP importé : {count} plages",
+  "msgErrIpFilterImport": "Échec de l'import du filtre IP : {error}",
+  "msgIpFilterEnabled": "Filtre IP activé",
+  "msgIpFilterDisabled": "Filtre IP désactivé",
+  "msgErrIpFilterToggle": "Échec du basculement du filtre IP : {error}",
+  "msgIpFilterCleared": "Filtre IP vidé",
+  "msgErrIpFilterClear": "Échec de la purge du filtre IP : {error}",
+  "msgRateLimitsUpdated": "Limites de débit mises à jour",
+  "msgErrRateLimits": "Échec de la mise à jour des limites de débit : {error}",
+  "msgErrLoadSources": "Échec du chargement des sources : {error}",
+  "msgSourceAdded": "Source {address} ajoutée",
+  "msgErrAddSource": "Échec de l'ajout de la source : {error}",
+  "msgConnInitiated": "Connexion à {address} initialisée",
+  "msgErrConnectSource": "Échec de la connexion à la source : {error}",
+  "msgPeerDisconnected": "Peer {address} déconnecté",
+  "msgSessionsDisconnected": "Session(s) peer déconnectée(s)",
+  "msgErrDisconnectPeer": "Échec de la déconnexion peer : {error}",
+  "msgPriorityChanged": "Priorité changée : {priority}",
+  "msgErrPriority": "Échec du changement de priorité : {error}",
+  "msgSrcLimitReset": "Limite de sources réinitialisée",
+  "msgSrcLimitSet": "Limite de sources : {max}",
+  "msgErrSrcLimit": "Échec du changement de limite : {error}",
+  "msgSourcesCleared": "Sources effacées",
+  "msgErrClearSources": "Échec de l'effacement des sources : {error}",
+  "msgErrKadContacts": "Échec de la récupération des contacts Kad : {error}",
+  "msgErrNodesDatInspect": "Échec de l'inspection de nodes.dat : {error}",
+  "msgKadContactsImported": "{count} contacts Kad importés dans la table K-buckets",
+  "msgErrNodesDatImport": "Échec de l'importation de nodes.dat",
+  "msgKadContactsCleared": "{count} contacts Kad effacés",
+  "msgErrKadClear": "Échec de l'effacement des contacts Kad : {error}",
+  "msgKadUdpStarted": "Socket UDP Kad démarré sur {addr}",
+  "msgErrKadUdpStart": "Échec du démarrage UDP Kad",
+  "msgKadUdpStopped": "Socket UDP Kad arrêté",
+  "msgErrKadUdpStop": "Échec de l'arrêt UDP Kad",
+  "msgKadPong": "Pong reçu de {addr} en {latency} ms",
+  "msgErrKadPing": "Échec du ping Kad ({addr}) : {error}",
+  "msgKadBootstrapOk": "Amorçage Kad réussi ({count} contacts reçus)",
+  "msgErrKadBootstrap": "Échec de l'amorçage Kad",
+  "msgKadBootstrapUrlOk": "Amorçage Kad depuis URL réussi ({count} nœuds importés)",
+  "msgErrKadBootstrapUrl": "Échec de l'amorçage Kad depuis URL",
+  "msgKadSearchFound": "Recherche Kad : {count} nœuds les plus proches trouvés",
+  "msgErrKadSearch": "Échec de la recherche Kad",
+  "msgKadSourcesFound": "Kad : {count} sources trouvées pour {hash}…",
+  "msgErrKadSources": "Échec de la recherche de sources Kad",
+  "msgKadPublished": "Kad : publié sur {count} nœuds pour {hash}…",
+  "msgErrKadPublish": "Échec de la publication Kad",
+  "msgSearchGlobalSent": "Recherche globale \"{term}\" envoyée{udp}",
+  "msgSearchSent": "Recherche \"{term}\" envoyée au serveur{udp}",
+  "msgSearchNoResponse": "Recherche \"{term}\" terminée sans réponse du serveur",
+  "msgErrSearch": "Échec de la recherche : {error}",
+  "msgKadSearchDone": "Recherche Kad \"{term}\" terminée ({count} résultat(s))",
+  "msgErrKadSearchRun": "Échec de la recherche Kad : {error}",
+  "msgSourceReqSent": "Demande de sources envoyée pour {hash}",
+  "msgErrSourceReq": "Échec de la demande de sources : {error}",
+  "msgErrListServers": "Échec de la liste des serveurs : {error}",
+  "msgErrInspectServerMet": "Échec de l'inspection du server.met : {error}",
+  "msgServersImported": "{imported} serveurs importés ({allowed} autorisés, {blocked} bloqués par le filtre IP)",
+  "msgErrImportServerMet": "Échec de l'import du server.met : {error}",
+  "msgServersUpdated": "Mise à jour réussie : {count} serveurs traités depuis l'URL",
+  "msgErrServersUpdate": "Échec de la mise à jour des serveurs depuis l'URL : {error}",
+  "msgErrToggleServer": "Échec du basculement du serveur : {error}",
+  "msgErrDeleteServer": "Échec de la suppression du serveur : {error}",
+  "msgServersCleared": "{count} serveurs effacés",
+  "msgErrClearServers": "Échec de l'effacement des serveurs : {error}",
+  "msgConnectingToServer": "Connexion au serveur {name}...",
+  "msgErrConnectServer": "Connexion impossible : {error}",
+  "msgDisconnectedFromServer": "Déconnecté du serveur eD2K",
+  "msgErrDisconnectServer": "Erreur de déconnexion : {error}",
+  "msgSettingsUpdated": "Paramètres mis à jour",
+  "msgErrSettingsUpdate": "Échec de la mise à jour des paramètres : {error}",
+  "msgDownloadDirUpdated": "Dossier de téléchargement par défaut mis à jour",
+  "msgErrDownloadDir": "Échec de la définition du dossier de téléchargement : {error}",
+  "msgDownloadDirReset": "Dossier de téléchargement réinitialisé (défaut portable)",
+  "msgErrDownloadDirReset": "Échec de la réinitialisation du dossier de téléchargement : {error}",
+  "msgErrFetchHistory": "Échec du chargement de l'historique : {error}",
+  "msgHistoryCleared": "{count} enregistrement(s) d'historique effacé(s)",
+  "msgErrClearHistory": "Échec de l'effacement de l'historique : {error}",
+  "msgErrExportHistory": "Échec de l'export de l'historique : {error}",
+  "msgRetentionUnlimited": "Rétention de l'historique illimitée",
+  "msgRetentionDays": "Rétention de l'historique : {days} jours",
+  "msgErrRetention": "Échec de la mise à jour de la rétention : {error}",
+  "msgBytesInjected": "{count} octets injectés à l'offset {offset}",
+  "msgErrInject": "Échec de l'injection : {error}",
+  "msgFixtureCreated": "Fixture {name} créée",
+  "msgPeerStarted": "Pair loopback démarré sur {addr}",
+  "msgPeerStopped": "Pair de test loopback arrêté",
+  "msgConnectedToPeer": "Téléchargement connecté à {addr}",
+  "msgCatSetError": "Échec de l'assignation de la catégorie : {e}",
+  "msgSourcesFound": "{n} source(s) trouvée(s) pour {hash}",
+  "kadTimeJustNow": "À l'instant",
+  "labCreateFixtureError": "Échec de la création de la fixture : {e}",
+  "labAddDownloadError": "Échec de l'ajout du téléchargement : {e}",
+  "labPeerError": "Échec de l'opération sur le pair : {e}",
+  "labConnectError": "Échec de la connexion du téléchargement : {e}",
+  "labCleanupError": "Échec du nettoyage : {e}",
+  "labDownloadComplete": "Téléchargement terminé et vérifié ({size})",
+  "labTransferring": "Transfert : {recv} / {total} ({rate})",
+  "labReadyToConnect": "État : {state} — prêt à se connecter au pair loopback.",
+  "labCleanupPortableOk": "Sûr à exécuter en mode portable.",
+  "labCleanupPortableNo": "Le nettoyage est restreint en mode installé pour protéger les fichiers utilisateur.",
+  "histFilesCount": "{n} fichiers",
+  "histSessionCount": "{n} cette session ({size})",
+  "histResumesCount": "{n} reprises",
+  "histHashMismatchCount": "{n} erreur(s) de hash",
+  "histHashVerified": "100 % hash vérifié",
+  "histIntegrityErrors": "Erreurs d'intégrité détectées",
+  "peerReceivedBytes": "Reçus : {bytes}",
+  "searchUdpFailed": ", {n} échec(s)",
+  "kadIdGenerated": "(Généré à l'initialisation)",
+  "ed2kErrPrefix": "Le lien doit commencer par \"ed2k://|file|\"",
+  "ed2kErrIncomplete": "Format de lien eD2K incomplet",
+  "ed2kErrInvalid": "Nom de fichier, taille ou hash hexadécimal de 32 caractères invalide",
+  "partsCount": "{n} partie(s)",
+  "sourcesLoopback": "{n} loopback",
+  "diagLoopbackTitle": "Profil réseau : LocalLab (loopback)",
+  "diagLoopbackSubtitle": "Trafic confiné à 127.0.0.1 — aucune donnée ne quitte la machine.",
+  "diagPublicSubtitle": "Connexions WAN autorisées — protection anti-SSRF active."
+}

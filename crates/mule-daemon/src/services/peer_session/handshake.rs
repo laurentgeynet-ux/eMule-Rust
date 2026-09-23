@@ -8,7 +8,8 @@ use tokio::sync::{broadcast, Mutex};
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kDecoder, Ed2kEncoder, Ed2kHello, OP_HELLO, OP_HELLO_ANSWER, PR_ED2K,
+    Ed2kDecoder, Ed2kEncoder, Ed2kHello, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_HELLO,
+    OP_HELLO_ANSWER, PR_ED2K, PR_EMULE,
 };
 use mule_protocol::framing::PacketCodec;
 
@@ -23,6 +24,10 @@ pub struct HandshakeResult {
     pub stream: ObfuscatedStream<TcpStream>,
     pub peer_supports_sx: bool,
     pub peer_supports_sx2: bool,
+    /// Peer's `m_bySourceExchange1Ver` — SX1 version announced in
+    /// CT_EMULE_MISCOPTIONS1 bits 12-15 or via the `ET_SOURCEEXCHANGE` tag
+    /// of `OP_EMULEINFO` (0 = no usable SX1).
+    pub peer_sx1_version: u8,
     pub peer_supports_aich: bool,
     /// Peer's `m_bySupportSecIdent` (0 = none, bit0 = v1, bit1 = v2).
     pub peer_sec_ident: u8,
@@ -30,6 +35,11 @@ pub struct HandshakeResult {
     pub peer_udp_port: Option<u16>,
     /// Peer's client UDP protocol version (`m_byUDPVer`, MiscOptions1 bits 24-27).
     pub peer_udp_version: u8,
+    /// Peer's extended requests version (`m_byExtendedRequestsVer`,
+    /// MiscOptions1 bits 8-11). 2 = accepts `OP_REQUESTPARTS_I64`.
+    pub peer_ext_req: u8,
+    /// Peer's announced Kad version (MiscOptions2 bits 0-4).
+    pub peer_kad_version: u8,
     pub connected_ms: i64,
 }
 
@@ -90,10 +100,8 @@ pub(crate) async fn perform_peer_handshake(
             ));
         }
         true
-    } else if obfuscation_enabled && peer_supports_crypt && target_user_hash.is_some() {
-        true
     } else {
-        false
+        obfuscation_enabled && peer_supports_crypt && target_user_hash.is_some()
     };
 
     let mut stream = if use_obfuscation {
@@ -187,8 +195,9 @@ pub(crate) async fn perform_peer_handshake(
         value: mule_protocol::ed2k::tags::TagValue::UInt32(udp_ports),
     });
 
-    // EmuleVersion
-    let emule_ver: u32 = (0 << 17) | (50 << 10) | (0 << 7);
+    // EmuleVersion — announced as eMule 0.70a: high byte = software ID 0
+    // (SO_EMULE-compatible), low 24 bits = (mjr<<17)|(min<<10)|(upd<<7).
+    let emule_ver: u32 = 70 << 10;
     tags.push(mule_protocol::ed2k::tags::Ed2kTag {
         name: mule_protocol::ed2k::tags::TagName::Id(
             mule_protocol::ed2k::tags::TAG_SPECIAL_CT_EMULE_VERSION,
@@ -206,9 +215,8 @@ pub(crate) async fn perform_peer_handshake(
         | (1 << 20)
         | ((sec_ident_cap as u32 & 0x0F) << 16)
         | (4 << 12)
-        | (0 << 8)
+        | (2 << 8)
         | (1 << 4)
-        | (0 << 1)
         | 1;
     tags.push(mule_protocol::ed2k::tags::Ed2kTag {
         name: mule_protocol::ed2k::tags::TagName::Id(
@@ -219,9 +227,11 @@ pub(crate) async fn perform_peer_handshake(
 
     // MiscOptions2 — eMule layout: FileIdent<<13 | DirectUDPCallback<<12 |
     // Captcha<<11 | SrcExch2<<10 | CryptReq<<9 | CryptWants<<8 | CryptSup<<7 |
-    // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0. KadVersion = 6
-    // (KADEMLIA_VERSION6_49aBETA): the daemon implements OP_FWCHECKUDPREQ /
-    // KADEMLIA2_FIREWALLUDP and protocol obfuscation.
+    // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0. KadVersion = 8
+    // (KADEMLIA_VERSION8_49b): the daemon implements OP_FWCHECKUDPREQ /
+    // KADEMLIA2_FIREWALLUDP, protocol obfuscation, TAG_KADMISCOPTIONS,
+    // KADEMLIA2_HELLO_RES_ACK and the Kad >= 7 TCP firewall-check flow
+    // (FIREWALLED2_REQ / OP_KAD_FWTCPCHECK_ACK).
     let u_supports_crypt = obfuscation_enabled as u32;
     let u_requests_crypt = obfuscation_enabled as u32;
     let u_requires_crypt = obfuscation_required as u32;
@@ -231,7 +241,7 @@ pub(crate) async fn perform_peer_handshake(
         | (u_supports_crypt << 7)
         | (1 << 5)
         | (1 << 4)
-        | 6;
+        | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
     tags.push(mule_protocol::ed2k::tags::Ed2kTag {
         name: mule_protocol::ed2k::tags::TagName::Id(
             mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS2,
@@ -275,6 +285,33 @@ pub(crate) async fn perform_peer_handshake(
         ));
     }
 
+    // 2b. Send OP_EMULEINFO right after OP_HELLO (eMule SendHelloTypePacket
+    // emits both in sequence). This is where eMule/aMule negotiate extended
+    // capabilities: compression, UDP endpoint, source exchange, comments,
+    // extended requests, feature flags.
+    let emule_info = build_emule_info(kad_port, sec_ident_cap);
+    match encoder.encode_emule_info(&emule_info) {
+        Ok(info_pkt) => {
+            let mut info_wire = Vec::with_capacity(6 + info_pkt.payload.len());
+            info_wire.push(info_pkt.protocol);
+            info_wire.extend_from_slice(&(info_pkt.frame_len() as u32).to_le_bytes());
+            info_wire.push(info_pkt.opcode);
+            info_wire.extend_from_slice(&info_pkt.payload);
+            if let Err(e) = stream.write_all(&info_wire).await {
+                return Err(PeerError::new(
+                    PeerFailureReason::ConnectRefused,
+                    format!("Failed to send OP_EMULEINFO: {e}"),
+                ));
+            }
+        }
+        Err(e) => {
+            return Err(PeerError::new(
+                PeerFailureReason::InvalidHandshake,
+                format!("Failed to encode OP_EMULEINFO: {e}"),
+            ));
+        }
+    }
+
     // 3. Receive OP_HELLO_ANSWER with Handshake Timeout
     let decoder = Ed2kDecoder::default();
     let codec = PacketCodec::new();
@@ -283,10 +320,14 @@ pub(crate) async fn perform_peer_handshake(
     let mut received_hello_answer = false;
     let mut peer_supports_sx = false;
     let mut peer_supports_sx2 = false;
+    let mut peer_sx1_version: u8 = 0;
     let mut peer_supports_aich = false;
     let mut peer_sec_ident: u8 = 0;
     let mut peer_udp_port = None;
     let mut peer_udp_version: u8 = 0;
+    let mut peer_ext_req: u8 = 0;
+    let mut peer_kad_version: u8 = 0;
+    let mut peer_supports_compression = false;
 
     let handshake_deadline = tokio::time::Instant::now() + timeouts.handshake_timeout;
     while !received_hello_answer {
@@ -327,16 +368,136 @@ pub(crate) async fn perform_peer_handshake(
                                 packet.opcode,
                                 packet.payload.len()
                             );
+                            if packet.protocol == PR_EMULE
+                                && (packet.opcode == OP_EMULE_INFO
+                                    || packet.opcode == OP_EMULE_INFO_ANSWER)
+                            {
+                                match decoder.decode_emule_info(
+                                    packet.protocol,
+                                    packet.opcode,
+                                    &packet.payload,
+                                    0,
+                                ) {
+                                    Ok(info) => {
+                                        let tag_desc: Vec<String> = info
+                                            .tags
+                                            .iter()
+                                            .map(|t| t.name.display_name())
+                                            .collect();
+                                        tracing::info!(
+                                            "Peer {target_addr}: {} received (client_ver=0x{:02X}, proto_ver=0x{:02X}, tags=[{}], unknown_tags={})",
+                                            if packet.opcode == OP_EMULE_INFO {
+                                                "OP_EMULEINFO"
+                                            } else {
+                                                "OP_EMULEINFO_ANSWER"
+                                            },
+                                            info.client_version,
+                                            info.protocol_version,
+                                            tag_desc.join(","),
+                                            info.unknown_tags.len()
+                                        );
+                                        if info.has_source_exchange_capability() {
+                                            peer_supports_sx = true;
+                                            peer_sx1_version = peer_sx1_version.max(
+                                                super::source_exchange::emule_info_sx_version(
+                                                    &info,
+                                                )
+                                                .max(1),
+                                            );
+                                        }
+                                        if info.has_compression_capability() {
+                                            peer_supports_compression = true;
+                                        }
+                                        if let Some(et) = info
+                                            .tags
+                                            .iter()
+                                            .find(|t| matches!(
+                                                t.name,
+                                                mule_protocol::ed2k::tags::TagName::Id(
+                                                    mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST
+                                                )
+                                            ))
+                                        {
+                                            if let mule_protocol::ed2k::tags::TagValue::UInt32(v) =
+                                                et.value
+                                            {
+                                                peer_ext_req = peer_ext_req.max(v as u8);
+                                            }
+                                        }
+                                        // eMule answers OP_EMULEINFO with
+                                        // OP_EMULEINFOANSWER (SendMuleInfoPacket(true)).
+                                        if packet.opcode == OP_EMULE_INFO {
+                                            let answer = build_emule_info(kad_port, sec_ident_cap);
+                                            if let Ok(ans_pkt) =
+                                                encoder.encode_emule_info_answer(&answer)
+                                            {
+                                                let mut ans_wire =
+                                                    Vec::with_capacity(6 + ans_pkt.payload.len());
+                                                ans_wire.push(ans_pkt.protocol);
+                                                ans_wire.extend_from_slice(
+                                                    &(ans_pkt.frame_len() as u32).to_le_bytes(),
+                                                );
+                                                ans_wire.push(ans_pkt.opcode);
+                                                ans_wire.extend_from_slice(&ans_pkt.payload);
+                                                let _ = stream.write_all(&ans_wire).await;
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::debug!(
+                                            "Peer {target_addr}: malformed OP_EMULEINFO packet ignored: {e}"
+                                        );
+                                    }
+                                }
+                                continue;
+                            }
                             if packet.protocol == PR_ED2K && (packet.opcode == OP_HELLO || packet.opcode == OP_HELLO_ANSWER) {
                                 match decoder.decode_hello_answer(packet.protocol, packet.opcode, &packet.payload, 0) {
                                     Ok(ans) => {
                                         let peer_info = mule_protocol::ed2k::Ed2kPeerInfo::from_hello_answer(&ans);
-                                        peer_supports_sx = peer_info.supports_source_exchange();
-                                        peer_supports_sx2 = peer_info.supports_source_exchange2();
+                                        peer_supports_sx |= peer_info.supports_source_exchange();
+                                        peer_supports_sx2 |= peer_info.supports_source_exchange2();
+                                        peer_sx1_version = peer_sx1_version
+                                            .max(peer_info.source_exchange1_version());
                                         peer_supports_aich = peer_info.supports_aich();
                                         peer_sec_ident = peer_info.secure_ident_support();
                                         peer_udp_port = peer_info.emule_udp_port;
                                         peer_udp_version = peer_info.udp_version();
+                                        peer_ext_req = peer_info.extended_requests_version();
+                                        peer_kad_version = peer_info.kad_version();
+                                        peer_supports_compression |=
+                                            peer_info.has_compression_capability();
+
+                                        let unknown_tag_ids: Vec<String> = peer_info
+                                            .unknown_tags
+                                            .iter()
+                                            .map(|t| format!("{t:?}"))
+                                            .collect();
+                                        tracing::info!(
+                                            "Peer {target_addr} handshake: software={} version={:?} emule_version={:?} client_id={} misc1={:?} misc2={:?} \
+                                             caps: sx={} sx2={} aich={} sec_ident={} crypt(sup/req/reqd)={}/{}/{} udp_ver={} udp_port={:?} ext_req={} kad_ver={} large_files={} compression={} \
+                                             unknown_tags=[{}]",
+                                            peer_info.software_name(),
+                                            peer_info.version,
+                                            peer_info.emule_version_string(),
+                                            peer_info.client_id,
+                                            peer_info.misc_options1.map(|m| format!("0x{m:08X}")),
+                                            peer_info.misc_options2.map(|m| format!("0x{m:08X}")),
+                                            peer_supports_sx,
+                                            peer_supports_sx2,
+                                            peer_supports_aich,
+                                            peer_sec_ident,
+                                            peer_info.supports_crypt_layer(),
+                                            peer_info.requests_crypt_layer(),
+                                            peer_info.requires_crypt_layer(),
+                                            peer_udp_version,
+                                            peer_udp_port,
+                                            peer_ext_req,
+                                            peer_kad_version,
+                                            peer_info.supports_large_files(),
+                                            peer_supports_compression,
+                                            unknown_tag_ids.join(",")
+                                        );
 
                                         let mut peer_opts = 0u8;
                                         if peer_info.supports_crypt_layer() { peer_opts |= 0x01; }
@@ -344,6 +505,13 @@ pub(crate) async fn perform_peer_handshake(
                                         if peer_info.requires_crypt_layer() { peer_opts |= 0x04; }
 
                                         let hex_user_hash = hex::encode(ans.user_hash);
+                                        let software = format!(
+                                            "{} {}",
+                                            peer_info.software_name(),
+                                            peer_info
+                                                .emule_version_string()
+                                                .unwrap_or_default()
+                                        );
                                         let updated_src = mule_core::model::PeerSource {
                                             file_hash: file_hash_str.to_string(),
                                             address: address_str.to_string(),
@@ -362,6 +530,8 @@ pub(crate) async fn perform_peer_handshake(
                                             user_hash: Some(hex_user_hash),
                                             crypt_options: peer_opts,
                                             buddy_id: None,
+                                            software: Some(software.trim().to_string()),
+                                            availability: None,
                                         };
                                         let _ = downloads.lock().await.upsert_peer_sources(file_hash_str, &[updated_src]);
 
@@ -370,11 +540,12 @@ pub(crate) async fn perform_peer_handshake(
                                                 if let mule_protocol::ed2k::tags::TagValue::UInt32(ports) = tag.value {
                                                     let peer_kad_port = (ports >> 16) as u16;
                                                     if peer_kad_port > 0 {
+                                                        let low_id = ans.client_id < 16_777_216;
                                                         if let Some(ref kad) = kad_service {
                                                             let k_clone = Arc::clone(kad);
                                                             if let IpAddr::V4(ip4) = target_addr.ip() {
                                                                 tokio::spawn(async move {
-                                                                    k_clone.maybe_bootstrap_from_peer(ip4, peer_kad_port).await;
+                                                                    k_clone.maybe_bootstrap_from_peer(ip4, peer_kad_port, low_id, peer_kad_version).await;
                                                                 });
                                                             }
                                                         }
@@ -402,10 +573,53 @@ pub(crate) async fn perform_peer_handshake(
         stream,
         peer_supports_sx,
         peer_supports_sx2,
+        peer_sx1_version,
         peer_supports_aich,
         peer_sec_ident,
         peer_udp_port,
         peer_udp_version,
+        peer_ext_req,
+        peer_kad_version,
         connected_ms,
     })
+}
+
+/// Builds our `OP_EMULEINFO`/`OP_EMULEINFO_ANSWER` payload — the eMule
+/// extended-capability announcement (7 tags, same set as eMule 0.72a
+/// `SendMuleInfoPacket`): compression, UDP version, UDP port, source
+/// exchange, comments, extended requests, feature flags.
+pub(crate) fn build_emule_info(
+    udp_port: u16,
+    sec_ident_cap: u8,
+) -> mule_protocol::ed2k::Ed2kEmuleInfo {
+    use mule_protocol::ed2k::tags::{
+        Ed2kTag, TagName, TagValue, TAG_SPECIAL_EMULE_EXT_COMMENTS,
+        TAG_SPECIAL_EMULE_EXT_COMPRESSION, TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST,
+        TAG_SPECIAL_EMULE_EXT_FEATURES, TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE,
+        TAG_SPECIAL_EMULE_EXT_UDPPORT, TAG_SPECIAL_EMULE_EXT_UDPVER,
+    };
+
+    let t = |id: u8, v: u32| Ed2kTag {
+        name: TagName::Id(id),
+        value: TagValue::UInt32(v),
+    };
+
+    mule_protocol::ed2k::Ed2kEmuleInfo {
+        client_version: 70, // version short matching our announced 0.70a
+        protocol_version: 0x01,
+        tags: vec![
+            t(TAG_SPECIAL_EMULE_EXT_COMPRESSION, 1),
+            t(TAG_SPECIAL_EMULE_EXT_UDPVER, 4),
+            t(TAG_SPECIAL_EMULE_EXT_UDPPORT, udp_port as u32),
+            t(TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE, 4),
+            t(TAG_SPECIAL_EMULE_EXT_COMMENTS, 1),
+            t(TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST, 2),
+            // ET_FEATURES: bits 0-1 = secure ident level (eMule m_uEmuleFeatures).
+            t(
+                TAG_SPECIAL_EMULE_EXT_FEATURES,
+                (sec_ident_cap & 0x03) as u32,
+            ),
+        ],
+        unknown_tags: vec![],
+    }
 }

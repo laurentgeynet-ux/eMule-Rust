@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::error::CoreError;
 use crate::kad::{KadContact, KadIndexedNote, KadIndexedSource, KadKeywordEntry};
 use crate::model::{
-    Download, DownloadCategory, DownloadStatus, Ed2kServer, HistoryEntry, HistoryFilter,
+    Download, DownloadCategory, DownloadStatus, Ed2kServer, Friend, HistoryEntry, HistoryFilter,
     HistoryStats, PeerCredit, PeerSource, PeerSourceStatus, SharedFile,
 };
 use crate::persistence::traits::{
@@ -16,6 +16,7 @@ use crate::ranges::RangeSet;
 pub mod categories;
 pub mod credits;
 pub mod downloads;
+pub mod friends;
 pub mod history;
 pub mod kad;
 pub mod schema;
@@ -174,6 +175,25 @@ impl Database {
         downloads::update_status(&mut self.conn, download_id, status)
     }
 
+    /// Persists the per-download priority ("low" | "normal" | "high").
+    pub fn update_priority(
+        &mut self,
+        download_id: &Uuid,
+        priority: &str,
+    ) -> Result<(), CoreError> {
+        downloads::update_priority(&mut self.conn, download_id, priority)
+    }
+
+    /// Persists the per-file source limit (eMule FT_MAXSOURCES).
+    /// `None` restores the global default limit.
+    pub fn update_max_sources(
+        &mut self,
+        download_id: &Uuid,
+        max_sources: Option<u32>,
+    ) -> Result<(), CoreError> {
+        downloads::update_max_sources(&mut self.conn, download_id, max_sources)
+    }
+
     /// Retrieves all persisted downloads from the database.
     pub fn get_all_downloads(&self) -> Result<Vec<Download>, CoreError> {
         downloads::get_all_downloads(&self.conn)
@@ -191,6 +211,22 @@ impl Database {
         target_path: &Path,
     ) -> Result<(), CoreError> {
         downloads::update_target_path(&mut self.conn, download_id, target_path)
+    }
+
+    /// Renames a download: updates `display_name` and the derived
+    /// `target_path` (finalization writes under the new name).
+    pub fn update_download_name_and_target(
+        &mut self,
+        download_id: &Uuid,
+        display_name: &str,
+        target_path: &Path,
+    ) -> Result<(), CoreError> {
+        downloads::update_download_name_and_target(
+            &mut self.conn,
+            download_id,
+            display_name,
+            target_path,
+        )
     }
 
     // ── Download History ────────────────────────────────────────────────────
@@ -323,6 +359,23 @@ impl Database {
         )
     }
 
+    /// Updates the learned software name and/or availability bitmask of a peer source.
+    pub fn update_peer_source_details(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        software: Option<&str>,
+        availability: Option<&[u8]>,
+    ) -> Result<bool, CoreError> {
+        sources::update_peer_source_details(
+            &mut self.conn,
+            file_hash,
+            address,
+            software,
+            availability,
+        )
+    }
+
     /// Resets the cooldown and fail count for a peer source.
     pub fn reset_peer_source_cooldown(
         &mut self,
@@ -377,6 +430,40 @@ impl Database {
         shares::set_shared_file_enabled(&mut self.conn, file_hash, enabled)
     }
 
+    /// Ajoute `delta` octets au total uploadé persisté d'un fichier partagé.
+    pub fn add_share_uploaded_bytes(
+        &mut self,
+        file_hash: &str,
+        delta: u64,
+    ) -> Result<(), CoreError> {
+        shares::add_share_uploaded_bytes(&mut self.conn, file_hash, delta)
+    }
+
+    /// Totaux uploadés persistés par hash de fichier (clés en minuscules).
+    pub fn list_share_uploaded_bytes(
+        &self,
+    ) -> Result<std::collections::HashMap<String, u64>, CoreError> {
+        shares::list_share_uploaded_bytes(&self.conn)
+    }
+
+    /// Associe (ou retire, `None`) une catégorie à un partage persisté.
+    pub fn set_shared_file_category(
+        &mut self,
+        file_hash: &str,
+        category_id: Option<&str>,
+    ) -> Result<bool, CoreError> {
+        shares::set_shared_file_category(&mut self.conn, file_hash, category_id)
+    }
+
+    /// Sets the upload priority (`up_priority`) of a shared file.
+    pub fn set_shared_up_priority(
+        &mut self,
+        file_hash: &str,
+        up_priority: &str,
+    ) -> Result<bool, CoreError> {
+        shares::set_shared_up_priority(&mut self.conn, file_hash, up_priority)
+    }
+
     /// Caches the computed AICH root hash of a shared file.
     pub fn set_shared_aich_root(
         &mut self,
@@ -421,6 +508,23 @@ impl Database {
     /// Lists top peer credits.
     pub fn list_peer_credits(&self, limit: usize) -> Result<Vec<PeerCredit>, CoreError> {
         credits::list_peer_credits(&self.conn, limit)
+    }
+
+    // ── Friends ─────────────────────────────────────────────────────────────
+
+    /// Adds or updates a friend (eMule `friends.met` equivalent).
+    pub fn add_friend(&mut self, user_hash: &str, name: &str) -> Result<(), CoreError> {
+        friends::add_friend(&mut self.conn, user_hash, name)
+    }
+
+    /// Removes a friend by user hash.
+    pub fn remove_friend(&mut self, user_hash: &str) -> Result<(), CoreError> {
+        friends::remove_friend(&mut self.conn, user_hash)
+    }
+
+    /// Lists all friends.
+    pub fn list_friends(&self) -> Result<Vec<Friend>, CoreError> {
+        friends::list_friends(&self.conn)
     }
 
     // ── Kad Contacts & Routing ──────────────────────────────────────────────

@@ -27,6 +27,7 @@ pub const FT_TRANSFERRED: u8 = 0x08;
 pub const FT_GAPSTART: u8 = 0x09;
 pub const FT_GAPEND: u8 = 0x0A;
 pub const FT_PARTFILENAME: u8 = 0x12;
+pub const FT_MAXSOURCES: u8 = 0x13;
 pub const FT_STATUS: u8 = 0x14;
 pub const FT_SOURCES: u8 = 0x15;
 pub const FT_PERMISSIONS: u8 = 0x16;

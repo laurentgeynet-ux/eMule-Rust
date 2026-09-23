@@ -96,6 +96,24 @@ pub const KADEMLIA_FINDBUDDY_REQ: u8 = 0x51;
 pub const KADEMLIA_CALLBACK_REQ: u8 = 0x52;
 /// Kad buddy search response (0x5A): [buddy_id:16][client_id:16][tcp_port:2][connect_opts:1].
 pub const KADEMLIA_FINDBUDDY_RES: u8 = 0x5A;
+/// Kad TCP firewall check request (0x50): `[tcp_port u16]` (legacy, pre-Kad7).
+pub const KADEMLIA_FIREWALLED_REQ: u8 = 0x50;
+/// Kad TCP firewall check request v2 (0x53, eMule `KADEMLIA_FIREWALLED2_REQ`):
+/// `[tcp_port u16][user_hash 16][connect_options u8]` — 19 bytes.
+/// Required for Kad version >= 7.
+pub const KADEMLIA_FIREWALLED2_REQ: u8 = 0x53;
+/// Kad firewall check response (0x58): `[ip u32]` — echoes the requester's IP.
+pub const KADEMLIA_FIREWALLED_RES: u8 = 0x58;
+/// Kad firewall check ack over UDP (0x59, deprecated by `OP_KAD_FWTCPCHECK_ACK`
+/// on TCP since Kad version 7).
+pub const KADEMLIA_FIREWALLED_ACK_RES: u8 = 0x59;
+
+/// eMule `TAG_KADMISCOPTIONS` (`0xF2`, uint8) carried in KADEMLIA2_HELLO_*:
+/// bit 0 = UDP firewalled, bit 1 = TCP firewalled, bit 2 = requesting
+/// `KADEMLIA2_HELLO_RES_ACK`. Required for Kad version >= 8.
+pub const TAG_KADMISCOPTIONS: u8 = 0xF2;
+/// eMule `TAG_SOURCEUPORT` (`0xFC`, uint16) — advertised Kad UDP port.
+pub const TAG_SOURCEUPORT: u8 = 0xFC;
 
 /// Maximum allowable search keywords returned in a single packet.
 pub const MAX_KAD_SEARCH_KEYWORDS: usize = 50;

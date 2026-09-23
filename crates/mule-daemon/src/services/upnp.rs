@@ -51,6 +51,14 @@ impl UpnpService {
     }
 
     /// Enables or disables UPnP.
+    /// Updates the mapped TCP/UDP ports (eMule client ports changed at
+    /// runtime) so refreshes/remaps use the current values.
+    pub async fn set_ports(&self, tcp_port: u16, udp_port: u16) {
+        let mut snap = self.snapshot.write().await;
+        snap.tcp_port = tcp_port;
+        snap.udp_port = udp_port;
+    }
+
     pub async fn set_enabled(&self, enabled: bool) {
         let mut snap = self.snapshot.write().await;
         snap.enabled = enabled;

@@ -86,6 +86,8 @@ pub async fn handle_sources_add_manual(
         user_hash: user_hash_param,
         crypt_options: crypt_options_param,
         buddy_id: None,
+software: None,
+        availability: None,
     };
 
     state
@@ -152,6 +154,8 @@ pub async fn handle_sources_connect(
             last_error: Some("Blocked by local IP filter".to_string()),
             cooldown_until_unix_ms: None,
             user_hash: user_hash_param.clone(),
+software: None,
+            availability: None,
             crypt_options: crypt_options_param.unwrap_or(0),
             buddy_id: None,
         };
@@ -204,6 +208,8 @@ pub async fn handle_sources_connect(
             status: mule_core::model::PeerSourceStatus::Candidate,
             fail_count: 0,
             last_error: None,
+software: None,
+            availability: None,
             cooldown_until_unix_ms: None,
             user_hash: user_hash_param,
             crypt_options: crypt_options_param.unwrap_or(0),
@@ -227,7 +233,8 @@ pub async fn handle_sources_connect(
     };
 
     let peer_requires_crypt = (peer_crypt_options & 0x04) != 0;
-    if (state.config.obfuscation_required || peer_requires_crypt) && target_user_hash.is_none() {
+    let (obf_enabled, obf_required) = state.effective_obfuscation().await;
+    if (obf_required || peer_requires_crypt) && target_user_hash.is_none() {
         return Err(JsonRpcError::business(
             "Peer requires protocol obfuscation but its user hash is unknown",
         ));
@@ -241,7 +248,7 @@ pub async fn handle_sources_connect(
             JsonRpcError::business(format!("Connection rejected by network policy: {e}"))
         })?;
 
-    let client_port = state.config.ed2k_port;
+    let client_port = state.ed2k_port();
     let user_hash = state.identity.lock().await.user_hash();
 
     let (client_id, server_ip, server_port) = {
@@ -275,18 +282,19 @@ pub async fn handle_sources_connect(
             addr,
             permit,
             client_port,
-            "Emule-Sion".to_string(),
+            state.current_nickname().await,
             user_hash,
             std::sync::Arc::clone(&state.downloads),
             client_id,
             server_ip,
             server_port,
-            state.config.kad_port,
+            state.kad_port(),
             target_user_hash,
             peer_crypt_options,
-            state.config.obfuscation_enabled,
-            state.config.obfuscation_required,
+            obf_enabled,
+            obf_required,
             state.config.obfuscation_padding_max,
+            state.sx_env.clone(),
         )
         .await?;
 

@@ -168,6 +168,38 @@ pub(crate) struct SwarmInnerState {
     pub peer_udp: HashMap<String, (u16, u8)>,
 }
 
+impl SwarmInnerState {
+    /// Vérifie les quotas swarm (global + par fichier) et l'absence d'une
+    /// session déjà ouverte — partagé par `connect` et `accept_callback`.
+    pub(crate) fn check_session_slot(
+        &self,
+        file_hash: &str,
+        address: &str,
+    ) -> Result<(), crate::error::DaemonError> {
+        if self.sessions.len() >= self.max_global_peers {
+            return Err(crate::error::DaemonError::Business(
+                "Global peer connection limit reached".into(),
+            ));
+        }
+        let file_peers_count = self
+            .sessions
+            .values()
+            .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash))
+            .count();
+        if file_peers_count >= self.max_peers_per_download {
+            return Err(crate::error::DaemonError::Business(
+                "Maximum concurrent peer connections reached for this download".into(),
+            ));
+        }
+        if self.sessions.contains_key(address) {
+            return Err(crate::error::DaemonError::Business(
+                "Peer session is already running".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct PeerError {
     pub reason: PeerFailureReason,

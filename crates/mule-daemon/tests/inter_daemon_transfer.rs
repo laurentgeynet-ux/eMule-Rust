@@ -144,19 +144,30 @@ async fn test_inter_daemon_loopback_transfer_and_interruption_resumption() {
         .await
         .unwrap();
 
-    // Collect response and initial event
-    let resp_add = read.next().await.unwrap().unwrap();
-    let add_val: Value = serde_json::from_str(resp_add.to_text().unwrap()).unwrap();
+    // Collect response and initial event — le serveur multiplexe réponses et
+    // events broadcast (downloadAdded/downloadUpdated) via select!, sans ordre
+    // garanti : lire jusqu'à avoir les deux attendus.
+    let mut add_val: Option<Value> = None;
+    let mut evt_val: Option<Value> = None;
+    for _ in 0..16 {
+        if add_val.is_some() && evt_val.is_some() {
+            break;
+        }
+        let msg = read.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 3 {
+            add_val = Some(val);
+        } else if val["method"] == "event.downloadUpdated" {
+            evt_val = Some(val);
+        }
+    }
+    let add_val = add_val.expect("add response not received");
+    let evt_val = evt_val.expect("initial downloadUpdated event not received");
     let download_id = add_val["result"]["downloadId"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(add_val["result"]["status"], "queued");
-
-    // Read the event.downloadUpdated notification for Queued
-    let evt_msg = read.next().await.unwrap().unwrap();
-    let evt_val: Value = serde_json::from_str(evt_msg.to_text().unwrap()).unwrap();
-    assert_eq!(evt_val["method"], "event.downloadUpdated");
     assert_eq!(evt_val["params"]["download"]["status"], "queued");
 
     // 4. Attach Source Daemon via lab.addPeerSource
@@ -173,8 +184,16 @@ async fn test_inter_daemon_loopback_transfer_and_interruption_resumption() {
         .send(Message::Text(req_source.to_string().into()))
         .await
         .unwrap();
-    let resp_source = read.next().await.unwrap().unwrap();
-    let src_val: Value = serde_json::from_str(resp_source.to_text().unwrap()).unwrap();
+    let mut src_val: Option<Value> = None;
+    for _ in 0..16 {
+        let msg = read.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 4 {
+            src_val = Some(val);
+            break;
+        }
+    }
+    let src_val = src_val.expect("addPeerSource response not received");
     assert_eq!(src_val["result"]["started"], true);
 
     // 5. Monitor progress until ~50% (at least 4.5 MB), verifying transitions
@@ -261,8 +280,16 @@ async fn test_inter_daemon_loopback_transfer_and_interruption_resumption() {
         .send(Message::Text(req_list.to_string().into()))
         .await
         .unwrap();
-    let resp_list = read_2.next().await.unwrap().unwrap();
-    let list_val: Value = serde_json::from_str(resp_list.to_text().unwrap()).unwrap();
+    let mut list_val: Option<Value> = None;
+    for _ in 0..16 {
+        let msg = read_2.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 11 {
+            list_val = Some(val);
+            break;
+        }
+    }
+    let list_val = list_val.expect("downloads.list response not received");
     let dls = list_val["result"]["downloads"].as_array().unwrap();
     assert_eq!(dls.len(), 1, "Exactly one download restored from SQLite");
     let restored_dl = &dls[0];
@@ -300,7 +327,16 @@ async fn test_inter_daemon_loopback_transfer_and_interruption_resumption() {
         .send(Message::Text(req_resume.to_string().into()))
         .await
         .unwrap();
-    let _ = read_2.next().await.unwrap().unwrap();
+    let mut resume_got = false;
+    for _ in 0..16 {
+        let msg = read_2.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 13 {
+            resume_got = true;
+            break;
+        }
+    }
+    assert!(resume_got, "resume response not received");
 
     // 9. Collect events through Verifying and Completed
     let mut saw_verifying = false;

@@ -27,6 +27,13 @@ async fn setup_secure_ident_test_state() -> (AppState, tempfile::TempDir, String
 
     let file_hash_hex = "41d6cfe0d16ae931b73c59d7e0c089c1".to_string();
 
+    // Le partage doit pointer vers un fichier réel : le chemin upload ne
+    // répond jamais à une plage illisible sur disque (comportement eMule),
+    // donc un chemin fictif figerait indéfiniment les tests qui attendent
+    // OP_SENDINGPART. Taille = valeur déclarée dans le share.
+    let shared_path = dir.path().join("secure_shared_data.bin");
+    std::fs::write(&shared_path, vec![0x5Au8; 18874368]).unwrap();
+
     let mut authenticated = true;
     let share_req = make_req(
         1,
@@ -35,7 +42,7 @@ async fn setup_secure_ident_test_state() -> (AppState, tempfile::TempDir, String
             "fileHash": file_hash_hex,
             "fileName": "secure_shared_data.bin",
             "fileSize": 18874368,
-            "filePath": "C:\\Shared\\secure_shared_data.bin"
+            "filePath": shared_path.to_string_lossy()
         })),
     );
     let resp = handle_request(&state, share_req, &mut authenticated)
@@ -1179,10 +1186,10 @@ async fn test_inbound_sui_tier1_malformed_replay_and_wrong_challenge() {
     // A. Oversized public key (>80 bytes) is ignored → no challenge issued;
     //    a signature then hits "no active challenge" → state 0.
     let mut oversized = vec![200u8];
-    oversized.extend(std::iter::repeat(0x77u8).take(200));
+    oversized.extend(std::iter::repeat_n(0x77u8, 200));
     send_frame(&mut client, PR_EMULE, OP_PUBLICKEY, &oversized).await;
     let mut sig_payload = vec![48u8];
-    sig_payload.extend(std::iter::repeat(0xEEu8).take(48));
+    sig_payload.extend(std::iter::repeat_n(0xEEu8, 48));
     send_frame(&mut client, PR_EMULE, OP_SIGNATURE, &sig_payload).await;
     assert_eq!(
         read_state(&mut client, &mut read_buf, &mut raw_buf, &codec, &decoder).await,
@@ -1301,7 +1308,8 @@ async fn test_peer_credit_persistence_and_multiplier_formula() {
         assert_eq!(c.credit_multiplier(), 1.0);
     }
 
-    // Record download 3 MB -> ratio: 2 * 3 / (1 + 1) = 6.0x
+    // Record download 3 MB -> eMule GetScoreRatio: min(ratio 6.0,
+    // sqrt(3+2)≈2.24, linéaire (3-1)/8.2*2.34+1≈1.57) = ~1.57x
     {
         let mut dls = state.downloads.lock().await;
         dls.record_credit_download(&hash_a, &pubkey_a_hex, 3145728)
@@ -1313,7 +1321,7 @@ async fn test_peer_credit_persistence_and_multiplier_formula() {
         let c = dls.get_peer_credit(&hash_a).unwrap().unwrap();
         assert_eq!(c.uploaded_bytes, 1048576);
         assert_eq!(c.downloaded_bytes, 3145728);
-        assert!((c.credit_multiplier() - 6.0).abs() < 0.01);
+        assert!((c.credit_multiplier() - 1.57).abs() < 0.01);
     }
 
     // Record huge download -> ratio capped at 10.0x
@@ -1476,10 +1484,11 @@ async fn test_key_rotation_creates_fresh_identity_and_detaches_credits() {
     .unwrap();
     let hash1 = id1["pubkeyHash"].as_str().unwrap().to_string();
 
-    // 2. Populate credits under old identity hash1
+    // 2. Populate credits under old identity hash1 (100 MiB saturates all
+    //    three GetScoreRatio caps -> multiplier 10.0x)
     {
         let mut dls = node.downloads.lock().await;
-        dls.record_credit_download(&hash1, "mock_pubkey_hex_1", 10000000)
+        dls.record_credit_download(&hash1, "mock_pubkey_hex_1", 104857600)
             .unwrap();
         let cred = dls.get_peer_credit(&hash1).unwrap().unwrap();
         assert_eq!(cred.credit_multiplier(), 10.0);
@@ -1703,6 +1712,8 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         file_name: "file.bin".to_string(),
         enqueued_at_unix_ms: now_ms - (300 * 1000), // 300s ago
         credit_multiplier_bps: 100,                 // 1.0x
+        file_prio_num: 7,
+        banned: false,
     };
 
     let peer_b = QueuedUpload {
@@ -1712,15 +1723,18 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         file_name: "file.bin".to_string(),
         enqueued_at_unix_ms: now_ms - (10 * 1000), // 10s ago
         credit_multiplier_bps: 1000,               // 10.0x
+        file_prio_num: 7,
+        banned: false,
     };
 
     let score_a = peer_a.effective_score(now_ms);
     let score_b = peer_b.effective_score(now_ms);
 
-    // Score A = 300 * 100 = 30,000
-    // Score B = 10 * 1000 = 10,000
-    assert_eq!(score_a, 30000);
-    assert_eq!(score_b, 10000);
+    // eMule score = wait_secs * credit_bps * file_prio / 1000
+    // Score A = 300 * 100 * 7 / 1000 = 210
+    // Score B = 10 * 1000 * 7 / 1000 = 70
+    assert_eq!(score_a, 210);
+    assert_eq!(score_b, 70);
 
     // Invariant: Long waiting uncredited peer beats newly arrived high-credit peer (no starvation)
     assert!(

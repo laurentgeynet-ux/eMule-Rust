@@ -24,7 +24,8 @@ param(
     [string]$TimestampServer = "http://timestamp.digicert.com",
     [switch]$AllowDirty = $false,
     [switch]$SkipZip = $false,
-    [switch]$LabMode = $false
+    [switch]$LabMode = $false,
+    [string]$DeployDir = "C:\Users\Lou\Desktop\EmuleSion"
 )
 
 $ErrorActionPreference = "Stop"
@@ -243,7 +244,12 @@ if ($Sign) {
 Write-Host "`n[8/8] Computing post-signing cryptographic hashes and manifest..." -ForegroundColor Yellow
 
 $NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$AppVersion = "0.1.3-lab"
+
+# Read the real workspace version from the root Cargo.toml
+$AppVersion = try {
+    ((Get-Content (Join-Path $Root "Cargo.toml") -Raw) -match '(?m)^version\s*=\s*"([^"]+)"') | Out-Null
+    $Matches[1]
+} catch { "0.0.0" }
 
 $ArtifactsList = [System.Collections.Generic.List[PSCustomObject]]::new()
 $SumsLines = [System.Collections.Generic.List[string]]::new()
@@ -354,7 +360,18 @@ if (!$SkipZip) {
     Write-Host " -> Archive SHA-256: $ZipHash" -ForegroundColor Green
 }
 
+# -----------------------------------------------------------------------------
+# 10. Deploy Bundle to Desktop Directory
+# -----------------------------------------------------------------------------
+if (![string]::IsNullOrWhiteSpace($DeployDir)) {
+    Write-Host "`nDeploying bundle to $DeployDir..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $DeployDir -Force | Out-Null
+    Copy-Item -Path "$DestPath\*" -Destination $DeployDir -Recurse -Force
+    Write-Host " -> Deployed to: $DeployDir" -ForegroundColor Green
+}
+
 Write-Host "`n==================================================" -ForegroundColor Green
 Write-Host "  Release Candidate Packaging Succeeded!          " -ForegroundColor Green
 Write-Host "  Destination: $DestPath" -ForegroundColor Cyan
+Write-Host "  Deployed to: $DeployDir" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Green

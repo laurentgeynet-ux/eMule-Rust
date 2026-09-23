@@ -8,11 +8,12 @@ Ce document recense les dépôts sources, révisions historiques et fichiers de 
 
 ### 1.1 eMule Official Archive (SourceForge)
 - **Projet** : eMule (C++ / MFC pour Windows)
-- **Version de référence** : v0.50a (dernière version stable officielle majeure du projet originel)
+- **Version de référence** : v0.72a — copie locale vérifiée : `D:\eMule0.72a-Sources\eMule0.72a-Sources\srchybrid`
 - **Source** : Archive officielle du projet eMule sur SourceForge (`https://sourceforge.net/projects/emule/`)
 - **Fichiers clés étudiés** :
   - `srchybrid/ListenSocket.cpp` : Réception et aiguillage des trames réseau brutes, décodage de l'en-tête (protocol byte, packet len, opcode).
-  - `srchybrid/UpDownClient.cpp` : Construction et traitement des paquets de pairs (`SendHelloPacket`, `ProcessHelloPacket`, `ProcessHelloAnswer`, `ProcessFileStatusReq`, `SendFileStatus`).
+  - `srchybrid/BaseClient.cpp` : Logique pair partagée en 0.72a (`SendHelloPacket:678`, `ProcessHelloPacket:342`, `SendHelloAnswer:892`, `ProcessHelloAnswer:351`, SUI `Send/ProcessSecIdentStatePacket:2076-2143`). *(En 0.50a, cette logique était dans `UpDownClient.cpp`, absent de 0.72a.)*
+  - `srchybrid/DownloadClient.cpp` : Téléchargement (`SendBlockRequests:812`, `ProcessBlockPacket:956`, `ProcessFileStatus:509`).
   - `srchybrid/Packet.cpp` : Format binaire des trames, écriture et lecture des types scalaires, little-endianness, structure des en-têtes.
   - `srchybrid/Tag.cpp` : Définition des formats TLV (Type-Length-Value) eD2K et des balises spéciales (1 octet vs nom textuel).
   - `srchybrid/Opcodes.h` : Catalogue exhaustif des opcodes pour les protocoles `0xE3`, `0xC5` et `0xD4`.

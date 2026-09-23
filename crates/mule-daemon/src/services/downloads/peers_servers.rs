@@ -46,7 +46,11 @@ pub fn upsert_peer_sources(
         .map_err(|e| DaemonError::Business(format!("DB error upserting peer sources: {e}")))?;
     let count = db
         .list_peer_sources(file_hash)
-        .map(|s| s.len() as u32)
+        .map(|s| {
+            s.iter()
+                .filter(|x| x.status.is_srclist_visible())
+                .count() as u32
+        })
         .unwrap_or(0);
     let clean_hex = file_hash.trim().to_lowercase();
     for a in active.values_mut() {
@@ -72,6 +76,17 @@ pub fn update_peer_source_status(
 ) -> Result<bool, DaemonError> {
     db.update_peer_source_status(file_hash, address, status, error, cooldown_until_unix_ms)
         .map_err(|e| DaemonError::Business(format!("DB error updating peer source status: {e}")))
+}
+
+pub fn update_peer_source_details(
+    db: &mut Database,
+    file_hash: &str,
+    address: &str,
+    software: Option<&str>,
+    availability: Option<&[u8]>,
+) -> Result<bool, DaemonError> {
+    db.update_peer_source_details(file_hash, address, software, availability)
+        .map_err(|e| DaemonError::Business(format!("DB error updating peer source details: {e}")))
 }
 
 pub fn reset_peer_source_cooldown(
@@ -115,6 +130,24 @@ pub fn remove_shared_file(db: &mut Database, file_hash: &str) -> Result<bool, Da
 pub fn get_shared_file(db: &Database, file_hash: &str) -> Result<Option<SharedFile>, DaemonError> {
     db.get_shared_file(file_hash)
         .map_err(|e| DaemonError::Business(format!("DB error getting shared file: {e}")))
+}
+
+/// Ajoute `delta` octets au total uploadé persisté du fichier partagé.
+pub fn add_share_uploaded_bytes(
+    db: &mut Database,
+    file_hash: &str,
+    delta: u64,
+) -> Result<(), DaemonError> {
+    db.add_share_uploaded_bytes(file_hash, delta)
+        .map_err(|e| DaemonError::Business(format!("DB error adding share uploaded bytes: {e}")))
+}
+
+/// Totaux uploadés persistés par hash de fichier (clés en minuscules).
+pub fn list_share_uploaded_bytes(
+    db: &Database,
+) -> Result<std::collections::HashMap<String, u64>, DaemonError> {
+    db.list_share_uploaded_bytes()
+        .map_err(|e| DaemonError::Business(format!("DB error listing share upload stats: {e}")))
 }
 
 pub fn get_peer_credit(

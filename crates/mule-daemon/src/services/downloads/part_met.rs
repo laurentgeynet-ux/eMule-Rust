@@ -117,7 +117,18 @@ pub fn save_part_met(db: &Database, act: &ActiveDownload) -> Result<PathBuf, Dae
         transferred: act.ranges.covered_len(),
         aich_hash: act.download.aich_root,
         gaps,
-        tags: Vec::new(),
+        // Persist the per-file source limit as eMule FT_MAXSOURCES so a
+        // re-imported .part.met (or eMule itself) restores the cap.
+        tags: act
+            .download
+            .max_sources
+            .map(|ms| {
+                vec![mule_format::met::tags::Tag::new_id(
+                    mule_format::met::tags::FT_MAXSOURCES,
+                    mule_format::met::tags::TagValue::Uint64(ms as u64),
+                )]
+            })
+            .unwrap_or_default(),
     };
 
     met.save(&met_path)
@@ -131,6 +142,11 @@ pub fn delete_part_met(temp_path: &Path) {
     let _ = std::fs::remove_file(part_met_path_for(temp_path));
 }
 
+/// `adopt_source`: when true the source `.part` is renamed (moved) into the
+/// staged `{uuid}.part` path instead of copied — only safe when the source
+/// already lives inside `temp_dir` (startup orphan recovery), where a move
+/// is atomic and avoids duplicating gigabytes. External imports always copy.
+#[allow(clippy::too_many_arguments)]
 pub fn import_part_met(
     db: &mut Database,
     temp_dir: &Path,
@@ -139,6 +155,7 @@ pub fn import_part_met(
     part_path: Option<&Path>,
     target_dir: &Path,
     category_id: Option<String>,
+    adopt_source: bool,
 ) -> Result<(ImportPartMetResult, ActiveDownload), DaemonError> {
     let inspection = inspect_part_met(met_path, part_path)?;
     if !inspection.part_file_exists {
@@ -213,9 +230,23 @@ pub fn import_part_met(
     let internal_temp_path = temp_dir.join(internal_temp_filename);
     let target_path = target_dir.join(&inspection.file_name);
 
-    std::fs::copy(&actual_part_path, &internal_temp_path).map_err(|e| {
-        DaemonError::Business(format!("Failed to stage .part file into sandbox: {e}"))
-    })?;
+    if adopt_source {
+        // Orphan already inside our own temp dir: adopt in place via rename
+        // (atomic move), falling back to copy+delete on exotic filesystems.
+        if std::fs::rename(&actual_part_path, &internal_temp_path).is_err() {
+            std::fs::copy(&actual_part_path, &internal_temp_path).and_then(|_| {
+                std::fs::remove_file(&actual_part_path)
+            }).map_err(|e| {
+                DaemonError::Business(format!(
+                    "Failed to adopt orphan .part file into sandbox: {e}"
+                ))
+            })?;
+        }
+    } else {
+        std::fs::copy(&actual_part_path, &internal_temp_path).map_err(|e| {
+            DaemonError::Business(format!("Failed to stage .part file into sandbox: {e}"))
+        })?;
+    }
 
     let mut part_file =
         PartFile::open_or_create(&internal_temp_path, total_size, AllocationPolicy::None)
@@ -268,6 +299,15 @@ pub fn import_part_met(
         }
     }
 
+    // eMule per-file source limit tag (FT_MAXSOURCES / CPartFile::GetMaxSources).
+    let max_sources = met
+        .tags
+        .iter()
+        .find(|t| t.name_id == mule_format::met::tags::FT_MAXSOURCES)
+        .and_then(|t| t.as_u64())
+        .and_then(|v| u32::try_from(v).ok())
+        .filter(|&v| v > 0);
+
     let now = now_ms();
     let download = Download {
         id,
@@ -281,6 +321,8 @@ pub fn import_part_met(
         created_at: now,
         updated_at: now,
         category_id: category_id.clone(),
+        priority: "normal".to_string(),
+        max_sources,
     };
 
     db.insert_download(&download)

@@ -532,3 +532,68 @@ impl NetworkPolicyManager {
         self.tracker.active_listeners.load(Ordering::SeqCst)
     }
 }
+
+/// eMule `Preferences::GetMaxDownloadInBytesPerSec` (Preferences.cpp:694,
+/// « don't be a Lam3r :) ») — ratio anti-leech upload/download : quand la
+/// limite upload descend sous 20 Ko/s, le download effectif est plafonné
+/// à `coef × upload` (3× si <4 Ko/s, 4× si <10, 5× si <20). Une limite
+/// download à 0 (illimitée) est elle aussi plafonnée à `coef × upload` —
+/// eMule calcule `min(coef × maxup, maxdown)` avec maxdown = ∞.
+/// Upload 0 (illimité) ou ≥ 20 Ko/s → pas de plafond ratio.
+///
+/// La valeur *configurée* reste inchangée dans les settings : comme eMule,
+/// le ratio est un plafond recalculé à chaque application, jamais
+/// réécrit dans les préférences.
+pub fn emule_ud_ratio(download_bps: u64, upload_bps: u64) -> u64 {
+    // don't be a Lam3r :)
+    if upload_bps == 0 || upload_bps >= 20 * 1024 {
+        return download_bps;
+    }
+    let coef: u64 = if upload_bps < 4 * 1024 {
+        3
+    } else if upload_bps < 10 * 1024 {
+        4
+    } else {
+        5
+    };
+    let capped = coef.saturating_mul(upload_bps);
+    if download_bps == 0 {
+        capped
+    } else {
+        download_bps.min(capped)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::emule_ud_ratio;
+
+    #[test]
+    fn ratio_tiers_match_emule() {
+        // < 4 Ko/s → coef 3
+        assert_eq!(emule_ud_ratio(100 * 1024, 3 * 1024), 9 * 1024);
+        // 4..10 Ko/s → coef 4
+        assert_eq!(emule_ud_ratio(100 * 1024, 5 * 1024), 20 * 1024);
+        // 10..20 Ko/s → coef 5
+        assert_eq!(emule_ud_ratio(100 * 1024, 15 * 1024), 75 * 1024);
+        // ≥ 20 Ko/s → pas de ratio
+        assert_eq!(emule_ud_ratio(100 * 1024, 20 * 1024), 100 * 1024);
+        assert_eq!(emule_ud_ratio(100 * 1024, 500 * 1024), 100 * 1024);
+    }
+
+    #[test]
+    fn ratio_keeps_configured_when_lower() {
+        // Download configuré sous le plafond → inchangé.
+        assert_eq!(emule_ud_ratio(10 * 1024, 5 * 1024), 10 * 1024);
+    }
+
+    #[test]
+    fn ratio_caps_unlimited_download() {
+        // Download illimité (0) + upload 5 Ko/s → effectif 4× = 20 Ko/s
+        // (eMule : min(coef × up, ∞)).
+        assert_eq!(emule_ud_ratio(0, 5 * 1024), 20 * 1024);
+        // Upload illimité (0) → download intact.
+        assert_eq!(emule_ud_ratio(0, 0), 0);
+        assert_eq!(emule_ud_ratio(100 * 1024, 0), 100 * 1024);
+    }
+}

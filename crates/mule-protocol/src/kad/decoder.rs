@@ -9,7 +9,8 @@ pub mod routing;
 pub mod search;
 
 pub use routing::{
-    decode_bootstrap_req, decode_bootstrap_res, decode_hello_req, decode_hello_res, decode_ping,
+    decode_bootstrap_req, decode_bootstrap_res, decode_firewalled2_req, decode_firewalled_req,
+    decode_firewalled_res, decode_hello_req, decode_hello_res, decode_hello_res_ack, decode_ping,
     decode_pong, decode_req, decode_res,
 };
 pub use search::{
@@ -92,6 +93,31 @@ impl KadDecoder {
             KADEMLIA2_PONG => decode_pong(protocol, opcode, payload),
             KADEMLIA2_HELLO_REQ | KADEMLIA_HELLO_REQ => decode_hello_req(protocol, opcode, payload),
             KADEMLIA2_HELLO_RES | KADEMLIA_HELLO_RES => decode_hello_res(protocol, opcode, payload),
+            // 0x22 = HELLO_RES_ACK (Kad >= 8 contact verification reply)
+            KADEMLIA2_HELLO_RES_ACK => decode_hello_res_ack(protocol, opcode, payload),
+            // 0x50 = FIREWALLED_REQ: [tcp_port u16]
+            KADEMLIA_FIREWALLED_REQ => decode_firewalled_req(protocol, opcode, payload),
+            // 0x53 = FIREWALLED2_REQ: [tcp_port u16][user_hash 16][connect_options u8]
+            KADEMLIA_FIREWALLED2_REQ => decode_firewalled2_req(protocol, opcode, payload),
+            // 0x58 = FIREWALLED_RES: [ip u32]
+            KADEMLIA_FIREWALLED_RES => decode_firewalled_res(protocol, opcode, payload),
+            // 0x59 = FIREWALLED_ACK_RES: empty payload (deprecated since Kad 7,
+            // replaced by TCP OP_KAD_FWTCPCHECK_ACK)
+            KADEMLIA_FIREWALLED_ACK_RES => {
+                if !payload.is_empty() {
+                    return Err(Ed2kParseError::new(
+                        protocol,
+                        Some(opcode),
+                        2,
+                        "KadFirewalledAckRes",
+                        Ed2kErrorKind::UnexpectedEof {
+                            needed: 0,
+                            available: payload.len(),
+                        },
+                    ));
+                }
+                Ok(KadMessage::FirewalledAckRes)
+            }
             KADEMLIA_BOOTSTRAP_REQ_OLD | KADEMLIA2_BOOTSTRAP_REQ => {
                 decode_bootstrap_req(protocol, opcode, payload)
             }

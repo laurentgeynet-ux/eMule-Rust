@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/fake_daemon_client.dart';
-import 'package:desktop/main.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/downloads/widgets/category_edit_dialog.dart';
-import 'package:desktop/ui/features/downloads/widgets/downloads_sidebar.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:app_shell/ui/features/downloads/widgets/category_edit_dialog.dart';
+import 'package:app_shell/ui/features/downloads/widgets/downloads_sidebar.dart';
 
 void main() {
   group('Category Management Widget Tests', () {
     late FakeMuleDaemonClient fakeClient;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: fakeClient);
+      viewModel = AppController(client: fakeClient);
       await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
     });
 
@@ -30,8 +30,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify Categories section in sidebar
-      expect(find.text('CATEGORIES'), findsOneWidget);
-      expect(find.text('All Downloads'), findsAtLeastNWidgets(1));
+      expect(find.text('CATÉGORIES'), findsOneWidget);
+      expect(find.text('Tous les téléchargements'), findsAtLeastNWidgets(1));
       expect(find.text('Sans catégorie'), findsOneWidget);
       expect(
         find.descendant(of: find.byType(DownloadsSidebar), matching: find.text('Linux ISOs')),
@@ -107,14 +107,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // Click Add Category button (+) in sidebar
-      final addCategoryBtn = find.byTooltip('Add Category');
+      final addCategoryBtn = find.byTooltip('Ajouter une catégorie');
       expect(addCategoryBtn, findsOneWidget);
       await tester.tap(addCategoryBtn);
       await tester.pumpAndSettle();
 
       // Verify dialog is opened
       expect(find.byType(CategoryEditDialog), findsOneWidget);
-      expect(find.text('New Category'), findsOneWidget);
+      expect(find.text('Nouvelle catégorie'), findsOneWidget);
 
       // Enter category name in the dialog TextField
       final nameField = find.descendant(
@@ -125,7 +125,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Submit form
-      final createBtn = find.text('Create Category');
+      final createBtn = find.text('Créer la catégorie');
       await tester.tap(createBtn);
       await tester.pumpAndSettle();
 

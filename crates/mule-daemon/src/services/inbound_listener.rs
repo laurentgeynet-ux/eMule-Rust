@@ -15,7 +15,7 @@ use tracing::{info, warn};
 use mule_network_policy::{ConnectionPurpose, NetworkPolicyManager};
 
 pub use types::{
-    InboundListenerService, InboundListenerSnapshot, MAX_INBOUND_CONNECTIONS, MAX_INBOUND_PER_IP,
+    InboundListenerService, InboundListenerSnapshot, MAX_INBOUND_PER_IP,
     MAX_READ_BUFFER_SIZE,
 };
 
@@ -41,21 +41,100 @@ impl InboundListenerService {
             is_running: Arc::new(AtomicBool::new(false)),
             listen_addr: Arc::new(Mutex::new(None)),
             listener_handle: Arc::new(Mutex::new(None)),
-            user_hash,
-            sui_pubkey_der,
+            user_hash: std::sync::Arc::new(std::sync::RwLock::new(user_hash)),
+            sui_pubkey_der: std::sync::Arc::new(std::sync::RwLock::new(sui_pubkey_der)),
+            paranoid_mode: Arc::new(AtomicBool::new(false)),
             identity: None,
             last_sig_ip: Arc::new(Mutex::new(None)),
             sui_stats,
             active_conns: Arc::new(Mutex::new(HashMap::new())),
-            obfuscation_enabled,
-            obfuscation_required,
+            obfuscation_enabled: std::sync::Arc::new(AtomicBool::new(obfuscation_enabled)),
+            obfuscation_required: std::sync::Arc::new(AtomicBool::new(obfuscation_required)),
             obfuscation_padding_max,
             peer_session: Arc::new(std::sync::RwLock::new(None)),
             server_session: Arc::new(std::sync::RwLock::new(None)),
             client_udp: Arc::new(std::sync::RwLock::new(None)),
             kad_udp: Arc::new(std::sync::RwLock::new(None)),
             kad: Arc::new(std::sync::RwLock::new(None)),
+            kad_udp_port: 0,
+            sx_env: Arc::new(std::sync::RwLock::new(None)),
         }
+    }
+
+    /// Injects the shared Source Exchange environment (network policy +
+    /// throttle journals) created by `AppState`.
+    pub fn set_sx_env(
+        &mut self,
+        env: crate::services::peer_session::source_exchange::SxEnv,
+    ) {
+        *self.sx_env.write().unwrap() = Some(env);
+    }
+
+    /// Shared `SxEnv` for this listener; builds a fallback from the
+    /// listener's own network policy + user hash when `AppState` did not
+    /// inject one (tests, manual construction).
+    pub(crate) fn sx_env(
+        &self,
+    ) -> crate::services::peer_session::source_exchange::SxEnv {
+        self.sx_env.read().unwrap().clone().unwrap_or_else(|| {
+            crate::services::peer_session::source_exchange::SxEnv::new(
+                (*self.network_policy).clone(),
+                *self.user_hash.read().unwrap(),
+            )
+        })
+    }
+
+    /// Local eD2K identity view for `CanAddSource` self-checks (eMule
+    /// `PartFile.cpp:2380-2403`): current server-assigned `client_id`,
+    /// server address and our TCP listen port.
+    pub(crate) async fn sx_local_ids(
+        &self,
+        listen_port: u16,
+    ) -> crate::services::peer_session::source_exchange::SxLocalIds {
+        use crate::services::peer_session::source_exchange::SxLocalIds;
+        let session = self.server_session.read().unwrap().clone();
+        match session {
+            Some(sm) => {
+                let snap = sm.snapshot().await;
+                let (server_ip, server_port) = snap
+                    .server_address
+                    .as_deref()
+                    .and_then(|a| a.parse::<SocketAddr>().ok())
+                    .map(|sa| match sa.ip() {
+                        std::net::IpAddr::V4(v4) => {
+                            (u32::from_le_bytes(v4.octets()), sa.port())
+                        }
+                        _ => (0, sa.port()),
+                    })
+                    .unwrap_or((0, 0));
+                SxLocalIds {
+                    client_id: snap.client_id.unwrap_or(0),
+                    server_ip,
+                    server_port,
+                    tcp_port: listen_port,
+                    is_high_id: snap.is_high_id,
+                }
+            }
+            None => SxLocalIds {
+                tcp_port: listen_port,
+                ..SxLocalIds::default()
+            },
+        }
+    }
+
+    /// Sets the Kad UDP port announced to inbound peers in handshake answers.
+    pub fn set_kad_udp_port(&mut self, port: u16) {
+        self.kad_udp_port = port;
+    }
+
+    /// Live-updates the obfuscation (protocol encryption) policy for inbound
+    /// connections — mirrors eMule's "Support obfuscated connections /
+    /// Require obfuscated connections" preferences.
+    pub fn set_obfuscation(&self, enabled: bool, required: bool) {
+        self.obfuscation_enabled
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
+        self.obfuscation_required
+            .store(required, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Injects the client UDP service (inbound UDP version bookkeeping).
@@ -92,6 +171,19 @@ impl InboundListenerService {
     /// Injects the local identity service so inbound challenges can be signed.
     pub fn set_identity(&mut self, identity: Arc<Mutex<crate::services::IdentityService>>) {
         self.identity = Some(identity);
+    }
+
+    /// Met à jour le matériel d'identité annoncé aux pairs entrants après une
+    /// rotation de clé (`identity.rotate` / `identityRotationHours`).
+    pub fn set_identity_material(&self, user_hash: [u8; 16], sui_pubkey_der: Option<Vec<u8>>) {
+        *self.user_hash.write().unwrap() = user_hash;
+        *self.sui_pubkey_der.write().unwrap() = sui_pubkey_der;
+    }
+
+    /// Active/désactive le mode paranoid (pairs obfusqués + SUI vérifiés
+    /// uniquement pour les slots d'upload).
+    pub fn set_paranoid_mode(&self, enabled: bool) {
+        self.paranoid_mode.store(enabled, Ordering::Relaxed);
     }
 
     /// Accesses the underlying upload manager.
@@ -157,8 +249,16 @@ impl InboundListenerService {
                                 let ip = remote_addr.ip();
                                 let mut conns = service_self.active_conns.lock().await;
                                 let total_conns: usize = conns.values().sum();
-                                if total_conns >= MAX_INBOUND_CONNECTIONS {
-                                    warn!("Rejected inbound connection from {}: global limit reached ({MAX_INBOUND_CONNECTIONS})", remote_addr);
+                                // Le plafond inbound suit le budget sockets
+                                // (`maxConnections`, live) comme chez eMule —
+                                // plus de constante cachée si l'utilisateur
+                                // augmente le budget.
+                                let inbound_cap = service_self
+                                    .network_policy
+                                    .budgets()
+                                    .max_active_peer_connections;
+                                if total_conns >= inbound_cap {
+                                    warn!("Rejected inbound connection from {}: global limit reached ({inbound_cap})", remote_addr);
                                     drop(socket);
                                     continue;
                                 }

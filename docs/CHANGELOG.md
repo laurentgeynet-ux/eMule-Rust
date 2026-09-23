@@ -5,6 +5,1043 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+## [0.2.0-RC1] - 2026-09-23
+
+- **Onglet Partages — catégories, recherche et stats d'upload**
+  (`mule-core`, `mule-daemon`, `mule_client`, `app_shell`) :
+  - **Catégorie par fichier partagé** : nouvelle colonne
+    `shared_files.category_id` (migration `ALTER TABLE` idempotente) +
+    RPC `shares.setCategory`. Un partage synthétisé depuis un download
+    suit la catégorie de celui-ci (`shared_files` ou `downloads`
+    selon la source) — menu « étiquette » sur chaque ligne pour
+    assigner/retirer.
+  - **Vue remaniée** : fichiers groupés par catégorie (en-têtes
+    pastille + nom, ordre `sortOrder`), groupe « Sans catégorie » en
+    dernier ; à l'intérieur de chaque groupe, tri par **total uploadé
+    décroissant** (le plus servi en haut).
+  - **Moteur de recherche** : champ dans la barre de titre, filtre sur
+    nom de fichier et hash eD2K.
+  - **Stats d'upload par fichier** : débit mesuré courant (↑ B/s) et
+    total cumulé (Σ) affichés sur chaque ligne, rafraîchis via
+    `uploadsEvents` debouncé.
+  - `SharedFileModel` étendu (`categoryId`, `upPriority`,
+    `uploadedBytes`, `uploadRateBps`) + client RPC/fake ; les
+    mutations fake préservent tous les champs.
+
+- **UI téléchargements — chip de priorité modernisée**
+  (`app_shell`) : pill arrondie teintée + icônes sémantiques
+  (double-flèche haut/bas, tiret) et **3 couleurs distinctes** —
+  ambre = High, bleu ciel = Normal, ardoise = Low. Le menu popup
+  reprend les mêmes icônes colorées.
+
+- **UI téléchargements — barre de progression dédupliquée**
+  (`app_shell`) : le `LinearProgressIndicator` au-dessus de
+  `PartAvailabilityBar` était redondant — la barre de chunks dessine
+  déjà le liseré vert d'avancement eMule (`DrawStatusBar`). Supprimée
+  dans les layouts full et compact ; la barre de chunks passe à 14 px
+  (12 px compact) pour occuper toute la hauteur.
+
+- **Amorçage Kad résilient — file de candidats façon eMule
+  `s_liBootstrapList`** (`mule-daemon`) : un timeout sur le premier
+  bootstrap laissait Kad mort avec une table de routage vide — la
+  maintenance ne s'activait que si `total_contacts > 0`, donc aucune
+  retentative n'avait jamais lieu.
+  - **File de candidats** (`bootstrap_candidates`, cap 50, dédupliquée) :
+    chaque pair eD2K annonçant un port UDP Kad s'y enregistre au
+    handshake (entrant comme sortant), filtré `kad_version >= 2`
+    (`KADEMLIA_VERSION2_47a`) — les pairs pré-0.47a ne parlent pas
+    KADEMLIA2.
+  - **Boucle de drain** : tâche de fond qui vide la file à raison d'un
+    `BOOTSTRAP_REQ` toutes les **2 s** tant que la table est vide,
+    **15 s** quand elle a des contacts non vérifiés — calqué sur
+    `CKademlia::Process` (Kademlia.cpp:287). Chaque candidat n'est tenté
+    qu'une fois (`RemoveHead`) ; les handshakes ré-alimentent la file.
+  - **Gate `!IsConnected()` fidèle** : le drain tourne tant qu'aucun
+    contact n'a jamais répondu (`HasHadContact` eMule = contact
+    *vérifié*), même si la table contient des zombies non vérifiés —
+    avant, 50 contacts morts auraient figé le drain.
+  - **Throttle partagé** `last_bootstrap` (= `m_tBootstrap` eMule) :
+    envois immédiats au handshake (10 s) et drain partagent le même
+    horodatage — pas de rafale de requêtes.
+  - **`nodes.dat` auto-chargé** au démarrage (`<data_dir>/nodes.dat`) en
+    candidats bootstrap : les contacts prouvent leur vivacité en
+    répondant au drain au lieu d'entrer zombies dans la table.
+  - **Événement `kad.statusChanged`** émis dès qu'un bootstrap apprend
+    des contacts — le badge UI passe « Connecté » sans attendre le tick
+    de 30 s.
+  - Test : `test_bootstrap_drain_retries_candidates_until_success`
+    (candidat mort → timeout → candidat vivant → table peuplée).
+
+- **Bridages internes alignés sur eMule 0.72a** (`mule-daemon`) :
+  chasse aux plafonds en dur hérités des premières versions de test.
+  - **Slots upload** : `MAX_ACTIVE_UPLOADS` passe de **10 → 100** =
+    `MAX_UP_CLIENTS_ALLOWED` d'eMule (`Opcodes.h`) — le cap de 10
+    brisait le scaling sur connexions rapides.
+  - **Slots garantis** : les 4 premiers slots s'ouvrent sans condition
+    de débit (`max(MIN_UP_CLIENTS_ALLOWED, 4)` d'eMule
+    `AcceptNewClient`) — auparavant le plancher `minUploadKbs` pouvait
+    geler l'upload dès le 2ᵉ client.
+  - **Promotion de file** : `promote_waiting` applique désormais la même
+    éligibilité qu'`AcceptNewClient` (plancher de débit + veto USS) via
+    `can_open_slot` partagé — avant, la promotion ignorait les deux
+    contrôles.
+  - **Pacing connexions sources** : `MAX_CONNECT_PER_TICK` 5 → 12 —
+    suppression du double bridage (coordinateur 5/3s ≈ 100/min *plus
+    restrictif* que le budget `rate_limit_per_min` 240/min). Un fichier
+    seul atteint maintenant le rythme eMule `MaxConnPer5Sec`=20 (~4/s) ;
+    le budget token-bucket reste le garde-fou global.
+  - **Cap inbound** : `MAX_INBOUND_CONNECTIONS` (500, constante morte)
+    supprimé — le listener suit le budget `max_active_peer_connections`
+    live, comme eMule où toutes les connexions pairs comptent dans
+    `maxconnections`. Le cap par IP (5, anti-flood) est conservé.
+  - **Soft-cap SX** : `max_source_soft` et le cap d'ingestion des
+    réponses SX retombent sur le réglage `maxPeersPerDownload` persisté
+    au lieu de la constante 400 (eMule : `GetMaxSourcePerFile` →
+    `thePrefs.maxsourceperfile`).
+  - **Refactor** : la vérification des quotas de session (global +
+    par fichier + doublon d'adresse), dupliquée entre `connect` et
+    `accept_callback`, est factorisée en
+    `SwarmInnerState::check_session_slot`.
+
+- **Audit complet des réglages — câblage, doublons, bornes eMule 0.72a**
+  (`mule-daemon`, `mule-network-policy`, `app_shell`, `SETTINGS.md`) :
+  inventaire des 36 clés `settings.set`/`settings.get` et de tous les
+  champs UI — chaque champ est câblé (persisté + appliqué à chaud ou
+  relu au tick) et présent dans une seule section.
+  - `maxConnections` : le plafond passe de **1500 → 65000**
+    (`MAX_PEER_CONNECTIONS_CAP`) — eMule ne borne pas `maxconnections`
+    sous Windows NT+ (`GetMaxWindowsTCPConnections()` → `UNLIMITED`) ;
+    65000 reste un garde-fou anti-faute de frappe. La valeur est
+    désormais **clampée avant persistance** (auparavant persistée brute
+    puis rejetée par `set_budgets` → incohérence stockée/appliqué).
+  - `maxUploadQueue` : clamp `[10, 5000]` (eMule `QueueSize`) appliqué
+    avant persistance — stockée = appliquée.
+  - `settings.get` renvoie les valeurs **effectives** (clampées) pour
+    `maxConnections`, `maxConnPerMin`, `maxUploadQueue` — fini les
+    valeurs persistées hors borne ré-affichées.
+  - UI : bornes de saisie ajoutées (`maxQueue` ≤ 5000, quota ≤ 1 048 576
+    Gio, `maxConnections` ≤ 65 000) ; hints clarifiés —
+    `maxGlobalDownloadPeers` (quota d'allocation swarm) explicitement
+    distingué de `maxConnections` (budget de sockets) ;
+    `minUploadKbs = 0` documenté comme seuil désactivé (extension —
+    eMule force `MinUpload ≥ 1`).
+  - Écarts assumés et documentés dans `SETTINGS.md` : `kadPort = 0`
+    n'est pas accepté — la désactivation UDP passe par `udpEnabled`
+    (équivalent du « port 0 » d'eMule, en interrupteur dédié).
+
+- **Liste des sources alignée sur eMule `srclist`/deadlist** (`mule-core`,
+  `mule-daemon`, `app_shell`, `mule_client`) : le panneau déroulé d'un
+  téléchargement affichait *toutes* les lignes persistées de
+  `peer_sources`, y compris les échecs en cooldown, les sources rejetées
+  (FNF) et les filtrées IP — eMule les retire de `srclist` et les place
+  en `DeadSourceList` invisible (`CUpDownClient::Disconnected` →
+  `RemoveSource` + `AddDeadSource`). Nouveau prédicat partagé
+  `PeerSourceStatus::is_srclist_visible()` /
+  `PeerSourceStatus.isListedInSourceList` : seuls `candidate`, `allowed`,
+  `tried`, `connected` restent affichés ; `failed`, `rejected`,
+  `filtered` restent persistés pour le backoff mais sont masqués. Les
+  pairs déjà rendus dans la section « sessions actives » ne sont plus
+  répétés dans la liste (`PeerSourcesController::getVisibleSourcesForHash`,
+  dédupliqué par adresse). Le compteur `sourceCount` des snapshots ne
+  compte désormais que les sources visibles (comme `GetSourceCount()`
+  d'eMule) et est rafraîchi à chaque transition de statut ou suppression.
+
+- **USS aligné sur eMule `LastCommonRouteFinder`** (`mule-daemon`) : la
+  cible de ping USS n'est plus le serveur eD2K distant mais le **dernier
+  routeur commun** — routes ICMP tracées (`IcmpSendEcho`, TTL croissant,
+  non privilégié) vers un échantillon de pairs connus (serveur, clients
+  d'upload, sources de download — IPs publiques, ≤ 8), puis ping du saut
+  le plus profond partagé par toutes les routes (typiquement le routeur
+  d'agrégation du FAI). Mesure la congestion du lien montant local comme
+  eMule, au lieu d'un RTT de bout en bout. Cible cachée 15 min, re-résolue
+  après re-baseline ; repli `uss.pingHost` puis sonde TCP-connect vers le
+  serveur (plateformes sans `IcmpSendEcho`). `uss.pingTarget` expose
+  désormais le schéma (`icmp:`/`tcp:`). Nouveau module `uss_icmp`,
+  dépendance `windows` (target-specific) ajoutée.
+
+- **Champ « limite d'envoi » qui revenait à sa valeur USS** (`mule-daemon`,
+  `app_shell`, `mule_client`) : quand USS est activé, sa boucle de contrôle
+  réécrit le bucket upload à chaque tick — un `limits.set` manuel était
+  écrasé en ~1 s et le champ affichait la valeur effective (ex. 51 Ko/s)
+  au lieu de la configurée. Deux correctifs : les champs de
+  `RateLimitsTab` affichent désormais la limite *configurée* persistée
+  (`uploadConfiguredBytesPerSec`/`downloadConfiguredBytesPerSec`) avec un
+  helper indiquant la valeur effective (« Piloté par USS : X Ko/s » ou
+  « plafonné par le ratio eD2K ») ; et côté daemon, `limits.set` sur
+  l'upload met à jour `uss.max_upload_bps` quand USS est actif — la
+  limite saisie devient le plafond du pilotage dynamique (sémantique
+  eMule : `MaxUpload` borne DynUp, 0 = plafond illimité).
+
+- **Guide lab masqué en release** (`app_shell`) : la tuile « Guide du
+  mode laboratoire » de Settings → Avancé n'apparaît désormais que si
+  `isLabModeAvailableProvider` est vrai (daemon portable avec capacité
+  `lab-tools`, ou dev tools) — le flavor `standard` n'exposant aucune
+  méthode `lab.*`, l'entrée était inutile en production.
+
+- **Moniteur de transfert unifié dans la top bar** (`app_shell`,
+  `ui_kit`) : les trois chips disjoints (débits live + sparkline, totaux
+  de session, cumuls lifetime) sont fusionnés en une seule pill
+  segmentée par des séparateurs hairline — `↓ DL/s ↑ UL/s │ sparkline │
+  session │ Σ lifetime`. Chiffres en fonte tabulaire
+  (`FontFeature.tabularFigures`) : la largeur ne bouge plus quand la
+  valeur change. Kill switch actif → pill teintée rouge avec transition
+  animée (`AnimatedContainer`) et segment session remplacé par l'état
+  « Désactivé ». Sparkline enrichi : ligne de base discrète quand le
+  graphe est vide + remplissage download en dégradé vertical au lieu
+  d'un alpha plat.
+
+- **Localisation FR complète de l'interface** (`app_shell`,
+  `mule_client`) : `app_fr.arb` contenait ~340 valeurs encore en anglais
+  (sidebar entière, badges, dialogues) — toutes traduites ; les valeurs
+  françaises égarées dans `app_en.arb` sont remplacées par l'anglais
+  réel. ~150 littéraux en dur (FR et EN mélangés) migrés vers
+  `context.l10n`/`L10nLookup` — vues, dialogues, **et messages de
+  statut/erreur des 9 contrôleurs** (résolus via `L10nLookup.current`
+  synchronisé avec `LocaleController`, sans `BuildContext`).
+  `l10n/enum_labels.dart` localise les enums de `mule_client`
+  (`DownloadStatus`, `SupervisorState`, `NetworkProfile`, priorités…).
+  Libellés techniques volontairement conservés : exports de diagnostic,
+  identifiants protocolaires, chemins. Correctifs de layout au passage :
+  les libellés FR plus longs faisaient déborder plusieurs `Row`
+  (`history_filter_bar`, `add_link_dialog`, `import_part_met_dialog`,
+  `diagnostic_dialog`, `import_inspection_card`) — rendus flexibles
+  (`Flexible`/`Expanded`/`FittedBox` + ellipsis).
+
+- **Nouvelle icône d'application** (`Asset/generated-image.png`,
+  1254×1254 RGBA) déployée sur toutes les cibles : `app_icon.ico`
+  multi-résolutions 16→256 px (exe Windows via `Runner.rc` + asset tray),
+  icônes web 192/512 + maskables + favicon, `AppIcon.appiconset` macOS
+  et iOS régénérés.
+
+- **Ratio upload/download eMule** (`mule-network-policy`, `mule-daemon`,
+  `mule_client`) : `emule_ud_ratio()` reproduit
+  `Preferences::GetMaxDownloadInBytesPerSec` (« don't be a Lam3r :) ») —
+  limite upload < 20 Ko/s → download effectif plafonné à 3× (<4 Ko/s),
+  4× (<10 Ko/s) ou 5× (<20 Ko/s) l'upload ; download « illimité » plafonné
+  aussi. La limite *configurée* persistée n'est jamais réécrite : le ratio
+  est un plafond recalculé à chaque application (`limits.set`,
+  `apply_capacity_clamp`, boot) et suit la limite dynamique USS à chaque
+  tick (eMule `bDynamic` → débit mesuré). `limits.get` expose
+  `downloadConfiguredBytesPerSec`/`uploadConfiguredBytesPerSec` et
+  `downloadRatioApplied`.
+
+- **Settings → Connexion : interrupteurs Réseau eD2K / Réseau Kad**
+  (`app_shell`) : le sélecteur de profil à 3 options et la carte
+  « Profil Réseau Actuel » sont remplacés par une carte « Réseaux » à
+  deux interrupteurs — `Réseau eD2K` (off → confinement loopback
+  `local-lab`) et `Réseau Kad` (on → `public-ed2k-kad-preview`, activer
+  Kad active aussi eD2K). Le contrat de sécurité est inchangé : les
+  switches projettent simplement le même `NetworkProfile` sous-jacent.
+
+- **Carte daemon : statut réseau eD2K/Kad + serveur** (`app_shell`) : la
+  carte « Daemon » en bas de sidebar affiche désormais deux pastilles
+  colorées — `eD2K` (HighID vert, LowID/connexion orange, déconnecté
+  rouge, depuis `server.session`) et `Kad` (connecté vert quand le socket
+  UDP a des contacts, « Amorçage » orange, « Arrêté » rouge) — plus le
+  nom du serveur eD2K courant (adresse en repli). Le tooltip du mode
+  compact résume les trois informations.
+
+- **Pseudo par défaut « eMule-Rust »** (`mule-daemon`, `mule_client`,
+  `app_shell`) : `current_nickname()`, `settings.get`, le fallback du
+  champ vidé dans Settings et le HELLO firewall-test annoncent
+  « eMule-Rust ». Le `TAG_SPECIAL_NAME` du HELLOANSWER inbound reflète
+  désormais le pseudo réellement configuré au lieu d'une constante.
+
+- **Stats d'upload par fichier partagé (onglet Partages)** (`mule-core`,
+  `mule-daemon`, `mule_client`, `app_shell`) : chaque ligne affiche le
+  débit d'upload courant du fichier (`↑ …`, teal quand actif) et le total
+  cumulé envoyé (`Σ …`) — colonnes « Upload speed » / « Transferred »
+  d'eMule. Le débit est la somme des débits mesurés des slots actifs sur
+  ce hash (`UploadManager::per_file_rates_bps`) ; le total est incrémenté
+  à chaque bloc envoyé, hydraté au boot depuis la nouvelle table SQLite
+  `share_upload_stats` et persisté par deltas à chaque `statsTick`
+  (fonctionne aussi pour les partages partiels, qui n'ont pas de ligne
+  `shared_files`). `shares.list` enrichit chaque entrée de
+  `uploadRateBps`/`uploadedBytes` ; la vue se rafraîchit sur
+  `upload.uploadsUpdated` (debounce 1 s) — le débit retombe à 0 quand le
+  dernier slot se ferme.
+
+- **Renommage de fichier (Téléchargements et Partages)** (`mule-core`,
+  `mule-daemon`, `mule-mcp`, `mule_client`, `app_shell`) : icône crayon
+  dans la barre d'actions de chaque téléchargement et sur chaque partage
+  complet — dialogue pré-rempli avec validation (caractères interdits
+  Windows, `.`/`..`). `downloads.rename` met à jour `display_name` +
+  `target_path` (le `.part` UUID ne bouge pas ; le nouveau nom s'applique
+  à la finalisation) ; pour un download terminé le fichier disque et
+  l'entrée `shared_files` sont renommés. `shares.rename` fait de même
+  pour les partages hors downloads et délègue à `downloads.rename` quand
+  le hash adosse un download listé. Outils MCP `emule_rename_download` /
+  `emule_rename_share` ajoutés. Les lignes gardent un alignement vertical
+  constant (emplacement ETA réservé, slot pause/reprise toujours présent).
+
+- **Barre du haut : totaux cumulés + graphe upload + Diagnostics retiré**
+  (`mule-daemon`, `mule_client`, `app_shell`) :
+  - le chip « Diagnostics » est retiré de la top bar (le dialogue reste
+    accessible via la sidebar et Settings → Avancé) ;
+  - le sparkline temps réel dessine désormais deux courbes sur la même
+    échelle — download rempli (couleur statut) + upload en ligne teal ;
+  - à droite des totaux de session, un second chip « Σ ↓ / ↑ » affiche
+    les cumuls depuis l'installation, persistés en SQLite
+    (`lifetime_downloaded_bytes` / `lifetime_uploaded_bytes`,
+    accumulation par deltas de session à chaque `statsTick`) et
+    transportés par `lifetimeDownloadedBytes` /
+    `lifetimeUploadedBytes` dans `event.statsTick` ;
+  - nouvelle RPC `stats.resetLifetimeTotals` + tuile « Remise à zéro
+    des totaux cumulés » dans Settings → Avancé (avec confirmation) —
+    les totaux de session sont conservés.
+
+- **Suppression d'un fichier partagé depuis l'onglet Partages**
+  (`mule-daemon`, `mule-mcp`, `mule_client`, `app_shell`) : chaque ligne
+  de partage complet gagne une icône poubelle avec dialogue de
+  confirmation. `shares.remove` accepte le nouveau paramètre
+  `deleteFile` : le fichier est effacé du disque et l'entrée
+  `shared_files` retirée ; quand le partage adosse un téléchargement
+  complété, la suppression passe par `remove_download` (entrée de
+  téléchargement retirée aussi — sinon elle ressuscitait le partage au
+  redémarrage). Les partages partiels (downloads en cours) refusent la
+  suppression et affichent une icône désactivée renvoyant vers l'onglet
+  Téléchargements. Sans `deleteFile`, le comportement historique
+  (unshare seul) est inchangé.
+
+- **Totaux de session dans la barre du haut** (`mule-daemon`,
+  `mule_client`, `app_shell`) : le chip « profil réseau »
+  (`public-ed2k-kad-preview`…) — redondant avec Settings → Connexion —
+  est remplacé par les totaux de session « ↓ téléchargé / ↑ envoyé ».
+  `event.statsTick` transporte deux nouveaux champs
+  (`sessionDownloadedBytes` = somme des deltas `covered -
+  session_bytes_start` des downloads actifs ; `sessionUploadedBytes` =
+  compteur `total_uploaded_bytes` de l'`UploadManager`), relayés par
+  `DaemonStatsModel`. Le tap ouvre Historique & Statistiques ; quand le
+  kill switch est engagé, le chip conserve son état rouge « Disabled »
+  et renvoie vers Settings → Connexion.
+
+- **Suppression des téléchargements repensée** (`mule-daemon`,
+  `mule-mcp`, `app_shell`) : pour un téléchargement en cours, la
+  confirmation retire désormais automatiquement les fichiers temporaires
+  (`.part` + `.part.met`) sans case à cocher. Pour un téléchargement
+  terminé, une case « Supprimer aussi le fichier partagé dans le dossier
+  de destination » (décochée par défaut) supprime le fichier final ET
+  son entrée `shared_files` (enregistrée à la complétion par
+  `finalize_download`) — sans cette option, le fichier reste partagé.
+  Le paramètre RPC `downloads.remove delete_files` couvre les deux cas ;
+  le comportement `.part.met.keep` des fichiers conservés est inchangé.
+
+- **Tri de la liste des téléchargements** (`app_shell`) : les éléments
+  terminés coulent en bas de la liste ; les téléchargements en cours sont
+  triés par avancement décroissant (les plus complets en haut), puis par
+  date d'ajout récente à égalité. Nouveau comparateur partagé
+  `compareDownloadsForList` appliqué à `filteredDownloadsProvider` et au
+  getter legacy `AppController.filteredDownloads` (auparavant tri
+  `createdAt` ou ordre d'insertion selon le chemin).
+
+- **Débits d'upload temps réel corrigés** (`mule-daemon`) : la colonne
+  « Débit » de la vue Uploads affichait une valeur figée — le dispatcher
+  remontait `upload_bucket.rate_per_sec().max(length)`, c'est-à-dire la
+  *limite configurée* du token bucket (0 = illimité → la taille du bloc,
+  ~180–210 Kio) et non le débit réellement desservi. `UploadManager`
+  mesure désormais le débit en interne par fenêtres d'échantillonnage
+  (`RATE_WINDOW_MS` = 2 s, premier échantillon à 500 ms — même approche
+  que `bytes_since_rate_check/elapsed` côté downloads), et
+  `effective_rate_bps(now)` fait décroître le débit vers 0 quand un pair
+  cesse de demander des blocs (convention `decay_stale_rates`). La boucle
+  `statsTick` (2 s) émet en plus `upload.uploadsUpdated` tant que des
+  slots sont actifs ou en attente, donc l'UI voit les débits vivre et
+  retomber sans attendre un nouvel envoi. Bonus : `statsTick.uploadBps`,
+  USS (`GetDatarate`) et le garde-fou `MinUpload` exploitent aussi le
+  débit mesuré au lieu de la limite configurée.
+
+- **Partages partiels, compteurs sidebar temps réel, pickers natifs et
+  barre de parts eMule 0.72a byte-précise** (`mule-daemon`,
+  `mule_client`, `app_shell`, `ui_kit`) :
+  - **Téléchargements en cours toujours partagés** :
+    `shared_entry_for_active` ne retourne plus `None` quand aucune part
+    eD2K de 9,73 Mio n'est complète — tout download actif apparaît dans
+    « Fichiers partagés » en `isPartial` dès sa création (eMule
+    `CDownloadQueue::AddPartFilesToShare` : *« part files are always
+    shared files »*) ; seules les parts complétées restent annoncées et
+    servies (`PARTSTATUS`, refus de ranges non complétées, publish
+    Kad/serveur inchangés).
+  - **Compteurs sidebar temps réel** : nouveau `SharesController`
+    (badge « Partages » live) ; `kad.statusChanged` est désormais émis
+    par la boucle de maintenance Kad quand `total_contacts` change
+    réellement (plus seulement via les handlers RPC — le badge se met
+    à jour sans ouvrir la section, ≤30 s) ; nouveau nudge
+    `shares.changed` sur `add`/`remove`/`rescan`/`setEnabled`/
+    `setUploadPriority` et stream `sharesEvents` côté client.
+  - **Notifications transitoires supprimées** : bannière de statut en
+    haut (`StatusNotificationBanner` retiré) et tous les `SnackBar` en
+    bas ; les erreurs d'ajout de lien deviennent inline dans le
+    dialogue (les erreurs structurées `setError` et les bannières
+    persistantes sont conservées).
+  - **Sélecteurs de fichiers natifs** : helper `core/file_picker_helper`
+    (`pickFile`, miroir de `pickFolder`, `file_picker` 12.3) — boutons
+    « parcourir » sur dossier de téléchargement, dossier temporaire,
+    `ipfilter.dat`, `server.met`, `nodes.dat` et l'import `.part.met`
+    (champs `.met`, `.part`, dossier cible).
+  - **Barre de parts fidèle à `CPartFile::DrawStatusBar`** :
+    `PartAvailabilityBar` réécrite en `CustomPainter` byte-précis —
+    ardoise = octets reçus (teal si part vérifiée), rouge = trou sans
+    source confirmée, dégradé bleu `RGB(0, 210−22·(n−1), 255)`
+    rare→commun, jaune `RGB(255,208,0)` = blocs en vol, strip vert
+    3 px = progression ; palette atténuée en pause. Nouveaux champs
+    snapshot : `PartProgressSummary.receivedMask` (bitmap 64 cellules
+    intra-part, ≈152 Kio/cellule, calculé depuis le `RangeSet` réel) et
+    `DownloadSnapshot.pendingRanges` (ranges des `in_flight_blocks`,
+    enrichi dans `downloads.list`/`get`, `broadcast_download_update` et
+    les sites d'émission `transfer.rs`/`strategy.rs`). Carte « eD2K Part
+    Map » du détail alignée (remplissage intra-part, bande jaune pending,
+    légende « No source »).
+  - **Disponibilité réelle des parts** : le masque `OP_FILESTATUS`
+    reçu de chaque pair (initial *et* keep-alive en file d'attente) est
+    désormais enregistré dans `act.sources` via
+    `record_source_availability` + emit `downloadUpdated` — auparavant
+    il n'atteignait que le store SQLite du panneau Sources, laissant la
+    barre entièrement rouge. `compute_part_summaries` applique la
+    convention eD2K `part_count == 0` = source complète (eMule
+    `ProcessFileStatus` → `memset(m_abyPartStatus, 1)`) et ignore les
+    masques périmés (> 30 min, `SOURCE_FRESHNESS_MS` partagé avec
+    `part_source_counts`). Comme eMule, les sources découvertes mais
+    jamais contactées ne comptent pas — le rouge signifie « aucune
+    source confirmée ».
+  - **Tests WS durcis** : `ed2k_transfer_tests` et
+    `daemon_adversarial` lisaient `read.next()` sans filtrer l'`id` —
+    toute notification broadcast intercalée (events forwardés à toute
+    session authentifiée) faisait paniquer l'`unwrap` ; helper
+    `read_response`/`next_response` filtrant par `id` désormais utilisé
+    partout dans ces fichiers.
+
+- **Audit câblage réseau eD2K — injections manquantes, kill switch
+  réversible et réglages live propagés** (`mule-daemon`, `mule-mcp`) —
+  contrôle complet du chemin serveur/pairs (RPC → services → handshake)
+  et corrections :
+  - **Callback entrant désormais câblé** : `ServerSessionManager` reçoit
+    l'`InboundListenerService` au boot — `OP_CALLBACKREQUESTED` (un pair
+    HighID nous joint alors que nous sommes LowID) déclenche réellement
+    le `connect_back` sortant implémenté dans le listener ; le code
+    existait mais le service n'était jamais injecté en production.
+  - **Kill switch réversible** : `network.disconnectAll` n'avorte plus
+    les superviseurs (watcher de reconnexion, `SwarmCoordinator`,
+    rotateur d'identité, quota d'upload) — ils s'auto-inhibent tant que
+    l'état est `Disabled` — et les sockets UDP (Kad, serveur), non liés
+    au token d'annulation, sont explicitement stoppés. `network.enable`
+    crée un token neuf puis relance le listener TCP entrant, les sockets
+    UDP, la maintenance Kad, USS et le refresh UPnP ; `last_target`
+    étant conservé au kill (`disconnect_for_kill_switch`), le watcher
+    restaure la session serveur comme eMule `Reconnect`. USS redevient
+    relançable (le drapeau `running` est libéré à la sortie de boucle).
+  - **`servers.connect` sémantique eMule** : bascule à chaud vers un
+    autre serveur sans `disconnect` préalable ; la reconnexion vers la
+    même adresse est idempotente (le snapshot courant est retourné).
+  - **Réglages d'obfuscation propagés partout** : la préférence est
+    appliquée à la session serveur au boot et sur `settings.set`
+    (`set_obfuscation_preference` n'était jamais appelé en production) ;
+    le coordinateur utilise `effective_obfuscation()` (valeurs
+    persistées) pour `OP_GETSOURCES` et le dialing de pairs au lieu des
+    valeurs `config.*` figées au boot ; le nickname réel
+    (`current_nickname`) est utilisé dans le failover serveur et les
+    hellos pairs (suppression des littéraux `http://emule-project.net`
+    et `Emule-Sion`).
+  - **Dialing de pairs sans serveur (Kad-only)** : le coordinateur
+    connecte les sources directes même déconnecté — `client_id=0` dans
+    le hello, comme le chemin manuel `sources.connect` ; les sources
+    `lowid:` et les callbacks serveur restent filtrés
+    (`server_is_high_id=false`), injoignables par construction.
+  - **MCP `emule_search`** : `network:"both"` (enum du schéma) active
+    réellement Kad + serveur — auparavant seul `"all"` était reconnu et
+    `"both"` retournait zéro résultat en silence.
+  - **Tests** : `secure_ident_tests` ne fige plus — le partage pointe
+    vers un vrai fichier temporaire au lieu du chemin fictif
+    `C:\Shared\...` (une plage illisible reste sans réponse par
+    conception eMule, le `read()` du test n'ayant pas de timeout) ;
+    `server_connection_tests` couvre la nouvelle sémantique idempotente
+    de `servers.connect`.
+
+- **Liaison RPC auditée — `upnp.statusChanged` câblé de bout en bout**
+  (`mule-daemon`, `mule-mcp`, `mule_client`, `app_shell`) — audit complet
+  du contrat JSON-RPC/WebSocket (méthodes, events, handshake, supervision)
+  et corrections :
+  - **Daemon** : nouvelle variante typée `DaemonEvent::UpnpStatusChanged`
+    (méthode `upnp.statusChanged`, topic `network`, payload = snapshot
+    `UpnpStatus` complet). Les handlers `upnp.*` passent désormais par
+    `DaemonEvent::send` — `services/events.rs` redevient la source unique
+    du format wire pour **tous** les events.
+  - **Client Dart** : nouveau stream `MuleDaemonClient.upnpStatusEvents`,
+    handler `upnp.statusChanged` dans `RpcDaemonClient`, implémentations
+    dans `FakeMuleDaemonClient` et les mocks de tests ; `UpnpStatusModel`
+    expose `cgnatDetected` (champ du snapshot auparavant ignoré).
+  - **UI** : la carte UPnP des Paramètres → Connexion s'abonne au flux et
+    se rafraîchit sur tout changement asynchrone (retries de mappage en
+    arrière-plan du daemon), plus seulement sur action utilisateur.
+  - **mule-mcp** : suppression du listener mort `kad.searchResult`
+    (jamais émis — les résultats `kad.searchKeywords` sont synchrones).
+  - Contrôle complet : ~95 méthodes dispatchées, toutes celles appelées
+    par le client Flutter ont un handler ; `cargo check`/`clippy`,
+    `rpc_contract`, `flutter analyze`/`test` verts.
+
+- **Cycle de vie `.part` / `.part.met` durci — parité `CPartFile` eMule**
+  (`mule-daemon`, `mule-protocol`) — audit complet de la gestion des
+  fichiers partiels et corrections :
+  - **Pause effective en transfert actif** : les sessions pairs vérifient
+    le statut du download avant chaque bloc planifié (début de session et
+    boucle pipeline dans `transfer.rs`) et s'arrêtent proprement ;
+    `inject_range` ne ramène vers `Downloading` que depuis
+    `Queued`/`WaitingForSources` — un bloc en vol sur un download
+    `Paused`/`Failed`/`Removed` s'écrit sans dépauser ni ressusciter
+    (sémantique eMule : écritures en vol terminées, requêtes stoppées).
+  - **Écriture garantie avant persistance** : si le descripteur `.part`
+    est absent, `inject_range` le rouvre à la demande ; en cas d'échec,
+    erreur remontée au lieu de marquer la plage reçue sans octets écrits
+    (fini les boucles verify-fail fantômes à 100 %).
+  - **Intégrité upload** : suppression du fallback synthétique `0x77` —
+    une lecture disque défaillante sur un partage laisse la requête sans
+    réponse (comportement eMule) au lieu d'empoisonner le demandeur.
+  - **Scan d'orphelins au démarrage** : `recover_orphan_part_mets` scanne
+    le temp dir pour les `*.part.met` inconnus de la base (DB perdue ou
+    fichiers déposés par eMule) et les importe via le chemin sandboxé
+    habituel — vérification des hashsets, éviction des parts corrompues,
+    statut `Paused`, zéro réseau. Le `.part` est **adopté in-place**
+    (`rename` atomique vers `{uuid}.part`, pas de copie), le met source
+    consommé ; mets malformés ignorés avec `warn`, jamais de crash.
+  - **Persistance continue des mets** : `save_active_part_mets` écrit les
+    `.part.met` des downloads non terminaux — cadence ~60 s dans le
+    heartbeat du `SwarmCoordinator` (eMule `SavePartFile`) + flush
+    explicite dans le graceful shutdown — un crash ne laisse plus un met
+    périmé.
+  - **Suppression keep-files sans résurrection** : `downloads.remove`
+    avec `deleteFiles=false` renomme le compagnon en `*.part.met.keep`
+    (invisible au scan d'orphelins, toujours importable via
+    `downloads.importPartMet` avec `partPath` explicite) ; code mort
+    `cancel_download` supprimé.
+  - **Pureté `mule-protocol` restaurée** (ADR 0003) : `ed2k::storage`
+    (`Ed2kPartFileSink`, `.resume.json`) gaté derrière `ed2k-loopback`,
+    `serde_json` rendu optionnel — la crate reste sans I/O en build
+    standard.
+
+- **Source Exchange (SX) aligné sur eMule 0.72a** (`mule-protocol`,
+  `mule-daemon`) — audit complet contre `srchybrid`
+  (`docs/ed2k/messages/source_exchange.md`) :
+  - **Négociation version/opcode fidèle** : la réponse suit
+    `byUsedVersion = min(byRequestedVersion, 4)` en SX2 et bascule en
+    `OP_ANSWERSOURCES` SX1 (version `GetSourceExchange1Version`) quand le
+    demandeur n'envoie pas SX2 — auparavant `OP_ANSWERSOURCES2` v4 était
+    systématique et droppé par les clients SX1/SX2<v4
+    (`PartFile.cpp:3629-3646`).
+  - **Sous-opcodes `OP_MULTIPACKET*`** : les requêtes SX embarquées
+    (`0x92`/`0xA4`/`0xA9`, hash porté par l'enveloppe) sont décodées et
+    dispatchées vers le même handler — le cas typique des clients eMule,
+    inbound comme sur les sessions download. `OP_REQFILENAME` /
+    `OP_FILESTATUS` / `OP_AICHFILEHASHREQ` reçoivent une
+    `OP_MULTIPACKETANSWER` groupée ; l'ext-info `0x58` (part-status du
+    demandeur, lu selon la `ExtendedRequestsVersion` négociée) alimente
+    le `reqstatus` SX.
+  - **Filtrage à l'ingestion (`AddClientSources`/`CanAddSource`)** :
+    `userhash == own`, port 0, IP mauvaise/LAN (policy réseau) ou filtrée
+    (`ipfilter`), LowID quand on est firewalled, self `client_id`+serveur,
+    cap `GetMaxSources` (défaut 400) ; persistance dédupliquée.
+  - **Sélection des sources servies (`CreateSrcInfoPacket`)** : uniquement
+    `!HasLowID && IsValidSource` avec masque compatible et ≥ 1 part utile
+    au demandeur, cap 501 ; silence si `nCount == 0` ou fichier inconnu
+    (shared **ou** download partiel servi).
+  - **Throttles eMule** : réponses rate-limitées `SOURCECLIENTREASKS`
+    40 min/client (×4 hors part-file rare ≤ `RARE_FILE` = 50) ; requêtes
+    gouvernées par `IsSourceRequestAllowed` (`SOURCECLIENTREASKF`,
+    `CONNECTION_LATENCY`, `GetMaxSourcePerFileSoft`).
+  - **Re-ask périodique** : `OP_REQUESTSOURCES(2)` rattaché au cycle de
+    reask (keep-alive queue + boucle de transfert) au lieu du seul
+    handshake.
+  - **Wire strict** : endianness SX1 v<3 en network order corrigée,
+    version 0/>4 droppée, `count × entry_size == len` exigé.
+  - **Échecs permanents** : refus de permis réseau (`AddressViolation`/
+    `IpFiltered`) marque la source `Rejected` au lieu de boucler
+    `Permit denied` dans le coordinateur.
+
+- **Kad DHT — durcissement d'interopérabilité eMule 0.72a** (audit des
+  sources officielles `srchybrid/kademlia/` + diagnostic du log WAN) :
+
+  - *Réponses de routage conformes* : `KADEMLIA2_REQ` (`0x21`) reçoit
+    désormais une vraie réponse `KADEMLIA2_RES` (`0x29`) avec les contacts
+    **vérifiés** les plus proches de `target` (eMule `GetClosestTo` type 2),
+    au lieu d'un `BOOTSTRAP_RES` vide qui était droppé comme non sollicité
+    par le demandeur — le nœud n'est plus évincé des tables distantes.
+    Comme eMule, la requête n'est servie que si le champ `uCheck` égale
+    notre KadID (drop silencieux sinon). `BOOTSTRAP_REQ` reçoit notre
+    KadID + port **TCP** eD2K (et non UDP — bug filaire corrigé, le
+    paramètre encodeur est renommé `tcp_port`) + version Kad **8** +
+    jusqu'à 20 contacts vérifiés diversifiés (`spread_verified`).
+  - *Apprentissage des contacts entrants* : la table de routage est
+    injectée dans le listener UDP (`set_routing_table`) ; les émetteurs
+    de `HelloReq`, `HelloRes`, `BootstrapRes` et `PublishSourceReq`
+    validé nourrissent la table — comme `AddContact` eMule qui apprend
+    depuis chaque paquet.
+  - *Sémantique `verified` fidèle* : les contacts appris dans les
+    réponses de routage ne sont plus marqués vérifiés (un bootstrap
+    malveillant ne peut plus injecter des « vérifiés » arbitraires) ;
+    promotion uniquement par réponse sollicitée (`mark_seen`) ou
+    handshake `HELLO_RES_ACK`. Le bootstrap n'assume `verified` que si
+    la table est vide (`bAssumeVerified` = `GetNumContacts()==0`).
+  - *Tolérance de publication* : `PublishSourceReq`/`PublishKeywordReq`/
+    `PublishNotesReq` entrants sont droppés silencieusement quand la
+    clé cible est hors `SEARCHTOLERANCE` de notre KadID (comportement
+    `KademliaUDPListener.cpp`) — le nœud ne devient plus un puits
+    d'index universel.
+  - *Identité publiée correcte* : `publish_source` annonce l'IPv4
+    **publique observée** (`FirewalledRes` → `observed_ip`, ou HighID
+    de connexion serveur propagé via `set_public_ipv4`) et le port UDP
+    effectif au lieu de l'adresse de bind — sinon les indexeurs eMule
+    rejetaient nos publications (`contact.ip == IP source`). Version
+    annoncée : 8.
+  - *Lookups unifiés* : `find_node`, `search_notes` et `publish_note`
+    passent par `converge_closest_contacts` (convergence itérative
+    ALPHA=5) au lieu du parcours séquentiel / table locale.
+  - *Deadlock corrigé* : cycle `in_flight` → `routing_table` (handlers
+    `HelloRes`/`BootstrapRes` tenant le mutex des transactions pendant
+    `learn_contact`) contre `routing_table` → `in_flight`
+    (`kad.status` → `get_status` → `get_snapshot`) — gelait tout le
+    pipeline Kad en session WAN réelle (recv loop morte, maintenance et
+    recherches bloquées). Ordre des verrous corrigé des deux côtés :
+    `learn_contact` appelé après relâchement d'`in_flight`, et
+    `get_status` ne traverse plus aucun await en tenant `routing_table`.
+  - *Fuite de transactions en vol* : `InFlightTxGuard` RAII retire
+    l'entrée `in_flight` à l'abandon de la future `send_*` (le timeout
+    externe de 2,5 s de `converge_closest_contacts` annulait la future
+    avant son propre timeout interne de 3 s, laissant l'entrée jusqu'à
+    saturation du cap 200 → silence total des envois). `insert_in_flight`
+    balaye en prime les entrées âgées de plus de `timeout+2 s` ; les 4
+    insertions inline qui contournaient le cap sont unifiées.
+  - *Réponses de recherche multi-paquets* : les `SEARCH_*_RES` arrivent
+    en plusieurs datagrammes (~50 entrées/paquet, jusqu'à ~300 résultats
+    chez eMule) — la transaction n'est plus retirée au premier paquet.
+    `InFlightTransaction.sender` passe en `mpsc` non borné ;
+    `collect_search_batches` agrège les batches dans une fenêtre idle de
+    350 ms (≤ 12 paquets, ≤ 300 entrées). ~91 % des résultats keyword
+    étaient auparavant jetés comme non sollicités.
+
+- **Options exclusives Emule-Sion** (aucun équivalent eMule/aMule) :
+  - `paranoidMode` : slots d'upload réservés aux pairs **obfusqués avec
+    signature Secure Ident vérifiée** — applique le gate devant
+    `request_upload_slot` (`OP_STARTUPLOADREQ`, `OP_REQUESTPARTS*`).
+  - `identityRotationHours` : rotation périodique de l'identité —
+    nouvelle clé RSA (`cryptkey.dat`), nouveau `user_hash` eD2K et
+    nouveau `KadID` propagés à chaud (listener, SUI, firewall-check,
+    table de routage Kad). Timestamp persisté
+    (`identity_last_rotation_unix`), watcher 60 s. Les crédits sont
+    volontairement détachés à chaque rotation.
+  - `dailyUploadQuotaGb` : quota volumétrique d'upload par jour —
+    compteur cumulatif persisté (`upload_quota_used_bytes`,
+    `upload_quota_day`), gate atomique bloquant les nouveaux slots au
+    seuil, remise à zéro au changement de jour UTC (watcher 30 s).
+  - `swarmHealing` : biaise la planification des blocs vers les **parts
+    les plus rares du swarm** (compteur de sources connues par part,
+    `Ed2kDownloadSequencer::with_part_scarcity`) — le client devient
+    source de secours avant la disparition d'une part. Les sources
+    complètes (`part_count = 0`) couvrent toutes les parts ; les masques
+    périmés (> 30 min) sont ignorés. eD2K reste pull-only : aucun push,
+    tie-break sur octets reçus.
+
+- **Persistance corrigée** :
+  - `limits.set` persistait déjà les 5 buckets ; une mise à jour
+    **partielle** réinitialisait en live les limiteurs non fournis aux
+    défauts — la config part désormais du snapshot live des buckets.
+    L'UI envoyait aussi `serverRequestsPerSec`/`kadPacketsPerSec` en dur
+    (10/50) — elle envoie maintenant les valeurs courantes.
+  - **Filtre IP** : `filter.setEnabled` et `filter.importFile` ne
+    persistaient rien — `ipfilter_enabled` + `ipfilter_path` sont
+    désormais écrits en SQLite et rechargés au boot
+    (`filter.clear` oublie le chemin), comme eMule rechargeant
+    `ipfilter.dat`.
+
+- **Défauts alignés sur eMule 0.72a** : file d'upload 5000
+  (`QueueSize`), `minUploadKbs` 1 (`MinUpload`), connexions/min 240
+  (`MaxConnectionsPerFiveSeconds` = 20), UPnP désactivé par défaut,
+  suppression des serveurs morts dès le 1er échec (`DeadServerRetry`).
+  UI Connexion : boutons « Appliquer », capacités acceptent `0`
+  (illimité).
+
+- **Fix partages après redémarrage** : les téléchargements `Completed`
+  persistés en SQLite mais absents de la map `active` (boot frais) sont
+  désormais fusionnés dans `list_all_shared_files` et résolus par
+  `get_shared_file` — comme eMule qui rehash ses fichiers finis dans
+  `CSharedFileList` au démarrage. Sans ce fix, l'onglet Partages était
+  vide et les fichiers complétés n'étaient pas serviables en upload après
+  un restart. Le fichier cible doit exister sur disque.
+
+- **Paramètres eMule complétés** (`docs/SETTINGS.md` pour la référence) :
+  - **Serveurs** (section Connexion) : `serverReconnect` — watcher 15 s
+    reconnectant au dernier serveur via le chemin RPC normal ;
+    `serverAutoconnect` — connexion au meilleur serveur au démarrage ;
+    `serverAutoremoveDead` — suppression après 3 échecs ;
+    `serverAutoupdateList` + `serverAutoupdatePath` — import d'un
+    `server.met` local au boot (pas de fetch HTTP, anti-SSRF) ;
+    `safeConnect` — `downloads.resume` bloqué tant que ni eD2K ni Kad
+    ne sont disponibles.
+  - **Général** : `tempDir` (dossier `.part` configurable),
+    `ichEnabled` (vérification MD4 des parts), `rememberCancelled` /
+    `rememberDownloaded` (gating des entrées d'historique).
+  - **Transferts** : `minUploadKbs` (plancher par slot upload, eMule
+    `MinUpload` — n'ouvre pas de slot sous la moyenne configurée),
+    `autoPriorityNewDownloads` (fichiers ≥ 1 part en priorité `high`).
+
+- **Refonte complète des Paramètres** : le dialog fourre-tout est remplacé
+  par un **onglet dédié `/settings`** (`SettingsView`) avec rail de sections
+  à gauche, style « Préférences » eMule :
+  - **Général** : dossier de téléchargement, bascule `shareDownloadDir`
+    (partage auto du dossier Incoming — nouveau paramètre exposé via
+    `settings.get`/`settings.set`), rétention de l'historique, langue.
+  - **Connexion** : profil réseau lab/WAN, bannière kill switch, budgets de
+    sockets, accès à la config UPnP/ports (ex-`NetworkPolicyDialog` +
+    `NetworkModeDialog` fusionnés).
+  - **Transferts** : `maxGlobalDownloadPeers`, `maxPeersPerDownload`,
+    `minPeersPerDownload` — réglages RPC auparavant invisibles en UI.
+  - **Sécurité** : filtre IP (`ipfilter.dat`) + limites de débit
+    (ex-`IpFilterDialog` intégré) + notice anti-SSRF.
+  - **Amis** : friend slots (section déplacée de l'ancien dialog).
+  - **Avancé** : diagnostic, import `.part.met`, guide lab, barre debug,
+    version du daemon.
+  - Client : nouvelle méthode `updateSettings(patch)` → `settings.set`.
+  - `SettingsDialog` supprimé (code mort) ; l'item « Settings » de la
+    sidebar navigue vers `/settings`.
+
+- **Stratégies « smart » eMule 0.72a** (download + upload) :
+  - **Preview (first/last part)** : `Ed2kDownloadSequencer::with_preview_priority`
+    sert les parts 0 et N-1 en priorité (`PR_VERYHIGH` eMule) pour les fichiers
+    média/archives, permettant la prévisualisation pendant le téléchargement.
+  - **End-game redundancy** : quand ≤ 3 blocs (≈ 552 Kio) restent, un bloc
+    déjà en vol peut être re-demandé à un second pair (max 2 assignations,
+    jamais pour le même pair ; hors end-game l'overlap reste interdit) —
+    conforme `CPartFile::GetNextRequestedBlock`.
+  - **Drop NoNeededParts** : `PeerFailureReason::NoNeededParts` — un pair dont
+    le bitmask ne couvre aucun bloc manquant est libéré proprement et marqué
+    `Rejected` temporairement.
+  - **Priorités de fichiers** : `Download.priority` persisté (colonne SQLite
+    `downloads.priority`, défaut `normal`), RPC `downloads.setPriority`,
+    pondération de l'allocateur de slots (low×1/normal×2/high×4/release×8),
+    sélecteur de priorité dans l'expansion Sources de l'UI.
+  - **Crédits eMule persistés** : les octets téléchargés depuis un pair
+    vérifié SUI sont comptabilisés sous `Md4(pubkey)` (flush par 8 Mio +
+    fin de session) ; l'upload était déjà câblé — la formule canonique
+    `min(10, 2·DL/UL)` s'applique désormais dans les deux sens.
+  - **Trickle slots + slot focusing** : `UploadSlotState::Trickle` — un slot
+    < 1 Kio/s après 60 s de grâce est rétrogradé (ne compte plus dans
+    `max_active`) et le meilleur client en file est promu.
+  - **Friend slots + anti-leecher minimal** : table `friends` (équivalent
+    `friends.met`), RPC `friends.list`/`add`/`remove`, slot dédié bypassant
+    la file (`uh:<userhash>`), rejet des clients non identifiés quand la file
+    est ≥ 90 % pleine.
+  - **A4AF (swap inter-fichiers)** : `a4af_rebalance` à chaque tick du
+    coordinateur — un fichier sous `min_peers` réclame une adresse connectée
+    à un fichier de priorité strictement inférieure et saturé (1 swap/tick,
+    log `[A4AF]`). Nos sessions restent mono-fichier : le swap se fait par
+    reconnexion, pas par multiplexage `OP_REQFILENAME`.
+
+- **Dossier « Incoming » partagé** (`incoming_share.rs`) : au démarrage,
+  chaque fichier régulier du répertoire de téléchargement est hashé en eD2K
+  (MD4 + hashset persisté) et enregistré comme fichier partagé — même
+  comportement que le dossier Incoming d'eMule. Les entrées existantes
+  conservent leur priorité/état ; désactivable via le setting
+  `share_download_dir = "0"`. Artefacts de téléchargement exclus
+  (`.part`, `.met`, `.tmp`…). Log `[INCOMING_SHARE]`.
+  - **Rescan manuel** : RPC `shares.rescan` + client `rescanSharedFiles()`
+    ; le bouton refresh de l'onglet Partages déclenche désormais un vrai
+    rescan du dossier Incoming (hash des nouveaux fichiers, réglages
+    `enabled`/`upPriority` existants préservés) puis recharge la liste,
+    avec SnackBar de résultat. Tests offline dans
+    `upload_inbound_tests.rs` (découverte, préservation, opt-out).
+
+- **Partage des téléchargements en cours (eMule `CPartFile`)** : un
+  téléchargement actif devient serviable dès qu'une part eD2K complète
+  (9 728 000 B) est reçue — `get_shared_file` résout un `SharedFile`
+  `is_partial` pointant vers le `.part`, avec `completed_parts` = indices
+  des parts vérifiées. Le dispatcher n'annonce que ces parts dans
+  `PARTSTATUS` (`OP_FILESTATUS`), refuse tout range hors parts complétées
+  (`OP_REQUESTPARTS`), et ne calcule jamais de hashset/AICH depuis un
+  fichier incomplet (le hashset du `.met` reste servi, root AICH connu
+  uniquement). `shares.list` inclut désormais les partiels (badge
+  « partiel (n parts) » dans l'onglet Partages, contrôles
+  priorité/activation désactivés dessus).
+
+- **Paramètres eMule supplémentaires câblés** (`settings.get`/`settings.set`,
+  appliqués à chaud) :
+  - **Général** : `nickname` — pseudo annoncé aux serveurs et pairs
+    (remplace les valeurs codées en dur « Emule-Sion »).
+  - **Connexion → Protocole & limites** : `obfuscationEnabled` /
+    `obfuscationRequired` (protocol encryption — listener inbound live via
+    `set_obfuscation`, connexions sortantes via `effective_obfuscation()`,
+    byte connect-options buddy Kad mis à jour) ; `maxConnections` et
+    `maxConnPerMin` (budgets `network_policy` appliqués immédiatement) ;
+    `ussEnabled` (Upload Speed Sense, persisté dans `uss_config`).
+  - **Transferts** : `maxUploadQueue` — taille de la file d'attente upload
+    (eMule `QueueSize`, défaut 500, clamp 10–5000).
+  - **Connexion → Capacités & ports** (panneau eMule complet) :
+    `capacityDownloadKbs`/`capacityUploadKbs` (capacités de ligne, la
+    capacité émission sert de référence à USS) ; `ed2kPort`/`kadPort`
+    **rebind à chaud** (listener TCP stoppé/redémarré si actif, socket Kad
+    UDP rebind, `kad.set_ed2k_tcp_port`, buddy connect-options,
+    `upnp.set_ports`) ; `udpEnabled` (stoppe/démarre `kad_udp` +
+    `server_udp`, eMule « UDP désactivé ») ; `upnpEnabled` (map/unmap
+    immédiat). Ports effectifs en atomics sur `AppState`
+    (`ed2k_port()`/`kad_port()`/`udp_enabled()`), persistés et appliqués au
+    boot (`state.rs` lit les settings avant de binder) — tous les call
+    sites (`servers`, `sources`, `swarm_coordinator`) utilisent désormais
+    les valeurs effectives.
+
+- **Alignement fin eMule 0.72a — file d'upload et gestion des sources** :
+  - **Formule de crédit exacte** (`ClientCredits::GetScoreRatio`) :
+    `min(2·DL/UL, √(DL/1Mio + 2), cap linéaire ~3,34 @ 9,2 Mio)` bornée
+    `[1.0, 10.0]` — remplace le `2·DL/UL` seul qui sur-créditait les petits
+    downloaders ; identités invalides/non vérifiées → 1.0.
+  - **Priorité du fichier demandé dans le score de queue** : `file_prio_num`
+    par fichier partagé (`veryhigh/powershare`=18, `high`=9, `normal`=7,
+    `low`=6, `verylow`=2) appliqué au score d'attente ; colonne
+    `shared_files.up_priority` + RPC `shares.setUploadPriority`.
+  - **Bonus « downloading »** : un client en cours d'upload qui re-file
+    reçoit ~+15 min de temps d'attente (`GetScore(isdownloading)`), ce qui
+    stabilise les sessions actives.
+  - **Score 0 bad-guy** : les clients bannis ou à identification rejetée
+    (`IS_IDBADGUY`) restent en queue avec score 0 — jamais promus.
+  - **Purge conditionnelle à 80 %** (`CPartFile::Process`) : quand le nombre
+    de sources connues atteint 80 % du `maxSources` du fichier, purge à
+    cadence 60 s des LowID non rappelables, des sources NNP (« no needed
+    parts ») et des sources en échec répété (`fail_count ≥ 3`), log
+    `[SOURCE_PURGE]`.
+  - **UDP re-ask conditionné** : `OP_REASKFILEPING` n'est émis que si la
+    session en file distante a plus de ~20 min (dernier essai de connexion
+    ancien), en plus de la déduplication 21 min existante.
+  - **`maxSources` par fichier** : `FT_MAXSOURCES` (0x13) lu à l'import
+    `.part.met` et réécrit à la sauvegarde ; colonne `downloads.max_sources`,
+    champ `maxSources` dans les snapshots, RPC `downloads.setMaxSources` ;
+    plafonne le quota de pairs, le gate de re-requête et le seuil de purge.
+  - **UI câblée** : champ « Src max » (dialog d'édition `FT_MAXSOURCES`)
+    dans l'expansion Sources ; chip de priorité `DownloadPriorityChip`
+    directement sur chaque ligne de download (layouts full et compact —
+    plus besoin de déplier) ; onglet **« Partages »** dédié (`/shares`,
+    `SharesView`) avec sélecteur de priorité d'upload (powershare) et
+    switch activé/suspendu par fichier ; section « Amis » dans Paramètres
+    (ajout/suppression de userhash → friend slot) ; colonnes « Score » et
+    « Crédit ×n.nn » + badge « banni » dans la file d'upload.
+  - **A4AF événementiel + périodique** : `a4af_event_pass` à chaque tick —
+    une source marquée NNP/FNF voit son cooldown effacé sur les autres
+    fichiers où elle est candidate (équiv. `SwapToAnotherFile` immédiat) ;
+    le rebalance complet passe à la cadence eMule de 8 min
+    (`A4AF_FULL_INTERVAL`).
+
+- **Alignement protocolaire eMule 0.72a** (`mule-protocol`, `mule-daemon`) :
+  - **Référence de vérité** : `D:\eMule0.72a-Sources\eMule0.72a-Sources\srchybrid`
+    remplace eMule 0.50a comme référence normative (docs `docs/ed2k/`,
+    `AGENTS.md`, README mis à jour ; les mentions 0.50a restantes sont de la
+    provenance historique assumée).
+  - **Profil `Emule072a`** : nouvelle variante `Ed2kCompatibilityProfile::Emule072a`,
+    désormais le **profil par défaut**. `Emule050a` est conservée comme variante
+    historique (assignations filaires identiques).
+  - **Opcodes AICH corrigés** : `0x12`–`0x15` (erronés) → `0x9B`–`0x9E`
+    (`opcodes.h:272-275`).
+  - **Nouveaux codecs** : `OP_HASHSETREQUEST2`/`ANSWER2` (`0xB1`/`0xB2`,
+    `FileIdentifier` + options), famille `OP_MULTIPACKET*` (`0x92`/`0x93`/`0xA4`/
+    `0xA9`/`0xB0`), `OP_QUEUERANK`/`QUEUERANKING`/`CHANGE_SLOT`, `OP_MESSAGE`,
+    `OP_FILEDESC`, `OP_PORTTEST`, `OP_CHATCAPTCHAREQ`/`RES`, `OP_PEERCACHE_*`
+    (raw/ignorés). `0x51`/`0x52` marqués *DEPRECATED* comme dans `opcodes.h:223-224`.
+  - **Ext-info `0x58` déterministe** : `Ed2kDecoder::extended_requests_version`
+    porte la version `ExtendedRequestsVersion` négociée via `OP_EMULEINFO`
+    (0 = absent, 1 = bitfield, ≥2 = bitfield + complete sources) au lieu de
+    l'ancienne heuristique par sous-opcode. Câblée dans `peer_session`
+    (`status_query`, `transfer`) avec la version du pair.
+  - **Kad** : `send_bootstrap` insère le nœud répondeur dans les contacts
+    (conforme eMule) ; `search_sources` déduplique les sources par `IP:port`
+    rapportées par plusieurs contacts.
+  - **Robustesse tests** : lecture des événements `downloadAdded`/
+    `downloadUpdated` tolérante à l'ordre ; fixtures `PeerSource`
+    (`software`/`availability`) ; masque `FILESTATUS` surdimensionné réellement
+    rejeté ; clippy workspace à zéro warning sous `-D warnings`.
+
+- **Façade AppController réduite** : ~31 membres délégués devenus
+  inutilisés supprimés (getters history/kad/servers/search/netpol/
+  settings exposés désormais via leurs providers). Restent : composition
+  root (client, supervisor, sub-contrôleurs), `initialize`/`refresh`/
+  `dispose`, et les membres encore consommés (tests, `DeepLinkHandler`,
+  `filteredDownloads`).
+
+- **Desktop : notifications natives de fin de téléchargement** :
+  `DownloadNotifier` (`apps/desktop/lib/core/download_notifier.dart`)
+  souscrit à `downloadLifecycleEvents` et affiche un toast OS via
+  `local_notifier` (Windows/Linux/macOS) sur `completed` (nom du fichier)
+  et `failed` (nom + raison). No-op sur les autres plateformes ou si le
+  notifier OS est indisponible.
+
+- **Web : bouton "Changer de daemon"** : nouveau provider
+  `onChangeDaemonProvider` (null par défaut — desktop/mobile). La sidebar
+  affiche une action `link_off` quand il est défini ; `EmuleSionApp`
+  accepte `onChangeDaemon`. `apps/web` implémente `_disconnect()` :
+  dispose le controller et revient au formulaire de connexion pré-rempli
+  avec l'URL courante.
+
+- **Migration AppController → providers (fin)** : les ~18 widgets restants
+  (dialogs add-link/import/settings/network-policy/ip-filter/lab-guide/
+  diagnostic/category/network-mode/download-detail, sidebar, top bar, list,
+  row, empty state, details panel, downloads screen) consomment désormais
+  les providers Riverpod (`ref.watch`/`ref.read`) au lieu de recevoir
+  `AppController` en paramètre. `AppNavSection`/`DownloadFilter` déplacés
+  dans `shell_controller.dart` (ré-exportés par `app_controller.dart` pour
+  compat). `AppController.dispose` est idempotent — les sous-contrôleurs
+  sont disposés par leurs `ChangeNotifierProvider`. `AppController` reste
+  uniquement composition root (router, `EmuleSionApp`, tests).
+
+
+- **E5 — Détail par pair + ETA** : `PeerSessionSnapshot.transferRateBps`
+  existait déjà (affiché dans la carte sources du détail) ; ajout de
+  `etaSeconds` au `DownloadSnapshot` léger (seconds restantes au débit
+  courant, `None` si nul/terminé) — peuplé dans `DownloadItem.etaSeconds`
+  sans appel `downloads.get`, affiché dans la ligne de téléchargement
+  (`ETA: 12m 34s` sous le débit).
+
+- **E4 — Fin du polling** : events daemon `kad.statusChanged`,
+  `history.entryAdded`, `settings.changed {keys}`, `network.policyChanged`
+  (topics `kad`/`history`/`settings`/`network`, payload nudge = refetch).
+  `AppState::emit_event` = point d'entrée unique pour les handlers. Côté
+  client : `kadStatusEvents`/`historyEvents`/`settingsEvents`/
+  `networkPolicyEvents` + `SettingsChangedEvent`. Côté UI : le timer 3 s
+  de `KadController` est supprimé (events + fetch à la connexion),
+  `HistoryController`/`SettingsController`/`NetworkPolicyController` se
+  rafraîchissent sur event → synchronisation multi-clients live.
+
+- **E3 — Cycle de vie downloads** : events daemon `event.downloadAdded` /
+  `downloadRemoved` / `downloadCompleted` / `downloadFailed` (topic
+  `downloads`), émis centralement par `DownloadService` (`set_event_channel`
+  — tous les chemins couverts : RPC, deep link, lab, transitions internes).
+  Côté client `DownloadLifecycleEvent` + `downloadLifecycleEvents` ; côté UI
+  `AppController` applique added/completed/failed via `upsert`, removed via
+  `removeLocal`, et affiche bannière de fin / erreur d'échec (toast partagé
+  desktop + web).
+
+- **E2 — Tick de stats globales** : event daemon `event.statsTick`
+  (topic `stats`, ~2 s, suspendu sans abonné) avec `downloadBps`,
+  `uploadBps`, `downloadsActive`, `peersConnected`, `serverConnected`,
+  `kadContacts`, `kadUdpBound`. Côté client `DaemonStatsModel` +
+  `statsEvents` ; côté UI `StatsController` (provider dédié) et le
+  `TransferRateTracker` préfère les débits agrégés du daemon quand un tick
+  est disponible (fallback : sommes locales).
+
+- **E1 — Uploads temps réel** : event daemon `upload.uploadsUpdated`
+  (topic `uploads`, snapshot actif + file + débit agrégé, émis après chaque
+  mutation de l'upload manager, progression throttlée ~500 ms). Côté client
+  `MuleDaemonClient.uploadsEvents` + `UploadsSnapshotModel` ; le fake client
+  simule un upload actif ~50–250 kB/s + 1 en file. Côté UI : nouveau
+  `UploadsController` (provider dédié), section **Uploads** dans la sidebar
+  (`/uploads`), `UploadsView` avec tables sessions actives / file d'attente
+  (annulation via `uploads.cancel`), et le badge UL + sparkline de la top
+  bar branchés sur le débit réel (fini le `() => 0`).
+
+- **Architecture partagée — `packages/app_shell`** : tout le code UI/app
+  (`AppController`, providers, router, vues/features, l10n) est extrait de
+  `apps/desktop` vers `packages/app_shell` (platform-pure). Les points de
+  contact OS passent par des abstractions : `DaemonLifecycle` (implémenté
+  par `DaemonSupervisor` desktop), `WorkDirInfo`/`WorkDirMode`, et les
+  helpers conditionnels `systemActions`/`pickFolder` (stub web / impl IO).
+  `EmuleSionApp` est partagé ; `apps/desktop/lib/main.dart` devient un
+  thin entry point (window/tray/deep-links + supervisor).
+- **`apps/web` — remote controller** : nouvelle app Flutter web qui se
+  connecte à un mule-daemon existant via WebSocket. Résolution de l'URL
+  par ordre : `?daemon=ws://…` > `--dart-define=DAEMON_URL` > préférence
+  `daemon.url` persistée > formulaire de connexion
+  (`DaemonConnectScreen`, suggestion `ws://<hôte>:4660/rpc`, validation
+  ws/wss, `?daemon=` vide réinitialise). `flutter build web` + dry-run
+  WASM validés.
+
+- **Desktop polish (P6, début)** :
+  - `file_picker` natif remplace le hack PowerShell dans
+    `lib/core/folder_picker.dart` (Windows/Linux/macOS/Android).
+  - `window_manager` : `lib/core/window_setup.dart` restaure et persiste
+    la géométrie de fenêtre (min 760×500, shared_preferences `window.*`).
+  - `tray_manager` : `lib/core/tray_setup.dart` ajoute l'icône tray
+    (Show/Quit) avec `assets/app_icon.ico`.
+  - Routes profondes (`lib/app/router.dart`) : `/downloads/:id` ouvre le
+    panneau détail d'un téléchargement (l'URL devient la source de vérité
+    pour la sélection — clic row → `router.go`, fermeture → retour
+    `/downloads`), `/settings` ouvre le dialog Settings par-dessus la
+    section downloads, `usePathUrlStrategy()` activé sur le web.
+  - Graphe de débit : `TransferRateTracker` (`lib/app/`) échantillonne le
+    débit agrégé chaque seconde (fenêtre glissante 60 s, timer paresseux
+    démarré au premier listener) ; `SpeedSparkline` (CustomPainter, sans
+    dépendance chart) affiché dans le badge de vitesse de la top bar.
+  - Liens `ed2k://` : `app_links` + `lib/core/deep_link_handler.dart`
+    (lien initial + stream → `addEd2kLink`) ; enregistrement Windows via
+    `windows/ed2k_protocol.reg` (ou l'installeur), `.desktop`
+    `x-scheme-handler/ed2k` pour Linux, intent-filter/URL types pour
+    Android/iOS.
+  - Runners **Android** et **iOS** générés (`com.emulesion.app`) :
+    `AndroidManifest.xml` avec permission `INTERNET` + intent-filter
+    `ed2k`, `Info.plist` avec `CFBundleURLSchemes` `ed2k`, nom d'app
+    `Emule-Sion`. Les services desktop (`WindowSetup`, `TraySetup`) sont
+    déjà no-op hors desktop ; `pickFolder` exclut iOS (pas de picker de
+    dossier natif).
+
+### Ajouté — Refonte UI multiplateforme (branche `ui-ux`)
+
+- **`packages/mule_client`** : extraction du client daemon dans un package
+  Dart partagé (interface `MuleDaemonClient`, transport `RpcDaemonClient`
+  WS/JSON-RPC, `FakeMuleDaemonClient`, modèles de domaine, DTOs). Nouveau :
+  reconnexion automatique opt-in (`autoReconnect`, backoff 0,5 s→10 s +
+  re-`hello` + resync), keep-alive `system.status` toutes les 20 s
+  (détection des connexions zombies), gestion `event.snapshotRequired`,
+  tests client déplacés dans le package.
+- **`packages/ui_kit`** : design system partagé — `AppTheme`,
+  `Formatters`, `AppStrings`, `PartAvailabilityBar`.
+- **Daemon — events RPC durcis** : `DaemonEvent` devient la source unique
+  du format wire (`method()`, `topic()`, `send()` — utilisé par tous les
+  émetteurs) ; `events.subscribe {topics}` filtre par session
+  (`downloads`/`peers`/`servers`/`search`/`network`) ; un client qui lag
+  reçoit `event.snapshotRequired {skipped}` au lieu de perdre des events
+  silencieusement ; `DownloadUpdatedEvent` (doublon) supprimé.
+- **UI desktop** : correction du débordement du sélecteur de cible de
+  recherche (scroll horizontal en mode compact, espacements resserrés) ;
+  watchdog de recherche 30 s annulé dès réception de résultats.
+- **Navigation `go_router` + shell adaptatif (P3)** : `MaterialApp.router`
+  avec routes déclaratives par section (`/downloads`, `/history`,
+  `/servers`, `/search`, `/kad`), `ShellRoute` injectant le contenu dans le
+  shell adaptatif (`DownloadsScreen` : sidebar ≥1100 px, rail compact
+  750–1100 px, drawer <750 px). Le `ShellController` reste la source de
+  vérité de la section : sync VM→URL par listener (`router.go`), sync
+  URL→VM (deep links, prêts pour le web) via adoption de la route dans le
+  shell. Les vues de section ont désormais chacune leur `ListenableBuilder`.
+- **Clean architecture UI** : design tokens dans `ui_kit`
+  (`AppColors`/`AppSpacing`/`AppRadius`/`AppTextStyles`/`AppBreakpoints`/
+  `AppDecorations` — plus aucun `Colors.*` en dur dans les vues) ;
+  `downloads_screen.dart` découpé en widgets dédiés (`DownloadsTopBar`,
+  `DownloadsList`, `DownloadsEmptyState`, `DownloadDetailsPanel`,
+  `StatusNotificationBanner`) ; conventions dans
+  `docs/architecture/conventions_ui.md`.
+- **i18n (P5)** : `gen_l10n` activé — `l10n.yaml`, ARB
+  `lib/l10n/app_fr.arb` (template = libellés actuels) + `app_en.arb`
+  (traduction), sortie `lib/l10n/generated/`. Sélecteur de langue FR/EN
+  dans Settings (`LocaleController` + `localeControllerProvider`, persistance
+  `shared_preferences` clé `app.locale`). Extension `context.l10n`
+  (+ `DownloadFilterL10n`). `AppStrings` (ui_kit) est deprecated.
+  **Passe complète** : ~400 littéraux visibles migrés vers `context.l10n`
+  dans ~90 fichiers (dialogs, tables, toolbars, bannières, empty states),
+  avec placeholders `{param}` pour les textes dynamiques. Les littéraux
+  techniques (URLs `ed2k://`, chemins, formats purs interpolés) restent en
+  dur volontairement. Les tests qui montent un `MaterialApp` brut doivent
+  fournir `AppLocalizations.localizationsDelegates` + `supportedLocales`
+  (+ `locale: Locale('fr')` quand ils assertent des libellés FR).
+- **Migration Riverpod (P4, découpage du VM terminé)** : `ProviderScope`
+  dans `EmuleSionApp` (`muleDaemonClientProvider`,
+  `daemonSupervisorProvider`, `devToolsEnabledProvider`,
+  `appControllerProvider`). L'ancien `DownloadsViewModel`, renommé
+  `AppController` et déplacé dans `lib/app/app_controller.dart` (1781 → ~740
+  lignes) est découpé en **10 contrôleurs par sous-domaine**, chacun dans
+  son fichier `features/<domaine>/view_models/` et exposé via un
+  `ChangeNotifierProvider` dédié : `DownloadsStoreController` (store,
+  events, CRUD, sélection, part.met, diagnostic), `HistoryController`,
+  `KadController`, `SearchController` (watchdog 30 s, dédup par hash),
+  `ServersController` (liste + session), `PeerSourcesController`,
+  `CategoriesController`, `NetworkPolicyController` (kill switch, IP
+  filter, rate limits), `SettingsController`, `LabController`. Le VM
+  reste un orchestrateur fin (connexion/supervisor, section, bannières)
+  qui délègue et forward les notifications — aucune vue ni test cassé.
+  Reste : basculer les vues sur les providers (`HistoryView` et `KadView`
+  déjà en `Consumer*`), puis supprimer la façade.
+- **Docs** : `docs/architecture/rpc_protocol.md` (contrat JSON-RPC complet)
+  et `docs/architecture/plan_ui_multiplateforme.md` (roadmap desktop/
+  mobile/web en 10 phases).
+
 ### Ajouté — Notes Kad (commentaires/évaluations de fichiers) et outillage MCP
 
 - **Kad notes — modèle wire et codec bornés** (`crates/mule-protocol/src/kad`) : `KadNoteWire` (entrée `CEntry` avec `m_bSource = false`), décodeurs/encodeurs pour `KADEMLIA2_SEARCH_NOTES_REQ` (`0x35`, `[target:16][file_size:u64]`), `KADEMLIA2_PUBLISH_NOTES_REQ` (`0x45`, `[target][source:16][tag_count:u8][tags]`), les réponses notes sur le `KADEMLIA2_SEARCH_RES` unifié (`0x3B`, forme émise par `CIndexed::SendValidNoteResult`) et le `KADEMLIA_SEARCH_NOTES_RES` legacy (`0x3A`). Listes de tags génériques bornées : tags connus décodés en `Ed2kTag`, inconnus préservés en `RawTag`, compteur plafonné à 32 — les commentaires restent des données d'affichage non fiables.
@@ -21,6 +1058,118 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 - **RPC** : `servers.search` retourne désormais `udpTargets[]` (`{address, request: "REQ3"|"REQ2"|null}`) pour observer la sélection en test UI/MCP, et accepte `udpOnly` (portée « Global » d'eMule : fan-out UDP vers la liste de serveurs sans recherche TCP sur le serveur connecté).
 - **UI desktop (harnais de test)** : troisième cible de recherche « Global UDP » (`udpOnly`), bandeau d'info sans connexion requise, et résumé `UDP: n×REQ3, m×REQ2` affiché dans la notification de statut après envoi.
 - Tests : wire REQ3 (tag NewEd2k + payload verbatim), décodage `GLOBSERVSTATRES` complet et forme courte, sélection REQ3/REQ2/probe par socket UDP réelle en loopback.
+
+### Corrigé — Recherche globale UDP
+
+- **Sélection REQ1/REQ2/REQ3** : eMule envoie `OP_GLOBSEARCHREQ` (`0x98`) aux serveurs sans `SRV_UDPFLG_EXT_GETFILES` — ces serveurs ignoraient silencieusement le REQ2 qu'on leur adressait ; la sélection est désormais à trois niveaux (REQ3 → REQ2 → REQ1) et un serveur inconnu est probé par `GLOBSERVSTATREQ` puis reçoit REQ1.
+- **`OP_GLOBSEARCHRES` mal décodé** : le payload UDP `0x99` est un flux d'entrées nu (`[hash16][clientid][port][tagcount][tags]` répété), sans le préfixe `u32` count du `OP_SEARCHRESULT` TCP — les datagrammes reçus étaient rejetés par le décodeur TCP ; nouveau `decode_glob_search_res` validé sur un datagramme réel capturé.
+- **Observabilité** : pacing 50 ms entre envois UDP (eMule espace ses requêtes) et logs `unknown opcode`/`decode error` relevés en INFO sur le socket server-UDP.
+
+### Ajouté — Disponibilité par part (carte eMule)
+
+- `downloads.getDetails` expose `availableSourceCount` par part : nombre de sources connues dont le `PartAvailabilityMask` couvre la part (`0` = part introuvable → téléchargement bloqué).
+- `downloads.list` retourne désormais les `DownloadDetail` complets (shape aplatie compatible) afin que la liste affiche la barre de disponibilité par part sans appel dédié.
+- UI : `PartAvailabilityBar` (segment par part positionné à l'échelle des offsets) sous chaque ligne de téléchargement — rouge = aucune source, nuances de bleu = rare → commun, teal = vérifié ; tooltip `Part N · état · Sources: X`. Couleurs partagées avec la carte Part Map du détail.
+
+### Modifié — Couche events RPC (pour `packages/mule_client`)
+
+- `DaemonEvent` devient la source unique du format wire (`services/events.rs`) : chaque variante porte sa `method`, son `topic` de souscription et sérialise via `to_wire_json()` ; tous les émetteurs passent par `DaemonEvent::send` (`DownloadUpdatedEvent` supprimé).
+- `events.subscribe` est réellement fonctionnel : intercepté dans `handle_socket`, il mut le filtre de topics **par session** (`downloads`, `peers`, `servers`, `search`, `network`, `other` ; `null` = tout, rétro-compat). Non authentifié → `-32000` comme toute autre méthode.
+- `RecvError::Lagged` sur le broadcast n'est plus ignoré : le daemon émet `event.snapshotRequired {skipped}` pour forcer une resynchronisation complète côté client.
+- Doc : `docs/architecture/rpc_protocol.md` §6 documente le tableau méthode → topic, la sémantique de `events.subscribe` et `snapshotRequired` ; §9 décrit `packages/mule_client` (reconnexion auto, keep-alive, resync).
+
+### Corrigé — Audit et refonte UX de la page Paramètres (`/settings`)
+
+Audit complet du câblage UI → client RPC → handler daemon → persistance →
+consommation réelle (référence mise à jour : `docs/SETTINGS.md`).
+
+- **UPnP** : `RpcDaemonClient.mapUpnpPorts` n'envoie plus les ports codés
+  en dur `39735/39737` — en omettant les paramètres, le daemon mappe les
+  ports effectifs du snapshot (suivis par `upnp.set_ports`).
+- **`capacityDownloadKbs` fonctionnel** (était inerte) : clamp eMule
+  (`Preferences.cpp` : limite DL ≤ capacité × 9/10, UL ≤ capacité × 4/5,
+  `0` = illimité non borné) appliqué dans `limits.set`
+  (`clamp_to_capacity`), au changement de capacité via `settings.set`
+  (`apply_capacity_clamp`), et **normalisé au boot** dans `AppState::new`
+  — une limite persistée au-delà de la capacité est bornée puis réécrite
+  en SQLite pour refléter la valeur effective.
+- **Saisies invalides remontées** : `int.tryParse` échouait silencieusement
+  (clé omise du patch, toast « mis à jour » mensonger) — les sections
+  Connexion/Transferts/Sécurité valident désormais chaque champ (bornes,
+  non-vide) et remontent l'erreur dans la bannière globale.
+- **Mineurs daemon** : write-probe sur `tempDir` (comme
+  `defaultDownloadDir`), warning `tracing` sur les clés `settings.set`
+  inconnues, `maxUploadQueue` borné UI ≥ 10.
+
+### Modifié — Localisation complète de `/settings`
+
+- ~120 nouvelles clés ARB FR/EN (`settings*`, `network*`, `filter*`,
+  `upnp*`, `friends*`, descriptions de profils réseau) ; les 6 sections,
+  le rail, les cartes réseau (`NetworkStateBanner`, `UpnpStatusCard`,
+  `NetworkModeStatusCard`, `RateLimitsTab`, `NetworkProfileSelector`,
+  `IpFilterTab`, rapport d'import) et les widgets réutilisés
+  (`SettingsDirectorySection`, `SettingsFriendsSection`) passent par
+  `context.l10n` — le toggle Langue traduit désormais tout l'écran.
+- Messages de statut des contrôleurs (`SettingsController`,
+  `NetworkPolicyController`) passés en français, cohérents avec le reste
+  du shell.
+- Corrections préexistantes : `btnCancel`/`cancel` FR étaient « Cancel »
+  → « Annuler » ; `ajouter` EN était « Ajouter » → « Add ».
+
+### Modifié — UX de sauvegarde et synchronisation des Paramètres
+
+- **Affordances homogènes** : Entrée soumet dans tous les champs (y
+  compris Transferts et les limites de débit) ; boutons « Appliquer » par
+  carte en Connexion/Transferts, icône de sauvegarde sur les champs
+  libres.
+- **Dirty tracking + resync** : tous les `TextEditingController` se
+  resynchronisent sur `settings.changed` / changements de politique via
+  `ref.listen` — un champ en cours d'édition (dirty) n'est jamais
+  écrasé par une valeur distante.
+- **Dropdown rétention robuste** : une valeur persistée hors des items
+  standards (ex. 60 jours via `emule_update_settings` MCP) s'affiche dans
+  un item dédié au lieu d'asserter le `DropdownButton`.
+- **Kill switch** : dialog de confirmation avant de couper toutes les
+  sockets (`network.disconnectAll`).
+- **Sécurité** : plus de spinner pleine section à chaque toggle — barre
+  de progression linéaire pendant les opérations.
+- **Divers** : section Amis sur `SettingsSectionScaffold`, `Scrollbar`
+  explicite sur le panneau, switch barre debug désactivé quand les dev
+  tools sont indisponibles, note explicative capacité ↔ limite dans
+  l'onglet des débits.
+- Tests UI mis à jour : `import_part_met_dialog_test` attend « Annuler »,
+  `network_policy_ui_test` confirme le dialog du kill switch.
+
+### Modifié — Partage partiel : publication serveur/Kad et protections
+
+Fidélité eMule 0.72a pour les `.part` en cours (`CPartFile`) :
+
+- **Offre serveur (`OP_OFFERFILES`)** : la liste envoyée au login est triée
+  par priorité d'upload décroissante (`file_prio_num`, comme
+  `SendListToServer`) et plafonnée à 200 ; les fichiers **incomplets**
+  portent désormais le couple de marqueurs `0xFCFCFCFC`/`0xFCFC` (vs
+  `0xFBFBFBFB`/`0xFBFB` pour les complets) quand le serveur supporte
+  `SRV_TCPFLG_COMPRESSION` — `OfferedFile::for_server` prend un paramètre
+  `is_partial` et exporte `OFFER_INCOMPLETE_CLIENT_ID`/`_PORT`.
+- **Republication Kad** : les partiels sont publiés comme **sources**
+  (`CKnownFile::PublishSrc` — les pairs peuvent récupérer les parts déjà
+  complétées) mais la publication de *keywords* leur est refusée (« someone
+  else should have the full file »).
+- **Mutations refusées sur partiels** : `shares.setEnabled` et
+  `shares.setUploadPriority` retournent une erreur métier sur un
+  `is_partial` — persister un partage transitoire figerait son chemin
+  `.part` dans `shared_files` et le servirait plus tard comme complet
+  (eMule n'autorise pas le départage d'un part en cours).
+- **`setUploadPriority` robustifié** : résolution `get_shared_file` puis
+  upsert — fonctionne aussi sur les downloads `Completed` jamais persistés
+  dans `shared_files`.
+- **Fix client `shares.list`** : `RpcDaemonClient.listSharedFiles`
+  attendait une liste JSON nue alors que le daemon renvoie
+  `{sharedFiles: [...]}` — l'onglet Partages affichait une liste vide ;
+  le parseur accepte désormais les deux formes.
+- **UI Partages** : `SharesView` s'abonne aux événements lifecycle
+  (rafraîchissement immédiat) et aux events de progression (debounce 3 s)
+  pour suivre les `completedParts` des partiels.
 
 ## [0.1.9] - 2026-09-20
 

@@ -63,6 +63,12 @@ pub struct Download {
     pub created_at: i64,
     pub updated_at: i64,
     pub category_id: Option<String>,
+    /// Download priority: "low", "normal", "high" (eMule file priority —
+    /// biases the swarm allocator slot quota for this file).
+    pub priority: String,
+    /// Per-file source limit imported from `.part.met` `FT_MAXSOURCES`
+    /// (eMule `CPartFile::GetMaxSources`). `None` = use the global limit.
+    pub max_sources: Option<u32>,
 }
 
 impl Download {
@@ -91,6 +97,8 @@ impl Download {
             created_at: now,
             updated_at: now,
             category_id: None,
+            priority: "normal".to_string(),
+            max_sources: None,
         }
     }
 }
@@ -261,6 +269,17 @@ impl PeerSourceStatus {
             Self::Failed => "failed",
         }
     }
+
+    /// Sémantique eMule `srclist` : une source dont la connexion échoue,
+    /// qui répond « fichier absent » ou qui est bloquée par le filtre IP
+    /// sort de la liste affichée et part en deadlist — cf.
+    /// `CUpDownClient::Disconnected` (`RemoveSource` + `AddDeadSource`).
+    /// Les entrées `Failed`/`Rejected`/`Filtered` restent persistées pour
+    /// le backoff de re-essai, mais ne sont ni affichées ni comptées dans
+    /// `GetSourceCount()`.
+    pub fn is_srclist_visible(&self) -> bool {
+        !matches!(self, Self::Failed | Self::Rejected | Self::Filtered)
+    }
 }
 
 impl std::str::FromStr for PeerSourceStatus {
@@ -335,6 +354,9 @@ pub enum PeerFailureReason {
     InvalidRange,
     CorruptedData,
     FileNotFound,
+    /// The peer shares the file but none of its advertised parts is needed
+    /// (eMule "No Needed Parts" source state — kept on a long cooldown).
+    NoNeededParts,
     KillSwitchAborted,
     MissingUserHashForObfuscation,
     ObfuscationNegotiationFailed,
@@ -358,6 +380,7 @@ impl PeerFailureReason {
             Self::InvalidRange => "invalid_range",
             Self::CorruptedData => "corrupted_data",
             Self::FileNotFound => "file_not_found",
+            Self::NoNeededParts => "no_needed_parts",
             Self::KillSwitchAborted => "kill_switch_aborted",
             Self::MissingUserHashForObfuscation => "missing_user_hash_for_obfuscation",
             Self::ObfuscationNegotiationFailed => "obfuscation_negotiation_failed",
@@ -388,6 +411,14 @@ pub struct PeerSource {
     /// callback (`KADEMLIA_CALLBACK_REQ` relayed by this buddy node).
     #[serde(default)]
     pub buddy_id: Option<String>,
+    /// Client software + version learned from the eD2K/eMule hello
+    /// (e.g. "eMule 0.70b", "aMule 3.0b").
+    #[serde(default)]
+    pub software: Option<String>,
+    /// Per-part availability bitmask received via `OP_FILESTATUS`
+    /// (`ceil(part_count/8)` bytes, bit set = source has the part).
+    #[serde(default)]
+    pub availability: Option<Vec<u8>>,
 }
 
 impl PeerSource {
@@ -449,6 +480,43 @@ pub struct SharedFile {
     pub aich_root: Option<[u8; 20]>,
     pub shared_at_unix_ms: i64,
     pub enabled: bool,
+    /// Upload priority (eMule `PR_*` of the shared file): "verylow", "low",
+    /// "normal", "high", "veryhigh" (= powershare). Used as a score factor
+    /// in the upload queue (`GetFilePrioAsNumber` semantics).
+    #[serde(default = "default_up_priority")]
+    pub up_priority: String,
+    /// `true` when this entry is an in-progress download (eMule `CPartFile`):
+    /// only `completed_parts` may be served to peers. Transient — never
+    /// persisted in the `shared_files` table.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub is_partial: bool,
+    /// Indices of fully-complete eD2K parts (9 728 000 B) for a partial
+    /// share; empty for regular shared files (all parts available).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completed_parts: Vec<u16>,
+    /// Total cumulatif des octets uploadés pour ce fichier — persisté dans
+    /// `share_upload_stats`, renseigné par `shares.list` (eMule
+    /// `CKnownFile::statistic.GetTransferred()`).
+    #[serde(default)]
+    pub uploaded_bytes: u64,
+    /// Débit d'upload courant agrégé sur les sessions actives de ce
+    /// fichier (B/s) — mesuré, 0 quand aucun slot actif.
+    #[serde(default)]
+    pub upload_rate_bps: u64,
+    /// Catégorie associée (`categories.id`) — `None` = non classé. Pour
+    /// les partages synthétisés depuis un download (partiel ou complété
+    /// en DB), reflète `downloads.category_id` ; pour les partages
+    /// autonomes, persisté dans `shared_files.category_id`.
+    #[serde(default)]
+    pub category_id: Option<String>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+fn default_up_priority() -> String {
+    "normal".to_string()
 }
 
 impl SharedFile {
@@ -470,6 +538,12 @@ impl SharedFile {
             aich_root: None,
             shared_at_unix_ms: now,
             enabled: true,
+            up_priority: "normal".to_string(),
+            is_partial: false,
+            completed_parts: Vec::new(),
+            uploaded_bytes: 0,
+            upload_rate_bps: 0,
+            category_id: None,
         }
     }
 }
@@ -508,20 +582,40 @@ impl PeerCredit {
         }
     }
 
-    /// Computes the eMule canonical credit multiplier (clamped between 1.0 and 10.0).
+    /// Computes the eMule 0.72a canonical credit multiplier
+    /// (`CClientCredits::GetScoreRatio`, `ClientCredits.cpp`), clamped to
+    /// [1.0, 10.0].
     ///
-    /// Multiplier formula:
-    /// min(10.0, max(1.0, 2.0 * (downloaded_bytes) / (uploaded_bytes + 1)))
+    /// Three candidate values, the *smallest* wins:
+    /// - `2 * downloaded / uploaded` (ratio, or 10.0 when nothing uploaded)
+    /// - `sqrt(downloaded / 1 MiB + 2)` (exponential cap: 9.2 MiB → ~3.34,
+    ///   100 MiB → ~10.0)
+    /// - linear cap for the first chunks: `(downloaded - 1 MiB) / 8 598 323
+    ///   * 2.34 + 1.0` below ~9.2 MiB, else 10.0
+    ///
+    /// Peers that never sent us anything (< 1 MiB) get exactly 1.0.
     ///
     /// Semantic definitions:
-    /// - `downloaded_bytes`: Bytes received by us from this peer (peer uploaded to us).
-    /// - `uploaded_bytes`: Bytes sent by us to this peer.
+    /// - `downloaded_bytes`: bytes received by us from this peer.
+    /// - `uploaded_bytes`: bytes sent by us to this peer.
     pub fn credit_multiplier(&self) -> f64 {
-        if self.downloaded_bytes == 0 {
+        const ONE_MIB: f64 = 1_048_576.0;
+        if self.downloaded_bytes < ONE_MIB as u64 {
             return 1.0;
         }
-        let ratio = (2.0 * self.downloaded_bytes as f64) / (self.uploaded_bytes as f64 + 1.0);
-        ratio.clamp(1.0, 10.0)
+        let dl = self.downloaded_bytes as f64;
+        let ratio = if self.uploaded_bytes > 0 {
+            (dl * 2.0) / self.uploaded_bytes as f64
+        } else {
+            10.0
+        };
+        let sqrt_cap = (dl / ONE_MIB + 2.0).sqrt();
+        let linear_cap = if dl < 9_646_899.0 {
+            (dl - ONE_MIB) / 8_598_323.0 * 2.34 + 1.0
+        } else {
+            10.0
+        };
+        ratio.min(sqrt_cap.min(linear_cap)).clamp(1.0, 10.0)
     }
 }
 
@@ -541,32 +635,68 @@ mod tests {
             "Expected floor 1.0 for 0/0"
         );
 
-        // Vector 2: Received 5,000, Sent 0 => 10.0 (capped at 10.0)
-        // 2 * 5000 / (0 + 1) = 10000 -> clamped to 10.0
-        credit.downloaded_bytes = 5000;
+        // Vector 2 (eMule formula): Received 5 MiB, Sent 0 →
+        // min(10.0, sqrt(5+2)≈2.65, linear≈2.14) = ~2.14 — the linear cap
+        // dominates below ~9.2 MiB. NOT 10.0 like the naive ratio.
+        credit.downloaded_bytes = 5 * 1_048_576;
         credit.uploaded_bytes = 0;
-        assert_eq!(
-            credit.credit_multiplier(),
-            10.0,
-            "Expected cap 10.0 for 5000/0"
-        );
+        let m = credit.credit_multiplier();
+        assert!((m - 2.1415).abs() < 0.01, "Expected ~2.14 for 5MiB/0, got {m}");
 
-        // Vector 3: Received 1,000, Sent 2,000 => 1.0 (floor)
-        // 2 * 1000 / (2000 + 1) = 2000 / 2001 < 1.0 -> clamped to 1.0
+        // Vector 3: Received < 1 MiB => 1.0 floor regardless of ratio.
         credit.downloaded_bytes = 1000;
         credit.uploaded_bytes = 2000;
-        assert_eq!(
-            credit.credit_multiplier(),
-            1.0,
-            "Expected floor 1.0 for 1000/2000"
-        );
+        assert_eq!(credit.credit_multiplier(), 1.0);
 
-        // Vector 4: Intermediate ratio (e.g. Received 3,000, Sent 1,000 => ~5.99)
-        // 2 * 3000 / (1000 + 1) = 6000 / 1001 = 5.994...
-        credit.downloaded_bytes = 3000;
-        credit.uploaded_bytes = 999;
-        assert!((credit.credit_multiplier() - 6.0).abs() < 0.01);
+        // Vector 4: 100 MiB received, 5 MiB sent →
+        // ratio = 2*100/5 = 40 → capped by sqrt(100+2)≈10.1 → min = 10.0
+        credit.downloaded_bytes = 100 * 1_048_576;
+        credit.uploaded_bytes = 5 * 1_048_576;
+        assert_eq!(credit.credit_multiplier(), 10.0);
+
+        // Vector 5: symmetric exchange 10 MiB / 10 MiB →
+        // min(2.0, sqrt(12)≈3.46, 10.0) = 2.0
+        credit.downloaded_bytes = 10 * 1_048_576;
+        credit.uploaded_bytes = 10 * 1_048_576;
+        let m = credit.credit_multiplier();
+        assert!((m - 2.0).abs() < 0.01, "Expected ~2.0 for 10MiB/10MiB, got {m}");
     }
+
+    #[test]
+    fn peer_source_status_srclist_visibility_matches_emule() {
+        // Sources vivantes (srclist eMule) : en attente, file d'attente /
+        // re-demande, connexion en cours, connectée.
+        for s in [
+            PeerSourceStatus::Candidate,
+            PeerSourceStatus::Allowed,
+            PeerSourceStatus::Tried,
+            PeerSourceStatus::Connected,
+        ] {
+            assert!(s.is_srclist_visible(), "{s:?} doit rester visible");
+        }
+        // Deadlist eMule : échec de connexion, FNF, filtre IP — persistées
+        // pour le backoff mais masquées de la liste.
+        for s in [
+            PeerSourceStatus::Failed,
+            PeerSourceStatus::Rejected,
+            PeerSourceStatus::Filtered,
+        ] {
+            assert!(!s.is_srclist_visible(), "{s:?} doit être masqué");
+        }
+    }
+}
+
+/// Persisted friend identity (eMule `friends.met`): a user hash that is
+/// granted a dedicated upload slot regardless of queue pressure.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Friend {
+    /// eD2K user hash (hex, lowercase) of the friend.
+    pub user_hash: String,
+    /// Display name.
+    pub name: String,
+    /// Timestamp when the friend was added (unix ms).
+    pub added_at_unix_ms: i64,
 }
 
 /// Secure user identification state for a peer session.

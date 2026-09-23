@@ -214,6 +214,40 @@ pub async fn execute(
             }
         }
 
+        "emule_rename_download" => {
+            let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
+                Some(i) => i,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'id_or_hash'",
+                    ))
+                }
+            };
+            let new_name = match args.get("new_name").and_then(|n| n.as_str()) {
+                Some(n) => n,
+                None => {
+                    return Some(ToolCallResult::error(
+                        "Missing required parameter: 'new_name'",
+                    ))
+                }
+            };
+
+            let id = match resolve_download_id(client, id_or_hash).await {
+                Ok(id) => id,
+                Err(e) => return Some(ToolCallResult::error(e)),
+            };
+
+            match client
+                .call("downloads.rename", json!({ "id": id, "newName": new_name }))
+                .await
+            {
+                Ok(res) => Some(ToolCallResult::json(&res)),
+                Err(e) => Some(ToolCallResult::error(format!(
+                    "Failed to rename download: {e}"
+                ))),
+            }
+        }
+
         "emule_set_destination" => {
             let id_or_hash = match args.get("id_or_hash").and_then(|i| i.as_str()) {
                 Some(i) => i,

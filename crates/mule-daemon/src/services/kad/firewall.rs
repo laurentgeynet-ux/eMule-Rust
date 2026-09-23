@@ -31,9 +31,10 @@ const UDP_FW_CLIENTS_TO_ASK: usize = 2;
 /// Minimum Kad version a candidate must announce to serve a UDP firewall
 /// check (eMule `KADEMLIA_VERSION6_49aBETA`).
 const MIN_FW_TEST_KAD_VERSION: u8 = 6;
-/// Kad version we advertise in the test-connection hello so the remote peer
-/// accepts `OP_FWCHECKUDPREQ` (eMule requires `> KADEMLIA_VERSION5_48a`).
-pub(crate) const OUR_KAD_VERSION: u8 = 6;
+/// Kad version we advertise (eMule `KADEMLIA_VERSION8_49b`): supports
+/// `TAG_KADMISCOPTIONS`, `KADEMLIA2_HELLO_RES_ACK` and the Kad >= 7
+/// `FIREWALLED2_REQ` / `OP_KAD_FWTCPCHECK_ACK` TCP check flow.
+pub(crate) const OUR_KAD_VERSION: u8 = 8;
 
 const FW_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const FW_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -115,7 +116,7 @@ impl KadService {
                     c.verified
                         && c.version >= MIN_FW_TEST_KAD_VERSION
                         && c.tcp_port.is_some()
-                        && c.kad_id != self.local_id
+                        && c.kad_id != self.local_id()
                         && seen.insert(c.ip)
                 })
                 .take(UDP_FW_CLIENTS_TO_ASK)
@@ -139,7 +140,7 @@ impl KadService {
                     // when error_code == 0 and the probed port is a port we
                     // actually advertised (intern or known extern).
                     let valid_port = res.port_tested == intern_port
-                        || extern_port.map_or(false, |e| res.port_tested == e);
+                        || (extern_port == Some(res.port_tested));
                     if res.error_code == 0 && valid_port {
                         let mut fw = tracker.lock().await;
                         if res.port_tested != intern_port {
@@ -312,7 +313,7 @@ impl KadService {
         let mut tags = Vec::with_capacity(6);
         tags.push(Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_NAME),
-            value: TagValue::String("Emule-Sion".to_string()),
+            value: TagValue::String("eMule-Rust".to_string()),
         });
         tags.push(Ed2kTag {
             name: TagName::Id(TAG_SPECIAL_VERSION),

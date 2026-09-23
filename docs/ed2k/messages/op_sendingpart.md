@@ -66,6 +66,6 @@ Dès validation par la session et le `BlockRequestTracker` :
 ---
 
 ## 6. Références Historiques
-- eMule 0.50a : `srchybrid/ListenSocket.cpp:CListenSocket::ProcessPacket()`
-- eMule 0.50a : `srchybrid/DownloadClient.cpp:CDownloadClient::ProcessBlockPacket()`
+- eMule 0.72a : `srchybrid/ListenSocket.cpp:573` : `CListenSocket::ProcessPacket()` (case `OP_SENDINGPART`)
+- eMule 0.72a : `srchybrid/DownloadClient.cpp:956` : `CUpDownClient::ProcessBlockPacket()`
 - aMule : `src/DownloadClient.cpp:CDownloadClient::ProcessBlockPacket()`

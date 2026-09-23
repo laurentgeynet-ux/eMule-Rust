@@ -2,20 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/domain/models/category_item.dart';
-import 'package:desktop/domain/models/download_item.dart';
-import 'package:desktop/domain/models/filter_models.dart';
-import 'package:desktop/domain/models/history_entry.dart';
-import 'package:desktop/domain/models/history_stats.dart';
-import 'package:desktop/domain/models/lab_models.dart';
-import 'package:desktop/domain/models/network_policy_models.dart';
-import 'package:desktop/domain/models/part_met_models.dart';
-import 'package:desktop/domain/models/server_models.dart';
-import 'package:desktop/domain/services/mule_daemon_client.dart';
-import 'package:desktop/domain/models/daemon_info.dart';
-import 'package:desktop/domain/models/daemon_event.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/downloads/widgets/download_detail_dialog.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_shell/app/providers.dart';
+import 'package:app_shell/ui/features/downloads/widgets/download_detail_dialog.dart';
+import 'package:app_shell/l10n/generated/app_localizations.dart';
 
 class PeerSourcesMockClient implements MuleDaemonClient {
   final List<DownloadItem> _items;
@@ -40,6 +32,23 @@ class PeerSourcesMockClient implements MuleDaemonClient {
       origin: PeerSourceOrigin.search,
       failCount: 1,
       lastError: 'IP banned by filter',
+      discoveredAtUnixMs: 1700000000000,
+      lastSeenUnixMs: 1700000000000,
+    ),
+    // Deadlist eMule : échec de connexion — persisté pour le backoff,
+    // masqué dans la liste des sources.
+    PeerSourceModel(
+      fileHash: '0123456789abcdef0123456789abcdef',
+      address: '203.0.113.9:4662',
+      ip: 3395909897,
+      port: 4662,
+      status: PeerSourceStatus.failed,
+      origin: PeerSourceOrigin.server,
+      failCount: 2,
+      lastError: 'Connection timed out',
+      cooldownUntilUnixMs: DateTime.now()
+          .add(const Duration(minutes: 15))
+          .millisecondsSinceEpoch,
       discoveredAtUnixMs: 1700000000000,
       lastSeenUnixMs: 1700000000000,
     ),
@@ -179,6 +188,9 @@ class PeerSourcesMockClient implements MuleDaemonClient {
 
   @override
   Future<void> setDefaultDownloadDirectory(String path) async {}
+
+  @override
+  Future<void> updateSettings(Map<String, dynamic> patch) async {}
 
   @override
   Future<void> resetDefaultDownloadDirectory() async {}
@@ -430,6 +442,34 @@ class PeerSourcesMockClient implements MuleDaemonClient {
   Stream<Map<String, dynamic>> get foundSourcesEvents => const Stream.empty();
 
   @override
+  Stream<UploadsSnapshotModel> get uploadsEvents => const Stream.empty();
+
+  @override
+  Stream<DaemonStatsModel> get statsEvents => const Stream.empty();
+
+  @override
+  Stream<DownloadLifecycleEvent> get downloadLifecycleEvents =>
+      const Stream.empty();
+
+  @override
+  Stream<int> get kadStatusEvents => const Stream.empty();
+
+  @override
+  Stream<int> get historyEvents => const Stream.empty();
+
+  @override
+  Stream<int> get sharesEvents => const Stream.empty();
+
+  @override
+  Stream<SettingsChangedEvent> get settingsEvents => const Stream.empty();
+
+  @override
+  Stream<int> get networkPolicyEvents => const Stream.empty();
+
+  @override
+  Stream<UpnpStatusModel> get upnpStatusEvents => const Stream.empty();
+
+  @override
   Stream<PeerSessionModel> get peerSessionEvents =>
       _sessionEventsController.stream;
 
@@ -524,7 +564,17 @@ class PeerSourcesMockClient implements MuleDaemonClient {
   );
 
   @override
-  Future<void> removeSharedFile(String fileHash) async {}
+  Future<void> removeSharedFile(String fileHash, {bool deleteFile = false}) async {}
+
+  @override
+  Future<DownloadItem> renameDownload(String id, String newName) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> renameSharedFile(String fileHash, String newName) async {}
+
+  @override
+  Future<void> resetLifetimeTotals() async {}
 
   @override
   Future<SharedFileModel> setSharedFileEnabled(
@@ -538,6 +588,38 @@ class PeerSourcesMockClient implements MuleDaemonClient {
     sharedAtUnixMs: 0,
     enabled: enabled,
   );
+
+  @override
+  Future<void> setSharedFileUploadPriority(
+    String fileHash,
+    String priority,
+  ) async {}
+
+  @override
+  Future<void> setSharedFileCategory(
+    String fileHash,
+    String? categoryId,
+  ) async {}
+
+  @override
+  Future<int> rescanSharedFiles() async => 0;
+
+  @override
+  Future<DownloadItem> setDownloadPriority(String id, String priority) =>
+      throw UnimplementedError();
+
+  @override
+  Future<DownloadItem> setDownloadMaxSources(String id, int? maxSources) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<FriendModel>> listFriends() async => [];
+
+  @override
+  Future<void> addFriend(String userHash, {String name = ''}) async {}
+
+  @override
+  Future<void> removeFriend(String userHash) async {}
 
   @override
   Future<InboundListenerStatusModel> startListener({int port = 0}) async =>
@@ -686,10 +768,8 @@ class PeerSourcesMockClient implements MuleDaemonClient {
   Future<UpnpStatusModel> setUpnpEnabled(bool enabled) async => getUpnpStatus();
 
   @override
-  Future<UpnpStatusModel> mapUpnpPorts({
-    int tcpPort = 39735,
-    int udpPort = 39737,
-  }) async => getUpnpStatus();
+  Future<UpnpStatusModel> mapUpnpPorts({int? tcpPort, int? udpPort}) async =>
+      getUpnpStatus();
 
   @override
   Future<UpnpStatusModel> unmapUpnpPorts() async => getUpnpStatus();
@@ -737,29 +817,44 @@ void main() {
       );
 
       final mockClient = PeerSourcesMockClient([download]);
-      final viewModel = DownloadsViewModel(client: mockClient);
+      final viewModel = AppController(client: mockClient);
       await viewModel.initialize(url: Uri.parse('ws://mock:4660/rpc'));
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: DownloadDetailDialog(
               downloadId: 'dl-1',
-              viewModel: viewModel,
-            ),
+              ),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
       // Verify section title is visible
-      expect(find.text('SOURCES ED2K & SESSION PEER'), findsOneWidget);
+      expect(find.text('SOURCES ED2K & PAIRS DE SESSION'), findsOneWidget);
 
-      // Verify sources listed with status badges
+      // Source vivante (allowed) affichée — sémantique eMule srclist.
       expect(find.text('127.0.0.1:39735'), findsOneWidget);
-      expect(find.text('198.51.100.22:39735'), findsOneWidget);
       expect(find.text('Autorisé'), findsOneWidget);
-      expect(find.text('Filtré IP'), findsOneWidget);
+      // Entrées deadlist masquées : filtrée IP et échec en cooldown ne
+      // doivent pas apparaître (eMule les retire de la liste).
+      expect(find.text('198.51.100.22:39735'), findsNothing);
+      expect(find.text('203.0.113.9:4662'), findsNothing);
+      expect(find.text('Filtré IP'), findsNothing);
+      expect(find.text('Échec'), findsNothing);
 
       // Test adding a manual source
       final manualInput = find.byType(TextField);

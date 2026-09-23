@@ -120,10 +120,16 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
             file_size INTEGER NOT NULL,
             file_path TEXT NOT NULL,
             shared_at_unix_ms INTEGER NOT NULL,
-            enabled INTEGER NOT NULL DEFAULT 1
+            enabled INTEGER NOT NULL DEFAULT 1,
+            category_id TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_shared_files_enabled ON shared_files(enabled);
+
+        CREATE TABLE IF NOT EXISTS share_upload_stats (
+            file_hash TEXT PRIMARY KEY,
+            uploaded_bytes INTEGER NOT NULL DEFAULT 0
+        );
 
         CREATE TABLE IF NOT EXISTS peer_credits (
             pubkey_hash TEXT PRIMARY KEY,
@@ -192,6 +198,12 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
 
         CREATE INDEX IF NOT EXISTS idx_kad_notes_lookup ON kad_notes_index(file_hash);
         CREATE INDEX IF NOT EXISTS idx_kad_notes_expires ON kad_notes_index(expires_at_unix_ms);
+
+        CREATE TABLE IF NOT EXISTS friends (
+            user_hash TEXT PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            added_at_unix_ms INTEGER NOT NULL
+        );
         ",
     )?;
 
@@ -208,6 +220,42 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     }
     if !has_category_id {
         conn.execute_batch("ALTER TABLE downloads ADD COLUMN category_id TEXT;")?;
+    }
+
+    // Migration: per-download eMule-style priority column.
+    let mut stmt_dl2 = conn.prepare("PRAGMA table_info(downloads)")?;
+    let mut rows_dl2 = stmt_dl2.query([])?;
+    let mut has_priority = false;
+    while let Some(row) = rows_dl2.next()? {
+        let col_name: String = row.get(1)?;
+        if col_name == "priority" {
+            has_priority = true;
+            break;
+        }
+    }
+    drop(rows_dl2);
+    drop(stmt_dl2);
+    if !has_priority {
+        conn.execute_batch(
+            "ALTER TABLE downloads ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal';",
+        )?;
+    }
+
+    // Migration: per-file source limit (eMule `.part.met` FT_MAXSOURCES).
+    let mut stmt_dl3 = conn.prepare("PRAGMA table_info(downloads)")?;
+    let mut rows_dl3 = stmt_dl3.query([])?;
+    let mut has_max_sources = false;
+    while let Some(row) = rows_dl3.next()? {
+        let col_name: String = row.get(1)?;
+        if col_name == "max_sources" {
+            has_max_sources = true;
+            break;
+        }
+    }
+    drop(rows_dl3);
+    drop(stmt_dl3);
+    if !has_max_sources {
+        conn.execute_batch("ALTER TABLE downloads ADD COLUMN max_sources INTEGER;")?;
     }
 
     let mut stmt_peer = conn.prepare("PRAGMA table_info(peer_sources)")?;
@@ -249,18 +297,54 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
         conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN buddy_id TEXT;")?;
     }
 
+    let mut stmt_peer3 = conn.prepare("PRAGMA table_info(peer_sources)")?;
+    let mut rows_peer3 = stmt_peer3.query([])?;
+    let (mut has_software, mut has_availability) = (false, false);
+    while let Some(row) = rows_peer3.next()? {
+        let col: String = row.get(1)?;
+        if col == "software" {
+            has_software = true;
+        }
+        if col == "availability" {
+            has_availability = true;
+        }
+    }
+    drop(rows_peer3);
+    drop(stmt_peer3);
+    if !has_software {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN software TEXT;")?;
+    }
+    if !has_availability {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN availability BLOB;")?;
+    }
+
     let mut stmt_sf = conn.prepare("PRAGMA table_info(shared_files)")?;
     let mut rows_sf = stmt_sf.query([])?;
     let mut has_aich_root = false;
+    let mut has_up_priority = false;
+    let mut has_sf_category_id = false;
     while let Some(row) = rows_sf.next()? {
         let col_name: String = row.get(1)?;
         if col_name == "aich_root" {
             has_aich_root = true;
-            break;
+        }
+        if col_name == "up_priority" {
+            has_up_priority = true;
+        }
+        if col_name == "category_id" {
+            has_sf_category_id = true;
         }
     }
     if !has_aich_root {
         conn.execute_batch("ALTER TABLE shared_files ADD COLUMN aich_root BLOB;")?;
+    }
+    if !has_up_priority {
+        conn.execute_batch(
+            "ALTER TABLE shared_files ADD COLUMN up_priority TEXT NOT NULL DEFAULT 'normal';",
+        )?;
+    }
+    if !has_sf_category_id {
+        conn.execute_batch("ALTER TABLE shared_files ADD COLUMN category_id TEXT;")?;
     }
 
     Ok(())

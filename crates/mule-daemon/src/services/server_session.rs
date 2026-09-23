@@ -37,11 +37,26 @@ pub struct ServerSessionManager {
     /// a LowID us) triggers an outbound connect-back served by this service.
     inbound:
         Arc<std::sync::RwLock<Option<crate::services::inbound_listener::InboundListenerService>>>,
+    /// Kad service — a HighID `OP_IDCHANGE` teaches it our public IPv4
+    /// (advertised in `PUBLISH_SOURCE` contacts).
+    kad: Arc<std::sync::RwLock<Option<Arc<crate::services::kad::KadService>>>>,
     /// Prefer the server's dedicated obfuscation port (`ST_TCPPORTOBFUSCATION`)
     /// when advertised — mirrors eMule `IsServerCryptLayerConnection()`.
     prefer_obfuscation: Arc<std::sync::atomic::AtomicBool>,
     /// Max random padding for the obfuscated handshake (eMule PAD_DIGITS).
     obfuscation_padding_max: Arc<std::sync::atomic::AtomicU8>,
+    /// Last successful connection target — used by the auto-reconnect
+    /// watcher (eMule `Reconnect` pref). Cleared on user-initiated disconnect.
+    last_target: Arc<std::sync::Mutex<Option<ServerTarget>>>,
+}
+
+/// Remembered server target for auto-reconnect (address + display name).
+#[derive(Clone)]
+pub struct ServerTarget {
+    /// Server socket address (`ip:port`).
+    pub addr: SocketAddr,
+    /// Server display name, if known.
+    pub name: Option<String>,
 }
 
 impl ServerSessionManager {
@@ -53,8 +68,22 @@ impl ServerSessionManager {
             sequence,
             downloads: Arc::new(std::sync::RwLock::new(None)),
             inbound: Arc::new(std::sync::RwLock::new(None)),
+            kad: Arc::new(std::sync::RwLock::new(None)),
             prefer_obfuscation: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             obfuscation_padding_max: Arc::new(std::sync::atomic::AtomicU8::new(0)),
+            last_target: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    /// Returns the last connection target for the auto-reconnect watcher.
+    pub fn last_target(&self) -> Option<ServerTarget> {
+        self.last_target.lock().ok().and_then(|g| g.clone())
+    }
+
+    /// Clears the remembered target (auto-removed dead server, tests).
+    pub fn clear_last_target(&self) {
+        if let Ok(mut g) = self.last_target.lock() {
+            *g = None;
         }
     }
 
@@ -80,6 +109,14 @@ impl ServerSessionManager {
     pub fn set_downloads(&self, downloads: Arc<Mutex<DownloadService>>) {
         if let Ok(mut d) = self.downloads.write() {
             *d = Some(downloads);
+        }
+    }
+
+    /// Injects the Kad service — the server-assigned HighID is forwarded to
+    /// it as our observed public IPv4 for `PUBLISH_SOURCE` contacts.
+    pub fn set_kad(&self, kad: Arc<crate::services::kad::KadService>) {
+        if let Ok(mut k) = self.kad.write() {
+            *k = Some(kad);
         }
     }
 
@@ -178,6 +215,17 @@ impl ServerSessionManager {
 
     /// Disconnects any active session and resets state.
     pub async fn disconnect(&self) -> Result<(), DaemonError> {
+        self.disconnect_inner(false).await
+    }
+
+    /// Kill-switch variant (`network.disconnectAll`): identical teardown
+    /// but keeps `last_target` so the reconnect watcher can restore the
+    /// session once `network.enable` re-arms the policy.
+    pub async fn disconnect_for_kill_switch(&self) -> Result<(), DaemonError> {
+        self.disconnect_inner(true).await
+    }
+
+    async fn disconnect_inner(&self, keep_target: bool) -> Result<(), DaemonError> {
         let mut guard = self.inner.lock().await;
         if let Some(handle) = guard.abort_handle.take() {
             handle.abort();
@@ -185,6 +233,10 @@ impl ServerSessionManager {
         guard.permit = None;
         guard.outgoing_tx = None;
         guard.snapshot = ServerSessionSnapshot::default();
+        if !keep_target {
+            // User-initiated disconnect: no auto-reconnect to this target.
+            self.clear_last_target();
+        }
         self.emit_notification(&guard.snapshot);
         Ok(())
     }
@@ -214,6 +266,12 @@ impl ServerSessionManager {
         }
 
         let address_str = target_addr.to_string();
+        if let Ok(mut lt) = self.last_target.lock() {
+            *lt = Some(ServerTarget {
+                addr: target_addr,
+                name: server_name.clone(),
+            });
+        }
         guard.snapshot = ServerSessionSnapshot {
             status: ServerConnectionStatus::Connecting,
             server_address: Some(address_str.clone()),
@@ -237,6 +295,7 @@ impl ServerSessionManager {
         let sequence_clone = Arc::clone(&self.sequence);
         let downloads_clone = self.downloads.read().ok().and_then(|g| g.clone());
         let inbound_clone = self.inbound.read().ok().and_then(|g| g.clone());
+        let kad_clone = self.kad.read().ok().and_then(|g| g.clone());
         let cancel_token = permit.cancellation_token();
         let prefer_obf = self
             .prefer_obfuscation
@@ -259,6 +318,7 @@ impl ServerSessionManager {
             sequence_clone,
             downloads_clone,
             inbound_clone,
+            kad_clone,
             prefer_obf,
             pad_max,
         );

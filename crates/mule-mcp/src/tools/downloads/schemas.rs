@@ -86,7 +86,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "emule_remove_download".to_string(),
-            description: "Remove or cancel a download from queue, optionally deleting partially downloaded data.".to_string(),
+            description: "Remove or cancel a download from queue, optionally deleting associated files on disk.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "required": ["id_or_hash"],
@@ -97,7 +97,25 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     },
                     "delete_files": {
                         "type": "boolean",
-                        "description": "Whether to delete .part and .part.met files on disk (default: false)"
+                        "description": "Whether to delete on-disk files: .part and .part.met temp files; for completed downloads also the finished shared file in the destination folder (default: false)"
+                    }
+                }
+            }),
+        },
+        ToolDefinition {
+            name: "emule_rename_download".to_string(),
+            description: "Rename a download's file name (in-progress or completed). For a completed download the file on disk and its share entry are renamed too; the .part temp file keeps its internal name.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "required": ["id_or_hash", "new_name"],
+                "properties": {
+                    "id_or_hash": {
+                        "type": "string",
+                        "description": "Download UUID or 32-character eD2K hex hash"
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New file name (no path separators or Windows-illegal characters)"
                     }
                 }
             }),

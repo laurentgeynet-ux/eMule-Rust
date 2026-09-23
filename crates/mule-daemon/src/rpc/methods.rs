@@ -2,8 +2,8 @@ use serde_json::{json, Value};
 
 use crate::error::JsonRpcError;
 use crate::rpc::handlers::{
-    categories::*, downloads::*, history::*, kad::*, lab::*, network::*, servers::*, settings::*,
-    shares::*, sources::*, upnp::*,
+    categories::*, downloads::*, friends::*, history::*, kad::*, lab::*, network::*, servers::*,
+    settings::*, shares::*, sources::*, upnp::*,
 };
 use crate::rpc::types::{JsonRpcRequest, JsonRpcResponse};
 use crate::state::AppState;
@@ -41,6 +41,9 @@ pub async fn handle_request(
         "downloads.resume" => handle_resume(state, req.params).await,
         "downloads.remove" => handle_remove(state, req.params).await,
         "downloads.setDestination" => handle_set_destination(state, req.params).await,
+        "downloads.rename" => handle_rename(state, req.params).await,
+        "downloads.setPriority" => handle_set_priority(state, req.params).await,
+        "downloads.setMaxSources" => handle_set_max_sources(state, req.params).await,
         "downloads.inspectPartMet" => handle_inspect_part_met(state, req.params).await,
         "downloads.importPartMet" => handle_import_part_met(state, req.params).await,
         "downloads.retryConnection" | "downloads.retry" => {
@@ -54,6 +57,7 @@ pub async fn handle_request(
         "settings.set" => handle_settings_set(state, req.params).await,
         "settings.setRetentionDays" => handle_settings_set_retention_days(state, req.params).await,
         "settings.resetDownloadDir" => handle_settings_reset_download_dir(state).await,
+        "stats.resetLifetimeTotals" => handle_stats_reset_lifetime_totals(state).await,
         "categories.list" => handle_categories_list(state).await,
         "categories.create" => handle_categories_create(state, req.params).await,
         "categories.update" => handle_categories_update(state, req.params).await,
@@ -95,7 +99,13 @@ pub async fn handle_request(
         "shares.list" => handle_shares_list(state).await,
         "shares.add" => handle_shares_add(state, req.params).await,
         "shares.remove" => handle_shares_remove(state, req.params).await,
+        "shares.rename" => handle_shares_rename(state, req.params).await,
+        "shares.rescan" => handle_shares_rescan(state).await,
         "shares.setEnabled" => handle_shares_set_enabled(state, req.params).await,
+        "shares.setCategory" => handle_shares_set_category(state, req.params).await,
+        "shares.setUploadPriority" => {
+            handle_shares_set_upload_priority(state, req.params).await
+        }
         "listener.start" => handle_listener_start(state, req.params).await,
         "listener.stop" => handle_listener_stop(state).await,
         "listener.status" => handle_listener_status(state).await,
@@ -106,6 +116,9 @@ pub async fn handle_request(
         "identity.rotate" => handle_identity_rotate(state).await,
         "credits.list" => handle_credits_list(state, req.params).await,
         "credits.stats" => handle_credits_stats(state).await,
+        "friends.list" => handle_friends_list(state).await,
+        "friends.add" => handle_friends_add(state, req.params).await,
+        "friends.remove" => handle_friends_remove(state, req.params).await,
         "upnp.status" => handle_upnp_status(state).await,
         "upnp.mapPorts" => handle_upnp_map_ports(state, req.params).await,
         "upnp.unmapPorts" => handle_upnp_unmap_ports(state).await,
@@ -127,7 +140,8 @@ pub async fn handle_request(
         "kad.searchNotes" => handle_kad_search_notes(state, req.params).await,
         "kad.publishNote" => handle_kad_publish_note(state, req.params).await,
         "kad.bootstrapFromUrl" => handle_kad_bootstrap_from_url(state, req.params).await,
-        "events.subscribe" => Ok(json!({ "subscribed": true })),
+        // "events.subscribe" is intercepted in rpc::server::handle_socket —
+        // it mutates the per-session topic filter, not daemon state.
         #[cfg(any(feature = "debug-rpc", feature = "lab-tools"))]
         "debug.injectRange" => handle_inject_range(state, req.params).await,
         "downloads.getSources" | "ed2k.getSources" => handle_get_sources(state, req.params).await,

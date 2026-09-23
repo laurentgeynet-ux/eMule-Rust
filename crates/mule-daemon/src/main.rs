@@ -206,13 +206,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let actual_addr = listener.local_addr()?;
     let endpoint = format!("ws://{actual_addr}/rpc");
 
-    let downloads = DownloadService::new(&db_path, temp_dir)?;
+    let mut downloads = DownloadService::new(&db_path, temp_dir)?;
     let initial_download_dir = downloads
         .get_setting("default_download_directory")
         .ok()
         .flatten()
         .map(PathBuf::from)
         .unwrap_or(default_download_dir);
+
+    // eMule loads every .part.met found in the temp directory at startup:
+    // orphans (lost DB state or files dropped in from eMule) are recovered
+    // as paused downloads via the sandboxed import path.
+    let recovered = downloads.recover_orphan_part_mets(&initial_download_dir);
+    if recovered > 0 {
+        println!("==> Recovered {recovered} orphaned .part.met download(s) from temp directory");
+    }
 
     let ed2k_port = ed2k_port_arg.unwrap_or(39735);
     let kad_port = kad_port_arg.unwrap_or(39737);
@@ -228,6 +236,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_upnp_enabled(upnp_enabled)
         .with_ports(ed2k_port, kad_port);
     let state = AppState::new(config, downloads);
+    // eMule `Autoconnect`/`Reconnect`/`AutoDeadServer`: background watcher
+    // reconnecting to the last server target (or best known server) when
+    // `server_reconnect`/`server_autoconnect` settings are enabled.
+    state.spawn_server_watcher();
+    // Emule-Sion : rotation périodique d'identité (`identityRotationHours`)
+    // et quota journalier d'upload (`dailyUploadQuotaGb`).
+    state.spawn_identity_rotator();
+    state.spawn_quota_watcher();
+
+    // eMule "Incoming" folder sharing: hash every file sitting in the
+    // download directory and register it as shared (background task —
+    // hashing can be slow on large files). Opt-out via the
+    // `share_download_dir` setting.
+    {
+        let dl = std::sync::Arc::clone(&state.downloads);
+        let dir = state.config.default_download_dir.clone();
+        tokio::spawn(async move {
+            mule_daemon::services::incoming_share::scan_download_dir_shares(&dl, dir).await;
+        });
+    }
 
     // 4. Atomically write session file
     let session = DaemonSession::new(1, state.instance_id, &endpoint);
@@ -243,7 +271,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // If UPnP is enabled and in a preview profile, attempt background port mapping with progressive retries and periodic refresh
-    if upnp_enabled && network_profile.is_preview() {
+    let eff_ed2k_port = state.ed2k_port();
+    let eff_kad_port = state.kad_port();
+    let eff_udp = state.udp_enabled();
+    let eff_upnp = state.upnp.snapshot().await.enabled;
+    println!(
+        "==> Effective ports: TCP {eff_ed2k_port}, UDP {eff_kad_port} (udp_enabled={eff_udp}, upnp={eff_upnp})"
+    );
+
+    if eff_upnp && network_profile.is_preview() {
         let upnp_svc = state.upnp.clone();
         let cancel_token = state.network_policy.cancellation_token();
         let cancel_token_retry = cancel_token.clone();
@@ -253,7 +289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::time::Duration::from_secs(120),
                 tokio::time::Duration::from_secs(300),
             ];
-            let mut result = upnp_svc.map_ports(ed2k_port, kad_port).await;
+            let mut result = upnp_svc.map_ports(eff_ed2k_port, eff_kad_port).await;
             if result.is_err() {
                 for delay in retry_delays {
                     tokio::select! {
@@ -261,7 +297,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         _ = tokio::time::sleep(delay) => {}
                     }
                     tracing::info!("Retrying UPnP port mapping after initial failure...");
-                    result = upnp_svc.map_ports(ed2k_port, kad_port).await;
+                    result = upnp_svc.map_ports(eff_ed2k_port, eff_kad_port).await;
                     if result.is_ok() {
                         tracing::info!("UPnP port mapping succeeded on background retry!");
                         break;
@@ -277,7 +313,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Auto-initialize Kad routing table and UDP socket if in a preview profile
-    if network_profile.allows_udp_kad() {
+    if network_profile.allows_udp_kad() && eff_udp {
         let kad_svc = state.kad.clone();
         let kad_cancel = state.network_policy.cancellation_token();
         let kad_bind_ip = if network_profile.is_loopback_only() {
@@ -286,13 +322,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "0.0.0.0"
         };
         let kad_bind_addr: std::net::SocketAddr =
-            format!("{kad_bind_ip}:{kad_port}").parse().unwrap();
+            format!("{kad_bind_ip}:{eff_kad_port}").parse().unwrap();
+        let nodes_dat_path = state.config.data_dir.join("nodes.dat");
         tokio::spawn(async move {
             kad_svc.init_from_db().await;
             if let Err(e) = kad_svc.udp().start(kad_bind_addr).await {
                 tracing::warn!("Failed to auto-start Kad UDP on {kad_bind_addr}: {e}");
             } else {
                 tracing::info!("Kad UDP socket auto-started on {kad_bind_addr}");
+                // nodes.dat à la racine du dossier data : amorçage
+                // optionnel — eMule le lit dans `s_liBootstrapList` à
+                // chaque démarrage ; les contacts prouvent leur vivacité
+                // en répondant au BOOTSTRAP_REQ du drain.
+                kad_svc.load_nodes_dat_candidates(&nodes_dat_path).await;
                 kad_svc.bootstrap_active_contacts(15).await;
                 kad_svc.start_background_maintenance(kad_cancel);
             }
@@ -319,7 +361,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "0.0.0.0"
         };
         let inbound_bind_addr: std::net::SocketAddr =
-            format!("{inbound_bind_ip}:{ed2k_port}").parse().unwrap();
+            format!("{inbound_bind_ip}:{eff_ed2k_port}").parse().unwrap();
         tokio::spawn(async move {
             match listener_svc.start(inbound_bind_addr).await {
                 Ok(bound) => {
@@ -346,6 +388,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown_notify = state.shutdown_notify.clone();
     let upnp_cleanup = state.upnp.clone();
     let listener_cleanup = state.inbound_listener.clone();
+    let downloads_cleanup = state.downloads.clone();
     let app = create_router(state);
 
     if let Some(parent_pid) = parent_pid_arg {
@@ -368,6 +411,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             DaemonSession::remove(&data_dir_cleanup);
             listener_cleanup.stop().await;
+            // eMule saves every .part.met on exit so crash-resume state is
+            // never stale (CPartFile::~CPartFile → SavePartFile).
+            {
+                let dl = downloads_cleanup.lock().await;
+                dl.save_active_part_mets();
+            }
             let _ = tokio::time::timeout(
                 tokio::time::Duration::from_millis(500),
                 upnp_cleanup.unmap_ports(),

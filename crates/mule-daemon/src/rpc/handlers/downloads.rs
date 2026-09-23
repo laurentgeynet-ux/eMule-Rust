@@ -7,7 +7,14 @@ use crate::state::AppState;
 
 pub async fn handle_downloads_list(state: &AppState) -> Result<Value, JsonRpcError> {
     let seq = state.sequence.load(std::sync::atomic::Ordering::SeqCst);
-    let list = state.downloads.lock().await.list_download_details();
+    let mut list = state.downloads.lock().await.list_download_details();
+    // Attach in-flight block ranges (eMule "pending" yellow segments).
+    let pending_map = state.peer_session.pending_ranges_by_file().await;
+    for detail in &mut list {
+        if let Some(ranges) = pending_map.get(&detail.snapshot.ed2k_hash) {
+            detail.snapshot.pending_ranges = ranges.clone();
+        }
+    }
     Ok(json!({
         "sequence": seq,
         "downloads": list
@@ -24,12 +31,17 @@ pub async fn handle_downloads_get(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
 
-    let dl = state
+    let mut dl = state
         .downloads
         .lock()
         .await
         .get_download_detail(&id)
         .ok_or_else(|| JsonRpcError::business(format!("Download {id} not found")))?;
+
+    dl.snapshot.pending_ranges = state
+        .peer_session
+        .pending_ranges_for_file(&dl.ed2k_hash)
+        .await;
 
     Ok(serde_json::to_value(dl).unwrap_or_default())
 }
@@ -143,7 +155,7 @@ pub async fn handle_add_ed2k_link(
             let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
                 hash.0,
                 size,
-                state.config.obfuscation_enabled,
+                state.effective_obfuscation().await.0,
             );
             let _ = state.server_session.get_sources(req).await;
         }
@@ -181,6 +193,19 @@ pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Va
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
 
+    // eMule `SafeConnect`: refuse to resume while neither the eD2K server
+    // nor Kad is reachable — sources could only be dead cache entries.
+    if state.setting_bool("safe_connect", false).await {
+        let server_up = state.server_session.snapshot().await.status
+            == crate::services::server_session::ServerConnectionStatus::Connected;
+        let kad_ready = state.kad.get_status().await.total_contacts > 0;
+        if !server_up && !kad_ready {
+            return Err(JsonRpcError::business(
+                "Safe connect: waiting for an eD2K server or Kad before resuming downloads",
+            ));
+        }
+    }
+
     let snapshot = state.downloads.lock().await.resume_download(&id)?;
     state.broadcast_download_update(snapshot.clone());
 
@@ -200,7 +225,7 @@ pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Va
             let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
                 hash.0,
                 size,
-                state.config.obfuscation_enabled,
+                state.effective_obfuscation().await.0,
             );
             let _ = state.server_session.get_sources(req).await;
         }
@@ -255,6 +280,82 @@ pub async fn handle_set_destination(
     state.broadcast_download_update(detail.snapshot.clone());
 
     Ok(serde_json::to_value(detail).unwrap_or_default())
+}
+
+/// `downloads.rename` — renomme le fichier (`{id, newName}`). Pour un
+/// download terminé, renomme aussi le fichier sur disque et l'entrée de
+/// partage associée.
+pub async fn handle_rename(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    let new_name = params["newName"]
+        .as_str()
+        .or_else(|| params["new_name"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'newName' parameter"))?;
+
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .rename_download(&id, new_name)?;
+    state.broadcast_download_update(snapshot.clone());
+
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+pub async fn handle_set_priority(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    let priority = params["priority"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'priority' parameter"))?;
+
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .set_priority(&id, priority)?;
+    state.broadcast_download_update(snapshot.clone());
+
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+}
+
+/// `downloads.setMaxSources` — per-file source limit (eMule FT_MAXSOURCES).
+/// Params: `{id, maxSources}` — `maxSources` null/omitted restores global.
+pub async fn handle_set_max_sources(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let id_str = params["id"]
+        .as_str()
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
+    let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    let max_sources = params
+        .get("maxSources")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
+
+    let snapshot = state
+        .downloads
+        .lock()
+        .await
+        .set_max_sources(&id, max_sources)?;
+    state.broadcast_download_update(snapshot.clone());
+
+    Ok(serde_json::to_value(snapshot).unwrap_or_default())
 }
 
 pub async fn handle_inspect_part_met(

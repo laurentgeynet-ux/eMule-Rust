@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/domain/models/download_item.dart';
-import 'package:desktop/ui/core/formatters.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 void main() {
   group('DownloadItem and Status Domain Tests', () {
@@ -44,6 +44,56 @@ void main() {
 
       final clampedLow = item.copyWith(progress: -0.2);
       expect(clampedLow.progress, 0.0);
+    });
+
+    test('fromJson parses receivedMask and pendingRanges (tuple form)', () {
+      final item = DownloadItem.fromJson({
+        'id': 'd1',
+        'fileName': 'f.iso',
+        'totalBytes': 9728000,
+        'receivedBytes': 4864000,
+        'progress': 0.5,
+        'status': 'downloading',
+        'parts': [
+          {
+            'partIndex': 0,
+            'startOffset': 0,
+            'endOffset': 9728000,
+            'size': 9728000,
+            'receivedBytes': 4864000,
+            'isVerified': false,
+            'state': 'downloading',
+            'availableSourceCount': 3,
+            'receivedMask': 4294967295, // first 32 of 64 cells
+          }
+        ],
+        'pendingRanges': [
+          [4864000, 5048320],
+          {'start': 5200000, 'end': 5384320},
+        ],
+      });
+
+      expect(item.parts, hasLength(1));
+      expect(item.parts.first.receivedMask, 4294967295);
+      expect(item.parts.first.availableSourceCount, 3);
+      expect(item.pendingRanges, hasLength(2));
+      expect(item.pendingRanges.first.start, 4864000);
+      expect(item.pendingRanges.first.end, 5048320);
+      expect(item.pendingRanges.last.start, 5200000);
+    });
+
+    test('fromJson defaults mask and pendingRanges when absent', () {
+      final item = DownloadItem.fromJson({
+        'id': 'd2',
+        'fileName': 'f.iso',
+        'totalBytes': 1000,
+        'parts': [
+          {'partIndex': 0, 'size': 1000, 'state': 'missing'}
+        ],
+      });
+
+      expect(item.parts.first.receivedMask, 0);
+      expect(item.pendingRanges, isEmpty);
     });
   });
 

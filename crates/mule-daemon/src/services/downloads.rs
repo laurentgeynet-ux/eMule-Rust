@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::error::DaemonError;
+use crate::services::DaemonEvent;
 
 pub mod history_categories;
 pub mod operations;
@@ -26,6 +27,10 @@ pub struct DownloadService {
     temp_dir: PathBuf,
     active: HashMap<Uuid, ActiveDownload>,
     session_start_ms: i64,
+    /// Event channel installed by `AppState` for lifecycle events
+    /// (`event.downloadAdded/Removed/Completed/Failed`).
+    event_tx: Option<tokio::sync::broadcast::Sender<String>>,
+    sequence: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl DownloadService {
@@ -68,7 +73,11 @@ impl DownloadService {
 
             let source_count = db
                 .list_peer_sources(&dl.ed2k_hash.to_hex())
-                .map(|s| s.len() as u32)
+                .map(|s| {
+                    s.iter()
+                        .filter(|x| x.status.is_srclist_visible())
+                        .count() as u32
+                })
                 .unwrap_or(0);
             active.insert(
                 dl.id,
@@ -108,6 +117,8 @@ impl DownloadService {
             temp_dir,
             active,
             session_start_ms,
+            event_tx: None,
+            sequence: None,
         })
     }
 
@@ -120,7 +131,40 @@ impl DownloadService {
             temp_dir,
             active: HashMap::new(),
             session_start_ms: now_ms(),
+            event_tx: None,
+            sequence: None,
         })
+    }
+
+    /// Installs the broadcast channel used to emit download lifecycle
+    /// events. Called once by `AppState::new` before the service is shared.
+    pub fn set_event_channel(
+        &mut self,
+        tx: tokio::sync::broadcast::Sender<String>,
+        seq: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        self.event_tx = Some(tx);
+        self.sequence = Some(seq);
+    }
+
+    fn emit(&self, make: impl FnOnce(u64) -> DaemonEvent) {
+        let (Some(tx), Some(seq)) = (&self.event_tx, &self.sequence) else {
+            return;
+        };
+        make(seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst)).send(tx);
+    }
+
+    /// Effective temp directory: persisted `temp_dir` setting wins over the
+    /// construction-time directory (eMule "Répertoire temporaire").
+    fn effective_temp_dir(&self) -> PathBuf {
+        self.db
+            .get_setting("temp_dir")
+            .ok()
+            .flatten()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.temp_dir.clone())
     }
 
     pub fn add_ed2k_link(
@@ -130,15 +174,23 @@ impl DownloadService {
         policy: AllocationPolicy,
         category_id: Option<String>,
     ) -> Result<DownloadSnapshot, DaemonError> {
-        operations::add_ed2k_link(
+        let temp_dir = self.effective_temp_dir();
+        std::fs::create_dir_all(&temp_dir)?;
+        let snapshot = operations::add_ed2k_link(
             &mut self.db,
-            &self.temp_dir,
+            &temp_dir,
             &mut self.active,
             link_str,
             target_dir,
             policy,
             category_id,
-        )
+        )?;
+        self.emit(|sequence| DaemonEvent::DownloadAdded {
+            sequence,
+            download: snapshot.clone(),
+        });
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
+        Ok(snapshot)
     }
 
     pub fn inspect_part_met(
@@ -156,14 +208,17 @@ impl DownloadService {
         target_dir: &Path,
         category_id: Option<String>,
     ) -> Result<ImportPartMetResult, DaemonError> {
+        let temp_dir = self.effective_temp_dir();
+        std::fs::create_dir_all(&temp_dir)?;
         let (result, active_dl) = part_met::import_part_met(
             &mut self.db,
-            &self.temp_dir,
+            &temp_dir,
             &self.active,
             met_path,
             part_path,
             target_dir,
             category_id,
+            false,
         )?;
 
         let id = active_dl.download.id;
@@ -189,8 +244,129 @@ impl DownloadService {
         Ok(result)
     }
 
+    /// Recovers orphaned `.part.met` files found in the effective temp
+    /// directory at startup (eMule `CPartFile` auto-load semantics): any met
+    /// whose file hash is not already tracked is imported through the same
+    /// sandboxed path as `downloads.importPartMet` (part-hash verification,
+    /// staged `{uuid}.part` copy, Paused status). Returns the number of
+    /// recovered downloads.
+    pub fn recover_orphan_part_mets(&mut self, target_dir: &Path) -> usize {
+        let temp_dir = self.effective_temp_dir();
+        let entries = match std::fs::read_dir(&temp_dir) {
+            Ok(e) => e,
+            Err(_) => return 0,
+        };
+
+        let mut recovered = 0usize;
+        for entry in entries.flatten() {
+            let met_path = entry.path();
+            let is_met = met_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.ends_with(".part.met"))
+                .unwrap_or(false);
+            if !is_met {
+                continue;
+            }
+
+            // Skip companions already owned by an active download
+            // (`{uuid}.part.met` written by save_part_met).
+            let already_tracked = match mule_format::PartMetFile::open(&met_path) {
+                Ok(met) => self.active.values().any(|a| {
+                    a.download
+                        .ed2k_hash
+                        .to_hex()
+                        .eq_ignore_ascii_case(&met.file_hash.to_hex())
+                }),
+                Err(_) => false,
+            };
+            if already_tracked {
+                continue;
+            }
+
+            match part_met::import_part_met(
+                &mut self.db,
+                &temp_dir,
+                &self.active,
+                &met_path,
+                None,
+                target_dir,
+                None,
+                true,
+            ) {
+                Ok((result, active_dl)) => {
+                    // The orphan was adopted in place ({stem}.part renamed to
+                    // {uuid}.part): drop the source met so it is not
+                    // reprocessed on the next startup.
+                    let _ = std::fs::remove_file(&met_path);
+                    let verif_status = if result.corrupted_parts > 0 {
+                        "partial_corruption"
+                    } else if result.verified_parts == result.total_parts
+                        && result.total_parts > 0
+                    {
+                        "verified_ok"
+                    } else {
+                        "unverified"
+                    };
+                    history_categories::record_history_event(
+                        &mut self.db,
+                        &active_dl.download,
+                        active_dl.ranges.covered_len(),
+                        0,
+                        0,
+                        "imported",
+                        verif_status,
+                        None,
+                    );
+                    tracing::info!(
+                        "Recovered orphaned .part.met '{}' ({}/{} parts verified) as paused download {}",
+                        result.download.file_name,
+                        result.verified_parts,
+                        result.total_parts,
+                        active_dl.download.id
+                    );
+                    self.active.insert(active_dl.download.id, active_dl);
+                    recovered += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Skipping orphaned .part.met {}: {e}",
+                        met_path.display()
+                    );
+                }
+            }
+        }
+        recovered
+    }
+
+    /// Persists `.part.met` companions for every non-terminal download —
+    /// eMule `SavePartFile` cadence, invoked periodically by the swarm
+    /// coordinator heartbeat and once on graceful shutdown so a crash never
+    /// leaves gap state staler than the last flush.
+    pub fn save_active_part_mets(&self) {
+        for act in self.active.values() {
+            if matches!(
+                act.download.status,
+                DownloadStatus::Completed | DownloadStatus::Removed
+            ) {
+                continue;
+            }
+            let _ = part_met::save_part_met(&self.db, act);
+        }
+    }
+
     pub fn list_downloads(&self) -> Vec<DownloadSnapshot> {
         self.active.values().map(|a| a.snapshot()).collect()
+    }
+
+    /// Octets utiles reçus depuis le démarrage du daemon : somme, sur tous
+    /// les downloads actifs, de `covered_len() - session_bytes_start`
+    /// (le point de départ est fixé à l'hydratation / à l'ajout).
+    pub fn session_downloaded_bytes(&self) -> u64 {
+        self.active
+            .values()
+            .map(|a| a.ranges.covered_len().saturating_sub(a.session_bytes_start))
+            .sum()
     }
 
     /// Full details (incl. per-part state and source availability) so the
@@ -211,15 +387,25 @@ impl DownloadService {
     }
 
     pub fn pause_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, DaemonError> {
-        operations::pause_download(&mut self.db, &mut self.active, id)
+        let snap = operations::pause_download(&mut self.db, &mut self.active, id)?;
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
+        Ok(snap)
     }
 
     pub fn resume_download(&mut self, id: &Uuid) -> Result<DownloadSnapshot, DaemonError> {
-        operations::resume_download(&mut self.db, &mut self.active, id)
+        let snap = operations::resume_download(&mut self.db, &mut self.active, id)?;
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
+        Ok(snap)
     }
 
     pub fn remove_download(&mut self, id: &Uuid, delete_files: bool) -> Result<(), DaemonError> {
-        operations::remove_download(&mut self.db, &mut self.active, id, delete_files)
+        operations::remove_download(&mut self.db, &mut self.active, id, delete_files)?;
+        self.emit(|sequence| DaemonEvent::DownloadRemoved {
+            sequence,
+            id: id.to_string(),
+        });
+        self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
+        Ok(())
     }
 
     pub fn inject_range(
@@ -236,7 +422,68 @@ impl DownloadService {
         id: &Uuid,
         status: DownloadStatus,
     ) -> Result<DownloadSnapshot, DaemonError> {
-        operations::update_status(&mut self.db, &mut self.active, id, status)
+        let snapshot = operations::update_status(&mut self.db, &mut self.active, id, status)?;
+        match status {
+            DownloadStatus::Completed => self.emit(|sequence| DaemonEvent::DownloadCompleted {
+                sequence,
+                download: snapshot.clone(),
+            }),
+            DownloadStatus::Failed => {
+                let reason = self.active.get(id).and_then(|a| a.last_error.clone());
+                self.emit(|sequence| DaemonEvent::DownloadFailed {
+                    sequence,
+                    download: snapshot.clone(),
+                    reason: reason.clone(),
+                });
+                self.emit(|sequence| DaemonEvent::HistoryEntryAdded { sequence });
+            }
+            _ => {}
+        }
+        Ok(snapshot)
+    }
+
+    /// Updates the eMule-style file priority ("low" | "normal" | "high").
+    /// The swarm allocator uses it to bias the slot quota per file.
+    pub fn set_priority(
+        &mut self,
+        id: &Uuid,
+        priority: &str,
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        let act = self
+            .active
+            .get_mut(id)
+            .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
+        if !matches!(priority, "low" | "normal" | "high") {
+            return Err(DaemonError::Business(format!(
+                "Invalid priority '{priority}' (expected low|normal|high)"
+            )));
+        }
+        act.download.priority = priority.to_string();
+        self.db.update_priority(id, priority)?;
+        Ok(act.snapshot())
+    }
+
+    /// Updates the per-file source limit (eMule FT_MAXSOURCES). `None`
+    /// restores the global `max_peers_per_file` default.
+    pub fn set_max_sources(
+        &mut self,
+        id: &Uuid,
+        max_sources: Option<u32>,
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        let act = self
+            .active
+            .get_mut(id)
+            .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
+        if let Some(v) = max_sources {
+            if v == 0 || v > 10_000 {
+                return Err(DaemonError::Business(format!(
+                    "Invalid maxSources '{v}' (expected 1..=10000 or null)"
+                )));
+            }
+        }
+        act.download.max_sources = max_sources;
+        self.db.update_max_sources(id, max_sources)?;
+        Ok(act.snapshot())
     }
 
     pub fn get_missing_ranges(&self, id: &Uuid) -> Option<Vec<std::ops::Range<u64>>> {
@@ -305,6 +552,27 @@ impl DownloadService {
         target_dir: &Path,
     ) -> Result<DownloadDetail, DaemonError> {
         operations::set_destination(&mut self.db, &mut self.active, id, target_dir)
+    }
+
+    /// `downloads.rename` — renomme le fichier (display_name + target ;
+    /// disque + `shared_files` pour un download terminé).
+    pub fn rename_download(
+        &mut self,
+        id: &Uuid,
+        new_name: &str,
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        operations::rename_download(&mut self.db, &mut self.active, id, new_name)
+    }
+
+    /// `shares.rename` — renomme un fichier partagé complet sur disque
+    /// et dans `shared_files` (délègue à `rename_download` quand le hash
+    /// adosse un download listé).
+    pub fn rename_shared_file(
+        &mut self,
+        file_hash: &str,
+        new_name: &str,
+    ) -> Result<(), DaemonError> {
+        operations::rename_shared_file(&mut self.db, &mut self.active, file_hash, new_name)
     }
 
     pub fn retry_connection(&mut self, id: &Uuid) -> Result<DownloadDetail, DaemonError> {
@@ -594,13 +862,50 @@ impl DownloadService {
         error: Option<&str>,
         cooldown_until_unix_ms: Option<i64>,
     ) -> Result<bool, DaemonError> {
-        peers_servers::update_peer_source_status(
+        let res = peers_servers::update_peer_source_status(
             &mut self.db,
             file_hash,
             address,
             status,
             error,
             cooldown_until_unix_ms,
+        )?;
+        self.refresh_source_count(file_hash);
+        Ok(res)
+    }
+
+    /// Compteur « srclist » façon eMule `GetSourceCount()` : seules les
+    /// sources vivantes comptent — les entrées deadlist (échec, FNF,
+    /// filtre IP) restent persistées mais ne gonflent pas le compteur.
+    /// Rafraîchi à chaque transition de statut ou suppression.
+    fn refresh_source_count(&mut self, file_hash: &str) {
+        let clean_hex = file_hash.trim().to_lowercase();
+        if let Ok(list) = self.db.list_peer_sources(file_hash) {
+            let count = list
+                .iter()
+                .filter(|s| s.status.is_srclist_visible())
+                .count() as u32;
+            for a in self.active.values_mut() {
+                if a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
+                    a.source_count = count;
+                }
+            }
+        }
+    }
+
+    pub fn update_peer_source_details(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        software: Option<&str>,
+        availability: Option<&[u8]>,
+    ) -> Result<bool, DaemonError> {
+        peers_servers::update_peer_source_details(
+            &mut self.db,
+            file_hash,
+            address,
+            software,
+            availability,
         )
     }
 
@@ -617,11 +922,15 @@ impl DownloadService {
         file_hash: &str,
         address: &str,
     ) -> Result<bool, DaemonError> {
-        peers_servers::delete_peer_source(&mut self.db, file_hash, address)
+        let res = peers_servers::delete_peer_source(&mut self.db, file_hash, address)?;
+        self.refresh_source_count(file_hash);
+        Ok(res)
     }
 
     pub fn clear_peer_sources(&mut self, file_hash: &str) -> Result<usize, DaemonError> {
-        peers_servers::clear_peer_sources(&mut self.db, file_hash)
+        let res = peers_servers::clear_peer_sources(&mut self.db, file_hash)?;
+        self.refresh_source_count(file_hash);
+        Ok(res)
     }
 
     pub fn find_by_ed2k_hash(&self, hex_hash: &str) -> Option<DownloadSnapshot> {
@@ -632,6 +941,47 @@ impl DownloadService {
             }
         }
         None
+    }
+
+    /// Nombre de sources connues couvrant chaque part d'un download actif —
+    /// indice de rareté pour le swarm healing (`swarm_healing` setting).
+    /// `None` si le hash n'est pas un download actif.
+    ///
+    /// Convention eD2K : une source complète annonce `part_count = 0` (masque
+    /// vide) — elle couvre alors toutes les parts. Les sources dont le masque
+    /// n'a pas été rafraîchi depuis `SOURCE_FRESHNESS_MS` sont ignorées pour
+    /// ne pas compter une disponibilité périmée.
+    pub fn part_source_counts(&self, hex_hash: &str) -> Option<Vec<u32>> {
+        const ED2K_PART_SIZE: u64 = 9_728_000;
+        use types::SOURCE_FRESHNESS_MS;
+        let clean = hex_hash.trim().to_lowercase();
+        let act = self
+            .active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean)?;
+        let total_parts =
+            (act.download.total_size.div_ceil(ED2K_PART_SIZE)).max(1) as usize;
+        let max_part = total_parts.min(u16::MAX as usize);
+        let now = now_ms();
+        let mut counts = vec![0u32; total_parts];
+        for src in act.sources.values() {
+            if now - src.last_seen_unix_ms > SOURCE_FRESHNESS_MS {
+                continue;
+            }
+            if src.mask.part_count() == 0 {
+                // Source complète : couvre toutes les parts.
+                for c in counts.iter_mut() {
+                    *c = c.saturating_add(1);
+                }
+                continue;
+            }
+            for p in 0..max_part as u16 {
+                if src.mask.has_part(p) {
+                    counts[p as usize] = counts[p as usize].saturating_add(1);
+                }
+            }
+        }
+        Some(counts)
     }
 
     /// Stores the per-part MD4 hashset for a file hash (learned from peer, link, or .part.met).
@@ -789,8 +1139,94 @@ impl DownloadService {
         peers_servers::add_shared_file(&mut self.db, file)
     }
 
-    pub fn remove_shared_file(&mut self, file_hash: &str) -> Result<bool, DaemonError> {
-        peers_servers::remove_shared_file(&mut self.db, file_hash)
+    /// Ajoute `delta` octets au total uploadé persisté d'un fichier partagé.
+    pub fn add_share_uploaded_bytes(
+        &mut self,
+        file_hash: &str,
+        delta: u64,
+    ) -> Result<(), DaemonError> {
+        peers_servers::add_share_uploaded_bytes(&mut self.db, file_hash, delta)
+    }
+
+    /// Totaux uploadés persistés par hash de fichier (clés en minuscules).
+    pub fn list_share_uploaded_bytes(
+        &self,
+    ) -> Result<std::collections::HashMap<String, u64>, DaemonError> {
+        peers_servers::list_share_uploaded_bytes(&self.db)
+    }
+
+    /// Retire un fichier des partages. Avec `delete_file`, le fichier sur
+    /// disque est supprimé en plus : pour un download complété encore
+    /// actif on délègue à `remove_download` (entrée DB + fichier final +
+    /// share), sinon le fichier pointé par l'entrée est supprimé puis
+    /// l'entrée `shared_files` — et l'éventuel download complété en DB —
+    /// sont retirés.
+    pub fn remove_shared_file(
+        &mut self,
+        file_hash: &str,
+        delete_file: bool,
+    ) -> Result<bool, DaemonError> {
+        if !delete_file {
+            return peers_servers::remove_shared_file(&mut self.db, file_hash);
+        }
+        let sf = self.get_shared_file(file_hash)?.ok_or_else(|| {
+            DaemonError::NotFound(format!("Shared file {file_hash} not found"))
+        })?;
+        if sf.is_partial {
+            // Partage transitoire d'un download en cours : le fichier à
+            // supprimer est le `.part`, ce qui est le rôle de
+            // `downloads.remove` — jamais de suppression ici.
+            return Err(DaemonError::Business(
+                "Cannot delete a partial share — remove the download instead".to_string(),
+            ));
+        }
+        if let Some(id) = self
+            .active
+            .values()
+            .find(|a| {
+                a.download
+                    .ed2k_hash
+                    .to_hex()
+                    .eq_ignore_ascii_case(file_hash)
+            })
+            .map(|a| a.download.id)
+        {
+            self.remove_download(&id, true)?;
+            return Ok(true);
+        }
+        let path = PathBuf::from(&sf.file_path);
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+        let removed = peers_servers::remove_shared_file(&mut self.db, file_hash)?;
+        // Download complété resté en DB (hors `active`) : sa target_path
+        // vient d'être supprimée, l'entrée devient morte — on la retire.
+        let stale_db_id = self
+            .db
+            .get_all_downloads()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|d| {
+                d.status == DownloadStatus::Completed
+                    && d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
+            })
+            .map(|d| d.id);
+        if let Some(id) = stale_db_id {
+            let _ = self.db.delete_download(&id);
+            return Ok(true);
+        }
+        Ok(removed)
+    }
+
+    /// Sets the upload priority of a shared file ("verylow".."veryhigh").
+    pub fn set_shared_up_priority(
+        &mut self,
+        file_hash: &str,
+        up_priority: &str,
+    ) -> Result<bool, DaemonError> {
+        self.db
+            .set_shared_up_priority(file_hash, up_priority)
+            .map_err(Into::into)
     }
 
     pub fn get_shared_file(
@@ -801,24 +1237,199 @@ impl DownloadService {
             return Ok(Some(sf));
         }
         for act in self.active.values() {
-            if act
+            if !act
                 .download
                 .ed2k_hash
                 .to_hex()
                 .eq_ignore_ascii_case(file_hash)
-                && act.download.status == mule_core::DownloadStatus::Completed
             {
-                let mut sf = mule_core::model::SharedFile::new(
-                    &act.download.ed2k_hash.to_hex(),
-                    &act.download.display_name,
-                    act.download.total_size,
-                    act.download.target_path.to_string_lossy().as_ref(),
-                );
-                sf.aich_root = act.download.aich_root.map(|a| a.0);
-                return Ok(Some(sf));
+                continue;
             }
+            let mut sf = Self::shared_entry_for_active(act);
+            sf.aich_root = act.download.aich_root.map(|a| a.0);
+            return Ok(Some(sf));
+        }
+        // Completed downloads are persisted in the DB even when not loaded
+        // into `active` (e.g. after a daemon restart) — they stay shared
+        // like eMule keeps finished files in the shared list.
+        if let Some(sf) = self.shared_entry_for_completed_db(file_hash) {
+            return Ok(Some(sf));
         }
         Ok(None)
+    }
+
+    /// Resolves a completed download from the DB into a shareable entry —
+    /// only when the target file actually exists on disk.
+    fn shared_entry_for_completed_db(
+        &self,
+        file_hash: &str,
+    ) -> Option<mule_core::model::SharedFile> {
+        let dl = self
+            .db
+            .get_all_downloads()
+            .ok()?
+            .into_iter()
+            .find(|d| {
+                d.status == mule_core::DownloadStatus::Completed
+                    && d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
+            })?;
+        if !dl.target_path.is_file() {
+            return None;
+        }
+        let mut sf = mule_core::model::SharedFile::new(
+            dl.ed2k_hash.to_hex(),
+            &dl.display_name,
+            dl.total_size,
+            dl.target_path.to_string_lossy().as_ref(),
+        );
+        sf.aich_root = dl.aich_root.map(|a| a.0);
+        sf.category_id = dl.category_id.clone();
+        Some(sf)
+    }
+
+    /// Builds the shared-file view of an active download (eMule `CPartFile`
+    /// semantics): a completed download resolves to its target path; an
+    /// in-progress download resolves to its `.part` file as a partial share
+    /// exposing only its fully-received eD2K parts. Part files are always
+    /// shared files in eMule (`CDownloadQueue::AddPartFilesToShare`), even
+    /// before any part completes — the empty `completed_parts` mask simply
+    /// advertises nothing servable yet.
+    fn shared_entry_for_active(act: &ActiveDownload) -> mule_core::model::SharedFile {
+        if act.download.status == mule_core::DownloadStatus::Completed {
+            let mut sf = mule_core::model::SharedFile::new(
+                act.download.ed2k_hash.to_hex(),
+                &act.download.display_name,
+                act.download.total_size,
+                act.download.target_path.to_string_lossy().as_ref(),
+            );
+            sf.category_id = act.download.category_id.clone();
+            return sf;
+        }
+        const ED2K_PART_SIZE: u64 = 9_728_000;
+        let part_count =
+            act.download.total_size.div_ceil(ED2K_PART_SIZE).min(u16::MAX as u64) as u16;
+        let completed: Vec<u16> = (0..part_count)
+            .filter(|&i| {
+                let start = i as u64 * ED2K_PART_SIZE;
+                let end = ((i as u64 + 1) * ED2K_PART_SIZE).min(act.download.total_size);
+                end > start && act.ranges.contains(start..end)
+            })
+            .collect();
+        let mut sf = mule_core::model::SharedFile::new(
+            act.download.ed2k_hash.to_hex(),
+            &act.download.display_name,
+            act.download.total_size,
+            act.download.temp_path.to_string_lossy().as_ref(),
+        );
+        sf.is_partial = true;
+        sf.completed_parts = completed;
+        sf.category_id = act.download.category_id.clone();
+        sf
+    }
+
+    /// Every file currently servable to peers: persisted shared files plus
+    /// active downloads (completed → full file, in-progress → completed
+    /// parts only), like eMule's `CSharedFileList` including `CPartFile`s.
+    pub fn list_all_shared_files(
+        &self,
+    ) -> Result<Vec<mule_core::model::SharedFile>, DaemonError> {
+        let mut list = self.list_shared_files()?;
+        let persisted: std::collections::HashSet<String> =
+            list.iter().map(|f| f.file_hash.to_lowercase()).collect();
+        for act in self.active.values() {
+            if persisted.contains(&act.download.ed2k_hash.to_hex().to_lowercase()) {
+                continue;
+            }
+            let mut sf = Self::shared_entry_for_active(act);
+            sf.aich_root = act.download.aich_root.map(|a| a.0);
+            list.push(sf);
+        }
+        // Completed downloads only live in the DB after a restart — merge
+        // them too so the shared list survives reboots (eMule rehashes
+        // finished files into `CSharedFileList` at startup).
+        for d in self.db.get_all_downloads()? {
+            if d.status != mule_core::DownloadStatus::Completed {
+                continue;
+            }
+            if persisted.contains(&d.ed2k_hash.to_hex().to_lowercase()) {
+                continue;
+            }
+            if let Some(sf) = self.shared_entry_for_completed_db(&d.ed2k_hash.to_hex()) {
+                list.push(sf);
+            }
+        }
+        Ok(list)
+    }
+
+    /// `shares.setCategory` — associe (ou retire) une catégorie à un
+    /// fichier partagé identifié par son hash eD2K. Met à jour les deux
+    /// sources possibles : la ligne `shared_files` persistée et/ou le
+    /// download (actif ou complété en DB) dont le partage est synthétisé
+    /// — `list_all_shared_files` reflète la catégorie depuis l'une ou
+    /// l'autre.
+    pub fn set_shared_file_category(
+        &mut self,
+        file_hash: &str,
+        category_id: Option<String>,
+    ) -> Result<(), DaemonError> {
+        let cat = category_id
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        if let Some(ref cid) = cat {
+            if self.get_category(cid)?.is_none() {
+                return Err(DaemonError::Business(format!(
+                    "Category '{cid}' not found"
+                )));
+            }
+        }
+        let mut touched = false;
+        // Download actif connu par ce hash.
+        let active_id = self
+            .active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash))
+            .map(|a| a.download.id);
+        if let Some(id) = active_id {
+            self.db
+                .set_download_category(&id, cat.as_deref())
+                .map_err(|e| {
+                    DaemonError::Business(format!("DB error setting category: {e}"))
+                })?;
+            if let Some(a) = self.active.get_mut(&id) {
+                a.download.category_id = cat.clone();
+            }
+            touched = true;
+        } else {
+            // Download complété présent seulement en DB.
+            let db_id = self
+                .db
+                .get_all_downloads()?
+                .into_iter()
+                .find(|d| d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash))
+                .map(|d| d.id);
+            if let Some(id) = db_id {
+                self.db
+                    .set_download_category(&id, cat.as_deref())
+                    .map_err(|e| {
+                        DaemonError::Business(format!("DB error setting category: {e}"))
+                    })?;
+                touched = true;
+            }
+        }
+        // Partage persisté autonome (fichier ajouté hors download).
+        if self
+            .db
+            .set_shared_file_category(file_hash, cat.as_deref())
+            .map_err(|e| DaemonError::Business(format!("DB error setting share category: {e}")))?
+        {
+            touched = true;
+        }
+        if !touched {
+            return Err(DaemonError::Business(format!(
+                "Shared file '{file_hash}' not found"
+            )));
+        }
+        Ok(())
     }
 
     pub fn get_peer_credit(
@@ -851,6 +1462,18 @@ impl DownloadService {
         limit: usize,
     ) -> Result<Vec<mule_core::model::PeerCredit>, DaemonError> {
         peers_servers::list_peer_credits(&self.db, limit)
+    }
+
+    pub fn add_friend(&mut self, user_hash: &str, name: &str) -> Result<(), DaemonError> {
+        self.db.add_friend(user_hash, name).map_err(Into::into)
+    }
+
+    pub fn remove_friend(&mut self, user_hash: &str) -> Result<(), DaemonError> {
+        self.db.remove_friend(user_hash).map_err(Into::into)
+    }
+
+    pub fn list_friends(&self) -> Result<Vec<mule_core::model::Friend>, DaemonError> {
+        self.db.list_friends().map_err(Into::into)
     }
 
     pub fn db_ref(&self) -> &Database {

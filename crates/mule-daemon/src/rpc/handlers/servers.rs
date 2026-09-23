@@ -229,6 +229,23 @@ pub async fn handle_servers_connect(
 
     let server_name = server_record.map(|s| s.name);
 
+    // eMule semantics: asking for another server while a session is
+    // active switches to it (disconnect first); reconnecting to the same
+    // address is idempotent.
+    {
+        let snap = state.server_session.snapshot().await;
+        use crate::services::server_session::ServerConnectionStatus as S;
+        match snap.status {
+            S::Connected if snap.server_address.as_deref() == Some(address_str) => {
+                return Ok(serde_json::to_value(snap).unwrap_or_default());
+            }
+            S::Connected | S::Connecting | S::Disconnecting => {
+                let _ = state.server_session.disconnect().await;
+            }
+            _ => {}
+        }
+    }
+
     // Request TCP connect permit from NetworkPolicyManager
     let permit = state
         .network_policy
@@ -238,7 +255,7 @@ pub async fn handle_servers_connect(
         })?;
 
     let user_hash = state.identity.lock().await.user_hash();
-    let ed2k_port = state.config.ed2k_port;
+    let ed2k_port = state.ed2k_port();
 
     // Start session with WAN-adapted timeouts (10s connect, 15s handshake)
     state
@@ -250,7 +267,7 @@ pub async fn handle_servers_connect(
             10000,
             15000,
             ed2k_port,
-            "http://emule-project.net".to_string(),
+            state.current_nickname().await,
             user_hash,
         )
         .await?;
@@ -383,7 +400,7 @@ pub async fn handle_servers_query_sources(
     let req = mule_protocol::ed2k::GetSourcesRequest::with_obfuscation(
         file_hash,
         file_size,
-        state.config.obfuscation_enabled,
+        state.effective_obfuscation().await.0,
     );
     state.server_session.get_sources(req).await?;
     Ok(json!({ "sent": true }))

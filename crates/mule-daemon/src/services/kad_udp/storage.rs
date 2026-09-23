@@ -279,7 +279,7 @@ impl KadStorage {
         }
         entries
             .iter()
-            .filter(|e| e.note.file_size().map_or(true, |s| s == file_size))
+            .filter(|e| e.note.file_size().is_none_or(|s| s == file_size))
             .take(max_results)
             .map(|e| e.note.clone())
             .collect()

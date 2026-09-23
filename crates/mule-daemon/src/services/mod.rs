@@ -3,6 +3,7 @@ pub mod downloads;
 pub mod events;
 pub mod identity;
 pub mod inbound_listener;
+pub mod incoming_share;
 pub mod kad;
 pub mod kad_udp;
 pub mod obfuscation_stream;
@@ -14,6 +15,7 @@ pub mod swarm_coordinator;
 pub mod upload_queue;
 pub mod upnp;
 pub mod uss;
+mod uss_icmp;
 
 pub use client_udp::{ClientUdpService, UdpReaskResult, UdpReaskTarget};
 pub use events::DaemonEvent;

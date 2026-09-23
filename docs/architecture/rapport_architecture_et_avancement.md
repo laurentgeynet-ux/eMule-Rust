@@ -1,8 +1,8 @@
 # Rapport Détaillé : Architecture & État d'Avancement du Projet Emule-Sion
 
 **Projet :** Emule-Sion  
-**Date :** 19 Septembre 2026  
-**Version Workspace :** `v0.1.9` (Desktop `v0.1.9+1`)  
+**Date :** 23 Septembre 2026  
+**Version Workspace :** `v0.2.0-RC1` (Desktop `v0.2.0-RC1+1`)  
 **Auteurs :** Analyse d'ingénierie logicielle & architecture système  
 **Statut :** Document d'audit et de synthèse technique mis à jour
 
@@ -42,6 +42,7 @@ flowchart TB
         UI_Kad["Module Kad DHT & Buckets"]
         UI_Search["Module Recherche Unifiée (Serveurs & Kad)"]
         UI_History["Module Historique & Stats"]
+        UI_Shares["Module Partages (priorités d'upload)"]
         UI_Settings["Module Paramètres & Politiques"]
         Supervisor["DaemonSupervisor (Process & Session Watcher)"]
         RpcClient["RpcDaemonClient (WebSocket JSON-RPC 2.0)"]
@@ -50,7 +51,7 @@ flowchart TB
 
     subgraph AGENTS ["Écosystème Agents IA (crates/mule-mcp)"]
         MCPServer["Serveur MCP (Stdio JSON-RPC)"]
-        MCPTools["85 Outils MCP (Downloads, Swarm, Kad, Servers, Shares, System)"]
+        MCPTools["87 Outils MCP (Downloads, Swarm, Kad, Servers, Shares, System)"]
     end
 
     subgraph IPC ["Liaison Locale IPC (127.0.0.1:4660)"]
@@ -93,7 +94,7 @@ flowchart TB
         FinalDir["downloads/* (Fichiers promus atomiquement)"]
     end
 
-    FlutterApp --> UI_Downloads & UI_Servers & UI_Kad & UI_Search & UI_History & UI_Settings
+    FlutterApp --> UI_Downloads & UI_Servers & UI_Kad & UI_Search & UI_History & UI_Shares & UI_Settings
     FlutterApp --> Supervisor
     Supervisor --> RpcClient
     RpcClient -.->|Mode Dégradé/Dev| MockClient
@@ -153,7 +154,7 @@ Ce composant contient la logique filaire pure et garantit l'intégrité de l'ana
   * Échange de clés Diffie-Hellman 768 bits (RFC 2409 groupe MODP 1) pour serveurs et pairs.
   * Chiffrement par flux RC4 (`drop_bytes(1024)`) et dérivation de clés MD5 conforme aux spécifications officielles eMule.
 * **Profils de Compatibilité Explicites** :
-  * `Emule050a`, `Amule233`, `LegacyEdonkey`, `UnknownStrict`.
+  * `Emule072a` (défaut), `Emule050a` (historique, wire identique), `Amule233`, `LegacyEdonkey`, `UnknownStrict`.
 
 ### 3.3 `crates/mule-core` — Modèle de Domaine, Stockage Éparse & Persistance
 * **Moteur de Stockage (`storage/part_file.rs`, `storage/finalizer.rs`)** :
@@ -169,9 +170,9 @@ Ce composant contient la logique filaire pure et garantit l'intégrité de l'ana
 ### 3.4 `crates/mule-network-policy` — Politique Réseau Défensive & Anti-SSRF
 * **Pipeline de validation en 7 étapes (`request_tcp_connect`)** :
   1. État du cycle de vie du moteur.
-  2. Profil de réseau actif (`LocalLab`, `StrictPrivate`, `PublicRestricted`).
+  2. Profil de réseau actif (`LocalLab`, `PublicEd2kPreview`, `PublicEd2kKadPreview`).
   3. Filtrage IP contre les plages interdites.
-  4. Limitation de débit par seau à jetons (*Token Bucket*).
+  4. Limitation de débit par seau à jetons (*Token Bucket*), incluant le **ratio anti-leech eMule** (`emule_ud_ratio`, reproduction de `Preferences::GetMaxDownloadInBytesPerSec` — « don't be a Lam3r :) ») : limite upload < 20 Ko/s → download effectif plafonné à 3×/4×/5× l'upload.
   5. Validation anti-SSRF : blocage des adresses privées (RFC 1918), CGNAT (RFC 6598 100.64/10), lien local (RFC 3927), bogons (240/4) et dépliage des adresses IPv4-mappées-IPv6.
   6. Budgets de ressources (nombre max de sockets globales, pairs par fichier, sockets d'écoute).
   7. Émission d'un permis RAII (`SocketPermit`, `ListenPermit`).
@@ -185,7 +186,7 @@ Ce composant contient la logique filaire pure et garantit l'intégrité de l'ana
 ### 3.6 `crates/mule-daemon` — Démon Asynchrone Tokio & Serveur RPC
 Refactorisé selon une architecture modulaire propre :
 * **Découpage des Handlers RPC (`rpc/handlers/`)** :
-  * Handlers spécialisés par domaine : `downloads.rs`, `servers.rs`, `kad.rs`, `sources.rs`, `shares.rs`, `history.rs`, `categories.rs`, `network.rs`, `settings.rs`, `upnp.rs`, `lab.rs`.
+  * Handlers spécialisés par domaine : `downloads.rs`, `servers.rs`, `kad.rs`, `sources.rs`, `shares.rs`, `friends.rs`, `history.rs`, `categories.rs`, `network.rs`, `settings.rs`, `upnp.rs`, `lab.rs`.
 * **Services Découpés (`services/`)** :
   * `swarm_allocator.rs` : algorithme **Weighted Max-Min Fair-Share Water-filling** distribuant dynamiquement les connexions pairs entre fichiers selon leur priorité et rareté.
   * `swarm_coordinator/` : orchestration d'essaim multi-sources, auto-découverte cadencée (30s / 60s / 300s), calcul dynamique du débit global agrégé par fichier.
@@ -198,16 +199,16 @@ Refactorisé selon une architecture modulaire propre :
 
 ### 3.7 `crates/mule-mcp` — Serveur Model Context Protocol (MCP)
 * Serveur dédié pour interfaces agents IA (Claude Desktop, Cursor, Antigravity, etc.) communiquant via stdio en JSON-RPC.
-* 83 outils exposés couvrant :
-  * Téléchargements : `emule_list_downloads`, `emule_add_link`, `emule_pause_download`, `emule_resume_download`, `emule_remove_download`, `emule_set_destination`, `emule_download_set_category`, `emule_retry_download`, `emule_inspect_part_met`, `emule_import_part_met`.
+* 87 outils exposés couvrant :
+  * Téléchargements : `emule_list_downloads`, `emule_add_link`, `emule_pause_download`, `emule_resume_download`, `emule_remove_download`, `emule_rename_download`, `emule_set_destination`, `emule_download_set_category`, `emule_retry_download`, `emule_inspect_part_met`, `emule_import_part_met`.
   * Swarm & Sources : `emule_list_sources`, `emule_add_manual_source`, `emule_connect_source`, `emule_disconnect_source`, `emule_clear_sources`, `emule_swarm_status`.
   * Serveurs : `emule_list_servers`, `emule_connect_server`, `emule_disconnect_server`, `emule_update_servers_from_url`, `emule_inspect_server_met`, `emule_import_server_met`, `emule_search`, `emule_query_server_sources`.
   * Kad DHT : `emule_kad_status`, `emule_kad_bootstrap`, `emule_kad_start_udp`, `emule_kad_stop_udp`, `emule_kad_ping`, `emule_kad_find_node`, `emule_kad_list_contacts`, `emule_kad_search_sources`, `emule_kad_publish_source`, `emule_kad_publish_keywords`, `emule_kad_search_notes`, `emule_kad_publish_note`, `emule_kad_import_nodes_dat`.
-  * Partages & Uploads : `emule_list_shares`, `emule_add_share`, `emule_remove_share`, `emule_list_uploads`, `emule_cancel_upload`, `emule_start_listener`, `emule_stop_listener`, `emule_listener_status`.
+  * Partages & Uploads : `emule_list_shares`, `emule_add_share`, `emule_remove_share`, `emule_rename_share`, `emule_list_uploads`, `emule_cancel_upload`, `emule_start_listener`, `emule_stop_listener`, `emule_listener_status`.
   * Sécurité & Réseau : `emule_get_network_policy`, `emule_set_network_profile`, `emule_network_disconnect_all`, `emule_import_ip_filter`, `emule_set_network_budgets`, `emule_upnp_status`, `emule_upnp_map_ports`, `emule_get_identity`, `emule_rotate_identity`, `emule_list_credits`.
 
 ### 3.8 `apps/desktop` — Interface Utilisateur Flutter Desktop Windows
-Développée en Clean Architecture et MVVM (`v0.1.9+1`) :
+Développée en Clean Architecture et MVVM (`v0.2.0-RC1+1`) :
 * **Téléchargements** : Part Map interactive bloc par bloc (9,28 Mo) avec tooltips d'offset, métriques de vitesse en direct (calculée et synchronisée avec le débit agrégé du swarm), glisser-déposer de `.part.met`, gestion de catégories.
 * **Recherche Unifiée** : sélecteur bi-moteur (*Serveurs eD2K* / *Réseau Kad DHT*), filtres de taille et ajout direct aux téléchargements.
 * **Serveurs** : état de connexion, import de listes `server.met`, ping de latence et interrogation de sources.
@@ -230,7 +231,8 @@ Développée en Clean Architecture et MVVM (`v0.1.9+1`) :
 | **v0.1.6** | 18/09/2026 | **Source Exchange v4 (SX1 & SX2)** : échange de sources pair-à-pair complet. **Gestion des blocs compressés** : décompression zlib en continu (`OP_COMPRESSEDPART`). **Intégration MCP (`mule-mcp`)** : crate dédié avec 83 outils MCP pour assistants IA. | ✅ Validé & Mergé |
 | **v0.1.7** | 19/09/2026 | **Convergence Recherche Kad DHT** : métrique de distance numérique DWORDs (CUInt128), endianness IP wire corrigée, convergence itérative vers `SEARCHTOLERANCE` (0x01000000), résolution collision d'opcodes sur 0x3B, timeout UDP optimisé (3s). **Refactorisation Clean Architecture** : éclatement modulaire de `mule-daemon`, `mule-protocol`, `mule-core`, `mule-mcp`. | ✅ Validé & Mergé |
 | **v0.1.8** | 19/09/2026 | **Téléchargement Multi-Pairs & Swarm eMule** : agrégation des débits en direct (`sync_transfer_rates`), gestion conforme des files d'attente distantes (`Disconnected in queue` avec re-ask à 10–15m), protection du plafond de quota water-filling, dispatcher de téléversement (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`). **Cartographie** : inventaire exhaustif `INDEX.md`. | ✅ Compilé, testé et validé en conditions réelles |
-| **v0.1.9** *(Actuel)* | 20/09/2026 | **Interopérabilité eMule 0.72a (Phase 16)** : AICH + hashsets par part, `.part.met`, multi-slots upload + crédits SUI, USS, socket client-UDP, `OP_OFFERFILES`, callback LowID, nœud de stockage Kad, `FIREWALLUDP` (WAN validé), buddy callback Kad, obfuscation serveur DH768+RC4 + paquets compressés `0xD4` (WAN validé). | ✅ Validé WAN réel |
+| **v0.1.9** | 20/09/2026 | **Interopérabilité eMule 0.72a (Phase 16)** : AICH + hashsets par part, `.part.met`, multi-slots upload + crédits SUI, USS, socket client-UDP, `OP_OFFERFILES`, callback LowID, nœud de stockage Kad, `FIREWALLUDP` (WAN validé), buddy callback Kad, obfuscation serveur DH768+RC4 + paquets compressés `0xD4` (WAN validé). | ✅ Validé WAN réel |
+| **v0.2.0-RC1** *(Actuel)* | 23/09/2026 | **Audit bridages & bootstrap Kad résilient** : slots upload 10→100 (`MAX_UP_CLIENTS_ALLOWED`), 4 slots garantis, pacing sources aligné `MaxConnPer5Sec`, inbound lié à `maxConnections`, file de bootstrap façon `s_liBootstrapList` (drain 2 s/15 s, `nodes.dat` auto-chargé). **USS eMule-fidèle** (Last Common Route Finder ICMP Windows). **UX** : débits upload mesurés temps réel, onglet Partages (catégories `shares.setCategory`, recherche, tri par total uploadé), chip de priorité 3 couleurs, barre de parts agrandie, localisation FR exhaustive, icône applicative. | ✅ Tests Rust + Flutter verts |
 
 ---
 
@@ -241,7 +243,7 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
 * **`mule-daemon`** :
   * Les monolithiques `methods.rs` et `services/` ont été divisés en modules de domaine autonomes : `rpc/handlers/` (categories, downloads, history, kad, lab, network, servers, settings, shares, sources, upnp) et `services/` (découpage de `peer_session/`, `inbound_listener/`, `downloads/`, `kad/`, `kad_udp/`, `upnp/`, `swarm_coordinator/`).
 * **`mule-protocol`** :
-  * Codecs divisés en `framing/`, `ed2k/` (avec sous-dossiers `decoder/`, `encoder/`, `obfuscation/`, `session/`, `sequencer/`, `server/`, `source_exchange/`, `storage/`) et `kad/` (`decoder/`, `encoder.rs`, `types.rs`, `opcodes.rs`).
+  * Codecs divisés en `framing/`, `ed2k/` (avec sous-dossiers `decoder/`, `encoder/`, `obfuscation/`, `session/`, `sequencer/`, `server/`, `source_exchange/`, `storage/` — ce dernier gaté derrière `ed2k-loopback` pour préserver la pureté sans I/O de la crate, ADR 0003) et `kad/` (`decoder/`, `encoder.rs`, `types.rs`, `opcodes.rs`).
 * **`mule-mcp`** :
   * Découpage des outils MCP par domaine fonctionnel (`tools/downloads/`, `tools/shares/`, `tools/kad.rs`, `tools/servers.rs`, `tools/system.rs`).
 
@@ -253,6 +255,45 @@ Le projet a bénéficié d'une profonde restructuration architecturale afin d'as
   * Prise en compte de la version de Source Exchange annoncée dans `misc_options1` (bits 12..15) en plus de `emule_info`.
 * **Écoute Entrante & Dispatcher (`inbound_listener/dispatcher.rs`)** :
   * Gestion complète et robuste des requêtes `OP_REQUESTSOURCES` et `OP_REQUESTSOURCES2` sur les connexions entrantes avec vérification des fichiers partagés et des téléchargements locaux.
+* **Cycle de vie `.part` durci (`downloads/`, `peer_session/transfer.rs`)** :
+  * Pause respectée en transfert actif : les sessions stoppent leurs requêtes quand le download n'est plus actif, et `inject_range` ne dépause jamais (`Downloading` uniquement depuis `Queued`/`WaitingForSources`) ni ne marque une plage reçue sans écriture réussie (réouverture du `.part` ou erreur).
+  * `.part.met` persistés périodiquement (~60 s, heartbeat du coordinateur) et au graceful shutdown ; `.part.met` orphelins du temp dir récupérés au démarrage (adoption in-place, hashsets vérifiés, statut `Paused`) ; suppression keep-files tombstonée en `.part.met.keep`.
+
+### 5.3 Stratégies « Smart » eMule 0.72a (Download & Upload)
+
+* **Download (`mule-protocol/src/ed2k/sequencer.rs`, `mule-daemon`)** :
+  * *Preview* : les parts 0 et N-1 sont servies en priorité (`PR_VERYHIGH` eMule) pour les fichiers prévisualisables.
+  * *Least-received* : le pair est assigné à la part la moins téléchargée qu'il offre (répartition du swarm, parts rares comblées tôt).
+  * *End-game* : ≤ 3 blocs restants → double requête autorisée vers un autre pair (max 2 assignations par bloc).
+  * *NoNeededParts* : fermeture propre des pairs dont le bitmask ne couvre aucun bloc manquant.
+  * *Priorités de fichiers* : `downloads.priority` persisté (low/normal/high/release), RPC `downloads.setPriority`, pondération du quota de slots (×1/×2/×4/×8).
+  * *A4AF* : `a4af_rebalance` swappe une source depuis un fichier saturé de priorité inférieure vers un fichier affamé (sessions mono-fichier → reconnexion, 1 swap/tick).
+* **Upload (`upload_queue.rs`, `dispatcher.rs`, `transfer.rs`)** :
+  * *Crédits persistés* : les octets téléchargés depuis un pair vérifié SUI sont crédités sous `Md4(pubkey)` — formule eMule exacte `min(2·DL/UL, √(DL/1Mio+2), cap linéaire)` bornée `[1.0, 10.0]` appliquée dans les deux sens.
+  * *Trickle slots* : un slot < 1 Kio/s après 60 s est rétrogradé (`Trickle`, hors quota) et le meilleur client en file est promu.
+  * *Friend slots* : table `friends` + RPC `friends.*` → slot dédié (`uh:<userhash>`).
+  * *Anti-leecher minimal* : rejet des clients sans `user_hash` quand la file est ≥ 90 % pleine.
+  * *Partage partiel* (`CPartFile` eMule) : un téléchargement actif est serviable dès la première part eD2K complète — `SharedFile.is_partial` + `completed_parts` ; `PARTSTATUS` n'annonce que les parts reçues, tout range hors parts complétées est refusé, hashset/AICH jamais calculés depuis un `.part` incomplet. Publiés comme sources Kad (`PublishSrc`) mais exclus des keywords ; offerts au serveur avec marqueurs `0xFCFC` (tri par priorité d'upload, cap 200) ; `shares.setEnabled`/`setUploadPriority` les refusent (le `.part` transitoire ne doit pas être persisté comme partage complet) ; un échec de lecture disque laisse la requête sans réponse — jamais de données fabriquées.
+  * *Partages persistants* : les downloads `Completed` sont fusionnés depuis SQLite dans `list_all_shared_files`/`get_shared_file` même hors `active` (survie au restart, eMule rehash des fichiers finis) — le fichier cible doit exister.
+  * *File d'attente configurable* : `max_queue` (`AtomicUsize`, eMule `QueueSize`) piloté par `settings.set maxUploadQueue`.
+* **Paramètres runtime (eMule Préférences)** — tous persistés via `settings.set` et appliqués **à chaud** :
+  * `nickname` (login serveur + hellos pairs), `shareDownloadDir` (scan Incoming + RPC `shares.rescan` manuel),
+  * `obfuscationEnabled`/`obfuscationRequired` (listener inbound live + connexions sortantes via `AppState::effective_obfuscation()`),
+  * `maxConnections`/`maxConnPerMin` (`ResourceBudgets`), `maxUploadQueue`,
+  * `ed2kPort`/`kadPort` (ports effectifs en `AtomicU16` sur `AppState` — rebind à chaud du listener TCP et de la socket Kad UDP, buddy connect-options et ports UPnP mis à jour),
+  * `udpEnabled` (stoppe/démarre `kad_udp` + `server_udp`, eMule « UDP désactivé »), `upnpEnabled` (map/unmap immédiat),
+  * `capacityDownloadKbs`/`capacityUploadKbs` (capacités de ligne ; la capacité UL est la référence USS), `ussEnabled` (`uss_config` persisté),
+  * `maxGlobalDownloadPeers`/`maxPeersPerDownload`/`minPeersPerDownload`, `historyRetentionDays`, `defaultDownloadDir`.
+  * `tempDir` (dossier `.part` effectif), `ichEnabled` (vérification MD4 des parts complétées),
+    `rememberCancelled`/`rememberDownloaded` (gating des entrées d'historique),
+    `minUploadKbs` (plancher par slot upload, eMule `MinUpload`),
+    `autoPriorityNewDownloads` (priorité `high` pour fichiers ≥ 1 part eD2K).
+  * **Watcher serveur** (`AppState::spawn_server_watcher`, tick 15 s) : `serverReconnect`
+    (reconnexion à `ServerSessionManager::last_target`, effacé sur déconnexion manuelle),
+    `serverAutoconnect` (meilleur serveur par `preference` au premier tick),
+    `serverAutoremoveDead` (suppression après 3 échecs), `serverAutoupdateList`
+    + `serverAutoupdatePath` (import `server.met` local une fois par session — aucun fetch HTTP),
+    `safeConnect` (`downloads.resume` refusé tant que ni serveur eD2K ni Kad ne sont prêts).
 
 ---
 
@@ -269,7 +310,8 @@ Toutes les exigences issues de l'audit de sécurité des connexions réseau ont 
 2. **Couche Kademlia (UDP)** :
    * Filtrage immédiat de chaque datagramme entrant contre la politique anti-SSRF (`classify_ip`) et l'IPFilter.
    * Limiteur de débit par IP (`IpRateLimiter`) empêchant l'utilisation d'Emule-Sion comme réflecteur d'attaque par déni de service (DRDoS).
-   * Bornage strict du conteneur des transactions en vol avec purge automatique après timeout de 3 secondes.
+   * Bornage strict du conteneur des transactions en vol : timeout de 3 s, cap de 200 entrées, guard RAII `InFlightTxGuard` retirant l'entrée à l'abandon de la future (annulation par timeout externe incluse), et purge des entrées âgées de plus de `timeout+2 s` à chaque insertion — aucune fuite ne peut saturer la map ni détourner une réponse.
+   * Invariant de verrouillage : `in_flight` n'est jamais tenu pendant un await sur `routing_table` (handlers `HelloRes`/`BootstrapRes`), et `routing_table` n'est jamais tenu pendant un await sur `in_flight`/`downloads`/`firewall` (`KadService::get_status`) — un cycle d'ordonnancement contraire a gelé le pipeline Kad en session WAN réelle et a été corrigé.
 
 3. **Couche UPnP IGD & WAN** :
    * Tâche de rafraîchissement périodique automatique toutes les 45 minutes avec retries progressifs.
@@ -280,16 +322,16 @@ Toutes les exigences issues de l'audit de sécurité des connexions réseau ont 
 
 ## 7. Inventaire des Outils & Intégration IA (MCP)
 
-Le projet dispose d'une suite complète de 83 outils MCP intégrés (`crates/mule-mcp`), permettant à des agents autonomes d'administrer, surveiller et interagir avec l'application :
+Le projet dispose d'une suite complète de 87 outils MCP intégrés (`crates/mule-mcp`), permettant à des agents autonomes d'administrer, surveiller et interagir avec l'application :
 
 | Domaine MCP | Outils Principaux | Description |
 | :--- | :--- | :--- |
 | **Système & Paramètres** | `emule_status`, `emule_get_settings`, `emule_update_settings`, `emule_set_limits`, `emule_shutdown` | Surveillance globale, mise à jour des quotas, configuration dynamique. |
-| **Téléchargements** | `emule_list_downloads`, `emule_add_link`, `emule_pause_download`, `emule_resume_download`, `emule_remove_download`, `emule_set_destination`, `emule_download_set_category`, `emule_inspect_part_met`, `emule_import_part_met` | Pilotage complet du cycle de vie des téléchargements et fichiers partiels. |
+| **Téléchargements** | `emule_list_downloads`, `emule_add_link`, `emule_pause_download`, `emule_resume_download`, `emule_remove_download`, `emule_rename_download`, `emule_set_destination`, `emule_download_set_category`, `emule_inspect_part_met`, `emule_import_part_met` | Pilotage complet du cycle de vie des téléchargements et fichiers partiels. |
 | **Swarm & Sources** | `emule_list_sources`, `emule_add_manual_source`, `emule_connect_source`, `emule_disconnect_source`, `emule_swarm_status` | Inspection et gestion fine de l'essaim de pairs. |
 | **Serveurs eD2K** | `emule_list_servers`, `emule_connect_server`, `emule_disconnect_server`, `emule_search`, `emule_query_server_sources`, `emule_update_servers_from_url` | Recherche et gestion de l'annuaire de serveurs eD2K. |
 | **Kad DHT** | `emule_kad_status`, `emule_kad_bootstrap`, `emule_kad_ping`, `emule_kad_find_node`, `emule_kad_list_contacts`, `emule_kad_search_sources`, `emule_kad_publish_source`, `emule_kad_publish_keywords`, `emule_kad_search_notes`, `emule_kad_publish_note` | Contrôle et recherche distribuée sur la table DHT Kademlia. |
-| **Partages & Upload** | `emule_list_shares`, `emule_add_share`, `emule_remove_share`, `emule_list_uploads`, `emule_start_listener`, `emule_stop_listener`, `emule_listener_status` | Gestion des fichiers partagés et du serveur d'écoute entrant. |
+| **Partages & Upload** | `emule_list_shares`, `emule_add_share`, `emule_remove_share`, `emule_rename_share`, `emule_list_uploads`, `emule_start_listener`, `emule_stop_listener`, `emule_listener_status` | Gestion des fichiers partagés et du serveur d'écoute entrant. |
 | **Sécurité & Politique** | `emule_get_network_policy`, `emule_set_network_profile`, `emule_network_disconnect_all`, `emule_import_ip_filter`, `emule_set_network_budgets`, `emule_upnp_status`, `emule_get_identity`, `emule_rotate_identity`, `emule_list_credits` | Contrôle du confinement, kill switch, IPFilter et gestion cryptographique. |
 
 ---
@@ -299,7 +341,7 @@ Le projet dispose d'une suite complète de 83 outils MCP intégrés (`crates/mul
 Toutes les vérifications s'exécutent de manière reproductible et hors-ligne :
 
 ```powershell
-# 1. Compilation du workspace complet (Rust v0.1.9)
+# 1. Compilation du workspace complet (Rust v0.2.0-RC1)
 cargo check --workspace --all-targets --all-features
 
 # 2. Linter Rust
@@ -351,7 +393,8 @@ Audit comparatif du daemon contre les sources officielles **eMule 0.72a** (`D:\e
 | **AICH réseau complet** (`0x12`/`0x13`/`0x14`/`0x15`) | Arbre de Merkle SHA-1 à double granularité (`mule-format/src/aich/recovery.rs`) ; consensus de confiance `CAICHUntrustedHash` (≥10 IP uniques masquées `0x00F0FFFF`, ≥92 %) ; récupération au niveau bloc 180 Ko ; service des deux opcodes en upload. |
 | **`OP_OFFERFILES`** (`0x15`) | Publication des partages au serveur après `OP_IDCHANGE`, sémantique `CreateOfferedFilePacket` (marqueurs compression, HighID/LowID, `FT_FILESIZE_HI` > 4 Gio, keep-alive vide, plafond 200). |
 | **Callback LowID** (`0x1C`/`0x35`/`0x36`) | Sources LowID `lowid:<id>` rappelées via relai serveur ; adoption des connexions entrantes correspondantes comme sessions de téléchargement ; garde : pas de callback si nous sommes LowID. |
-| **Écriture `.part.met`** | Format exact `CPartFile::SavePartFile` (`0xE0`/`0xE2`, tags nommés `\x09<i>`/`\x0A<i>`, `FT_AICH_HASH` base32) ; écriture atomique `.tmp`+rename ; sauvegarde à l'ajout, à chaque part et à la pause ; fix reader pour les gap-tags nommés. |
+| **Écriture `.part.met`** | Format exact `CPartFile::SavePartFile` (`0xE0`/`0xE2`, tags nommés `\x09<i>`/`\x0A<i>`, `FT_AICH_HASH` base32) ; écriture atomique `.tmp`+rename ; sauvegarde à l'ajout, à chaque part, à la pause, **au heartbeat ~60 s et au graceful shutdown** (`save_active_part_mets`) ; fix reader pour les gap-tags nommés. |
+| **Récupération d'orphelins `.part.met`** | Au démarrage, le temp dir est scanné pour les `*.part.met` inconnus de la base (eMule charge tous les `.part.met` présents) ; adoption in-place par `rename` vers `{uuid}.part` via le chemin sandboxé d'import (vérification hashset, parts corrompues évincées, statut `Paused`, zéro réseau) ; `downloads.remove` keep-files renomme le met en `.part.met.keep` pour empêcher la résurrection. |
 | **Kad — nœud de stockage** | `kad_udp/storage.rs` : store borné (TTL 5 h, 5 000 clés, 50 entrées/clé, 20 000 entrées) ; `PublishSourceReq`/`PublishKeywordReq` validés et persistés, `SearchSourceReq`/`SearchKeywordReq` paginés ; republication périodique ~5 h (`KADEMLIAREPUBLISHTIMES`) ; **persistance SQLite** (`kad_sources_index`/`kad_keywords_index`, purge + réhydratation au démarrage). |
 | **Fin de transfert propre** (`0x56`/`0x57`) | `OP_CANCELTRANSFER` libère le slot upload immédiatement ; `OP_OUTOFPARTS` émis quand plus aucun bloc n'est à demander (`SendOutOfPartReqsAndPacket`) ; émis sur annulation. |
 | **Upload compressé** (`0x40`) | Service `OP_COMPRESSEDPART` zlib `Z_BEST_SPEED` (chunks ≤ 10 240 o) si `nDataCompVer` (MiscOptions1 bits 20-23) ; repli `SENDINGPART` ; exclusions `zip/rar/7z/cbz/cbr/ogm/ace`. |
@@ -371,20 +414,71 @@ Audit comparatif du daemon contre les sources officielles **eMule 0.72a** (`D:\e
 | **Bootstrap Kad depuis pairs entrants** | `maybe_bootstrap_from_peer` (throttle 1×/min, table < 50) déclenché aussi par les connexions entrantes annonçant un port Kad (`CT_EMULE_UDPPORTS`), pas seulement les sortantes. |
 | **Notes Kad** (`0x35`/`0x45`/`0x3B`/`0x3A`/`0x4B`) | Commentaires/évaluations de fichiers — *wire* : `KadNoteWire` + codecs bornés (`SEARCH_NOTES_REQ`, `PUBLISH_NOTES_REQ`, réponses `0x3B` unifiée et `0x3A` legacy, tag lists génériques ≤32 préservant les tags inconnus en `RawTag`) ; *stockage* : index `(target, source_id)` TTL 5 h, 100/fichier, filtre `file_size`, `load` dans `PUBLISH_RES`, refus si UDP-firewallé ; *persistance* : `kad_notes_index` avec tags en blob wire ; *sortant* : `send_search_notes`/`send_publish_notes`, `KadService::search_notes`/`publish_note` sur les 20 contacts les plus proches, RPC `kad.searchNotes`/`kad.publishNote` ; réponses `0x3B` re-décodées en forme notes quand une transaction `SearchNotesRes` est en attente. |
 | **Outils MCP notes** | `emule_kad_search_notes`/`emule_kad_publish_note` ; timeout `DaemonClient::call` porté à 60 s pour `kad.search*`/`kad.publish*`. |
+| **Kad — service du DHT conforme eMule** (`0x21`/`0x29`, `BOOTSTRAP`) | `KADEMLIA2_REQ` répond enfin par une vraie `KADEMLIA2_RES` (`0x29`, contacts **vérifiés** les plus proches, drop silencieux si `uCheck ≠ KadID` local — `Process_KADEMLIA2_REQ`) au lieu d'un `BOOTSTRAP_RES` vide que les pairs jetaient ; `BOOTSTRAP_REQ` retourne KadID + port **TCP** eD2K + version 8 + ≤20 contacts vérifiés diversifiés (`spread_verified`). La table de routage est partagée avec le listener (`set_routing_table`) et les contacts entrants (`HelloReq`/`HelloRes`/`BootstrapRes`/`PublishSourceReq` validé) sont appris non vérifiés ; `verified` n'est acquis que par réponse sollicitée ou `HELLO_RES_ACK`, et le bootstrap ne l'assume que table vide (`bAssumeVerified`). |
+| **Kad — tolérance & identité de publication** | Gate `SEARCHTOLERANCE` (XOR ≤ `0x01000000`) sur les trois handlers `Publish*Req` entrants — drop silencieux hors tolérance ; `publish_source` annonce l'IPv4 publique observée (`FirewalledRes.observed_ip` ou HighID serveur via `set_public_ipv4`) + port UDP effectif + version 8 (les indexeurs eMule rejettent un contact dont l'IP annoncée ≠ IP du paquet). `find_node`/`search_notes`/`publish_note` unifiés sur `converge_closest_contacts` (ALPHA=5). |
+| **Kad — robustesse du pipeline UDP** | Diagnostic du log WAN : cycle de verrous `in_flight`↔`routing_table` gelaient recv loop + maintenance + RPC Kad → ordre corrigé ; fuite de transactions sur annulation externe → `InFlightTxGuard` RAII + sweep à l'insertion ; réponses de recherche **multi-paquets** (`SEARCH_*_RES` en batches ~50 entrées) routées vers un canal `mpsc` persistant et agrégées par `collect_search_batches` (fenêtre idle 350 ms, ≤12 paquets / ≤300 entrées) — ~91 % des résultats keyword étaient auparavant perdus. |
 
 ### Restant (roadmap par priorité)
 
-1. **Recherche UDP** : `OP_GLOBSEARCHREQ3` (forme étendue avec tag `CT_SERVER_UDPSEARCH_FLAGS`) non émis — REQ2 seulement.
+1. ~~**Recherche UDP** : `OP_GLOBSEARCHREQ3` non émis~~ — **livré** : `encode_glob_search_req3` préfixe l'arbre REQ2 du tag `CT_SERVER_UDPSEARCH_FLAGS` (`SRVCAP_UDP_NEWTAGS_LARGEFILES`) quand le serveur l'annonce dans `OP_GLOBSERVSTATRES`.
+
+2. **Kad — backlog issu de l'analyse WAN** (post-durcissement) :
+   * *Batching des publications de mots-clés* : `publish_keyword` converge désormais **par mot-clé** (eMule) mais envoie toujours 1 entrée par paquet (~70 paquets/fichier) ; eMule regroupe jusqu'à 150 fileIDs par mot-clé en batches ≤50 entrées — pertinent seulement pour la republication en masse de plusieurs fichiers.
+   * *Limitation de débit par opcode* : `IpRateLimiter` global (120 pkt/s/IP) à remplacer par des token buckets par opcode (eMule : REQ ~10/min, HELLO ~3/min, BOOTSTRAP ~2/min, CALLBACK 1/min) — indispensable avant d'exposer les réponses riches `0x29` (vecteur d'amplification ~800 o pour ~35 o).
+   * *Caps anti-Sybil globaux* : 1 KadID par IP et ≤10 contacts par /24 sur toute la table (eMule), au-delà du cap /24≤2 par bucket existant.
+   * *Matching de transactions strict* : le matching accepte `IP+port` exact **ou** IP seule (`tx.target == peer_addr || tx.target.ip() == peer_addr.ip()`) — un paquet parasite d'un autre port peut encore résoudre une transaction si itéré en premier ; préférer l'exact d'abord puis le fallback IP (cas NAT documenté).
+   * *Comptages* : `total_contacts` ignore les `replacements` des k-buckets (exposés séparément via `total_replacements` dans `KadStatusSnapshot`, mais toujours non comptés dans le total) ; le `status` de `PublishRes` est le *load* de l'indexeur (0-100), pas un booléen de succès.
+   * *Self-lookup `NODECOMPLETE`* périodique (~4 h chez eMule) et revalidation du contact le plus ancien de chaque bucket (`OnSmallTimer`) ; jitter + cadencement de la republication (eMule : 1 publish/2 s, max 3 concurrents).
 
 Limites connues du buddy callback livré : pas de rôle *client buddy* (le daemon LowID ne cherche pas de buddy pour lui-même — `FINDBUDDY_REQ` sortant non implémenté), pas de ré-emission périodique de `BUDDYPING` côté demandeur. Limites connues du test UDP livré : le drapeau « résultat biaisé » (demandeur déjà connu) côté serveur n'est pas calculé (toujours 0), la clé de vérification UDP est acceptée mais non utilisée (pas de chiffrement Kad UDP), et l'état du pare-feu n'influence pas encore les décisions de publication ni le callback direct (MiscOptions2 `DirectUDPCallback` reste à 0).
 
 ---
 
-## 11. Conclusion
+## 11. Phase 17 — Fidélité Comportementale eMule : Partages Partiels, Compteurs Temps Réel & Barre de Parts
+
+Session de corrections rapprochées avec les sources eMule 0.72a, centrée sur la fidélité de l'affichage et des partages :
+
+| Fonction | Détail |
+| :--- | :--- |
+| **Partages partiels toujours publiés** | `shared_entry_for_active` ne retournait une entrée `isPartial` qu'à partir de la première part eD2K complète — les `.part` frais n'apparaissaient jamais dans « Fichiers partagés ». Désormais tout download actif est listé dès sa création (eMule `CDownloadQueue::AddPartFilesToShare` : *« part files are always shared files »*), avec `completed_parts` vide ; seules les parts complétées restent annoncées (`PARTSTATUS`), servies (ranges hors parts refusés) et publiées (Kad/serveur). |
+| **Compteurs sidebar temps réel** | Audit complet des badges : downloads/uploads/historique/recherche/serveurs étaient déjà pilotés par events ou refetch post-RPC ; corrigés : **Partages** — nouveau `SharesController` (badge live) + nudge `shares.changed` émis par `handlers/shares.rs` sur `add`/`remove`/`rescan`/`setEnabled`/`setUploadPriority` + stream `sharesEvents` du client ; **Kad DHT** — `kad.statusChanged` n'était émis que par les handlers RPC : la boucle de maintenance (`kad.rs`, tick 30 s) émet désormais l'event via `set_event_channel` quand `total_contacts` change réellement, sans émission au premier tick (évite d'intercaler un event dans les réponses RPC en vol). |
+| **Notifications transitoires supprimées** | `StatusNotificationBanner` (bandeau haut « N sources trouvées »…) retiré du shell ; les 15 `SnackBar` bas (copies presse-papier, « Téléchargement lancé », rescan…) supprimés ; l'erreur d'ajout de lien devient **inline** dans le dialogue. Les bannières persistantes (erreurs structurées, version incompatible) sont conservées. |
+| **Sélecteurs de fichiers natifs** | Helper `core/file_picker_helper.dart` (`pickFile`, impl io via `file_picker` 12.3, stub web — miroir de `pickFolder`) ; boutons « parcourir » sur : dossier de téléchargement, dossier temporaire `.part`, `ipfilter.dat` (le bouton « Importer » semblait mort — il ignorait un champ vide, le placeholder n'étant pas du texte), `server.met`, `nodes.dat`, et les trois chemins de l'import `.part.met` (`.met`, `.part` associé, dossier cible). |
+| **Barre de parts eMule 0.72a byte-précise** | Réécriture de `PartAvailabilityBar` en `CustomPainter` reproduisant `CPartFile::DrawStatusBar` : ardoise = octets reçus (teal si part vérifiée), rouge = trou sans source confirmée, dégradé bleu `RGB(0, 210−22·(n−1), 255)` (cyan clair = rare → bleu pur = commun — l'ancien dégradé plat était inversé), jaune `RGB(255,208,0)` = blocs en vol, strip vert 3 px = progression globale (`PROGRESS_HEIGHT`), palette atténuée en pause. Données ajoutées au snapshot : `PartProgressSummary.receivedMask` (u64, bitmap de 64 cellules intra-part ≈152 Kio calculé depuis le `RangeSet` réel) et `DownloadSnapshot.pendingRanges` (ranges des `in_flight_blocks`, enrichi dans `broadcast_download_update`, `downloads.list`/`get`, `transfer.rs`, decay `strategy.rs` — helpers `pending_ranges_locked`/`try_pending_ranges`/`pending_ranges_by_file`). Carte « eD2K Part Map » du détail alignée (remplissage intra-part, bande pending, légende « No source »). |
+| **Disponibilité réelle via `OP_FILESTATUS`** | Bug de plomberie : le masque reçu de chaque pair n'atteignait que `update_peer_source_details` (SQLite, panneau Sources) — jamais `act.sources` dont dépend `availableSourceCount` → barre entièrement rouge. `status_query.rs` enregistre désormais chaque `FILESTATUS` (initial **et** keep-alive en file d'attente — les pairs en file comptent, exactement comme `srclist` d'eMule) dans `act.sources` + emit `downloadUpdated`. `compute_part_summaries` applique la convention eD2K `part_count == 0` = source complète (`ProcessFileStatus` → `memset(m_abyPartStatus, 1)`) et ignore les masques périmés (> 30 min, `SOURCE_FRESHNESS_MS` partagé). Fidèle à eMule : les sources découvertes mais jamais contactées ne comptent pas (`GetPartStatus() == NULL` → `IsPartAvailable` false) — le rouge signifie « aucune source confirmée ». |
+| **Tests WS durcis** | Les broadcasts events vont à toute session authentifiée (`topics == None → forward`), abonnée ou non — les tests faisant `read.next()` sans filtrer l'`id` paniquaient quand une notification s'intercalait avant la réponse RPC. `ed2k_transfer_tests` et `daemon_adversarial` utilisent désormais le helper `read_response`/`next_response` filtrant par `id` partout. |
+
+**Validation** : `cargo check`/`clippy -D warnings` propres ; `cargo test -p mule-daemon` tout vert (dont 3 nouveaux tests unitaires `types.rs` : source complète, masque partiel, source périmée — et un run avec `-j 2` requis : `LNK1102` mémoire linker sur liens parallèles) ; `flutter analyze` clean ; `flutter test` 95/95 (+ `mule_client` 13/13) ; nouveau test widget `part_availability_bar_test.dart`.
+
+---
+
+## 12. Phase 18 — Expérience Utilisateur : Upload Temps Réel, Renommage, Ratio eMule & Localisation
+
+Session centrée sur le pilotage fin de l'upload, la fidélité eMule des limites et la qualité de l'interface francophone :
+
+| Fonction | Détail |
+| :--- | :--- |
+| **Débits d'upload mesurés** | La vue Uploads affichait la *limite configurée* du token bucket (figée) au lieu du débit servi. `UploadManager` mesure désormais le débit par fenêtres d'échantillonnage (2 s) avec décroissance vers 0 quand le pair cesse de demander ; `statsTick` (2 s) émet `upload.uploadsUpdated` tant que des slots vivent. USS (`GetDatarate`) et le garde-fou `MinUpload` exploitent le débit mesuré. |
+| **Stats d'upload par partage** | Onglet Partages : débit courant par fichier (somme des slots actifs, `UploadManager::per_file_rates_bps`) + total cumulé persisté en SQLite (`share_upload_stats`, deltas à chaque `statsTick`, hydraté au boot — partiels inclus). `shares.list` expose `uploadRateBps`/`uploadedBytes` ; rafraîchissement sur `upload.uploadsUpdated` (debounce 1 s). |
+| **Renommage de fichier** | `downloads.rename` (`{id, newName}` — `display_name` + `target_path`, le `.part` UUID ne bouge pas ; pour un download terminé le fichier disque et `shared_files` sont renommés) et `shares.rename` (`{fileHash, newName}`, délègue à `downloads.rename` si le hash adosse un download). Outils MCP `emule_rename_download`/`emule_rename_share`. Icône crayon dans l'UI avec validation des caractères interdits Windows. |
+| **Ratio upload/download eMule** | `emule_ud_ratio()` reproduit `Preferences::GetMaxDownloadInBytesPerSec` (« don't be a Lam3r :) ») : upload < 20 Ko/s → download plafonné à 3× (<4 Ko/s), 4× (<10) ou 5× (<20) — un download « illimité » est plafonné aussi. La limite *configurée* n'est jamais réécrite : le plafond est recalculé à chaque application (`limits.set`, `apply_capacity_clamp`, boot) et suit la limite dynamique USS à chaque tick (eMule `bDynamic`). `limits.get` expose `downloadConfiguredBytesPerSec`/`uploadConfiguredBytesPerSec`/`downloadRatioApplied`. |
+| **Interrupteurs Réseau eD2K/Kad** | Settings → Connexion : le sélecteur de profil à 3 options et la carte « Profil Réseau Actuel » sont remplacés par deux switches projetant le `NetworkProfile` — eD2K off → `local-lab`, Kad on → `public-ed2k-kad-preview` (Kad implique eD2K). Contrat de sécurité inchangé. |
+| **Carte daemon enrichie** | La carte en bas de sidebar affiche les pastilles `eD2K` (HighID vert / LowID orange / déconnecté rouge) et `Kad` (connecté/amorçage/arrêté) plus le nom du serveur courant ; tooltip de synthèse en mode compact. |
+| **Pseudo par défaut « eMule-Rust »** | `current_nickname()`, `settings.get`, le fallback du champ vidé et le HELLO firewall-test annoncent « eMule-Rust » ; le `TAG_SPECIAL_NAME` du HELLOANSWER reflète le pseudo réellement configuré. |
+| **Localisation FR complète** | `app_fr.arb` contenait ~340 valeurs anglaises — toutes traduites ; valeurs FR égarées dans `app_en.arb` corrigées. ~150 littéraux en dur migrés vers `context.l10n`/`L10nLookup` (accès sans `BuildContext` pour les messages des 9 contrôleurs). `enum_labels.dart` localise les enums de `mule_client`. Correctifs de layout : débordements `Row` liés aux libellés FR plus longs. |
+| **Icône d'application** | `Asset/generated-image.png` déclinée en ICO multi-résolutions (16→256 px, exe + tray), icônes web/maskables/favicon, `AppIcon.appiconset` macOS/iOS. |
+| **Totaux cumulés & graphe upload** | Top bar : sparkline double courbe (download rempli + upload ligne teal) et chip « Σ ↓/↑ » des cumuls depuis l'installation (`lifetime_*_bytes` persistés, `event.statsTick`). |
+
+---
+
+## 13. Conclusion
 
 Le projet **Emule-Sion** a franchi avec succès les jalons de conception les plus exigeants :
-* L'architecture a atteint le stade **v0.1.9** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
+* L'architecture a atteint le stade **v0.2.0-RC1** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
 * Les fonctionnalités de transfert multi-sources, de décompression continue zlib, de Source Exchange v1/v2, et de convergence Kad DHT avec calcul métrique 128 bits eMule sont pleinement opérationnelles.
 * La Phase 16 a ajouté l'interopérabilité réseau essentielle : vérification par hashset, AICH réseau, publication serveur (`OP_OFFERFILES`), callback LowID, écriture `.part.met`, nœud de stockage Kad, upload compressé et multi-slots.
+* La Phase 17 a porté la fidélité comportementale côté utilisateur : partages partiels dès la création, compteurs sidebar temps réel (`shares.changed`, `kad.statusChanged` via maintenance), sélecteurs de fichiers natifs, et barre de parts byte-précise alignée sur `CPartFile::DrawStatusBar` (`receivedMask`, `pendingRanges`, disponibilité `OP_FILESTATUS` réelle).
+* La Phase 18 a consolidé l'expérience utilisateur : débits d'upload réellement mesurés (par slot et par partage), renommage de fichiers (`downloads.rename`/`shares.rename`), ratio anti-leech eMule (`emule_ud_ratio`), interrupteurs réseau eD2K/Kad, pseudo « eMule-Rust », localisation française exhaustive et nouvelle icône applicative.
+* La Phase 19 (v0.2.0-RC1) a levé les derniers bridages hérités des versions de test — slots upload alignés sur `MAX_UP_CLIENTS_ALLOWED` (100), pacing de connexions sources au rythme eMule — et rendu l'amorçage Kad résilient via une file de candidats drainée en continu (`s_liBootstrapList`) avec auto-chargement de `nodes.dat`. Côté UI, l'onglet Partages gagne catégories, recherche et statistiques d'upload par fichier.
 * L'intégration d'un serveur **MCP natif** confère au projet une dimension d'observabilité et d'automatisation par intelligence artificielle unique dans le paysage des clients P2P.
 * Les garanties de sécurité défensive (anti-SSRF, isolation loopback par défaut, validation d'IP WAN, kill switch atomique) assurent une robustesse de niveau industriel.

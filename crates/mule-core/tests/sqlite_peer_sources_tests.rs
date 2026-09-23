@@ -26,6 +26,8 @@ fn test_peer_sources_crud_and_deduplication() {
         user_hash: Some("0123456789abcdef0123456789abcdef".to_string()),
         crypt_options: 0x07, // supports, requests, requires
         buddy_id: None,
+        software: None,
+        availability: None,
     };
 
     let s2 = PeerSource {
@@ -43,6 +45,8 @@ fn test_peer_sources_crud_and_deduplication() {
         user_hash: None,
         crypt_options: 0,
         buddy_id: None,
+        software: None,
+        availability: None,
     };
 
     let inserted = db

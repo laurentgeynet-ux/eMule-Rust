@@ -326,15 +326,15 @@ pub fn decode_search_res(
 
     // For Kad2 packets or packets with 34+ byte headers, never fall back to Kad1 decoding
     // as bytes 16..18 contain arbitrary target hash bytes, not a count.
-    if raw_bytes.len() >= 34 || protocol == PR_KADEMLIA || protocol == PR_KADEMLIA_PACKED {
-        if raw_bytes.len() >= 32 {
-            let mut target_hash = [0u8; 16];
-            target_hash.copy_from_slice(&raw_bytes[16..32]);
-            return Ok(KadMessage::SearchSourceRes(KadSearchSourceRes {
-                target_file_hash: target_hash,
-                sources: Vec::new(),
-            }));
-        }
+    if (raw_bytes.len() >= 34 || protocol == PR_KADEMLIA || protocol == PR_KADEMLIA_PACKED)
+        && raw_bytes.len() >= 32
+    {
+        let mut target_hash = [0u8; 16];
+        target_hash.copy_from_slice(&raw_bytes[16..32]);
+        return Ok(KadMessage::SearchSourceRes(KadSearchSourceRes {
+            target_file_hash: target_hash,
+            sources: Vec::new(),
+        }));
     }
 
     if payload.len() < 18 {
@@ -756,9 +756,8 @@ pub fn decode_publish_keyword_req(
                                     _ => {}
                                 }
                             } else if lower == "sources" {
-                                match tag.value {
-                                    TagValue::UInt32(v) => source_count = v,
-                                    _ => {}
+                                if let TagValue::UInt32(v) = tag.value {
+                                    source_count = v;
                                 }
                             }
                         }

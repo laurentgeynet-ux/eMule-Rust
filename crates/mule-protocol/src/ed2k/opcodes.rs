@@ -186,17 +186,23 @@ pub const OP_EMULE_INFO_ANSWER: u8 = 0x02;
 /// Canonical alias for `OP_EMULE_INFO_ANSWER`.
 pub const OP_EMULEINFOANSWER: u8 = OP_EMULE_INFO_ANSWER;
 
-/// Request AICH root hash (`0x12`).
-pub const OP_AICH_REQUEST: u8 = 0x12;
+/// Request AICH part recovery data (`0x9B`, eMule 0.72a `OP_AICHREQUEST`,
+/// `opcodes.h:272`): `<HASH 16><uint16 part><AICH master hash 20>`.
+pub const OP_AICH_REQUEST: u8 = 0x9B;
 
-/// AICH root hash response (`0x13`).
-pub const OP_AICH_ANSWER: u8 = 0x13;
+/// AICH recovery data response (`0x9C`, eMule `OP_AICHANSWER`,
+/// `opcodes.h:273`): `<HASH 16><uint16><HASH 20><data>` — bare hash on failure.
+pub const OP_AICH_ANSWER: u8 = 0x9C;
 
-/// Request AICH recovery hashset / proof tree (`0x14`).
-pub const OP_AICHFILEHASHREQ: u8 = 0x14;
+/// Request AICH master (root) hash of a file (`0x9E`, eMule
+/// `OP_AICHFILEHASHREQ`, `opcodes.h:275`). Deprecated upstream in favor of
+/// `FileIdentifier` (`OP_MULTIPACKET_EXT2` / `OP_HASHSETREQUEST2`), still
+/// served by 0.72a.
+pub const OP_AICHFILEHASHREQ: u8 = 0x9E;
 
-/// Request AICH recovery hashset / proof tree response (`0x15`).
-pub const OP_AICHFILEHASHRES: u8 = 0x15;
+/// AICH master hash answer (`0x9D`, eMule `OP_AICHFILEHASHANS`,
+/// `opcodes.h:274`): `<HASH 16><AICH root 20>`.
+pub const OP_AICHFILEHASHRES: u8 = 0x9D;
 
 /// Request sources from peer (SX1 - legacy, `0x81`).
 pub const OP_REQUESTSOURCES: u8 = 0x81;
@@ -227,12 +233,93 @@ pub const OP_FWCHECKUDPREQ: u8 = 0xA7;
 /// Kad firewall TCP-check acknowledgement (`0xA8`, eMule `OP_KAD_FWTCPCHECK_ACK`).
 pub const OP_KAD_FWTCPCHECK_ACK: u8 = 0xA8;
 
+// eMule 0.72a extended opcodes (PR_EMULE `0xC5`, TCP)
+
+/// Peer chat message (`0x4E`): `<len u16><message bytes>` (eMule `OP_MESSAGE`).
+pub const OP_MESSAGE: u8 = 0x4E;
+
+/// Upload slot change notification (`0x5B`): `<HASH 16>` (eMule `OP_CHANGE_SLOT`).
+pub const OP_CHANGE_SLOT: u8 = 0x5B;
+
+/// Legacy queue rank report (`0x5C`): `<rank u32>` (eMule `OP_QUEUERANK`).
+pub const OP_QUEUERANK: u8 = 0x5C;
+
+/// File rating/comment (`0x61`): `<rating u8><len u16><desc>` (eMule `OP_FILEDESC`).
+pub const OP_FILEDESC: u8 = 0x61;
+
+/// Grouped file request (`0x92`, deprecated upstream): `<HASH 16>` + sub-opcodes
+/// (eMule `OP_MULTIPACKET`).
+pub const OP_MULTIPACKET: u8 = 0x92;
+
+/// Grouped file request answer (`0x93`, deprecated upstream): `<HASH 16>` +
+/// answer sub-opcodes (eMule `OP_MULTIPACKETANSWER`).
+pub const OP_MULTIPACKETANSWER: u8 = 0x93;
+
+/// Peer cache source query (`0x94`, defunct upstream — decoded as opaque).
+pub const OP_PEERCACHE_QUERY: u8 = 0x94;
+/// Peer cache answer (`0x95`, defunct upstream — decoded as opaque).
+pub const OP_PEERCACHE_ANSWER: u8 = 0x95;
+/// Peer cache acknowledgement (`0x96`, defunct upstream — decoded as opaque).
+pub const OP_PEERCACHE_ACK: u8 = 0x96;
+
+/// Grouped file request with 64-bit file size (`0xA4`, deprecated upstream):
+/// `<HASH 16><size u64>` + sub-opcodes (eMule `OP_MULTIPACKET_EXT`).
+pub const OP_MULTIPACKET_EXT: u8 = 0xA4;
+
+/// Chat anti-spam CAPTCHA request (`0xA5`): `<tag_count u8><tags><BMP bitmap>`
+/// (eMule `OP_CHATCAPTCHAREQ`).
+pub const OP_CHATCAPTCHAREQ: u8 = 0xA5;
+
+/// Chat CAPTCHA result (`0xA6`): `<status u8>` — 0 solved, 1 failed
+/// (eMule `OP_CHATCAPTCHARES`).
+pub const OP_CHATCAPTCHARES: u8 = 0xA6;
+
+/// Grouped file request with `FileIdentifier` (`0xA9`):
+/// `<FileIdentifier>` + sub-opcodes (eMule `OP_MULTIPACKET_EXT2`, `opcodes.h:286`).
+pub const OP_MULTIPACKET_EXT2: u8 = 0xA9;
+
+/// Grouped file request answer with `FileIdentifier` (`0xB0`):
+/// `<FileIdentifier>` + answer sub-opcodes (eMule `OP_MULTIPACKETANSWER_EXT2`,
+/// `opcodes.h:287`).
+pub const OP_MULTIPACKETANSWER_EXT2: u8 = 0xB0;
+
+/// Hashset request with `FileIdentifier` (`0xB1`):
+/// `<FileIdentifier><options u8>` — bit0 = MD4 set, bit1 = AICH set
+/// (eMule `OP_HASHSETREQUEST2`, `opcodes.h:288`).
+pub const OP_HASHSETREQUEST2: u8 = 0xB1;
+
+/// Hashset answer with `FileIdentifier` (`0xB2`):
+/// `<FileIdentifier><options u8>[<md4 set>][<aich set>]`
+/// (eMule `OP_HASHSETANSWER2`, `opcodes.h:289`).
+pub const OP_HASHSETANSWER2: u8 = 0xB2;
+
+/// TCP connection test (`0xFE`, eMule `OP_PORTTEST`): `<status u8>`,
+/// eMule answers `0x12`.
+pub const OP_PORTTEST: u8 = 0xFE;
+
 // ---------------------------------------------------------------------------
 // Compressed Protocol Opcodes (Protocol 0xD4)
 // ---------------------------------------------------------------------------
 
 /// Compressed data block payload (`0x40`).
 pub const OP_COMPRESSEDPART: u8 = 0x40;
+
+// ---------------------------------------------------------------------------
+// 64-bit (large file) transfer opcodes — eMule `*_I64` variants.
+// Wire layout replaces u32 offsets with u64 (opcodes.h).
+// ---------------------------------------------------------------------------
+
+/// Compressed data block with 64-bit start offset (`0xA1`,
+/// `<HASH 16><von 8><size 4><data size>`).
+pub const OP_COMPRESSEDPART_I64: u8 = 0xA1;
+
+/// Uncompressed data block with 64-bit offsets (`0xA2`,
+/// `<HASH 16><von 8><bis 8><data von-bis>`).
+pub const OP_SENDINGPART_I64: u8 = 0xA2;
+
+/// Block request with 64-bit offsets (`0xA3`,
+/// `<HASH 16><von[3] 8*3><bis[3] 8*3>`).
+pub const OP_REQUESTPARTS_I64: u8 = 0xA3;
 
 /// Returns a human-readable symbolic name for an opcode under a given protocol.
 pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
@@ -269,6 +356,12 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_OUTOFPARTS => "OP_OUTOFPARTS",
             OP_REQFILENAME => "OP_REQFILENAME",
             OP_REQFILENAME_ANSWER => "OP_REQFILENAME_ANSWER",
+            OP_SENDINGPART_I64 => "OP_SENDINGPART_I64",
+            OP_REQUESTPARTS_I64 => "OP_REQUESTPARTS_I64",
+            OP_MESSAGE => "OP_MESSAGE",
+            OP_CHANGE_SLOT => "OP_CHANGE_SLOT",
+            OP_QUEUERANK => "OP_QUEUERANK",
+            OP_PORTTEST => "OP_PORTTEST",
             _ => "OP_UNKNOWN_ED2K",
         },
         super::protocol::PR_EMULE => match opcode {
@@ -284,10 +377,25 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
             OP_FWCHECKUDPREQ => "OP_FWCHECKUDPREQ",
             OP_KAD_FWTCPCHECK_ACK => "OP_KAD_FWTCPCHECK_ACK",
+            OP_QUEUERANKING => "OP_QUEUERANKING",
+            OP_FILEDESC => "OP_FILEDESC",
+            OP_MULTIPACKET => "OP_MULTIPACKET",
+            OP_MULTIPACKETANSWER => "OP_MULTIPACKETANSWER",
+            OP_PEERCACHE_QUERY => "OP_PEERCACHE_QUERY",
+            OP_PEERCACHE_ANSWER => "OP_PEERCACHE_ANSWER",
+            OP_PEERCACHE_ACK => "OP_PEERCACHE_ACK",
+            OP_MULTIPACKET_EXT => "OP_MULTIPACKET_EXT",
+            OP_CHATCAPTCHAREQ => "OP_CHATCAPTCHAREQ",
+            OP_CHATCAPTCHARES => "OP_CHATCAPTCHARES",
+            OP_MULTIPACKET_EXT2 => "OP_MULTIPACKET_EXT2",
+            OP_MULTIPACKETANSWER_EXT2 => "OP_MULTIPACKETANSWER_EXT2",
+            OP_HASHSETREQUEST2 => "OP_HASHSETREQUEST2",
+            OP_HASHSETANSWER2 => "OP_HASHSETANSWER2",
             _ => "OP_UNKNOWN_EMULE",
         },
         super::protocol::PR_EMULE_COMPRESSED => match opcode {
             OP_COMPRESSEDPART => "OP_COMPRESSEDPART",
+            OP_COMPRESSEDPART_I64 => "OP_COMPRESSEDPART_I64",
             OP_ANSWERSOURCES => "OP_ANSWERSOURCES",
             OP_ANSWERSOURCES2 => "OP_ANSWERSOURCES2",
             _ => "OP_UNKNOWN_COMPRESSED",

@@ -32,7 +32,8 @@ impl DaemonConfig {
             auth_token: auth_token.into(),
             workdir_mode: WorkDirMode::InstalledDefault,
             network_profile: mule_network_policy::NetworkProfile::PublicEd2kKadPreview,
-            upnp_enabled: true,
+            // eMule 0.72a `EnableUPnP` default = false (opt-in).
+            upnp_enabled: false,
             ed2k_port: 39735,
             kad_port: 39737,
             obfuscation_enabled: true,

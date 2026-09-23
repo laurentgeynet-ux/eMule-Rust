@@ -1,20 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/domain/models/category_item.dart';
-import 'package:desktop/domain/models/download_item.dart';
-import 'package:desktop/domain/models/filter_models.dart';
-import 'package:desktop/domain/models/history_entry.dart';
-import 'package:desktop/domain/models/history_stats.dart';
-import 'package:desktop/domain/models/lab_models.dart';
-import 'package:desktop/domain/models/network_policy_models.dart';
-import 'package:desktop/domain/models/part_met_models.dart';
-import 'package:desktop/domain/models/server_models.dart';
-import 'package:desktop/domain/services/mule_daemon_client.dart';
-import 'package:desktop/domain/models/daemon_info.dart';
-import 'package:desktop/domain/models/daemon_event.dart';
-import 'package:desktop/main.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/downloads/widgets/download_row.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:app_shell/ui/features/downloads/widgets/download_row.dart';
 
 class LargeListMockClient implements MuleDaemonClient {
   final List<DownloadItem> _items = [];
@@ -170,6 +159,9 @@ class LargeListMockClient implements MuleDaemonClient {
 
   @override
   Future<void> setDefaultDownloadDirectory(String path) async {}
+
+  @override
+  Future<void> updateSettings(Map<String, dynamic> patch) async {}
 
   @override
   Future<void> resetDefaultDownloadDirectory() async {}
@@ -421,6 +413,34 @@ class LargeListMockClient implements MuleDaemonClient {
   Stream<Map<String, dynamic>> get foundSourcesEvents => const Stream.empty();
 
   @override
+  Stream<UploadsSnapshotModel> get uploadsEvents => const Stream.empty();
+
+  @override
+  Stream<DaemonStatsModel> get statsEvents => const Stream.empty();
+
+  @override
+  Stream<DownloadLifecycleEvent> get downloadLifecycleEvents =>
+      const Stream.empty();
+
+  @override
+  Stream<int> get kadStatusEvents => const Stream.empty();
+
+  @override
+  Stream<int> get historyEvents => const Stream.empty();
+
+  @override
+  Stream<int> get sharesEvents => const Stream.empty();
+
+  @override
+  Stream<SettingsChangedEvent> get settingsEvents => const Stream.empty();
+
+  @override
+  Stream<int> get networkPolicyEvents => const Stream.empty();
+
+  @override
+  Stream<UpnpStatusModel> get upnpStatusEvents => const Stream.empty();
+
+  @override
   Stream<PeerSessionModel> get peerSessionEvents => const Stream.empty();
 
   @override
@@ -486,7 +506,17 @@ class LargeListMockClient implements MuleDaemonClient {
   );
 
   @override
-  Future<void> removeSharedFile(String fileHash) async {}
+  Future<void> removeSharedFile(String fileHash, {bool deleteFile = false}) async {}
+
+  @override
+  Future<DownloadItem> renameDownload(String id, String newName) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> renameSharedFile(String fileHash, String newName) async {}
+
+  @override
+  Future<void> resetLifetimeTotals() async {}
 
   @override
   Future<SharedFileModel> setSharedFileEnabled(
@@ -500,6 +530,38 @@ class LargeListMockClient implements MuleDaemonClient {
     sharedAtUnixMs: 0,
     enabled: enabled,
   );
+
+  @override
+  Future<void> setSharedFileUploadPriority(
+    String fileHash,
+    String priority,
+  ) async {}
+
+  @override
+  Future<void> setSharedFileCategory(
+    String fileHash,
+    String? categoryId,
+  ) async {}
+
+  @override
+  Future<int> rescanSharedFiles() async => 0;
+
+  @override
+  Future<DownloadItem> setDownloadPriority(String id, String priority) =>
+      throw UnimplementedError();
+
+  @override
+  Future<DownloadItem> setDownloadMaxSources(String id, int? maxSources) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<FriendModel>> listFriends() async => [];
+
+  @override
+  Future<void> addFriend(String userHash, {String name = ''}) async {}
+
+  @override
+  Future<void> removeFriend(String userHash) async {}
 
   @override
   Future<InboundListenerStatusModel> startListener({int port = 0}) async =>
@@ -648,10 +710,8 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<UpnpStatusModel> setUpnpEnabled(bool enabled) async => getUpnpStatus();
 
   @override
-  Future<UpnpStatusModel> mapUpnpPorts({
-    int tcpPort = 39735,
-    int udpPort = 39737,
-  }) async => getUpnpStatus();
+  Future<UpnpStatusModel> mapUpnpPorts({int? tcpPort, int? udpPort}) async =>
+      getUpnpStatus();
 
   @override
   Future<UpnpStatusModel> unmapUpnpPorts() async => getUpnpStatus();
@@ -680,15 +740,17 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       final mockClient = LargeListMockClient(500);
-      final viewModel = DownloadsViewModel(client: mockClient);
+      final viewModel = AppController(client: mockClient);
       await viewModel.initialize(url: Uri.parse('ws://mock:4660/rpc'));
 
       await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
       await tester.pumpAndSettle();
 
-      // Verify initial viewport renders visible items
+      // Verify initial viewport renders visible items — with the list
+      // ordering (completed last, others by progress desc then most recent
+      // first), `archive_part_2` is the newest active item and sits on top.
       expect(find.byType(DownloadRow), findsWidgets);
-      expect(find.text('archive_part_1.tar.gz'), findsOneWidget);
+      expect(find.text('archive_part_2.tar.gz'), findsOneWidget);
 
       // Scroll down 2000 pixels
       await tester.drag(find.byType(ListView), const Offset(0, -2000));
@@ -696,7 +758,7 @@ void main() {
 
       // Elements off screen should be unmounted (virtualized)
       expect(find.byType(DownloadRow), findsWidgets);
-      expect(find.text('archive_part_1.tar.gz'), findsNothing);
+      expect(find.text('archive_part_2.tar.gz'), findsNothing);
 
       // Filter to active items only
       viewModel.setFilter(DownloadFilter.active);

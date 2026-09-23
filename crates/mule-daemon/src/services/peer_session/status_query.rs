@@ -18,8 +18,10 @@ use mule_protocol::ed2k::{
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
-use super::events::emit_event;
-use super::source_exchange::{handle_sx_answer, handle_sx_request};
+use super::events::{emit_download_update, emit_event};
+use super::source_exchange::{
+    handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
+};
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
 };
@@ -143,7 +145,7 @@ pub(crate) async fn send_pending_aich_requests(
     }
 }
 
-/// Handles `OP_AICHFILEHASHANS` (0x15): records a master-hash vote. Once the
+/// Handles `OP_AICHFILEHASHANS` (0x9D): records a master-hash vote. Once the
 /// root reaches consensus, pending recovery requests are sent to this peer.
 /// Returns true if the packet was consumed.
 #[allow(clippy::too_many_arguments)]
@@ -212,7 +214,7 @@ pub(crate) async fn handle_aich_file_hash_res(
     }
 }
 
-/// Handles `OP_AICHANSWER` (0x13): applies recovery data to the corrupted
+/// Handles `OP_AICHANSWER` (0x9C): applies recovery data to the corrupted
 /// part (block-level eviction) or requeues the part on a failed answer.
 /// Returns true if the packet was consumed.
 #[allow(clippy::too_many_arguments)]
@@ -312,41 +314,94 @@ pub(crate) async fn query_file_status_and_enter_queue(
     file_hash_str: &str,
     dl_hash_bytes: [u8; 16],
     address_str: &str,
-    peer_supports_sx: bool,
-    peer_supports_sx2: bool,
+    sx_caps: &PeerSxCaps,
     peer_supports_aich: bool,
+    peer_ext_req: u8,
     timeouts: &PeerTimeouts,
     cancel_token: &mule_network_policy::CancellationToken,
     inner: &Arc<Mutex<SwarmInnerState>>,
     event_tx: &broadcast::Sender<String>,
     sequence: &Arc<AtomicU64>,
     downloads: &Arc<Mutex<DownloadService>>,
+    sx_env: &SxEnv,
+    sx_local: &SxLocalIds,
     sui: &mut super::sui::OutboundSui,
 ) -> Result<Ed2kFileStatus, PeerError> {
     let encoder = Ed2kEncoder::default();
-    let decoder = Ed2kDecoder::default();
+    // ExtendedRequestsVersion négociée au handshake (OP_EMULEINFO) — pilote le
+    // parsing déterministe de l'ext-info `0x58` dans les MULTIPACKET*.
+    let decoder = Ed2kDecoder::default().with_extended_requests_version(peer_ext_req);
     let codec = PacketCodec::new();
     let mut out_wire = Vec::with_capacity(64);
     let mut read_buf = BytesMut::with_capacity(65536);
     let mut raw_buf = [0u8; 8192];
 
     info!(
-        "Peer {} handshake completed. Requesting file status...",
+        "Peer {} handshake completed. Requesting file status for {file_hash_str}...",
         target_addr
     );
 
-    // 4a. Send OP_REQFILENAME
+    // 4a. Send OP_REQFILENAME. Quand le pair a négocié ExtendedRequestsVersion
+    // > 0, eMule lit l'ext-info (part status + complete sources) de façon
+    // inconditionnelle après le hash (UploadClient.cpp ProcessExtendedInfo) :
+    // un paquet nu provoque une exception filaire et la fermeture de connexion.
     let file_status_req = Ed2kFileStatusReq {
         file_hash: dl_hash_bytes,
     };
-    let req_filename_pkt = encoder
-        .encode_file_status_req_with_opcode(&file_status_req, OP_REQFILENAME)
+    let req_filename_pkt = if peer_ext_req > 0 {
+        // Notre propre part-status : parts dont la plage complète est déjà
+        // téléchargée (comme PartFile::WritePartStatus chez eMule).
+        let (total_bytes, completed_ranges) = {
+            let dl_svc = downloads.lock().await;
+            (
+                dl_svc
+                    .find_by_ed2k_hash(file_hash_str)
+                    .map(|d| d.total_bytes)
+                    .unwrap_or(0),
+                dl_svc.get_completed_ranges_by_hash(file_hash_str),
+            )
+        };
+        let part_size = mule_protocol::ed2k::ED2K_PART_SIZE as u64;
+        let part_count = if total_bytes > 0 {
+            total_bytes.div_ceil(part_size) as u16
+        } else {
+            0
+        };
+        let available: Vec<u16> = (0..part_count)
+            .filter(|&p| {
+                let start = u64::from(p) * part_size;
+                let end = (start + part_size).min(total_bytes);
+                completed_ranges
+                    .iter()
+                    .any(|&(rs, re)| rs <= start && re >= end)
+            })
+            .collect();
+        let part_status =
+            mule_protocol::ed2k::PartAvailabilityMask::from_parts(&available, part_count);
+        // Complete sources : non suivi par part ; 0 est licite (inconnu).
+        mule_protocol::ed2k::encoder::encode_req_filename(
+            &encoder.limits,
+            &dl_hash_bytes,
+            &part_status,
+            0,
+            peer_ext_req,
+        )
         .map_err(|e| {
             PeerError::new(
                 PeerFailureReason::InvalidHandshake,
                 format!("Failed to encode OP_REQFILENAME: {e}"),
             )
-        })?;
+        })?
+    } else {
+        encoder
+            .encode_file_status_req_with_opcode(&file_status_req, OP_REQFILENAME)
+            .map_err(|e| {
+                PeerError::new(
+                    PeerFailureReason::InvalidHandshake,
+                    format!("Failed to encode OP_REQFILENAME: {e}"),
+                )
+            })?
+    };
 
     out_wire.clear();
     out_wire.push(req_filename_pkt.protocol);
@@ -456,29 +511,21 @@ pub(crate) async fn query_file_status_and_enter_queue(
         .await;
     }
 
-    // 4c. Send OP_REQUESTSOURCES / OP_REQUESTSOURCES2 if supported
-    if peer_supports_sx2 || peer_supports_sx {
-        let sx_req = if peer_supports_sx2 {
-            mule_protocol::ed2k::Ed2kRequestSources::new_v2(dl_hash_bytes)
-        } else {
-            mule_protocol::ed2k::Ed2kRequestSources::new_v1(dl_hash_bytes)
-        };
-        if let Ok(sx_pkt) = encoder.encode_request_sources(&sx_req) {
-            out_wire.clear();
-            out_wire.push(sx_pkt.protocol);
-            out_wire.extend_from_slice(&(sx_pkt.frame_len() as u32).to_le_bytes());
-            out_wire.push(sx_pkt.opcode);
-            out_wire.extend_from_slice(&sx_pkt.payload);
-            if let Err(e) = stream.write_all(&out_wire).await {
-                tracing::warn!("Failed to send SX request to {target_addr}: {e}");
-            } else {
-                tracing::info!(
-                    "Sent OP_REQUESTSOURCES (version {}) to peer {target_addr}",
-                    sx_req.version
-                );
-            }
-        }
-    }
+    // 4c. OP_REQUESTSOURCES / OP_REQUESTSOURCES2 — eMule envoie la requête
+    // SX quand `IsSourceRequestAllowed` passe (`DownloadClient.cpp:212-255`) :
+    // pas de demande aux sources complètes, pas de spam (40 min/client, 5 min
+    // fichier rare / 20 min fichier commun), cap souple de sources.
+    maybe_send_sx_request(
+        stream,
+        &encoder,
+        target_addr,
+        file_hash_str,
+        dl_hash_bytes,
+        downloads,
+        sx_env,
+        sx_caps,
+    )
+    .await;
 
     let queued_snapshot = {
         let mut g = inner.lock().await;
@@ -537,6 +584,33 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                                     "OP_FILESTATUS returned unexpected file hash".to_string(),
                                                 ));
                                             }
+                                            // Propager le bitmap de parts du pair au store
+                                            // swarm (`act.sources`) — il alimente
+                                            // `available_source_count` (eMule
+                                            // `m_SrcPartFrequency` / `DrawStatusBar`).
+                                            // `part_count == 0` = source complète.
+                                            let mut dl_svc = downloads.lock().await;
+                                            if let Some(dl_id) = dl_svc
+                                                .find_by_ed2k_hash(file_hash_str)
+                                                .map(|s| s.id)
+                                            {
+                                                if let Ok(snap) = dl_svc.record_source_availability(
+                                                    &dl_id,
+                                                    target_addr,
+                                                    status.availability_mask.clone(),
+                                                ) {
+                                                    emit_download_update(event_tx, sequence, &snap);
+                                                }
+                                            }
+                                            let mask = status.availability_mask.raw_bytes();
+                                            if !mask.is_empty() {
+                                                let _ = dl_svc.update_peer_source_details(
+                                                    file_hash_str,
+                                                    address_str,
+                                                    None,
+                                                    Some(mask),
+                                                );
+                                            }
                                             file_status_opt = Some(status);
                                             break;
                                         }
@@ -584,11 +658,26 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                 } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                     && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                                 {
-                                    handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await;
+                                    handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;
                                 } else if packet.protocol == PR_EMULE
                                     && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                                 {
-                                    handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
+                                    handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream, sx_env, sx_caps, None).await;
+                                } else if packet.protocol == PR_EMULE
+                                {
+                                    super::source_exchange::handle_sx_multipacket(
+                                        &packet,
+                                        dl_hash_bytes,
+                                        None,
+                                        target_addr,
+                                        &encoder,
+                                        downloads,
+                                        stream,
+                                        sx_env,
+                                        sx_caps,
+                                        peer_ext_req,
+                                    )
+                                    .await;
                                 }
                             }
                         }
@@ -600,6 +689,47 @@ pub(crate) async fn query_file_status_and_enter_queue(
     }
 
     let file_status = file_status_opt.unwrap();
+
+    // eMule "No Needed Parts": if the peer advertises a part mask but none
+    // of its parts is still missing locally, the source is useless for this
+    // download — drop it now instead of occupying an upload slot. Complete
+    // sources (part_count == 0) and queue-accepted sessions bypass the check.
+    if !file_status.is_complete() && file_status.part_count > 0 {
+        let has_needed_part = {
+            let dl_svc = downloads.lock().await;
+            let completed = dl_svc.get_completed_ranges_by_hash(file_hash_str);
+            let total_size = dl_svc
+                .find_by_ed2k_hash(file_hash_str)
+                .map(|d| d.total_bytes)
+                .unwrap_or(0);
+            let part_size = mule_protocol::ed2k::ED2K_PART_SIZE as u64;
+            let total_parts = if total_size == 0 {
+                0
+            } else {
+                total_size.div_ceil(part_size).max(1) as u32
+            };
+            (0..total_parts).any(|p| {
+                u16::try_from(p).is_ok_and(|pi| file_status.availability_mask.has_part(pi))
+                    && {
+                        let start = p as u64 * part_size;
+                        let end = ((p as u64 + 1) * part_size).min(total_size);
+                        completed.iter().fold(start, |acc, &(s, e)| {
+                            if s <= acc && e > acc {
+                                acc.max(e.min(end))
+                            } else {
+                                acc
+                            }
+                        }) < end
+                    }
+            })
+        };
+        if !has_needed_part {
+            return Err(PeerError::new(
+                PeerFailureReason::NoNeededParts,
+                "Peer has the file but no needed parts (eMule NNS)",
+            ));
+        }
+    }
 
     // Mark source as Connected
     {
@@ -658,6 +788,26 @@ pub(crate) async fn query_file_status_and_enter_queue(
                     return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send keep-alive: {e}")));
                 }
                 last_keepalive_sent = tokio::time::Instant::now();
+                // Re-ask SX périodique — eMule attache la requête source au
+                // cycle de reask (`SendFileRequest` → `IsSourceRequestAllowed`).
+                // `complete_source` : le pair est source complète quand son
+                // part-status couvre tout le fichier — eMule ne lui demande
+                // alors pas de sources.
+                let reask_caps = PeerSxCaps {
+                    complete_source: file_status.is_complete(),
+                    ..*sx_caps
+                };
+                maybe_send_sx_request(
+                    stream,
+                    &encoder,
+                    target_addr,
+                    file_hash_str,
+                    dl_hash_bytes,
+                    downloads,
+                    sx_env,
+                    &reask_caps,
+                )
+                .await;
             }
             read_res = stream.read(&mut raw_buf) => {
                 match read_res {
@@ -714,17 +864,59 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                     emit_event(event_tx, sequence, &snap);
                                 }
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_FILESTATUS {
-                                tracing::debug!("Peer {target_addr}: received keep-alive OP_FILESTATUS response");
+                                // Keep-alive part-status : rafraîchit le bitmap
+                                // du pair (et `last_seen`) — la barre de parts
+                                // reflète alors la dispo courante de la file.
+                                if let Ok(status) = decoder.decode_file_status(
+                                    packet.protocol,
+                                    packet.opcode,
+                                    &packet.payload,
+                                    0,
+                                ) {
+                                    if status.file_hash == dl_hash_bytes {
+                                        let mut dl_svc = downloads.lock().await;
+                                        if let Some(dl_id) = dl_svc
+                                            .find_by_ed2k_hash(file_hash_str)
+                                            .map(|s| s.id)
+                                        {
+                                            if let Ok(snap) = dl_svc.record_source_availability(
+                                                &dl_id,
+                                                target_addr,
+                                                status.availability_mask.clone(),
+                                            ) {
+                                                emit_download_update(event_tx, sequence, &snap);
+                                            }
+                                        }
+                                    }
+                                }
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_FILEREQANSNOFILE {
                                 return Err(PeerError::new(PeerFailureReason::FileNotFound, "Remote peer no longer shares this file"));
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {
-                                handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads).await;
+                                handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;
                             } else if packet.protocol == PR_EMULE
                                 && (packet.opcode == OP_REQUESTSOURCES || packet.opcode == OP_REQUESTSOURCES2)
                             {
-                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream).await;
+                                // `reqstatus` : part-status du demandeur (son
+                                // OP_FILESTATUS) — eMule ne sert que des
+                                // sources couvrant des parts qui lui manquent.
+                                handle_sx_request(&packet, Some(dl_hash_bytes), target_addr, &decoder, &encoder, downloads, stream, sx_env, sx_caps, Some(file_status.availability_mask.raw_bytes())).await;
+                            } else if packet.protocol == PR_EMULE
+                            {
+                                super::source_exchange::handle_sx_multipacket(
+                                    &packet,
+                                    dl_hash_bytes,
+                                    Some(file_status.availability_mask.raw_bytes()),
+                                    target_addr,
+                                    &encoder,
+                                    downloads,
+                                    stream,
+                                    sx_env,
+                                    sx_caps,
+                                    peer_ext_req,
+                                )
+                                .await;
                             }
                         }
                     }

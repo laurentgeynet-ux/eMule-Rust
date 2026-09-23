@@ -184,7 +184,7 @@ pub struct ReferencePeerConfig {
     pub request_timeout: Duration,
     /// Maximum number of in-flight block requests.
     pub max_in_flight_blocks: usize,
-    /// Explicit compatibility profile (defaults to Emule050a).
+    /// Explicit compatibility profile (defaults to Emule072a).
     pub profile: Ed2kCompatibilityProfile,
 }
 
@@ -208,7 +208,7 @@ impl ReferencePeerConfig {
             handshake_timeout: Duration::from_millis(2000),
             request_timeout: Duration::from_millis(2000),
             max_in_flight_blocks: 8,
-            profile: Ed2kCompatibilityProfile::Emule050a,
+            profile: Ed2kCompatibilityProfile::Emule072a,
         })
     }
 

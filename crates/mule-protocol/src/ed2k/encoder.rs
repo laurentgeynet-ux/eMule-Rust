@@ -7,8 +7,8 @@ use super::limits::Ed2kLimits;
 use super::packet::{
     Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
     Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq,
-    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
-    Ed2kSendingPart, Ed2kSignature,
+    Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kRequestPartsI64,
+    Ed2kSecIdentState, Ed2kSendingPart, Ed2kSendingPartI64, Ed2kSignature,
 };
 use super::profile::Ed2kCompatibilityProfile;
 use super::tags::{Ed2kTag, RawTag, TagName};
@@ -17,6 +17,8 @@ use crate::limits::HEADER_SIZE;
 
 /// AICH message encoders (AichFileHashReq/Res, AichRequest/Answer).
 pub mod aich;
+/// eMule 0.72a extended encoders (HashSet2, MultiPacket*, queue, chat, CAPTCHA…).
+pub mod extended;
 /// Handshake message encoders (Hello, HelloAnswer, EmuleInfo).
 pub mod handshake;
 /// Security message encoders (PublicKey, Signature, SecIdentState).
@@ -29,13 +31,21 @@ pub mod transfers;
 pub use aich::{
     encode_aich_answer, encode_aich_file_hash_req, encode_aich_file_hash_res, encode_aich_request,
 };
-pub use handshake::{encode_emule_info, encode_hello, encode_hello_answer};
+pub use extended::{
+    encode_captcha_request, encode_captcha_response, encode_change_slot, encode_file_desc,
+    encode_hashset_answer2, encode_hashset_request2, encode_message, encode_multipacket_answer,
+    encode_multipacket_request, encode_port_test, encode_queue_rank, encode_queue_ranking,
+};
+pub use handshake::{
+    encode_emule_info, encode_emule_info_answer, encode_hello, encode_hello_answer,
+};
 pub use security::{encode_public_key, encode_secident_state, encode_signature};
 pub use tags::{encode_raw_tag, encode_tag, encode_tag_name};
 pub use transfers::{
-    encode_file_req_ans_no_file, encode_file_status, encode_file_status_req,
-    encode_file_status_req_with_opcode, encode_hashset_answer, encode_hashset_request,
-    encode_request_parts, encode_request_parts_with_opcode, encode_sending_part,
+    encode_compressed_part_i64, encode_file_req_ans_no_file, encode_file_status,
+    encode_file_status_req, encode_file_status_req_with_opcode, encode_hashset_answer,
+    encode_hashset_request, encode_req_filename, encode_request_parts, encode_request_parts_i64,
+    encode_request_parts_with_opcode, encode_sending_part, encode_sending_part_i64,
 };
 
 /// Deterministic wire encoder for historical eD2K protocol messages.
@@ -48,7 +58,7 @@ pub struct Ed2kEncoder {
 }
 
 impl Ed2kEncoder {
-    /// Creates a new encoder with default production limits and default profile (`Emule050a`).
+    /// Creates a new encoder with default production limits and default profile (`Emule072a`).
     pub fn new() -> Self {
         Self::default()
     }
@@ -167,12 +177,28 @@ impl Ed2kEncoder {
         encode_request_parts_with_opcode(&self.limits, req, opcode)
     }
 
+    /// Encodes an `Ed2kRequestPartsI64` message (`OP_REQUESTPARTS_I64`, `0xA3`).
+    pub fn encode_request_parts_i64(
+        &self,
+        req: &Ed2kRequestPartsI64,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_request_parts_i64(&self.limits, req)
+    }
+
     /// Encodes an `Ed2kSendingPart` message (`0x46`).
     pub fn encode_sending_part(
         &self,
         part: &Ed2kSendingPart,
     ) -> Result<RawPacket, Ed2kEncodeError> {
         encode_sending_part(&self.limits, part)
+    }
+
+    /// Encodes an `Ed2kSendingPartI64` message (`OP_SENDINGPART_I64`, `0xA2`).
+    pub fn encode_sending_part_i64(
+        &self,
+        part: &Ed2kSendingPartI64,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_sending_part_i64(&self.limits, part)
     }
 
     /// Encodes an `Ed2kHashSetReq` message (`0x51`).
@@ -222,6 +248,14 @@ impl Ed2kEncoder {
         encode_emule_info(&self.limits, info)
     }
 
+    /// Encodes an `OP_EMULE_INFO_ANSWER` (`0xC5 0x02`) payload.
+    pub fn encode_emule_info_answer(
+        &self,
+        info: &Ed2kEmuleInfo,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_emule_info_answer(&self.limits, info)
+    }
+
     /// Encodes an `OP_PUBLICKEY` (`0x85`) message into a `RawPacket`.
     pub fn encode_public_key(&self, key: &Ed2kPublicKey) -> Result<RawPacket, Ed2kEncodeError> {
         encode_public_key(&self.limits, key)
@@ -250,7 +284,10 @@ impl Ed2kEncoder {
             Ed2kMessage::FileStatus(status) => self.encode_file_status(status),
             Ed2kMessage::FileReqAnsNoFile(ans) => self.encode_file_req_ans_no_file(ans),
             Ed2kMessage::RequestParts(req) => self.encode_request_parts(req),
+            Ed2kMessage::RequestPartsI64(req) => encode_request_parts_i64(&self.limits, req),
             Ed2kMessage::SendingPart(part) => self.encode_sending_part(part),
+            Ed2kMessage::SendingPartI64(part) => encode_sending_part_i64(&self.limits, part),
+            Ed2kMessage::CompressedPartI64(part) => encode_compressed_part_i64(&self.limits, part),
             Ed2kMessage::HashSetReq(req) => self.encode_hashset_request(req),
             Ed2kMessage::HashSetAnswer(ans) => self.encode_hashset_answer(ans),
             Ed2kMessage::AichFileHashReq(req) => self.encode_aich_file_hash_req(req),
@@ -260,6 +297,20 @@ impl Ed2kEncoder {
             Ed2kMessage::PublicKey(key) => self.encode_public_key(key),
             Ed2kMessage::Signature(sig) => self.encode_signature(sig),
             Ed2kMessage::SecIdentState(state) => self.encode_secident_state(state),
+            Ed2kMessage::Message(msg) => encode_message(&self.limits, msg),
+            Ed2kMessage::QueueRank(qr) => encode_queue_rank(&self.limits, qr),
+            Ed2kMessage::QueueRanking(qr) => encode_queue_ranking(&self.limits, qr),
+            Ed2kMessage::ChangeSlot(cs) => encode_change_slot(&self.limits, cs),
+            Ed2kMessage::FileDesc(fd) => encode_file_desc(&self.limits, fd),
+            Ed2kMessage::PortTest(pt) => encode_port_test(&self.limits, pt),
+            Ed2kMessage::CaptchaRequest(req) => encode_captcha_request(&self.limits, req),
+            Ed2kMessage::CaptchaResponse(res) => encode_captcha_response(&self.limits, res),
+            Ed2kMessage::HashSetReq2(req) => encode_hashset_request2(&self.limits, req),
+            Ed2kMessage::HashSetAnswer2(ans) => encode_hashset_answer2(&self.limits, ans),
+            Ed2kMessage::MultiPacketRequest(req) => {
+                encode_multipacket_request(&self.limits, req)
+            }
+            Ed2kMessage::MultiPacketAnswer(ans) => encode_multipacket_answer(&self.limits, ans),
             Ed2kMessage::Raw(raw) => {
                 let frame_len = raw.frame_len();
                 let max_frame = self.limits.max_frame_for_opcode(raw.opcode);
@@ -299,12 +350,16 @@ impl Ed2kEncoder {
         super::source_exchange::encode_request_sources(req)
     }
 
-    /// Encodes a Source Exchange response (`OP_ANSWERSOURCES2`).
+    /// Encodes a Source Exchange response. `is_sx2` selects
+    /// `OP_ANSWERSOURCES2` (`0x84`) or the legacy `OP_ANSWERSOURCES` (`0x82`)
+    /// envelope, matching the opcode the requester used (eMule
+    /// `bIsSX2Packet`, `PartFile.cpp:3705`).
     pub fn encode_answer_sources(
         &self,
         ans: &super::source_exchange::Ed2kAnswerSources,
+        is_sx2: bool,
         force_compress: bool,
     ) -> Result<crate::framing::RawPacket, Ed2kEncodeError> {
-        super::source_exchange::encode_answer_sources(ans, force_compress)
+        super::source_exchange::encode_answer_sources(ans, is_sx2, force_compress)
     }
 }

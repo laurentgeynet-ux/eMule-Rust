@@ -11,7 +11,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 
 use crate::rpc::methods::{handle_request, DAEMON_VERSION};
-use crate::rpc::types::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
+use crate::rpc::types::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 use crate::state::AppState;
 
 pub fn create_router(state: AppState) -> Router {
@@ -32,12 +32,31 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
+/// Maps a notification method name to its subscription topic, so clients
+/// can opt into a subset of the broadcast stream via `events.subscribe`.
+/// `None` = topic-less event that is always forwarded (e.g. snapshotRequired).
+/// Delegates to `DaemonEvent::topic` — the single source of truth.
+fn event_topic(method: &str) -> Option<&'static str> {
+    crate::services::DaemonEvent::Custom {
+        method: method.to_string(),
+        payload: serde_json::Value::Null,
+    }
+    .topic()
+}
+
 async fn handle_socket(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
     let mut rx_events = state.event_tx.subscribe();
     let is_authenticated = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
         state.config.auth_token.is_empty(),
     ));
+
+    // Per-session topic filter: `None` = forward everything (default, for
+    // backward compatibility with clients that never call events.subscribe
+    // with topics).
+    let topics = std::sync::Arc::new(tokio::sync::RwLock::<
+        Option<std::collections::HashSet<String>>,
+    >::new(None));
 
     // Outbound message queue so spawned request handlers can send responses concurrently
     let (tx_out, mut rx_out) = tokio::sync::mpsc::channel::<Message>(128);
@@ -62,6 +81,42 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         let parsed: Result<JsonRpcRequest, _> = serde_json::from_str(&text);
                         match parsed {
                             Ok(req) => {
+                                // Session-scoped subscription handled here, not
+                                // in handle_request, because it mutates this
+                                // connection's own event filter. Only honored
+                                // once authenticated — otherwise falls through
+                                // to handle_request which answers auth_failed.
+                                if req.method == "events.subscribe"
+                                    && is_authenticated
+                                        .load(std::sync::atomic::Ordering::SeqCst)
+                                {
+                                    let topics_clone = topics.clone();
+                                    let tx_out_clone = tx_out.clone();
+                                    tokio::spawn(async move {
+                                        let set: Option<std::collections::HashSet<String>> =
+                                            req.params
+                                                .as_ref()
+                                                .and_then(|p| p.get("topics"))
+                                                .and_then(|t| t.as_array())
+                                                .map(|arr| {
+                                                    arr.iter()
+                                                        .filter_map(|v| v.as_str().map(String::from))
+                                                        .collect()
+                                                });
+                                        *topics_clone.write().await = set;
+                                        if let Some(id) = req.id {
+                                            let resp = JsonRpcResponse::success(
+                                                id,
+                                                serde_json::json!({ "subscribed": true }),
+                                            );
+                                            if let Ok(json_str) = serde_json::to_string(&resp) {
+                                                let _ = tx_out_clone.send(Message::Text(json_str.into())).await;
+                                            }
+                                        }
+                                    });
+                                    continue;
+                                }
+
                                 let state_clone = state.clone();
                                 let auth_clone = is_authenticated.clone();
                                 let tx_out_clone = tx_out.clone();
@@ -99,10 +154,41 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
             // Outgoing broadcast events (forwarded only to authenticated sessions)
             event = rx_events.recv() => {
-                if let Ok(event_json) = event {
-                    if is_authenticated.load(std::sync::atomic::Ordering::SeqCst) {
-                        let _ = tx_out.send(Message::Text(event_json.into())).await;
+                match event {
+                    Ok(event_json) => {
+                        if is_authenticated.load(std::sync::atomic::Ordering::SeqCst) {
+                            let forward = match &*topics.read().await {
+                                None => true,
+                                Some(set) => {
+                                    let method = serde_json::from_str::<serde_json::Value>(&event_json)
+                                        .ok()
+                                        .and_then(|v| v.get("method").and_then(|m| m.as_str()).map(String::from));
+                                    match method.as_deref().and_then(event_topic) {
+                                        Some(topic) => set.contains(topic),
+                                        None => true, // control events always pass
+                                    }
+                                }
+                            };
+                            if forward {
+                                let _ = tx_out.send(Message::Text(event_json.into())).await;
+                            }
+                        }
                     }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        // This client fell behind: events were dropped. Ask it to
+                        // resynchronize via a full snapshot instead of pretending
+                        // the stream is continuous.
+                        if is_authenticated.load(std::sync::atomic::Ordering::SeqCst) {
+                            let notif = JsonRpcNotification::new(
+                                "event.snapshotRequired",
+                                serde_json::json!({ "skipped": skipped }),
+                            );
+                            if let Ok(json_str) = serde_json::to_string(&notif) {
+                                let _ = tx_out.send(Message::Text(json_str.into())).await;
+                            }
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
         }

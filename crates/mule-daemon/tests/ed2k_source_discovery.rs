@@ -97,7 +97,12 @@ async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
 
     let mut add_resp_opt = None;
     let mut initial_event_opt = None;
-    for _ in 0..2 {
+    // Le serveur multiplexe réponses et events broadcast (event.downloadAdded,
+    // event.downloadUpdated) via select! : lire jusqu'à avoir les deux attendus.
+    for _ in 0..16 {
+        if add_resp_opt.is_some() && initial_event_opt.is_some() {
+            break;
+        }
         let msg = read.next().await.unwrap().unwrap();
         let val: Value = serde_json::from_str(&msg.to_string()).unwrap();
         if val["id"] == 2 {
@@ -147,7 +152,10 @@ async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
     let mut update_event_opt = None;
 
     // Read responses/events (could arrive in either order: response vs broadcast event)
-    for _ in 0..2 {
+    for _ in 0..16 {
+        if probe_resp_opt.is_some() && update_event_opt.is_some() {
+            break;
+        }
         let msg = read.next().await.unwrap().unwrap();
         let val: Value = serde_json::from_str(&msg.to_string()).unwrap();
         if val["id"] == 3 {

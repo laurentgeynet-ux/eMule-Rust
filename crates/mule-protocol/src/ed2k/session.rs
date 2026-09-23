@@ -64,7 +64,7 @@ impl Ed2kSession {
         }
     }
 
-    /// Creates a new session configured as the connection initiator with default profile (`Emule050a`).
+    /// Creates a new session configured as the connection initiator with default profile (`Emule072a`).
     pub fn new_initiator(
         local_user_hash: [u8; 16],
         local_client_id: u32,
@@ -388,6 +388,35 @@ impl Ed2kSession {
             Ed2kMessage::AichFileHashRes(res) => Ok(Some(Ed2kMessage::AichFileHashRes(res))),
             Ed2kMessage::AichRequest(req) => Ok(Some(Ed2kMessage::AichRequest(req))),
             Ed2kMessage::AichAnswer(ans) => Ok(Some(Ed2kMessage::AichAnswer(ans))),
+            Ed2kMessage::RequestPartsI64(req) => Ok(Some(Ed2kMessage::RequestPartsI64(req))),
+            Ed2kMessage::SendingPartI64(part) => Ok(Some(Ed2kMessage::SendingPartI64(part))),
+            Ed2kMessage::CompressedPartI64(part) => Ok(Some(Ed2kMessage::CompressedPartI64(part))),
+            // eMule 0.72a extended messages (hashset2, multipacket, queue, chat,
+            // CAPTCHA…): decoded but not yet wired into the session state
+            // machine — counted as unhandled like `Raw` packets.
+            msg @ (Ed2kMessage::Message(_)
+            | Ed2kMessage::QueueRank(_)
+            | Ed2kMessage::QueueRanking(_)
+            | Ed2kMessage::ChangeSlot(_)
+            | Ed2kMessage::FileDesc(_)
+            | Ed2kMessage::PortTest(_)
+            | Ed2kMessage::CaptchaRequest(_)
+            | Ed2kMessage::CaptchaResponse(_)
+            | Ed2kMessage::HashSetReq2(_)
+            | Ed2kMessage::HashSetAnswer2(_)
+            | Ed2kMessage::MultiPacketRequest(_)
+            | Ed2kMessage::MultiPacketAnswer(_)) => {
+                if !self.is_ready() {
+                    let err = Ed2kSessionError::UnexpectedMessageInState {
+                        state: self.state.name(),
+                        opcode: 0,
+                    };
+                    self.fail(err.clone());
+                    return Err(err);
+                }
+                self.unhandled_packets_count += 1;
+                Ok(Some(msg))
+            }
             Ed2kMessage::Raw(raw) => {
                 if !self.is_ready() && raw.protocol != PR_EMULE {
                     let err = Ed2kSessionError::UnexpectedMessageInState {

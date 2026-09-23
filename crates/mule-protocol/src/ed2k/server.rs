@@ -16,8 +16,8 @@ pub use sources::{
 pub use types::{
     ed2k_file_type_term, CallbackRequest, CallbackRequested, OfferFiles, OfferedFile,
     ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus,
-    OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT, SRV_TCPFLG_COMPRESSION,
-    SRV_TCPFLG_LARGEFILES,
+    OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT, OFFER_INCOMPLETE_CLIENT_ID,
+    OFFER_INCOMPLETE_CLIENT_PORT, SRV_TCPFLG_COMPRESSION, SRV_TCPFLG_LARGEFILES,
 };
 
 use super::error::{Ed2kErrorKind, Ed2kParseError};
@@ -216,8 +216,12 @@ pub fn decode_server_response(
                     },
                 ));
             }
-            let ip = u32::from_le_bytes(payload[0..4].try_into().unwrap());
-            let port = u16::from_le_bytes(payload[4..6].try_into().unwrap());
+            let mut ip_bytes = [0u8; 4];
+            ip_bytes.copy_from_slice(&payload[0..4]);
+            let mut port_bytes = [0u8; 2];
+            port_bytes.copy_from_slice(&payload[4..6]);
+            let ip = u32::from_le_bytes(ip_bytes);
+            let port = u16::from_le_bytes(port_bytes);
             let (crypt_options, user_hash) = if payload.len() >= 23 {
                 let mut h = [0u8; 16];
                 h.copy_from_slice(&payload[7..23]);
@@ -235,7 +239,9 @@ pub fn decode_server_response(
 
         OP_CALLBACK_FAIL => {
             let client_id = if payload.len() >= 4 {
-                Some(u32::from_le_bytes(payload[0..4].try_into().unwrap()))
+                let mut id_bytes = [0u8; 4];
+                id_bytes.copy_from_slice(&payload[0..4]);
+                Some(u32::from_le_bytes(id_bytes))
             } else {
                 None
             };

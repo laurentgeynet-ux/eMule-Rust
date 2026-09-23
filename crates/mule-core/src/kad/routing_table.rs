@@ -158,6 +158,60 @@ impl KBucketTable {
         }
     }
 
+    /// Records a failed query against a contact. Like eMule (`CContact::Update`
+    /// / `Expire`), a contact that reaches 2 consecutive failures is evicted
+    /// from the bucket (and its replacement slot). Returns `true` if the
+    /// contact was evicted.
+    pub fn mark_failed(&mut self, kad_id: &KadId) -> bool {
+        let Some(idx) = self.bucket_index_for(kad_id) else {
+            return false;
+        };
+        let bucket = &mut self.buckets[idx];
+        let pos = bucket.contacts.iter().position(|c| &c.kad_id == kad_id);
+        match pos {
+            Some(pos) => {
+                let fails = {
+                    let c = &mut bucket.contacts[pos];
+                    c.mark_failed();
+                    c.fail_count
+                };
+                if fails >= 2 {
+                    self.remove(kad_id);
+                    true
+                } else {
+                    false
+                }
+            }
+            None => {
+                if let Some(rpos) = bucket
+                    .replacements
+                    .iter()
+                    .position(|c| &c.kad_id == kad_id)
+                {
+                    bucket.replacements.remove(rpos);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Records a successful response from a contact: refreshes `last_seen`,
+    /// resets `fail_count` and marks it verified (`KadContact::mark_seen`).
+    pub fn mark_seen(&mut self, kad_id: &KadId, now_ms: u64) {
+        let Some(idx) = self.bucket_index_for(kad_id) else {
+            return;
+        };
+        let bucket = &mut self.buckets[idx];
+        for c in bucket.contacts.iter_mut().chain(bucket.replacements.iter_mut()) {
+            if &c.kad_id == kad_id {
+                c.mark_seen(now_ms);
+                return;
+            }
+        }
+    }
+
     pub fn total_contacts(&self) -> usize {
         self.buckets.iter().map(|b| b.contacts.len()).sum()
     }
@@ -166,40 +220,31 @@ impl KBucketTable {
         self.buckets.iter().map(|b| b.replacements.len()).sum()
     }
 
-    /// Finds up to `count` closest contacts to the given target key.
-    pub fn find_closest(&self, target: &KadId, count: usize) -> Vec<KadContact> {
+    /// Collects every known contact (bucket entries + replacement cache).
+    fn collect_all(&self) -> Vec<KadContact> {
         let mut all_contacts = Vec::new();
         for b in &self.buckets {
-            for c in &b.contacts {
-                all_contacts.push(c.clone());
-            }
-            for c in &b.replacements {
-                all_contacts.push(c.clone());
-            }
+            all_contacts.extend(b.contacts.iter().cloned());
+            all_contacts.extend(b.replacements.iter().cloned());
         }
+        all_contacts
+    }
 
+    /// Finds up to `count` closest contacts to the given target key.
+    pub fn find_closest(&self, target: &KadId, count: usize) -> Vec<KadContact> {
+        let mut all_contacts = self.collect_all();
         all_contacts.sort_by(|a, b| {
             let dist_a = a.kad_id.xor_distance(target);
             let dist_b = b.kad_id.xor_distance(target);
             dist_a.cmp(&dist_b)
         });
-
         all_contacts.truncate(count);
         all_contacts
     }
 
     /// Finds up to `count` closest contacts, prioritizing verified contacts.
     pub fn find_closest_verified(&self, target: &KadId, count: usize) -> Vec<KadContact> {
-        let mut all_contacts = Vec::new();
-        for b in &self.buckets {
-            for c in &b.contacts {
-                all_contacts.push(c.clone());
-            }
-            for c in &b.replacements {
-                all_contacts.push(c.clone());
-            }
-        }
-
+        let mut all_contacts = self.collect_all();
         all_contacts.sort_by(|a, b| match (a.verified, b.verified) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
@@ -209,9 +254,55 @@ impl KBucketTable {
                 dist_a.cmp(&dist_b)
             }
         });
-
         all_contacts.truncate(count);
         all_contacts
+    }
+
+    /// Finds up to `count` closest *verified* contacts to `target`.
+    ///
+    /// Mirrors eMule `GetClosestTo(..., bOnlyVerified=true)` used to answer
+    /// `KADEMLIA2_REQ`/`BOOTSTRAP_REQ`: only contacts whose IP ownership was
+    /// proven (answered one of our requests, or completed the
+    /// `HELLO_RES_ACK` handshake) may be handed to other nodes — returning
+    /// unverified contacts would propagate potentially spoofed entries.
+    pub fn find_verified_closest(&self, target: &KadId, count: usize) -> Vec<KadContact> {
+        let mut verified: Vec<KadContact> = self
+            .collect_all()
+            .into_iter()
+            .filter(|c| c.verified)
+            .collect();
+        verified.sort_by(|a, b| {
+            let dist_a = a.kad_id.xor_distance(target);
+            let dist_b = b.kad_id.xor_distance(target);
+            dist_a.cmp(&dist_b)
+        });
+        verified.truncate(count);
+        verified
+    }
+
+    /// Returns up to `max` verified contacts spread across the keyspace
+    /// (round-robin over non-empty buckets), mirroring eMule
+    /// `GetBootstrapContacts`: a bootstrap answer must give the requester a
+    /// diverse sample of the DHT, not a clump of same-prefix contacts.
+    pub fn spread_verified(&self, max: usize) -> Vec<KadContact> {
+        let mut out = Vec::new();
+        let mut round = 0;
+        loop {
+            let before = out.len();
+            for b in &self.buckets {
+                if let Some(c) = b.contacts.iter().filter(|c| c.verified).nth(round) {
+                    out.push(c.clone());
+                    if out.len() >= max {
+                        return out;
+                    }
+                }
+            }
+            if out.len() == before {
+                break;
+            }
+            round += 1;
+        }
+        out
     }
 
     /// Returns a snapshot of non-empty buckets and their contact counts.

@@ -1,4 +1,5 @@
 pub mod firewall;
+pub mod lookup;
 pub mod nodes_dat;
 pub mod search_keywords;
 pub mod search_sources;
@@ -21,8 +22,17 @@ use crate::services::kad_udp::KadUdpService;
 pub use types::{KadContactEntryDto, KadStatusSnapshot, NodesDatInspectReport};
 
 pub struct KadService {
-    local_id: KadId,
-    routing_table: Mutex<KBucketTable>,
+    /// Identité Kad locale — mutable à chaud : `identityRotationHours`
+    /// régénère le KadID sans redémarrer le service (partagé avec
+    /// `KadUdpService`).
+    local_id: Arc<std::sync::RwLock<KadId>>,
+    /// Shared with `KadUdpService` (inbound packets feed the table and serve
+    /// REQ/BOOTSTRAP answers) — `Arc` because the UDP listener is a task.
+    routing_table: Arc<Mutex<KBucketTable>>,
+    /// Our public IPv4 as learned from the eD2K server HighID
+    /// (`set_public_ipv4`) — advertised in `PUBLISH_SOURCE` contacts. The
+    /// socket bind address may be `0.0.0.0` or hidden behind NAT.
+    public_ipv4: std::sync::RwLock<Option<Ipv4Addr>>,
     downloads: Arc<Mutex<DownloadService>>,
     policy_mgr: NetworkPolicyManager,
     ip_filter: Arc<IpFilter>,
@@ -32,9 +42,29 @@ pub struct KadService {
     ed2k_tcp_port: std::sync::atomic::AtomicU16,
     /// Local eD2K user hash used in firewall-test connection hellos.
     fw_user_hash: std::sync::RwLock<[u8; 16]>,
-    /// Last time we bootstrapped Kad from a connected eD2K peer
-    /// (eMule "bootstrap from clients") — throttles the per-peer hook.
-    last_peer_bootstrap: std::sync::Mutex<Option<std::time::Instant>>,
+    /// Horodatage du dernier `BOOTSTRAP_REQ` émis — partagé entre les
+    /// envois immédiats (handshakes eD2K) et le drain de la file de
+    /// candidats, comme `CKademlia::m_tBootstrap` d'eMule.
+    last_bootstrap: std::sync::Mutex<Option<std::time::Instant>>,
+    /// File de candidats bootstrap — équivalent de
+    /// `CKademlia::s_liBootstrapList` (eMule 0.72a, Kademlia.cpp:287) :
+    /// les pairs eD2K annonçant un port UDP Kad s'y enregistrent, puis la
+    /// boucle de drain les essaie un par un tant que la table de routage
+    /// reste pauvre (~2 s entre essais quand elle est vide, 15 s sinon).
+    /// Chaque candidat n'est tenté qu'une fois (`RemoveHead`) ; de
+    /// nouveaux handshakes ré-alimentent la file. Cap à 50 comme eMule.
+    bootstrap_candidates: Mutex<std::collections::VecDeque<(SocketAddr, u8)>>,
+    /// Canal d'événements broadcast + compteur de séquence partagé —
+    /// injecté par `set_event_channel` pour émettre `kad.statusChanged`
+    /// quand la table de routage évolue hors des actions RPC (paquets
+    /// entrants, lookups, bootstrap, maintenance). No-op tant que le
+    /// canal n'est pas câblé.
+    event_channel: std::sync::RwLock<
+        Option<(
+            tokio::sync::broadcast::Sender<String>,
+            Arc<std::sync::atomic::AtomicU64>,
+        )>,
+    >,
 }
 
 /// Interval between Kad republication rounds of shared files
@@ -48,11 +78,16 @@ impl KadService {
         policy_mgr: NetworkPolicyManager,
         ip_filter: Arc<IpFilter>,
     ) -> Self {
-        let routing_table = KBucketTable::new(local_id);
-        let udp = Arc::new(KadUdpService::new(local_id, policy_mgr.clone()));
+        let local_id = Arc::new(std::sync::RwLock::new(local_id));
+        let routing_table = Arc::new(Mutex::new(KBucketTable::new(
+            *local_id.read().unwrap(),
+        )));
+        let udp = Arc::new(KadUdpService::new(Arc::clone(&local_id), policy_mgr.clone()));
+        udp.set_routing_table(Arc::clone(&routing_table));
         Self {
             local_id,
-            routing_table: Mutex::new(routing_table),
+            routing_table,
+            public_ipv4: std::sync::RwLock::new(None),
             downloads,
             policy_mgr,
             ip_filter,
@@ -60,7 +95,9 @@ impl KadService {
             in_flight_searches: Arc::new(Mutex::new(std::collections::HashSet::new())),
             ed2k_tcp_port: std::sync::atomic::AtomicU16::new(0),
             fw_user_hash: std::sync::RwLock::new([0u8; 16]),
-            last_peer_bootstrap: std::sync::Mutex::new(None),
+            last_bootstrap: std::sync::Mutex::new(None),
+            bootstrap_candidates: Mutex::new(std::collections::VecDeque::new()),
+            event_channel: std::sync::RwLock::new(None),
         }
     }
 
@@ -70,8 +107,49 @@ impl KadService {
             .store(port, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub fn local_id(&self) -> &KadId {
-        &self.local_id
+    /// Injecte le canal d'événements du daemon — active l'émission de
+    /// `kad.statusChanged` lors des mutations autonomes de la table de
+    /// routage (contacts appris en tâche de fond, évictions, rotation).
+    pub fn set_event_channel(
+        &self,
+        event_tx: tokio::sync::broadcast::Sender<String>,
+        sequence: Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        *self.event_channel.write().unwrap() = Some((event_tx, sequence));
+    }
+
+    /// Émet un nudge `kad.statusChanged` si le canal est câblé —
+    /// no-op sinon (tests unitaires, phase de boot avant injection).
+    fn emit_status_changed(&self) {
+        if let Some((tx, seq)) = self.event_channel.read().unwrap().as_ref() {
+            crate::services::DaemonEvent::KadStatusChanged {
+                sequence: seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+            }
+            .send(tx);
+        }
+    }
+
+    /// Records our public IPv4 (learned from the eD2K server-assigned HighID,
+    /// or a Kad `FIREWALLED_RES` echo). `None` when LowID/unknown — source
+    /// publishing then falls back to the socket bind address.
+    pub fn set_public_ipv4(&self, ip: Option<Ipv4Addr>) {
+        *self.public_ipv4.write().unwrap() = ip;
+    }
+
+    pub fn local_id(&self) -> KadId {
+        *self.local_id.read().unwrap()
+    }
+
+    /// Régénère l'identité Kad locale (`identityRotationHours`) : nouveau
+    /// KadID aléatoire propagé au service UDP, et table de routage reconstruite
+    /// (les distances XOR dépendent de l'ID local — les anciennes entrées
+    /// seraient mal triées).
+    pub async fn rotate_local_id(&self) -> KadId {
+        let new_id = KadId::random();
+        *self.local_id.write().unwrap() = new_id;
+        *self.routing_table.lock().await = KBucketTable::new(new_id);
+        self.emit_status_changed();
+        new_id
     }
 
     pub fn udp(&self) -> &Arc<KadUdpService> {
@@ -103,7 +181,18 @@ impl KadService {
     }
 
     pub async fn get_status(&self) -> KadStatusSnapshot {
-        let table = self.routing_table.lock().await;
+        // The routing_table guard must NOT be held across the other awaits
+        // below: get_snapshot locks in_flight and the UDP recv handlers lock
+        // in_flight → routing_table (learn_contact) — holding both here
+        // creates a lock-ordering cycle that froze the whole Kad pipeline.
+        let (total_contacts, total_replacements, active_buckets) = {
+            let table = self.routing_table.lock().await;
+            (
+                table.total_contacts(),
+                table.total_replacements(),
+                table.bucket_distribution().len(),
+            )
+        };
         let db_count = {
             let dl = self.downloads.lock().await;
             dl.db_ref().count_kad_contacts().unwrap_or(0)
@@ -127,11 +216,11 @@ impl KadService {
         };
 
         KadStatusSnapshot {
-            local_id: self.local_id.to_hex(),
-            total_contacts: table.total_contacts(),
-            total_replacements: table.total_replacements(),
+            local_id: self.local_id().to_hex(),
+            total_contacts,
+            total_replacements,
             db_contacts_count: db_count,
-            active_buckets: table.bucket_distribution().len(),
+            active_buckets,
             network_profile: self.policy_mgr.profile().to_string(),
             is_udp_active: udp_snap.is_active,
             udp_bind_address: udp_snap.bind_address,
@@ -223,19 +312,25 @@ impl KadService {
             }
         }
 
-        // Conform to official eMule (KademliaUDPListener.cpp:539):
-        // bool bAssumeVerified = CKademlia::GetRoutingZone()->GetNumContacts() == 0;
-        // In our daemon, bootstrap contacts from a live node are actively verified to ensure
-        // fast Kad lookup routing.
+        // eMule Process_KADEMLIA2_BOOTSTRAP_RES:
+        //   bool bAssumeVerified = GetRoutingZone()->GetNumContacts() == 0;
+        // Bootstrap contacts are presumed verified ONLY when the table is
+        // empty; afterwards they must prove IP ownership by answering our
+        // requests or completing HELLO_RES_ACK. (Computed before insertion.)
+        let assume_verified = {
+            let table = self.routing_table.lock().await;
+            table.total_contacts() == 0
+        };
         for c in &mut valid_contacts {
-            c.verified = true;
+            c.verified = assume_verified;
         }
 
         tracing::info!(
-            "Kad Bootstrap from {}: received {} contacts, {} valid accepted into routing table (all marked verified)",
+            "Kad Bootstrap from {}: received {} contacts, {} valid accepted into routing table (assume_verified={})",
             addr,
             count,
-            valid_contacts.len()
+            valid_contacts.len(),
+            assume_verified
         );
 
         // Insert into routing table
@@ -250,26 +345,100 @@ impl KadService {
         if !valid_contacts.is_empty() {
             let mut dl = self.downloads.lock().await;
             let _ = dl.db_mut().batch_upsert_kad_contacts(&valid_contacts);
+            // La table vient de s'enrichir hors RPC — nudge immédiat pour
+            // que le badge Kad de l'UI reflète la connexion sans attendre
+            // le prochain tick de maintenance (30 s).
+            self.emit_status_changed();
         }
 
         Ok(valid_contacts.len())
     }
 
-    /// Bootstraps Kad from a connected eD2K peer that advertised a Kad UDP
-    /// port (eMule "bootstrap from clients": any Kad-capable client can seed
-    /// the routing table). Only runs while the routing table is thin
-    /// (< 50 contacts) and at most once per minute.
-    pub async fn maybe_bootstrap_from_peer(&self, ip: Ipv4Addr, kad_udp_port: u16) {
-        const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
-        let thin = {
-            let table = self.routing_table.lock().await;
-            table.total_contacts() < 50
+    /// Nombre de candidats bootstrap en attente dans la file de drain
+    /// (diagnostics et tests — `s_liBootstrapList.GetCount()` d'eMule).
+    pub async fn pending_bootstrap_candidates(&self) -> usize {
+        self.bootstrap_candidates.lock().await.len()
+    }
+
+    /// Ajoute un candidat bootstrap à la file de drain — dédupliqué par
+    /// adresse, borné à 50 entrées comme `s_liBootstrapList` (le plus
+    /// ancien sort quand la file est pleine).
+    pub async fn add_bootstrap_candidate(&self, addr: SocketAddr, kad_version: u8) {
+        let mut pool = self.bootstrap_candidates.lock().await;
+        if pool.iter().any(|(a, _)| *a == addr) {
+            return;
+        }
+        if pool.len() >= 50 {
+            pool.pop_front();
+        }
+        pool.push_back((addr, kad_version));
+    }
+
+    /// Charge `<data_dir>/nodes.dat` en candidats bootstrap — équivalent
+    /// d'eMule qui lit le fichier d'amorçage dans `s_liBootstrapList` au
+    /// démarrage. Les contacts prouvent leur vivacité en répondant au
+    /// `BOOTSTRAP_REQ` du drain : aucun zombie n'entre dans la table.
+    /// No-op si le fichier est absent ou invalide.
+    pub async fn load_nodes_dat_candidates(&self, path: &std::path::Path) {
+        let Ok(bytes) = tokio::fs::read(path).await else {
+            return;
         };
-        if !thin {
+        match nodes_dat::parse_valid_nodes_contacts(&bytes, &self.policy_mgr, &self.ip_filter) {
+            Ok(contacts) => {
+                let count = contacts.len();
+                for c in contacts {
+                    self.add_bootstrap_candidate(
+                        SocketAddr::new(IpAddr::V4(c.ip), c.udp_port),
+                        c.version,
+                    )
+                    .await;
+                }
+                if count > 0 {
+                    tracing::info!(
+                        "Kad: {count} bootstrap candidates loaded from {}",
+                        path.display()
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Kad: ignored nodes.dat at {}: {e}", path.display());
+            }
+        }
+    }
+
+    /// Enregistre un pair eD2K annonçant un port UDP Kad comme candidat
+    /// bootstrap puis tente un envoi immédiat — eMule
+    /// `CKademlia::Bootstrap(ip, port)` : gate `!IsConnected()` + throttle
+    /// global de 10 s. Si l'envoi échoue, le candidat reste dans
+    /// `bootstrap_candidates` et la boucle de drain le retente (avant, un
+    /// simple timeout laissait Kad mort avec une table vide).
+    /// `kad_version < 2` (`KADEMLIA_VERSION2_47a`) est ignoré : ces pairs
+    /// ne parlent pas les paquets KADEMLIA2.
+    pub async fn maybe_bootstrap_from_peer(
+        &self,
+        ip: Ipv4Addr,
+        kad_udp_port: u16,
+        low_id: bool,
+        kad_version: u8,
+    ) {
+        const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration =
+            std::time::Duration::from_secs(10);
+        // A LowID peer is firewalled: its advertised Kad UDP port is not
+        // reachable, so a bootstrap request can only time out.
+        if low_id || kad_version < 2 {
+            return;
+        }
+        let addr = SocketAddr::new(IpAddr::V4(ip), kad_udp_port);
+        self.add_bootstrap_candidate(addr, kad_version).await;
+        let contacts = {
+            let table = self.routing_table.lock().await;
+            table.total_contacts()
+        };
+        if contacts >= 50 {
             return;
         }
         {
-            let mut last = self.last_peer_bootstrap.lock().unwrap();
+            let mut last = self.last_bootstrap.lock().unwrap();
             if last
                 .map(|t| t.elapsed() < PEER_BOOTSTRAP_MIN_INTERVAL)
                 .unwrap_or(false)
@@ -279,7 +448,7 @@ impl KadService {
             *last = Some(std::time::Instant::now());
         }
         tracing::info!(
-            "Kad: bootstrapping from connected peer {ip}:{kad_udp_port} (thin routing table)"
+            "Kad: bootstrapping from connected peer {ip}:{kad_udp_port} (routing table: {contacts} contacts)"
         );
         let _ = self
             .bootstrap_from_node(&ip.to_string(), kad_udp_port)
@@ -290,7 +459,7 @@ impl KadService {
     pub async fn bootstrap_active_contacts(&self, sample_size: usize) -> usize {
         let sample = {
             let table = self.routing_table.lock().await;
-            table.find_closest(&self.local_id, sample_size)
+            table.find_closest(&self.local_id(), sample_size)
         };
 
         if sample.is_empty() {
@@ -331,9 +500,11 @@ impl KadService {
                             }
                         };
                         if policy_allowed && self.ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                            let mut valid_c = c;
-                            valid_c.verified = true;
-                            all_valid.push(valid_c);
+                            // Contacts learned from a bootstrap response stay
+                            // unverified until they answer one of our requests
+                            // (eMule only assumes verified on an empty table,
+                            // which cannot happen here — we sampled seeds).
+                            all_valid.push(c);
                         }
                     }
                 }
@@ -357,10 +528,11 @@ impl KadService {
                 let mut dl = self.downloads.lock().await;
                 let _ = dl.db_mut().batch_upsert_kad_contacts(&all_valid);
             }
+            self.emit_status_changed();
         }
 
         tracing::info!(
-            "Kad bootstrap cycle finished: {} new verified contacts added to routing table and database",
+            "Kad bootstrap cycle finished: {} new contacts added to routing table and database",
             total_received
         );
         total_received
@@ -373,12 +545,81 @@ impl KadService {
         self: &Arc<Self>,
         cancel_token: CancellationToken,
     ) -> tokio::task::JoinHandle<()> {
+        // Drain de la file de candidats bootstrap — eMule
+        // `CKademlia::Process` (Kademlia.cpp:287) vide `s_liBootstrapList`
+        // à raison d'un `BOOTSTRAP_REQ` toutes les 2 s tant que la table
+        // est vide, toutes les 15 s quand elle a des contacts mais reste
+        // pauvre. Partage `last_bootstrap` avec les envois immédiats pour
+        // ne pas envoyer deux requêtes en rafale. Sans cette boucle, un
+        // timeout sur le premier candidat laissait Kad mort à 0 contact.
+        let drain_kad = Arc::clone(self);
+        let drain_cancel = cancel_token.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+            loop {
+                tokio::select! {
+                    _ = drain_cancel.cancelled() => break,
+                    _ = tick.tick() => {
+                        if !drain_kad.udp.get_snapshot().await.is_active {
+                            continue;
+                        }
+                        // Gate `!IsConnected()` d'eMule : `HasHadContact` —
+                        // on draine tant qu'aucun contact n'a jamais
+                        // répondu (vérifié), même si la table contient
+                        // des contacts non vérifiés (zombies importés).
+                        let (contacts, has_verified) = {
+                            let table = drain_kad.routing_table.lock().await;
+                            let has_v = !table
+                                .find_verified_closest(&drain_kad.local_id(), 1)
+                                .is_empty();
+                            (table.total_contacts(), has_v)
+                        };
+                        if has_verified {
+                            continue;
+                        }
+                        let min_interval = if contacts == 0 {
+                            std::time::Duration::from_secs(2)
+                        } else {
+                            std::time::Duration::from_secs(15)
+                        };
+                        {
+                            let last = drain_kad.last_bootstrap.lock().unwrap();
+                            if last
+                                .map(|t| t.elapsed() < min_interval)
+                                .unwrap_or(false)
+                            {
+                                continue;
+                            }
+                        }
+                        let (candidate, remaining) = {
+                            let mut pool = drain_kad.bootstrap_candidates.lock().await;
+                            let c = pool.pop_front();
+                            (c, pool.len())
+                        };
+                        let Some((addr, kad_version)) = candidate else {
+                            continue;
+                        };
+                        *drain_kad.last_bootstrap.lock().unwrap() =
+                            Some(std::time::Instant::now());
+                        tracing::info!(
+                            "Kad: bootstrap drain — trying {addr} (kad v{kad_version}, table {contacts} contacts, {remaining} candidates left)"
+                        );
+                        let _ = drain_kad
+                            .bootstrap_from_node(&addr.ip().to_string(), addr.port())
+                            .await;
+                    }
+                }
+            }
+        });
         let kad = Arc::clone(self);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
             // First tick completes immediately, skip it to let startup bootstrap finish
             interval.tick().await;
             let mut last_publish: Option<std::time::Instant> = None;
+            // Compteur de contacts déjà notifié — on n'émet
+            // `kad.statusChanged` que quand la valeur observable change.
+            let mut last_contacts: Option<usize> = None;
 
             loop {
                 tokio::select! {
@@ -401,6 +642,20 @@ impl KadService {
                             "[KAD_ROUTING] Kad routing table status: {} verified contacts in memory",
                             total_contacts
                         );
+
+                        // La table évolue aussi hors RPC (learn_contact,
+                        // lookups, bootstrap) — on nudge l'UI à chaque
+                        // changement pour que le badge sidebar reste frais.
+                        // Pas d'émission à la première observation : le
+                        // client refetch déjà le status à la connexion, et
+                        // un event intempestif ~30 s après le démarrage
+                        // s'intercalerait dans les réponses RPC en vol.
+                        if let Some(prev) = last_contacts {
+                            if prev != total_contacts {
+                                kad.emit_status_changed();
+                            }
+                        }
+                        last_contacts = Some(total_contacts);
 
                         if total_contacts > 0 && total_contacts < 400 {
                             tracing::info!(
@@ -444,21 +699,29 @@ impl KadService {
                                 .load(std::sync::atomic::Ordering::Relaxed);
                             let shared = {
                                 let dl = kad.downloads.lock().await;
-                                dl.list_shared_files().unwrap_or_default()
+                                dl.list_all_shared_files().unwrap_or_default()
                             };
                             if tcp_port > 0 {
                                 let mut published = 0usize;
                                 for f in shared.iter().filter(|f| f.enabled).take(200) {
                                     let hash = f.file_hash.trim().to_string();
+                                    // eMule `CKnownFile::PublishSrc`: part files
+                                    // are published as sources too — peers can
+                                    // fetch the parts we already completed.
                                     if let Ok(n) = kad
                                         .publish_source(&hash, f.file_size, tcp_port)
                                         .await
                                     {
                                         published += n;
                                     }
-                                    let _ = kad
-                                        .publish_keyword(&hash, &f.file_name, f.file_size)
-                                        .await;
+                                    // eMule keyword publish skips part files
+                                    // ("someone else should have the full file
+                                    // to publish these keywords").
+                                    if !f.is_partial {
+                                        let _ = kad
+                                            .publish_keyword(&hash, &f.file_name, f.file_size)
+                                            .await;
+                                    }
                                 }
                                 tracing::info!(
                                     "[KAD_PUBLISH] Republication round: {} file(s), {} successful source publishes",
@@ -474,59 +737,30 @@ impl KadService {
         })
     }
 
-    /// Performs iterative Find Node lookup for a target Kad ID with concurrency alpha = 3.
+    /// Performs an iterative Find Node lookup for a target Kad ID.
+    ///
+    /// Shares `lookup::converge_closest_contacts` (parallel ALPHA queries,
+    /// per-request timeouts, early `SEARCHTOLERANCE` stop) — eMule's search
+    /// state machine equivalent.
     pub async fn find_node(
         &self,
         target_kad_id: &KadId,
     ) -> Result<Vec<KadContactEntryDto>, String> {
-        let mut queried = std::collections::HashSet::new();
-        let max_rounds = 3;
+        let contacts = lookup::converge_closest_contacts(
+            target_kad_id,
+            self.routing_table.as_ref(),
+            &self.policy_mgr,
+            &self.ip_filter,
+            &self.udp,
+            6,
+        )
+        .await;
 
-        for _round in 0..max_rounds {
-            let candidates = {
-                let table = self.routing_table.lock().await;
-                table.find_closest_verified(target_kad_id, 3)
-            };
-
-            let unqueried: Vec<_> = candidates
-                .into_iter()
-                .filter(|c| !queried.contains(&c.kad_id))
-                .collect();
-
-            if unqueried.is_empty() {
-                break;
-            }
-
-            let mut discovered_new = false;
-            for contact in unqueried {
-                queried.insert(contact.kad_id);
-                let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-                let receiver_id = contact.kad_id;
-                if let Ok(neighbors) = self
-                    .udp
-                    .send_find_node(addr, target_kad_id, &receiver_id)
-                    .await
-                {
-                    let mut table = self.routing_table.lock().await;
-                    for n in neighbors {
-                        if table.insert_or_update(n).is_none() {
-                            discovered_new = true;
-                        }
-                    }
-                }
-            }
-
-            if !discovered_new {
-                break;
-            }
-        }
-
-        let final_closest = {
-            let table = self.routing_table.lock().await;
-            table.find_closest(target_kad_id, 20)
-        };
-
-        Ok(final_closest.iter().map(KadContactEntryDto::from).collect())
+        Ok(contacts
+            .iter()
+            .take(20)
+            .map(KadContactEntryDto::from)
+            .collect())
     }
 
     pub fn inspect_nodes_dat(&self, raw_bytes: &[u8]) -> Result<NodesDatInspectReport, String> {
@@ -567,7 +801,7 @@ impl KadService {
 
     pub async fn clear_contacts(&self) -> Result<usize, String> {
         let mut table = self.routing_table.lock().await;
-        *table = KBucketTable::new(self.local_id);
+        *table = KBucketTable::new(self.local_id());
 
         let mut dl = self.downloads.lock().await;
         dl.db_mut()
@@ -585,7 +819,7 @@ impl KadService {
         search_sources::search_sources_iterative(
             file_hash_hex,
             file_size,
-            &self.routing_table,
+            self.routing_table.as_ref(),
             &self.downloads,
             &self.policy_mgr,
             &self.ip_filter,
@@ -596,6 +830,12 @@ impl KadService {
     }
 
     /// Publishes this node as a source for a given file hash to the closest Kad contacts.
+    ///
+    /// The targets are converged with an iterative `find_node` lookup first:
+    /// eMule nodes silently drop `PUBLISH_SOURCE_REQ` when the file hash is
+    /// outside `SEARCHTOLERANCE` of their KadID, and only answer
+    /// `PUBLISH_RES` when the entry was actually stored — publishing blind
+    /// from the local table therefore almost always times out.
     pub async fn publish_source(
         &self,
         file_hash_hex: &str,
@@ -605,27 +845,79 @@ impl KadService {
         let target_kad_id = KadId::from_hash_hex(file_hash_hex)
             .ok_or_else(|| format!("Invalid target file hash hex: {file_hash_hex}"))?;
 
-        let closest_contacts = {
-            let table = self.routing_table.lock().await;
-            table.find_closest(&target_kad_id, 20)
-        };
+        let candidates = lookup::converge_closest_contacts(
+            &target_kad_id,
+            self.routing_table.as_ref(),
+            &self.policy_mgr,
+            &self.ip_filter,
+            &self.udp,
+            4,
+        )
+        .await;
 
-        if closest_contacts.is_empty() {
+        let mut targets: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kad_id.is_within_search_tolerance(&target_kad_id))
+            .take(10)
+            .cloned()
+            .collect();
+        if targets.is_empty() {
+            targets = candidates.into_iter().take(5).collect();
+        }
+
+        if targets.is_empty() {
             return Ok(0);
         }
 
-        let mut success_count = 0;
-        let total_queried = closest_contacts.len();
-        for contact in closest_contacts {
+        // Advertise our *public* IPv4 (eD2K HighID / FIREWALLED_RES echo) —
+        // indexers reject source contacts whose IP differs from the sender's
+        // (see our own PublishSourceReq check), so the socket bind address
+        // (0.0.0.0 or NATed) is unusable. Same for the UDP port: advertise the
+        // extern port once the firewall check proved it reachable.
+        let intern_udp = self.udp.local_udp_port().await.unwrap_or(0);
+        let (fw_observed_ip, advertised_udp_port) = {
+            let tracker = self.udp.firewall_tracker();
+            let fw = tracker.lock().await;
+            (fw.observed_ip, fw.effective_port(intern_udp))
+        };
+        let bind_ip = self.udp.bind_addr().await.and_then(|a| match a.ip() {
+            IpAddr::V4(v4) if !v4.is_unspecified() => Some(v4),
+            _ => None,
+        });
+        let Some(advertised_ip) = (*self.public_ipv4.read().unwrap())
+            .or(fw_observed_ip)
+            .or(bind_ip)
+        else {
+            tracing::warn!(
+                "Kad publish_source for {} skipped: public IPv4 unknown (no HighID, no FIREWALLED_RES, unspecified bind)",
+                file_hash_hex
+            );
+            return Ok(0);
+        };
+
+        let total_queried = targets.len();
+        let mut futs = Vec::with_capacity(total_queried);
+        for contact in targets {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-            if let Ok(status) = self
-                .udp
-                .send_publish_source(addr, &target_kad_id.0, file_size, tcp_port)
+            let udp = Arc::clone(&self.udp);
+            let target = target_kad_id.0;
+            futs.push(async move {
+                udp.send_publish_source(
+                    addr,
+                    &target,
+                    file_size,
+                    tcp_port,
+                    advertised_ip,
+                    advertised_udp_port,
+                )
                 .await
-            {
-                if status == 0 {
-                    success_count += 1;
-                }
+            });
+        }
+
+        let mut success_count = 0;
+        for res in futures_util::future::join_all(futs).await {
+            if let Ok(0) = res {
+                success_count += 1;
             }
         }
 
@@ -652,7 +944,7 @@ impl KadService {
             term,
             min_size,
             max_size,
-            &self.routing_table,
+            self.routing_table.as_ref(),
             &self.policy_mgr,
             &self.ip_filter,
             &self.udp,
@@ -671,7 +963,9 @@ impl KadService {
             file_hash_hex,
             file_name,
             file_size,
-            &self.routing_table,
+            self.routing_table.as_ref(),
+            &self.policy_mgr,
+            &self.ip_filter,
             &self.udp,
         )
         .await
@@ -689,10 +983,27 @@ impl KadService {
         let target_kad_id = KadId::from_hash_hex(file_hash_hex)
             .ok_or_else(|| format!("Invalid target file hash hex: {file_hash_hex}"))?;
 
-        let closest = {
-            let table = self.routing_table.lock().await;
-            table.find_closest(&target_kad_id, 20)
-        };
+        // Converge first (like search_sources/publish): eMule indexers only
+        // answer within SEARCHTOLERANCE of the key — the local table alone
+        // would mostly hit out-of-tolerance nodes that drop the request.
+        let candidates = lookup::converge_closest_contacts(
+            &target_kad_id,
+            self.routing_table.as_ref(),
+            &self.policy_mgr,
+            &self.ip_filter,
+            &self.udp,
+            4,
+        )
+        .await;
+        let mut closest: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kad_id.is_within_search_tolerance(&target_kad_id))
+            .take(10)
+            .cloned()
+            .collect();
+        if closest.is_empty() {
+            closest = candidates.into_iter().take(5).collect();
+        }
         if closest.is_empty() {
             return Ok(Vec::new());
         }
@@ -772,10 +1083,26 @@ impl KadService {
             });
         }
 
-        let closest = {
-            let table = self.routing_table.lock().await;
-            table.find_closest(&target_kad_id, 20)
-        };
+        // Converge first — indexers silently drop publishes for keys outside
+        // SEARCHTOLERANCE of their KadID.
+        let candidates = lookup::converge_closest_contacts(
+            &target_kad_id,
+            self.routing_table.as_ref(),
+            &self.policy_mgr,
+            &self.ip_filter,
+            &self.udp,
+            4,
+        )
+        .await;
+        let mut closest: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kad_id.is_within_search_tolerance(&target_kad_id))
+            .take(10)
+            .cloned()
+            .collect();
+        if closest.is_empty() {
+            closest = candidates.into_iter().take(5).collect();
+        }
         let total_queried = closest.len();
         if total_queried == 0 {
             return Ok(0);
@@ -786,7 +1113,7 @@ impl KadService {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
             if self
                 .udp
-                .send_publish_notes(addr, &target_kad_id.0, &self.local_id.0, &tags)
+                .send_publish_notes(addr, &target_kad_id.0, &self.local_id().0, &tags)
                 .await
                 .is_ok()
             {

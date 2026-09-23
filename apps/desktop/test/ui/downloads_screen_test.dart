@@ -2,27 +2,54 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/fake_daemon_client.dart';
-import 'package:desktop/data/rpc_daemon_client.dart';
-import 'package:desktop/main.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/emule_sion_app.dart';
 import 'package:desktop/services/daemon_supervisor.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/downloads/widgets/download_row.dart';
-import 'package:desktop/ui/features/downloads/widgets/downloads_sidebar.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:app_shell/ui/features/downloads/widgets/download_row.dart';
+import 'package:app_shell/ui/features/downloads/widgets/downloads_sidebar.dart';
 
 void main() {
   group('DownloadsScreen Widget Tests', () {
     late FakeMuleDaemonClient fakeClient;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: fakeClient);
+      viewModel = AppController(client: fakeClient);
       await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
     });
 
     tearDown(() {
       viewModel.dispose();
+    });
+
+    testWidgets('daemon card shows eD2K/Kad status and server name', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(EmuleSionApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // Déconnecté : eD2K rouge, Kad rouge, pas de ligne serveur.
+      expect(find.text('eD2K · Déconnecté'), findsOneWidget);
+      expect(find.text('Kad · Arrêté'), findsOneWidget);
+      expect(find.byKey(const Key('sidebar_server_line')), findsNothing);
+
+      // Connexion eD2K HighID + socket Kad démarré avec contacts.
+      await fakeClient.connectServer('176.103.48.36:4242');
+      await viewModel.serversController.refreshSession();
+      await fakeClient.startKadUdp();
+      await viewModel.kad.fetchStatus();
+      await tester.pumpAndSettle();
+
+      expect(find.text('eD2K · HighID'), findsOneWidget);
+      expect(find.text('Kad · Connecté'), findsOneWidget);
+      expect(find.byKey(const Key('sidebar_server_line')), findsOneWidget);
+      final serverLine =
+          tester.widget<Text>(find.byKey(const Key('sidebar_server_line')));
+      expect(serverLine.data, 'Serveur eD2K de test');
     });
 
     testWidgets('renders sidebar with branding and download items', (WidgetTester tester) async {
@@ -36,25 +63,25 @@ void main() {
 
       // Brand and sidebar
       expect(find.text('Emule-Sion'), findsOneWidget);
-      expect(find.text('All Downloads'), findsAtLeastNWidgets(1));
+      expect(find.text('Tous les téléchargements'), findsAtLeastNWidgets(1));
       expect(
         find.descendant(
           of: find.byType(DownloadsSidebar),
-          matching: find.text('Active'),
+          matching: find.text('Actifs'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: find.byType(DownloadsSidebar),
-          matching: find.text('Paused'),
+          matching: find.text('En pause'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: find.byType(DownloadsSidebar),
-          matching: find.text('Completed'),
+          matching: find.text('Terminés'),
         ),
         findsOneWidget,
       );
@@ -77,7 +104,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(DownloadsSidebar),
-          matching: find.text('Paused'),
+          matching: find.text('En pause'),
         ),
       );
       await tester.pumpAndSettle();
@@ -91,7 +118,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(DownloadsSidebar),
-          matching: find.text('Completed'),
+          matching: find.text('Terminés'),
         ),
       );
       await tester.pumpAndSettle();
@@ -101,7 +128,7 @@ void main() {
       expect(find.text('Blender_Benchmark_Scene.blend'), findsNothing);
 
       // Back to All
-      await tester.tap(find.text('All Downloads').first);
+      await tester.tap(find.text('Tous les téléchargements').first);
       await tester.pumpAndSettle();
       expect(find.byType(DownloadRow), findsNWidgets(3));
     });
@@ -132,15 +159,17 @@ void main() {
       await tester.pumpAndSettle();
 
       // Details panel should not be visible initially
-      expect(find.textContaining('Details:'), findsNothing);
+      expect(find.textContaining('Détails :'), findsNothing);
 
-      // Tap on Debian row
+      // Tap on Debian row — the InkWell has onDoubleTap (inline expansion),
+      // so the single-tap callback only fires after the double-tap timeout.
       await tester.tap(find.text('Debian_12_netinst.iso'));
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
 
       // Details panel is now shown
-      expect(find.text('Details: Debian_12_netinst.iso'), findsOneWidget);
-      expect(find.text('Download ID'), findsOneWidget);
+      expect(find.text('Détails : Debian_12_netinst.iso'), findsOneWidget);
+      expect(find.text('ID du téléchargement'), findsOneWidget);
     });
 
     testWidgets('add eD2K link dialog validates and adds download', (WidgetTester tester) async {
@@ -152,10 +181,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap "+ Add Link"
-      await tester.tap(find.widgetWithText(FilledButton, 'Add Link'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Ajouter un lien'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Add eD2K Download'), findsOneWidget);
+      expect(find.text('Ajouter un téléchargement eD2K'), findsOneWidget);
 
       // Find the eD2K link text field inside dialog
       final dialogTextField = find.descendant(
@@ -167,7 +196,7 @@ void main() {
       await tester.enterText(dialogTextField, 'invalid_link');
       await tester.pumpAndSettle();
 
-      expect(find.text('Must start with "ed2k://|file|"'), findsOneWidget);
+      expect(find.text('Le lien doit commencer par "ed2k://|file|"'), findsOneWidget);
 
       // Enter valid link
       const validLink =
@@ -180,7 +209,7 @@ void main() {
       expect(find.text('4.00 GB'), findsOneWidget);
 
       // Submit
-      final submitButton = find.widgetWithText(FilledButton, 'Add Download');
+      final submitButton = find.widgetWithText(FilledButton, 'Ajouter le téléchargement');
       await tester.tap(submitButton);
       await tester.pumpAndSettle();
 
@@ -188,7 +217,10 @@ void main() {
       expect(find.byType(Dialog), findsNothing);
       expect(find.text('OpenSourceGame.iso'), findsOneWidget);
       expect(find.byType(DownloadRow), findsNWidgets(4));
-      expect(find.text('Fichier "OpenSourceGame.iso" ajouté aux téléchargements'), findsOneWidget);
+      expect(
+        viewModel.statusNotification,
+        contains('OpenSourceGame.iso'),
+      );
     });
 
     testWidgets('displays Loopback Lab Mode badge with tooltip and hides dev tools by default',
@@ -201,7 +233,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Loopback Lab Mode badge is visible with security tooltip
-      expect(find.text('Loopback Lab Mode'), findsOneWidget);
+      expect(find.text('Mode Lab Loopback'), findsOneWidget);
       expect(find.byIcon(Icons.science_outlined), findsOneWidget);
       expect(
         find.byWidgetPredicate(
@@ -221,7 +253,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      final devVm = DownloadsViewModel(
+      final devVm = AppController(
         client: fakeClient,
         isDevToolsAvailable: true,
       );
@@ -238,7 +270,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.bug_report_rounded));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Dev Simulation Tools:'), findsOneWidget);
+      expect(find.textContaining('Outils de simulation dev :'), findsOneWidget);
     });
 
     testWidgets('renders informative empty state with dedicated icon and loopback notice',
@@ -253,21 +285,21 @@ void main() {
       for (final id in ['item-1', 'item-2', 'item-3']) {
         await emptyFake.removeDownload(id);
       }
-      final emptyVm = DownloadsViewModel(client: emptyFake);
+      final emptyVm = AppController(client: emptyFake);
       addTearDown(emptyVm.dispose);
 
       await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
-      expect(find.text('No downloads in this view'), findsOneWidget);
+      expect(find.text('Aucun téléchargement dans cette vue'), findsOneWidget);
       expect(
         find.text(
-          'Add an eD2K link to create a local download entry.\nThis lab build operates in loopback-only mode.',
+          'Ajoutez un lien eD2K pour créer un téléchargement local.\nCe build lab fonctionne en loopback uniquement.',
         ),
         findsOneWidget,
       );
-      expect(find.text('Add eD2K Link'), findsOneWidget);
+      expect(find.text('Ajouter un lien eD2K'), findsOneWidget);
     });
 
     testWidgets('dims sidebar filters with zero count except selected',
@@ -281,7 +313,7 @@ void main() {
       for (final id in ['item-1', 'item-2', 'item-3']) {
         await emptyFake.removeDownload(id);
       }
-      final emptyVm = DownloadsViewModel(client: emptyFake);
+      final emptyVm = AppController(client: emptyFake);
       addTearDown(emptyVm.dispose);
 
       await tester.pumpWidget(EmuleSionApp(viewModel: emptyVm));

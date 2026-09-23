@@ -2,49 +2,23 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import '../data/rpc_daemon_client.dart';
-import '../domain/models/daemon_info.dart';
+import 'package:mule_client/mule_client.dart';
 import 'work_directory_resolver.dart';
+import 'package:app_shell/core/daemon_lifecycle.dart';
+import 'package:app_shell/core/work_dirs.dart';
 
-enum SupervisorState {
-  idle,
-  discovering,
-  starting,
-  connected,
-  reconnecting,
-  protocolMismatch,
-  authError,
-  error;
+export 'package:app_shell/core/daemon_lifecycle.dart' show SupervisorState;
 
-  String get label {
-    switch (this) {
-      case SupervisorState.idle:
-        return 'Idle';
-      case SupervisorState.discovering:
-        return 'Discovering Daemon...';
-      case SupervisorState.starting:
-        return 'Starting Daemon...';
-      case SupervisorState.connected:
-        return 'Daemon Connected';
-      case SupervisorState.reconnecting:
-        return 'Reconnecting...';
-      case SupervisorState.protocolMismatch:
-        return 'Protocol Version Incompatible';
-      case SupervisorState.authError:
-        return 'Authentication Failed';
-      case SupervisorState.error:
-        return 'Daemon Error';
-    }
-  }
-
-  bool get isConnected => this == SupervisorState.connected;
-}
-
-class DaemonSessionFile {
+class DaemonSessionFile implements DaemonSessionInfo {
+  @override
   final int protocolVersion;
+  @override
   final String instanceId;
+  @override
   final int pid;
+  @override
   final String endpoint;
+  @override
   final int startedAtUnixMs;
 
   const DaemonSessionFile({
@@ -66,7 +40,7 @@ class DaemonSessionFile {
   }
 }
 
-class DaemonSupervisor {
+class DaemonSupervisor implements DaemonLifecycle {
   final RpcDaemonClient client;
   final Directory? customDataDir;
   final String? customExecutablePath;
@@ -92,14 +66,31 @@ class DaemonSupervisor {
     this.customExecutablePath,
   });
 
+  @override
   SupervisorState get state => _state;
+  @override
   String? get lastError => _lastError;
   String? get currentInstanceId => _currentInstanceId;
+  @override
   int? get activePid => _activePid ?? _managedProcess?.pid;
+  @override
   DaemonSessionFile? get activeSession => _activeSession;
   DaemonInfo? get daemonInfo => client.daemonInfo;
+  @override
   Stream<SupervisorState> get stateStream => _stateController.stream;
+  @override
   Stream<void> get instanceChangedStream => _instanceChangedController.stream;
+
+  @override
+  WorkDirInfo resolveWorkDirInfo() {
+    final r = resolveWorkDir();
+    return WorkDirInfo(
+      bundleRootPath: r.bundleRoot?.path,
+      workDirPath: r.workdir.path,
+      defaultDownloadDirPath: r.defaultDownloadDirectory.path,
+      mode: r.mode,
+    );
+  }
 
   ResolvedWorkDir resolveWorkDir() {
     return WorkDirectoryResolver.resolve(
@@ -123,6 +114,7 @@ class DaemonSupervisor {
   final StringBuffer _stderrBuffer = StringBuffer();
   int? _lastExitCode;
 
+  @override
   Future<void> start() async {
     _reconnectAttempts = 0;
     _reconnectTimer?.cancel();
@@ -435,6 +427,7 @@ class DaemonSupervisor {
     return null;
   }
 
+  @override
   Future<void> stop() async {
     _isDisposed = true;
     _reconnectTimer?.cancel();
@@ -477,6 +470,7 @@ class DaemonSupervisor {
     _setState(SupervisorState.idle);
   }
 
+  @override
   void dispose() {
     stop();
     _stateController.close();

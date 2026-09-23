@@ -187,7 +187,7 @@ async fn test_udp_firewall_check_succeeds_via_mock_peer() {
         let mut key_data = [0u8; 6];
         key_data[..4].copy_from_slice(&receiver_key.to_le_bytes());
         key_data[4..6].copy_from_slice(&rand_part.to_le_bytes());
-        let md5_key: [u8; 16] = Md5::digest(&key_data).into();
+        let md5_key: [u8; 16] = Md5::digest(key_data).into();
         let mut cipher = Rc4Cipher::new(&md5_key, true);
         let mut out = vec![0x46u8]; // random proto byte (not a valid Kad proto)
         out.extend_from_slice(&rand_part.to_le_bytes());
@@ -484,7 +484,10 @@ async fn test_kad_notes_publish_and_search_roundtrip() {
         .expect("start kad udp");
 
     let mock = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock");
-    let file_hash = [0x42u8; 16];
+    // The publish target must sit within SEARCHTOLERANCE of the daemon's
+    // KadID — eMule drops out-of-tolerance publishes silently. Reusing the
+    // local ID gives distance 0 and keeps the test deterministic.
+    let file_hash = state.kad.local_id().0;
     let source_id = [0x77u8; 16];
 
     // 1. PublishNotesReq → daemon stores it and answers 0x4B with load.

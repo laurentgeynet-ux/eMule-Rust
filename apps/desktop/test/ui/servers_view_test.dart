@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/fake_daemon_client.dart';
-import 'package:desktop/main.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/servers/views/servers_screen.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:app_shell/ui/features/servers/views/servers_screen.dart';
 
 void main() {
   group('ServersView UI Tests', () {
     late FakeMuleDaemonClient fakeClient;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: fakeClient);
+      viewModel = AppController(client: fakeClient);
       await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
     });
 
@@ -76,11 +76,11 @@ void main() {
       // Table should now display 2 servers
       expect(find.text('eDonkeyServer No2'), findsOneWidget);
       expect(find.text('176.103.48.36:4184'), findsOneWidget);
-      expect(find.textContaining('Autorise'), findsWidgets);
+      expect(find.textContaining('Autorisé'), findsWidgets);
 
       expect(find.text('Filtered Rouge Server'), findsOneWidget);
       expect(find.text('10.20.30.40:4661'), findsOneWidget);
-      expect(find.textContaining('Bloque'), findsWidgets);
+      expect(find.textContaining('Bloqué'), findsWidgets);
 
       // Toggle server enable/disable on the first server
       final pauseBtn = find.byIcon(Icons.pause_rounded).first;
@@ -90,7 +90,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should now be disabled
-      expect(find.textContaining('Desactive'), findsOneWidget);
+      expect(find.textContaining('Désactivé'), findsOneWidget);
 
       // Delete server
       final deleteBtn = find.byIcon(Icons.delete_outline).first;

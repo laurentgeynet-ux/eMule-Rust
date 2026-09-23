@@ -72,8 +72,10 @@ pub const TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE: u8 = 0x23;
 pub const TAG_SPECIAL_EMULE_EXT_COMMENTS: u8 = 0x24;
 /// Canonical eMule extension extended requests tag ID (`0x25` = 37).
 pub const TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST: u8 = 0x25;
-/// Canonical eMule extension compatible client tag ID (`0x27` = 39).
-pub const TAG_SPECIAL_EMULE_EXT_COMPATIBLECLIENT: u8 = 0x27;
+/// Canonical eMule extension compatible client tag ID (`0x26` = 38, `ET_COMPATIBLECLIENT`).
+pub const TAG_SPECIAL_EMULE_EXT_COMPATIBLECLIENT: u8 = 0x26;
+/// Canonical eMule extension feature flags tag ID (`0x27` = 39, `ET_FEATURES`).
+pub const TAG_SPECIAL_EMULE_EXT_FEATURES: u8 = 0x27;
 
 /// Server capability flag: Zlib TCP compression supported.
 pub const SRVCAP_ZLIB: u32 = 0x0001;
@@ -129,6 +131,7 @@ impl TagName {
                 TAG_SPECIAL_EMULE_EXT_COMMENTS => "comments".to_string(),
                 TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST => "extended_request".to_string(),
                 TAG_SPECIAL_EMULE_EXT_COMPATIBLECLIENT => "compatible_client".to_string(),
+                TAG_SPECIAL_EMULE_EXT_FEATURES => "features".to_string(),
                 other => format!("special_0x{other:02X}"),
             },
             Self::Text(s) => s.clone(),
@@ -202,6 +205,18 @@ impl<'a> TagReader<'a> {
     #[inline]
     pub fn pos(&self) -> usize {
         self.pos
+    }
+
+    /// Returns the protocol byte this reader was created for.
+    #[inline]
+    pub fn protocol(&self) -> u8 {
+        self.protocol
+    }
+
+    /// Returns the opcode context this reader was created for, if any.
+    #[inline]
+    pub fn opcode(&self) -> Option<u8> {
+        self.opcode
     }
 
     /// Returns the number of remaining bytes.

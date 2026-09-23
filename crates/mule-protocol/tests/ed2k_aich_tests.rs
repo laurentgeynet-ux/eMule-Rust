@@ -1,6 +1,6 @@
 //! Tests for the AICH wire codec:
-//! `OP_AICHREQUEST` (0x12), `OP_AICHANSWER` (0x13),
-//! `OP_AICHFILEHASHREQ` (0x14), `OP_AICHFILEHASHANS` (0x15).
+//! `OP_AICHREQUEST` (0x9B), `OP_AICHANSWER` (0x9C),
+//! `OP_AICHFILEHASHREQ` (0x9E), `OP_AICHFILEHASHANS` (0x9D) — valeurs eMule 0.72a.
 //! Local-only: no network, no file writes.
 
 use mule_protocol::ed2k::{

@@ -31,25 +31,43 @@ impl KadCodec {
     }
 
     /// Encodes a Kad2 Hello request packet.
+    ///
+    /// `misc_options`: eMule `KADMISCOPTIONS` byte (bit0 = UDP firewalled,
+    /// bit1 = TCP firewalled, bit2 = request HELLO_RES_ACK) — sent only for
+    /// Kad >= 8, pass `None` to omit.
     #[inline]
     pub fn encode_hello_req(
         kad_id: &KadIdBytes,
         udp_port: u16,
         version: u8,
         tcp_port: u16,
+        misc_options: Option<u8>,
     ) -> Bytes {
-        KadEncoder::encode_hello_req(kad_id, udp_port, version, tcp_port)
+        KadEncoder::encode_hello_req(kad_id, udp_port, version, tcp_port, misc_options)
     }
 
-    /// Encodes a Kad2 Hello response packet.
+    /// Encodes a Kad2 Hello response packet (same layout as the request).
     #[inline]
     pub fn encode_hello_res(
         kad_id: &KadIdBytes,
         udp_port: u16,
         version: u8,
         tcp_port: u16,
+        misc_options: Option<u8>,
     ) -> Bytes {
-        KadEncoder::encode_hello_res(kad_id, udp_port, version, tcp_port)
+        KadEncoder::encode_hello_res(kad_id, udp_port, version, tcp_port, misc_options)
+    }
+
+    /// Encodes a `KADEMLIA2_HELLO_RES_ACK` (0x22) — `[kadID 16][tag_count u8][tags]`.
+    #[inline]
+    pub fn encode_hello_res_ack(kad_id: &KadIdBytes) -> Bytes {
+        KadEncoder::encode_hello_res_ack(kad_id)
+    }
+
+    /// Encodes a `KADEMLIA_FIREWALLED_RES` (0x58) — `[ip u32 LE]`.
+    #[inline]
+    pub fn encode_firewalled_res(ip: u32) -> Bytes {
+        KadEncoder::encode_firewalled_res(ip)
     }
 
     /// Encodes a Kad2 Bootstrap request packet (0x01).
@@ -59,14 +77,17 @@ impl KadCodec {
     }
 
     /// Encodes a Kad2 Bootstrap response packet (0x09) with a list of contacts.
+    ///
+    /// `tcp_port` is the responder's eD2K **TCP** port (eMule
+    /// `thePrefs.GetPort()` in the response header).
     #[inline]
     pub fn encode_bootstrap_res(
         bootstrap_id: &KadIdBytes,
-        port: u16,
+        tcp_port: u16,
         version: u8,
         contacts: &[KadContactWire],
     ) -> Bytes {
-        KadEncoder::encode_bootstrap_res(bootstrap_id, port, version, contacts)
+        KadEncoder::encode_bootstrap_res(bootstrap_id, tcp_port, version, contacts)
     }
 
     /// Encodes a Kad2 Find Node request packet.

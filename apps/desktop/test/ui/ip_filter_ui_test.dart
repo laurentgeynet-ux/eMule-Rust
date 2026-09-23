@@ -1,23 +1,40 @@
-import 'package:desktop/data/fake_daemon_client.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/downloads/views/downloads_screen.dart';
-import 'package:desktop/ui/features/downloads/widgets/ip_filter_dialog.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_shell/app/providers.dart';
+import 'package:app_shell/l10n/generated/app_localizations.dart';
+import 'package:app_shell/ui/features/downloads/views/downloads_screen.dart';
+import 'package:app_shell/ui/features/settings/views/settings_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('IP filter button opens dialog and displays tabs', (WidgetTester tester) async {
+  testWidgets('IP filter button opens the Security settings section',
+      (WidgetTester tester) async {
     final client = FakeMuleDaemonClient(enableAutoSimulation: false);
-    final viewModel = DownloadsViewModel(client: client, isDevToolsAvailable: true);
+    final viewModel = AppController(client: client, isDevToolsAvailable: true);
 
     await tester.binding.setSurfaceSize(const Size(1280, 800));
 
     await tester.pumpWidget(
-      MaterialApp(
+      ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
-          body: DownloadsScreen(viewModel: viewModel),
+          body: DownloadsScreen(),
         ),
-      ),
+      )),
     );
     await tester.pumpAndSettle();
 
@@ -25,21 +42,25 @@ void main() {
     final filterBtn = find.byKey(const Key('ip_filter_button'));
     expect(filterBtn, findsOneWidget);
 
-    // Tap button to open dialog
+    // The top bar is horizontally scrollable — longer French labels can
+    // push the button out of the viewport, so scroll it into view first.
+    await tester.ensureVisible(filterBtn);
+    await tester.pumpAndSettle();
+
+    // Tap button → navigates to the Settings page (standalone mode falls
+    // back to the section switch, opening the General section).
     await tester.tap(filterBtn);
     await tester.pumpAndSettle();
 
-    // Verify dialog content
-    expect(find.byType(IpFilterDialog), findsOneWidget);
-    expect(find.text('IP Filter & Rate Limiters'), findsOneWidget);
-    expect(find.text('IP Filter'), findsOneWidget);
-    expect(find.text('Rate Limits'), findsOneWidget);
+    expect(find.byType(SettingsView), findsOneWidget);
 
-    // Switch to Rate Limits tab
-    await tester.tap(find.text('Rate Limits'));
+    // Select the Security rail section — IP filter + rate limits are
+    // stacked in the same scrollable pane (no tabs anymore).
+    await tester.tap(find.text('Sécurité'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Bandwidth & Token Bucket Quotas'), findsOneWidget);
-    expect(find.text('Save Limits'), findsOneWidget);
+    expect(find.text('Importer un ipfilter.dat'), findsOneWidget);
+    expect(find.text('Limites de débit (Token Buckets)'), findsOneWidget);
+    expect(find.text('Enregistrer les limites'), findsOneWidget);
   });
 }

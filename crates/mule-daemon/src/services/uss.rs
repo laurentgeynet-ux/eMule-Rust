@@ -1,12 +1,14 @@
 //! USS (Upload Speed Sense) — dynamic upload limiter based on measured
 //! network latency, adapted from eMule's `LastCommonRouteFinder`.
 //!
-//! eMule traces ICMP routes to remote peers to find the "last common host"
-//! (the ISP-side router hop), then pings it and adjusts the upload rate so
-//! that ping stays below a tolerance. Raw ICMP sockets require elevated
-//! privileges, so this implementation measures round-trip time via TCP
-//! connect probes to a stable target — by default the connected eD2K server,
-//! or a configured `host:port`. The control law itself is the same:
+//! Like eMule, the probe target is the "last common host": ICMP routes are
+//! traced toward a sample of remote peers (server, upload clients,
+//! download sources) and the deepest hop shared by all routes — typically
+//! the ISP aggregation router — is pinged. That measures congestion on the
+//! *local* uplink specifically. On Windows this uses `IcmpSendEcho`
+//! (unprivileged); without a common host or on other platforms it falls
+//! back to TCP-connect RTT against the connected eD2K server or a
+//! configured `host:port`. The control law itself is the same:
 //!
 //! ```text
 //! soll_ping = ms_mode ? tolerance_ms : initial_ping * ((tolerance-100)/100)
@@ -33,6 +35,7 @@ use mule_network_policy::cancellation::CancellationToken;
 use mule_network_policy::PolicyRateLimiters;
 
 use crate::services::downloads::DownloadService;
+use crate::services::uss_icmp;
 use crate::services::server_session::{ServerConnectionStatus, ServerSessionManager};
 use crate::services::upload_queue::UploadManager;
 
@@ -53,9 +56,34 @@ const LOWEST_INITIAL_PING_MS: u32 = 20;
 const BASELINE_PROBES: usize = 10;
 /// Probe timeout.
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+/// ICMP probe timeout (last-common-host ping).
+const ICMP_PROBE_TIMEOUT_MS: u32 = 2000;
 /// Give up the baseline/control loop after this many consecutive probe
 /// failures (eMule restarts after 60).
 const MAX_CONSECUTIVE_FAILURES: u32 = 60;
+/// Resolved ping target is cached this long — route discovery runs at
+/// most once per TTL (eMule re-evaluates its host set periodically).
+const TARGET_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+/// Max traceroute destinations sampled (eMule keeps a small host set).
+const MAX_TRACE_DESTINATIONS: usize = 8;
+
+/// Probe target — `Icmp` is the discovered last-common-host (eMule LCRF),
+/// `Tcp` is the connect-RTT fallback (explicit `pingHost` or connected
+/// eD2K server).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PingTarget {
+    Icmp(std::net::Ipv4Addr),
+    Tcp(SocketAddr),
+}
+
+impl std::fmt::Display for PingTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PingTarget::Icmp(ip) => write!(f, "icmp:{ip}"),
+            PingTarget::Tcp(addr) => write!(f, "tcp:{addr}"),
+        }
+    }
+}
 /// Upload speed never goes below this floor when USS drives it (1 KiB/s,
 /// eMule `m_minUpload` lower bound).
 const MIN_UPLOAD_BPS: u64 = 1024;
@@ -131,6 +159,10 @@ struct UssInner {
     /// Upload limit configured manually via `limits.set` — restored when
     /// USS is disabled.
     manual_limit_bps: u64,
+    /// Download limit *configurée* (`rate_limit_download_bps`) — le bucket
+    /// download est replafonné à `emule_ud_ratio(dl_cfg, upload)` à chaque
+    /// ajustement dynamique (eMule `GetMaxDownloadInBytesPerSec` dynamique).
+    download_limit_bps: u64,
 }
 
 /// USS controller. Drives `upload_bucket` when enabled.
@@ -162,6 +194,7 @@ impl UssService {
                 lowest_ping_ms: 0,
                 ping_target: None,
                 manual_limit_bps: 0,
+                download_limit_bps: 0,
             })),
             accept_new_client: Arc::new(AtomicBool::new(true)),
             running: Arc::new(AtomicBool::new(false)),
@@ -234,14 +267,25 @@ impl UssService {
         self.inner.write().unwrap().manual_limit_bps = bps;
     }
 
+    /// Records the *configured* download limit (`limits.set`, capacity
+    /// clamp, boot) so the control loop can re-cap the download bucket
+    /// with the eMule upload/download ratio on every dynamic update.
+    pub fn note_manual_download_limit(&self, bps: u64) {
+        self.inner.write().unwrap().download_limit_bps = bps;
+    }
+
     /// Starts the background control loop. Idempotent.
     pub fn start(&self, limiters: Arc<PolicyRateLimiters>, cancel: CancellationToken) {
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
         let svc = self.clone();
+        let running = Arc::clone(&self.running);
         let handle = tokio::spawn(async move {
             svc.run(limiters, cancel).await;
+            // Le kill switch annule la boucle via le token ; on libère le
+            // drapeau pour que `network.enable` puisse relancer le service.
+            running.store(false, Ordering::SeqCst);
         });
         if let Ok(mut t) = self.task.try_lock() {
             *t = Some(handle.abort_handle());
@@ -250,12 +294,17 @@ impl UssService {
 
     async fn run(&self, limiters: Arc<PolicyRateLimiters>, cancel: CancellationToken) {
         let upload_bucket = &limiters.upload_bucket;
+        let download_bucket = &limiters.download_bucket;
         let mut delays: VecDeque<u32> = VecDeque::new();
         let mut initial_ping_ms: u32 = 0;
         let mut upload_bps: u64 = 0;
         let mut consecutive_failures: u32 = 0;
         let mut baseline_done = false;
         let loop_start = Instant::now();
+        // Cible de ping résolue + horodatage — la découverte du dernier
+        // routeur commun (traceroutes ICMP) est coûteuse : on la rejoue au
+        // plus toutes les TARGET_CACHE_TTL, ou après re-baseline.
+        let mut cached_target: Option<(PingTarget, Instant)> = None;
 
         // Load persisted config once.
         let dl_opt = { self.downloads.read().unwrap().clone() };
@@ -265,6 +314,22 @@ impl UssService {
                     self.inner.write().unwrap().config = cfg;
                 }
             }
+            // Limite download configurée persistée (ratio eMule dynamique).
+            if let Ok(Some(s)) = dl.lock().await.get_setting("rate_limit_download_bps") {
+                if let Ok(v) = s.trim().parse::<u64>() {
+                    self.inner.write().unwrap().download_limit_bps = v;
+                }
+            }
+        }
+
+        /// Replafonne le bucket download au ratio eMule
+        /// (`GetMaxDownloadInBytesPerSec`) pour la limite upload courante.
+        macro_rules! apply_ud_ratio {
+            ($ul_eff:expr) => {{
+                let dl_cfg = self.inner.read().unwrap().download_limit_bps;
+                let eff = mule_network_policy::emule_ud_ratio(dl_cfg, $ul_eff);
+                download_bucket.set_rate(eff, eff.max(65536));
+            }};
         }
 
         loop {
@@ -281,6 +346,7 @@ impl UssService {
                         inner.state = "disabled";
                         inner.current_limit_bps = 0;
                         upload_bucket.set_rate(manual, manual.max(65536));
+                        apply_ud_ratio!(manual);
                     }
                 }
                 baseline_done = false;
@@ -294,9 +360,17 @@ impl UssService {
                 continue;
             }
 
-            // Resolve probe target.
-            let target = self.resolve_target(&cfg).await;
-            let Some(target) = target else {
+            // Resolve probe target (cached — route discovery is expensive).
+            let stale = cached_target
+                .as_ref()
+                .is_none_or(|(_, at)| at.elapsed() >= TARGET_CACHE_TTL);
+            if stale {
+                cached_target = self
+                    .resolve_target(&cfg)
+                    .await
+                    .map(|t| (t, Instant::now()));
+            }
+            let Some((target, _)) = cached_target.clone() else {
                 self.set_state("waiting");
                 baseline_done = false;
                 tokio::select! {
@@ -316,14 +390,11 @@ impl UssService {
                     if cancel.is_cancelled() || !self.config().enabled {
                         break;
                     }
-                    match probe_rtt(target).await {
-                        Some(ms) => {
-                            successes += 1;
-                            if ms > 0 && ms < best {
-                                best = ms.max(LOWEST_INITIAL_PING_MS);
-                            }
+                    if let Some(ms) = probe_target(&target).await {
+                        successes += 1;
+                        if ms > 0 && ms < best {
+                            best = ms.max(LOWEST_INITIAL_PING_MS);
                         }
-                        None => {}
                     }
                     tokio::select! {
                         _ = cancel.cancelled() => return,
@@ -355,6 +426,7 @@ impl UssService {
                     upload_bps = upload_bps.min(max);
                 }
                 upload_bucket.set_rate(upload_bps, upload_bps.max(65536));
+                apply_ud_ratio!(upload_bps);
                 delays.clear();
                 consecutive_failures = 0;
                 baseline_done = true;
@@ -365,11 +437,9 @@ impl UssService {
             // --- Control loop ---
             // eMule: ticksBetweenPings = 100*64/upload*1000 ms, clamped
             // [125ms, 1s] — probes use ~1% of upload bandwidth.
-            let interval_ms = if upload_bps > 0 {
-                ((100 * 64 * 1000) / upload_bps).clamp(125, 1000)
-            } else {
-                1000
-            };
+            let interval_ms = 6_400_000u64
+                .checked_div(upload_bps)
+                .map_or(1000, |v| v.clamp(125, 1000));
             tokio::select! {
                 _ = cancel.cancelled() => return,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(interval_ms)) => {}
@@ -391,7 +461,7 @@ impl UssService {
                 (initial_ping_ms as f64 * factor) as i64
             };
 
-            let raw_ping: i64 = match probe_rtt(target).await {
+            let raw_ping: i64 = match probe_target(&target).await {
                 Some(ms) => {
                     consecutive_failures = 0;
                     let ms = ms.max(1);
@@ -411,8 +481,10 @@ impl UssService {
             };
 
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
-                // Re-baseline: topology/target may have changed.
+                // Re-baseline: topology/target may have changed — force
+                // target re-resolution (route discovery) too.
                 baseline_done = false;
+                cached_target = None;
                 delays.clear();
                 continue;
             }
@@ -472,6 +544,7 @@ impl UssService {
                 upload_bps = upload_bps.min(cfg.max_upload_bps);
             }
             upload_bucket.set_rate(upload_bps, upload_bps.max(65536));
+            apply_ud_ratio!(upload_bps);
 
             {
                 let mut inner = self.inner.write().unwrap();
@@ -496,19 +569,107 @@ impl UssService {
         }
     }
 
-    async fn resolve_target(&self, cfg: &UssConfig) -> Option<SocketAddr> {
+    async fn resolve_target(&self, cfg: &UssConfig) -> Option<PingTarget> {
+        // Explicit override wins (`uss.pingHost` in `limits.set`).
         if let Some(host) = &cfg.ping_host {
             if let Ok(addr) = host.parse::<SocketAddr>() {
-                return Some(addr);
+                return Some(PingTarget::Tcp(addr));
             }
         }
-        // Fallback: the connected eD2K server.
+        // eMule `LastCommonRouteFinder`: trace ICMP routes toward a sample
+        // of remote hosts and ping the deepest shared hop — the ISP-side
+        // router where local uplink congestion actually shows up.
+        if let Some(ip) = self.discover_last_common_host().await {
+            tracing::info!("USS: last common host discovered, pinging {ip}");
+            return Some(PingTarget::Icmp(ip));
+        }
+        // Fallback: TCP-connect RTT to the connected eD2K server.
         let mgr = self.server_session.read().unwrap().clone()?;
         let snap = mgr.snapshot().await;
         if snap.status != ServerConnectionStatus::Connected {
             return None;
         }
-        snap.server_address.and_then(|s| s.parse().ok())
+        snap.server_address
+            .and_then(|s| s.parse().ok())
+            .map(PingTarget::Tcp)
+    }
+
+    /// Traces ICMP routes toward known remote peers (connected server,
+    /// upload clients, download sources) and returns the deepest hop
+    /// common to all routes. `None` when ICMP is unavailable or fewer
+    /// than two distinct destinations are known (a single route has no
+    /// meaningful "common" hop).
+    async fn discover_last_common_host(&self) -> Option<std::net::Ipv4Addr> {
+        if !uss_icmp::icmp_available() {
+            return None;
+        }
+        let dests = self.collect_destinations().await;
+        if dests.len() < 2 {
+            return None;
+        }
+        let mut routes = Vec::new();
+        for dest in dests {
+            match uss_icmp::trace_route(dest).await {
+                Some(hops) => routes.push(hops),
+                None => tracing::debug!("USS: no ICMP route to {dest}"),
+            }
+        }
+        let host = uss_icmp::last_common_host(&routes);
+        if host.is_none() && !routes.is_empty() {
+            tracing::debug!("USS: {} routes traced but no common hop", routes.len());
+        }
+        host
+    }
+
+    /// Distinct public IPv4 destinations for route discovery: connected
+    /// eD2K server, active upload clients and download sources (eMule
+    /// traces toward peers it is connected to).
+    async fn collect_destinations(&self) -> Vec<std::net::Ipv4Addr> {
+        let mut ips: Vec<std::net::Ipv4Addr> = Vec::new();
+
+        let server = { self.server_session.read().unwrap().clone() };
+        if let Some(mgr) = server {
+            let snap = mgr.snapshot().await;
+            if snap.status == ServerConnectionStatus::Connected {
+                if let Some(Ok(SocketAddr::V4(a))) =
+                    snap.server_address.map(|s| s.parse::<SocketAddr>())
+                {
+                    ips.push(*a.ip());
+                }
+            }
+        }
+        let uploader = { self.upload_manager.read().unwrap().clone() };
+        if let Some(mgr) = uploader {
+            for s in mgr.active_snapshots().await {
+                if let Ok(SocketAddr::V4(a)) = s.client_address.parse::<SocketAddr>() {
+                    ips.push(*a.ip());
+                }
+            }
+        }
+        let downloads = { self.downloads.read().unwrap().clone() };
+        if let Some(dl) = downloads {
+            let dl = dl.lock().await;
+            for d in dl.list_downloads() {
+                if let Some(sources) = dl.get_sources(&d.id) {
+                    for addr in sources.keys() {
+                        if let SocketAddr::V4(a) = addr {
+                            ips.push(*a.ip());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Keep only public routable IPs — LAN/loopback hops would pollute
+        // the common-hop detection (the home gateway is trivially shared).
+        ips.retain(|ip| {
+            mule_network_policy::classify_ip(std::net::IpAddr::V4(*ip))
+                == mule_network_policy::IpCategory::PublicRoutable
+        });
+        ips.sort_unstable();
+        ips.dedup();
+        ips.truncate(MAX_TRACE_DESTINATIONS);
+        ips
     }
 
     fn set_state(&self, state: &'static str) {
@@ -516,8 +677,18 @@ impl UssService {
     }
 }
 
+/// Measures RTT to `target` in milliseconds — ICMP echo for the
+/// discovered last-common-host (eMule behaviour), TCP connect for the
+/// fallback targets.
+async fn probe_target(target: &PingTarget) -> Option<u32> {
+    match target {
+        PingTarget::Icmp(ip) => uss_icmp::ping(*ip, ICMP_PROBE_TIMEOUT_MS).await,
+        PingTarget::Tcp(addr) => probe_tcp_rtt(*addr).await,
+    }
+}
+
 /// Measures TCP connect RTT to `addr` in milliseconds.
-async fn probe_rtt(addr: SocketAddr) -> Option<u32> {
+async fn probe_tcp_rtt(addr: SocketAddr) -> Option<u32> {
     let start = Instant::now();
     match tokio::time::timeout(PROBE_TIMEOUT, tokio::net::TcpStream::connect(addr)).await {
         Ok(Ok(_stream)) => Some(start.elapsed().as_millis() as u32),
@@ -566,6 +737,6 @@ mod tests {
         let snap = svc.snapshot();
         assert_eq!(snap.state, "disabled");
         assert!(snap.accept_new_client);
-        assert_eq!(svc.accept_flag().load(Ordering::Relaxed), true);
+        assert!(svc.accept_flag().load(Ordering::Relaxed));
     }
 }

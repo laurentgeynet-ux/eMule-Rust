@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/data/fake_daemon_client.dart';
-import 'package:desktop/ui/features/downloads/view_models/downloads_view_model.dart';
-import 'package:desktop/ui/features/downloads/widgets/diagnostic_dialog.dart';
-import 'package:desktop/ui/features/downloads/widgets/lab_guide_dialog.dart';
+import 'package:mule_client/mule_client.dart';
+import 'package:app_shell/app/app_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_shell/app/providers.dart';
+import 'package:app_shell/ui/features/downloads/widgets/diagnostic_dialog.dart';
+import 'package:app_shell/ui/features/downloads/widgets/lab_guide_dialog.dart';
+import 'package:app_shell/l10n/generated/app_localizations.dart';
 
 void main() {
   group('DiagnosticDialog Widget Tests', () {
     late FakeMuleDaemonClient fakeClient;
-    late DownloadsViewModel viewModel;
+    late AppController viewModel;
 
     setUp(() async {
       fakeClient = FakeMuleDaemonClient(enableAutoSimulation: false);
-      viewModel = DownloadsViewModel(client: fakeClient);
+      viewModel = AppController(client: fakeClient);
       await viewModel.initialize(url: Uri.parse('ws://fake:4660/rpc'));
     });
 
@@ -28,20 +31,32 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: DiagnosticDialog(viewModel: viewModel),
+            body: DiagnosticDialog(),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
       // Dialog title
-      expect(find.text('System & Lab Diagnostics'), findsOneWidget);
+      expect(find.text('Diagnostics système & lab'), findsOneWidget);
 
       // Network Profile / Confinement card
-      expect(find.text('Network Profile: Public eD2K + Kad Preview'), findsOneWidget);
-      expect(find.textContaining('Public network traffic enabled'), findsOneWidget);
+      expect(find.text('Profil réseau : eD2K + Kad publics (preview)'), findsOneWidget);
+      expect(find.textContaining('Connexions WAN autorisées'), findsOneWidget);
 
       // Workdir mode & path
       expect(find.text('Portable'), findsOneWidget);
@@ -52,10 +67,10 @@ void main() {
       expect(find.textContaining('v0.1.0-fake'), findsOneWidget);
 
       // Actions
-      expect(find.text('Copy Shareable (Sanitized)'), findsOneWidget);
-      expect(find.text('Copy Full (Local Dev)'), findsOneWidget);
-      expect(find.text('Open Lab Guide'), findsOneWidget);
-      expect(find.text('Close'), findsOneWidget);
+      expect(find.text('Copier version partageable (anonymisée)'), findsOneWidget);
+      expect(find.text('Copier version complète (dev local)'), findsOneWidget);
+      expect(find.text('Ouvrir le guide lab'), findsOneWidget);
+      expect(find.text('Fermer'), findsOneWidget);
     });
 
     testWidgets('tapping Open Lab Guide opens LabGuideDialog', (WidgetTester tester) async {
@@ -64,21 +79,33 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () {
                   showDialog(
                     context: context,
-                    builder: (ctx) => DiagnosticDialog(viewModel: viewModel),
+                    builder: (ctx) => DiagnosticDialog(),
                   );
                 },
                 child: const Text('Open Diag'),
               ),
             ),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
@@ -89,7 +116,7 @@ void main() {
       expect(find.byType(DiagnosticDialog), findsOneWidget);
 
       // Tap Open Lab Guide
-      await tester.tap(find.text('Open Lab Guide'));
+      await tester.tap(find.text('Ouvrir le guide lab'));
       await tester.pumpAndSettle();
 
       // DiagnosticDialog dismissed and LabGuideDialog opened
@@ -110,15 +137,27 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: DiagnosticDialog(viewModel: viewModel),
+            body: DiagnosticDialog(),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Copy Full (Local Dev)'));
+      await tester.tap(find.text('Copier version complète (dev local)'));
       await tester.pump();
 
       expect(copiedText, isNotNull);
@@ -147,15 +186,27 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(
+        ProviderScope(
+        overrides: [
+          appControllerProvider.overrideWith((ref) => viewModel),
+          devToolsEnabledProvider
+              .overrideWithValue(viewModel.isDevToolsAvailable),
+          daemonSupervisorProvider
+              .overrideWithValue(viewModel.supervisor),
+          muleDaemonClientProvider.overrideWithValue(viewModel.client),
+        ],
+        child: MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: DiagnosticDialog(viewModel: viewModel),
+            body: DiagnosticDialog(),
           ),
-        ),
+        )),
       );
       await tester.pumpAndSettle();
 
-      final copyPathFinder = find.byTooltip('Copy full path');
+      final copyPathFinder = find.byTooltip('Copier le chemin complet');
       expect(copyPathFinder, findsOneWidget);
 
       await tester.tap(copyPathFinder);

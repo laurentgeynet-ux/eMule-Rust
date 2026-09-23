@@ -49,7 +49,7 @@ Offset  Type          Champ                  Description
 - `malformed/too_many_tags.bin` : compteur de tags (> 256).
 
 ### Références
-- eMule 0.50a : `srchybrid/UpDownClient.cpp:CUpDownClient::SendHelloPacket`, `CUpDownClient::ProcessHelloPacket`
+- eMule 0.72a : `srchybrid/BaseClient.cpp:678` `CUpDownClient::SendHelloPacket`, `BaseClient.cpp:342` `CUpDownClient::ProcessHelloPacket`
 - aMule : `src/DownloadClient.cpp:CDownloadClient::SendHelloPacket`
 
 ---
@@ -89,7 +89,7 @@ Offset  Type          Champ                  Description
 - `hello_answer.bin` (SHA-256 dans le manifeste) : réponse valide.
 
 ### Références
-- eMule 0.50a : `srchybrid/UpDownClient.cpp:CUpDownClient::SendHelloAnswer`, `CUpDownClient::ProcessHelloAnswer`
+- eMule 0.72a : `srchybrid/BaseClient.cpp:892` `CUpDownClient::SendHelloAnswer`, `BaseClient.cpp:351` `CUpDownClient::ProcessHelloAnswer`
 - aMule : `src/DownloadClient.cpp:CDownloadClient::ProcessHelloAnswer`
 
 ---
@@ -118,14 +118,15 @@ Offset  Type          Champ                  Description
 
 ### Décodage Emule-Sion
 - Décodé dans `Ed2kFileStatus { file_hash, part_count, status_bitfield }`.
-- Si `Part Count == 0`, le masque est vide (le pair ne possède aucune part disponible).
+- **`Part Count == 0` = source complète** (convention eD2K : la source détient le fichier entier et n'envoie pas de bitfield — eMule `ProcessFileStatus` matérialise `memset(m_abyPartStatus, 1, …)`). `compute_part_summaries` compte une telle source pour toutes les parts.
+- Le masque reçu alimente `availableSourceCount` (barre de parts eMule) via `record_source_availability`, y compris sur keep-alive en file d'attente ; les masques périmés > 30 min sont ignorés.
 - Rejet si la trame est tronquée par rapport à la taille déduite du `Part Count`.
 
 ### Fixtures Associées
 - `file_status.bin` (SHA-256 dans le manifeste) : statut de parts d'un fichier multi-parts.
 
 ### Références
-- eMule 0.50a : `srchybrid/UpDownClient.cpp:CUpDownClient::SendFileStatus`, `CUpDownClient::ProcessFileStatus`
+- eMule 0.72a : envoi inline `srchybrid/ListenSocket.cpp:404` (réponse à `OP_SETREQFILEID`), réception `srchybrid/DownloadClient.cpp:509` `CUpDownClient::ProcessFileStatus`
 - aMule : `src/UploadClient.cpp:CUploadClient::SendFileStatus`
 
 ---

@@ -18,7 +18,7 @@ flowchart TD
 
     subgraph Pipeline ["Pipeline de Validation en 7 Étapes (NetworkPolicyManager)"]
         S1["1. État du Cycle de Vie (Engine Started ?)"]
-        S2["2. Profil Réseau Actif (LocalLab / StrictPrivate / PublicRestricted)"]
+        S2["2. Profil Réseau Actif (LocalLab / PublicEd2kPreview / PublicEd2kKadPreview)"]
         S3["3. Filtrage IP (mule-filter : ipfilter.dat)"]
         S4["4. Limiteur de Débit (Token Bucket entrant/sortant)"]
         S5["5. Validation Anti-SSRF (classify_ip : RFC 1918, CGNAT, Bogons, IPv4-mapped)"]
@@ -48,9 +48,11 @@ Le système opère selon trois profils hermétiques définis dans [`NetworkProfi
 
 | Profil | Cibles Autorisées | Usage & Confinement |
 | :--- | :--- | :--- |
-| **`LocalLab`** *(Défaut)* | Strictement `127.0.0.1` / `::1` | Mode laboratoire stérile. Tout paquet sortant vers une IP non-loopback est immédiatement rejeté avec `PolicyError::DestinationNotAllowed`. |
-| **`StrictPrivate`** | Réseaux locaux (RFC 1918 : `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) + loopback | Tests multi-machines en réseau local ou cluster isolé sans accès Internet direct. |
-| **`PublicRestricted`** | Adresses IP publiques routables validées | Mode de production restreint. Interdiction formelle des adresses privées, loopback et spéciales via le filtre anti-SSRF. |
+| **`LocalLab`** | Strictement `127.0.0.1` / `::1` | Mode laboratoire stérile. Tout paquet sortant vers une IP non-loopback est immédiatement rejeté avec `PolicyError::DestinationNotAllowed`. |
+| **`PublicEd2kPreview`** | Adresses IP publiques routables validées | Preview contrôlée : serveurs et pairs eD2K publics en TCP — UDP/Kad désactivé. Interdiction formelle des adresses privées, loopback et spéciales via le filtre anti-SSRF. |
+| **`PublicEd2kKadPreview`** *(Défaut)* | Idem + UDP Kad | Preview contrôlée avec support UDP pour Kademlia — mêmes règles de filtrage d'adresses que `PublicEd2kPreview`. |
+
+> **Note** : ces profils ont succédé aux anciens `StrictPrivate`/`PublicRestricted` de la Phase 9.0 initiale. Dans l'UI, ils sont projetés par deux interrupteurs (Réseau eD2K / Réseau Kad) — voir `docs/SETTINGS.md`.
 
 ### 2.2 Pipeline Anti-SSRF & Classification IP ([validator.rs](file:///d:/Projet/Emule-Sion/crates/mule-network-policy/src/validator.rs))
 
@@ -110,7 +112,7 @@ Pour respecter les exigences strictes de non-fuite de données personnelles (DLP
 
 ### 4.1 Méthodes RPC Exposées
 * `network.getPolicy` : Consultation du profil actif, des budgets et de l'état du Kill Switch.
-* `network.setProfile` : Basculement de profil (`LocalLab` / `StrictPrivate` / `PublicRestricted`).
+* `network.setProfile` : Basculement de profil (`local-lab` / `public-ed2k-preview` / `public-ed2k-kad-preview`).
 * `network.disconnectAll` : Déclenchement du Kill Switch.
 * `network.setBudgets` : Configuration en direct des limites de sockets.
 * `network.getFilterStatus` : Nombre de règles actives, dernier import et état activé/désactivé.

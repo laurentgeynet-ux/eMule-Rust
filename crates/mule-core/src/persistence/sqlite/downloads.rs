@@ -8,8 +8,8 @@ use crate::ranges::RangeSet;
 
 pub fn insert_download(conn: &mut Connection, dl: &Download) -> Result<(), CoreError> {
     conn.execute(
-        "INSERT INTO downloads (id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO downloads (id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority, max_sources)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             dl.id.to_string(),
             dl.display_name,
@@ -22,7 +22,36 @@ pub fn insert_download(conn: &mut Connection, dl: &Download) -> Result<(), CoreE
             dl.created_at,
             dl.updated_at,
             dl.category_id,
+            dl.priority,
+            dl.max_sources.map(|v| v as i64),
         ],
+    )?;
+    Ok(())
+}
+
+/// Persists the per-download priority ("low" | "normal" | "high").
+pub fn update_priority(
+    conn: &mut Connection,
+    download_id: &Uuid,
+    priority: &str,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE downloads SET priority = ?1 WHERE id = ?2",
+        params![priority, download_id.to_string()],
+    )?;
+    Ok(())
+}
+
+/// Persists the per-file source limit (eMule FT_MAXSOURCES). `None` clears
+/// it back to the global default.
+pub fn update_max_sources(
+    conn: &mut Connection,
+    download_id: &Uuid,
+    max_sources: Option<u32>,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE downloads SET max_sources = ?1 WHERE id = ?2",
+        params![max_sources.map(|v| v as i64), download_id.to_string()],
     )?;
     Ok(())
 }
@@ -197,7 +226,7 @@ pub fn update_status(
 
 pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id FROM downloads ORDER BY created_at ASC",
+        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority, max_sources FROM downloads ORDER BY created_at ASC",
     )?;
     let mut rows = stmt.query([])?;
     let mut downloads = Vec::new();
@@ -215,6 +244,8 @@ pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> 
         let created_at: i64 = row.get(8)?;
         let updated_at: i64 = row.get(9)?;
         let category_id: Option<String> = row.get(10)?;
+        let priority: String = row.get(11).unwrap_or_else(|_| "normal".to_string());
+        let max_sources: Option<i64> = row.get(12).unwrap_or(None);
 
         if ed2k_blob.len() != 16 {
             return Err(CoreError::Database("Invalid ed2k_hash length in DB".into()));
@@ -248,6 +279,8 @@ pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> 
             created_at,
             updated_at,
             category_id,
+            priority,
+            max_sources: max_sources.and_then(|v| u32::try_from(v).ok()),
         });
     }
     Ok(downloads)
@@ -255,7 +288,7 @@ pub fn get_all_downloads(conn: &Connection) -> Result<Vec<Download>, CoreError> 
 
 pub fn get_download(conn: &Connection, id: &Uuid) -> Result<Option<Download>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id FROM downloads WHERE id = ?1",
+        "SELECT id, display_name, target_path, temp_path, total_size, ed2k_hash, aich_root, status, created_at, updated_at, category_id, priority, max_sources FROM downloads WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id.to_string()])?;
     if let Some(row) = rows.next()? {
@@ -272,6 +305,8 @@ pub fn get_download(conn: &Connection, id: &Uuid) -> Result<Option<Download>, Co
         let created_at: i64 = row.get(8)?;
         let updated_at: i64 = row.get(9)?;
         let category_id: Option<String> = row.get(10)?;
+        let priority: String = row.get(11).unwrap_or_else(|_| "normal".to_string());
+        let max_sources: Option<i64> = row.get(12).unwrap_or(None);
 
         if ed2k_blob.len() != 16 {
             return Err(CoreError::Database("Invalid ed2k_hash length in DB".into()));
@@ -305,6 +340,8 @@ pub fn get_download(conn: &Connection, id: &Uuid) -> Result<Option<Download>, Co
             created_at,
             updated_at,
             category_id,
+            priority,
+            max_sources: max_sources.and_then(|v| u32::try_from(v).ok()),
         }))
     } else {
         Ok(None)
@@ -340,6 +377,31 @@ pub fn update_target_path(
     conn.execute(
         "UPDATE downloads SET target_path = ?1, updated_at = ?2 WHERE id = ?3",
         params![
+            target_path.to_str().unwrap_or_default(),
+            now,
+            download_id.to_string()
+        ],
+    )?;
+    Ok(())
+}
+
+/// Renames a download: display name + finalization target path derived
+/// from it (the `.part` temp file keeps its UUID name).
+pub fn update_download_name_and_target(
+    conn: &mut Connection,
+    download_id: &Uuid,
+    display_name: &str,
+    target_path: &Path,
+) -> Result<(), CoreError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    conn.execute(
+        "UPDATE downloads SET display_name = ?1, target_path = ?2, updated_at = ?3 WHERE id = ?4",
+        params![
+            display_name,
             target_path.to_str().unwrap_or_default(),
             now,
             download_id.to_string()

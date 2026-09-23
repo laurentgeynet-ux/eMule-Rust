@@ -244,6 +244,7 @@ impl PeerSessionManager {
                 Some(crate::services::client_udp::UdpReaskTarget {
                     addr: std::net::SocketAddr::new(sock_addr.ip(), *udp_port),
                     file_hash,
+                    connected_at_unix_ms: s.snapshot.connected_at_unix_ms,
                 })
             })
             .collect()
@@ -343,6 +344,7 @@ impl PeerSessionManager {
             obfuscation_enabled,
             obfuscation_required,
             obfuscation_padding_max,
+            source_exchange::SxEnv::new(policy_mgr, user_hash),
         )
         .await
     }
@@ -366,6 +368,7 @@ impl PeerSessionManager {
         obfuscation_enabled: bool,
         obfuscation_required: bool,
         obfuscation_padding_max: u8,
+        sx_env: source_exchange::SxEnv,
     ) -> Result<PeerSessionSnapshot, DaemonError> {
         let address = target_addr.to_string();
         let dl_hash_bytes = hex::decode(file_hash)
@@ -381,26 +384,7 @@ impl PeerSessionManager {
         // Enforce max active peers
         {
             let g = self.inner.lock().await;
-            if g.sessions.len() >= g.max_global_peers {
-                return Err(DaemonError::Business(
-                    "Global peer connection limit reached".into(),
-                ));
-            }
-            let file_peers_count = g
-                .sessions
-                .values()
-                .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash))
-                .count();
-            if file_peers_count >= g.max_peers_per_download {
-                return Err(DaemonError::Business(
-                    "Maximum concurrent peer connections reached for this download".into(),
-                ));
-            }
-            if g.sessions.contains_key(&address) {
-                return Err(DaemonError::Business(
-                    "Peer session is already running".into(),
-                ));
-            }
+            g.check_session_slot(file_hash, &address)?;
         }
 
         let cancel_token = permit.cancellation_token().clone();
@@ -460,6 +444,7 @@ impl PeerSessionManager {
                 identity_opt,
                 sui_stats,
                 rate_limiters_opt,
+                sx_env,
             )
             .await;
 
@@ -514,16 +499,33 @@ impl PeerSessionManager {
                     .unwrap_or_default()
                     .as_millis() as i64;
 
+                // Real consecutive-failure count (the UPDATE increments it on
+                // Failed) so the backoff actually escalates instead of being
+                // stuck at the first step.
+                let next_fail_count = dl_svc
+                    .list_peer_sources(&file_hash_str)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|s| s.address == address_str)
+                    .map(|s| s.fail_count + 1)
+                    .unwrap_or(1);
+
                 let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
+                        // eMule "No Needed Parts": keep the source allowed but
+                        // reask it only after a long cooldown (~30 min), its
+                        // advertised parts may become needed later.
+                        PeerFailureReason::NoNeededParts => {
+                            (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
+                        }
                         _ => {
                             if err_msg.as_deref() == Some("Disconnected in queue") {
                                 // Standard eMule queue behavior: remote peer returned queue rank and closed TCP socket.
                                 // Keep status as Allowed (not Failed) with a 10-minute re-ask cooldown.
                                 (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
                             } else {
-                                let cd = calculate_backoff_cooldown_ms(1);
+                                let cd = calculate_backoff_cooldown_ms(next_fail_count);
                                 (PeerSourceStatus::Failed, Some(now_ms + cd))
                             }
                         }
@@ -572,12 +574,14 @@ impl PeerSessionManager {
         peer_addr: SocketAddr,
         file_hash: &str,
         source_address: String,
-        peer_supports_sx: bool,
-        peer_supports_sx2: bool,
+        sx_caps: source_exchange::PeerSxCaps,
         peer_supports_aich: bool,
         peer_sec_ident: u8,
+        peer_ext_req: u8,
         downloads: Arc<Mutex<DownloadService>>,
         cancel_token: mule_network_policy::CancellationToken,
+        sx_env: source_exchange::SxEnv,
+        sx_local: source_exchange::SxLocalIds,
     ) -> Result<PeerSessionSnapshot, DaemonError> {
         let address = peer_addr.to_string();
         let dl_hash_bytes = hex::decode(file_hash)
@@ -592,26 +596,7 @@ impl PeerSessionManager {
 
         {
             let g = self.inner.lock().await;
-            if g.sessions.len() >= g.max_global_peers {
-                return Err(DaemonError::Business(
-                    "Global peer connection limit reached".into(),
-                ));
-            }
-            let file_peers_count = g
-                .sessions
-                .values()
-                .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash))
-                .count();
-            if file_peers_count >= g.max_peers_per_download {
-                return Err(DaemonError::Business(
-                    "Maximum concurrent peer connections reached for this download".into(),
-                ));
-            }
-            if g.sessions.contains_key(&address) {
-                return Err(DaemonError::Business(
-                    "Peer session is already running".into(),
-                ));
-            }
+            g.check_session_slot(file_hash, &address)?;
         }
 
         let initial_snapshot = PeerSessionSnapshot {
@@ -654,10 +639,10 @@ impl PeerSessionManager {
                 file_hash_str.clone(),
                 dl_hash_arr,
                 address_str.clone(),
-                peer_supports_sx,
-                peer_supports_sx2,
+                sx_caps,
                 peer_supports_aich,
                 peer_sec_ident,
+                peer_ext_req,
                 Arc::clone(&downloads),
                 cancel_token,
                 Arc::clone(&inner_clone),
@@ -667,6 +652,8 @@ impl PeerSessionManager {
                 identity_opt,
                 sui_stats,
                 rate_limiters_opt,
+                sx_env,
+                sx_local,
             )
             .await;
 
@@ -717,14 +704,25 @@ impl PeerSessionManager {
                     .unwrap_or_default()
                     .as_millis() as i64;
 
+                let next_fail_count = dl_svc
+                    .list_peer_sources(&file_hash_str)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|s| s.address == source_address)
+                    .map(|s| s.fail_count + 1)
+                    .unwrap_or(1);
+
                 let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
+                        PeerFailureReason::NoNeededParts => {
+                            (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
+                        }
                         _ => {
                             if err_msg.as_deref() == Some("Disconnected in queue") {
                                 (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
                             } else {
-                                let cd = calculate_backoff_cooldown_ms(1);
+                                let cd = calculate_backoff_cooldown_ms(next_fail_count);
                                 (PeerSourceStatus::Failed, Some(now_ms + cd))
                             }
                         }
@@ -842,6 +840,54 @@ impl PeerSessionManager {
             peers,
             in_flight_blocks: in_flight,
         }
+    }
+
+    /// Byte ranges of blocks currently requested but not yet received for a
+    /// file (eMule `requestedblocks_list` — painted yellow on the status
+    /// bar). Empty when the file has no active session.
+    pub(crate) fn pending_ranges_locked(g: &SwarmInnerState, file_hash: &str) -> Vec<(u64, u64)> {
+        g.in_flight_blocks
+            .iter()
+            .filter(|b| {
+                g.sessions
+                    .get(&b.peer_id)
+                    .is_some_and(|s| s.snapshot.file_hash.as_deref() == Some(file_hash))
+            })
+            .map(|b| (b.start, b.end))
+            .collect()
+    }
+
+    /// Non-blocking variant for sync emit paths (`broadcast_download_update`
+    /// runs without async context): returns empty when the swarm state is
+    /// contended — the next event refreshes it.
+    pub fn try_pending_ranges(&self, file_hash: &str) -> Vec<(u64, u64)> {
+        self.inner
+            .try_lock()
+            .map(|g| Self::pending_ranges_locked(&g, file_hash))
+            .unwrap_or_default()
+    }
+
+    /// Async variant for RPC handlers (`downloads.get`).
+    pub async fn pending_ranges_for_file(&self, file_hash: &str) -> Vec<(u64, u64)> {
+        let g = self.inner.lock().await;
+        Self::pending_ranges_locked(&g, file_hash)
+    }
+
+    /// All in-flight ranges grouped by file hash — one lock for
+    /// `downloads.list`.
+    pub async fn pending_ranges_by_file(&self) -> HashMap<String, Vec<(u64, u64)>> {
+        let g = self.inner.lock().await;
+        let mut out: HashMap<String, Vec<(u64, u64)>> = HashMap::new();
+        for b in &g.in_flight_blocks {
+            if let Some(hash) = g
+                .sessions
+                .get(&b.peer_id)
+                .and_then(|s| s.snapshot.file_hash.clone())
+            {
+                out.entry(hash).or_default().push((b.start, b.end));
+            }
+        }
+        out
     }
 
     /// Clears any cached sessions and in-flight blocks.

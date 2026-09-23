@@ -91,17 +91,17 @@ pub fn build_aich_tree_from_reader<R: Read>(
 
 /// Depth of the part subtree below the root (eMule `FindHash(..., &nLevel)`).
 /// The part subtree is the node covering `[part_start, part_start + part_size)`.
-fn find_part_node<'a>(
-    root: &'a AichNode,
+fn find_part_node(
+    root: &AichNode,
     part_start: u64,
     part_size: u64,
-) -> Option<(&'a AichNode, u8)> {
-    fn walk<'a>(
-        node: &'a AichNode,
+) -> Option<(&AichNode, u8)> {
+    fn walk(
+        node: &AichNode,
         start: u64,
         size: u64,
         level: u8,
-    ) -> Option<(&'a AichNode, u8)> {
+    ) -> Option<(&AichNode, u8)> {
         if start == 0 && size == node.data_size {
             return Some((node, level));
         }

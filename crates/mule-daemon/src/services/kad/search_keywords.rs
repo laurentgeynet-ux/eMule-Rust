@@ -22,128 +22,36 @@ pub async fn search_keywords_iterative(
         .next()
         .unwrap_or_else(|| hash_kad_keyword(term));
 
-    let initial_closest = {
+    {
         let table = routing_table.lock().await;
-        table.find_closest(&keyword_kad_id, 32)
-    };
-
-    if initial_closest.is_empty() {
-        tracing::warn!(
-            "Kad search_keywords for '{}' (norm='{}'): routing table is empty (0 contacts)",
-            term,
-            norm_word
-        );
-        return Ok(Vec::new());
-    }
-
-    let mut candidates: std::collections::BTreeMap<KadId, KadContact> =
-        std::collections::BTreeMap::new();
-    for c in initial_closest {
-        let dist = c.kad_id.xor_distance(&keyword_kad_id);
-        candidates.insert(dist, c);
+        if table.find_closest(&keyword_kad_id, 1).is_empty() {
+            tracing::warn!(
+                "Kad search_keywords for '{}' (norm='{}'): routing table is empty (0 contacts)",
+                term,
+                norm_word
+            );
+            return Ok(Vec::new());
+        }
     }
 
     tracing::info!(
-        "Kad search_keywords: starting search for '{}' (hash={}): performing iterative find_node convergence (initial pool: {} contacts)...",
+        "Kad search_keywords: starting search for '{}' (hash={}): performing iterative find_node convergence...",
         term,
-        keyword_kad_id.to_hex(),
-        candidates.len()
+        keyword_kad_id.to_hex()
     );
 
-    let mut queried_find_nodes = std::collections::HashSet::new();
     const MAX_CONVERGENCE_ROUNDS: usize = 6;
-    const ALPHA: usize = 5;
+    let candidates = super::lookup::converge_closest_contacts(
+        &keyword_kad_id,
+        routing_table,
+        policy_mgr,
+        ip_filter,
+        udp,
+        MAX_CONVERGENCE_ROUNDS,
+    )
+    .await;
 
-    // 1. Iterative find_node step: query closest unqueried contacts to converge towards the keyword ID
-    for iter in 0..MAX_CONVERGENCE_ROUNDS {
-        let unqueried: Vec<_> = candidates
-            .values()
-            .filter(|c| {
-                !queried_find_nodes.contains(&SocketAddr::new(IpAddr::V4(c.ip), c.udp_port))
-            })
-            .take(ALPHA)
-            .cloned()
-            .collect();
-
-        if unqueried.is_empty() {
-            tracing::debug!("Kad search_keywords: convergence reached after {} rounds (no closer unqueried contacts)", iter);
-            break;
-        }
-
-        // Check if top candidates already satisfy SEARCHTOLERANCE (0x01000000)
-        let within_tolerance_count = candidates
-            .values()
-            .take(16)
-            .filter(|c| c.kad_id.is_within_search_tolerance(&keyword_kad_id))
-            .count();
-
-        if within_tolerance_count >= 12 && iter >= 2 {
-            tracing::info!(
-                "Kad search_keywords: early convergence after {} rounds ({} candidates within SEARCHTOLERANCE)",
-                iter,
-                within_tolerance_count
-            );
-            break;
-        }
-
-        let mut find_futs = Vec::new();
-        for contact in unqueried {
-            let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-            let receiver_id = contact.kad_id;
-            queried_find_nodes.insert(addr);
-            let udp_c = Arc::clone(udp);
-            let target_id = keyword_kad_id;
-            find_futs.push(async move {
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(2500),
-                    udp_c.send_find_node(addr, &target_id, &receiver_id),
-                )
-                .await
-                {
-                    Ok(res) => res,
-                    Err(_) => Err("FindNode round timeout (2.5s)".to_string()),
-                }
-            });
-        }
-
-        let find_results = futures_util::future::join_all(find_futs).await;
-        let mut new_contacts = Vec::new();
-        let profile = policy_mgr.profile();
-        for res in find_results {
-            if let Ok(contacts) = res {
-                for mut c in contacts {
-                    let cat = classify_ip(IpAddr::V4(c.ip));
-                    let policy_allowed = match profile {
-                        NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                        NetworkProfile::PublicEd2kPreview
-                        | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
-                    };
-                    if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
-                        c.verified = true;
-                        new_contacts.push(c);
-                    }
-                }
-            }
-        }
-
-        if !new_contacts.is_empty() {
-            let mut table = routing_table.lock().await;
-            for c in &new_contacts {
-                table.insert_or_update(c.clone());
-                let dist = c.kad_id.xor_distance(&keyword_kad_id);
-                candidates.insert(dist, c.clone());
-            }
-            tracing::debug!(
-                "Kad search_keywords: find_node convergence round {} discovered {} new contacts (candidate pool now {}, closest chunk0=0x{:08x})",
-                iter + 1,
-                new_contacts.len(),
-                candidates.len(),
-                candidates.keys().next().map_or(0, |d| d.dword(0))
-            );
-        }
-    }
-
-    let search_targets: Vec<KadContact> = candidates.values().take(16).cloned().collect();
+    let search_targets: Vec<KadContact> = candidates.into_iter().take(16).collect();
     let within_tol = search_targets
         .iter()
         .filter(|c| c.kad_id.is_within_search_tolerance(&keyword_kad_id))
@@ -235,11 +143,18 @@ pub async fn search_keywords_iterative(
 }
 
 /// Publishes keyword entries for a file to the closest Kad contacts.
+///
+/// eMule nodes silently drop a `PUBLISH_KEY_REQ` whose keyword hash lies
+/// outside `SEARCHTOLERANCE` of their KadID, and only live nodes answer at
+/// all — so the publish targets are first converged with an iterative
+/// `find_node` lookup, then restricted to in-tolerance contacts.
 pub async fn publish_keyword(
     file_hash_hex: &str,
     file_name: &str,
     file_size: u64,
     routing_table: &Mutex<KBucketTable>,
+    policy_mgr: &NetworkPolicyManager,
+    ip_filter: &Arc<IpFilter>,
     udp: &Arc<KadUdpService>,
 ) -> Result<usize, String> {
     let file_hash_kad_id = KadId::from_hash_hex(file_hash_hex)
@@ -252,23 +167,46 @@ pub async fn publish_keyword(
 
     let mut total_published = 0;
     for (_word, kw_kad_id) in keywords {
-        let closest_contacts = {
-            let table = routing_table.lock().await;
-            table.find_closest(&kw_kad_id, 20)
-        };
+        let candidates = super::lookup::converge_closest_contacts(
+            &kw_kad_id,
+            routing_table,
+            policy_mgr,
+            ip_filter,
+            udp,
+            4,
+        )
+        .await;
 
-        for contact in closest_contacts {
+        // Only nodes within SEARCHTOLERANCE will index the keyword and reply;
+        // fall back to the closest converged contacts when none qualify.
+        let mut targets: Vec<KadContact> = candidates
+            .iter()
+            .filter(|c| c.kad_id.is_within_search_tolerance(&kw_kad_id))
+            .take(10)
+            .cloned()
+            .collect();
+        if targets.is_empty() {
+            targets = candidates.into_iter().take(5).collect();
+        }
+
+        let entries = vec![mule_protocol::kad::KadKeywordEntryWire {
+            file_hash: file_hash_kad_id.0,
+            file_name: file_name.to_string(),
+            file_size,
+            source_count: 1,
+        }];
+
+        let mut futs = Vec::with_capacity(targets.len());
+        for contact in targets {
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
-            let entries = vec![mule_protocol::kad::KadKeywordEntryWire {
-                file_hash: file_hash_kad_id.0,
-                file_name: file_name.to_string(),
-                file_size,
-                source_count: 1,
-            }];
-            if let Ok(status) = udp.send_publish_keyword(addr, &kw_kad_id.0, &entries).await {
-                if status == 0 {
-                    total_published += 1;
-                }
+            let udp_c = Arc::clone(udp);
+            let kw = kw_kad_id.0;
+            let entries_c = entries.clone();
+            futs.push(async move { udp_c.send_publish_keyword(addr, &kw, &entries_c).await });
+        }
+        for res in futures_util::future::join_all(futs).await {
+            if let Ok(0) = res {
+                total_published += 1;
             }
         }
     }

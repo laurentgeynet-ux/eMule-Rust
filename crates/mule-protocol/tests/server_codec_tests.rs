@@ -376,6 +376,7 @@ fn test_offer_files_wire_layout() {
         0,
         4662,
         SRV_TCPFLG_COMPRESSION,
+        false,
     )
     .unwrap();
     // Compression-capable server: markers instead of real ID/port.
@@ -405,20 +406,49 @@ fn test_offer_files_highid_vs_lowid_and_large_file() {
     use mule_protocol::ed2k::{OfferedFile, SRV_TCPFLG_LARGEFILES};
 
     // HighID on a legacy server: real id+port published.
-    let of = OfferedFile::for_server([1u8; 16], "a.bin", 100, 20_000_000, 4662, 0).unwrap();
+    let of = OfferedFile::for_server([1u8; 16], "a.bin", 100, 20_000_000, 4662, 0, false).unwrap();
     assert_eq!(of.client_id, 20_000_000);
     assert_eq!(of.client_port, 4662);
 
     // LowID on a legacy server: zeros.
-    let of = OfferedFile::for_server([1u8; 16], "a.bin", 100, 5, 4662, 0).unwrap();
+    let of = OfferedFile::for_server([1u8; 16], "a.bin", 100, 5, 4662, 0, false).unwrap();
     assert_eq!((of.client_id, of.client_port), (0, 0));
 
     // Large file skipped without LARGEFILES flag, sent with split size tags else.
     let big = 5_000_000_000u64;
-    assert!(OfferedFile::for_server([1u8; 16], "big.iso", big, 0, 0, 0).is_none());
+    assert!(OfferedFile::for_server([1u8; 16], "big.iso", big, 0, 0, 0, false).is_none());
     let of =
-        OfferedFile::for_server([1u8; 16], "big.iso", big, 0, 0, SRV_TCPFLG_LARGEFILES).unwrap();
+        OfferedFile::for_server([1u8; 16], "big.iso", big, 0, 0, SRV_TCPFLG_LARGEFILES, false)
+            .unwrap();
     assert_eq!(of.tags.len(), 4); // name + size lo + size hi + type
+}
+
+#[test]
+fn test_offer_files_partial_marker() {
+    use mule_protocol::ed2k::{OfferedFile, SRV_TCPFLG_COMPRESSION};
+
+    // eMule CreateOfferedFilePacket: incomplete (part) files are published
+    // with the 0xFCFCFCFC/0xFCFC marker pair when the server supports TCP
+    // compression; on legacy servers they carry the real HighID like
+    // complete files.
+    let partial = OfferedFile::for_server(
+        [2u8; 16],
+        "ongoing.bin",
+        2_000_000,
+        20_000_000,
+        4662,
+        SRV_TCPFLG_COMPRESSION,
+        true,
+    )
+    .unwrap();
+    assert_eq!(partial.client_id, 0xFCFCFCFC);
+    assert_eq!(partial.client_port, 0xFCFC);
+
+    let partial_legacy =
+        OfferedFile::for_server([2u8; 16], "ongoing.bin", 2_000_000, 20_000_000, 4662, 0, true)
+            .unwrap();
+    assert_eq!(partial_legacy.client_id, 20_000_000);
+    assert_eq!(partial_legacy.client_port, 4662);
 }
 
 #[test]

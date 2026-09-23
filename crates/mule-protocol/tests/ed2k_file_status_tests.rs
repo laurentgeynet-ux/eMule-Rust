@@ -70,7 +70,7 @@ fn test_file_status_req_wire_layout_byte_by_byte_matches_fixture() {
     let expected_hash: [u8; 16] = [0xCC; 16];
     assert_eq!(&fixture_bytes[6..22], &expected_hash);
 
-    // Verify that default Emule050a decoder rejects legacy 0x49 opcode in decode_file_status_req
+    // Verify that default Emule072a decoder rejects legacy 0x49 opcode in decode_file_status_req
     let default_decoder = Ed2kDecoder::new();
     let err = default_decoder
         .decode_file_status_req(PR_ED2K, OP_FILESTATUSREQ, &fixture_bytes[6..22], 0)
@@ -79,7 +79,7 @@ fn test_file_status_req_wire_layout_byte_by_byte_matches_fixture() {
         err.kind,
         Ed2kErrorKind::AmbiguousOpcodeForProfile {
             opcode: OP_FILESTATUSREQ,
-            profile: Ed2kCompatibilityProfile::Emule050a,
+            profile: Ed2kCompatibilityProfile::Emule072a,
             ..
         }
     ));
