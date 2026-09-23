@@ -3045,6 +3045,18 @@ abstract class AppLocalizations {
   /// **'Adresse invalide — format attendu : ws://hôte:port/rpc'**
   String get daemonUrlInvalid;
 
+  /// No description provided for @daemonTokenLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Jeton d\'authentification'**
+  String get daemonTokenLabel;
+
+  /// No description provided for @daemonTokenHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Contenu du fichier auth.token (laisser vide si absent)'**
+  String get daemonTokenHint;
+
   /// No description provided for @connect.
   ///
   /// In fr, this message translates to:
@@ -3056,6 +3068,12 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Changer de daemon'**
   String get changeDaemon;
+
+  /// No description provided for @webInterface.
+  ///
+  /// In fr, this message translates to:
+  /// **'Interface web'**
+  String get webInterface;
 
   /// No description provided for @sectionUploads.
   ///

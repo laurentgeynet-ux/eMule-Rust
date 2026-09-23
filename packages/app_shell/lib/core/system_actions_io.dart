@@ -26,6 +26,17 @@ class SystemActions {
     }
   }
 
+  /// Opens [url] in the system default browser.
+  Future<void> openUrl(String url) async {
+    if (Platform.isWindows) {
+      await Process.start('explorer.exe', [url]);
+    } else if (Platform.isMacOS) {
+      await Process.start('open', [url]);
+    } else if (Platform.isLinux) {
+      await Process.start('xdg-open', [url]);
+    }
+  }
+
   Future<void> revealFile(String filePath) async {
     final file = File(filePath);
     final dir = file.parent;

@@ -1704,10 +1704,20 @@ class AppLocalizationsFr extends AppLocalizations {
       'Adresse invalide — format attendu : ws://hôte:port/rpc';
 
   @override
+  String get daemonTokenLabel => 'Jeton d\'authentification';
+
+  @override
+  String get daemonTokenHint =>
+      'Contenu du fichier auth.token (laisser vide si absent)';
+
+  @override
   String get connect => 'Se connecter';
 
   @override
   String get changeDaemon => 'Changer de daemon';
+
+  @override
+  String get webInterface => 'Interface web';
 
   @override
   String get sectionUploads => 'Envois';

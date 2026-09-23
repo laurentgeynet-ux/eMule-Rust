@@ -20,6 +20,9 @@ pub struct DaemonConfig {
     pub max_global_download_peers: usize,
     pub max_peers_per_download: usize,
     pub min_peers_per_download: usize,
+    /// Static web UI directory served over HTTP (bundle `web/` folder).
+    /// `None` disables the embedded web remote controller.
+    pub web_dir: Option<PathBuf>,
 }
 
 impl DaemonConfig {
@@ -42,6 +45,7 @@ impl DaemonConfig {
             max_global_download_peers: 500,
             max_peers_per_download: 400,
             min_peers_per_download: 5,
+            web_dir: None,
         }
     }
 
@@ -91,6 +95,11 @@ impl DaemonConfig {
         self.max_global_download_peers = max_global;
         self.max_peers_per_download = max_per_dl;
         self.min_peers_per_download = min_per_dl;
+        self
+    }
+
+    pub fn with_web_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.web_dir = dir;
         self
     }
 

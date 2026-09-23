@@ -31,6 +31,11 @@
 
   <title>emule_sion_web</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Served by mule-daemon when hosting this UI itself: injects
+       window.MULE_SESSION (endpoint + token) for zero-config connect.
+       A plain static host returns 404 here, which is harmless. -->
+  <script src="session-config.js"></script>
 </head>
 <body>
   <!--

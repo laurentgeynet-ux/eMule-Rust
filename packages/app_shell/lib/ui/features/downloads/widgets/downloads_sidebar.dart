@@ -6,6 +6,7 @@ import '../../../../app/providers.dart';
 import '../../../../app/shell_controller.dart';
 import '../../../../l10n/enum_labels.dart';
 import '../../../../l10n/l10n.dart';
+import '../../../../core/system_actions.dart';
 import 'category_edit_dialog.dart';
 import 'diagnostic_dialog.dart';
 import 'sidebar/category_delete_dialog.dart';
@@ -255,6 +256,15 @@ class DownloadsSidebar extends ConsumerWidget {
               builder: (ctx) => const DiagnosticDialog(),
             ),
           ),
+          if (systemActions.isSupported &&
+              ref.watch(daemonSupervisorProvider) != null)
+            SidebarActionButton(
+              icon: Icons.open_in_new,
+              label: context.l10n.webInterface,
+              iconColor: AppColors.accentTeal,
+              isCompact: isCompact,
+              onTap: () => systemActions.openUrl(_webUiUrl(ref)),
+            ),
           if (ref.watch(onChangeDaemonProvider) != null)
             SidebarActionButton(
               icon: Icons.link_off,
@@ -271,6 +281,17 @@ class DownloadsSidebar extends ConsumerWidget {
   bool _isFilterSelected(WidgetRef ref, DownloadFilter filter) =>
       ref.watch(shellControllerProvider).section == AppNavSection.downloads &&
       ref.watch(shellControllerProvider).filter == filter;
+
+  /// HTTP URL of the daemon-served web UI, derived from the session's
+  /// WebSocket endpoint (`ws://host:port/rpc` → `http://host:port/`).
+  String _webUiUrl(WidgetRef ref) {
+    final endpoint =
+        ref.watch(daemonSupervisorProvider)?.activeSession?.endpoint;
+    final uri = Uri.tryParse(endpoint ?? '');
+    if (uri == null || uri.host.isEmpty) return 'http://127.0.0.1:4660/';
+    final scheme = uri.scheme == 'wss' ? 'https' : 'http';
+    return '$scheme://${uri.host}:${uri.port}/';
+  }
 
   void _selectCategory(WidgetRef ref, String? id) {
     ref.read(categoriesControllerProvider).select(id);

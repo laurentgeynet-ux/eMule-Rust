@@ -18,6 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ed2k_port_arg: Option<u16> = None;
     let mut kad_port_arg: Option<u16> = None;
     let mut upnp_arg: Option<bool> = None;
+    let mut web_dir_arg: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -72,6 +73,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(addr) = args[i + 1].parse() {
                     bind_addr_arg = Some(addr);
                 }
+                i += 2;
+            }
+            "--web-dir" | "--webdir" if i + 1 < args.len() => {
+                web_dir_arg = Some(PathBuf::from(&args[i + 1]));
                 i += 2;
             }
             "--token" if i + 1 < args.len() => {
@@ -228,13 +233,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let network_profile =
         profile_arg.unwrap_or(mule_network_policy::NetworkProfile::PublicEd2kKadPreview);
 
+    // Embedded web remote UI: `--web-dir`/`MULE_WEB_DIR` wins, otherwise
+    // probe the packaged layout (bin/mule-daemon.exe → <bundle>/web) and
+    // the dev build (apps/web/build/web).
+    let web_dir = resolve_web_dir(web_dir_arg);
+    if let Some(dir) = &web_dir {
+        println!("==> Web UI: http://{actual_addr}/ (dir: {})", dir.display());
+    }
+
     let config = DaemonConfig::new(data_dir.clone(), auth_token)
         .with_bind_addr(actual_addr)
         .with_workdir_mode(resolved_workdir.mode)
         .with_default_download_dir(initial_download_dir)
         .with_network_profile(network_profile)
         .with_upnp_enabled(upnp_enabled)
-        .with_ports(ed2k_port, kad_port);
+        .with_ports(ed2k_port, kad_port)
+        .with_web_dir(web_dir);
     let state = AppState::new(config, downloads);
     // eMule `Autoconnect`/`Reconnect`/`AutoDeadServer`: background watcher
     // reconnecting to the last server target (or best known server) when
@@ -477,4 +491,31 @@ fn spawn_parent_watchdog(parent_pid: u32, shutdown_notify: std::sync::Arc<tokio:
             }
         }
     });
+}
+
+/// Resolves the static web UI directory. An explicit `--web-dir` /
+/// `MULE_WEB_DIR` must contain `index.html` (warns otherwise); absent that,
+/// probes layouts relative to the executable: `<exe>/../web` (packaged
+/// bundle `bin/` → `web/`), `<exe>/web`, and `../../apps/web/build/web`
+/// (cargo dev builds under `target/{debug,release}`).
+fn resolve_web_dir(explicit: Option<PathBuf>) -> Option<PathBuf> {
+    let candidate = explicit.or_else(|| std::env::var("MULE_WEB_DIR").ok().map(PathBuf::from));
+    if let Some(dir) = candidate {
+        if dir.join("index.html").is_file() {
+            return Some(dir);
+        }
+        eprintln!(
+            "==> Warning: web dir '{}' has no index.html — web UI disabled",
+            dir.display()
+        );
+        return None;
+    }
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    for rel in ["../web", "web", "../../apps/web/build/web"] {
+        let dir = exe_dir.join(rel);
+        if dir.join("index.html").is_file() {
+            return Some(dir);
+        }
+    }
+    None
 }

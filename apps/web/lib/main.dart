@@ -1,3 +1,6 @@
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +36,7 @@ class WebRemoteApp extends StatefulWidget {
 
 class _WebRemoteAppState extends State<WebRemoteApp> {
   static const _prefKey = 'daemon.url';
+  static const _tokenPrefKey = 'daemon.token';
 
   AppController? _controller;
   String? _suggestedUrl;
@@ -45,25 +49,44 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
     _resolve();
   }
 
+  /// `window.MULE_SESSION` injected by mule-daemon's `session-config.js`
+  /// when it serves this UI itself — carries endpoint + auth token.
+  Map<dynamic, dynamic>? _injectedSession() {
+    final raw = globalContext['MULE_SESSION']?.dartify();
+    return raw is Map ? raw : null;
+  }
+
   Future<void> _resolve() async {
     final params = Uri.base.queryParameters;
     const defined = String.fromEnvironment('DAEMON_URL');
     final prefs = await SharedPreferences.getInstance();
     final suggested = 'ws://${Uri.base.host}:4660/rpc';
+    final injected = _injectedSession();
 
     String? url;
+    String? token;
     if (params.containsKey('daemon')) {
       // `?daemon=` (empty) explicitly resets the saved URL → connect form.
       final q = params['daemon']!;
       if (q.isEmpty) {
         await prefs.remove(_prefKey);
+        await prefs.remove(_tokenPrefKey);
       } else {
         url = q;
+        token = params['token'];
       }
+    } else if (injected != null &&
+        injected['endpoint'] is String &&
+        injected['token'] is String) {
+      // Daemon-served page: zero-config connect, no stored URL needed.
+      url = injected['endpoint'] as String;
+      token = injected['token'] as String;
     } else if (defined.isNotEmpty) {
       url = defined;
+      token = params['token'];
     } else {
       url = prefs.getString(_prefKey);
+      token = prefs.getString(_tokenPrefKey);
     }
 
     if (!mounted) return;
@@ -71,15 +94,18 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
       _suggestedUrl = suggested;
       _loading = false;
     });
-    if (url != null && url.isNotEmpty) _connect(url);
+    if (url != null && url.isNotEmpty) _connect(url, token: token);
   }
 
-  Future<void> _connect(String url) async {
+  Future<void> _connect(String url, {String? token}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, url);
-    final client = RpcDaemonClient();
+    if (token != null && token.isNotEmpty) {
+      await prefs.setString(_tokenPrefKey, token);
+    }
+    final client = RpcDaemonClient(autoReconnect: true);
     final controller = AppController(client: client);
-    controller.initialize(url: Uri.parse(url));
+    controller.initialize(url: Uri.parse(url), token: token);
     if (mounted) {
       setState(() {
         _controller = controller;
@@ -123,7 +149,7 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
             )
           : DaemonConnectScreen(
               initialUrl: _suggestedUrl,
-              onConnect: _connect,
+              onConnect: (url, token) => _connect(url, token: token),
             ),
     );
   }

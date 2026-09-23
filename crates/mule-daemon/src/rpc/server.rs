@@ -3,22 +3,37 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
+    http::{header, StatusCode},
     response::IntoResponse,
     routing::get,
     Json, Router,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::rpc::methods::{handle_request, DAEMON_VERSION};
 use crate::rpc::types::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 use crate::state::AppState;
 
 pub fn create_router(state: AppState) -> Router {
-    Router::new()
+    let mut router = Router::new()
         .route("/health", get(health_check))
-        .route("/rpc", get(ws_handler))
-        .with_state(state)
+        .route("/rpc", get(ws_handler));
+
+    // Embedded web remote controller: serve the bundled Flutter web build
+    // plus a same-origin session bootstrap (endpoint + token) so the page
+    // connects without any user input. `index.html` is the SPA fallback.
+    if let Some(web_dir) = state.config.web_dir.clone() {
+        router = router
+            .route("/session-config.js", get(session_config_js))
+            .fallback_service(
+                ServeDir::new(&web_dir)
+                    .fallback(ServeFile::new(web_dir.join("index.html"))),
+            );
+    }
+
+    router.with_state(state)
 }
 
 async fn health_check() -> impl IntoResponse {
@@ -26,6 +41,25 @@ async fn health_check() -> impl IntoResponse {
         "status": "healthy",
         "daemonVersion": DAEMON_VERSION
     }))
+}
+
+/// Emits `window.MULE_SESSION = {endpoint, token}` consumed by the bundled
+/// web UI to auto-connect. The token is only exposed when the socket is
+/// loopback-bound — on a LAN-facing bind a remote page must never learn
+/// `auth_token` (it grants full daemon control).
+async fn session_config_js(State(state): State<AppState>) -> impl IntoResponse {
+    if !state.config.bind_addr.ip().is_loopback() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let session = json!({
+        "endpoint": format!("ws://{}/rpc", state.config.bind_addr),
+        "token": state.config.auth_token,
+    });
+    (
+        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        format!("window.MULE_SESSION={session};"),
+    )
+        .into_response()
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {

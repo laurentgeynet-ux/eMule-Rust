@@ -1687,10 +1687,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'Invalid address — expected format: ws://host:port/rpc';
 
   @override
+  String get daemonTokenLabel => 'Auth token';
+
+  @override
+  String get daemonTokenHint => 'Contents of auth.token (leave empty if none)';
+
+  @override
   String get connect => 'Connect';
 
   @override
   String get changeDaemon => 'Change daemon';
+
+  @override
+  String get webInterface => 'Web interface';
 
   @override
   String get sectionUploads => 'Uploads';

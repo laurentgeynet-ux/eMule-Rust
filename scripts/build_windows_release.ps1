@@ -5,8 +5,9 @@
     Phase 7 — Industrialisation Locale & Release Candidate:
     1. Verifies clean Git repository state (rejects dirty state unless -AllowDirty is set).
     2. Collects exact toolchain versions (rustc, cargo, flutter, dart).
-    3. Compiles mule-daemon and Flutter Desktop in release mode.
-    4. Assembles standalone distribution in dist/eMuleRust-Windows.
+    3. Compiles mule-daemon, Flutter Desktop and Flutter Web in release mode.
+    4. Assembles standalone distribution in dist/eMuleRust-Windows
+       (web remote UI is bundled under web/, unless -SkipWeb is set).
     5. Generates CycloneDX 1.5 SBOM files in dist/eMuleRust-Windows/sbom.
     6. Signs executables and DLLs with Authenticode (if -Sign is set).
     7. Computes SHA-256 hashes of all artifacts post-signing and writes SHA256SUMS.txt and version.json.
@@ -25,6 +26,8 @@ param(
     [switch]$AllowDirty = $false,
     [switch]$SkipZip = $false,
     [switch]$LabMode = $false,
+    [switch]$SkipWeb = $false,
+    [string]$WebBaseHref = "/",
     [string]$DeployDir = "C:\Users\Lou\Desktop\eMuleRust"
 )
 
@@ -140,6 +143,28 @@ if (!(Test-Path $FlutterReleaseDir)) {
 }
 
 # -----------------------------------------------------------------------------
+# 4.5. Build Flutter Web Remote UI (release)
+# -----------------------------------------------------------------------------
+if (!$SkipWeb) {
+    Write-Host "`n[4.5] Building Flutter Web remote UI (release)..." -ForegroundColor Yellow
+    Push-Location "apps\web"
+    try {
+        & $Flutter build web --release --base-href $WebBaseHref
+        if ($LASTEXITCODE -ne 0) { throw "Flutter web build failed with code $LASTEXITCODE" }
+    } finally {
+        Pop-Location
+    }
+
+    $FlutterWebDir = Join-Path $Root "apps\web\build\web"
+    if (!(Test-Path $FlutterWebDir)) {
+        throw "Flutter web output directory not found at $FlutterWebDir"
+    }
+    Write-Host " -> Built: $FlutterWebDir" -ForegroundColor Green
+} else {
+    Write-Host "`n[4.5] Flutter Web build skipped (-SkipWeb specified)." -ForegroundColor Gray
+}
+
+# -----------------------------------------------------------------------------
 # 5. Assemble Distribution Bundle
 # -----------------------------------------------------------------------------
 Write-Host "`n[5/8] Assembling distribution bundle in $OutputDir..." -ForegroundColor Yellow
@@ -171,6 +196,27 @@ Copy-Item -Path $CliExe -Destination $BinDir -Force
 # Create portable.flag in bundle root for portable mode
 $PortableFlag = Join-Path $DestPath "portable.flag"
 New-Item -ItemType File -Path $PortableFlag -Force | Out-Null
+
+# Bundle the Flutter Web remote UI (static assets) under web/
+if (!$SkipWeb) {
+    $WebDestDir = Join-Path $DestPath "web"
+    New-Item -ItemType Directory -Path $WebDestDir -Force | Out-Null
+    Copy-Item -Path "$FlutterWebDir\*" -Destination $WebDestDir -Recurse -Force
+    Write-Host " -> Web UI bundled in: $WebDestDir" -ForegroundColor Green
+
+    # Double-clickable launcher: boots mule-daemon if absent (it then
+    # auto-detects and serves web/), waits, and opens the browser.
+    $BatLines = @(
+        '@echo off',
+        'tasklist /FI "IMAGENAME eq mule-daemon.exe" 2>nul | find /I "mule-daemon.exe" >nul',
+        'if errorlevel 1 start "" /min "%~dp0bin\mule-daemon.exe"',
+        'timeout /t 3 /nobreak >nul',
+        'start "" "http://127.0.0.1:4660/"'
+    )
+    $BatPath = Join-Path $DestPath "Interface Web.bat"
+    [System.IO.File]::WriteAllLines($BatPath, $BatLines, [System.Text.Encoding]::ASCII)
+    Write-Host " -> Web UI launcher: $BatPath" -ForegroundColor Green
+}
 
 Write-Host " -> Bundle assembled successfully in: $DestPath" -ForegroundColor Green
 
@@ -291,6 +337,7 @@ $VersionInfo = [ordered]@{
     protocolVersion = 1
     buildMode = "release"
     signed = [bool]$Sign
+    includesWebUi = [bool](!$SkipWeb)
     toolchains = [ordered]@{
         rustc = $RustcVersion
         cargo = $CargoVersion

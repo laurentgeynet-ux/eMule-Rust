@@ -16,6 +16,10 @@ class SystemActions {
   /// Reveals [filePath] in the OS file manager, falling back to opening its
   /// parent directory. No-op on unsupported platforms.
   Future<void> revealFile(String filePath) async {}
+
+  /// Opens [url] in the system default browser. No-op on unsupported
+  /// platforms.
+  Future<void> openUrl(String url) async {}
 }
 
 /// Shared instance — resolved per-platform via conditional export.
