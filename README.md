@@ -62,3 +62,19 @@ flutter test
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
 ```
 Le bundle autonome portable est généré dans `dist/eMuleRust-Windows/`.
+
+---
+
+## 🙏 Crédits & Attributions
+
+EMule-Rust est une réimplémentation indépendante dont la fidélité
+protocolaire s'appuie sur l'étude des sources open source **eMule**
+(© 2002-2026 Merkur / eMule Dev Team) et **aMule** (© aMule Team, Angel
+Vidal, Barry Dunne), toutes deux sous GPL-2.0+. Voir le fichier
+[`NOTICE`](NOTICE) pour l'attribution complète et
+[`docs/ed2k/references.md`](docs/ed2k/references.md) pour la
+correspondance fichier-par-fichier.
+
+## 📄 Licence
+
+Distribué sous **GPL-2.0-or-later** — voir [`LICENSE`](LICENSE).

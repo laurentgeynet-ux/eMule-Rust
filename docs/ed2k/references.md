@@ -2,6 +2,8 @@
 
 Ce document recense les dépôts sources, révisions historiques et fichiers de référence exploités pour la spécification du protocole eD2K dans EMule-Rust.
 
+> **Attributions :** les mentions de copyright des projets référencés (eMule © Merkur / eMule Dev Team, aMule © aMule Team…) sont centralisées dans le fichier [`NOTICE`](../../NOTICE) à la racine du dépôt.
+
 ---
 
 ## 1. Dépôts et Arbres Sources de Référence

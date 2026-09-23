@@ -17,7 +17,13 @@ Index exhaustif des fichiers versionnés du dépôt **EMule-Rust** — un client
 | `GEMINI.md` | Lien physique vers `AGENTS.md` (compatibilité Gemini CLI) |
 | `.github/copilot-instructions.md` | Lien physique vers `AGENTS.md` (compatibilité GitHub Copilot) |
 | `deny.toml` | Configuration cargo-deny (audit des licences/vulnérabilités) |
-| `search_mgr.cpp` | Fichier C++ de référence (code eMule original, gestionnaire de recherche) |
+| `LICENSE` | Licence du projet : GPL-2.0-or-later (texte canonique FSF) |
+| `NOTICE` | Attributions : sources adaptées (eMule © Merkur, aMule, eDonkey2000, Kademlia) |
+| `CONTRIBUTING.md` | Guide de contribution (flux de branches, validation, conventions) |
+| `SECURITY.md` | Politique de sécurité et signalement des vulnérabilités |
+| `.github/workflows/ci.yml` | CI GitHub Actions (Rust check/clippy/test + Flutter analyze/test) |
+| `.github/workflows/release.yml` | Pipeline release sur tag `v*` (build standard + publication GitHub Release) |
+| `.github/dependabot.yml` | Mises à jour automatiques des dépendances (cargo, pub, actions) |
 | `Asset/generated-image.png` | Image source de l'icône d'application (1254×1254 RGBA) — déclinée en `app_icon.ico` Windows/tray et icônes web/macOS/iOS |
 
 ## .agents/ — Configuration agents/MCP
