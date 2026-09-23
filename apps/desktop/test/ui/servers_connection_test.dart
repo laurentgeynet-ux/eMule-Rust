@@ -146,5 +146,20 @@ void main() {
       expect(viewModel.serverSession.status, ServerConnectionStatus.connected);
       expect(viewModel.isServerConnecting, isFalse);
     });
+
+    test('refresh recovers a session already connected daemon-side', () async {
+      // Cas web : le daemon s'est connecté au serveur eD2K avant que l'UI
+      // ne souscrive — l'événement sessionUpdated a été perdu. Le client fake
+      // est connecté directement pour simuler cet état sans émettre d'event.
+      await fakeClient.connectServer('176.123.5.89:4725');
+      expect(viewModel.serverSession.status,
+          ServerConnectionStatus.disconnected);
+
+      await viewModel.refresh();
+
+      expect(viewModel.serverSession.status, ServerConnectionStatus.connected);
+      expect(viewModel.serverSession.serverAddress, '176.123.5.89:4725');
+      expect(viewModel.serverSession.isHighId, isTrue);
+    });
   });
 }

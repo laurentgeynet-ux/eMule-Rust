@@ -382,6 +382,7 @@ class AppController extends ChangeNotifier {
       await fetchCategories();
       await fetchNetworkPolicy();
       await fetchKadStatus();
+      await serversController.refreshSession();
       await downloadsCtl.reload();
       await uploads.fetch();
       await shares.fetch();

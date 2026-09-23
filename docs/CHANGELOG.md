@@ -89,6 +89,16 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   sont arrêtés avant la copie (exe verrouillés) ; le merge-copy
   préserve `data\`, `downloads\` et `ipfilter*`.
 
+- **UI web — état eD2K réel affiché à la connexion** (`app_shell`) :
+  `AppController.refresh()` appelle désormais
+  `serversController.refreshSession()` (RPC `servers.status`), donc
+  l'UI reflète la session serveur courante même quand l'événement
+  `server.sessionUpdated` a été broadcast avant l'attachement du
+  client. Cas systématique en web : le daemon se connecte au serveur
+  eD2K pendant le chargement de la page → l'UI restait affichée
+  « Déconnecté » jusqu'à un clic manuel, alors que le daemon était
+  déjà connecté. Régression couverte par `servers_connection_test.dart`.
+
 ## [0.2.0] - 2026-09-23
 
 Version finale de la ligne 0.2.x — inclut l'intégralité de `0.2.0-RC1`
