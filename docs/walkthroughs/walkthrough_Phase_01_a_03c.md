@@ -1,6 +1,6 @@
 # Guide d'Exécution, de Validation et de Dépannage — Phase 3C : Durcissement Produit
 
-Ce document constitue le guide technique de référence pour la **Phase 3C** du projet **EMule-Rust** (Durcissement produit & préparation à la production locale). Il détaille l'architecture de supervision, la gestion des sessions locales, les verrous d'exclusivité, la chaîne de packaging Windows sécurisée, les suites de tests et le guide complet de dépannage.
+Ce document constitue le guide technique de référence pour la **Phase 3C** du projet **eMule-Rust** (Durcissement produit & préparation à la production locale). Il détaille l'architecture de supervision, la gestion des sessions locales, les verrous d'exclusivité, la chaîne de packaging Windows sécurisée, les suites de tests et le guide complet de dépannage.
 
 L'ensemble des procédures et démonstrations présentées ici est **100 % déterministe, reproductible et exécutable hors-ligne**, sans solliciter de serveurs eD2K ou nœuds Kad publics.
 
@@ -119,7 +119,7 @@ Toutes les commandes ci-dessous doivent s'exécuter avec succès :
 
 ### 3.2 Client Flutter Desktop (Analyse & Tests)
 ```powershell
-cd d:\Projet\EMule-Rust\apps\desktop
+cd d:\Projet\eMule-Rust\apps\desktop
 
 # 1. Analyse statique Flutter
 & "C:\Users\Lou\flutter\bin\flutter.bat" analyze
@@ -144,7 +144,7 @@ cd d:\Projet\EMule-Rust\apps\desktop
 ### Option A : Mode Automatique / Production Locale (Recommandé)
 Dans ce mode, Flutter supervise directement le démon :
 ```powershell
-cd d:\Projet\EMule-Rust\apps\desktop
+cd d:\Projet\eMule-Rust\apps\desktop
 flutter run -d windows
 ```
 - Flutter découvre `%APPDATA%\eMuleRust\session.json`.
@@ -156,14 +156,14 @@ Idéal pour observer les logs bruts du démon en temps réel :
 
 **Terminal 1 (Démon Rust) :**
 ```powershell
-cd d:\Projet\EMule-Rust
+cd d:\Projet\eMule-Rust
 cargo run -p mule-daemon -- --workdir "$env:APPDATA\eMuleRust"
 ```
 *Le démon affiche son PID, l'acquisition du verrou `mule.lock`, son port d'écoute et la création de `session.json`.*
 
 **Terminal 2 (Application Flutter) :**
 ```powershell
-cd d:\Projet\EMule-Rust\apps\desktop
+cd d:\Projet\eMule-Rust\apps\desktop
 flutter run -d windows
 ```
 *Flutter détecte la session existante et s'y connecte immédiatement.*
@@ -171,7 +171,7 @@ flutter run -d windows
 ### Option C : Mode Maquette Isolée (Fake Client)
 Pour itérer rapidement sur l'interface graphique sans démon backend :
 ```powershell
-cd d:\Projet\EMule-Rust\apps\desktop
+cd d:\Projet\eMule-Rust\apps\desktop
 flutter run -d windows --dart-define=USE_FAKE_DAEMON=true
 ```
 
@@ -292,7 +292,7 @@ Remove-Item -Recurse -Force "$env:APPDATA\eMuleRust"
 Pour générer le livrable complet sans contourner la politique de sécurité PowerShell du système :
 
 ```powershell
-cd d:\Projet\EMule-Rust
+cd d:\Projet\eMule-Rust
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
 ```
 
@@ -783,7 +783,7 @@ Deux documents de référence formalisent les structures binaires eD2K historiqu
 ### 16.6 Bilan Global des Tests et Clôture Phase 6.4
 
 ```
-=== DÉCOMPTE COMPLET DES TESTS ATTESTÉS (WORKSPACE EMULE-RUST) ===
+=== DÉCOMPTE COMPLET DES TESTS ATTESTÉS (WORKSPACE eMule-Rust) ===
 
 1. mule-core : 12 tests
 2. mule-daemon : 12 tests
@@ -816,9 +816,9 @@ Le jalon 6.5 couronne le travail de conformité protocolaire eD2K en validant fo
    - **Tier 3 (Binaire Référence Externe)** : Harnais pilotant un exécutable officiel eMule/aMule épinglé (SHA-256, flags CLI, cycle de vie teardown) documenté dans `reference_manifest.json`.
 
 3. **Matrice Comparative des Opcodes et Formats Wire** :
-   Les opcodes eD2K ont fait l'objet de réattributions et de variantes selon les époques. EMule-Rust fige les correspondances exactes selon la matrice suivante :
+   Les opcodes eD2K ont fait l'objet de réattributions et de variantes selon les époques. eMule-Rust fige les correspondances exactes selon la matrice suivante :
 
-| Message Symbolique | Variante & Source | Protocole Wire | Opcode Wire | Direction | Structure & Layout Payload | Support EMule-Rust | Règle / Invariant Associé |
+| Message Symbolique | Variante & Source | Protocole Wire | Opcode Wire | Direction | Structure & Layout Payload | Support eMule-Rust | Règle / Invariant Associé |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`OP_HELLO`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x01` | Client $\rightarrow$ Pair | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Rejet si hash nul ou version incompatible |
 | **`OP_HELLO_ANSWER`** | Standard eD2K & eMule 0.50a | `PR_ED2K` (`0xE3`) | `0x4C` | Pair $\rightarrow$ Client | Hash (16B), ClientID (4B LE), TCP Port (2B LE), Tag count (4B LE), Tags, Server IP (4B LE), Server Port (2B LE) | **Complet** | Préservation des tags inconnus sans désérialisation non sécurisée |
@@ -1007,7 +1007,7 @@ En l'absence de binaire de référence externe épinglé dans l'environnement lo
 
 ### 19.1 Matrice d'Invariance Multi-Profil
 
-Testée dans [`test_multi_profile_invariance_matrix`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Testée dans [`test_multi_profile_invariance_matrix`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - Les quatre opcodes surchargés historiquement (`0x47`, `0x4B`, `0x4F`, `0x49`) sont exécutés contre les quatre profils officiels :
   - **`Emule050a` & `Amule233`** : acceptent `0x47` (`RequestParts`) et `0x4F` (`FileStatusReq`) ; préservent `0x4B` et `0x49` comme paquets `Raw`.
   - **`LegacyEdonkey`** : accepte `0x4B` (`RequestParts`) et `0x49` (`FileStatusReq`) ; préserve `0x47` et `0x4F` comme paquets `Raw`.
@@ -1016,7 +1016,7 @@ Testée dans [`test_multi_profile_invariance_matrix`](file:///d:/Projet/EMule-Ru
 
 ### 19.2 Cas Limites : Bloc Résiduel de 1 Octet et Sentinelles de Slots
 
-Testé dans [`test_boundary_cases_1_byte_residual_and_u32_sentinels`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Testé dans [`test_boundary_cases_1_byte_residual_and_u32_sentinels`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - **Bloc résiduel de 1 octet** : plage exacte `[9_728_000, 9_728_001)` sur un fichier de `9_728_001` octets (part complète de 9 728 000 octets + 1 octet terminal).
 - **Sentinelles de slots wire** : dans le format wire eMule 40 octets (3 slots), un bloc résiduel valide suivi des sentinelles `(0, 0)` et `(u32::MAX, u32::MAX)` est décodé correctement en ignorant les slots sentinelles.
 - **Refus des sentinelles pures** : une trame ne contenant que des sentinelles est rejetée (`MalformedField`).
@@ -1025,7 +1025,7 @@ Testé dans [`test_boundary_cases_1_byte_residual_and_u32_sentinels`](file:///d:
 
 ### 19.3 Traces Normalisées JSON & Rapports CI Machine-Readable
 
-Testé dans [`test_reference_interop_normalized_json_snapshots_and_ci_report`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Testé dans [`test_reference_interop_normalized_json_snapshots_and_ci_report`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - Normalisation conforme au schéma strict de traces :
   ```json
   {
@@ -1037,7 +1037,7 @@ Testé dans [`test_reference_interop_normalized_json_snapshots_and_ci_report`](f
     "outcome": "accepted"
   }
   ```
-- Rapport synthétique CI via [`DivergenceReport::format_ci_summary()`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/reference.rs#L204-L222) affichant le profil, le nombre de traces, les opcodes observés, les détections d'opcodes canoniques, et la validation d'anonymisation sans fuite de données d'environnement hôte.
+- Rapport synthétique CI via [`DivergenceReport::format_ci_summary()`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/reference.rs#L204-L222) affichant le profil, le nombre de traces, les opcodes observés, les détections d'opcodes canoniques, et la validation d'anonymisation sans fuite de données d'environnement hôte.
 
 ---
 
@@ -1073,7 +1073,7 @@ Pour prévenir toute ambiguïté ou affirmation prématurée d'interopérabilit�
 
 ### 20.2 Matrice de Rejet des Combinaisons Protocole / Opcode Illégales
 
-Vérifiée dans [`test_illegal_protocol_opcode_combinations`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Vérifiée dans [`test_illegal_protocol_opcode_combinations`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - **Protocole compressé `0xD4`** : inconditionnellement rejeté avec `Ed2kErrorKind::CompressedProtocolUnsupported`.
 - **Octets magiques non assignés (`0x00`, `0x42`, `0xFF`)** : rejetés immédiatement avec `Ed2kErrorKind::UnsupportedProtocol`.
 - **Extension eMule `0xC5`** : décodée en paquet `Raw` sans déclencher de mutation d'état critique.
@@ -1081,14 +1081,14 @@ Vérifiée dans [`test_illegal_protocol_opcode_combinations`](file:///d:/Projet/
 
 ### 20.3 Tests Métamorphiques sur les Tags TLV eD2K
 
-Vérifiés dans [`test_metamorphic_tag_permutations_and_unknown_tags`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
+Vérifiés dans [`test_metamorphic_tag_permutations_and_unknown_tags`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_roundtrip_tests.rs) :
 - **Invariance de permutation** : permuter l'ordre de sérialisation des tags TLV dans un paquet préserve strictement l'invariant sémantique d'interrogation (`find_tag()`).
 - **Mutation & tags inconnus** : l'injection de tags métadonnées inconnus préserve intacts les tags connus requis par le protocole.
 - **Contrôle strict des limites** : jusqu'à la limite autorisée (`MAX_TAGS_PER_PACKET`), la longueur déclarée de la trame et les allocations tampons restent rigoureusement synchronisées, et tout dépassement est promptement rejeté.
 
 ### 20.4 Audit d'Anonymisation Adversariale des Traces
 
-Vérifié dans [`test_reference_interop_anonymization_adversarial_patterns`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Vérifié dans [`test_reference_interop_anonymization_adversarial_patterns`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - **Acceptation Unicode international** : les textes contenant des accents, emojis, idéogrammes CJK ou écritures RTL (arabe/hébreu) sont acceptés sans faux positif.
 - **Rejet de 13 vecteurs adversaires d'environnement** :
   - Chemins absolus Windows (`C:\`, `D:\`) et UNC (`\\server\share`).
@@ -1098,7 +1098,7 @@ Vérifié dans [`test_reference_interop_anonymization_adversarial_patterns`](fil
 
 ### 20.5 Écriture Sécurisée des Artefacts CI en Répertoire Temporaire
 
-Vérifié dans [`test_safe_ci_artifact_writer_in_tempdir`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Vérifié dans [`test_safe_ci_artifact_writer_in_tempdir`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - Fonction `DivergenceReport::write_ci_report_secure` : exécute un contrôle pré-vol d'anonymisation (`validate_anonymity`) **avant** toute écriture sur disque.
 - En cas de trace compromise, l'écriture échoue immédiatement et **aucun fichier** n'est créé sur le disque.
 - Les fichiers générés (`ci_divergence_summary.txt` et `ci_wire_traces.jsonl`) sont cantonnés aux répertoires temporaires isolés (`tempfile::tempdir()`).
@@ -1117,7 +1117,7 @@ La version interne **`0.1.0-lab`** fige l'état de l'implémentation avant toute
 
 ### 21.1 Normalisation Unicode NFC & Sécurité Visuelle Anti-Spoofing
 
-Vérifié dans [`test_unicode_nfc_and_visual_sanitization_for_ci_reports`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
+Vérifié dans [`test_unicode_nfc_and_visual_sanitization_for_ci_reports`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_reference_interop_tests.rs) :
 - **Principe de distinction** : les octets bruts sont préservés pour toute comparaison cryptographique ou réseau, tandis qu'une version d'affichage sécurisée est générée pour les rapports CI et les affichages console via `sanitize_unicode_for_display()`.
 - **Normalisation canonique** : application systématique de la forme Unicode NFC via le crate `unicode-normalization`.
 - **Échappement transparent des attaques bidi / invisibles** :
@@ -1128,8 +1128,8 @@ Vérifié dans [`test_unicode_nfc_and_visual_sanitization_for_ci_reports`](file:
 
 ### 21.2 Propriété Formelle de Non-Mutation d'État
 
-Vérifié dans [`test_non_mutation_property_on_raw_and_unhandled_frames`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/tests/ed2k_session_tests.rs) :
-- Introduction de la structure [`SessionSnapshot`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/session.rs) figeant :
+Vérifié dans [`test_non_mutation_property_on_raw_and_unhandled_frames`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/tests/ed2k_session_tests.rs) :
+- Introduction de la structure [`SessionSnapshot`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/session.rs) figeant :
   - `state_name` ("Ready")
   - `is_ready` (true)
   - `pending_status_count`
@@ -1142,16 +1142,16 @@ Vérifié dans [`test_non_mutation_property_on_raw_and_unhandled_frames`](file:/
   4. Seul le compteur de diagnostics isolé `unhandled_packets_count` est incrémenté.
 
 ### 21.3 Documents de Référence de la Release 0.1.0-lab
-- [`CHANGELOG.md`](file:///d:/Projet/EMule-Rust/CHANGELOG.md) : Historique technique détaillé de l'ensemble des phases 1 à 6.6.
-- [`RELEASE_NOTES_0.1.0-lab.md`](file:///d:/Projet/EMule-Rust/RELEASE_NOTES_0.1.0-lab.md) : Synthèse d'attestation, liste des éléments volontairement absents, versions exactes des dépendances et commandes de reproduction.
+- [`CHANGELOG.md`](file:///d:/Projet/eMule-Rust/CHANGELOG.md) : Historique technique détaillé de l'ensemble des phases 1 à 6.6.
+- [`RELEASE_NOTES_0.1.0-lab.md`](file:///d:/Projet/eMule-Rust/RELEASE_NOTES_0.1.0-lab.md) : Synthèse d'attestation, liste des éléments volontairement absents, versions exactes des dépendances et commandes de reproduction.
 - Tag Git : `v0.1.0-lab`.
 
 ---
 
-### 21.4 Bilan Global Final des Tests (Workspace EMule-Rust 0.1.0-lab)
+### 21.4 Bilan Global Final des Tests (Workspace eMule-Rust 0.1.0-lab)
 
 ```
-=== DÉCOMPTE COMPLET DES TESTS DU WORKSPACE EMULE-RUST ===
+=== DÉCOMPTE COMPLET DES TESTS DU WORKSPACE eMule-Rust ===
 
 1. mule-core : 12 tests
    - part_file_and_persistence.rs  :  2 tests ok
@@ -1297,7 +1297,7 @@ flowchart TD
 
 ```
 ========================================================================
-           BILAN GÉNÉRAL DE VALIDATION - EMULE-RUST RC v0.1.0-lab
+           BILAN GÉNÉRAL DE VALIDATION - eMule-Rust RC v0.1.0-lab
 ========================================================================
 
 1. SUITE DE TESTS UNITAIRES ET D'INTÉGRATION :

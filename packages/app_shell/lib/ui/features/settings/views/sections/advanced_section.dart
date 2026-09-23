@@ -6,6 +6,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../app/providers.dart';
+import '../../../../../l10n/generated/app_localizations.dart';
 import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/diagnostic_dialog.dart';
 import '../../../downloads/widgets/import_part_met_dialog.dart';
@@ -83,6 +84,8 @@ class SettingsAdvancedSection extends ConsumerWidget {
               ? (_) => ref.read(shellControllerProvider).toggleDebugBar()
               : null,
         ),
+        const SizedBox(height: 4),
+        _LogLevelTile(ref: ref, l10n: l10n),
         const SizedBox(height: 16),
         const Divider(color: AppTheme.darkBorder),
         const SizedBox(height: 12),
@@ -136,6 +139,63 @@ class SettingsAdvancedSection extends ConsumerWidget {
             child: Text(l10n.lifetimeResetConfirmButton),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Sélecteur du niveau de log daemon (`settings.set` clé `logLevel`) —
+/// runtime uniquement, jamais persisté par le daemon. Une spec
+/// `EnvFilter` complexe (avec directives par module) est affichée telle
+/// quelle sans être écrasée.
+class _LogLevelTile extends StatelessWidget {
+  static const _levels = ['error', 'warn', 'info', 'debug', 'trace'];
+
+  final WidgetRef ref;
+  final AppLocalizations l10n;
+
+  const _LogLevelTile({required this.ref, required this.l10n});
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsControllerProvider).settings;
+    final raw = settings['logLevel'] as String? ?? 'info';
+    final current = _levels.contains(raw) ? raw : 'info';
+    final items = <String>[
+      ..._levels,
+      if (!_levels.contains(raw)) raw,
+    ];
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.receipt_long_outlined,
+          size: 20, color: AppColors.accent),
+      title: Text(
+        l10n.settingsLogLevelTile,
+        style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+      ),
+      subtitle: Text(
+        l10n.settingsLogLevelSub,
+        style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+      ),
+      trailing: DropdownButton<String>(
+        value: items.contains(raw) ? raw : current,
+        underline: const SizedBox.shrink(),
+        isDense: true,
+        items: items
+            .map((level) => DropdownMenuItem(
+                  value: level,
+                  child: Text(level,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textPrimary)),
+                ))
+            .toList(),
+        onChanged: (level) {
+          if (level == null || level == raw) return;
+          ref
+              .read(settingsControllerProvider)
+              .updateSettings({'logLevel': level});
+        },
       ),
     );
   }

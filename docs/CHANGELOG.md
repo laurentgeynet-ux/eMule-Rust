@@ -1,4 +1,4 @@
-# Journal des Modifications — EMule-Rust
+# Journal des Modifications — eMule-Rust
 
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
@@ -487,7 +487,7 @@ plus les ajouts suivants.
     valeurs `config.*` figées au boot ; le nickname réel
     (`current_nickname`) est utilisé dans le failover serveur et les
     hellos pairs (suppression des littéraux `http://emule-project.net`
-    et `EMule-Rust`).
+    et `eMule-Rust`).
   - **Dialing de pairs sans serveur (Kad-only)** : le coordinateur
     connecte les sources directes même déconnecté — `client_id=0` dans
     le hello, comme le chemin manuel `sources.connect` ; les sources
@@ -663,7 +663,7 @@ plus les ajouts suivants.
     350 ms (≤ 12 paquets, ≤ 300 entrées). ~91 % des résultats keyword
     étaient auparavant jetés comme non sollicités.
 
-- **Options exclusives EMule-Rust** (aucun équivalent eMule/aMule) :
+- **Options exclusives eMule-Rust** (aucun équivalent eMule/aMule) :
   - `paranoidMode` : slots d'upload réservés aux pairs **obfusqués avec
     signature Secure Ident vérifiée** — applique le gate devant
     `request_upload_slot` (`OP_STARTUPLOADREQ`, `OP_REQUESTPARTS*`).
@@ -809,7 +809,7 @@ plus les ajouts suivants.
 - **Paramètres eMule supplémentaires câblés** (`settings.get`/`settings.set`,
   appliqués à chaud) :
   - **Général** : `nickname` — pseudo annoncé aux serveurs et pairs
-    (remplace les valeurs codées en dur « EMule-Rust »).
+    (remplace les valeurs codées en dur « eMule-Rust »).
   - **Connexion → Protocole & limites** : `obfuscationEnabled` /
     `obfuscationRequired` (protocol encryption — listener inbound live via
     `set_obfuscation`, connexions sortantes via `effective_obfuscation()`,
@@ -1016,7 +1016,7 @@ plus les ajouts suivants.
   - Runners **Android** et **iOS** générés (`com.eMuleRust.app`) :
     `AndroidManifest.xml` avec permission `INTERNET` + intent-filter
     `ed2k`, `Info.plist` avec `CFBundleURLSchemes` `ed2k`, nom d'app
-    `EMule-Rust`. Les services desktop (`WindowSetup`, `TraySetup`) sont
+    `eMule-Rust`. Les services desktop (`WindowSetup`, `TraySetup`) sont
     déjà no-op hors desktop ; `pickFolder` exclut iOS (pas de picker de
     dossier natif).
 
@@ -1278,7 +1278,7 @@ Release de performance et de fidélité protocolaire eMule : agrégation multi-p
   - Traitement complet des requêtes de téléversement entrantes (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`) et libération dynamique des slots d'envoi.
   - Logs de diagnostic stratégiques (`[UPLOAD_REQUEST]`, `[UPLOAD_SLOT_GRANTED]`, `[UPLOAD_RELEASED]`).
 - **Cartographie Globale du Dépôt (`INDEX.md`)** :
-  - Inventaire exhaustif et documentation de tous les fichiers versionnés du projet EMule-Rust.
+  - Inventaire exhaustif et documentation de tous les fichiers versionnés du projet eMule-Rust.
 
 ---
 
@@ -1287,7 +1287,7 @@ Release de performance et de fidélité protocolaire eMule : agrégation multi-p
 Release de consolidation majeure intégrant l'implémentation complète du protocole eD2K réel (Tier 3.1 à Tier 3.6), l'inspection détaillée et la Part Map (Phase 8.1), l'historique et statistiques locales avec exports caviardés (Phase 8.2), les catégories locales et la hiérarchie de destination à 4 niveaux (Phase 8.3), l'import défensif de fichiers `.part.met` eMule avec rapport d'audit (Phase 8.4), ainsi que le packaging multi-saveurs Windows et la migration de schéma SQLite (Phase 8.5).
 
 > **Formulation d'attestation d'interopérabilité & confinement :**  
-> *« EMule-Rust est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
+> *« eMule-Rust est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
 
 ### Ajouté
 - **Protocole eD2K Loopback & Qualification eMule 0.50a (Tier 3.1 – 3.6)** :
@@ -1330,7 +1330,7 @@ Release de consolidation majeure intégrant l'implémentation complète du proto
 Release de consolidation intégrant la séparation étanche `data/` vs `downloads/`, la persistance de la suppression SQLite, la sélection personnalisée du dossier de téléchargement, l'enrichissement des diagnostics, et le pipeline QA E2E automatisé Phase 7.3.
 
 > **Formulation d'attestation d'interopérabilité :**  
-> *« EMule-Rust est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
+> *« eMule-Rust est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
 
 ### Ajouté
 - **Séparation Étanche de l'État Interne (`data/`) et des Fichiers Finalisés (`downloads/`)** :
@@ -1375,7 +1375,7 @@ Release Candidate consolidée pour le mode portable (Phase 7.1) et les outils de
 
 ## [0.1.0-lab] - 2026-09-13
 
-Première release interne de laboratoire pour **EMule-Rust** (client moderne eD2K offline/loopback).
+Première release interne de laboratoire pour **eMule-Rust** (client moderne eD2K offline/loopback).
 Cette version fige l'état de validation d'interopérabilité locale, le pipeline de stockage, le protocole borné et la suite d'outils de test.
 
 ### Résumé des Niveaux d'Attestation
@@ -1399,14 +1399,14 @@ Cette version fige l'état de validation d'interopérabilité locale, le pipelin
 
 #### Sécurité Visuelle Unicode & Normalisation
 - Intégration de `unicode-normalization` pour l'application canonique de la forme Unicode NFC sur les chaînes manipulées.
-- Fonction [`sanitize_unicode_for_display`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/reference.rs) : conservation des valeurs brutes pour la comparaison octet par octet et échappement sécurisé en `\u{XXXX}` des caractères trompeurs pour les rapports CI et terminaux :
+- Fonction [`sanitize_unicode_for_display`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/reference.rs) : conservation des valeurs brutes pour la comparaison octet par octet et échappement sécurisé en `\u{XXXX}` des caractères trompeurs pour les rapports CI et terminaux :
   - Overrides et isolats bidirectionnels (`U+202A`..=`U+202E`, `U+2066`..=`U+2069`, `U+061C`, `U+200E`, `U+200F`).
   - Caractères invisibles et espaces de largeur nulle (`U+200B`..=`U+200D`, `U+2060`, `U+FEFF`, `U+00AD`).
   - Caractères de contrôle non graphiques (`c.is_control()`).
 - Détection et rejet automatique dans `TraceRecord::is_clean()` de toute trame contenant des bidi overrides ou des caractères invisibles non échappés.
 
 #### Propriété Formelle de Non-Mutation
-- Structure [`SessionSnapshot`](file:///d:/Projet/EMule-Rust/crates/mule-protocol/src/ed2k/session.rs) et méthode `Ed2kSession::snapshot()` pour figer l'état protocolaire complet d'une session.
+- Structure [`SessionSnapshot`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/session.rs) et méthode `Ed2kSession::snapshot()` pour figer l'état protocolaire complet d'une session.
 - Compteur de diagnostics isolé `unhandled_packets_count`.
 - Garantie formelle et testée : le traitement d'une trame `Raw` (`0xC5 PR_EMULE`, opcode ambigu pour le profil actif, ou opcode inconnu `0xFE`) n'altère en aucun cas l'état de session, le tracker de statut (`status_tracker`), le tracker de blocs (`block_tracker`), la planification de téléchargement, la persistance SQLite, ou les compteurs de progression.
 

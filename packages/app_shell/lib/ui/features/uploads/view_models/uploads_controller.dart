@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 /// Sub-domain controller for the Uploads section.
 ///
@@ -51,8 +52,9 @@ class UploadsController extends ChangeNotifier {
         uploadRateBps: _snapshot.uploadRateBps,
       );
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
       // Non-fatal: the next event will refresh the snapshot.
+      AppLogger.debug('uploads', 'Uploads fetch failed', error: e);
     }
   }
 
@@ -61,8 +63,9 @@ class UploadsController extends ChangeNotifier {
     try {
       await client.cancelUpload(clientAddress);
       await fetch();
-    } catch (_) {
+    } catch (e) {
       // Non-fatal: the next event will refresh the snapshot.
+      AppLogger.debug('uploads', 'Cancel upload failed', error: e);
     }
   }
 

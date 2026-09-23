@@ -74,7 +74,7 @@ pub fn add_port_safe(
             true
         }
         Err(AddPortError::PortInUse) => {
-            match check_existing_mapping(gateway, protocol, port, local_addr, "EMule-Rust") {
+            match check_existing_mapping(gateway, protocol, port, local_addr, "eMule-Rust") {
                 MappingOwnership::ExactMatch => {
                     info!("UPnP {proto_name} port {port} already correctly mapped to {local_addr} (idempotent keep)");
                     true

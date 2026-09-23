@@ -38,7 +38,6 @@ pub struct UpnpStatusSnapshot {
     pub updated_at_unix_ms: u64,
 }
 
-
 /// Returns current unix milliseconds.
 pub fn current_unix_ms() -> u64 {
     SystemTime::now()
@@ -94,13 +93,18 @@ pub fn detect_local_ipv4_for_gateway(gateway_addr: SocketAddr) -> Option<Ipv4Add
 pub enum MappingOwnership {
     /// The existing rule on the gateway is identical and already maps to our exact internal endpoint and description.
     ExactMatch,
-    /// The existing rule belongs to EMule-Rust on this machine, but targets an old local IP or port (stale lease to update).
+    /// The existing rule belongs to eMule-Rust on this machine, but targets an old local IP or port (stale lease to update).
     StaleLease,
     /// The rule belongs to another application or another host on the LAN. Must NOT be touched.
     ForeignConflict,
     /// No matching rule found for this external port / protocol.
     NotFound,
 }
+
+/// Ancien préfixe de description (« EMule-Rust », avant le renommage en
+/// « eMule-Rust ») : les baux créés par les versions antérieures doivent
+/// rester reconnus comme nous appartenant pour être mis à jour ou supprimés.
+const LEGACY_DESCRIPTION_PREFIX: &str = "EMule-Rust";
 
 /// Inspects whether a specific port mapping entry matches our expected criteria.
 pub fn inspect_mapping_entry(
@@ -120,7 +124,8 @@ pub fn inspect_mapping_entry(
 
     let expected_client_ip = expected_local.ip().to_string();
     let expected_internal_port = expected_local.port();
-    let is_emule_desc = entry_description.starts_with(description_prefix);
+    let is_emule_desc = entry_description.starts_with(description_prefix)
+        || entry_description.starts_with(LEGACY_DESCRIPTION_PREFIX);
 
     if is_emule_desc {
         if entry_internal_client == expected_client_ip

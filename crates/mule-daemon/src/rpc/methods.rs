@@ -14,6 +14,7 @@ use crate::state::AppState;
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[tracing::instrument(name = "rpc", skip_all, fields(rpc.method = %req.method))]
 pub async fn handle_request(
     state: &AppState,
     req: JsonRpcRequest,
@@ -106,9 +107,7 @@ pub async fn handle_request(
         "shares.rescan" => handle_shares_rescan(state).await,
         "shares.setEnabled" => handle_shares_set_enabled(state, req.params).await,
         "shares.setCategory" => handle_shares_set_category(state, req.params).await,
-        "shares.setUploadPriority" => {
-            handle_shares_set_upload_priority(state, req.params).await
-        }
+        "shares.setUploadPriority" => handle_shares_set_upload_priority(state, req.params).await,
         "listener.start" => handle_listener_start(state, req.params).await,
         "listener.stop" => handle_listener_stop(state).await,
         "listener.status" => handle_listener_status(state).await,

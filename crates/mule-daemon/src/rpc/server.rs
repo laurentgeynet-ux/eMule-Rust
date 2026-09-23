@@ -31,8 +31,7 @@ pub fn create_router(state: AppState) -> Router {
         router = router
             .route("/session-config.js", get(session_config_js))
             .fallback_service(
-                ServeDir::new(&web_dir)
-                    .fallback(ServeFile::new(web_dir.join("index.html"))),
+                ServeDir::new(&web_dir).fallback(ServeFile::new(web_dir.join("index.html"))),
             );
     }
 
@@ -59,7 +58,10 @@ async fn session_config_js(State(state): State<AppState>) -> impl IntoResponse {
         "token": state.config.auth_token,
     });
     (
-        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
         format!("window.MULE_SESSION={session};"),
     )
         .into_response()

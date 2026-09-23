@@ -80,6 +80,6 @@ jobs:
           $sbom = Get-ChildItem dist\eMuleRust-Standard-Windows\sbom\*.json -ErrorAction SilentlyContinue
           foreach ($s in $sbom) { $assets += $s.FullName }
           gh release create $tag $assets `
-            --title "EMule-Rust $tag" `
+            --title "eMule-Rust $tag" `
             --notes-file docs/releases/RELEASE_NOTES_$($tag.TrimStart('v')).md `
             --verify-tag

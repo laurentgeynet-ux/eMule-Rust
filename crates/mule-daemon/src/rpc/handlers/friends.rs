@@ -38,11 +38,7 @@ pub async fn handle_friends_add(
         .and_then(|p| p["name"].as_str())
         .unwrap_or("")
         .to_string();
-    state
-        .downloads
-        .lock()
-        .await
-        .add_friend(&user_hash, &name)?;
+    state.downloads.lock().await.add_friend(&user_hash, &name)?;
     state
         .inbound_listener
         .upload_manager()
@@ -61,11 +57,7 @@ pub async fn handle_friends_remove(
         .and_then(|p| p["userHash"].as_str())
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'userHash'"))?
         .to_lowercase();
-    state
-        .downloads
-        .lock()
-        .await
-        .remove_friend(&user_hash)?;
+    state.downloads.lock().await.remove_friend(&user_hash)?;
     state
         .inbound_listener
         .upload_manager()

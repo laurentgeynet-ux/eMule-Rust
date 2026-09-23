@@ -7,22 +7,22 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 void main() {
-  group('PartAvailabilityBar colors (eMule 0.72a DrawStatusBar, muted palette)', () {
-    test('availabilityColor: red when no source, sky gradient rare→common', () {
+  group('PartAvailabilityBar colors (eMule 0.72a DrawStatusBar, standard palette)', () {
+    test('availabilityColor: red when no source, blue gradient rare→common', () {
       expect(availabilityColor(0), partMissingColor);
 
-      // Muted variant of eMule formula RGB(0, 210-22*(freq-1), 255):
-      // Sky 300 = rare → Sky 800 = common (Tailwind shades).
-      expect(availabilityColor(1), const Color(0xFF7DD3FC));
-      expect(availabilityColor(10), const Color(0xFF075985));
+      // eMule formula RGB(0, 210-22*(freq-1), 255):
+      // light cyan-blue = rare → pure blue = common.
+      expect(availabilityColor(1), const Color(0xFF00D2FF));
+      expect(availabilityColor(10), const Color(0xFF000CFF));
 
       int g(Color c) => (c.g * 255.0).round().clamp(0, 255);
 
-      // More sources → gradient darkens monotonically.
+      // More sources → green channel darkens monotonically.
       expect(g(availabilityColor(5)), lessThan(g(availabilityColor(1))));
 
-      // Very common clamps at Sky 800.
-      expect(availabilityColor(100), const Color(0xFF075985));
+      // Very common clamps at the 10-source blue.
+      expect(availabilityColor(100), const Color(0xFF000CFF));
     });
 
     test('partColorFor maps verified/completed/missing states', () {

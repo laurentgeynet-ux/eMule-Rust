@@ -1,14 +1,14 @@
-# Notes de Release — EMule-Rust 0.1.3-lab
+# Notes de Release — eMule-Rust 0.1.3-lab
 
 ## 1. Vue d'Ensemble & Contexte
 
-La version **0.1.3-lab** d'**EMule-Rust** constitue le jalon d'intégration et de consolidation majeure du projet. Elle réunit :
+La version **0.1.3-lab** d'**eMule-Rust** constitue le jalon d'intégration et de consolidation majeure du projet. Elle réunit :
 1. **La complétion du protocole eD2K réel (Tier 3.1 à Tier 3.6)** validé contre l'exécutable officiel eMule 0.50a en environnement loopback hermétique.
 2. **L'intégralité des fonctionnalités de Phase 8** : inspection détaillée, Part Map interactive, catégories locales avec hiérarchie de destination à 4 niveaux, historique SQLite avec rétention et exports caviardés, et import expérimental défensif de fichiers `.part.met` avec rapport d'audit.
 3. **L'industrialisation et le packaging Windows certifiés** : deux saveurs étanches (`standard` et `qa-loopback`), validation de migration de schéma SQLite depuis Phase 7, portabilité vérifiée et matrice de supervision RC complète.
 
 > **Déclaration Explicite de Confinement & Attestation d'Interopérabilité :**  
-> *« EMule-Rust est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
+> *« eMule-Rust est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
 
 ---
 

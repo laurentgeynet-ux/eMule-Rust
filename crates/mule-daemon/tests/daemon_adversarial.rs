@@ -28,7 +28,10 @@ const AUTH_TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef012345
 async fn read_response<S>(read: &mut S, id: u64) -> serde_json::Value
 where
     S: futures_util::Stream<
-            Item = Result<tokio_tungstenite::tungstenite::Message, tokio_tungstenite::tungstenite::Error>,
+            Item = Result<
+                tokio_tungstenite::tungstenite::Message,
+                tokio_tungstenite::tungstenite::Error,
+            >,
         > + Unpin,
 {
     for _ in 0..64 {

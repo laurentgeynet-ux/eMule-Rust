@@ -55,10 +55,7 @@ pub async fn scan_download_dir_shares(
             .filter(|p| is_shareable_file(p))
             .collect(),
         Err(e) => {
-            tracing::debug!(
-                "[INCOMING_SHARE] cannot scan {}: {e}",
-                dir.display()
-            );
+            tracing::debug!("[INCOMING_SHARE] cannot scan {}: {e}", dir.display());
             return 0;
         }
     };

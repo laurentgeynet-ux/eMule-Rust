@@ -10,10 +10,11 @@
 //! `Opcodes.h:69-115` (`SOURCECLIENTREASKS`, `SOURCECLIENTREASKF`,
 //! `MINCOMMONPENALTY`, `RARE_FILE`, `CONNECTION_LATENCY`).
 
+use crate::services::peer_session::log_peer_addr;
 use mule_protocol::ed2k::{
-    Ed2kAnswerSources, Ed2kDecoder, Ed2kEncoder, Ed2kRequestSources, SxSource,
-    SOURCE_EXCHANGE2_VERSION, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_REQUESTSOURCES,
-    OP_REQUESTSOURCES2, PR_EMULE, PR_EMULE_COMPRESSED,
+    Ed2kAnswerSources, Ed2kDecoder, Ed2kEncoder, Ed2kRequestSources, SxSource, OP_ANSWERSOURCES,
+    OP_ANSWERSOURCES2, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, PR_EMULE, PR_EMULE_COMPRESSED,
+    SOURCE_EXCHANGE2_VERSION,
 };
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -222,7 +223,10 @@ pub fn emule_info_sx_version(info: &mule_protocol::ed2k::Ed2kEmuleInfo) -> u8 {
     info.tags
         .iter()
         .find_map(|t| {
-            if !matches!(t.name, TagName::Id(TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE) | TagName::Id(0x04)) {
+            if !matches!(
+                t.name,
+                TagName::Id(TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE) | TagName::Id(0x04)
+            ) {
                 return None;
             }
             match t.value {
@@ -338,18 +342,24 @@ pub(crate) async fn maybe_send_sx_request(
                 Ok(()) => {
                     mark_sx_request_sent(env, target_addr.ip(), dl_hash_bytes);
                     tracing::info!(
-                        "[SOURCE_EXCHANGE] Sent {} (version {}) to peer {target_addr} for file {file_hash_str}",
+                        "[SOURCE_EXCHANGE] Sent {} (version {}) to peer {peer} for file {file_hash_str}",
                         if caps.sx2 { "OP_REQUESTSOURCES2" } else { "OP_REQUESTSOURCES" },
                         sx_req.version
-                    );
+                    , peer = log_peer_addr(target_addr));
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to send SX request to {target_addr}: {e}");
+                    tracing::warn!(
+                        "Failed to send SX request to {peer}: {e}",
+                        peer = log_peer_addr(target_addr)
+                    );
                 }
             }
         }
         Err(e) => {
-            tracing::warn!("Failed to encode SX request for {target_addr}: {e}");
+            tracing::warn!(
+                "Failed to encode SX request for {peer}: {e}",
+                peer = log_peer_addr(target_addr)
+            );
         }
     }
 }
@@ -398,16 +408,19 @@ pub async fn handle_sx_answer(
     let ans = match decoder.decode_answer_sources(packet.protocol, packet.opcode, &packet.payload) {
         Ok(a) => a,
         Err(e) => {
-            tracing::warn!("Peer {target_addr}: failed to decode SX answer: {e}");
+            tracing::warn!(
+                "Peer {peer}: failed to decode SX answer: {e}",
+                peer = log_peer_addr(target_addr)
+            );
             return;
         }
     };
 
     if ans.file_hash != dl_hash_bytes {
         tracing::debug!(
-            "[SOURCE_EXCHANGE] Ignored SX answer from {target_addr}: file {} is not the requested download {file_hash_str}",
+            "[SOURCE_EXCHANGE] Ignored SX answer from {peer}: file {} is not the requested download {file_hash_str}",
             hex::encode(ans.file_hash)
-        );
+        , peer = log_peer_addr(target_addr));
         return;
     }
 
@@ -524,8 +537,8 @@ pub async fn handle_sx_answer(
 
     if discovered_sources.is_empty() {
         tracing::debug!(
-            "[SOURCE_EXCHANGE] SX answer from {target_addr} for file {file_hash_str} contained no usable source (filtered={dropped_filtered}, lowid_firewalled={dropped_lowid_firewalled}, self={dropped_self})"
-        );
+            "[SOURCE_EXCHANGE] SX answer from {peer} for file {file_hash_str} contained no usable source (filtered={dropped_filtered}, lowid_firewalled={dropped_lowid_firewalled}, self={dropped_self})"
+        , peer = log_peer_addr(target_addr));
     } else {
         let mut dl_svc = downloads.lock().await;
         let inserted = dl_svc
@@ -538,7 +551,7 @@ pub async fn handle_sx_answer(
         tracing::info!(
             "[SOURCE_EXCHANGE] Received {} sources via SX from peer {} for file {} -> {} new unique sources persisted (total swarm: {} sources, dropped: filtered={} lowid_fw={} self={})",
             discovered_sources.len(),
-            target_addr,
+            log_peer_addr(target_addr),
             file_hash_str,
             inserted,
             total_swarm,
@@ -596,9 +609,8 @@ fn select_sx_response_sources(
         // part-status est inconnu).
         let useful = (0..mask.len() * 8).any(|i| {
             mask[i / 8] & (1 << (i % 8)) != 0
-                && requester_mask.is_none_or(|req| {
-                    i / 8 >= req.len() || req[i / 8] & (1 << (i % 8)) == 0
-                })
+                && requester_mask
+                    .is_none_or(|req| i / 8 >= req.len() || req[i / 8] & (1 << (i % 8)) == 0)
         });
         if !useful {
             continue;
@@ -668,7 +680,10 @@ pub async fn handle_sx_request(
             .await;
         }
         Err(e) => {
-            tracing::warn!("Peer {target_addr}: failed to decode SX request: {e}");
+            tracing::warn!(
+                "Peer {peer}: failed to decode SX request: {e}",
+                peer = log_peer_addr(target_addr)
+            );
         }
     }
 }
@@ -720,7 +735,11 @@ pub(crate) async fn respond_to_sx_request(
         let parts = dl_snap
             .as_ref()
             .map(|d| d.total_bytes.div_ceil(part_size) as usize)
-            .or_else(|| shared.as_ref().map(|s| s.file_size.div_ceil(part_size) as usize))
+            .or_else(|| {
+                shared
+                    .as_ref()
+                    .map(|s| s.file_size.div_ceil(part_size) as usize)
+            })
             .unwrap_or(0);
         (
             is_part,
@@ -748,9 +767,9 @@ pub(crate) async fn respond_to_sx_request(
         || (is_part_file && known_sources.len() <= RARE_FILE && elapsed > SOURCECLIENTREASKS);
     if !allowed {
         tracing::debug!(
-            "[SOURCE_EXCHANGE] SX request from {target_addr} for {file_hash_str} rate-limited (last answer {:?} ago)",
+            "[SOURCE_EXCHANGE] SX request from {peer} for {file_hash_str} rate-limited (last answer {:?} ago)",
             last_answer.map(|t| t.elapsed())
-        );
+        , peer = log_peer_addr(target_addr));
         return;
     }
     // `client->SetLastSrcReqTime()`
@@ -764,8 +783,8 @@ pub(crate) async fn respond_to_sx_request(
     if resp_sources.is_empty() {
         // eMule `if (!nCount) return 0;` — pas de réponse sans source valide.
         tracing::debug!(
-            "[SOURCE_EXCHANGE] SX request from {target_addr} for {file_hash_str}: no valid source to offer"
-        );
+            "[SOURCE_EXCHANGE] SX request from {peer} for {file_hash_str}: no valid source to offer"
+        , peer = log_peer_addr(target_addr));
         return;
     }
 
@@ -791,20 +810,26 @@ pub(crate) async fn respond_to_sx_request(
             resp_wire.extend_from_slice(&ans_pkt.payload);
             use tokio::io::AsyncWriteExt;
             if let Err(e) = stream.write_all(&resp_wire).await {
-                tracing::warn!("Failed to send SX answer to {target_addr}: {e}");
+                tracing::warn!(
+                    "Failed to send SX answer to {peer}: {e}",
+                    peer = log_peer_addr(target_addr)
+                );
             } else {
                 tracing::info!(
                     "[SOURCE_EXCHANGE] Sent SX response ({} version {}, {} sources) to peer {} for file {}",
                     if is_sx2_packet { "SX2" } else { "SX1" },
                     version,
                     ans.sources.len(),
-                    target_addr,
+                    log_peer_addr(target_addr),
                     file_hash_str
                 );
             }
         }
         Err(e) => {
-            tracing::warn!("Failed to encode SX answer for {target_addr}: {e}");
+            tracing::warn!(
+                "Failed to encode SX answer for {peer}: {e}",
+                peer = log_peer_addr(target_addr)
+            );
         }
     }
 }
@@ -849,7 +874,10 @@ pub(crate) async fn handle_sx_multipacket(
     ) {
         Ok(mp) => mp,
         Err(e) => {
-            tracing::debug!("Peer {target_addr}: malformed multipacket ignored: {e}");
+            tracing::debug!(
+                "Peer {peer}: malformed multipacket ignored: {e}",
+                peer = log_peer_addr(target_addr)
+            );
             return true;
         }
     };
@@ -915,15 +943,13 @@ pub(crate) async fn handle_sx_multipacket(
 mod tests {
     use super::*;
     use bytes::BytesMut;
-    use mule_core::model::{
-        PeerSource, PeerSourceOrigin, PeerSourceStatus, SharedFile,
-    };
+    use mule_core::model::{PeerSource, PeerSourceOrigin, PeerSourceStatus, SharedFile};
+    use mule_network_policy::{NetworkProfile, ResourceBudgets};
     use mule_protocol::ed2k::tags::{
         Ed2kTag, TagName, TagValue, TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE,
     };
     use mule_protocol::ed2k::Ed2kEmuleInfo;
     use mule_protocol::framing::{PacketCodec, RawPacket};
-    use mule_network_policy::{NetworkProfile, ResourceBudgets};
     use tokio::io::AsyncReadExt;
 
     fn test_env() -> SxEnv {
@@ -949,7 +975,10 @@ mod tests {
         let ip = u32::from_le_bytes(ip_octets);
         PeerSource {
             file_hash: "00".repeat(16),
-            address: format!("{}.{}.{}.{}:{port}", ip_octets[0], ip_octets[1], ip_octets[2], ip_octets[3]),
+            address: format!(
+                "{}.{}.{}.{}:{port}",
+                ip_octets[0], ip_octets[1], ip_octets[2], ip_octets[3]
+            ),
             ip,
             port,
             origin: PeerSourceOrigin::SourceExchange,
@@ -997,14 +1026,10 @@ mod tests {
             complete_source: false,
         };
         // Fichier rare, jamais interrogé → autorisé.
-        assert!(is_source_request_allowed(
-            &env, ip, &fh, 3, 1, 360, &caps
-        ));
+        assert!(is_source_request_allowed(&env, ip, &fh, 3, 1, 360, &caps));
         // Requête émise → cooldown SOURCECLIENTREASKS côté client.
         mark_sx_request_sent(&env, ip, fh);
-        assert!(!is_source_request_allowed(
-            &env, ip, &fh, 3, 1, 360, &caps
-        ));
+        assert!(!is_source_request_allowed(&env, ip, &fh, 3, 1, 360, &caps));
         // Cooldown expiré (> SOURCECLIENTREASKS) → autorisé à nouveau.
         env.request_log.lock().unwrap().insert(
             ip,
@@ -1012,9 +1037,7 @@ mod tests {
                 .checked_sub(Duration::from_secs(41 * 60))
                 .unwrap_or_else(Instant::now),
         );
-        assert!(is_source_request_allowed(
-            &env, ip, &fh, 3, 1, 360, &caps
-        ));
+        assert!(is_source_request_allowed(&env, ip, &fh, 3, 1, 360, &caps));
     }
 
     #[test]
@@ -1047,7 +1070,9 @@ mod tests {
         // fichier rare (3 sources) + complete → seule la clause commune
         // peut répondre → elle est vraie (never_asked). Documenté : eMule
         // demande effectivement aux sources complètes via la clause 3.
-        assert!(is_source_request_allowed(&env, ip, &fh, 3, 1, 360, &complete));
+        assert!(is_source_request_allowed(
+            &env, ip, &fh, 3, 1, 360, &complete
+        ));
     }
 
     // ---- `select_sx_response_sources` (CreateSrcInfoPacket) ----
@@ -1068,16 +1093,29 @@ mod tests {
             Some(vec![0x01]),
         );
         let lowid = {
-            let mut s = peer_source([1, 0, 0, 0], 0, PeerSourceStatus::Connected, Some(vec![0x01]));
+            let mut s = peer_source(
+                [1, 0, 0, 0],
+                0,
+                PeerSourceStatus::Connected,
+                Some(vec![0x01]),
+            );
             s.address = "lowid:1".into();
             s.ip = 1;
             s
         };
-        let candidate =
-            peer_source([85, 25, 13, 8], 4662, PeerSourceStatus::Candidate, Some(vec![0x01]));
+        let candidate = peer_source(
+            [85, 25, 13, 8],
+            4662,
+            PeerSourceStatus::Candidate,
+            Some(vec![0x01]),
+        );
         let nomask = peer_source([85, 25, 13, 9], 4662, PeerSourceStatus::Connected, None);
-        let lan =
-            peer_source([10, 0, 0, 5], 4662, PeerSourceStatus::Connected, Some(vec![0x01]));
+        let lan = peer_source(
+            [10, 0, 0, 5],
+            4662,
+            PeerSourceStatus::Connected,
+            Some(vec![0x01]),
+        );
         let wrong_mask = peer_source(
             [85, 25, 13, 10],
             4662,
@@ -1091,7 +1129,9 @@ mod tests {
             Some(vec![0x00]),
         );
         let out = select_sx_response_sources(
-            &[good, allowed, lowid, candidate, nomask, lan, wrong_mask, no_part],
+            &[
+                good, allowed, lowid, candidate, nomask, lan, wrong_mask, no_part,
+            ],
             1,
             None,
             &env,
@@ -1249,7 +1289,10 @@ mod tests {
             .unwrap();
         let mut addrs: Vec<String> = kept.iter().map(|s| s.address.clone()).collect();
         addrs.sort();
-        assert_eq!(addrs, vec!["85.25.13.7:4662".to_string(), "lowid:88".to_string()]);
+        assert_eq!(
+            addrs,
+            vec!["85.25.13.7:4662".to_string(), "lowid:88".to_string()]
+        );
         assert!(kept.iter().all(|s| s.status == PeerSourceStatus::Candidate));
     }
 
@@ -1386,7 +1429,8 @@ mod tests {
                 PeerSourceStatus::Connected,
                 Some(vec![0x00]),
             );
-            dl.upsert_peer_sources(&hex_hash, &[useful, useless]).unwrap();
+            dl.upsert_peer_sources(&hex_hash, &[useful, useless])
+                .unwrap();
         }
         (tmp, downloads, hex_hash)
     }
@@ -1497,12 +1541,11 @@ mod tests {
         let _ = read_wire(&mut peer_end).await;
         // La 2e requête tombe sous le throttle SOURCECLIENTREASKS.
         let mut tmp = [0u8; 512];
-        let res = tokio::time::timeout(
-            Duration::from_millis(300),
-            peer_end.read(&mut tmp),
-        )
-        .await;
-        assert!(res.is_err(), "second SX request should have been rate-limited");
+        let res = tokio::time::timeout(Duration::from_millis(300), peer_end.read(&mut tmp)).await;
+        assert!(
+            res.is_err(),
+            "second SX request should have been rate-limited"
+        );
     }
 
     #[tokio::test]
@@ -1532,11 +1575,7 @@ mod tests {
         )
         .await;
         let mut tmp = [0u8; 512];
-        let res = tokio::time::timeout(
-            Duration::from_millis(300),
-            peer_end.read(&mut tmp),
-        )
-        .await;
+        let res = tokio::time::timeout(Duration::from_millis(300), peer_end.read(&mut tmp)).await;
         assert!(res.is_err(), "unknown file must not produce an SX answer");
         // Et `answer_log` ne doit pas avoir été marqué (throttle non consommé).
         assert!(env
@@ -1579,11 +1618,10 @@ mod tests {
         )
         .await;
         let mut tmp = [0u8; 512];
-        let res = tokio::time::timeout(
-            Duration::from_millis(300),
-            peer_end.read(&mut tmp),
-        )
-        .await;
-        assert!(res.is_err(), "empty answer must not be sent (eMule !nCount)");
+        let res = tokio::time::timeout(Duration::from_millis(300), peer_end.read(&mut tmp)).await;
+        assert!(
+            res.is_err(),
+            "empty answer must not be sent (eMule !nCount)"
+        );
     }
 }

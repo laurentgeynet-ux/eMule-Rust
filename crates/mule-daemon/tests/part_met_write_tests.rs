@@ -207,7 +207,10 @@ fn shared_file_delete_rejects_partial_share() {
     let tmp = tempdir().unwrap();
     let mut svc = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
 
-    let link = format!("ed2k://|file|partial.bin|500|{}|/", hex::encode([0x77u8; 16]));
+    let link = format!(
+        "ed2k://|file|partial.bin|500|{}|/",
+        hex::encode([0x77u8; 16])
+    );
     let snap = svc
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
@@ -258,16 +261,17 @@ fn rename_in_progress_updates_name_and_target_not_part_file() {
     let tmp = tempdir().unwrap();
     let mut svc = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
 
-    let link = format!("ed2k://|file|old_name.bin|500|{}|/", hex::encode([0x44u8; 16]));
+    let link = format!(
+        "ed2k://|file|old_name.bin|500|{}|/",
+        hex::encode([0x44u8; 16])
+    );
     let snap = svc
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
     let (temp_path, _, _, _) = svc.get_download_file_info(&snap.id).unwrap();
     let part_path = temp_path.clone();
 
-    let renamed = svc
-        .rename_download(&snap.id, "new_name.bin")
-        .unwrap();
+    let renamed = svc.rename_download(&snap.id, "new_name.bin").unwrap();
     assert_eq!(renamed.file_name, "new_name.bin");
     assert_eq!(
         svc.get_download_file_info(&snap.id).unwrap().1,
@@ -354,7 +358,9 @@ fn rename_rejects_invalid_file_names() {
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
 
-    for bad in ["", "   ", "a/b.bin", "a\\b.bin", "x*.bin", "nul?.bin", "..", "name."] {
+    for bad in [
+        "", "   ", "a/b.bin", "a\\b.bin", "x*.bin", "nul?.bin", "..", "name.",
+    ] {
         assert!(
             svc.rename_download(&snap.id, bad).is_err(),
             "name {bad:?} must be rejected"
@@ -401,8 +407,7 @@ async fn reset_lifetime_totals_zeroes_memory_and_persisted_settings() {
     use std::sync::atomic::Ordering;
 
     let tmp = tempdir().unwrap();
-    let mut downloads =
-        DownloadService::in_memory(tmp.path().join("temp")).unwrap();
+    let mut downloads = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
     downloads
         .set_setting("lifetime_downloaded_bytes", "12345")
         .unwrap();
@@ -414,7 +419,10 @@ async fn reset_lifetime_totals_zeroes_memory_and_persisted_settings() {
     let state = AppState::new(config, downloads);
 
     // Les compteurs sont hydratés depuis les settings persistés.
-    assert_eq!(state.lifetime_downloaded_bytes.load(Ordering::SeqCst), 12345);
+    assert_eq!(
+        state.lifetime_downloaded_bytes.load(Ordering::SeqCst),
+        12345
+    );
     assert_eq!(state.lifetime_uploaded_bytes.load(Ordering::SeqCst), 6789);
 
     mule_daemon::rpc::handlers::settings::handle_stats_reset_lifetime_totals(&state)
@@ -426,11 +434,15 @@ async fn reset_lifetime_totals_zeroes_memory_and_persisted_settings() {
 
     let dl = state.downloads.lock().await;
     assert_eq!(
-        dl.get_setting("lifetime_downloaded_bytes").unwrap().as_deref(),
+        dl.get_setting("lifetime_downloaded_bytes")
+            .unwrap()
+            .as_deref(),
         Some("0")
     );
     assert_eq!(
-        dl.get_setting("lifetime_uploaded_bytes").unwrap().as_deref(),
+        dl.get_setting("lifetime_uploaded_bytes")
+            .unwrap()
+            .as_deref(),
         Some("0")
     );
 }
@@ -441,8 +453,7 @@ async fn reset_lifetime_totals_zeroes_memory_and_persisted_settings() {
 #[tokio::test]
 async fn shares_list_enriches_per_file_upload_stats() {
     let tmp = tempdir().unwrap();
-    let mut downloads =
-        DownloadService::in_memory(tmp.path().join("temp")).unwrap();
+    let mut downloads = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
     // Total persisté d'un « boot précédent ».
     downloads.add_share_uploaded_bytes("HAA", 7000).unwrap();
     let config = DaemonConfig::new(tmp.path().to_path_buf(), "t");

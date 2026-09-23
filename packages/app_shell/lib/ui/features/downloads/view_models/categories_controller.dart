@@ -3,6 +3,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../l10n/l10n_lookup.dart';
 
@@ -49,7 +50,7 @@ class CategoriesController extends ChangeNotifier {
       _categories = await client.listCategories();
       notifyListeners();
     } catch (e) {
-      debugPrint('Failed to fetch categories: $e');
+      AppLogger.warn('categories', 'Failed to fetch categories', error: e);
     }
   }
 

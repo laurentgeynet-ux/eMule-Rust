@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    EMule-Rust RC Environment & Supervision Test Matrix Harness.
+    eMule-Rust RC Environment & Supervision Test Matrix Harness.
 .DESCRIPTION
     Validates the packaged release candidate against edge cases:
     1. Unicode & Non-ASCII Paths with spaces.
@@ -40,7 +40,7 @@ if (!(Test-Path $SourceBundle)) {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  EMule-Rust RC Environment & Supervision Matrix  " -ForegroundColor Cyan
+Write-Host "  eMule-Rust RC Environment & Supervision Matrix  " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # Helper to send JSON-RPC over WebSocket

@@ -229,7 +229,7 @@ class DiagnosticDialog extends ConsumerWidget {
                           const DiagnosticRowDivider(),
                           DiagnosticCopyRow(
                             label: context.l10n.daemonLog,
-                            path: '$workdirPath\\daemon.log',
+                            path: '$workdirPath\\logs',
                             copyTooltip: context.l10n.copyDaemonLogPath,
                             copiedMessage: context.l10n.copiedDaemonLogPath,
                           ),

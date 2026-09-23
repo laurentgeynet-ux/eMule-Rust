@@ -1,8 +1,8 @@
-# Notes de Release — EMule-Rust 0.1.1-lab
+# Notes de Release — eMule-Rust 0.1.1-lab
 
 ## 1. Vue d'Ensemble & Contexte
 
-La version **0.1.1-lab** d'**EMule-Rust** constitue la Release Candidate (RC) consolidée et durcie pour les phases 7.1 (Mode Portable & Ergonomie Développeur) et 7.2 (Outils de Laboratoire Sécurisés & Expérimentation Locale).
+La version **0.1.1-lab** d'**eMule-Rust** constitue la Release Candidate (RC) consolidée et durcie pour les phases 7.1 (Mode Portable & Ergonomie Développeur) et 7.2 (Outils de Laboratoire Sécurisés & Expérimentation Locale).
 
 Cette mise à jour apporte des garanties structurelles renforcées entre le produit nominal et les fonctionnalités de laboratoire, formalise la taxonomie d'erreurs JSON-RPC, interdit toute fuite de secret dans les outils de diagnostic, et établit une politique stricte d'exécution de scripts PowerShell (`-ExecutionPolicy RemoteSigned`).
 
@@ -28,7 +28,7 @@ $$\text{isLabModeAvailable} = (\text{workdirMode} == \text{Portable}) \land (\te
 ### 2.3 Taxonomie Formelle des Erreurs JSON-RPC
 Unification et codification des codes d'erreur selon la spécification JSON-RPC 2.0 et extension métier isolée :
 - Codes standard : `-32700` (ParseError), `-32600` (InvalidRequest), `-32601` (MethodNotFound), `-32602` (InvalidParams), `-32603` (InternalError).
-- Codes applicatifs EMule-Rust :
+- Codes applicatifs eMule-Rust :
   - `-32000` : `CODE_AUTH_FAILED` — Authentification WebSocket invalide ou absente.
   - `-32001` : `CODE_PROTOCOL_MISMATCH` — Version protocolaire incompatible.
   - `-32002` : `CODE_FORBIDDEN_IN_INSTALLED_MODE` — Tentative d'exécution d'une commande lab en mode installé.
@@ -94,7 +94,7 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 - **Capacités RPC annoncées** : `["downloads", "download-events"]`
 - **Routes `lab.*`** : Absentes (rejet avec `-32601 MethodNotFound`).
 - **Texte de diffusion recommandé** :
-  > **EMule-Rust v0.1.1-lab — Standard**  
+  > **eMule-Rust v0.1.1-lab — Standard**  
   > Build interne locale sans outils de laboratoire compilés. Elle inclut le daemon local, l’interface Flutter Desktop, la persistance et les fonctions de gestion de téléchargements. Les routes de test, le pair loopback et les fonctions de simulation ne sont pas présents.
 
 #### B. Build QA Loopback
@@ -111,14 +111,14 @@ Chaque bundle Windows x64 contient exactement **22 artefacts** référencés dan
 - **Capacités RPC annoncées** : `["downloads", "download-events", "lab-tools"]`
 - **Routes `lab.*`** : Actives (`lab.status`, `lab.createFixture`, etc.).
 - **Texte de diffusion recommandé** :
-  > **EMule-Rust v0.1.1-lab — QA Loopback**  
+  > **eMule-Rust v0.1.1-lab — QA Loopback**  
   > Build interne de validation incluant les outils de laboratoire `lab-tools`. Les échanges de test sont strictement limités à `127.0.0.1` ; aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. Utiliser uniquement pour les scénarios QA guidés.
 
 ---
 
 ## 4. Attestation d'Interopérabilité et Engagements Hermétiques
 
-L'attestation formelle d'EMule-Rust reste rigoureusement inchangée :
+L'attestation formelle d'eMule-Rust reste rigoureusement inchangée :
 
 > **Formulation d'attestation obligatoire :**
 > *« Compatibilité eD2K expérimentale validée sur corpus statique et pair de référence émulé, en environnement loopback fermé. Le harnais Tier 3 pour un binaire eMule/aMule externe épinglé est disponible, mais son test live reste ignoré par défaut tant qu’un binaire vérifié n’est pas fourni. »*
@@ -163,7 +163,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_rc_matrix
 ## 6. Scoreboard Final de Validation
 
 ```
-=== SCOREBOARD EMULE-RUST 0.1.1-LAB ===
+=== SCOREBOARD eMule-Rust 0.1.1-LAB ===
 
 Rust Crates :
   - mule-core           :  12 tests réussis

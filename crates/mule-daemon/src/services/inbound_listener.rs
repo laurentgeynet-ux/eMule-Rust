@@ -18,8 +18,7 @@ use tracing::{info, warn};
 use mule_network_policy::{ConnectionPurpose, NetworkPolicyManager};
 
 pub use types::{
-    InboundListenerService, InboundListenerSnapshot, MAX_INBOUND_PER_IP,
-    MAX_READ_BUFFER_SIZE,
+    InboundListenerService, InboundListenerSnapshot, MAX_INBOUND_PER_IP, MAX_READ_BUFFER_SIZE,
 };
 
 use crate::services::downloads::DownloadService;
@@ -66,19 +65,14 @@ impl InboundListenerService {
 
     /// Injects the shared Source Exchange environment (network policy +
     /// throttle journals) created by `AppState`.
-    pub fn set_sx_env(
-        &mut self,
-        env: crate::services::peer_session::source_exchange::SxEnv,
-    ) {
+    pub fn set_sx_env(&mut self, env: crate::services::peer_session::source_exchange::SxEnv) {
         *self.sx_env.write().unwrap() = Some(env);
     }
 
     /// Shared `SxEnv` for this listener; builds a fallback from the
     /// listener's own network policy + user hash when `AppState` did not
     /// inject one (tests, manual construction).
-    pub(crate) fn sx_env(
-        &self,
-    ) -> crate::services::peer_session::source_exchange::SxEnv {
+    pub(crate) fn sx_env(&self) -> crate::services::peer_session::source_exchange::SxEnv {
         self.sx_env.read().unwrap().clone().unwrap_or_else(|| {
             crate::services::peer_session::source_exchange::SxEnv::new(
                 (*self.network_policy).clone(),
@@ -104,9 +98,7 @@ impl InboundListenerService {
                     .as_deref()
                     .and_then(|a| a.parse::<SocketAddr>().ok())
                     .map(|sa| match sa.ip() {
-                        std::net::IpAddr::V4(v4) => {
-                            (u32::from_le_bytes(v4.octets()), sa.port())
-                        }
+                        std::net::IpAddr::V4(v4) => (u32::from_le_bytes(v4.octets()), sa.port()),
                         _ => (0, sa.port()),
                     })
                     .unwrap_or((0, 0));
@@ -261,13 +253,13 @@ impl InboundListenerService {
                                     .budgets()
                                     .max_active_peer_connections;
                                 if total_conns >= inbound_cap {
-                                    warn!("Rejected inbound connection from {}: global limit reached ({inbound_cap})", remote_addr);
+                                    warn!("Rejected inbound connection from {peer}: global limit reached ({inbound_cap})", peer = crate::services::peer_session::log_peer_addr(remote_addr));
                                     drop(socket);
                                     continue;
                                 }
                                 let ip_count = conns.entry(ip).or_insert(0);
                                 if *ip_count >= MAX_INBOUND_PER_IP {
-                                    warn!("Rejected inbound connection from {}: per-IP limit reached ({MAX_INBOUND_PER_IP})", remote_addr);
+                                    warn!("Rejected inbound connection from {peer}: per-IP limit reached ({MAX_INBOUND_PER_IP})", peer = crate::services::peer_session::log_peer_addr(remote_addr));
                                     drop(socket);
                                     continue;
                                 }

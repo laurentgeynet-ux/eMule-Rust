@@ -234,7 +234,7 @@ impl ReferencePeerConfig {
     }
 }
 
-/// Comprehensive interoperability and divergence report between EMule-Rust and reference peer.
+/// Comprehensive interoperability and divergence report between eMule-Rust and reference peer.
 #[derive(Debug, Clone)]
 pub struct DivergenceReport {
     /// Explicit compatibility profile active during the session.

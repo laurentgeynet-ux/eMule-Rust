@@ -4,7 +4,7 @@
 
 Le message `OP_FILESTATUSREQ` permet à un client eD2K d'interroger un pair distant sur sa possession et disponibilité des différentes parts (blocs de 9 728 000 octets) d'un fichier identifié par son hash MD4 de 16 octets.
 
-Dans l'architecture EMule-Rust, ce message est **exclusivement utilisé pour la découverte de disponibilité en boucle locale fermée (loopback)**. Il ne déclenche aucun transfert de données, aucune réservation de slot, et aucune écriture dans un fichier `.part`.
+Dans l'architecture eMule-Rust, ce message est **exclusivement utilisé pour la découverte de disponibilité en boucle locale fermée (loopback)**. Il ne déclenche aucun transfert de données, aucune réservation de slot, et aucune écriture dans un fichier `.part`.
 
 ---
 

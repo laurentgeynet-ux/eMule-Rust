@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Deterministic eD2K wire protocol codec, framing and abstractions for EMule-Rust"
+description = "Deterministic eD2K wire protocol codec, framing and abstractions for eMule-Rust"
 
 [features]
 default = []

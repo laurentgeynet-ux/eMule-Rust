@@ -38,6 +38,19 @@ impl SessionPseudonymizer {
         format!("{}:{}", prefix, addr.port())
     }
 
+    /// Returns a deterministic identifier for a bare IP (no port),
+    /// sharing the peer table so `peer-NN` stays consistent with
+    /// [`SessionPseudonymizer::pseudonymize_peer`].
+    /// Example: `peer-01`.
+    pub fn pseudonymize_ip(&self, ip: std::net::IpAddr) -> String {
+        let ip_str = ip.to_string();
+        let mut map = self.peer_map.write().unwrap();
+        let next_id = map.len() + 1;
+        map.entry(ip_str)
+            .or_insert_with(|| format!("peer-{:02}", next_id))
+            .clone()
+    }
+
     /// Returns a deterministic identifier for a server address, preserving the port.
     /// Example: `server-01:4661`.
     pub fn pseudonymize_server(&self, addr: SocketAddr) -> String {

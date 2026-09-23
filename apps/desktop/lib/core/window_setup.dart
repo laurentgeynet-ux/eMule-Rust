@@ -37,7 +37,7 @@ class WindowSetup {
         size: hasBounds ? Size(w, h) : defaultSize,
         minimumSize: minSize,
         center: !hasBounds || x == null || y == null,
-        title: 'EMule-Rust',
+        title: 'eMule-Rust',
         titleBarStyle: TitleBarStyle.normal,
       ),
       () async {

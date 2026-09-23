@@ -113,7 +113,7 @@ impl PolicyRateLimiters {
     }
 }
 
-/// Central network policy coordinator for EMule-Rust.
+/// Central network policy coordinator for eMule-Rust.
 /// Mandatory single choke point for validating addresses, issuing RAII permits,
 /// enforcing resource budgets, and triggering atomic global disconnection.
 #[derive(Clone)]

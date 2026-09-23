@@ -104,6 +104,7 @@ pub async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
         "defaultDownloadDir": default_dl_dir,
         "networkState": state.network_policy.state().as_str(),
         "networkProfile": state.network_policy.profile().to_string(),
+        "logLevel": state.current_log_level(),
     }))
 }
 
@@ -121,9 +122,7 @@ pub async fn handle_stop(state: &AppState) -> Result<Value, JsonRpcError> {
 /// mémoire alimentant `statsTick` ET les valeurs persistées. Les totaux
 /// de session ne sont pas touchés ; les octets émis après le reset
 /// recommencent à s'accumuler à partir de zéro.
-pub async fn handle_stats_reset_lifetime_totals(
-    state: &AppState,
-) -> Result<Value, JsonRpcError> {
+pub async fn handle_stats_reset_lifetime_totals(state: &AppState) -> Result<Value, JsonRpcError> {
     state
         .lifetime_downloaded_bytes
         .store(0, std::sync::atomic::Ordering::SeqCst);
@@ -185,8 +184,7 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
                 .unwrap_or(default)
         };
         let obf_enabled = bool_setting("obfuscation_enabled", state.config.obfuscation_enabled);
-        let obf_required =
-            bool_setting("obfuscation_required", state.config.obfuscation_required);
+        let obf_required = bool_setting("obfuscation_required", state.config.obfuscation_required);
         let max_conn = dls
             .get_setting("max_connections")?
             .and_then(|s| s.parse::<usize>().ok())
@@ -262,7 +260,7 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
             "serverAutoupdateList": read("server_autoupdate_list", false),
             "safeConnect": read("safe_connect", false),
             "autoPriorityNewDownloads": read("auto_priority_new_downloads", false),
-            // Options propres à EMule-Rust (pas d'équivalent eMule).
+            // Options propres à eMule-Rust (pas d'équivalent eMule).
             "identityRotationHours": u64_setting("identity_rotation_hours"),
             "dailyUploadQuotaGb": u64_setting("daily_upload_quota_gb"),
             "uploadQuotaUsedBytes": u64_setting("upload_quota_used_bytes"),
@@ -310,6 +308,9 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
         "upnpEnabled": upnp_enabled,
         "capacityDownloadKbs": cap_dl,
         "capacityUploadKbs": cap_ul,
+        // Runtime uniquement — reflète la spec EnvFilter effective, pas
+        // un setting persisté.
+        "logLevel": state.current_log_level(),
     });
     if let (Some(out), Some(extra)) = (result.as_object_mut(), bools.as_object()) {
         out.extend(extra.clone());
@@ -415,11 +416,7 @@ pub async fn handle_settings_set(
                 "'nickname' must be 1..64 characters",
             ));
         }
-        state
-            .downloads
-            .lock()
-            .await
-            .set_setting("nickname", nick)?;
+        state.downloads.lock().await.set_setting("nickname", nick)?;
         keys.push("nickname");
     }
 
@@ -454,10 +451,9 @@ pub async fn handle_settings_set(
         // Propager la préférence à la session serveur (eMule
         // IsServerCryptLayerConnection) — sinon le réglage n'agit que sur
         // les pairs entrants.
-        state.server_session.set_obfuscation_preference(
-            enabled || required,
-            state.config.obfuscation_padding_max,
-        );
+        state
+            .server_session
+            .set_obfuscation_preference(enabled || required, state.config.obfuscation_padding_max);
         // Update the buddy-relay connect-options byte announced over Kad.
         let connect_opts: u8 = if enabled { 0x03 } else { 0 } | if required { 0x04 } else { 0 };
         state
@@ -618,10 +614,7 @@ pub async fn handle_settings_set(
             keys.push(key);
         }
     }
-    if let Some(v) = params
-        .get("capacityUploadKbs")
-        .and_then(|v| v.as_u64())
-    {
+    if let Some(v) = params.get("capacityUploadKbs").and_then(|v| v.as_u64()) {
         // Upload capacity = reference line speed used by USS as its
         // baseline manual limit (eMule uses it for slot computations).
         state.uss.note_manual_limit(v.saturating_mul(1024));
@@ -719,7 +712,7 @@ pub async fn handle_settings_set(
             .set_setting("temp_dir", dir_str)?;
         keys.push("tempDir");
     }
-    // --- Options propres à EMule-Rust ---
+    // --- Options propres à eMule-Rust ---
     if let Some(val) = params.get("identityRotationHours") {
         let v = val
             .as_u64()
@@ -763,6 +756,23 @@ pub async fn handle_settings_set(
             .set_setting("paranoid_mode", if v { "1" } else { "0" })?;
         state.inbound_listener.set_paranoid_mode(v);
         keys.push("paranoidMode");
+    }
+    // Niveau de log à chaud — runtime uniquement, jamais persisté (un
+    // `trace` survivant à un reboot remplirait les fichiers). Accepte un
+    // niveau simple (« debug ») ou une spec EnvFilter complète.
+    if let Some(val) = params.get("logLevel") {
+        let spec = val
+            .as_str()
+            .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'logLevel'"))?;
+        let control = state
+            .log_control
+            .as_ref()
+            .ok_or_else(|| JsonRpcError::internal("Log control unavailable"))?;
+        control
+            .set(spec)
+            .map_err(|e| JsonRpcError::invalid_params(&e))?;
+        tracing::info!("[LOG] Niveau de log changé à chaud: {spec}");
+        keys.push("logLevel");
     }
     if ports_changed {
         apply_port_change(state).await?;

@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Generates CycloneDX 1.5 JSON Software Bill of Materials (SBOM) for EMule-Rust.
+    Generates CycloneDX 1.5 JSON Software Bill of Materials (SBOM) for eMule-Rust.
 .DESCRIPTION
     1. Generates sbom/rust.cdx.json from Cargo.lock and cargo metadata.
     2. Generates sbom/flutter.cdx.json from apps/desktop/pubspec.lock.
@@ -34,7 +34,7 @@ $NowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $AppVersion = "0.1.3-lab"
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  EMule-Rust CycloneDX 1.5 SBOM Generator         " -ForegroundColor Cyan
+Write-Host "  eMule-Rust CycloneDX 1.5 SBOM Generator         " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # -----------------------------------------------------------------------------
@@ -175,7 +175,7 @@ $RustSbom = [ordered]@{
             type = "application"
             name = "mule-daemon"
             version = $AppVersion
-            description = "EMule-Rust Rust daemon & protocol core"
+            description = "eMule-Rust Rust daemon & protocol core"
         }
     }
     components = $RustComponents
@@ -342,7 +342,7 @@ $FlutterSbom = [ordered]@{
             type = "application"
             name = "eMuleRust"
             version = $AppVersion
-            description = "EMule-Rust Flutter Desktop Client"
+            description = "eMule-Rust Flutter Desktop Client"
         }
     }
     components = $FlutterComponents
@@ -439,7 +439,7 @@ $BundleSbom = [ordered]@{
             type = "application"
             name = "eMuleRust-Windows"
             version = $AppVersion
-            description = "EMule-Rust Standalone Windows Release Bundle"
+            description = "eMule-Rust Standalone Windows Release Bundle"
         }
     }
     components = $BundleComponents
@@ -469,9 +469,9 @@ $ConsolidatedSbom = [ordered]@{
         timestamp = $NowIso
         component = [ordered]@{
             type = "application"
-            name = "EMule-Rust"
+            name = "eMule-Rust"
             version = $AppVersion
-            description = "EMule-Rust Closed Loopback eD2K Client & Node"
+            description = "eMule-Rust Closed Loopback eD2K Client & Node"
         }
     }
     components = $AllComponents
@@ -495,7 +495,7 @@ $IncompatibleItems = $AuditEntries | Where-Object { $_.isCompatible -eq $false }
 $AuditSummary = [ordered]@{
     schemaVersion = 1
     generatedAtUtc = $NowIso
-    product = "EMule-Rust"
+    product = "eMule-Rust"
     version = $AppVersion
     policyFile = "deny.toml"
     allowedLicenses = ($AllowedLicenses | Sort-Object)
@@ -519,7 +519,7 @@ Write-Host " -> Generated: $AuditJsonPath" -ForegroundColor Green
 
 # Generate Markdown report
 $MdLines = [System.Collections.Generic.List[string]]::new()
-$MdLines.Add("# Rapport d'Audit des Licences et Dependances - EMule-Rust v$AppVersion")
+$MdLines.Add("# Rapport d'Audit des Licences et Dependances - eMule-Rust v$AppVersion")
 $MdLines.Add("")
 $MdLines.Add("**Genere le :** $NowIso (UTC)  ")
 $MdLines.Add("**Politique de reference :** `deny.toml`  ")

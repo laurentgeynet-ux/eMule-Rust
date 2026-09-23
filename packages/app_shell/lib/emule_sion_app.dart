@@ -38,12 +38,45 @@ class _eMuleRustAppState extends State<eMuleRustApp> {
   AppLifecycleListener? _lifecycleListener;
   late final GoRouter _router = createAppRouter(widget.viewModel);
 
+  /// Installe une seule fois les hooks de capture d'erreurs Flutter vers
+  /// le ring buffer [AppLogger] (framework + erreurs async de plateforme).
+  static bool _errorHooksInstalled = false;
+
   @override
   void initState() {
     super.initState();
+    _installErrorHooks();
     _lifecycleListener = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
     );
+  }
+
+  void _installErrorHooks() {
+    if (_errorHooksInstalled) return;
+    _errorHooksInstalled = true;
+
+    final prevFramework = FlutterError.onError;
+    FlutterError.onError = (details) {
+      AppLogger.error(
+        'flutter',
+        details.exceptionAsString(),
+        error: details.exception,
+        stackTrace: details.stack,
+      );
+      prevFramework?.call(details);
+    };
+
+    PlatformDispatcher.instance.onError = (error, stack) {
+      AppLogger.error(
+        'platform',
+        'Erreur asynchrone non interceptée',
+        error: error,
+        stackTrace: stack,
+      );
+      // true = erreur gérée : l'app survit et la trace reste dans le
+      // buffer diagnostics.
+      return true;
+    };
   }
 
   Future<AppExitResponse> _handleExitRequested() async {
@@ -78,7 +111,7 @@ class _eMuleRustAppState extends State<eMuleRustApp> {
       ],
       child: Consumer(
         builder: (context, ref, _) => MaterialApp.router(
-          title: 'EMule-Rust',
+          title: 'eMule-Rust',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.dark(),
           locale: ref.watch(localeControllerProvider).locale,

@@ -1,4 +1,4 @@
 {
   "name": "emule-rust",
-  "description": "Integration plugin exposing EMule-Rust MCP server to Antigravity"
+  "description": "Integration plugin exposing eMule-Rust MCP server to Antigravity"
 }

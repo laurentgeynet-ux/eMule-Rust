@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 /// Sub-domain controller for the Shares section (`/shares`).
 ///
@@ -67,8 +68,9 @@ class SharesController extends ChangeNotifier {
       _files = files;
       _loading = false;
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
       // Non-fatal: the next event will refresh the list.
+      AppLogger.debug('shares', 'Shared-files fetch failed', error: e);
       _loading = false;
       if (!_disposed) notifyListeners();
     }

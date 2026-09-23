@@ -862,14 +862,12 @@ async fn test_shares_rescan_discovers_new_files_and_preserves_settings() {
     assert_eq!(resp.result.as_ref().unwrap()["added"], 1);
 
     // List to find the registered share, then change its settings.
-    let resp = handle_request(
-        &state,
-        make_req(2, "shares.list", None),
-        &mut authenticated,
-    )
-    .await
-    .unwrap();
-    let shares = resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap();
+    let resp = handle_request(&state, make_req(2, "shares.list", None), &mut authenticated)
+        .await
+        .unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"]
+        .as_array()
+        .unwrap();
     assert_eq!(shares.len(), 1);
     assert_eq!(shares[0]["fileName"], "rescan_target.bin");
     let hash = shares[0]["fileHash"].as_str().unwrap().to_string();
@@ -909,14 +907,12 @@ async fn test_shares_rescan_discovers_new_files_and_preserves_settings() {
     .unwrap();
     assert_eq!(resp.result.as_ref().unwrap()["added"], 0);
 
-    let resp = handle_request(
-        &state,
-        make_req(6, "shares.list", None),
-        &mut authenticated,
-    )
-    .await
-    .unwrap();
-    let shares = resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap();
+    let resp = handle_request(&state, make_req(6, "shares.list", None), &mut authenticated)
+        .await
+        .unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"]
+        .as_array()
+        .unwrap();
     assert_eq!(shares.len(), 1);
     assert_eq!(shares[0]["upPriority"], "powershare");
     assert_eq!(shares[0]["enabled"], false);
@@ -961,14 +957,13 @@ async fn test_shares_rescan_respects_share_download_dir_optout() {
     assert!(resp.error.is_none());
     assert_eq!(resp.result.as_ref().unwrap()["added"], 0);
 
-    let resp = handle_request(
-        &state,
-        make_req(3, "shares.list", None),
-        &mut authenticated,
-    )
-    .await
-    .unwrap();
-    assert!(resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap().is_empty());
+    let resp = handle_request(&state, make_req(3, "shares.list", None), &mut authenticated)
+        .await
+        .unwrap();
+    assert!(resp.result.as_ref().unwrap()["sharedFiles"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
@@ -996,7 +991,10 @@ async fn test_partial_download_is_shared_with_completed_parts_only() {
     .await
     .unwrap();
     assert!(resp.error.is_none());
-    let id = resp.result.as_ref().unwrap()["downloadId"].as_str().unwrap().to_string();
+    let id = resp.result.as_ref().unwrap()["downloadId"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // No completed part yet: still shared as a partial (eMule
     // `CDownloadQueue::AddPartFilesToShare` — "part files are always
@@ -1014,7 +1012,8 @@ async fn test_partial_download_is_shared_with_completed_parts_only() {
         let all = dl.list_all_shared_files().unwrap();
         assert!(all.iter().any(|f| f.is_partial
             && f.completed_parts.is_empty()
-            && f.file_hash.eq_ignore_ascii_case("0123456789abcdef0123456789abcdef")));
+            && f.file_hash
+                .eq_ignore_ascii_case("0123456789abcdef0123456789abcdef")));
     }
 
     // Complete part 0 (9 728 000 bytes) via inject_range.
@@ -1037,7 +1036,9 @@ async fn test_partial_download_is_shared_with_completed_parts_only() {
 
         // And it must appear in shares.list output.
         let all = dl.list_all_shared_files().unwrap();
-        assert!(all.iter().any(|f| f.is_partial && f.file_hash.eq_ignore_ascii_case("0123456789abcdef0123456789abcdef")));
+        assert!(all.iter().any(|f| f.is_partial
+            && f.file_hash
+                .eq_ignore_ascii_case("0123456789abcdef0123456789abcdef")));
     }
 }
 
@@ -1188,7 +1189,9 @@ async fn test_completed_db_download_is_shared_after_restart() {
     let resp = handle_request(&state, make_req(1, "shares.list", None), &mut authenticated)
         .await
         .unwrap();
-    let shares = resp.result.as_ref().unwrap()["sharedFiles"].as_array().unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"]
+        .as_array()
+        .unwrap();
     assert!(
         shares.iter().any(|s| s["fileName"] == "finished.bin"),
         "completed DB download must appear in shares.list: {shares:?}"

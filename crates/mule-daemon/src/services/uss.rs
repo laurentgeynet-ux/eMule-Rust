@@ -25,6 +25,7 @@
 //! When latency is above tolerance, `accept_new_client` goes false — the
 //! upload queue then keeps new clients waiting (eMule `AcceptNewClient`).
 
+use crate::services::peer_session::log_peer_ip;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,9 +39,9 @@ use mule_network_policy::cancellation::CancellationToken;
 use mule_network_policy::PolicyRateLimiters;
 
 use crate::services::downloads::DownloadService;
-use crate::services::uss_icmp;
 use crate::services::server_session::{ServerConnectionStatus, ServerSessionManager};
 use crate::services::upload_queue::UploadManager;
+use crate::services::uss_icmp;
 
 const USS_SETTINGS_KEY: &str = "uss_config";
 /// eMule `USSEnabled` default: off.
@@ -368,10 +369,7 @@ impl UssService {
                 .as_ref()
                 .is_none_or(|(_, at)| at.elapsed() >= TARGET_CACHE_TTL);
             if stale {
-                cached_target = self
-                    .resolve_target(&cfg)
-                    .await
-                    .map(|t| (t, Instant::now()));
+                cached_target = self.resolve_target(&cfg).await.map(|t| (t, Instant::now()));
             }
             let Some((target, _)) = cached_target.clone() else {
                 self.set_state("waiting");
@@ -583,7 +581,10 @@ impl UssService {
         // of remote hosts and ping the deepest shared hop — the ISP-side
         // router where local uplink congestion actually shows up.
         if let Some(ip) = self.discover_last_common_host().await {
-            tracing::info!("USS: last common host discovered, pinging {ip}");
+            tracing::info!(
+                "USS: last common host discovered, pinging {peer}",
+                peer = log_peer_ip(ip)
+            );
             return Some(PingTarget::Icmp(ip));
         }
         // Fallback: TCP-connect RTT to the connected eD2K server.
@@ -614,7 +615,7 @@ impl UssService {
         for dest in dests {
             match uss_icmp::trace_route(dest).await {
                 Some(hops) => routes.push(hops),
-                None => tracing::debug!("USS: no ICMP route to {dest}"),
+                None => tracing::debug!("USS: no ICMP route to {peer}", peer = log_peer_ip(dest)),
             }
         }
         let host = uss_icmp::last_common_host(&routes);

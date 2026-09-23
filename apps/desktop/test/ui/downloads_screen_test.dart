@@ -65,7 +65,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Brand and sidebar
-      expect(find.text('EMule-Rust'), findsOneWidget);
+      expect(find.text('eMule-Rust'), findsOneWidget);
       expect(find.text('Tous les téléchargements'), findsAtLeastNWidgets(1));
       expect(
         find.descendant(

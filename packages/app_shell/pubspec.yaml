@@ -1,5 +1,5 @@
 name: app_shell
-description: Shared EMule-Rust application shell — AppController, feature views, providers, router, l10n. Platform-pure (no dart:io at import time).
+description: Shared eMule-Rust application shell — AppController, feature views, providers, router, l10n. Platform-pure (no dart:io at import time).
 publish_to: none
 version: 0.1.0
 

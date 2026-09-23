@@ -3,6 +3,8 @@
 
 //! Inbound connection handling, obfuscation detection, and handshake logic.
 
+use crate::services::peer_session::log_addr_str;
+use crate::services::peer_session::log_peer_addr;
 use bytes::BytesMut;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
@@ -32,7 +34,7 @@ impl InboundListenerService {
         if let Some(rule) = self.network_policy.ip_filter().check_ip(remote_addr.ip()) {
             tracing::info!(
                 "[IP_FILTER] Dropped inbound TCP connection from {} (rule: '{}', level: {})",
-                remote_str,
+                log_addr_str(&remote_str),
                 rule.description,
                 rule.level
             );
@@ -52,8 +54,11 @@ impl InboundListenerService {
         let is_standard_proto = mule_protocol::ed2k::obfuscation::is_standard_protocol_marker(b);
 
         let mut stream = if is_standard_proto {
-            if self.obfuscation_required.load(std::sync::atomic::Ordering::Relaxed) {
-                warn!("Rejected unencrypted inbound connection from {} because obfuscation is required", remote_str);
+            if self
+                .obfuscation_required
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                warn!("Rejected unencrypted inbound connection from {} because obfuscation is required", log_addr_str(&remote_str));
                 return;
             }
             crate::services::obfuscation_stream::ObfuscatedStream::plaintext_with_prefix(
@@ -61,8 +66,11 @@ impl InboundListenerService {
                 vec![b],
             )
         } else {
-            if !self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-                warn!("Rejected obfuscated inbound connection from {} because obfuscation is disabled", remote_str);
+            if !self
+                .obfuscation_enabled
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                warn!("Rejected obfuscated inbound connection from {} because obfuscation is disabled", log_addr_str(&remote_str));
                 return;
             }
             let local_user_hash = *self.user_hash.read().unwrap();
@@ -78,7 +86,8 @@ impl InboundListenerService {
                 Err(e) => {
                     warn!(
                         "Inbound obfuscation handshake failed from {}: {}",
-                        remote_str, e
+                        log_addr_str(&remote_str),
+                        e
                     );
                     return;
                 }
@@ -122,7 +131,7 @@ impl InboundListenerService {
             Ok(Ok(hello)) => {
                 let peer_info = mule_protocol::ed2k::Ed2kPeerInfo::from_hello(&hello);
                 tracing::info!(
-                    "Inbound peer {remote_str} handshake: software={} version={:?} emule_version={:?} client_id={} misc1={:?} misc2={:?} \
+                    "Inbound peer {peer} handshake: software={} version={:?} emule_version={:?} client_id={} misc1={:?} misc2={:?} \
                      caps: sx={} sx2={} aich={} sec_ident={} crypt(sup/req/reqd)={}/{}/{} udp_ver={} udp_port={:?} ext_req={} kad_ver={} large_files={} compression={} \
                      unknown_tags={}",
                     peer_info.software_name(),
@@ -145,7 +154,7 @@ impl InboundListenerService {
                     peer_info.supports_large_files(),
                     peer_info.has_compression_capability(),
                     peer_info.unknown_tags.len()
-                );
+                , peer = log_addr_str(&remote_str));
                 callback_hello = Some(hello);
                 let mut tags = Vec::new();
 
@@ -190,7 +199,11 @@ impl InboundListenerService {
 
                 // eMule MiscOptions1 — SecIdent=3 (v1|v2) in bits 16-19 when a
                 // usable RSA key is loaded, mirroring the outbound HELLO.
-                let sec_ident: u32 = if self.sui_pubkey_der.read().unwrap().is_some() { 3 } else { 0 };
+                let sec_ident: u32 = if self.sui_pubkey_der.read().unwrap().is_some() {
+                    3
+                } else {
+                    0
+                };
                 let misc1: u32 = (1 << 29)
                     | (1 << 28)
                     | (4 << 24)
@@ -211,10 +224,16 @@ impl InboundListenerService {
                     | (1 << 5)
                     | (1 << 4)
                     | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
-                if self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+                if self
+                    .obfuscation_enabled
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
                     misc2 |= (1 << 7) | (1 << 8); // CryptLayerSupported | CryptLayerRequested
                 }
-                if self.obfuscation_required.load(std::sync::atomic::Ordering::Relaxed) {
+                if self
+                    .obfuscation_required
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
                     misc2 |= 1 << 9; // CryptLayerRequires
                 }
                 tags.push(Ed2kTag {
@@ -274,8 +293,7 @@ impl InboundListenerService {
                         if peer_kad_port > 0 {
                             let low_id = hello.client_id < 16_777_216;
                             let kad_version =
-                                mule_protocol::ed2k::Ed2kPeerInfo::from_hello(hello)
-                                    .kad_version();
+                                mule_protocol::ed2k::Ed2kPeerInfo::from_hello(hello).kad_version();
                             if let IpAddr::V4(ip4) = remote_addr.ip() {
                                 let kad_svc = self.kad.read().unwrap().clone();
                                 if let Some(k) = kad_svc {
@@ -314,9 +332,9 @@ impl InboundListenerService {
         };
         if let Some(pb) = pending_buddy {
             tracing::info!(
-                "Inbound connection from {remote_str} matched pending Kad buddy (buddy_id={}) — adopting as buddy link",
+                "Inbound connection from {peer} matched pending Kad buddy (buddy_id={}) — adopting as buddy link",
                 hex::encode(pb.buddy_id)
-            );
+            , peer = log_addr_str(&remote_str));
             self.serve_buddy_link(stream, remote_addr, pb, cancel_token.clone())
                 .await;
             return;
@@ -339,33 +357,26 @@ impl InboundListenerService {
             let peer_info = mule_protocol::ed2k::Ed2kPeerInfo::from_hello(hello);
             let source_address = format!("lowid:{lowid}");
             tracing::info!(
-                "Inbound connection from {remote_str} matched pending LowID callback (client_id={lowid}, file={file_hash}) — adopting as download session"
-            );
+                "Inbound connection from {peer} matched pending LowID callback (client_id={lowid}, file={file_hash}) — adopting as download session"
+            , peer = log_addr_str(&remote_str));
             let software = format!(
                 "{} {}",
                 peer_info.software_name(),
                 peer_info.emule_version_string().unwrap_or_default()
             );
-            let _ = self
-                .downloads
-                .lock()
-                .await
-                .update_peer_source_details(
-                    &file_hash,
-                    &source_address,
-                    Some(software.trim()),
-                    None,
-                );
+            let _ = self.downloads.lock().await.update_peer_source_details(
+                &file_hash,
+                &source_address,
+                Some(software.trim()),
+                None,
+            );
             if ps
                 .accept_callback(
                     stream,
                     remote_addr,
                     &file_hash,
                     source_address,
-                    crate::services::peer_session::source_exchange::peer_sx_caps(
-                        &peer_info,
-                        None,
-                    ),
+                    crate::services::peer_session::source_exchange::peer_sx_caps(&peer_info, None),
                     peer_info.supports_aich(),
                     peer_info.secure_ident_support(),
                     peer_info.extended_requests_version(),
@@ -398,24 +409,20 @@ impl InboundListenerService {
                 .map(mule_protocol::ed2k::Ed2kPeerInfo::from_hello);
             let source_address = format!("kadcb:{}", remote_addr.ip());
             tracing::info!(
-                "Inbound connection from {remote_str} matched pending Kad buddy callback (file={file_hash}) — adopting as download session"
-            );
+                "Inbound connection from {peer} matched pending Kad buddy callback (file={file_hash}) — adopting as download session"
+            , peer = log_addr_str(&remote_str));
             if let Some(p) = peer_info.as_ref() {
                 let software = format!(
                     "{} {}",
                     p.software_name(),
                     p.emule_version_string().unwrap_or_default()
                 );
-                let _ = self
-                    .downloads
-                    .lock()
-                    .await
-                    .update_peer_source_details(
-                        &file_hash,
-                        &source_address,
-                        Some(software.trim()),
-                        None,
-                    );
+                let _ = self.downloads.lock().await.update_peer_source_details(
+                    &file_hash,
+                    &source_address,
+                    Some(software.trim()),
+                    None,
+                );
             }
             let _ = ps
                 .accept_callback(
@@ -426,9 +433,7 @@ impl InboundListenerService {
                     peer_info
                         .as_ref()
                         .map(|p| {
-                            crate::services::peer_session::source_exchange::peer_sx_caps(
-                                p, None,
-                            )
+                            crate::services::peer_session::source_exchange::peer_sx_caps(p, None)
                         })
                         .unwrap_or_default(),
                     peer_info
@@ -493,9 +498,7 @@ impl InboundListenerService {
             peer_user_hash,
             peer_info
                 .as_ref()
-                .map(|p| {
-                    crate::services::peer_session::source_exchange::peer_sx_caps(p, None)
-                })
+                .map(|p| crate::services::peer_session::source_exchange::peer_sx_caps(p, None))
                 .unwrap_or_default(),
             peer_info
                 .as_ref()
@@ -540,8 +543,11 @@ impl InboundListenerService {
         // Obfuscation: when the requester announced crypt support and we have
         // its user hash (CALLBACKREQUESTED ≥23B form), use the encrypted
         // handshake; otherwise plaintext.
-        let use_obfu =
-            crypt_options & 0x01 != 0 && self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) && peer_user_hash.is_some();
+        let use_obfu = crypt_options & 0x01 != 0
+            && self
+                .obfuscation_enabled
+                .load(std::sync::atomic::Ordering::Relaxed)
+            && peer_user_hash.is_some();
         let mut stream = if use_obfu {
             crate::services::obfuscation_stream::ObfuscatedStream::connect_peer_outgoing(
                 stream,
@@ -558,7 +564,11 @@ impl InboundListenerService {
         let encoder = Ed2kEncoder::default();
         let decoder = Ed2kDecoder::default();
         let codec = PacketCodec::new();
-        let sec_ident: u32 = if self.sui_pubkey_der.read().unwrap().is_some() { 3 } else { 0 };
+        let sec_ident: u32 = if self.sui_pubkey_der.read().unwrap().is_some() {
+            3
+        } else {
+            0
+        };
         let misc1: u32 = (1 << 29)
             | (1 << 28)
             | (4 << 24)
@@ -574,10 +584,16 @@ impl InboundListenerService {
             value: mule_protocol::ed2k::tags::TagValue::UInt32(misc1),
         }];
         let mut misc2: u32 = 0;
-        if self.obfuscation_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+        if self
+            .obfuscation_enabled
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             misc2 |= (1 << 7) | (1 << 8);
         }
-        if self.obfuscation_required.load(std::sync::atomic::Ordering::Relaxed) {
+        if self
+            .obfuscation_required
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             misc2 |= 1 << 9;
         }
         if misc2 > 0 {
@@ -649,7 +665,8 @@ impl InboundListenerService {
             peer_user_hash
         };
         tracing::info!(
-            "Callback connect-back to {target} established (OP_HELLO_ANSWER ok) — serving requests"
+            "Callback connect-back to {peer} established (OP_HELLO_ANSWER ok) — serving requests",
+            peer = log_peer_addr(target)
         );
         self.dispatch_requests(
             stream,
@@ -691,7 +708,8 @@ impl InboundListenerService {
                 tx: tx.clone(),
             }) {
                 tracing::warn!(
-                    "Buddy link from {remote_addr} rejected: another buddy is already active"
+                    "Buddy link from {peer} rejected: another buddy is already active",
+                    peer = log_peer_addr(remote_addr)
                 );
                 return;
             }
@@ -737,7 +755,7 @@ impl InboundListenerService {
                                 } else {
                                     tracing::debug!(
                                         "Buddy link {}: ignoring packet proto=0x{:02X} opcode=0x{:02X}",
-                                        remote_addr, pkt.protocol, pkt.opcode
+                                        log_peer_addr(remote_addr), pkt.protocol, pkt.opcode
                                     );
                                 }
                             }
@@ -749,6 +767,9 @@ impl InboundListenerService {
 
         writer.abort();
         registry.lock().await.clear_active(&remote_addr);
-        tracing::info!("Kad buddy link from {remote_addr} closed");
+        tracing::info!(
+            "Kad buddy link from {peer} closed",
+            peer = log_peer_addr(remote_addr)
+        );
     }
 }

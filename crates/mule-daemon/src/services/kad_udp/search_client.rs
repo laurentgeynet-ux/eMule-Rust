@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+use crate::services::peer_session::log_peer_addr;
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -85,7 +86,7 @@ impl KadUdpService {
 
         tracing::info!(
             "Kad sending SearchSourceReq (0x34) to node {} for file {} (size={}, tx_id={})",
-            target,
+            log_peer_addr(target),
             hex::encode(target_file_hash),
             file_size,
             tx_id
@@ -109,7 +110,7 @@ impl KadUdpService {
                 // ce n'est pas une anomalie — niveau debug, pas warn.
                 tracing::debug!(
                     "Kad SearchSources to node {} timed out after {}s (file={}, tx_id={})",
-                    target,
+                    log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
                     hex::encode(target_file_hash),
                     tx_id
@@ -128,7 +129,7 @@ impl KadUdpService {
                         .await;
                         tracing::info!(
                             "Kad received SearchSourceRes from node {} with {} sources (first batch {}, tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             sources.len(),
                             first_batch,
                             tx_id
@@ -198,7 +199,7 @@ impl KadUdpService {
 
         tracing::info!(
             "Kad sending PublishSourceReq (0x23) to node {} for file {} (tx_id={})",
-            target,
+            log_peer_addr(target),
             hex::encode(target_file_hash),
             tx_id
         );
@@ -221,7 +222,7 @@ impl KadUdpService {
                 // a timeout here is expected noise, not an anomaly.
                 tracing::debug!(
                     "Kad PublishSource to node {} timed out after {}s (tx_id={})",
-                    target,
+                    log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
                     tx_id
                 );
@@ -233,7 +234,7 @@ impl KadUdpService {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!(
                             "Kad received PublishSourceRes from node {} with status {} (tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             pub_res.status,
                             tx_id
                         );
@@ -243,7 +244,7 @@ impl KadUdpService {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!(
                             "Kad received PublishRes from node {} with status {} (tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             pub_res.status,
                             tx_id
                         );
@@ -293,16 +294,15 @@ impl KadUdpService {
                 .await?
         };
 
-        let search_bytes =
-            KadCodec::encode_search_keyword_req(
-                keyword_hash,
-                start_pos,
-                &self.local_id.read().unwrap().0,
-            );
+        let search_bytes = KadCodec::encode_search_keyword_req(
+            keyword_hash,
+            start_pos,
+            &self.local_id.read().unwrap().0,
+        );
 
         tracing::info!(
             "Kad sending SearchKeywordReq (0x33) to node {} for keyword {} (start_pos={}, tx_id={})",
-            target,
+            log_peer_addr(target),
             hex::encode(keyword_hash),
             start_pos,
             tx_id
@@ -323,7 +323,7 @@ impl KadUdpService {
                 inf.remove(&tx_id);
                 tracing::warn!(
                     "Kad SearchKeyword to node {} timed out after {}s (keyword={}, tx_id={})",
-                    target,
+                    log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
                     hex::encode(keyword_hash),
                     tx_id
@@ -342,7 +342,7 @@ impl KadUdpService {
                         .await;
                         tracing::info!(
                             "Kad received SearchKeywordRes from node {} with {} entries (first batch {}, tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             entries.len(),
                             first_batch,
                             tx_id
@@ -392,7 +392,7 @@ impl KadUdpService {
 
         tracing::info!(
             "Kad sending PublishKeywordReq (0x43) to node {} for keyword {} with {} entries (tx_id={})",
-            target,
+            log_peer_addr(target),
             hex::encode(keyword_hash),
             entries.len(),
             tx_id
@@ -415,7 +415,7 @@ impl KadUdpService {
                 // keep the timeout visible but below WARN noise level.
                 tracing::debug!(
                     "Kad PublishKeyword to node {} timed out after {}s (keyword={}, tx_id={})",
-                    target,
+                    log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
                     hex::encode(keyword_hash),
                     tx_id
@@ -428,7 +428,7 @@ impl KadUdpService {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!(
                             "Kad received PublishKeywordRes from node {} with status {} (tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             pub_res.status,
                             tx_id
                         );
@@ -438,7 +438,7 @@ impl KadUdpService {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!(
                             "Kad received PublishRes from node {} with status {} (tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             pub_res.status,
                             tx_id
                         );
@@ -493,7 +493,7 @@ impl KadUdpService {
 
         tracing::info!(
             "Kad sending SearchNotesReq (0x35) to node {} for file {} (size={}, tx_id={})",
-            target,
+            log_peer_addr(target),
             hex::encode(file_hash),
             file_size,
             tx_id
@@ -514,7 +514,7 @@ impl KadUdpService {
                 inf.remove(&tx_id);
                 tracing::warn!(
                     "Kad SearchNotes to node {} timed out after {}s (file={}, tx_id={})",
-                    target,
+                    log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
                     hex::encode(file_hash),
                     tx_id
@@ -533,7 +533,7 @@ impl KadUdpService {
                         .await;
                         tracing::info!(
                             "Kad received SearchNotesRes from node {} with {} notes (first batch {}, tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             notes.len(),
                             first_batch,
                             tx_id
@@ -587,7 +587,7 @@ impl KadUdpService {
 
         tracing::info!(
             "Kad sending PublishNotesReq (0x45) to node {} for file {} with {} tags (tx_id={})",
-            target,
+            log_peer_addr(target),
             hex::encode(file_hash),
             tags.len(),
             tx_id
@@ -608,7 +608,7 @@ impl KadUdpService {
                 inf.remove(&tx_id);
                 tracing::warn!(
                     "Kad PublishNotes to node {} timed out after {}s (file={}, tx_id={})",
-                    target,
+                    log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
                     hex::encode(file_hash),
                     tx_id
@@ -621,7 +621,7 @@ impl KadUdpService {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!(
                             "Kad received PublishNotesRes from node {} with load {} (tx_id={})",
-                            target,
+                            log_peer_addr(target),
                             pub_res.load,
                             tx_id
                         );

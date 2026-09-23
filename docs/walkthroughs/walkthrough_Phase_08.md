@@ -1,6 +1,6 @@
 # Walkthrough — Phase 8.1 & 8.2 : Inspection, Destinations, Historique et Statistiques Locales
 
-Phase 8 enrichit le client de bureau **EMule-Rust** avec une gestion locale complète des transferts et de l'audit, tout en maintenant strictement la frontière locale loopback (`127.0.0.1`), la séparation entre les données temporaires de travail (`data/temp/`) et les répertoires finaux (`downloads/`), ainsi qu'une politique de zéro télémétrie.
+Phase 8 enrichit le client de bureau **eMule-Rust** avec une gestion locale complète des transferts et de l'audit, tout en maintenant strictement la frontière locale loopback (`127.0.0.1`), la séparation entre les données temporaires de travail (`data/temp/`) et les répertoires finaux (`downloads/`), ainsi qu'une politique de zéro télémétrie.
 
 ---
 
@@ -130,7 +130,7 @@ Phase 8.2 apporte une traçabilité complète et des métriques d'activité agr�
 
 ## 4. Catégories Locales & Hiérarchie de Destination (Phase 8.3)
 
-Phase 8.3 dote EMule-Rust d'un système complet d'organisation locale des téléchargements avec attribution de priorités et de destinations par défaut.
+Phase 8.3 dote eMule-Rust d'un système complet d'organisation locale des téléchargements avec attribution de priorités et de destinations par défaut.
 
 ### 1. Invariant absolu de sécurité :
 - **La suppression d'une catégorie ne supprime JAMAIS aucun fichier ni aucun téléchargement.**
@@ -162,7 +162,7 @@ $$\text{targetDirectory (explicite)} > \text{defaultDestination (catégorie)} > 
 
 ```
 +-------------------------------------------------------------------------------------------------+
-|                                         EMule-Rust GUI                                          |
+|                                         eMule-Rust GUI                                          |
 |   +-----------------------+   +----------------------+   +-------------------+   +----------+   |
 |   |   SettingsDialog      |   |   HistoryView        |   | DownloadDetail    |   | Category |   |
 |   |   - Destination glob. |   |   - Stats 4 fenêtres |   |   - Part map      |   | Dialog   |   |
@@ -396,7 +396,7 @@ flutter test    : 74 tests passés avec 100% de succès.
 #### Smoke Test Post-Packaging (`scripts/test_packaged_bundle.ps1`)
 ```
 ==================================================
-  EMule-Rust Post-Packaging E2E Smoke Test        
+  eMule-Rust Post-Packaging E2E Smoke Test        
   Flavors: standard & qa-loopback
 ==================================================
  -> Archive SHA-256 vérifié à 100% contre .zip.sha256.
@@ -433,7 +433,7 @@ flutter test    : 74 tests passés avec 100% de succès.
 #### Matrice d'Environnement & Supervision RC (`scripts/test_rc_matrix.ps1`)
 ```
 ==================================================
-  EMule-Rust RC Environment & Supervision Matrix  
+  eMule-Rust RC Environment & Supervision Matrix  
 ==================================================
 [1/6] Répertoires Unicode, caractères non-ASCII et espaces : PASS
 [2/6] Conflit de port TCP 4660 & bascule dynamique sur port éphémère : PASS

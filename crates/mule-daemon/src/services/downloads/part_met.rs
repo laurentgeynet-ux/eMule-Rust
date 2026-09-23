@@ -237,13 +237,13 @@ pub fn import_part_met(
         // Orphan already inside our own temp dir: adopt in place via rename
         // (atomic move), falling back to copy+delete on exotic filesystems.
         if std::fs::rename(&actual_part_path, &internal_temp_path).is_err() {
-            std::fs::copy(&actual_part_path, &internal_temp_path).and_then(|_| {
-                std::fs::remove_file(&actual_part_path)
-            }).map_err(|e| {
-                DaemonError::Business(format!(
-                    "Failed to adopt orphan .part file into sandbox: {e}"
-                ))
-            })?;
+            std::fs::copy(&actual_part_path, &internal_temp_path)
+                .and_then(|_| std::fs::remove_file(&actual_part_path))
+                .map_err(|e| {
+                    DaemonError::Business(format!(
+                        "Failed to adopt orphan .part file into sandbox: {e}"
+                    ))
+                })?;
         }
     } else {
         std::fs::copy(&actual_part_path, &internal_temp_path).map_err(|e| {
@@ -372,7 +372,7 @@ pub fn import_part_met(
     };
 
     let report = format!(
-        "=== EMule-Rust .part.met Import Audit Report ===\n\
+        "=== eMule-Rust .part.met Import Audit Report ===\n\
          Format Version: {met_version_str}\n\
          File Name: {}\n\
          Declared Total Size: {total_size} bytes\n\

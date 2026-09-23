@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "Laurent Geynet ""Loulach""" "\0"
-            VALUE "FileDescription", "EMule-Rust" "\0"
+            VALUE "FileDescription", "eMule-Rust" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "eMuleRust" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Laurent Geynet ""Loulach"". Licensed under GPL-2.0-or-later." "\0"
             VALUE "OriginalFilename", "eMuleRust.exe" "\0"
-            VALUE "ProductName", "EMule-Rust" "\0"
+            VALUE "ProductName", "eMule-Rust" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

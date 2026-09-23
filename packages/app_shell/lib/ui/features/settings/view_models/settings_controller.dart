@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../l10n/l10n_lookup.dart';
 
@@ -49,8 +50,9 @@ class SettingsController extends ChangeNotifier {
       _settings = await client.getSettings();
       onSettingsLoaded?.call(_settings);
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
       // Non-critical in older or restricted daemons
+      AppLogger.debug('settings', 'Settings fetch failed', error: e);
     }
   }
 

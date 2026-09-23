@@ -24,6 +24,7 @@ pub async fn handle_downloads_list(state: &AppState) -> Result<Value, JsonRpcErr
     }))
 }
 
+#[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
 pub async fn handle_downloads_get(
     state: &AppState,
     params: Option<Value>,
@@ -33,6 +34,7 @@ pub async fn handle_downloads_get(
         .as_str()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    tracing::Span::current().record("download_id", tracing::field::display(id));
 
     let mut dl = state
         .downloads
@@ -49,6 +51,10 @@ pub async fn handle_downloads_get(
     Ok(serde_json::to_value(dl).unwrap_or_default())
 }
 
+#[tracing::instrument(
+    skip_all,
+    fields(download_id = tracing::field::Empty, ed2k_hash = tracing::field::Empty)
+)]
 pub async fn handle_add_ed2k_link(
     state: &AppState,
     params: Option<Value>,
@@ -135,6 +141,7 @@ pub async fn handle_add_ed2k_link(
             .lock()
             .await
             .add_ed2k_link(link, &target_dir, policy, category_id_opt)?;
+    tracing::Span::current().record("download_id", tracing::field::display(snapshot.id));
 
     state.broadcast_download_update(snapshot.clone());
 
@@ -148,6 +155,9 @@ pub async fn handle_add_ed2k_link(
     };
     if let Some((_, _, hash, size)) = file_info {
         let hash_hex = hex::encode(hash.0);
+        // Hash tronqué dans le span (8 hex suffisent à corréler ; le lien
+        // complet et le nom de fichier ne sont jamais loggés).
+        tracing::Span::current().record("ed2k_hash", &hash_hex[..8.min(hash_hex.len())]);
         tracing::info!(
             "Download added: requesting immediate sources from server and Kad for file {}",
             hash_hex
@@ -176,12 +186,14 @@ pub async fn handle_add_ed2k_link(
     }))
 }
 
+#[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
 pub async fn handle_pause(state: &AppState, params: Option<Value>) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let id_str = params["id"]
         .as_str()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    tracing::Span::current().record("download_id", tracing::field::display(id));
 
     let snapshot = state.downloads.lock().await.pause_download(&id)?;
     state.broadcast_download_update(snapshot.clone());
@@ -189,12 +201,14 @@ pub async fn handle_pause(state: &AppState, params: Option<Value>) -> Result<Val
     Ok(serde_json::to_value(snapshot).unwrap_or_default())
 }
 
+#[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
 pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let id_str = params["id"]
         .as_str()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    tracing::Span::current().record("download_id", tracing::field::display(id));
 
     // eMule `SafeConnect`: refuse to resume while neither the eD2K server
     // nor Kad is reachable — sources could only be dead cache entries.
@@ -243,12 +257,14 @@ pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Va
     Ok(serde_json::to_value(snapshot).unwrap_or_default())
 }
 
+#[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
 pub async fn handle_remove(state: &AppState, params: Option<Value>) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let id_str = params["id"]
         .as_str()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    tracing::Span::current().record("download_id", tracing::field::display(id));
     let delete_files = params["deleteFiles"].as_bool().unwrap_or(false);
 
     state
@@ -288,10 +304,7 @@ pub async fn handle_set_destination(
 /// `downloads.rename` — renomme le fichier (`{id, newName}`). Pour un
 /// download terminé, renomme aussi le fichier sur disque et l'entrée de
 /// partage associée.
-pub async fn handle_rename(
-    state: &AppState,
-    params: Option<Value>,
-) -> Result<Value, JsonRpcError> {
+pub async fn handle_rename(state: &AppState, params: Option<Value>) -> Result<Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
     let id_str = params["id"]
         .as_str()
@@ -325,11 +338,7 @@ pub async fn handle_set_priority(
         .as_str()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'priority' parameter"))?;
 
-    let snapshot = state
-        .downloads
-        .lock()
-        .await
-        .set_priority(&id, priority)?;
+    let snapshot = state.downloads.lock().await.set_priority(&id, priority)?;
     state.broadcast_download_update(snapshot.clone());
 
     Ok(serde_json::to_value(snapshot).unwrap_or_default())
@@ -469,6 +478,7 @@ pub async fn handle_import_part_met(
     Ok(serde_json::to_value(result).unwrap_or_default())
 }
 
+#[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
 pub async fn handle_retry_connection(
     state: &AppState,
     params: Option<Value>,
@@ -478,6 +488,7 @@ pub async fn handle_retry_connection(
         .as_str()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'id' parameter"))?;
     let id = Uuid::parse_str(id_str).map_err(|e| JsonRpcError::invalid_params(&e.to_string()))?;
+    tracing::Span::current().record("download_id", tracing::field::display(id));
 
     let detail = state.downloads.lock().await.retry_connection(&id)?;
 

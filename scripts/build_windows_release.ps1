@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Builds, signs, and packages the complete standalone EMule-Rust Windows distribution.
+    Builds, signs, and packages the complete standalone eMule-Rust Windows distribution.
 .DESCRIPTION
     Phase 7 — Industrialisation Locale & Release Candidate:
     1. Verifies clean Git repository state (rejects dirty state unless -AllowDirty is set).
@@ -56,7 +56,7 @@ if ($LabMode -or $Flavor -eq "qa-loopback") {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  EMule-Rust Windows Release Candidate Pipeline   " -ForegroundColor Cyan
+Write-Host "  eMule-Rust Windows Release Candidate Pipeline   " -ForegroundColor Cyan
 Write-Host "  Flavor: $DistributionFlavor (LabTools: $LabToolsEnabled)" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
@@ -329,7 +329,7 @@ Write-Host " -> Generated: $SumsPath ($($SumsLines.Count) file entries)" -Foregr
 # Write version.json manifest
 $VersionInfo = [ordered]@{
     schemaVersion = 1
-    product = "EMule-Rust"
+    product = "eMule-Rust"
     version = $AppVersion
     distributionFlavor = $DistributionFlavor
     labToolsEnabled = $LabToolsEnabled

@@ -1,7 +1,7 @@
 # Spécification eD2K - Périmètre & Frontières Passives (Phase 5)
 
 ## 1. Objectif de la Phase 5
-La Phase 5 d'EMule-Rust est dédiée à **l'archéologie logicielle, la spécification formelle et l'implémentation de décodeurs en lecture seule** pour le protocole historique eDonkey2000 (eD2K) et ses extensions eMule.
+La Phase 5 d'eMule-Rust est dédiée à **l'archéologie logicielle, la spécification formelle et l'implémentation de décodeurs en lecture seule** pour le protocole historique eDonkey2000 (eD2K) et ses extensions eMule.
 
 Cette phase a pour but d'établir une compréhension rigoureuse, versionnée et testée des trames binaires historiques, en se basant exclusivement sur des spécifications documentées, des fixtures binaires figées et des implémentations de référence open-source.
 

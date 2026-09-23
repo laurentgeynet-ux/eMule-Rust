@@ -1,6 +1,6 @@
 # ui_kit
 
-Design system partagé des applications EMule-Rust : tokens de thème,
+Design system partagé des applications eMule-Rust : tokens de thème,
 formatters, chaînes et widgets réutilisables. Consommé par
 `apps/desktop` et destiné à `apps/mobile` / `apps/web`.
 
@@ -11,7 +11,7 @@ formatters, chaînes et widgets réutilisables. Consommé par
 | `AppTheme` | Couleurs brand/status (`primary`, `darkSurface`, `statusDownloading`…), `dark()` ThemeData, `getStatusColor(DownloadStatus)` |
 | `Formatters` | `formatBytes`, `formatSpeed`, `formatEta`, `formatPercent` |
 | `AppStrings` | Chaînes UI centralisées (EN) — base avant i18n `gen_l10n` |
-| `PartAvailabilityBar` + `partColorFor` | Bandeau eMule `DrawStatusBar` byte-précis, palette désaturée Tailwind : ardoise = reçu, rouge doux = aucune source, dégradé sky rare→commun, ambre = bloc en vol, strip vert = progression |
+| `PartAvailabilityBar` + `partColorFor` | Bandeau eMule `DrawStatusBar` byte-précis, palette standard plate : bleu = reçu, rouge = aucune source, dégradé cyan→bleu eMule rare→commun, jaune = bloc en vol, vert = vérifié et strip de progression |
 
 ## Usage
 

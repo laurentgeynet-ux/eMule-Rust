@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+use crate::services::peer_session::log_addr_str;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
@@ -181,7 +182,7 @@ pub struct UploadManager {
     /// Minimum upload bandwidth per slot in bytes/sec (eMule `MinUpload`):
     /// a new slot is only opened when existing slots still reach it.
     min_upload_rate_bps: Arc<std::sync::atomic::AtomicU64>,
-    /// Quota journalier d'upload (EMule-Rust `dailyUploadQuotaGb`) — quand
+    /// Quota journalier d'upload (eMule-Rust `dailyUploadQuotaGb`) — quand
     /// `false`, aucune nouvelle demande de slot n'est acceptée.
     quota_gate: Arc<std::sync::RwLock<Arc<AtomicBool>>>,
     /// Total cumulatif des octets uploadés depuis le démarrage du daemon
@@ -216,9 +217,7 @@ impl UploadManager {
             min_upload_rate_bps: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             quota_gate: Arc::new(std::sync::RwLock::new(Arc::new(AtomicBool::new(true)))),
             total_uploaded_bytes: Arc::new(AtomicU64::new(0)),
-            file_upload_totals: Arc::new(std::sync::RwLock::new(
-                std::collections::HashMap::new(),
-            )),
+            file_upload_totals: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -244,8 +243,7 @@ impl UploadManager {
         let active = self.active_uploads.lock().await;
         let mut rates = std::collections::HashMap::new();
         for s in active.values() {
-            *rates.entry(s.file_hash.to_lowercase()).or_insert(0u64) +=
-                s.effective_rate_bps(now);
+            *rates.entry(s.file_hash.to_lowercase()).or_insert(0u64) += s.effective_rate_bps(now);
         }
         rates
     }
@@ -423,7 +421,7 @@ impl UploadManager {
                 .store(Self::uploading_count(&active), Ordering::SeqCst);
             tracing::info!(
                 "[UPLOAD_SLOT_GRANTED] Client {} granted active upload slot for file '{}' (hash: {}) ({}/{} slots used)",
-                client_address, file_name, file_hash, Self::uploading_count(&active), self.max_active.load(Ordering::SeqCst)
+                log_addr_str(client_address), file_name, file_hash, Self::uploading_count(&active), self.max_active.load(Ordering::SeqCst)
             );
             drop(active);
             self.emit_uploads_updated().await;
@@ -454,7 +452,7 @@ impl UploadManager {
             active.insert(client_key.to_string(), snap);
             tracing::info!(
                 "[UPLOAD_FRIEND_SLOT] Friend {} granted dedicated upload slot for file '{}' ({} full slots)",
-                client_address, file_name, Self::uploading_count(&active)
+                log_addr_str(client_address), file_name, Self::uploading_count(&active)
             );
             drop(active);
             self.emit_uploads_updated().await;
@@ -526,7 +524,7 @@ impl UploadManager {
 
         tracing::info!(
             "[UPLOAD_QUEUED] Client {} queued for file '{}' (hash: {}) with rank #{} (credits mult: {:.2}x, queue size: {})",
-            client_address, file_name, file_hash, rank, credit_multiplier, q.len()
+            log_addr_str(client_address), file_name, file_hash, rank, credit_multiplier, q.len()
         );
         drop(q);
         drop(active);
@@ -537,9 +535,7 @@ impl UploadManager {
 
     /// Number of slots currently occupying a full upload slot — trickle
     /// slots are excluded (eMule counts only full-speed uploads).
-    fn uploading_count(
-        active: &std::collections::HashMap<String, UploadSessionSnapshot>,
-    ) -> usize {
+    fn uploading_count(active: &std::collections::HashMap<String, UploadSessionSnapshot>) -> usize {
         active
             .values()
             .filter(|s| s.state == UploadSlotState::Uploading)
@@ -619,7 +615,7 @@ impl UploadManager {
             };
             tracing::info!(
                 "[UPLOAD_PROMOTED] Client {} promoted from queue to active upload slot for file '{}' (hash: {})",
-                snap.client_address, snap.file_name, snap.file_hash
+                log_addr_str(&snap.client_address), snap.file_name, snap.file_hash
             );
             active.insert(next.client_key, snap);
         }
@@ -806,8 +802,7 @@ impl UploadManager {
     /// eMule answers `OP_QUEUEFULL` to UDP pings from unknown clients in
     /// that state (`GetWaitingUserCount() + 50 > GetQueueSize()`).
     pub async fn is_nearly_full(&self) -> bool {
-        self.waiting_len().await + 50
-            > self.max_queue.load(std::sync::atomic::Ordering::Relaxed)
+        self.waiting_len().await + 50 > self.max_queue.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Returns list of all queued upload snapshots.
@@ -843,7 +838,15 @@ mod tests {
         mgr.set_max_active(3);
         for i in 0..3 {
             let (state, _) = mgr
-                .request_upload_slot(&format!("c{i}"), &format!("c{i}"), "h", "f", 1.0, "normal", false)
+                .request_upload_slot(
+                    &format!("c{i}"),
+                    &format!("c{i}"),
+                    "h",
+                    "f",
+                    1.0,
+                    "normal",
+                    false,
+                )
                 .await
                 .unwrap();
             assert_eq!(state, UploadSlotState::Uploading);
@@ -1001,7 +1004,11 @@ mod tests {
         mgr.release_slot("c1").await;
         mgr.release_slot("c2").await;
         assert_eq!(
-            mgr.per_file_rates_bps().await.get("haa").copied().unwrap_or(0),
+            mgr.per_file_rates_bps()
+                .await
+                .get("haa")
+                .copied()
+                .unwrap_or(0),
             0
         );
         assert_eq!(mgr.per_file_uploaded_bytes()["haa"], 4000);

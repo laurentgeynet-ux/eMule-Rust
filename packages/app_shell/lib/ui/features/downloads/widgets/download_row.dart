@@ -58,6 +58,8 @@ class DownloadRow extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
           onTap: onTap,
           onDoubleTap: onDoubleTap,
           child: Padding(

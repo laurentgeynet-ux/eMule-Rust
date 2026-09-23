@@ -10,7 +10,7 @@ class AppLocalizationsFr extends AppLocalizations {
   AppLocalizationsFr([String locale = 'fr']) : super(locale);
 
   @override
-  String get appName => 'EMule-Rust';
+  String get appName => 'eMule-Rust';
 
   @override
   String get appTagline => 'Client eD2K moderne';
@@ -213,6 +213,13 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get settingsLifetimeResetSub =>
       'Remet à zéro les compteurs téléchargé / envoyé depuis l\'installation affichés dans la barre du haut. Les totaux de session sont conservés.';
+
+  @override
+  String get settingsLogLevelTile => 'Niveau de log du daemon';
+
+  @override
+  String get settingsLogLevelSub =>
+      'Verbosité des fichiers de log rotatifs (logs/). Appliquée immédiatement, non persistée au redémarrage.';
 
   @override
   String get lifetimeResetConfirmTitle => 'Remettre à zéro les totaux ?';
@@ -1452,7 +1459,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get parDefauteMuleRustEst =>
-      'Par défaut, EMule-Rust est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.';
+      'Par défaut, eMule-Rust est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.';
 
   @override
   String get modifierLeProfil => 'Modifier le profil';
@@ -1581,7 +1588,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get memeEnModePublicLa =>
-      'Même en mode public, la politique réseau d\'EMule-Rust bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.';
+      'Même en mode public, la politique réseau d\'eMule-Rust bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.';
 
   @override
   String get fermer => 'Fermer';
@@ -1691,7 +1698,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get daemonConnectDescription =>
-      'EMule-Rust Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.';
+      'eMule-Rust Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.';
 
   @override
   String get daemonUrlLabel => 'Adresse du daemon';
@@ -2063,7 +2070,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get settingsDailyQuotaHint =>
-      'Option EMule-Rust : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).';
+      'Option eMule-Rust : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).';
 
   @override
   String get settingsAutoPriorityTitle =>
@@ -2078,10 +2085,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get settingsSwarmHealingSub =>
-      'Option EMule-Rust : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition';
+      'Option eMule-Rust : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition';
 
   @override
-  String get settingsExclusiveTitle => 'Options exclusives EMule-Rust';
+  String get settingsExclusiveTitle => 'Options exclusives eMule-Rust';
 
   @override
   String get settingsParanoidTitle => 'Mode paranoid';

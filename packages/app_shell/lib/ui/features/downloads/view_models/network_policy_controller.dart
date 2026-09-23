@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../l10n/enum_labels.dart';
 import '../../../../l10n/l10n_lookup.dart';
@@ -64,7 +65,9 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       _policy = await client.getNetworkPolicy();
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.debug('network', 'Network policy fetch failed', error: e);
+    }
   }
 
   Future<void> setProfile(NetworkProfile profile) async {
@@ -110,7 +113,9 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       _auditLog = await client.getNetworkAuditLog(limit: limit);
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.debug('network', 'Audit log fetch failed', error: e);
+    }
   }
 
   Future<void> setResourceBudgets(ResourceBudgetsModel budgets) async {
@@ -130,7 +135,9 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       _filterStatus = await client.getFilterStatus();
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.debug('network', 'IP filter status fetch failed', error: e);
+    }
   }
 
   Future<bool> importFilterFile(String filePath) async {
@@ -181,7 +188,9 @@ class NetworkPolicyController extends ChangeNotifier {
     try {
       _rateLimits = await client.getRateLimits();
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.debug('network', 'Rate limits fetch failed', error: e);
+    }
   }
 
   Future<void> setRateLimits(RateLimitsModel limits) async {

@@ -20,9 +20,9 @@ use mule_mcp::{
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "mule-mcp")]
-#[command(about = "Model Context Protocol (MCP) server for EMule-Rust")]
+#[command(about = "Model Context Protocol (MCP) server for eMule-Rust")]
 struct Cli {
-    /// Explicit WebSocket RPC URL of the EMule-Rust daemon (e.g. ws://127.0.0.1:4660/rpc)
+    /// Explicit WebSocket RPC URL of the eMule-Rust daemon (e.g. ws://127.0.0.1:4660/rpc)
     #[arg(long)]
     url: Option<String>,
 
@@ -30,7 +30,7 @@ struct Cli {
     #[arg(long)]
     token: Option<String>,
 
-    /// Path to EMule-Rust workdir where session.json and auth.token reside
+    /// Path to eMule-Rust workdir where session.json and auth.token reside
     #[arg(long)]
     workdir: Option<PathBuf>,
 
@@ -70,17 +70,55 @@ impl AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // IMPORTANT: Log exclusively to stderr so stdout remains clean for MCP JSON-RPC protocol
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(
+    let cli = Cli::parse();
+
+    // IMPORTANT: stderr only for human logs — stdout must stay clean for
+    // the MCP JSON-RPC protocol. A JSONL file layer (same daily rotation
+    // as the daemon, <workdir>/logs/mcp.<date>.log) keeps durable traces
+    // without polluting stdio; it's skipped if the workdir is unwritable.
+    let workdir = cli.workdir.clone().unwrap_or_else(|| {
+        mule_daemon::WorkDirectoryResolver::resolve(None, None).workdir
+    });
+    let logs_dir = workdir.join("logs");
+    let file_layer = (|| {
+        std::fs::create_dir_all(&logs_dir).ok()?;
+        let appender = tracing_appender::rolling::Builder::new()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("mcp")
+            .filename_suffix("log")
+            .max_log_files(7)
+            .build(&logs_dir)
+            .ok()?;
+        let (writer, guard) = tracing_appender::non_blocking(appender);
+        Some((
+            tracing_subscriber::fmt::layer()
+                .json()
+                .with_ansi(false)
+                .with_current_span(true)
+                .with_writer(writer),
+            guard,
+        ))
+    })();
+    let (file_layer, _log_guard) = match file_layer {
+        Some((layer, guard)) => (Some(layer), Some(guard)),
+        None => (None, None),
+    };
+
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    tracing_subscriber::registry()
+        .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "mule_mcp=info".into()),
         )
+        .with(
+            tracing_subscriber::fmt::layer().with_writer(std::io::stderr),
+        )
+        .with(file_layer)
         .init();
 
-    let cli = Cli::parse();
-    info!("Starting EMule-Rust MCP Server v{SERVER_VERSION}...");
+    info!("Starting eMule-Rust MCP Server v{SERVER_VERSION}...");
 
     // Attempt non-fatal initial connection to daemon
     let initial_client = match DaemonClient::connect(
@@ -96,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(c)
         }
         Err(e) => {
-            warn!("EMule-Rust daemon not currently reachable ({e}). MCP server will connect on demand.");
+            warn!("eMule-Rust daemon not currently reachable ({e}). MCP server will connect on demand.");
             None
         }
     };
@@ -186,7 +224,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let tool_result = match client_res {
                     Ok(client) => execute_tool(&client, tool_name, args).await,
                     Err(e) => ToolCallResult::error(format!(
-                        "Could not connect to EMule-Rust daemon: {e}. Please ensure EMule-Rust is running."
+                        "Could not connect to eMule-Rust daemon: {e}. Please ensure eMule-Rust is running."
                     )),
                 };
 

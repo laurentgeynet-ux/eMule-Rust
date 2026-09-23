@@ -8,6 +8,8 @@ pub mod search_keywords;
 pub mod search_sources;
 pub mod types;
 
+use crate::services::peer_session::log_peer_addr;
+use crate::services::peer_session::log_peer_ip;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -82,10 +84,11 @@ impl KadService {
         ip_filter: Arc<IpFilter>,
     ) -> Self {
         let local_id = Arc::new(std::sync::RwLock::new(local_id));
-        let routing_table = Arc::new(Mutex::new(KBucketTable::new(
-            *local_id.read().unwrap(),
-        )));
-        let udp = Arc::new(KadUdpService::new(Arc::clone(&local_id), policy_mgr.clone()));
+        let routing_table = Arc::new(Mutex::new(KBucketTable::new(*local_id.read().unwrap())));
+        let udp = Arc::new(KadUdpService::new(
+            Arc::clone(&local_id),
+            policy_mgr.clone(),
+        ));
         udp.set_routing_table(Arc::clone(&routing_table));
         Self {
             local_id,
@@ -330,7 +333,7 @@ impl KadService {
 
         tracing::info!(
             "Kad Bootstrap from {}: received {} contacts, {} valid accepted into routing table (assume_verified={})",
-            addr,
+            log_peer_addr(addr),
             count,
             valid_contacts.len(),
             assume_verified
@@ -424,8 +427,7 @@ impl KadService {
         low_id: bool,
         kad_version: u8,
     ) {
-        const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration =
-            std::time::Duration::from_secs(10);
+        const PEER_BOOTSTRAP_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
         // A LowID peer is firewalled: its advertised Kad UDP port is not
         // reachable, so a bootstrap request can only time out.
         if low_id || kad_version < 2 {
@@ -451,8 +453,8 @@ impl KadService {
             *last = Some(std::time::Instant::now());
         }
         tracing::info!(
-            "Kad: bootstrapping from connected peer {ip}:{kad_udp_port} (routing table: {contacts} contacts)"
-        );
+            "Kad: bootstrapping from connected peer {peer}:{kad_udp_port} (routing table: {contacts} contacts)"
+        , peer = log_peer_ip(ip));
         let _ = self
             .bootstrap_from_node(&ip.to_string(), kad_udp_port)
             .await;
@@ -490,7 +492,7 @@ impl KadService {
                 Ok(contacts) => {
                     tracing::info!(
                         "Kad Bootstrap response from {}: received {} live contacts",
-                        addr,
+                        log_peer_addr(addr),
                         contacts.len()
                     );
                     for c in contacts {
@@ -512,7 +514,11 @@ impl KadService {
                     }
                 }
                 Err(e) => {
-                    tracing::debug!("Kad bootstrap attempt to {} failed/timed out: {}", addr, e);
+                    tracing::debug!(
+                        "Kad bootstrap attempt to {} failed/timed out: {}",
+                        log_peer_addr(addr),
+                        e
+                    );
                 }
             }
         }
@@ -605,8 +611,8 @@ impl KadService {
                         *drain_kad.last_bootstrap.lock().unwrap() =
                             Some(std::time::Instant::now());
                         tracing::info!(
-                            "Kad: bootstrap drain — trying {addr} (kad v{kad_version}, table {contacts} contacts, {remaining} candidates left)"
-                        );
+                            "Kad: bootstrap drain — trying {peer} (kad v{kad_version}, table {contacts} contacts, {remaining} candidates left)"
+                        , peer = log_peer_addr(addr));
                         let _ = drain_kad
                             .bootstrap_from_node(&addr.ip().to_string(), addr.port())
                             .await;

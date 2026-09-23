@@ -938,6 +938,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     'serverAutoupdatePath': '',
     'safeConnect': false,
     'autoPriorityNewDownloads': false,
+    'logLevel': 'info',
   };
 
   @override
@@ -1263,7 +1264,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     );
 
     final report =
-        "=== EMule-Rust .part.met Import Audit Report ===\n"
+        "=== eMule-Rust .part.met Import Audit Report ===\n"
         "Format Version: 0xE0 (Standard eMule)\n"
         "File Name: ${inspection.fileName}\n"
         "Declared Total Size: ${inspection.totalSize} bytes\n"
@@ -1520,7 +1521,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
       serverDesc: s?.description ?? 'Serveur simulé pour le laboratoire',
       clientId: 25000000,
       isHighId: true,
-      welcomeMessage: 'Bienvenue sur le serveur simulé EMule-Rust !',
+      welcomeMessage: 'Bienvenue sur le serveur simulé eMule-Rust !',
       currentUsers: 1500,
       currentFiles: 60000,
       connectedAtUnixMs: DateTime.now().millisecondsSinceEpoch,

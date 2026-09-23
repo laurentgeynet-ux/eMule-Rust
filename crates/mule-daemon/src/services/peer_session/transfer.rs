@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+use crate::services::peer_session::log_peer_addr;
 use bytes::BytesMut;
 use flate2::{Decompress, FlushDecompress, Status};
 use std::net::SocketAddr;
@@ -22,13 +23,13 @@ use mule_protocol::ed2k::{
 use mule_protocol::framing::PacketCodec;
 
 use super::events::{emit_download_update, emit_event};
-use super::PeerSessionManager;
 use super::source_exchange::{
     handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
 };
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
 };
+use super::PeerSessionManager;
 use crate::services::downloads::DownloadService;
 use crate::services::obfuscation_stream::ObfuscatedStream;
 
@@ -195,13 +196,15 @@ pub(crate) async fn run_transfer_loop(
         // session start — never request blocks for an inactive file.
         if !is_download_active_status(&dl.status) {
             info!(
-                "Peer {target_addr}: download '{}' is '{}' — no block requests will be sent",
-                dl.file_name, dl.status
+                "Peer {peer}: download '{}' is '{}' — no block requests will be sent",
+                dl.file_name,
+                dl.status,
+                peer = log_peer_addr(target_addr)
             );
             return Ok(0);
         }
         let ranges = dl_svc.get_completed_ranges_by_hash(file_hash_str);
-        // Swarm healing (EMule-Rust `swarm_healing` setting) : biaise le
+        // Swarm healing (eMule-Rust `swarm_healing` setting) : biaise le
         // choix de part vers les plus rares du swarm (sources connues).
         let healing = dl_svc
             .get_setting("swarm_healing")
@@ -272,7 +275,7 @@ pub(crate) async fn run_transfer_loop(
         None => {
             info!(
                 "No unassigned/missing blocks available for peer {}",
-                target_addr
+                log_peer_addr(target_addr)
             );
             // eMule CUpDownClient::SendOutOfPartReqsAndPacket: notify the
             // uploader that we currently have no pending block requests
@@ -326,7 +329,9 @@ pub(crate) async fn run_transfer_loop(
 
     info!(
         "Requested sub-block [{}, {}) from peer {}",
-        req_range.start, req_range.end, target_addr
+        req_range.start,
+        req_range.end,
+        log_peer_addr(target_addr)
     );
 
     // Receive chunks loop
@@ -373,8 +378,7 @@ pub(crate) async fn run_transfer_loop(
                         .filter(|s| s.snapshot.file_hash.as_deref() == Some(&file_hash_str))
                         .map(|s| s.snapshot.transfer_rate_bps)
                         .sum();
-                    let pending =
-                        PeerSessionManager::pending_ranges_locked(&g, &file_hash_str);
+                    let pending = PeerSessionManager::pending_ranges_locked(&g, &file_hash_str);
                     (total, pending)
                 };
                 let mut dl_svc = downloads.lock().await;
@@ -447,7 +451,7 @@ pub(crate) async fn run_transfer_loop(
             read_res = stream.read(&mut raw_buf) => {
                 match read_res {
                     Ok(0) => {
-                        info!("Peer {} closed stream", target_addr);
+                        info!("Peer {} closed stream", log_peer_addr(target_addr));
                         break;
                     }
                     Ok(n) => {
@@ -572,7 +576,7 @@ pub(crate) async fn run_transfer_loop(
                                             dl.total_bytes as f64 / (1024.0 * 1024.0),
                                             dl.download_rate_bps as f64 / 1024.0,
                                             peer_bps as f64 / 1024.0,
-                                            target_addr
+                                            log_peer_addr(target_addr)
                                         );
                                     }
                                 }
@@ -688,15 +692,15 @@ pub(crate) async fn run_transfer_loop(
                                         Ok(Status::StreamEnd) => {
                                             if decompressed_offset < current_req_range.end {
                                                 tracing::warn!(
-                                                    "Peer {target_addr}: Zlib stream ended at offset {} before reaching sub-block boundary {}",
+                                                    "Peer {peer}: Zlib stream ended at offset {} before reaching sub-block boundary {}",
                                                     decompressed_offset,
                                                     current_req_range.end
-                                                );
+                                                , peer = log_peer_addr(target_addr));
                                             } else {
                                                 tracing::debug!(
-                                                    "Peer {target_addr}: completed decompression of block at offset {}",
+                                                    "Peer {peer}: completed decompression of block at offset {}",
                                                     decompressed_offset
-                                                );
+                                                , peer = log_peer_addr(target_addr));
                                             }
                                             decompressor = None;
                                             block_finished = decompressed_offset >= current_req_range.end;
@@ -705,9 +709,9 @@ pub(crate) async fn run_transfer_loop(
                                         Ok(Status::Ok) => {
                                             if decompressed_offset >= current_req_range.end {
                                                 tracing::debug!(
-                                                    "Peer {target_addr}: sub-block reached requested boundary {}",
+                                                    "Peer {peer}: sub-block reached requested boundary {}",
                                                     decompressed_offset
-                                                );
+                                                , peer = log_peer_addr(target_addr));
                                                 decompressor = None;
                                                 block_finished = true;
                                                 break;
@@ -718,7 +722,7 @@ pub(crate) async fn run_transfer_loop(
                                         }
                                         Ok(Status::BufError) => break,
                                         Err(e) => {
-                                            tracing::warn!("Peer {target_addr}: Zlib decompression error: {e}");
+                                            tracing::warn!("Peer {peer}: Zlib decompression error: {e}", peer = log_peer_addr(target_addr));
                                             break;
                                         }
                                     }
@@ -754,21 +758,21 @@ pub(crate) async fn run_transfer_loop(
                                             dl.total_bytes as f64 / (1024.0 * 1024.0),
                                             dl.download_rate_bps as f64 / 1024.0,
                                             peer_bps as f64 / 1024.0,
-                                            target_addr
+                                            log_peer_addr(target_addr)
                                         );
                                     }
                                 }
                             } else if (packet.protocol == PR_ED2K || packet.protocol == PR_EMULE) && packet.opcode == OP_END_OF_DOWNLOAD {
-                                info!("Peer {} sent OP_END_OF_DOWNLOAD", target_addr);
+                                info!("Peer {} sent OP_END_OF_DOWNLOAD", log_peer_addr(target_addr));
                                 break;
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_OUTOFPARTS {
                                 // The uploader tells us it currently has no
                                 // requested parts left for us — end the session
                                 // gracefully so the swarm can rotate sources.
-                                info!("Peer {target_addr} sent OP_OUTOFPARTS, ending transfer session");
+                                info!("Peer {peer} sent OP_OUTOFPARTS, ending transfer session", peer = log_peer_addr(target_addr));
                                 break 'transfer_loop;
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_CANCELTRANSFER {
-                                info!("Peer {target_addr} cancelled the transfer (OP_CANCELTRANSFER)");
+                                info!("Peer {peer} cancelled the transfer (OP_CANCELTRANSFER)", peer = log_peer_addr(target_addr));
                                 break 'transfer_loop;
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
@@ -819,7 +823,7 @@ pub(crate) async fn run_transfer_loop(
                                 // new blocks (eMule pauses the partfile, not
                                 // just the scheduler).
                                 if !dl_still_active {
-                                    info!("Peer {target_addr}: download no longer active, ending transfer session");
+                                    info!("Peer {peer}: download no longer active, ending transfer session", peer = log_peer_addr(target_addr));
                                     break 'transfer_loop;
                                 }
 
@@ -860,14 +864,14 @@ pub(crate) async fn run_transfer_loop(
                                         out_wire.push(req_pkt.opcode);
                                         out_wire.extend_from_slice(&req_pkt.payload);
                                         if let Err(e) = stream.write_all(&out_wire).await {
-                                            tracing::warn!("Failed to send chained OP_REQUESTPARTS to {target_addr}: {e}");
+                                            tracing::warn!("Failed to send chained OP_REQUESTPARTS to {peer}: {e}", peer = log_peer_addr(target_addr));
                                             break;
                                         }
-                                        tracing::info!("Peer {target_addr}: requested next sub-block [{}, {}) in part {}", next_r.start, next_r.end, next_p);
+                                        tracing::info!("Peer {peer}: requested next sub-block [{}, {}) in part {}", next_r.start, next_r.end, next_p, peer = log_peer_addr(target_addr));
                                         last_activity = tokio::time::Instant::now();
                                     }
                                 } else {
-                                    tracing::info!("Peer {target_addr}: all blocks completed or no more blocks needed");
+                                    tracing::info!("Peer {peer}: all blocks completed or no more blocks needed", peer = log_peer_addr(target_addr));
                                     let mut end_wire = Vec::with_capacity(6 + 16);
                                     end_wire.push(PR_ED2K);
                                     end_wire.extend_from_slice(&(17u32).to_le_bytes());
@@ -904,7 +908,8 @@ pub(crate) async fn run_transfer_loop(
             (total, pending)
         };
         let mut dl_svc = downloads.lock().await;
-        if let Some(mut snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_remaining_bps) {
+        if let Some(mut snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_remaining_bps)
+        {
             snap.pending_ranges = pending_ranges;
             emit_download_update(event_tx, sequence, &snap);
         }

@@ -51,8 +51,7 @@ mod imp {
                 return None;
             };
             let payload = [0u8; PAYLOAD_LEN];
-            let mut buf =
-                vec![0u8; std::mem::size_of::<ICMP_ECHO_REPLY>() + PAYLOAD_LEN + 8];
+            let mut buf = vec![0u8; std::mem::size_of::<ICMP_ECHO_REPLY>() + PAYLOAD_LEN + 8];
             let opts = IP_OPTION_INFORMATION {
                 Ttl: ttl,
                 ..Default::default()

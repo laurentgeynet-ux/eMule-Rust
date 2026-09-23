@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-/// Centralized UI strings for the EMule-Rust desktop application.
+/// Centralized UI strings for the eMule-Rust desktop application.
 /// All user-facing strings are strictly in English to ensure international consistency
 /// and provide a clean foundation for future i18n/localization files.
 @Deprecated(
@@ -10,7 +10,7 @@
 )
 abstract final class AppStrings {
   // Application branding
-  static const String appName = 'EMule-Rust';
+  static const String appName = 'eMule-Rust';
   static const String appTagline = 'Modern eD2K Client';
 
   // Network & Mode Badges

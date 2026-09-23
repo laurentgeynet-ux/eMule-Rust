@@ -1,12 +1,12 @@
 # Walkthrough — Phase 12 : Kademlia (Kad DHT) Minimal & Transport Loopback
 
-Ce document consigne l'architecture, les spécifications protocolaires, les implémentations Rust et Flutter, ainsi que la validation complète de la **Phase 12** d'EMule-Rust (Lots 12.0a, 12.0b et 12.1).
+Ce document consigne l'architecture, les spécifications protocolaires, les implémentations Rust et Flutter, ainsi que la validation complète de la **Phase 12** d'eMule-Rust (Lots 12.0a, 12.0b et 12.1).
 
 ---
 
 ## 1. Vue d'Ensemble & Périmètre Réalisé
 
-La Phase 12 dote EMule-Rust du support complet de la table de routage distribuée Kademlia (Kad v2), strictement confiné en boucle locale (`127.0.0.1` / profil `LocalLab`), avec zéro fuite WAN non sollicitée et un kill switch instantané.
+La Phase 12 dote eMule-Rust du support complet de la table de routage distribuée Kademlia (Kad v2), strictement confiné en boucle locale (`127.0.0.1` / profil `LocalLab`), avec zéro fuite WAN non sollicitée et un kill switch instantané.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐

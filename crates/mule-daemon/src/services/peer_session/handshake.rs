@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+use crate::services::peer_session::log_peer_addr;
 use bytes::BytesMut;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicU64;
@@ -110,8 +111,9 @@ pub(crate) async fn perform_peer_handshake(
     let mut stream = if use_obfuscation {
         let th = target_user_hash.unwrap();
         tracing::info!(
-            "Initiating obfuscated handshake to peer {target_addr} with target user hash {:02X?}",
-            &th
+            "Initiating obfuscated handshake to peer {peer} with target user hash {:02X?}",
+            &th,
+            peer = log_peer_addr(target_addr)
         );
         match ObfuscatedStream::connect_peer_outgoing(tcp_stream, &th, obfuscation_padding_max)
             .await
@@ -120,8 +122,8 @@ pub(crate) async fn perform_peer_handshake(
             Err(e) => {
                 if !obfuscation_required && !peer_requires_crypt {
                     tracing::warn!(
-                        "Obfuscated handshake to peer {target_addr} failed ({e}), falling back to plaintext connection"
-                    );
+                        "Obfuscated handshake to peer {peer} failed ({e}), falling back to plaintext connection"
+                    , peer = log_peer_addr(target_addr));
                     match tokio::time::timeout(
                         timeouts.connect_timeout,
                         TcpStream::connect(target_addr),
@@ -143,7 +145,10 @@ pub(crate) async fn perform_peer_handshake(
                         }
                     }
                 } else {
-                    tracing::warn!("Obfuscated handshake to peer {target_addr} failed: {e}");
+                    tracing::warn!(
+                        "Obfuscated handshake to peer {peer} failed: {e}",
+                        peer = log_peer_addr(target_addr)
+                    );
                     return Err(PeerError::new(
                         PeerFailureReason::ObfuscationNegotiationFailed,
                         format!("Protocol obfuscation negotiation failed: {e}"),
@@ -276,10 +281,10 @@ pub(crate) async fn perform_peer_handshake(
     out_wire.extend_from_slice(&hello_pkt.payload);
 
     tracing::info!(
-        "Peer {target_addr}: sending OP_HELLO (client_id={client_id}, port={client_port}, server={server_ip}:{server_port}, len={}): {:02X?}",
+        "Peer {peer}: sending OP_HELLO (client_id={client_id}, port={client_port}, server={server_ip}:{server_port}, len={}): {:02X?}",
         out_wire.len(),
         &out_wire[..]
-    );
+    , peer = log_peer_addr(target_addr));
 
     if let Err(e) = stream.write_all(&out_wire).await {
         return Err(PeerError::new(
@@ -351,26 +356,26 @@ pub(crate) async fn perform_peer_handshake(
                             "none".to_string()
                         };
                         tracing::warn!(
-                            "Peer {target_addr} closed connection during handshake (bytes buffered={buffered_len}: {snippet})"
-                        );
+                            "Peer {peer} closed connection during handshake (bytes buffered={buffered_len}: {snippet})"
+                        , peer = log_peer_addr(target_addr));
                         return Err(PeerError::new(PeerFailureReason::ConnectRefused, "Peer closed connection during handshake"));
                     }
                     Ok(n) => {
                         tracing::debug!(
-                            "Peer {target_addr}: read {n} bytes during handshake: {:02X?}",
+                            "Peer {peer}: read {n} bytes during handshake: {:02X?}",
                             &raw_buf[..n.min(32)]
-                        );
+                        , peer = log_peer_addr(target_addr));
                         read_buf.extend_from_slice(&raw_buf[..n]);
                         if read_buf.len() > MAX_PEER_READ_BUFFER_SIZE {
                             return Err(PeerError::new(PeerFailureReason::InvalidHandshake, "Peer read buffer exceeded limit during handshake"));
                         }
                         while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
                             tracing::debug!(
-                                "Peer {target_addr}: decoded packet proto=0x{:02X} opcode=0x{:02X} payload_len={}",
+                                "Peer {peer}: decoded packet proto=0x{:02X} opcode=0x{:02X} payload_len={}",
                                 packet.protocol,
                                 packet.opcode,
                                 packet.payload.len()
-                            );
+                            , peer = log_peer_addr(target_addr));
                             if packet.protocol == PR_EMULE
                                 && (packet.opcode == OP_EMULE_INFO
                                     || packet.opcode == OP_EMULE_INFO_ANSWER)
@@ -388,7 +393,7 @@ pub(crate) async fn perform_peer_handshake(
                                             .map(|t| t.name.display_name())
                                             .collect();
                                         tracing::info!(
-                                            "Peer {target_addr}: {} received (client_ver=0x{:02X}, proto_ver=0x{:02X}, tags=[{}], unknown_tags={})",
+                                            "Peer {peer}: {} received (client_ver=0x{:02X}, proto_ver=0x{:02X}, tags=[{}], unknown_tags={})",
                                             if packet.opcode == OP_EMULE_INFO {
                                                 "OP_EMULEINFO"
                                             } else {
@@ -398,7 +403,7 @@ pub(crate) async fn perform_peer_handshake(
                                             info.protocol_version,
                                             tag_desc.join(","),
                                             info.unknown_tags.len()
-                                        );
+                                        , peer = log_peer_addr(target_addr));
                                         if info.has_source_exchange_capability() {
                                             peer_supports_sx = true;
                                             peer_sx1_version = peer_sx1_version.max(
@@ -448,8 +453,8 @@ pub(crate) async fn perform_peer_handshake(
                                     }
                                     Err(e) => {
                                         tracing::debug!(
-                                            "Peer {target_addr}: malformed OP_EMULEINFO packet ignored: {e}"
-                                        );
+                                            "Peer {peer}: malformed OP_EMULEINFO packet ignored: {e}"
+                                        , peer = log_peer_addr(target_addr));
                                     }
                                 }
                                 continue;
@@ -477,7 +482,7 @@ pub(crate) async fn perform_peer_handshake(
                                             .map(|t| format!("{t:?}"))
                                             .collect();
                                         tracing::info!(
-                                            "Peer {target_addr} handshake: software={} version={:?} emule_version={:?} client_id={} misc1={:?} misc2={:?} \
+                                            "Peer {peer} handshake: software={} version={:?} emule_version={:?} client_id={} misc1={:?} misc2={:?} \
                                              caps: sx={} sx2={} aich={} sec_ident={} crypt(sup/req/reqd)={}/{}/{} udp_ver={} udp_port={:?} ext_req={} kad_ver={} large_files={} compression={} \
                                              unknown_tags=[{}]",
                                             peer_info.software_name(),
@@ -500,7 +505,7 @@ pub(crate) async fn perform_peer_handshake(
                                             peer_info.supports_large_files(),
                                             peer_supports_compression,
                                             unknown_tag_ids.join(",")
-                                        );
+                                        , peer = log_peer_addr(target_addr));
 
                                         let mut peer_opts = 0u8;
                                         if peer_info.supports_crypt_layer() { peer_opts |= 0x01; }

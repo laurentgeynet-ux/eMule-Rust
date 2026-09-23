@@ -8,8 +8,8 @@ use crate::rpc::types::JsonRpcNotification;
 use crate::services::downloads::types::DownloadSnapshot;
 use crate::services::peer_session::types::PeerSessionSnapshot;
 use crate::services::server_session::types::ServerSessionSnapshot;
-use crate::services::upnp::UpnpStatusSnapshot;
 use crate::services::upload_queue::UploadSessionSnapshot;
+use crate::services::upnp::UpnpStatusSnapshot;
 
 /// Aggregate daemon metrics emitted on a fixed cadence (~2 s) so clients can
 /// render live top-bar badges and rate graphs without polling or sampling.
@@ -159,9 +159,7 @@ impl DaemonEvent {
             Self::KadStatusChanged { .. } => Some("kad"),
             Self::HistoryEntryAdded { .. } => Some("history"),
             Self::SettingsChanged { .. } => Some("settings"),
-            Self::NetworkPolicyChanged { .. } | Self::UpnpStatusChanged { .. } => {
-                Some("network")
-            }
+            Self::NetworkPolicyChanged { .. } | Self::UpnpStatusChanged { .. } => Some("network"),
             Self::Custom { method, .. } => match method.as_str() {
                 "server.searchResult" | "server.foundSources" => Some("search"),
                 "upnp.statusChanged" => Some("network"),

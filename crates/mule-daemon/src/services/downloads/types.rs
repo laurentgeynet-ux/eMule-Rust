@@ -196,13 +196,16 @@ impl ActiveDownload {
         // Verified part flags live in SQLite; the list snapshot only knows
         // "all verified" for completed downloads. `downloads.get` re-reads
         // the authoritative set for the detail view.
-        let verified_parts: HashSet<u32> =
-            if self.download.status == DownloadStatus::Completed {
-                let pc = self.download.total_size.div_ceil(ED2K_PART_SIZE as u64).max(1) as u32;
-                (0..pc).collect()
-            } else {
-                HashSet::new()
-            };
+        let verified_parts: HashSet<u32> = if self.download.status == DownloadStatus::Completed {
+            let pc = self
+                .download
+                .total_size
+                .div_ceil(ED2K_PART_SIZE as u64)
+                .max(1) as u32;
+            (0..pc).collect()
+        } else {
+            HashSet::new()
+        };
         snap.parts = compute_part_summaries(
             self.download.total_size,
             &self.ranges,
@@ -276,9 +279,7 @@ pub fn compute_part_summaries<'a>(
         // matérialise alors `m_abyPartStatus` tout à 1.
         let available_source_count = masks
             .iter()
-            .filter(|m| {
-                m.part_count() == 0 || u16::try_from(i).is_ok_and(|p| m.has_part(p))
-            })
+            .filter(|m| m.part_count() == 0 || u16::try_from(i).is_ok_and(|p| m.has_part(p)))
             .count() as u32;
 
         // Intra-part received bitmap: 64 equal cells, bit set when the cell

@@ -7,6 +7,8 @@ pub mod search_client;
 pub mod storage;
 pub mod types;
 
+use crate::services::peer_session::log_peer_addr;
+use crate::services::peer_session::log_peer_ip;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -107,10 +109,7 @@ pub struct KadUdpService {
 
 impl KadUdpService {
     /// Creates a new Kad UDP service instance.
-    pub fn new(
-        local_id: Arc<std::sync::RwLock<KadId>>,
-        policy_mgr: NetworkPolicyManager,
-    ) -> Self {
+    pub fn new(local_id: Arc<std::sync::RwLock<KadId>>, policy_mgr: NetworkPolicyManager) -> Self {
         Self {
             local_id,
             policy_mgr,
@@ -170,14 +169,16 @@ impl KadUdpService {
         let socket = { self.inner.read().await.socket.clone() };
         let socket = socket.ok_or_else(|| "Kad UDP socket not bound".to_string())?;
         let pkt = KadCodec::encode_callback_req(buddy_id, file_id, tcp_port);
-        socket
-            .send_to(&pkt, buddy_addr)
-            .await
-            .map_err(|e| format!("Failed to send CALLBACK_REQ to {buddy_addr}: {e}"))?;
+        socket.send_to(&pkt, buddy_addr).await.map_err(|e| {
+            format!(
+                "Failed to send CALLBACK_REQ to {}: {e}",
+                log_peer_addr(buddy_addr)
+            )
+        })?;
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         tracing::info!(
             "Kad UDP: CALLBACK_REQ sent to buddy {} (buddy_id={}, file={})",
-            buddy_addr,
+            log_peer_addr(buddy_addr),
             hex::encode(buddy_id),
             hex::encode(file_id)
         );
@@ -397,7 +398,7 @@ impl KadUdpService {
                                                     Ok(msg) => {
                                                         tracing::info!(
                                                             "Kad UDP: decrypted obfuscated packet from {} (recvKey=0x{:08X})",
-                                                            peer_addr, dec.receiver_key
+                                                            log_peer_addr(peer_addr), dec.receiver_key
                                                         );
                                                         let local_kad_id_bytes =
                                                             local_id_arc.read().unwrap().0;
@@ -425,7 +426,7 @@ impl KadUdpService {
                                                     Err(e) => {
                                                         tracing::debug!(
                                                             "Kad UDP: decrypted datagram from {} failed decode: {}",
-                                                            peer_addr, e
+                                                            log_peer_addr(peer_addr), e
                                                         );
                                                     }
                                                 }
@@ -436,7 +437,7 @@ impl KadUdpService {
                                             tracing::warn!(
                                                 "Kad UDP: dropped invalid protocol byte 0x{:02X} from {}",
                                                 proto_byte,
-                                                peer_addr
+                                                log_peer_addr(peer_addr)
                                             );
                                         }
                                     }
@@ -452,7 +453,7 @@ impl KadUdpService {
                                     }
                                 };
                                 if !policy_allowed {
-                                    tracing::warn!("Kad UDP: dropped packet from non-conforming IP {} ({:?})", peer_addr.ip(), cat);
+                                    tracing::warn!("Kad UDP: dropped packet from non-conforming IP {} ({:?})", log_peer_ip(peer_addr.ip()), cat);
                                     continue;
                                 }
 
@@ -460,7 +461,7 @@ impl KadUdpService {
                                 {
                                     let mut rl = rate_limiter_arc.lock().await;
                                     if !rl.check_and_record(peer_addr.ip()) {
-                                        tracing::debug!("Kad UDP rate limit exceeded for {}", peer_addr.ip());
+                                        tracing::debug!("Kad UDP rate limit exceeded for {}", log_peer_ip(peer_addr.ip()));
                                         continue;
                                     }
                                 }
@@ -469,7 +470,7 @@ impl KadUdpService {
                                 tracing::info!(
                                     "Kad UDP recv {} bytes from {} (proto=0x{:02X}, opcode=0x{:02X})",
                                     len,
-                                    peer_addr,
+                                    log_peer_addr(peer_addr),
                                     proto_byte,
                                     opcode_byte
                                 );
@@ -502,8 +503,8 @@ impl KadUdpService {
                                                     Ok(m) => Ok(m),
                                                     Err(e) => {
                                                         tracing::warn!(
-                                                            "Kad UDP: notes-form redecode of 0x3B from {peer_addr} failed: {e} — using generic form"
-                                                        );
+                                                            "Kad UDP: notes-form redecode of 0x3B from {peer} failed: {e} — using generic form"
+                                                        , peer = log_peer_addr(peer_addr));
                                                         Ok(msg)
                                                     }
                                                 }
@@ -544,7 +545,7 @@ impl KadUdpService {
                                     Err(err) => {
                                         tracing::warn!(
                                             "Kad UDP: decode error from {} (proto=0x{:02X}, opcode=0x{:02X}, len={}): {} (prefix: {:02X?})",
-                                            peer_addr,
+                                            log_peer_addr(peer_addr),
                                             proto_byte,
                                             opcode_byte,
                                             len,

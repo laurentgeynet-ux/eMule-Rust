@@ -16,6 +16,87 @@ use crate::services::peer_session::PeerSessionManager;
 use crate::services::server_session::ServerSessionManager;
 use crate::services::DaemonEvent;
 
+/// Contrôle à chaud du `EnvFilter` global (clé `logLevel` de
+/// `settings.set`). Le binaire installe le `reload::Handle` au démarrage ;
+/// les handlers RPC n'ont ensuite qu'à appeler [`LogControl::set`].
+///
+/// Le niveau n'est volontairement **pas persisté** : un `trace` survivant
+/// à un redémarrage remplirait les fichiers de log (données sensibles +
+/// volumineux). `RUST_LOG` reste la voie pour un niveau persistant.
+#[derive(Clone)]
+pub struct LogControl {
+    handle: Arc<
+        std::sync::Mutex<
+            Option<
+                tracing_subscriber::reload::Handle<
+                    tracing_subscriber::EnvFilter,
+                    tracing_subscriber::Registry,
+                >,
+            >,
+        >,
+    >,
+    current: Arc<std::sync::Mutex<String>>,
+}
+
+impl Default for LogControl {
+    fn default() -> Self {
+        Self::new("info")
+    }
+}
+
+impl LogControl {
+    pub fn new(initial_spec: impl Into<String>) -> Self {
+        Self {
+            handle: Arc::new(std::sync::Mutex::new(None)),
+            current: Arc::new(std::sync::Mutex::new(initial_spec.into())),
+        }
+    }
+
+    /// Appelé une fois par l'entrypoint : le `reload::Handle` vit dans
+    /// `main` (lié au subscriber réel) et ne peut pas être construit ici.
+    pub fn install(
+        &self,
+        handle: tracing_subscriber::reload::Handle<
+            tracing_subscriber::EnvFilter,
+            tracing_subscriber::Registry,
+        >,
+    ) {
+        if let Ok(mut slot) = self.handle.lock() {
+            *slot = Some(handle);
+        }
+    }
+
+    /// Applique une nouvelle spec `EnvFilter` (« debug », « info »,
+    /// « info,mule_daemon::kad=trace »…).
+    pub fn set(&self, spec: &str) -> Result<(), String> {
+        let filter = spec
+            .parse::<tracing_subscriber::EnvFilter>()
+            .map_err(|e| format!("spec de filtre invalide: {e}"))?;
+        let guard = self
+            .handle
+            .lock()
+            .map_err(|_| "verrou log empoisonné".to_string())?;
+        let handle = guard
+            .as_ref()
+            .ok_or_else(|| "handle de reload non installé".to_string())?;
+        handle.reload(filter).map_err(|e| e.to_string())?;
+        drop(guard);
+        if let Ok(mut cur) = self.current.lock() {
+            *cur = spec.to_string();
+        }
+        Ok(())
+    }
+
+    /// Spec de filtre actuellement en vigueur (ou la valeur initiale si
+    /// le handle n'est pas encore installé).
+    pub fn current(&self) -> String {
+        self.current
+            .lock()
+            .map(|c| c.clone())
+            .unwrap_or_else(|_| "info".to_string())
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub config: DaemonConfig,
@@ -56,7 +137,7 @@ pub struct AppState {
     /// Whether UDP (Kad + server UDP + client UDP) is enabled at all —
     /// eMule « UDP désactivé » checkbox.
     udp_enabled: Arc<AtomicBool>,
-    /// Gate du quota journalier d'upload (`dailyUploadQuotaGb`, EMule-Rust) :
+    /// Gate du quota journalier d'upload (`dailyUploadQuotaGb`, eMule-Rust) :
     /// `false` bloque les nouvelles demandes de slot. Piloté par
     /// `spawn_quota_watcher`.
     upload_quota_gate: Arc<AtomicBool>,
@@ -67,6 +148,14 @@ pub struct AppState {
     pub lifetime_uploaded_bytes: Arc<AtomicU64>,
     #[cfg(feature = "lab-tools")]
     pub active_lab_peer: Arc<Mutex<Option<(std::net::SocketAddr, tokio::task::AbortHandle)>>>,
+    /// Contrôle du niveau de log à chaud (`settings.set` clé `logLevel`).
+    /// `None` dans les tests/harness qui n'installent pas de subscriber.
+    pub log_control: Option<LogControl>,
+    /// Pseudonymiseur de session (`mule-filter`) : les adresses de pairs
+    /// externes loggées via [`AppState::log_peer_addr`] deviennent
+    /// `peer-NN:port` — jamais d'IP publique brute dans les fichiers
+    /// persistants (loopback en clair, inoffensif pour la lab).
+    pub pseudonymizer: Arc<mule_filter::SessionPseudonymizer>,
 }
 
 impl AppState {
@@ -115,8 +204,7 @@ impl AppState {
                 .flatten()
                 .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
         };
-        let obf_enabled =
-            bool_setting("obfuscation_enabled").unwrap_or(config.obfuscation_enabled);
+        let obf_enabled = bool_setting("obfuscation_enabled").unwrap_or(config.obfuscation_enabled);
         let obf_required =
             bool_setting("obfuscation_required").unwrap_or(config.obfuscation_required);
         let ed2k_port_eff = get_usize("ed2k_port")
@@ -126,7 +214,7 @@ impl AppState {
             .map(|v| v.clamp(1, 65535) as u16)
             .unwrap_or(config.kad_port);
         let udp_enabled = bool_setting("udp_enabled").unwrap_or(true);
-        // Mode paranoid (EMule-Rust) : slots d'upload réservés aux pairs
+        // Mode paranoid (eMule-Rust) : slots d'upload réservés aux pairs
         // obfusqués avec signature SUI vérifiée.
         let paranoid_mode = bool_setting("paranoid_mode").unwrap_or(false);
         let max_upload_queue = get_usize("max_upload_queue");
@@ -216,7 +304,10 @@ impl AppState {
                 .map(|p| p.trim().to_string())
                 .filter(|p| !p.is_empty())
             {
-                match network_policy.ip_filter().load_from_file(std::path::Path::new(&path)) {
+                match network_policy
+                    .ip_filter()
+                    .load_from_file(std::path::Path::new(&path))
+                {
                     Ok(report) => {
                         tracing::info!("[IPFILTER] Rechargé depuis {path} ({report:?})")
                     }
@@ -299,8 +390,10 @@ impl AppState {
         server_session.set_inbound_listener(inbound_listener.clone());
         // eMule IsServerCryptLayerConnection : tentative d'obfuscation du
         // handshake serveur selon les préférences effectives (persistées).
-        server_session
-            .set_obfuscation_preference(obf_enabled || obf_required, config.obfuscation_padding_max);
+        server_session.set_obfuscation_preference(
+            obf_enabled || obf_required,
+            config.obfuscation_padding_max,
+        );
         let kad_id = mule_core::kad::KadId::random();
         let kad = Arc::new(crate::services::KadService::new(
             kad_id,
@@ -316,8 +409,8 @@ impl AppState {
         // Buddy relay role: TCP port the buddy client connects to, and the
         // GetMyConnectOptions-style flags byte sent in KADEMLIA_FINDBUDDY_RES
         // (bit0/1 = obfuscation supported+requested, bit2 = required).
-        let connect_opts: u8 = if obf_enabled { 0x03 } else { 0 }
-            | if obf_required { 0x04 } else { 0 };
+        let connect_opts: u8 =
+            if obf_enabled { 0x03 } else { 0 } | if obf_required { 0x04 } else { 0 };
         kad.udp().set_buddy_tcp_info(ed2k_port_eff, connect_opts);
         // The eD2K server-assigned HighID feeds Kad with our public IPv4
         // (PUBLISH_SOURCE advertised address).
@@ -416,18 +509,10 @@ impl AppState {
                         let d_dl = session_dl.saturating_sub(last_session_dl);
                         let d_ul = session_uploaded_bytes.saturating_sub(last_session_ul);
                         if d_dl > 0 || d_ul > 0 {
-                            let lt_dl =
-                                stats_lifetime_dl.fetch_add(d_dl, Ordering::SeqCst) + d_dl;
-                            let lt_ul =
-                                stats_lifetime_ul.fetch_add(d_ul, Ordering::SeqCst) + d_ul;
-                            let _ = dl.set_setting(
-                                "lifetime_downloaded_bytes",
-                                &lt_dl.to_string(),
-                            );
-                            let _ = dl.set_setting(
-                                "lifetime_uploaded_bytes",
-                                &lt_ul.to_string(),
-                            );
+                            let lt_dl = stats_lifetime_dl.fetch_add(d_dl, Ordering::SeqCst) + d_dl;
+                            let lt_ul = stats_lifetime_ul.fetch_add(d_ul, Ordering::SeqCst) + d_ul;
+                            let _ = dl.set_setting("lifetime_downloaded_bytes", &lt_dl.to_string());
+                            let _ = dl.set_setting("lifetime_uploaded_bytes", &lt_ul.to_string());
                         }
                         last_session_dl = session_dl;
                         last_session_ul = session_uploaded_bytes;
@@ -436,8 +521,7 @@ impl AppState {
                         // lifetime — un crash ne perd qu'un tick).
                         let file_totals = stats_uploads.per_file_uploaded_bytes();
                         for (hash, total) in &file_totals {
-                            let prev =
-                                last_file_totals.get(hash.as_str()).copied().unwrap_or(0);
+                            let prev = last_file_totals.get(hash.as_str()).copied().unwrap_or(0);
                             let d = total.saturating_sub(prev);
                             if d > 0 {
                                 let _ = dl.add_share_uploaded_bytes(hash, d);
@@ -475,10 +559,8 @@ impl AppState {
                             kad_udp_bound: kad_status.udp_bind_address.is_some(),
                             session_downloaded_bytes,
                             session_uploaded_bytes,
-                            lifetime_downloaded_bytes:
-                                stats_lifetime_dl.load(Ordering::SeqCst),
-                            lifetime_uploaded_bytes:
-                                stats_lifetime_ul.load(Ordering::SeqCst),
+                            lifetime_downloaded_bytes: stats_lifetime_dl.load(Ordering::SeqCst),
+                            lifetime_uploaded_bytes: stats_lifetime_ul.load(Ordering::SeqCst),
                         },
                     }
                     .send(&stats_tx);
@@ -487,9 +569,7 @@ impl AppState {
                     // les fait décroître vers 0 quand un client cesse de
                     // demander des blocs (sinon l'UI resterait figée sur la
                     // dernière valeur entre deux `update_progress`).
-                    if stats_uploads.active_len() > 0
-                        || stats_uploads.waiting_len().await > 0
-                    {
+                    if stats_uploads.active_len() > 0 || stats_uploads.waiting_len().await > 0 {
                         stats_uploads.emit_uploads_updated().await;
                     }
                 }
@@ -533,6 +613,8 @@ impl AppState {
             lifetime_uploaded_bytes,
             #[cfg(feature = "lab-tools")]
             active_lab_peer: Arc::new(Mutex::new(None)),
+            log_control: None,
+            pseudonymizer: Arc::new(mule_filter::SessionPseudonymizer::new()),
         }
     }
 
@@ -617,8 +699,7 @@ impl AppState {
     pub fn broadcast_download_update(&self, mut snapshot: DownloadSnapshot) {
         // Attach the swarm's in-flight block ranges (eMule "pending" yellow
         // segments) — the downloads service can't see peer sessions itself.
-        snapshot.pending_ranges =
-            self.peer_session.try_pending_ranges(&snapshot.ed2k_hash);
+        snapshot.pending_ranges = self.peer_session.try_pending_ranges(&snapshot.ed2k_hash);
         self.emit_event(|sequence| DaemonEvent::DownloadUpdated {
             sequence,
             download: snapshot,
@@ -630,6 +711,27 @@ impl AppState {
     pub fn emit_event(&self, make: impl FnOnce(u64) -> DaemonEvent) {
         let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
         make(seq).send(&self.event_tx);
+    }
+
+    /// Adresse « sûre » pour les logs : loopback en clair (inoffensif,
+    /// pratique en lab), adresses externes pseudonymisées
+    /// (`peer-NN:port`). Les fichiers de log persistants ne doivent
+    /// jamais contenir d'IP publique brute.
+    pub fn log_peer_addr(&self, addr: SocketAddr) -> String {
+        if addr.ip().is_loopback() {
+            addr.to_string()
+        } else {
+            self.pseudonymizer.pseudonymize_peer(addr)
+        }
+    }
+
+    /// Spec `EnvFilter` actuellement en vigueur (`settings.get` →
+    /// `logLevel`). Défaut `info` si le contrôle n'est pas installé.
+    pub fn current_log_level(&self) -> String {
+        self.log_control
+            .as_ref()
+            .map(LogControl::current)
+            .unwrap_or_else(|| "info".to_string())
     }
 
     /// Reads a persisted boolean setting (defaults to `default` when absent).
@@ -678,8 +780,7 @@ impl AppState {
                                 .unwrap_or_default()
                         };
                         if !path.trim().is_empty() {
-                            let params =
-                                serde_json::json!({ "filePath": path.trim() });
+                            let params = serde_json::json!({ "filePath": path.trim() });
                             match crate::rpc::handlers::servers::handle_servers_import_met(
                                 &state,
                                 Some(params),
@@ -721,8 +822,7 @@ impl AppState {
                         servers
                             .iter()
                             .filter(|s| {
-                                s.filter_status
-                                    != mule_core::model::ServerFilterStatus::Disabled
+                                s.filter_status != mule_core::model::ServerFilterStatus::Disabled
                             })
                             .max_by_key(|s| s.preference)
                             .or_else(|| servers.first())
@@ -747,8 +847,7 @@ impl AppState {
                         failures += 1;
                         tracing::debug!("[SERVER_RECONNECT] attempt {failures} failed: {e}");
                         // eMule `DeadServerRetry` default = 1.
-                        if failures >= 1
-                            && state.setting_bool("server_autoremove_dead", true).await
+                        if failures >= 1 && state.setting_bool("server_autoremove_dead", true).await
                         {
                             let removed = {
                                 let mut dl = state.downloads.lock().await;
@@ -787,14 +886,13 @@ impl AppState {
         let new_id = crate::services::IdentityService::rotate_key(&self.config.data_dir)
             .map_err(|e| format!("Failed to rotate identity key: {e}"))?;
         let user_hash = new_id.user_hash();
-        let pubkey = new_id
-            .has_key()
-            .then(|| new_id.public_key_bytes().to_vec());
+        let pubkey = new_id.has_key().then(|| new_id.public_key_bytes().to_vec());
         {
             let mut guard = self.identity.lock().await;
             *guard = new_id;
         }
-        self.inbound_listener.set_identity_material(user_hash, pubkey);
+        self.inbound_listener
+            .set_identity_material(user_hash, pubkey);
         self.kad.set_fw_check_identity(user_hash);
         let new_kad_id = self.kad.rotate_local_id().await;
         tracing::info!(
@@ -923,14 +1021,11 @@ impl AppState {
                     if let Err(e) = dl.set_setting("upload_quota_day", &today.to_string()) {
                         tracing::warn!("[QUOTA] Échec persistance upload_quota_day: {e}");
                     }
-                    if let Err(e) =
-                        dl.set_setting("upload_quota_used_bytes", &used.to_string())
-                    {
+                    if let Err(e) = dl.set_setting("upload_quota_used_bytes", &used.to_string()) {
                         tracing::warn!("[QUOTA] Échec persistance upload_quota_used_bytes: {e}");
                     }
                 }
-                let exhausted =
-                    quota_gb > 0 && used >= quota_gb.saturating_mul(1 << 30);
+                let exhausted = quota_gb > 0 && used >= quota_gb.saturating_mul(1 << 30);
                 let prev = gate.swap(!exhausted, Ordering::SeqCst);
                 if prev && exhausted {
                     tracing::warn!(
@@ -938,7 +1033,9 @@ impl AppState {
                         quota_gb
                     );
                 } else if !prev && !exhausted {
-                    tracing::info!("[QUOTA] Quota d'upload réouvert (compteur remis à zéro ou quota relevé)");
+                    tracing::info!(
+                        "[QUOTA] Quota d'upload réouvert (compteur remis à zéro ou quota relevé)"
+                    );
                 }
             }
         });

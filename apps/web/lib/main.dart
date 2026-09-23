@@ -16,7 +16,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import 'daemon_connect_screen.dart';
 
-/// EMule-Rust web remote controller.
+/// eMule-Rust web remote controller.
 ///
 /// Connects to an already-running mule-daemon over WebSocket — no local
 /// supervisor. The daemon URL is resolved from, in order:
@@ -139,7 +139,7 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
       return eMuleRustApp(viewModel: _controller!, onChangeDaemon: _disconnect);
     }
     return MaterialApp(
-      title: 'EMule-Rust',
+      title: 'eMule-Rust',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
       locale: const Locale('fr'),

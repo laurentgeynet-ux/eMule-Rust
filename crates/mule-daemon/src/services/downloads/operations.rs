@@ -145,11 +145,7 @@ pub fn get_download_detail(
         act.sources.values(),
         &verified_parts_set,
     );
-    let total_verified_bytes: u64 = parts
-        .iter()
-        .filter(|p| p.is_verified)
-        .map(|p| p.size)
-        .sum();
+    let total_verified_bytes: u64 = parts.iter().filter(|p| p.is_verified).map(|p| p.size).sum();
 
     let aich_part = act
         .download
@@ -485,53 +481,53 @@ pub fn inject_range(
         let hash_hex = act.download.ed2k_hash.to_hex().to_lowercase();
         if ich_enabled {
             if let Ok(part_hashes) = db.get_part_hashes(&hash_hex) {
-            // For files strictly smaller than one part, the file hash IS the
-            // part hash. For exact multiples of PART_SIZE eMule appends an
-            // MD4(empty) trailing part, so part 0 hash != file hash there —
-            // never fall back to the file hash in that case.
-            let expected = part_hashes.get(part_idx as usize).copied().or({
-                if part_hashes.is_empty() && act.download.total_size < ED2K_PART_SIZE {
-                    Some(act.download.ed2k_hash.0)
-                } else {
-                    None
-                }
-            });
-            if let Some(expected_hash) = expected {
-                let part_len = (part_end - part_start) as usize;
-                let verified = act
-                    .part_file
-                    .as_mut()
-                    .and_then(|pf| pf.read_range(part_start, part_len).ok())
-                    .map(|bytes| mule_core::verify_part_hash(&bytes, &expected_hash))
-                    .unwrap_or(false);
-                if verified {
-                    let _ = db.mark_part_verified(id, part_idx as u32);
-                } else {
-                    // eMule AICH path: with a trusted master hash the corrupted
-                    // part is kept and an OP_AICHREQUEST is queued so only the
-                    // corrupted 180 KiB blocks get re-downloaded. Falls back to
-                    // whole-part eviction when AICH is unavailable/exhausted.
-                    let attempts = act
-                        .aich_requested
-                        .get(&(part_idx as u32))
-                        .map(|&(_, c)| c)
-                        .unwrap_or(0);
-                    let already_pending =
-                        act.aich_pending.iter().any(|&(p, _)| p == part_idx as u32);
-                    if act.download.aich_root.is_some()
-                        && attempts < AICH_MAX_ATTEMPTS
-                        && !already_pending
-                    {
-                        tracing::warn!(
+                // For files strictly smaller than one part, the file hash IS the
+                // part hash. For exact multiples of PART_SIZE eMule appends an
+                // MD4(empty) trailing part, so part 0 hash != file hash there —
+                // never fall back to the file hash in that case.
+                let expected = part_hashes.get(part_idx as usize).copied().or({
+                    if part_hashes.is_empty() && act.download.total_size < ED2K_PART_SIZE {
+                        Some(act.download.ed2k_hash.0)
+                    } else {
+                        None
+                    }
+                });
+                if let Some(expected_hash) = expected {
+                    let part_len = (part_end - part_start) as usize;
+                    let verified = act
+                        .part_file
+                        .as_mut()
+                        .and_then(|pf| pf.read_range(part_start, part_len).ok())
+                        .map(|bytes| mule_core::verify_part_hash(&bytes, &expected_hash))
+                        .unwrap_or(false);
+                    if verified {
+                        let _ = db.mark_part_verified(id, part_idx as u32);
+                    } else {
+                        // eMule AICH path: with a trusted master hash the corrupted
+                        // part is kept and an OP_AICHREQUEST is queued so only the
+                        // corrupted 180 KiB blocks get re-downloaded. Falls back to
+                        // whole-part eviction when AICH is unavailable/exhausted.
+                        let attempts = act
+                            .aich_requested
+                            .get(&(part_idx as u32))
+                            .map(|&(_, c)| c)
+                            .unwrap_or(0);
+                        let already_pending =
+                            act.aich_pending.iter().any(|&(p, _)| p == part_idx as u32);
+                        if act.download.aich_root.is_some()
+                            && attempts < AICH_MAX_ATTEMPTS
+                            && !already_pending
+                        {
+                            tracing::warn!(
                             "[PART_CORRUPTED] File '{}' (hash: {}): part {} failed MD4 check, queued for AICH block recovery",
                             act.download.display_name,
                             hash_hex,
                             part_idx
                         );
-                        act.aich_pending
-                            .push_back((part_idx as u32, Instant::now()));
-                    } else {
-                        tracing::warn!(
+                            act.aich_pending
+                                .push_back((part_idx as u32, Instant::now()));
+                        } else {
+                            tracing::warn!(
                             "[PART_CORRUPTED] File '{}' (hash: {}): part {} failed MD4 check, evicting range {}..{} for re-download",
                             act.download.display_name,
                             hash_hex,
@@ -539,13 +535,13 @@ pub fn inject_range(
                             part_start,
                             part_end
                         );
-                        let _ = act.ranges.remove(part_start..part_end);
-                        let _ = db.unmark_part_verified(id, part_idx as u32);
+                            let _ = act.ranges.remove(part_start..part_end);
+                            let _ = db.unmark_part_verified(id, part_idx as u32);
+                        }
                     }
                 }
             }
         }
-    }
     }
 
     db.sync_received_ranges(id, &act.ranges)
@@ -1183,9 +1179,8 @@ pub fn rename_download(
                 "A file named '{new_name}' already exists in the destination directory"
             )));
         }
-        std::fs::rename(&old_target, &new_target).map_err(|e| {
-            DaemonError::Business(format!("Cannot rename file on disk: {e}"))
-        })?;
+        std::fs::rename(&old_target, &new_target)
+            .map_err(|e| DaemonError::Business(format!("Cannot rename file on disk: {e}")))?;
         if let Ok(Some(mut shared)) = db.get_shared_file(&hash_hex) {
             shared.file_name = new_name.to_string();
             shared.file_path = new_target.to_string_lossy().to_string();
@@ -1240,9 +1235,8 @@ pub fn rename_shared_file(
                 "A file named '{new_name}' already exists in the directory"
             )));
         }
-        std::fs::rename(&old_path, &new_path).map_err(|e| {
-            DaemonError::Business(format!("Cannot rename file on disk: {e}"))
-        })?;
+        std::fs::rename(&old_path, &new_path)
+            .map_err(|e| DaemonError::Business(format!("Cannot rename file on disk: {e}")))?;
     }
 
     shared.file_name = new_name.to_string();

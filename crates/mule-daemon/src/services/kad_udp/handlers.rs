@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+use crate::services::peer_session::log_peer_addr;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
@@ -41,7 +42,10 @@ pub async fn handle_incoming_message(
 ) {
     match msg {
         KadMessage::Ping(_ping) => {
-            tracing::info!("Kad UDP: received Ping from {peer_addr}, replying with Pong");
+            tracing::info!(
+                "Kad UDP: received Ping from {peer}, replying with Pong",
+                peer = log_peer_addr(peer_addr)
+            );
             let pong_bytes = KadCodec::encode_pong(peer_addr.port());
             let _ = socket.send_to(&pong_bytes, peer_addr).await;
         }
@@ -56,7 +60,10 @@ pub async fn handle_incoming_message(
                     break;
                 }
             }
-            tracing::info!("Kad UDP: received Pong from {peer_addr} (matched_tx={matched_tx:?})");
+            tracing::info!(
+                "Kad UDP: received Pong from {peer} (matched_tx={matched_tx:?})",
+                peer = log_peer_addr(peer_addr)
+            );
             if let Some(id) = matched_tx {
                 if let Some(tx) = inf.remove(&id) {
                     let _ = tx.sender.send(Ok(KadMessage::Pong(pong)));
@@ -65,11 +72,11 @@ pub async fn handle_incoming_message(
         }
         KadMessage::HelloReq(hello) => {
             tracing::info!(
-                "Kad UDP: received HelloReq from {peer_addr} (kad_v{}, tcp={}, misc={:?}), replying with HelloRes",
+                "Kad UDP: received HelloReq from {peer} (kad_v{}, tcp={}, misc={:?}), replying with HelloRes",
                 hello.version,
                 hello.tcp_port,
                 hello.misc_options
-            );
+            , peer = log_peer_addr(peer_addr));
             // eMule AddContact_KADEMLIA2: every HELLO_REQ feeds the routing
             // table. The contact stays unverified until it answers one of
             // our requests or completes the HELLO_RES_ACK handshake.
@@ -138,11 +145,11 @@ pub async fn handle_incoming_message(
                 (matched_tx, matched_tx.and_then(|id| inf.remove(&id)))
             };
             tracing::info!(
-                "Kad UDP: received HelloRes from {peer_addr} (kad_v{}, tcp={}, udp_tag={}, matched_tx={matched_id:?})",
+                "Kad UDP: received HelloRes from {peer} (kad_v{}, tcp={}, udp_tag={}, matched_tx={matched_id:?})",
                 hello_res.version,
                 hello_res.tcp_port,
                 peer_udp_port
-            );
+            , peer = log_peer_addr(peer_addr));
             if let Some(tx) = matched_sender {
                 // A solicited HELLO_RES proves the remote owns its advertised
                 // IP:port — the contact is verified (eMule IsIpVerified).
@@ -183,8 +190,9 @@ pub async fn handle_incoming_message(
                 }
             }
             tracing::info!(
-                "Kad UDP: received HelloResAck from {peer_addr} (kad_id={})",
-                hex::encode(ack.kad_id)
+                "Kad UDP: received HelloResAck from {peer} (kad_id={})",
+                hex::encode(ack.kad_id),
+                peer = log_peer_addr(peer_addr)
             );
         }
         KadMessage::FirewalledReq(req) => {
@@ -199,11 +207,15 @@ pub async fn handle_incoming_message(
             // (used as the advertised address when publishing sources).
             let ip = std::net::Ipv4Addr::from(res.ip.to_le_bytes());
             firewall.lock().await.observed_ip = Some(ip);
-            tracing::info!("Kad UDP: received FirewalledRes from {peer_addr} (observed ip={ip})");
+            tracing::info!(
+                "Kad UDP: received FirewalledRes from {peer} (observed ip={ip})",
+                peer = log_peer_addr(peer_addr)
+            );
         }
         KadMessage::FirewalledAckRes => {
             tracing::info!(
-                "Kad UDP: received FirewalledAckRes from {peer_addr} (TCP port reachable)"
+                "Kad UDP: received FirewalledAckRes from {peer} (TCP port reachable)",
+                peer = log_peer_addr(peer_addr)
             );
         }
         KadMessage::BootstrapReq(req) => {
@@ -221,10 +233,10 @@ pub async fn handle_incoming_message(
                 None => Vec::new(),
             };
             tracing::info!(
-                "Kad UDP: received BootstrapReq from {peer_addr} (requester_id={}), replying with {} contacts",
+                "Kad UDP: received BootstrapReq from {peer} (requester_id={}), replying with {} contacts",
                 hex::encode(req.kad_id),
                 contacts.len()
-            );
+            , peer = log_peer_addr(peer_addr));
             let res = KadCodec::encode_bootstrap_res(
                 local_kad_id,
                 buddy_tcp_port,
@@ -240,13 +252,14 @@ pub async fn handle_incoming_message(
             let count = (req.req_type & 0x1F) as usize;
             if count == 0 || req.sender_id != *local_kad_id {
                 tracing::debug!(
-                    "Kad UDP: dropping Req from {peer_addr} (type=0x{:02X}, id check: {})",
+                    "Kad UDP: dropping Req from {peer} (type=0x{:02X}, id check: {})",
                     req.req_type,
                     if req.sender_id == *local_kad_id {
                         "ok"
                     } else {
                         "stale kad_id"
-                    }
+                    },
+                    peer = log_peer_addr(peer_addr)
                 );
                 return;
             }
@@ -264,10 +277,10 @@ pub async fn handle_incoming_message(
                 None => Vec::new(),
             };
             tracing::info!(
-                "Kad UDP: received Req (0x21) from {peer_addr} for target {}, replying with {} verified contacts",
+                "Kad UDP: received Req (0x21) from {peer} for target {}, replying with {} verified contacts",
                 hex::encode(req.target_id),
                 contacts.len()
-            );
+            , peer = log_peer_addr(peer_addr));
             let res = KadCodec::encode_find_node_res(&req.target_id, &contacts);
             let _ = socket.send_to(&res, peer_addr).await;
         }
@@ -289,9 +302,9 @@ pub async fn handle_incoming_message(
                 (matched_tx, matched_tx.and_then(|id| inf.remove(&id)))
             };
             tracing::info!(
-                "Kad UDP: received BootstrapRes/FindNodeRes from {peer_addr} with {} contacts (matched_tx={matched_id:?})",
+                "Kad UDP: received BootstrapRes/FindNodeRes from {peer} with {} contacts (matched_tx={matched_id:?})",
                 boot_res.contacts.len()
-            );
+            , peer = log_peer_addr(peer_addr));
             if matched_id.is_some() {
                 // Solicited response → the responder is verified. Its header
                 // port field is its TCP port (eMule BOOTSTRAP_RES layout).
@@ -322,10 +335,10 @@ pub async fn handle_incoming_message(
                 store.get_sources(&req.target_file_hash, req.start_pos)
             };
             tracing::info!(
-                "Kad UDP: received SearchSourceReq from {peer_addr} for file {}, replying with {} stored sources",
+                "Kad UDP: received SearchSourceReq from {peer} for file {}, replying with {} stored sources",
                 hex::encode(req.target_file_hash),
                 sources.len()
-            );
+            , peer = log_peer_addr(peer_addr));
             let res = KadCodec::encode_search_source_res(&req.target_file_hash, &sources);
             let _ = socket.send_to(&res, peer_addr).await;
         }
@@ -344,16 +357,20 @@ pub async fn handle_incoming_message(
                 }
             }
             tracing::info!(
-                "Kad UDP: received SearchSourceRes from {peer_addr} with {} sources for file {} (matched_tx={matched_tx:?})",
+                "Kad UDP: received SearchSourceRes from {peer} with {} sources for file {} (matched_tx={matched_tx:?})",
                 search_res.sources.len(),
                 hex::encode(search_res.target_file_hash)
-            );
+            , peer = log_peer_addr(peer_addr));
             if let Some(id) = matched_tx {
                 // Multi-packet response: keep the transaction registered so
                 // the next batch from this peer still routes to the sender;
                 // drop it only when the collector is gone.
                 if let Some(tx) = inf.get(&id) {
-                    if tx.sender.send(Ok(KadMessage::SearchSourceRes(search_res))).is_err() {
+                    if tx
+                        .sender
+                        .send(Ok(KadMessage::SearchSourceRes(search_res)))
+                        .is_err()
+                    {
                         inf.remove(&id);
                     }
                 }
@@ -364,8 +381,9 @@ pub async fn handle_incoming_message(
             // dropped silently — we are not an indexer for this key.
             if !within_publish_tolerance(local_kad_id, &req.target_file_hash) {
                 tracing::debug!(
-                    "Kad UDP: dropping out-of-tolerance PublishSourceReq from {peer_addr} for file {}",
-                    hex::encode(req.target_file_hash)
+                    "Kad UDP: dropping out-of-tolerance PublishSourceReq from {peer} for file {}",
+                    hex::encode(req.target_file_hash),
+                    peer = log_peer_addr(peer_addr)
                 );
                 return;
             }
@@ -415,9 +433,10 @@ pub async fn handle_incoming_message(
                 1
             };
             tracing::info!(
-                "Kad UDP: received PublishSourceReq from {peer_addr} for file {} (status={})",
+                "Kad UDP: received PublishSourceReq from {peer} for file {} (status={})",
                 hex::encode(req.target_file_hash),
-                status
+                status,
+                peer = log_peer_addr(peer_addr)
             );
             let res = KadCodec::encode_publish_source_res(&req.target_file_hash, status);
             let _ = socket.send_to(&res, peer_addr).await;
@@ -441,9 +460,9 @@ pub async fn handle_incoming_message(
                 }
             }
             tracing::info!(
-                "Kad UDP: received PublishRes (0x4B) from {peer_addr} with status {} (matched_tx={matched_tx:?})",
+                "Kad UDP: received PublishRes (0x4B) from {peer} with status {} (matched_tx={matched_tx:?})",
                 pub_res.status
-            );
+            , peer = log_peer_addr(peer_addr));
             if let Some(id) = matched_tx {
                 if let Some(tx) = inf.remove(&id) {
                     if tx.expected_response == KadExpectedResponse::PublishNotesRes {
@@ -472,10 +491,10 @@ pub async fn handle_incoming_message(
                 store.get_keyword_entries(&req.keyword_hash, req.start_pos)
             };
             tracing::info!(
-                "Kad UDP: received SearchKeywordReq from {peer_addr} for keyword {}, replying with {} stored entries",
+                "Kad UDP: received SearchKeywordReq from {peer} for keyword {}, replying with {} stored entries",
                 hex::encode(req.keyword_hash),
                 entries.len()
-            );
+            , peer = log_peer_addr(peer_addr));
             let res = KadCodec::encode_search_keyword_res(&req.keyword_hash, &entries);
             let _ = socket.send_to(&res, peer_addr).await;
         }
@@ -494,15 +513,19 @@ pub async fn handle_incoming_message(
                 }
             }
             tracing::info!(
-                "Kad UDP: received SearchKeywordRes from {peer_addr} with {} entries for keyword {} (matched_tx={matched_tx:?})",
+                "Kad UDP: received SearchKeywordRes from {peer} with {} entries for keyword {} (matched_tx={matched_tx:?})",
                 search_res.entries.len(),
                 hex::encode(search_res.keyword_hash)
-            );
+            , peer = log_peer_addr(peer_addr));
             if let Some(id) = matched_tx {
                 // Multi-packet response: keep the transaction registered so
                 // the next batch from this peer still routes to the sender.
                 if let Some(tx) = inf.get(&id) {
-                    if tx.sender.send(Ok(KadMessage::SearchKeywordRes(search_res))).is_err() {
+                    if tx
+                        .sender
+                        .send(Ok(KadMessage::SearchKeywordRes(search_res)))
+                        .is_err()
+                    {
                         inf.remove(&id);
                     }
                 }
@@ -513,9 +536,9 @@ pub async fn handle_incoming_message(
             // hashes are dropped silently.
             if !within_publish_tolerance(local_kad_id, &req.keyword_hash) {
                 tracing::debug!(
-                    "Kad UDP: dropping out-of-tolerance PublishKeywordReq from {peer_addr} for keyword {}",
+                    "Kad UDP: dropping out-of-tolerance PublishKeywordReq from {peer} for keyword {}",
                     hex::encode(req.keyword_hash)
-                );
+                , peer = log_peer_addr(peer_addr));
                 return;
             }
             // Reject malformed entries: zero file hash or empty/oversized name.
@@ -540,9 +563,10 @@ pub async fn handle_incoming_message(
                 persist_keyword_entries(downloads, &keyword_hash, &to_persist).await;
             }
             tracing::info!(
-                "Kad UDP: received PublishKeywordReq from {peer_addr} for keyword {} (status={})",
+                "Kad UDP: received PublishKeywordReq from {peer} for keyword {} (status={})",
                 hex::encode(req.keyword_hash),
-                status
+                status,
+                peer = log_peer_addr(peer_addr)
             );
             let res = KadCodec::encode_publish_keyword_res(&req.keyword_hash, status);
             let _ = socket.send_to(&res, peer_addr).await;
@@ -559,9 +583,9 @@ pub async fn handle_incoming_message(
                 }
             }
             tracing::info!(
-                "Kad UDP: received PublishKeywordRes from {peer_addr} with status {} (matched_tx={matched_tx:?})",
+                "Kad UDP: received PublishKeywordRes from {peer} with status {} (matched_tx={matched_tx:?})",
                 pub_res.status
-            );
+            , peer = log_peer_addr(peer_addr));
             if let Some(id) = matched_tx {
                 if let Some(tx) = inf.remove(&id) {
                     let _ = tx.sender.send(Ok(KadMessage::PublishKeywordRes(pub_res)));
@@ -584,14 +608,16 @@ pub async fn handle_incoming_message(
             };
             if delivered {
                 tracing::info!(
-                    "Kad UDP: received FIREWALLUDP from {peer_addr} (error={}, tested_port={})",
+                    "Kad UDP: received FIREWALLUDP from {peer} (error={}, tested_port={})",
                     fw.error_code,
-                    fw.udp_port
+                    fw.udp_port,
+                    peer = log_peer_addr(peer_addr)
                 );
             } else {
                 tracing::warn!(
-                    "Kad UDP: ignoring unsolicited FIREWALLUDP from {peer_addr} (tested_port={})",
-                    fw.udp_port
+                    "Kad UDP: ignoring unsolicited FIREWALLUDP from {peer} (tested_port={})",
+                    fw.udp_port,
+                    peer = log_peer_addr(peer_addr)
                 );
             }
         }
@@ -606,9 +632,9 @@ pub async fn handle_incoming_message(
             let mut reg = buddy.lock().await;
             if !eligible || buddy_tcp_port == 0 || reg.active.is_some() || req.tcp_port == 0 {
                 tracing::debug!(
-                    "Kad UDP: rejecting FINDBUDDY_REQ from {peer_addr} (eligible={eligible}, has_buddy={})",
+                    "Kad UDP: rejecting FINDBUDDY_REQ from {peer} (eligible={eligible}, has_buddy={})",
                     reg.active.is_some()
-                );
+                , peer = log_peer_addr(peer_addr));
                 return;
             }
             reg.register_pending(peer_addr.ip(), req.buddy_id, req.user_id, req.tcp_port);
@@ -620,18 +646,19 @@ pub async fn handle_incoming_message(
                 buddy_connect_options,
             );
             tracing::info!(
-                "Kad UDP: accepted FINDBUDDY_REQ from {peer_addr}, awaiting buddy TCP link on port {} (buddy_id={})",
+                "Kad UDP: accepted FINDBUDDY_REQ from {peer}, awaiting buddy TCP link on port {} (buddy_id={})",
                 buddy_tcp_port,
                 hex::encode(req.buddy_id)
-            );
+            , peer = log_peer_addr(peer_addr));
             let _ = socket.send_to(&res, peer_addr).await;
         }
         KadMessage::FindBuddyRes(res) => {
             // We never send FINDBUDDY_REQ (the LowID-self buddy client is
             // not implemented); log unsolicited responses.
             tracing::debug!(
-                "Kad UDP: ignoring unsolicited FINDBUDDY_RES from {peer_addr} (tcp_port={})",
-                res.tcp_port
+                "Kad UDP: ignoring unsolicited FINDBUDDY_RES from {peer} (tcp_port={})",
+                res.tcp_port,
+                peer = log_peer_addr(peer_addr)
             );
         }
         KadMessage::CallbackReq(req) => {
@@ -661,13 +688,15 @@ pub async fn handle_incoming_message(
             };
             if relayed {
                 tracing::info!(
-                    "Kad UDP: relayed CALLBACK_REQ from {peer_addr} to buddy link (file={}, cb_port={})",
+                    "Kad UDP: relayed CALLBACK_REQ from {peer} to buddy link (file={}, cb_port={})",
                     hex::encode(req.file_id),
-                    req.tcp_port
+                    req.tcp_port,
+                    peer = log_peer_addr(peer_addr)
                 );
             } else {
                 tracing::debug!(
-                    "Kad UDP: dropping CALLBACK_REQ from {peer_addr} — no active buddy link"
+                    "Kad UDP: dropping CALLBACK_REQ from {peer} — no active buddy link",
+                    peer = log_peer_addr(peer_addr)
                 );
             }
         }
@@ -683,15 +712,17 @@ pub async fn handle_incoming_message(
             };
             if notes.is_empty() {
                 tracing::debug!(
-                    "Kad UDP: SearchNotesReq from {peer_addr} for file {} — no stored notes",
-                    hex::encode(req.target_file_hash)
+                    "Kad UDP: SearchNotesReq from {peer} for file {} — no stored notes",
+                    hex::encode(req.target_file_hash),
+                    peer = log_peer_addr(peer_addr)
                 );
                 return;
             }
             tracing::info!(
-                "Kad UDP: received SearchNotesReq from {peer_addr} for file {}, replying with {} notes",
+                "Kad UDP: received SearchNotesReq from {peer} for file {}, replying with {} notes",
                 hex::encode(req.target_file_hash),
-                notes.len()
+                notes.len(),
+                peer = log_peer_addr(peer_addr)
             );
             if let Some(res) =
                 KadCodec::encode_search_notes_res(local_kad_id, &req.target_file_hash, &notes)
@@ -714,10 +745,10 @@ pub async fn handle_incoming_message(
                 }
             }
             tracing::info!(
-                "Kad UDP: received SearchNotesRes from {peer_addr} with {} notes for file {} (matched_tx={matched_tx:?})",
+                "Kad UDP: received SearchNotesRes from {peer} with {} notes for file {} (matched_tx={matched_tx:?})",
                 res.notes.len(),
                 hex::encode(res.target_file_hash)
-            );
+            , peer = log_peer_addr(peer_addr));
             if let Some(id) = matched_tx {
                 // Multi-packet response: keep the transaction registered so
                 // the next batch from this peer still routes to the sender.
@@ -733,8 +764,9 @@ pub async fn handle_incoming_message(
             // targets are dropped silently before any index work.
             if !within_publish_tolerance(local_kad_id, &req.target_file_hash) {
                 tracing::debug!(
-                    "Kad UDP: dropping out-of-tolerance PublishNotesReq from {peer_addr} for file {}",
-                    hex::encode(req.target_file_hash)
+                    "Kad UDP: dropping out-of-tolerance PublishNotesReq from {peer} for file {}",
+                    hex::encode(req.target_file_hash),
+                    peer = log_peer_addr(peer_addr)
                 );
                 return;
             }
@@ -746,7 +778,8 @@ pub async fn handle_incoming_message(
             };
             if firewalled {
                 tracing::debug!(
-                    "Kad UDP: rejecting PublishNotesReq from {peer_addr} — we are UDP-firewalled"
+                    "Kad UDP: rejecting PublishNotesReq from {peer} — we are UDP-firewalled",
+                    peer = log_peer_addr(peer_addr)
                 );
                 return;
             }
@@ -783,10 +816,11 @@ pub async fn handle_incoming_message(
                 store.note_load(&req.target_file_hash)
             };
             tracing::info!(
-                "Kad UDP: received PublishNotesReq from {peer_addr} for file {} (accepted={}, load={})",
+                "Kad UDP: received PublishNotesReq from {peer} for file {} (accepted={}, load={})",
                 hex::encode(req.target_file_hash),
                 accepted,
-                load
+                load,
+                peer = log_peer_addr(peer_addr)
             );
             let res = KadCodec::encode_publish_notes_res(&req.target_file_hash, load);
             let _ = socket.send_to(&res, peer_addr).await;
@@ -812,11 +846,17 @@ async fn handle_firewalled_check(
     kad7_plus: bool,
 ) {
     let IpAddr::V4(v4) = peer_addr.ip() else {
-        tracing::debug!("Kad UDP: ignoring firewalled check from non-IPv4 {peer_addr}");
+        tracing::debug!(
+            "Kad UDP: ignoring firewalled check from non-IPv4 {peer}",
+            peer = log_peer_addr(peer_addr)
+        );
         return;
     };
     if tcp_port == 0 {
-        tracing::debug!("Kad UDP: ignoring firewalled check from {peer_addr} with tcp_port=0");
+        tracing::debug!(
+            "Kad UDP: ignoring firewalled check from {peer} with tcp_port=0",
+            peer = log_peer_addr(peer_addr)
+        );
         return;
     }
 
@@ -922,14 +962,7 @@ async fn learn_contact(
         return;
     }
     let now_ms = now_unix_ms();
-    let mut contact = KadContact::new(
-        KadId(kad_id_bytes),
-        ip,
-        udp_port,
-        tcp_port,
-        version,
-        now_ms,
-    );
+    let mut contact = KadContact::new(KadId(kad_id_bytes), ip, udp_port, tcp_port, version, now_ms);
     if mark_seen {
         contact.mark_seen(now_ms);
     }

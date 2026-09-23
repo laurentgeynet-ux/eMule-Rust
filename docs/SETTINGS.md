@@ -1,4 +1,4 @@
-# Paramètres EMule-Rust — Référence complète
+# Paramètres eMule-Rust — Référence complète
 
 Tous les paramètres sont persistés dans la table SQLite `settings` et
 manipulables via RPC `settings.get` / `settings.set` (patch JSON en
@@ -73,8 +73,8 @@ pipeline anti-SSRF sont inchangés.
 | `maxConnections` | `max_connections` | usize 1–65000 | `500` | `ResourceBudgets.max_active_peer_connections` (live). Budget de **sockets TCP pairs** — distinct de `maxGlobalDownloadPeers` (quota d'allocation) | MaxConnections (non borné sous NT+, `GetMaxWindowsTCPConnections()` → `UNLIMITED` ; 65000 = borne de sanité) |
 | `maxConnPerMin` | `max_conn_per_min` | u32 | `240` | `ResourceBudgets.rate_limit_per_min` (live) | MaxConnPerFiveSeconds = 20 ≈ 240/min (granularité min) |
 | `ussEnabled` | `uss_config` (JSON) | bool | `false` | `UssService.update_config` — limite d'upload pilotée par latence | « USS » |
-| `paranoidMode` | `paranoid_mode` | bool | `false` | Slots d'upload réservés aux pairs **obfusqués + signature SUI vérifiée** ; rejette les clients eMule classiques (live, `dispatcher`) | — (spécifique EMule-Rust) |
-| `identityRotationHours` | `identity_rotation_hours` | h 0–8760 | `0` | Régénère périodiquement clé RSA + user_hash eD2K + KadID (propagation à chaud listener/Kad ; sessions actives conservent l'ancienne). **Invalide les crédits** — identité éphémère. Timestamp dans `identity_last_rotation_unix` | — (spécifique EMule-Rust) |
+| `paranoidMode` | `paranoid_mode` | bool | `false` | Slots d'upload réservés aux pairs **obfusqués + signature SUI vérifiée** ; rejette les clients eMule classiques (live, `dispatcher`) | — (spécifique eMule-Rust) |
+| `identityRotationHours` | `identity_rotation_hours` | h 0–8760 | `0` | Régénère périodiquement clé RSA + user_hash eD2K + KadID (propagation à chaud listener/Kad ; sessions actives conservent l'ancienne). **Invalide les crédits** — identité éphémère. Timestamp dans `identity_last_rotation_unix` | — (spécifique eMule-Rust) |
 
 ### Transferts
 
@@ -86,8 +86,8 @@ pipeline anti-SSRF sont inchangés.
 | `maxUploadQueue` | `max_upload_queue` | usize 10–5000 | `5000` | `UploadManager.max_queue` (live) | `QueueSize` (défaut eMule 5000) |
 | `minUploadKbs` | `min_upload_kbs` | Ko/s 0–100000 | `1` | Plancher par slot : pas de nouveau slot si la moyenne descend sous le seuil (live). **0 = seuil désactivé** — les slots s'ouvrent tant que `max_active` n'est pas atteint (extension ; eMule force `MinUpload ≥ 1`) | `MinUpload` (défaut eMule 1, plancher obligatoire) |
 | `autoPriorityNewDownloads` | `auto_priority_new_downloads` | bool | `false` | Fichiers ≥ 9 728 000 B créés en priorité `high` | auto-priorité |
-| `dailyUploadQuotaGb` | `daily_upload_quota_gb` | Gio 0–1048576 | `0` | Quota volumétrique/jour : atteint → plus aucune nouvelle demande de slot accordée (watcher 30 s). Compteur persisté `upload_quota_used_bytes`, remise à zéro au changement de jour UTC (`upload_quota_day`) | — (spécifique EMule-Rust, aucun équivalent eMule) |
-| `swarmHealing` | `swarm_healing` | bool | `false` | Biaise la sélection de part vers les **parts les plus rares du swarm** (compteur de sources connues par part) — le client devient source de secours avant la disparition d'une part. Tie-break : octets reçus | — (spécifique EMule-Rust ; eD2K est pull-only, aucun push possible) |
+| `dailyUploadQuotaGb` | `daily_upload_quota_gb` | Gio 0–1048576 | `0` | Quota volumétrique/jour : atteint → plus aucune nouvelle demande de slot accordée (watcher 30 s). Compteur persisté `upload_quota_used_bytes`, remise à zéro au changement de jour UTC (`upload_quota_day`) | — (spécifique eMule-Rust, aucun équivalent eMule) |
+| `swarmHealing` | `swarm_healing` | bool | `false` | Biaise la sélection de part vers les **parts les plus rares du swarm** (compteur de sources connues par part) — le client devient source de secours avant la disparition d'une part. Tie-break : octets reçus | — (spécifique eMule-Rust ; eD2K est pull-only, aucun push possible) |
 
 ### Limites de débit (RPC `limits.set`, section Sécurité)
 
@@ -209,18 +209,27 @@ son état activé survivent aux redémarrages du daemon.
 
 ## Journalisation (daemon)
 
-Le daemon écrit ses traces `tracing` dans **`data/daemon.log`** (ainsi
-que sur stdout) avec horodatage local RFC 3339.
+Le daemon écrit ses traces `tracing` dans **`logs/`** sous le workdir
+(rotation quotidienne `daemon.<date>.log`, rétention 7 fichiers) ainsi
+que sur stdout, avec horodatage local RFC 3339. L'écriture fichier est
+**non-bloquante** (`tracing-appender`) et au format **JSONL** (niveau,
+target, champs, spans) ; la console reste lisible en texte.
 
-- **Réinitialisation au démarrage** : le fichier est tronqué à chaque
-  lancement du daemon (`truncate(true)`) — il ne contient donc que la
-  session courante. Il n'y a **pas** de rotation ni de taille maximale
-  en cours de session : un daemon longue durée peut le faire grossir
-  significativement (les messages de niveau `info` incluent des traces
-  par paquet Kad).
-- **Filtre par défaut** : `info`. La variable d'environnement
-  **`RUST_LOG`** permet de changer la verbosité au lancement
-  (`EnvFilter::try_from_default_env`), ex.
-  `RUST_LOG=warn` pour ne garder que les avertissements/erreurs, ou
-  `RUST_LOG=info,mule_daemon::services::kad_udp=warn` pour réduire le
-  bruit d'un module précis.
+- **Panic** : tout panic est écrit en synchrone dans
+  `logs/crash.log` (le writer non-bloquant peut être déjà mort au moment
+  du crash) et émis via `tracing::error!`.
+- **Niveau à chaud** : la clé `logLevel` de `settings.set` recharge le
+  `EnvFilter` sans redémarrage (niveau simple « debug » ou spec complète
+  « info,mule_daemon::kad_udp=warn »). **Runtime uniquement** — jamais
+  persisté (un `trace` survivant à un reboot remplirait les fichiers).
+  `settings.get` et `system.status` renvoient la spec courante ; l'UI
+  expose un sélecteur dans Paramètres → Avancé.
+- **Filtre au lancement** : `RUST_LOG` reste la source initiale
+  (`EnvFilter::try_from_default_env`), défaut `info`.
+- **Confidentialité** : les adresses de pairs/serveurs externes sont
+  pseudonymisées de façon déterministe par session (`peer-NN:port`,
+  `server-NN:port` via `mule-filter`) ; loopback reste en clair pour le
+  lab. Le token d'auth n'est jamais écrit dans les logs.
+
+Le serveur MCP (`mule-mcp`) suit le même schéma dans son propre
+`logs/mcp.<date>.log` ; stdout reste réservé au JSON-RPC MCP.

@@ -76,11 +76,7 @@ impl DownloadService {
 
             let source_count = db
                 .list_peer_sources(&dl.ed2k_hash.to_hex())
-                .map(|s| {
-                    s.iter()
-                        .filter(|x| x.status.is_srclist_visible())
-                        .count() as u32
-                })
+                .map(|s| s.iter().filter(|x| x.status.is_srclist_visible()).count() as u32)
                 .unwrap_or(0);
             active.insert(
                 dl.id,
@@ -304,8 +300,7 @@ impl DownloadService {
                     let _ = std::fs::remove_file(&met_path);
                     let verif_status = if result.corrupted_parts > 0 {
                         "partial_corruption"
-                    } else if result.verified_parts == result.total_parts
-                        && result.total_parts > 0
+                    } else if result.verified_parts == result.total_parts && result.total_parts > 0
                     {
                         "verified_ok"
                     } else {
@@ -332,10 +327,7 @@ impl DownloadService {
                     recovered += 1;
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Skipping orphaned .part.met {}: {e}",
-                        met_path.display()
-                    );
+                    tracing::warn!("Skipping orphaned .part.met {}: {e}", met_path.display());
                 }
             }
         }
@@ -962,8 +954,7 @@ impl DownloadService {
             .active
             .values()
             .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean)?;
-        let total_parts =
-            (act.download.total_size.div_ceil(ED2K_PART_SIZE)).max(1) as usize;
+        let total_parts = (act.download.total_size.div_ceil(ED2K_PART_SIZE)).max(1) as usize;
         let max_part = total_parts.min(u16::MAX as usize);
         let now = now_ms();
         let mut counts = vec![0u32; total_parts];
@@ -1172,9 +1163,9 @@ impl DownloadService {
         if !delete_file {
             return peers_servers::remove_shared_file(&mut self.db, file_hash);
         }
-        let sf = self.get_shared_file(file_hash)?.ok_or_else(|| {
-            DaemonError::NotFound(format!("Shared file {file_hash} not found"))
-        })?;
+        let sf = self
+            .get_shared_file(file_hash)?
+            .ok_or_else(|| DaemonError::NotFound(format!("Shared file {file_hash} not found")))?;
         if sf.is_partial {
             // Partage transitoire d'un download en cours : le fichier à
             // supprimer est le `.part`, ce qui est le rôle de
@@ -1267,15 +1258,10 @@ impl DownloadService {
         &self,
         file_hash: &str,
     ) -> Option<mule_core::model::SharedFile> {
-        let dl = self
-            .db
-            .get_all_downloads()
-            .ok()?
-            .into_iter()
-            .find(|d| {
-                d.status == mule_core::DownloadStatus::Completed
-                    && d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
-            })?;
+        let dl = self.db.get_all_downloads().ok()?.into_iter().find(|d| {
+            d.status == mule_core::DownloadStatus::Completed
+                && d.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash)
+        })?;
         if !dl.target_path.is_file() {
             return None;
         }
@@ -1309,8 +1295,11 @@ impl DownloadService {
             return sf;
         }
         const ED2K_PART_SIZE: u64 = 9_728_000;
-        let part_count =
-            act.download.total_size.div_ceil(ED2K_PART_SIZE).min(u16::MAX as u64) as u16;
+        let part_count = act
+            .download
+            .total_size
+            .div_ceil(ED2K_PART_SIZE)
+            .min(u16::MAX as u64) as u16;
         let completed: Vec<u16> = (0..part_count)
             .filter(|&i| {
                 let start = i as u64 * ED2K_PART_SIZE;
@@ -1333,9 +1322,7 @@ impl DownloadService {
     /// Every file currently servable to peers: persisted shared files plus
     /// active downloads (completed → full file, in-progress → completed
     /// parts only), like eMule's `CSharedFileList` including `CPartFile`s.
-    pub fn list_all_shared_files(
-        &self,
-    ) -> Result<Vec<mule_core::model::SharedFile>, DaemonError> {
+    pub fn list_all_shared_files(&self) -> Result<Vec<mule_core::model::SharedFile>, DaemonError> {
         let mut list = self.list_shared_files()?;
         let persisted: std::collections::HashSet<String> =
             list.iter().map(|f| f.file_hash.to_lowercase()).collect();
@@ -1380,9 +1367,7 @@ impl DownloadService {
             .filter(|s| !s.is_empty());
         if let Some(ref cid) = cat {
             if self.get_category(cid)?.is_none() {
-                return Err(DaemonError::Business(format!(
-                    "Category '{cid}' not found"
-                )));
+                return Err(DaemonError::Business(format!("Category '{cid}' not found")));
             }
         }
         let mut touched = false;
@@ -1390,14 +1375,17 @@ impl DownloadService {
         let active_id = self
             .active
             .values()
-            .find(|a| a.download.ed2k_hash.to_hex().eq_ignore_ascii_case(file_hash))
+            .find(|a| {
+                a.download
+                    .ed2k_hash
+                    .to_hex()
+                    .eq_ignore_ascii_case(file_hash)
+            })
             .map(|a| a.download.id);
         if let Some(id) = active_id {
             self.db
                 .set_download_category(&id, cat.as_deref())
-                .map_err(|e| {
-                    DaemonError::Business(format!("DB error setting category: {e}"))
-                })?;
+                .map_err(|e| DaemonError::Business(format!("DB error setting category: {e}")))?;
             if let Some(a) = self.active.get_mut(&id) {
                 a.download.category_id = cat.clone();
             }

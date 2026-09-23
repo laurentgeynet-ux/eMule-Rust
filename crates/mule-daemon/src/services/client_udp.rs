@@ -19,6 +19,7 @@
 //!   sources that announced an eMule UDP port (deduplicated, ~21 min
 //!   cadence like `CUpDownClient::UDPReaskForDownload`).
 
+use crate::services::peer_session::log_peer_addr;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -152,13 +153,13 @@ impl ClientUdpService {
             let pkt = client_udp::encode_reask_file_ping(&target.file_hash, complete_sources);
             tracing::debug!(
                 "Client UDP: OP_REASKFILEPING -> {} (hash {})",
-                target.addr,
+                log_peer_addr(target.addr),
                 hex::encode(target.file_hash)
             );
             if let Err(e) = socket.send_to(&pkt, target.addr).await {
                 tracing::debug!(
                     "Client UDP: send_reask_file_ping to {} failed: {e}",
-                    target.addr
+                    log_peer_addr(target.addr)
                 );
             }
         }
@@ -187,7 +188,10 @@ impl ClientUdpService {
         let msg = match client_udp::decode_client_udp(data) {
             Ok(m) => m,
             Err(e) => {
-                tracing::debug!("Client UDP: decode error from {peer_addr}: {e}");
+                tracing::debug!(
+                    "Client UDP: decode error from {peer}: {e}",
+                    peer = log_peer_addr(peer_addr)
+                );
                 return;
             }
         };
@@ -214,7 +218,10 @@ impl ClientUdpService {
                 self.handle_reask_callback(peer_addr, buddy_id, rest).await
             }
             ClientUdpMessage::Unknown { opcode } => {
-                tracing::debug!("Client UDP: ignoring opcode 0x{opcode:02X} from {peer_addr}");
+                tracing::debug!(
+                    "Client UDP: ignoring opcode 0x{opcode:02X} from {peer}",
+                    peer = log_peer_addr(peer_addr)
+                );
             }
         }
     }
@@ -272,7 +279,10 @@ impl ClientUdpService {
         let socket = { self.inner.lock().await.socket.clone() };
         if let Some(socket) = socket {
             if let Err(e) = socket.send_to(&response, peer_addr).await {
-                tracing::debug!("Client UDP: reask reply to {peer_addr} failed: {e}");
+                tracing::debug!(
+                    "Client UDP: reask reply to {peer} failed: {e}",
+                    peer = log_peer_addr(peer_addr)
+                );
             }
         }
     }
@@ -321,12 +331,13 @@ impl ClientUdpService {
         };
         if relayed {
             tracing::info!(
-                "Client UDP: relayed OP_REASKCALLBACKUDP from {peer_addr} to buddy link"
+                "Client UDP: relayed OP_REASKCALLBACKUDP from {peer} to buddy link",
+                peer = log_peer_addr(peer_addr)
             );
         } else {
             tracing::debug!(
-                "Client UDP: dropping OP_REASKCALLBACKUDP from {peer_addr} — buddy_id mismatch or no buddy"
-            );
+                "Client UDP: dropping OP_REASKCALLBACKUDP from {peer} — buddy_id mismatch or no buddy"
+            , peer = log_peer_addr(peer_addr));
         }
     }
 
@@ -355,13 +366,18 @@ impl ClientUdpService {
 
         if !had_pending {
             tracing::debug!(
-                "Client UDP: ignoring unsolicited {:?} from {peer_addr} (pendingflag == false)",
-                result
+                "Client UDP: ignoring unsolicited {:?} from {peer} (pendingflag == false)",
+                result,
+                peer = log_peer_addr(peer_addr)
             );
             return;
         }
 
-        tracing::info!("Client UDP: {:?} from {peer_addr}", result);
+        tracing::info!(
+            "Client UDP: {:?} from {peer}",
+            result,
+            peer = log_peer_addr(peer_addr)
+        );
 
         if let UdpReaskResult::Rank(rank) = result {
             let ps = self.peer_session.read().unwrap().clone();

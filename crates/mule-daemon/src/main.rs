@@ -117,25 +117,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let data_dir = resolved_workdir.workdir;
     let default_download_dir = resolved_workdir.default_download_dir;
-    println!(
-        "==> Workdir mode: {:?} ({})",
-        resolved_workdir.mode,
-        data_dir.display()
-    );
-    println!(
-        "==> Default download dir: {}",
-        default_download_dir.display()
-    );
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&default_download_dir)?;
 
-    // Configure file appender for daemon.log (reset on each startup)
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(data_dir.join("daemon.log"))
-        .ok();
+    // === Logging : console lisible + fichier JSONL rotatif ===
+    // Défaut 'info', surcharge via `RUST_LOG` ou à chaud via la clé
+    // `logLevel` de `settings.set` (runtime uniquement, jamais persisté).
+    // Fichiers : <workdir>/logs/daemon.<date>.log — JSONL, rotation
+    // quotidienne, rétention 7 jours, écriture non-bloquante (le swarm ne
+    // doit jamais être ralenti par un fsync). L'ancien `daemon.log` plat
+    // (tronqué à chaque boot) est supprimé.
+    let logs_dir = data_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir)?;
+    let legacy_log = data_dir.join("daemon.log");
+    if legacy_log.is_file() {
+        let _ = std::fs::remove_file(&legacy_log);
+    }
 
     let timer = tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339().unwrap_or_else(|_| {
         tracing_subscriber::fmt::time::OffsetTime::new(
@@ -144,24 +141,73 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     });
 
-    let file_layer = log_file.map(|f| {
-        tracing_subscriber::fmt::layer()
-            .with_writer(std::sync::Arc::new(f))
-            .with_ansi(false)
-            .with_timer(timer.clone())
-    });
+    let file_appender = tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("daemon")
+        .filename_suffix("log")
+        .max_log_files(7)
+        .build(&logs_dir)
+        .map_err(|e| format!("Cannot init log rotation in {}: {e}", logs_dir.display()))?;
+    let (file_writer, log_guard) = tracing_appender::non_blocking(file_appender);
+
+    let env_filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+    let log_control = mule_daemon::LogControl::new(env_filter.to_string());
+    let (reloadable_filter, filter_reload) = tracing_subscriber::reload::Layer::new(env_filter);
 
     tracing_subscriber::registry()
+        .with(reloadable_filter)
+        .with(tracing_subscriber::fmt::layer().with_timer(timer.clone()))
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::fmt::layer()
+                .json()
+                .with_ansi(false)
+                .with_timer(timer)
+                .with_current_span(true)
+                .with_writer(file_writer),
         )
-        .with(tracing_subscriber::fmt::layer().with_timer(timer))
-        .with(file_layer)
         .init();
+    log_control.install(filter_reload);
+    // Le guard vit jusqu'à la fin de `main` — flush du writer au shutdown.
+    let _log_guard = log_guard;
+
+    // === Capture des panics : crash.log synchrone + event tracing ===
+    // Le writer non-bloquant peut être déjà mort quand le panic survient ;
+    // l'écriture synchrone garantit qu'une trace exploitable existe.
+    {
+        let crash_log = logs_dir.join("crash.log");
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            default_hook(info);
+            let stamp = time::OffsetDateTime::now_utc()
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_else(|_| "<time>".to_string());
+            let line = format!("{stamp} PANIC: {info}\n");
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&crash_log)
+            {
+                use std::io::Write;
+                let _ = f.write_all(line.as_bytes());
+            }
+            tracing::error!("{line}");
+        }));
+    }
+
+    tracing::info!(
+        "==> Workdir mode: {:?} ({})",
+        resolved_workdir.mode,
+        data_dir.display()
+    );
+    tracing::info!(
+        "==> Default download dir: {}",
+        default_download_dir.display()
+    );
 
     // 1. Acquire exclusive directory lock
     let _lock = DirectoryLock::acquire(&data_dir).map_err(|e| {
-        eprintln!("==> ERROR: {e}");
+        tracing::error!("==> ERROR: {e}");
         e
     })?;
 
@@ -185,7 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let tok = DaemonSession::generate_token();
         DaemonSession::write_token(&data_dir, &tok)?;
-        println!("==> Generated session auth token stored in auth.token (redacted)");
+        tracing::info!("==> Generated session auth token stored in auth.token (redacted)");
         tok
     };
 
@@ -202,8 +248,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = match tokio::net::TcpListener::bind(requested_bind).await {
         Ok(l) => l,
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && bind_addr_arg.is_none() => {
-            eprintln!(
-                "==> Warning: Port {requested_bind} is in use. Falling back to ephemeral port..."
+            tracing::warn!(
+                "==> Port {requested_bind} is in use. Falling back to ephemeral port..."
             );
             let fallback_addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
             tokio::net::TcpListener::bind(fallback_addr).await?
@@ -227,7 +273,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // as paused downloads via the sandboxed import path.
     let recovered = downloads.recover_orphan_part_mets(&initial_download_dir);
     if recovered > 0 {
-        println!("==> Recovered {recovered} orphaned .part.met download(s) from temp directory");
+        tracing::info!(
+            "==> Recovered {recovered} orphaned .part.met download(s) from temp directory"
+        );
     }
 
     let ed2k_port = ed2k_port_arg.unwrap_or(39735);
@@ -241,7 +289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the dev build (apps/web/build/web).
     let web_dir = resolve_web_dir(web_dir_arg);
     if let Some(dir) = &web_dir {
-        println!("==> Web UI: http://{actual_addr}/ (dir: {})", dir.display());
+        tracing::info!("==> Web UI: http://{actual_addr}/ (dir: {})", dir.display());
     }
 
     let config = DaemonConfig::new(data_dir.clone(), auth_token)
@@ -252,12 +300,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_upnp_enabled(upnp_enabled)
         .with_ports(ed2k_port, kad_port)
         .with_web_dir(web_dir);
-    let state = AppState::new(config, downloads);
+    let mut state = AppState::new(config, downloads);
+    state.log_control = Some(log_control);
     // eMule `Autoconnect`/`Reconnect`/`AutoDeadServer`: background watcher
     // reconnecting to the last server target (or best known server) when
     // `server_reconnect`/`server_autoconnect` settings are enabled.
     state.spawn_server_watcher();
-    // EMule-Rust : rotation périodique d'identité (`identityRotationHours`)
+    // eMule-Rust : rotation périodique d'identité (`identityRotationHours`)
     // et quota journalier d'upload (`dailyUploadQuotaGb`).
     state.spawn_identity_rotator();
     state.spawn_quota_watcher();
@@ -278,11 +327,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session = DaemonSession::new(1, state.instance_id, &endpoint);
     session.write_atomic(&data_dir)?;
 
-    println!("==> mule-daemon listening on http://{actual_addr}");
-    println!("==> WebSocket RPC endpoint: {endpoint}");
-    println!("==> Network profile: {network_profile}");
-    println!("==> eD2K port: {ed2k_port}, Kad port: {kad_port}, UPnP: {upnp_enabled}");
-    println!(
+    tracing::info!("==> mule-daemon listening on http://{actual_addr}");
+    tracing::info!("==> WebSocket RPC endpoint: {endpoint}");
+    tracing::info!("==> Network profile: {network_profile}");
+    tracing::info!("==> eD2K port: {ed2k_port}, Kad port: {kad_port}, UPnP: {upnp_enabled}");
+    tracing::info!(
         "==> Session file: {}",
         data_dir.join("session.json").display()
     );
@@ -292,7 +341,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let eff_kad_port = state.kad_port();
     let eff_udp = state.udp_enabled();
     let eff_upnp = state.upnp.snapshot().await.enabled;
-    println!(
+    tracing::info!(
         "==> Effective ports: TCP {eff_ed2k_port}, UDP {eff_kad_port} (udp_enabled={eff_udp}, upnp={eff_upnp})"
     );
 
@@ -377,15 +426,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             "0.0.0.0"
         };
-        let inbound_bind_addr: std::net::SocketAddr =
-            format!("{inbound_bind_ip}:{eff_ed2k_port}").parse().unwrap();
+        let inbound_bind_addr: std::net::SocketAddr = format!("{inbound_bind_ip}:{eff_ed2k_port}")
+            .parse()
+            .unwrap();
         tokio::spawn(async move {
             match listener_svc.start(inbound_bind_addr).await {
                 Ok(bound) => {
-                    println!("==> Inbound eD2K TCP listener auto-started on {bound}");
+                    tracing::info!("==> Inbound eD2K TCP listener auto-started on {bound}");
                 }
                 Err(e) => {
-                    eprintln!("==> Warning: Failed to auto-start Inbound TCP listener on {inbound_bind_addr}: {e}");
+                    tracing::warn!(
+                        "==> Failed to auto-start Inbound TCP listener on {inbound_bind_addr}: {e}"
+                    );
                 }
             }
         });
@@ -420,10 +472,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_graceful_shutdown(async move {
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
-                    println!("\n==> Shutting down mule-daemon via Ctrl+C...");
+                    tracing::info!("==> Shutting down mule-daemon via Ctrl+C...");
                 }
                 _ = shutdown_notify.notified() => {
-                    println!("\n==> Shutting down mule-daemon via shutdown signal/watchdog...");
+                    tracing::info!("==> Shutting down mule-daemon via shutdown signal/watchdog...");
                 }
             }
             DaemonSession::remove(&data_dir_cleanup);
@@ -443,7 +495,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     DaemonSession::remove(&data_dir);
-    println!("==> mule-daemon exited cleanly.");
+    tracing::info!("==> mule-daemon exited cleanly.");
     Ok(())
 }
 
@@ -464,18 +516,18 @@ fn spawn_parent_watchdog(parent_pid: u32, shutdown_notify: std::sync::Arc<tokio:
         const SYNCHRONIZE: u32 = 0x00100000;
         let handle = unsafe { OpenProcess(SYNCHRONIZE, 0, parent_pid) };
         if handle.is_null() {
-            eprintln!(
+            tracing::warn!(
                 "==> Parent process PID {parent_pid} not running or inaccessible; initiating exit."
             );
             shutdown_notify.notify_waiters();
             return;
         }
-        println!("==> Watching parent process PID {parent_pid} for auto-teardown...");
+        tracing::info!("==> Watching parent process PID {parent_pid} for auto-teardown...");
         unsafe {
             WaitForSingleObject(handle, 0xFFFFFFFF);
             CloseHandle(handle);
         }
-        println!("==> Parent process PID {parent_pid} terminated. Initiating graceful daemon shutdown...");
+        tracing::info!("==> Parent process PID {parent_pid} terminated. Initiating graceful daemon shutdown...");
         shutdown_notify.notify_waiters();
     });
 }
@@ -483,12 +535,12 @@ fn spawn_parent_watchdog(parent_pid: u32, shutdown_notify: std::sync::Arc<tokio:
 #[cfg(not(windows))]
 fn spawn_parent_watchdog(parent_pid: u32, shutdown_notify: std::sync::Arc<tokio::sync::Notify>) {
     tokio::spawn(async move {
-        println!("==> Watching parent process PID {parent_pid} for auto-teardown...");
+        tracing::info!("==> Watching parent process PID {parent_pid} for auto-teardown...");
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             let exists = std::path::Path::new(&format!("/proc/{parent_pid}")).exists();
             if !exists {
-                println!("==> Parent process PID {parent_pid} terminated. Initiating graceful daemon shutdown...");
+                tracing::info!("==> Parent process PID {parent_pid} terminated. Initiating graceful daemon shutdown...");
                 shutdown_notify.notify_waiters();
                 break;
             }
@@ -507,8 +559,8 @@ fn resolve_web_dir(explicit: Option<PathBuf>) -> Option<PathBuf> {
         if dir.join("index.html").is_file() {
             return Some(dir);
         }
-        eprintln!(
-            "==> Warning: web dir '{}' has no index.html — web UI disabled",
+        tracing::warn!(
+            "==> Web dir '{}' has no index.html — web UI disabled",
             dir.display()
         );
         return None;

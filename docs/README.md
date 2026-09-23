@@ -1,6 +1,6 @@
-# Portail de Documentation — EMule-Rust 🚀
+# Portail de Documentation — eMule-Rust 🚀
 
-Bienvenue sur la documentation technique d'**EMule-Rust**, une réimplémentation moderne, modulaire et hautement sécurisée des protocoles **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur d'outils **Model Context Protocol (MCP)** pour agents IA.
+Bienvenue sur la documentation technique d'**eMule-Rust**, une réimplémentation moderne, modulaire et hautement sécurisée des protocoles **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur d'outils **Model Context Protocol (MCP)** pour agents IA.
 
 Le projet est architecturé en **Rust** (moteur de téléchargement, codec filaire, démon asynchrone Tokio et serveur MCP) et en **Flutter Desktop** (interface graphique Windows en Clean Architecture MVVM).
 
@@ -71,7 +71,7 @@ docs/
 * **[Rapport Global d'Architecture & d'Avancement](architecture/rapport_architecture_et_avancement.md)** : Vue d'ensemble détaillée des 7 crates Rust, du superviseur Flutter et de la Clean Architecture.
 * **[Protocole RPC du daemon](architecture/rpc_protocol.md)** : Contrat JSON-RPC 2.0/WebSocket — handshake, méthodes, events, codes d'erreur, versioning.
 * **[Plan UI multiplateforme](architecture/plan_ui_multiplateforme.md)** : Roadmap desktop/mobile/web en 10 phases (packages partagés, Riverpod, i18n).
-* **[Référence des Paramètres](SETTINGS.md)** : Toutes les clés `settings.*`/`limits.*` — défauts, effets, équivalents eMule — plus la journalisation du daemon (`daemon.log`, `RUST_LOG`).
+* **[Référence des Paramètres](SETTINGS.md)** : Toutes les clés `settings.*`/`limits.*` — défauts, effets, équivalents eMule — plus la journalisation du daemon (`logs/daemon.<date>.log` JSONL rotatif, `RUST_LOG`, `logLevel` à chaud).
 * **[Cartographie Globale des Fichiers](INDEX.md)** : Répertoire exhaustif de chaque fichier du dépôt.
 * **[Journal des Changements](CHANGELOG.md)** : Historique des versions et évolutions.
 

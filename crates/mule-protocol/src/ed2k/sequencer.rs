@@ -59,7 +59,7 @@ pub struct Ed2kDownloadSequencer {
     /// others so the file can be previewed while downloading
     /// (`CPartFile` gives them `PR_VERYHIGH` when preview is enabled).
     preview_priority: bool,
-    /// Swarm-healing hint (EMule-Rust extension): `part_scarcity[i]` = number
+    /// Swarm-healing hint (eMule-Rust extension): `part_scarcity[i]` = number
     /// of *known sources* offering part `i` across the whole swarm. When set,
     /// part selection prefers the rarest parts first (then least-received),
     /// so the daemon becomes a rescue source for parts about to disappear

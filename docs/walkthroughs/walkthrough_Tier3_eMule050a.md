@@ -1,6 +1,6 @@
 # Walkthrough - Interopérabilité Tier 3 avec eMule 0.50a Officiel
 
-Ce document certifie et consigne la résolution complète et le durcissement du handshake eD2K réel (Tier 3) entre notre implémentation Rust **EMule-Rust** et l'exécutable officiel de référence **eMule 0.50a** (`D:\eMule0.50a\emule.exe`, SHA-256 : `06cdf814387f627a4bd05a0c68211f715bfa952423e8e8a462e1f47c11a4d20e`), strictement confiné sur le loopback local `127.0.0.1`.
+Ce document certifie et consigne la résolution complète et le durcissement du handshake eD2K réel (Tier 3) entre notre implémentation Rust **eMule-Rust** et l'exécutable officiel de référence **eMule 0.50a** (`D:\eMule0.50a\emule.exe`, SHA-256 : `06cdf814387f627a4bd05a0c68211f715bfa952423e8e8a462e1f47c11a4d20e`), strictement confiné sur le loopback local `127.0.0.1`.
 
 ---
 
@@ -350,7 +350,7 @@ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; fini
 
 ## 8. Tier 3.4 : Transfert Réel d'un Premier Bloc Non Compressé Biparti (Single Bounded Block Transfer)
 
-Le jalon **Tier 3.4** accomplit le premier échange réel de charge utile (payload de données) entre l'exécutable officiel **eMule 0.50a** et notre client **EMule-Rust**, dans des conditions strictement bornées et hermétiques :
+Le jalon **Tier 3.4** accomplit le premier échange réel de charge utile (payload de données) entre l'exécutable officiel **eMule 0.50a** et notre client **eMule-Rust**, dans des conditions strictement bornées et hermétiques :
 - Fichier synthétique scellé : `tier3_status_fixture_9728001.bin` ($9\,728\,001\text{ octets}$, hash eD2K scellé : `695b81b1727666818988524bd7fc823c`).
 - Requête délimitée à un unique bloc standard : Part 0 Bloc 0, soit la plage `[0, 184_320)` ($184\,320\text{ octets}$).
 - Protocole : `PR_ED2K` (`0xE3`), paquets `OP_SENDINGPART` (`0x46`).

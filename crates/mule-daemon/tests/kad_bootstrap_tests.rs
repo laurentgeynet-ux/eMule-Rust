@@ -177,8 +177,7 @@ async fn test_bootstrap_drain_retries_candidates_until_success() {
                     tcp_port: 0,
                     version: 2,
                 }];
-                let res =
-                    KadCodec::encode_bootstrap_res(&b.kad_id, live_port, 2, &contacts);
+                let res = KadCodec::encode_bootstrap_res(&b.kad_id, live_port, 2, &contacts);
                 let _ = live_socket.send_to(&res, from_addr).await;
             }
         }

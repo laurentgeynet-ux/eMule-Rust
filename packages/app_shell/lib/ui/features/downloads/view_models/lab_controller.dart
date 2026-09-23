@@ -3,6 +3,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../l10n/l10n_lookup.dart';
 
@@ -42,6 +43,7 @@ class LabController extends ChangeNotifier {
       );
       notifyListeners();
     } catch (e) {
+      AppLogger.warn('lab', 'injectBytes failed', error: e);
       onError?.call(L10nLookup.current.msgErrInject(e));
       notifyListeners();
     }

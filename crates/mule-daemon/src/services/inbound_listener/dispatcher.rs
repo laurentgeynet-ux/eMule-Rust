@@ -3,6 +3,7 @@
 
 //! Request loop dispatching, secure identification, and upload servicing.
 
+use crate::services::peer_session::log_addr_str;
 use std::net::SocketAddr;
 
 use bytes::{Bytes, BytesMut};
@@ -47,9 +48,7 @@ fn ip_to_u32(ip: Option<std::net::IpAddr>) -> u32 {
 /// `ET_EXTENDEDREQUEST` `0x25`, eMule `ProcessMuleInfoPacket` →
 /// `m_byExtendedRequestsVer`). `None` quand le tag est absent.
 fn emule_info_ext_req_version(info: &mule_protocol::ed2k::Ed2kEmuleInfo) -> Option<u8> {
-    use mule_protocol::ed2k::tags::{
-        TagName, TagValue, TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST,
-    };
+    use mule_protocol::ed2k::tags::{TagName, TagValue, TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST};
     info.tags.iter().find_map(|t| {
         if !matches!(t.name, TagName::Id(TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST)) {
             return None;
@@ -127,7 +126,7 @@ impl InboundListenerService {
                     };
                     read_buf.extend_from_slice(&raw_buf[..n]);
                     if read_buf.len() > MAX_READ_BUFFER_SIZE {
-                        warn!("Inbound peer {} exceeded maximum read buffer size ({}), disconnecting", remote_str, MAX_READ_BUFFER_SIZE);
+                        warn!("Inbound peer {} exceeded maximum read buffer size ({}), disconnecting", log_addr_str(&remote_str), MAX_READ_BUFFER_SIZE);
                         break;
                     }
 
@@ -140,7 +139,7 @@ impl InboundListenerService {
                                             self.sui_stats.malformed_packets.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                             warn!(
                                                 "[SUI] Inbound peer {} sent oversized public key ({} bytes), ignoring",
-                                                remote_str, pk.key_bytes.len()
+                                                log_addr_str(&remote_str), pk.key_bytes.len()
                                             );
                                             continue;
                                         }
@@ -152,7 +151,7 @@ impl InboundListenerService {
                                         // RSASSA-PKCS1v15-SHA1 signature verification (OP_SIGNATURE).
                                         tracing::info!(
                                             "[SUI] Inbound peer {} sent public key ({} bytes, md4={}...)",
-                                            remote_str, pk.key_bytes.len(), &hash_hex[..16]
+                                            log_addr_str(&remote_str), pk.key_bytes.len(), &hash_hex[..16]
                                         );
 
                                         // Only issue a challenge if we hold a usable local identity:
@@ -162,7 +161,7 @@ impl InboundListenerService {
                                         else {
                                             warn!(
                                                 "[SUI] No local identity key, not issuing challenge to {}",
-                                                remote_str
+                                                log_addr_str(&remote_str)
                                             );
                                             continue;
                                         };
@@ -183,7 +182,7 @@ impl InboundListenerService {
                                             self.sui_stats.challenges_issued_in.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                             tracing::debug!(
                                                 "[SUI] Challenge issued to {} (state=1)",
-                                                remote_str
+                                                log_addr_str(&remote_str)
                                             );
                                         }
                                         if let (Some((state, ch)), Some(pk)) =
@@ -215,7 +214,7 @@ impl InboundListenerService {
                                                     pending_peer_challenge = Some((st.state, st.challenge));
                                                     tracing::debug!(
                                                         "[SUI] Inbound peer {} sent challenge (state={}) before its public key; deferred",
-                                                        remote_str, st.state
+                                                        log_addr_str(&remote_str), st.state
                                                     );
                                                 }
                                             }
@@ -223,7 +222,7 @@ impl InboundListenerService {
                                         Ok(_) => {}
                                         Err(e) => {
                                             self.sui_stats.malformed_packets.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                            warn!("[SUI] Malformed OP_SECIDENTSTATE from {}: {}", remote_str, e);
+                                            warn!("[SUI] Malformed OP_SECIDENTSTATE from {}: {}", log_addr_str(&remote_str), e);
                                         }
                                     }
                                 }
@@ -329,7 +328,7 @@ impl InboundListenerService {
                                             let _ = dl_svc.record_credit_upload(ph, &pub_hex, 0);
                                             tracing::info!(
                                                 "[SUI] Inbound peer {} signature VERIFIED (md4={}..., credit_multiplier={:.2})",
-                                                remote_str, &ph[..16.min(ph.len())], credit_multiplier
+                                                log_addr_str(&remote_str), &ph[..16.min(ph.len())], credit_multiplier
                                             );
                                         }
                                     } else {
@@ -339,7 +338,7 @@ impl InboundListenerService {
                                         }
                                         tracing::warn!(
                                             "[SUI] Inbound peer {} signature REJECTED: {}",
-                                            remote_str,
+                                            log_addr_str(&remote_str),
                                             reject_reason.unwrap_or("unknown")
                                         );
                                         remote_pubkey_hash = None;
@@ -391,7 +390,7 @@ impl InboundListenerService {
                                                 let _ = stream.write_all(&out).await;
                                                 tracing::info!(
                                                     "[AICH] Served master hash to {} for {}",
-                                                    remote_str, hash_hex
+                                                    log_addr_str(&remote_str), hash_hex
                                                 );
                                             }
                                         }
@@ -454,12 +453,12 @@ impl InboundListenerService {
                                             if answer.recovery.is_some() {
                                                 tracing::info!(
                                                     "[AICH] Served recovery data for part {} of {} to {}",
-                                                    req.part, hash_hex, remote_str
+                                                    req.part, hash_hex, log_addr_str(&remote_str)
                                                 );
                                             } else {
                                                 tracing::debug!(
                                                     "[AICH] Could not serve recovery for part {} of {} to {} (failed answer sent)",
-                                                    req.part, hash_hex, remote_str
+                                                    req.part, hash_hex, log_addr_str(&remote_str)
                                                 );
                                             }
                                         }
@@ -490,7 +489,7 @@ impl InboundListenerService {
                                                 match ku.send_firewall_udp(t1, error_code, intern).await {
                                                     Ok(()) => tracing::debug!(
                                                         "Kad FW check: sent FIREWALLUDP to {} for peer {}",
-                                                        t1, remote_str
+                                                        t1, log_addr_str(&remote_str)
                                                     ),
                                                     Err(e) => tracing::debug!(
                                                         "Kad FW check: failed FIREWALLUDP to {}: {}", t1, e
@@ -524,7 +523,7 @@ impl InboundListenerService {
                                                 .collect();
                                             tracing::info!(
                                                 "Inbound peer {} sent {} (client_ver=0x{:02X}, proto_ver=0x{:02X}, tags=[{}], unknown_tags={})",
-                                                remote_str,
+                                                log_addr_str(&remote_str),
                                                 if pkt.opcode == OP_EMULE_INFO {
                                                     "OP_EMULEINFO"
                                                 } else {
@@ -572,7 +571,7 @@ impl InboundListenerService {
                                         Err(e) => {
                                             tracing::debug!(
                                                 "Inbound peer {} sent malformed OP_EMULEINFO, ignored: {e}",
-                                                remote_str
+                                                log_addr_str(&remote_str)
                                             );
                                         }
                                     }
@@ -609,7 +608,7 @@ impl InboundListenerService {
                                         Err(e) => {
                                             warn!(
                                                 "Inbound peer {} sent malformed SX request: {e}",
-                                                remote_str
+                                                log_addr_str(&remote_str)
                                             );
                                         }
                                     }
@@ -642,7 +641,7 @@ impl InboundListenerService {
                                         Err(e) => {
                                             warn!(
                                                 "Inbound peer {} sent malformed multipacket: {e}",
-                                                remote_str
+                                                log_addr_str(&remote_str)
                                             );
                                         }
                                     }
@@ -794,7 +793,7 @@ impl InboundListenerService {
                                             tracing::info!(
                                                 "[HASHSET] Served {} part hashes to {} for {}",
                                                 answer.part_hashes.len(),
-                                                remote_str,
+                                                log_addr_str(&remote_str),
                                                 hash_hex
                                             );
                                         }
@@ -807,7 +806,7 @@ impl InboundListenerService {
                                 // upload slot immediately and drop the socket.
                                 tracing::info!(
                                     "[UPLOAD] Inbound peer {} sent OP_CANCELTRANSFER, releasing upload slot",
-                                    remote_str
+                                    log_addr_str(&remote_str)
                                 );
                                 self.upload_manager.release_slot(&client_key).await;
                                 return;
@@ -817,7 +816,7 @@ impl InboundListenerService {
                                 // pending block requests for this file.
                                 tracing::debug!(
                                     "Inbound peer {} sent OP_OUTOFPARTS",
-                                    remote_str
+                                    log_addr_str(&remote_str)
                                 );
                             }
                             OP_STARTUPLOADREQ => {
@@ -838,10 +837,10 @@ impl InboundListenerService {
 
                                     tracing::info!(
                                         "[UPLOAD_REQUEST] Inbound peer {} requested upload slot for file '{}' (hash: {})",
-                                        remote_str, shared_file.file_name, hash_hex
+                                        log_addr_str(&remote_str), shared_file.file_name, hash_hex
                                     );
 
-                                    // Mode paranoid (EMule-Rust) : ne servir
+                                    // Mode paranoid (eMule-Rust) : ne servir
                                     // que les pairs obfusqués et dont la
                                     // signature SUI a été vérifiée.
                                     if self.paranoid_mode.load(std::sync::atomic::Ordering::Relaxed)
@@ -849,7 +848,7 @@ impl InboundListenerService {
                                     {
                                         tracing::warn!(
                                             "[PARANOID] Inbound peer {} denied upload slot (obfuscated={}, sui_verified={})",
-                                            remote_str, stream.is_obfuscated(), sui_verified
+                                            log_addr_str(&remote_str), stream.is_obfuscated(), sui_verified
                                         );
                                         continue;
                                     }
@@ -945,7 +944,7 @@ impl InboundListenerService {
 
                                                  tracing::info!(
                                                      "[UPLOAD_REQUEST] Inbound peer {} requested block [{}..{}] for file '{}' (hash: {})",
-                                                     remote_str, start, end, shared_file.file_name, hash_hex
+                                                     log_addr_str(&remote_str), start, end, shared_file.file_name, hash_hex
                                                  );
 
                                                  // Rate limit pacing via network policy upload token bucket.
@@ -1064,7 +1063,7 @@ impl InboundListenerService {
                                                      if sent {
                                                          tracing::info!(
                                                              "[UPLOAD_BLOCK] Sent compressed block ({} -> {} bytes) to {} for file '{}' (offset {}..{})",
-                                                             payload.len(), compressed.len(), remote_str, shared_file.file_name, start, start + length
+                                                             payload.len(), compressed.len(), log_addr_str(&remote_str), shared_file.file_name, start, start + length
                                                          );
                                                          self.upload_manager.update_progress(&client_key, length).await;
                                                          if shared_file.file_size > 0 && (start + length) <= shared_file.file_size {
@@ -1075,7 +1074,7 @@ impl InboundListenerService {
                                                                      let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length);
                                                                      tracing::info!(
                                                                          "[CREDITS_AWARDED] Awarded {} uploaded bytes to verified peer {} (pubkey hash: {}, total: {} bytes)",
-                                                                         length, remote_str, ph, total_up
+                                                                         length, log_addr_str(&remote_str), ph, total_up
                                                                      );
                                                                  }
                                                              }
@@ -1114,7 +1113,7 @@ impl InboundListenerService {
 
                                                      tracing::info!(
                                                          "[UPLOAD_BLOCK] Sent {} bytes to {} for file '{}' (offset {}..{})",
-                                                         length, remote_str, shared_file.file_name, start, start + length
+                                                         length, log_addr_str(&remote_str), shared_file.file_name, start, start + length
                                                      );
 
                                                      self.upload_manager.update_progress(&client_key, length).await;
@@ -1127,7 +1126,7 @@ impl InboundListenerService {
                                                                 let total_up = dl_svc.get_peer_credit(ph).ok().flatten().map(|c| c.uploaded_bytes).unwrap_or(length);
                                                                 tracing::info!(
                                                                     "[CREDITS_AWARDED] Awarded {} uploaded bytes to verified peer {} (pubkey hash: {}, total: {} bytes)",
-                                                                    length, remote_str, ph, total_up
+                                                                    length, log_addr_str(&remote_str), ph, total_up
                                                                 );
                                                             }
                                                         }
@@ -1263,8 +1262,7 @@ impl InboundListenerService {
                 } else {
                     (0..part_count).collect()
                 };
-                let mut mask =
-                    vec![0u8; mule_protocol::ed2k::expected_mask_bytes(part_count)];
+                let mut mask = vec![0u8; mule_protocol::ed2k::expected_mask_bytes(part_count)];
                 for p in avail {
                     mask[(p / 8) as usize] |= 1 << (p % 8);
                 }
@@ -1301,7 +1299,10 @@ impl InboundListenerService {
                 let _ = stream.write_all(&out).await;
             }
             Err(e) => {
-                warn!("Failed to encode multipacket answer for {remote_str}: {e}");
+                warn!(
+                    "Failed to encode multipacket answer for {peer}: {e}",
+                    peer = log_addr_str(remote_str)
+                );
             }
         }
     }
@@ -1387,7 +1388,11 @@ impl InboundListenerService {
                     out.push(pk_pkt.opcode);
                     out.extend_from_slice(&pk_pkt.payload);
                     if let Err(e) = stream.write_all(&out).await {
-                        warn!("[SUI] Failed to send OP_PUBLICKEY to {}: {}", remote_str, e);
+                        warn!(
+                            "[SUI] Failed to send OP_PUBLICKEY to {}: {}",
+                            log_addr_str(remote_str),
+                            e
+                        );
                         return;
                     }
                 }
@@ -1405,7 +1410,8 @@ impl InboundListenerService {
             Err(e) => {
                 warn!(
                     "[SUI] Failed to build signing payload for {}: {}",
-                    remote_str, e
+                    log_addr_str(remote_str),
+                    e
                 );
                 return;
             }
@@ -1431,16 +1437,24 @@ impl InboundListenerService {
                                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             tracing::info!(
                                 "[SUI] Answered challenge from inbound peer {} (state={}, V1 signature)",
-                                remote_str, state
+                                log_addr_str(remote_str), state
                             );
                         }
                         Err(e) => {
-                            warn!("[SUI] Failed to send OP_SIGNATURE to {}: {}", remote_str, e)
+                            warn!(
+                                "[SUI] Failed to send OP_SIGNATURE to {}: {}",
+                                log_addr_str(remote_str),
+                                e
+                            )
                         }
                     }
                 }
             }
-            Err(e) => warn!("[SUI] Failed to sign challenge from {}: {}", remote_str, e),
+            Err(e) => warn!(
+                "[SUI] Failed to sign challenge from {}: {}",
+                log_addr_str(remote_str),
+                e
+            ),
         }
     }
 }

@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Automated Phase 7.3 E2E QA loopback test for the packaged EMule-Rust distribution.
+    Automated Phase 7.3 E2E QA loopback test for the packaged eMule-Rust distribution.
 .DESCRIPTION
     Phase 7.3 - Industrialisation Locale et Validation E2E QA:
     Executes in a sterile, temporary directory outside the Git repository:

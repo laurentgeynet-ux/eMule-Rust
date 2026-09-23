@@ -11,6 +11,7 @@
 //! cannot answer at all. Converging with `find_node` first yields live,
 //! actually-close contacts.
 
+use crate::services::peer_session::log_peer_ip;
 use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -107,7 +108,7 @@ pub async fn converge_closest_contacts(
                 } else if table.mark_failed(&contact.kad_id) {
                     tracing::debug!(
                         "Kad: contact {}:{} evicted after repeated unresponsive queries",
-                        contact.ip,
+                        log_peer_ip(contact.ip),
                         contact.udp_port
                     );
                 }
@@ -121,8 +122,9 @@ pub async fn converge_closest_contacts(
                 let cat = classify_ip(IpAddr::V4(c.ip));
                 let policy_allowed = match profile {
                     NetworkProfile::LocalLab => cat == IpCategory::Loopback,
-                    NetworkProfile::PublicEd2kPreview
-                    | NetworkProfile::PublicEd2kKadPreview => cat == IpCategory::PublicRoutable,
+                    NetworkProfile::PublicEd2kPreview | NetworkProfile::PublicEd2kKadPreview => {
+                        cat == IpCategory::PublicRoutable
+                    }
                 };
                 if policy_allowed && ip_filter.check_ip(IpAddr::V4(c.ip)).is_none() {
                     // eMule semantics: a contact learned from a routing

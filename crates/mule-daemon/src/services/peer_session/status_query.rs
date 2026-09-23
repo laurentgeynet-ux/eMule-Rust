@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+use crate::services::peer_session::log_peer_addr;
 use bytes::BytesMut;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
@@ -50,27 +51,32 @@ pub(crate) async fn handle_hashset_answer(
         Ok(ans) => {
             if ans.file_hash != dl_hash_bytes {
                 tracing::warn!(
-                    "Peer {target_addr} sent OP_HASHSETANSWER for a different file hash, ignoring"
+                    "Peer {peer} sent OP_HASHSETANSWER for a different file hash, ignoring",
+                    peer = log_peer_addr(target_addr)
                 );
                 return true;
             }
             let mut dl_svc = downloads.lock().await;
             if let Err(e) = dl_svc.store_part_hashes_by_hash(file_hash_str, &ans.part_hashes) {
                 tracing::warn!(
-                    "Failed to persist hashset from {target_addr} for {file_hash_str}: {e}"
+                    "Failed to persist hashset from {peer} for {file_hash_str}: {e}",
+                    peer = log_peer_addr(target_addr)
                 );
             } else {
                 info!(
                     "Stored hashset ({} part hashes) for {} from peer {}",
                     ans.part_hashes.len(),
                     file_hash_str,
-                    target_addr
+                    log_peer_addr(target_addr)
                 );
             }
             true
         }
         Err(e) => {
-            tracing::warn!("Malformed OP_HASHSETANSWER from {target_addr}: {e}");
+            tracing::warn!(
+                "Malformed OP_HASHSETANSWER from {peer}: {e}",
+                peer = log_peer_addr(target_addr)
+            );
             true
         }
     }
@@ -129,7 +135,10 @@ pub(crate) async fn send_pending_aich_requests(
         match encoder.encode_aich_request(&req) {
             Ok(pkt) => {
                 if let Err(e) = write_packet(stream, &pkt).await {
-                    tracing::warn!("Failed to send OP_AICHREQUEST to {target_addr}: {e}");
+                    tracing::warn!(
+                        "Failed to send OP_AICHREQUEST to {peer}: {e}",
+                        peer = log_peer_addr(target_addr)
+                    );
                     let mut dl_svc = downloads.lock().await;
                     if let Some(snap) = dl_svc.find_by_ed2k_hash(file_hash_str) {
                         dl_svc.fail_aich_recovery(&snap.id, part);
@@ -137,7 +146,8 @@ pub(crate) async fn send_pending_aich_requests(
                     break;
                 }
                 tracing::info!(
-                    "Sent OP_AICHREQUEST for part {part} of {file_hash_str} to {target_addr}"
+                    "Sent OP_AICHREQUEST for part {part} of {file_hash_str} to {peer}",
+                    peer = log_peer_addr(target_addr)
                 );
             }
             Err(e) => {
@@ -170,7 +180,8 @@ pub(crate) async fn handle_aich_file_hash_res(
         Ok(res) => {
             if res.file_hash != dl_hash_bytes {
                 tracing::warn!(
-                    "Peer {target_addr} sent OP_AICHFILEHASHANS for a different file hash, ignoring"
+                    "Peer {peer} sent OP_AICHFILEHASHANS for a different file hash, ignoring",
+                    peer = log_peer_addr(target_addr)
                 );
                 return true;
             }
@@ -183,7 +194,8 @@ pub(crate) async fn handle_aich_file_hash_res(
             match outcome {
                 Some(crate::services::downloads::operations::AichVoteOutcome::Trusted) => {
                     tracing::info!(
-                        "AICH master hash for {file_hash_str} confirmed by {target_addr}"
+                        "AICH master hash for {file_hash_str} confirmed by {peer}",
+                        peer = log_peer_addr(target_addr)
                     );
                     send_pending_aich_requests(
                         stream,
@@ -198,20 +210,24 @@ pub(crate) async fn handle_aich_file_hash_res(
                 }
                 Some(crate::services::downloads::operations::AichVoteOutcome::Mismatch) => {
                     tracing::warn!(
-                        "Peer {target_addr} reported a different AICH master hash for {file_hash_str}"
+                        "Peer {peer} reported a different AICH master hash for {file_hash_str}",
+                        peer = log_peer_addr(target_addr)
                     );
                 }
                 Some(crate::services::downloads::operations::AichVoteOutcome::Untrusted) => {
                     tracing::debug!(
-                        "AICH root vote from {target_addr} recorded for {file_hash_str} (no consensus yet)"
-                    );
+                        "AICH root vote from {peer} recorded for {file_hash_str} (no consensus yet)"
+                    , peer = log_peer_addr(target_addr));
                 }
                 None => {}
             }
             true
         }
         Err(e) => {
-            tracing::warn!("Malformed OP_AICHFILEHASHANS from {target_addr}: {e}");
+            tracing::warn!(
+                "Malformed OP_AICHFILEHASHANS from {peer}: {e}",
+                peer = log_peer_addr(target_addr)
+            );
             true
         }
     }
@@ -239,7 +255,8 @@ pub(crate) async fn handle_aich_answer(
         Ok(ans) => {
             if ans.file_hash != dl_hash_bytes {
                 tracing::warn!(
-                    "Peer {target_addr} sent OP_AICHANSWER for a different file hash, ignoring"
+                    "Peer {peer} sent OP_AICHANSWER for a different file hash, ignoring",
+                    peer = log_peer_addr(target_addr)
                 );
                 return true;
             }
@@ -266,24 +283,28 @@ pub(crate) async fn handle_aich_answer(
                         Ok(report) => {
                             if report.corrupted_blocks == 0 {
                                 info!(
-                                    "AICH recovery from {target_addr}: part {} of {file_hash_str} fully verified",
+                                    "AICH recovery from {peer}: part {} of {file_hash_str} fully verified",
                                     report.part
-                                );
+                                , peer = log_peer_addr(target_addr));
                             } else {
                                 info!(
-                                    "AICH recovery from {target_addr}: part {} of {file_hash_str}, {} corrupted block(s) evicted",
+                                    "AICH recovery from {peer}: part {} of {file_hash_str}, {} corrupted block(s) evicted",
                                     report.part, report.corrupted_blocks
-                                );
+                                , peer = log_peer_addr(target_addr));
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("AICH recovery from {target_addr} rejected: {e}");
+                            tracing::warn!(
+                                "AICH recovery from {peer} rejected: {e}",
+                                peer = log_peer_addr(target_addr)
+                            );
                         }
                     }
                 }
                 (Some(id), None) => {
                     tracing::warn!(
-                        "Peer {target_addr} could not serve AICH recovery for {file_hash_str}"
+                        "Peer {peer} could not serve AICH recovery for {file_hash_str}",
+                        peer = log_peer_addr(target_addr)
                     );
                     // The part index is not echoed in a failed answer; fail the
                     // most recently sent request.
@@ -305,7 +326,10 @@ pub(crate) async fn handle_aich_answer(
             true
         }
         Err(e) => {
-            tracing::warn!("Malformed OP_AICHANSWER from {target_addr}: {e}");
+            tracing::warn!(
+                "Malformed OP_AICHANSWER from {peer}: {e}",
+                peer = log_peer_addr(target_addr)
+            );
             true
         }
     }
@@ -341,7 +365,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
 
     info!(
         "Peer {} handshake completed. Requesting file status for {file_hash_str}...",
-        target_addr
+        log_peer_addr(target_addr)
     );
 
     // 4a. Send OP_REQFILENAME. Quand le pair a négocié ExtendedRequestsVersion
@@ -460,10 +484,14 @@ pub(crate) async fn query_file_status_and_enter_queue(
                 out_wire.push(hs_pkt.opcode);
                 out_wire.extend_from_slice(&hs_pkt.payload);
                 if let Err(e) = stream.write_all(&out_wire).await {
-                    tracing::warn!("Failed to send OP_HASHSETREQUEST to {target_addr}: {e}");
+                    tracing::warn!(
+                        "Failed to send OP_HASHSETREQUEST to {peer}: {e}",
+                        peer = log_peer_addr(target_addr)
+                    );
                 } else {
                     tracing::info!(
-                        "Sent OP_HASHSETREQUEST to peer {target_addr} for {file_hash_str}"
+                        "Sent OP_HASHSETREQUEST to peer {peer} for {file_hash_str}",
+                        peer = log_peer_addr(target_addr)
                     );
                 }
             }
@@ -490,10 +518,14 @@ pub(crate) async fn query_file_status_and_enter_queue(
             match encoder.encode_aich_file_hash_req(&req) {
                 Ok(pkt) => {
                     if let Err(e) = write_packet(stream, &pkt).await {
-                        tracing::warn!("Failed to send OP_AICHFILEHASHREQ to {target_addr}: {e}");
+                        tracing::warn!(
+                            "Failed to send OP_AICHFILEHASHREQ to {peer}: {e}",
+                            peer = log_peer_addr(target_addr)
+                        );
                     } else {
                         tracing::info!(
-                            "Sent OP_AICHFILEHASHREQ to peer {target_addr} for {file_hash_str}"
+                            "Sent OP_AICHFILEHASHREQ to peer {peer} for {file_hash_str}",
+                            peer = log_peer_addr(target_addr)
                         );
                     }
                 }
@@ -620,7 +652,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                         Err(e) => return Err(PeerError::new(PeerFailureReason::CorruptedData, format!("Malformed OP_FILESTATUS: {e}"))),
                                     }
                                 } else if packet.opcode == OP_REQFILENAME_ANSWER {
-                                    tracing::debug!("Peer {target_addr} sent OP_REQFILENAME_ANSWER (len={})", packet.payload.len());
+                                    tracing::debug!("Peer {peer} sent OP_REQFILENAME_ANSWER (len={})", packet.payload.len(), peer = log_peer_addr(target_addr));
                                 } else if packet.opcode == OP_QUEUERANKING {
                                     let rank = if packet.payload.len() >= 4 {
                                         u32::from_le_bytes(packet.payload[..4].try_into().unwrap_or([0, 0, 0, 0]))
@@ -629,7 +661,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                     } else {
                                         0
                                     };
-                                    tracing::info!("Peer {target_addr} responded with queue ranking {rank} during status query");
+                                    tracing::info!("Peer {peer} responded with queue ranking {rank} during status query", peer = log_peer_addr(target_addr));
                                     let queue_update = {
                                         let mut g = inner.lock().await;
                                         if let Some(session) = g.sessions.get_mut(address_str) {
@@ -649,7 +681,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                     });
                                     break;
                                 } else if packet.opcode == OP_ACCEPTUPLOADREQ {
-                                    tracing::info!("Peer {target_addr} directly accepted upload slot (OP_ACCEPTUPLOADREQ) during status query!");
+                                    tracing::info!("Peer {peer} directly accepted upload slot (OP_ACCEPTUPLOADREQ) during status query!", peer = log_peer_addr(target_addr));
                                     file_status_opt = Some(mule_protocol::ed2k::Ed2kFileStatus {
                                         file_hash: dl_hash_bytes,
                                         part_count: 0,
@@ -712,18 +744,17 @@ pub(crate) async fn query_file_status_and_enter_queue(
                 total_size.div_ceil(part_size).max(1) as u32
             };
             (0..total_parts).any(|p| {
-                u16::try_from(p).is_ok_and(|pi| file_status.availability_mask.has_part(pi))
-                    && {
-                        let start = p as u64 * part_size;
-                        let end = ((p as u64 + 1) * part_size).min(total_size);
-                        completed.iter().fold(start, |acc, &(s, e)| {
-                            if s <= acc && e > acc {
-                                acc.max(e.min(end))
-                            } else {
-                                acc
-                            }
-                        }) < end
-                    }
+                u16::try_from(p).is_ok_and(|pi| file_status.availability_mask.has_part(pi)) && {
+                    let start = p as u64 * part_size;
+                    let end = ((p as u64 + 1) * part_size).min(total_size);
+                    completed.iter().fold(start, |acc, &(s, e)| {
+                        if s <= acc && e > acc {
+                            acc.max(e.min(end))
+                        } else {
+                            acc
+                        }
+                    }) < end
+                }
             })
         };
         if !has_needed_part {
@@ -749,7 +780,8 @@ pub(crate) async fn query_file_status_and_enter_queue(
     // 6. Send OP_STARTUPLOADREQ
     info!(
         "Requesting upload slot via OP_STARTUPLOADREQ for file {} from peer {}",
-        file_hash_str, target_addr
+        file_hash_str,
+        log_peer_addr(target_addr)
     );
     out_wire.clear();
     out_wire.push(PR_ED2K);
@@ -817,7 +849,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                     Ok(0) => {
                         let rank = inner.lock().await.sessions.get(address_str).and_then(|s| s.snapshot.queue_rank);
                         if let Some(r) = rank {
-                            info!("Peer {target_addr} closed connection while we are in queue (rank {r}). Scheduled re-ask in 15 minutes.");
+                            info!("Peer {peer} closed connection while we are in queue (rank {r}). Scheduled re-ask in 15 minutes.", peer = log_peer_addr(target_addr));
                             return Err(PeerError::new(PeerFailureReason::ConnectRefused, "Disconnected in queue"));
                         } else {
                             return Err(PeerError::new(PeerFailureReason::ConnectRefused, "Peer closed connection while in queue"));
@@ -843,7 +875,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                 continue;
                             }
                             if packet.protocol == PR_ED2K && packet.opcode == OP_ACCEPTUPLOADREQ {
-                                info!("Upload slot accepted (OP_ACCEPTUPLOADREQ) by peer {}", target_addr);
+                                info!("Upload slot accepted (OP_ACCEPTUPLOADREQ) by peer {}", log_peer_addr(target_addr));
                                 break 'queue_loop;
                             } else if (packet.protocol == PR_ED2K || packet.protocol == PR_EMULE) && packet.opcode == OP_QUEUERANKING {
                                 let rank = if packet.payload.len() >= 4 {
@@ -853,7 +885,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                 } else {
                                     0
                                 };
-                                info!("Queue rank from peer {}: {}", target_addr, rank);
+                                info!("Queue rank from peer {}: {}", log_peer_addr(target_addr), rank);
                                 let queue_update = {
                                     let mut g = inner.lock().await;
                                     if let Some(session) = g.sessions.get_mut(address_str) {

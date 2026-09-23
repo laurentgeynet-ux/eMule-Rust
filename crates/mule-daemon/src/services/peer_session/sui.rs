@@ -10,6 +10,7 @@
 //! `OP_PUBLICKEY` packet; without it the payload cannot be built, matching
 //! eMule which requires the verifier's key.
 
+use crate::services::peer_session::log_peer_addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -120,12 +121,14 @@ impl OutboundSui {
                         self.challenge_issued = Some(challenge);
                         self.bump(|s| &s.challenges_issued_out);
                         tracing::debug!(
-                            "[SUI] Sent OP_SECIDENTSTATE challenge to {target_addr} (state=2)"
+                            "[SUI] Sent OP_SECIDENTSTATE challenge to {peer} (state=2)",
+                            peer = log_peer_addr(target_addr)
                         );
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "[SUI] Failed to send OP_SECIDENTSTATE to {target_addr}: {e}"
+                            "[SUI] Failed to send OP_SECIDENTSTATE to {peer}: {e}",
+                            peer = log_peer_addr(target_addr)
                         )
                     }
                 }
@@ -166,7 +169,10 @@ impl OutboundSui {
                 out.push(pk_pkt.opcode);
                 out.extend_from_slice(&pk_pkt.payload);
                 if let Err(e) = stream.write_all(&out).await {
-                    tracing::warn!("[SUI] Failed to send OP_PUBLICKEY to {target_addr}: {e}");
+                    tracing::warn!(
+                        "[SUI] Failed to send OP_PUBLICKEY to {peer}: {e}",
+                        peer = log_peer_addr(target_addr)
+                    );
                     return;
                 }
             }
@@ -181,7 +187,10 @@ impl OutboundSui {
         ) {
             Ok(p) => p,
             Err(e) => {
-                tracing::warn!("[SUI] Failed to build signing payload for {target_addr}: {e}");
+                tracing::warn!(
+                    "[SUI] Failed to build signing payload for {peer}: {e}",
+                    peer = log_peer_addr(target_addr)
+                );
                 return;
             }
         };
@@ -204,17 +213,21 @@ impl OutboundSui {
                             self.answered = true;
                             self.bump(|s| &s.signatures_sent);
                             tracing::info!(
-                                "[SUI] Answered challenge from peer {target_addr} (state={}, V1 signature)",
+                                "[SUI] Answered challenge from peer {peer} (state={}, V1 signature)",
                                 state
-                            );
+                            , peer = log_peer_addr(target_addr));
                         }
                         Err(e) => tracing::warn!(
-                            "[SUI] Failed to send OP_SIGNATURE to {target_addr}: {e}"
+                            "[SUI] Failed to send OP_SIGNATURE to {peer}: {e}",
+                            peer = log_peer_addr(target_addr)
                         ),
                     }
                 }
             }
-            Err(e) => tracing::warn!("[SUI] Failed to sign challenge from {target_addr}: {e}"),
+            Err(e) => tracing::warn!(
+                "[SUI] Failed to sign challenge from {peer}: {e}",
+                peer = log_peer_addr(target_addr)
+            ),
         }
     }
 
@@ -237,8 +250,9 @@ impl OutboundSui {
                 {
                     Ok(pk) if pk.key_bytes.len() <= MAX_PUBKEY_WIRE => {
                         tracing::debug!(
-                            "[SUI] Peer {target_addr} sent its public key ({} bytes)",
-                            pk.key_bytes.len()
+                            "[SUI] Peer {peer} sent its public key ({} bytes)",
+                            pk.key_bytes.len(),
+                            peer = log_peer_addr(target_addr)
                         );
                         self.peer_pubkey_der = Some(pk.key_bytes.to_vec());
                         if let Some((state, challenge)) = self.pending_challenge.take() {
@@ -249,13 +263,17 @@ impl OutboundSui {
                     Ok(pk) => {
                         self.bump(|s| &s.malformed_packets);
                         tracing::warn!(
-                            "[SUI] Peer {target_addr} sent oversized public key ({} bytes), ignoring",
-                            pk.key_bytes.len()
+                            "[SUI] Peer {peer} sent oversized public key ({} bytes), ignoring",
+                            pk.key_bytes.len(),
+                            peer = log_peer_addr(target_addr)
                         );
                     }
                     Err(e) => {
                         self.bump(|s| &s.malformed_packets);
-                        tracing::warn!("[SUI] Malformed OP_PUBLICKEY from {target_addr}: {e}");
+                        tracing::warn!(
+                            "[SUI] Malformed OP_PUBLICKEY from {peer}: {e}",
+                            peer = log_peer_addr(target_addr)
+                        );
                     }
                 }
                 true
@@ -269,7 +287,10 @@ impl OutboundSui {
                 ) {
                     Ok(st) => st,
                     Err(e) => {
-                        tracing::warn!("[SUI] Malformed OP_SECIDENTSTATE from {target_addr}: {e}");
+                        tracing::warn!(
+                            "[SUI] Malformed OP_SECIDENTSTATE from {peer}: {e}",
+                            peer = log_peer_addr(target_addr)
+                        );
                         return true;
                     }
                 };
@@ -278,7 +299,8 @@ impl OutboundSui {
                 }
                 if self.identity.is_none() {
                     tracing::debug!(
-                        "[SUI] Peer {target_addr} challenged us but no local identity key"
+                        "[SUI] Peer {peer} challenged us but no local identity key",
+                        peer = log_peer_addr(target_addr)
                     );
                     return true;
                 }
@@ -287,9 +309,9 @@ impl OutboundSui {
                     // park it and answer when the key arrives.
                     self.pending_challenge = Some((st.state, st.challenge));
                     tracing::debug!(
-                        "[SUI] Peer {target_addr} sent challenge (state={}) before its public key; deferred",
+                        "[SUI] Peer {peer} sent challenge (state={}) before its public key; deferred",
                         st.state
-                    );
+                    , peer = log_peer_addr(target_addr));
                     return true;
                 }
                 self.answer_challenge(st.state, st.challenge, target_addr, encoder, stream)
@@ -301,7 +323,8 @@ impl OutboundSui {
                 // challenge. Payload: `our_pubkey || challenge [|| ip || kind]`.
                 let Some(challenge) = self.challenge_issued.take() else {
                     tracing::debug!(
-                        "[SUI] Peer {target_addr} sent OP_SIGNATURE but we issued no challenge"
+                        "[SUI] Peer {peer} sent OP_SIGNATURE but we issued no challenge",
+                        peer = log_peer_addr(target_addr)
                     );
                     return true;
                 };
@@ -309,7 +332,10 @@ impl OutboundSui {
                     return true;
                 };
                 let Some(peer_der) = self.peer_pubkey_der.clone() else {
-                    tracing::warn!("[SUI] Peer {target_addr} signed but never sent its public key");
+                    tracing::warn!(
+                        "[SUI] Peer {peer} signed but never sent its public key",
+                        peer = log_peer_addr(target_addr)
+                    );
                     return true;
                 };
                 let sig = match decoder.decode_signature(
@@ -322,7 +348,10 @@ impl OutboundSui {
                     Err(e) => {
                         self.bump(|s| &s.malformed_packets);
                         self.bump(|s| &s.signatures_rejected);
-                        tracing::warn!("[SUI] Malformed OP_SIGNATURE from {target_addr}: {e}");
+                        tracing::warn!(
+                            "[SUI] Malformed OP_SIGNATURE from {peer}: {e}",
+                            peer = log_peer_addr(target_addr)
+                        );
                         return true;
                     }
                 };
@@ -346,7 +375,10 @@ impl OutboundSui {
                     Some(10) => (local_ip_u32, SecureIdentVersion::V2), // REMOTECLIENT: our IP
                     Some(30) => (0, SecureIdentVersion::V2),           // NONECLIENT
                     Some(_) => {
-                        tracing::warn!("[SUI] Peer {target_addr} used invalid IP-binding kind");
+                        tracing::warn!(
+                            "[SUI] Peer {peer} used invalid IP-binding kind",
+                            peer = log_peer_addr(target_addr)
+                        );
                         return true;
                     }
                     None => (0, SecureIdentVersion::V1),
@@ -366,11 +398,17 @@ impl OutboundSui {
                     Ok(()) => {
                         self.bump(|s| &s.signatures_verified);
                         self.peer_verified = true;
-                        tracing::info!("[SUI] Peer {target_addr} signature VERIFIED ({version:?})");
+                        tracing::info!(
+                            "[SUI] Peer {peer} signature VERIFIED ({version:?})",
+                            peer = log_peer_addr(target_addr)
+                        );
                     }
                     Err(e) => {
                         self.bump(|s| &s.signatures_rejected);
-                        tracing::warn!("[SUI] Peer {target_addr} signature REJECTED: {e}");
+                        tracing::warn!(
+                            "[SUI] Peer {peer} signature REJECTED: {e}",
+                            peer = log_peer_addr(target_addr)
+                        );
                     }
                 }
                 true

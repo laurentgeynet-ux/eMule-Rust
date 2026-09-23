@@ -80,8 +80,7 @@ pub async fn handle_network_disconnect_all(state: &AppState) -> Result<Value, Js
 }
 
 pub async fn handle_network_enable(state: &AppState) -> Result<Value, JsonRpcError> {
-    let was_disabled =
-        state.network_policy.state() == mule_network_policy::NetworkState::Disabled;
+    let was_disabled = state.network_policy.state() == mule_network_policy::NetworkState::Disabled;
     state.network_policy.enable();
     if was_disabled {
         // `enable()` vient de créer un nouveau cancel token : redémarrer
@@ -340,10 +339,7 @@ pub async fn handle_limits_set(
         // est son plafond (`LastCommonRouteFinder` borne la limite
         // dynamique à MaxUpload). 0 = plafond illimité.
         if state.uss.snapshot().enabled {
-            state
-                .uss
-                .update_config(|c| c.max_upload_bps = ul_cfg)
-                .await;
+            state.uss.update_config(|c| c.max_upload_bps = ul_cfg).await;
         }
     }
     state.uss.note_manual_download_limit(dl_cfg);
@@ -352,10 +348,8 @@ pub async fn handle_limits_set(
     // plafonné à coef×upload quand l'upload < 20 Ko/s. Le persisté garde
     // la valeur configurée ; seul le bucket reçoit l'effectif.
     cfg.upload_bytes_per_sec = ul_cfg;
-    cfg.download_bytes_per_sec = mule_network_policy::emule_ud_ratio(
-        dl_cfg,
-        effective_upload_for_ratio(state, ul_cfg),
-    );
+    cfg.download_bytes_per_sec =
+        mule_network_policy::emule_ud_ratio(dl_cfg, effective_upload_for_ratio(state, ul_cfg));
     if let Some(cpm) = params["connectionsPerMinute"].as_u64() {
         cfg.connections_per_minute = cpm as u32;
     }
@@ -533,9 +527,7 @@ pub async fn apply_capacity_clamp(state: &AppState) -> Result<(), JsonRpcError> 
             dls.set_setting("rate_limit_upload_bps", &clamped_ul.to_string())?;
         }
     }
-    state
-        .uss
-        .note_manual_limit(clamped_ul);
+    state.uss.note_manual_limit(clamped_ul);
     // Le plafond USS suit la limite upload configurée (même règle que
     // `limits.set` : MaxUpload borne la limite dynamique quand USS est
     // actif). 0 = plafond illimité.
@@ -545,9 +537,7 @@ pub async fn apply_capacity_clamp(state: &AppState) -> Result<(), JsonRpcError> 
             .update_config(|c| c.max_upload_bps = clamped_ul)
             .await;
     }
-    state
-        .uss
-        .note_manual_download_limit(clamped_dl);
+    state.uss.note_manual_download_limit(clamped_dl);
     let cfg = mule_filter::RateLimitsConfig {
         download_bytes_per_sec: eff_dl,
         upload_bytes_per_sec: eff_ul,

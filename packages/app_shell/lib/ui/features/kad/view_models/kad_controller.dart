@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../l10n/l10n_lookup.dart';
 
@@ -62,7 +63,7 @@ class KadController extends ChangeNotifier {
       _status = await client.getKadStatus();
       notifyListeners();
     } catch (e) {
-      debugPrint('Failed to fetch Kad status: $e');
+      AppLogger.warn('kad', 'Failed to fetch Kad status', error: e);
     }
   }
 

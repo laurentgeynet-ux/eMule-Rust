@@ -1,4 +1,4 @@
-# Contribuer à EMule-Rust
+# Contribuer à eMule-Rust
 
 Merci de l'intérêt porté au projet. Ce document décrit le flux de
 contribution et les exigences de qualité.

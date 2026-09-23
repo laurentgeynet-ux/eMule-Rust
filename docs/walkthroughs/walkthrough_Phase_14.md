@@ -1,6 +1,6 @@
 # Guide d'Exécution & Validation — Phase 14 : Convergence Kad DHT & Refactorisation Clean Architecture
 
-Ce document constitue le guide technique de référence pour la **Phase 14** (version `v0.1.7`) du projet **EMule-Rust**, dédiée à la résolution des anomalies profondes de routage DHT et à la refactorisation structurelle intégrale du workspace :
+Ce document constitue le guide technique de référence pour la **Phase 14** (version `v0.1.7`) du projet **eMule-Rust**, dédiée à la résolution des anomalies profondes de routage DHT et à la refactorisation structurelle intégrale du workspace :
 * **Convergence du Moteur de Recherche Kad DHT** : Alignement strict sur la spécification officielle eMule `CUInt128`, décodage universel du paquet `0x3B` (`KADEMLIA2_SEARCH_RES`), résolution des collisions d'opcodes et élimination des artefacts de débit figé (*stall decay*).
 * **Refactorisation Clean Architecture** : Éclatement modulaire de l'intégralité des monolithes de code dans `mule-daemon`, `mule-protocol`, `mule-core` et `mule-mcp` pour garantir un couplage faible, une lisibilité exemplaire et des fichiers concis (< 350 lignes).
 

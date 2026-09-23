@@ -1,6 +1,6 @@
 # NOTICE — Attributions et Sources de Référence
 
-**EMule-Rust** — © 2026 **Laurent Geynet "Loulach"**
+**eMule-Rust** — © 2026 **Laurent Geynet "Loulach"**
 (<Dev.iptvmediacenter@gmail.com>) — est une réimplémentation
 indépendante en Rust/Flutter des
 protocoles eD2K (eDonkey2000) et Kad (Kademlia). Le code est écrit de

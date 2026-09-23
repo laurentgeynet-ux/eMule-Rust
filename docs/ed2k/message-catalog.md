@@ -34,7 +34,7 @@ Offset  Type          Champ                  Description
 - Nombre maximal de tags : 256 tags.
 - Longueur maximale d'une chaîne de tag : 1 024 octets.
 
-### Décodage EMule-Rust
+### Décodage eMule-Rust
 - Décodé dans la structure passive `Ed2kHello`.
 - Les tags reconnus (`Name`, `Version`, `Port`) sont typés.
 - Les tags inconnus sont préservés dans `unknown_tags: Vec<RawTag>`.
@@ -81,7 +81,7 @@ Offset  Type          Champ                  Description
 - Nombre maximal de tags : 256 tags.
 - Longueur de chaîne maximale : 1 024 octets.
 
-### Décodage EMule-Rust
+### Décodage eMule-Rust
 - Décodé dans la structure `Ed2kHelloAnswer`.
 - Même tolérance sur les tags inconnus (`unknown_tags: Vec<RawTag>`).
 
@@ -116,7 +116,7 @@ Offset  Type          Champ                  Description
 - Taille minimale requise : $17 + \lceil\text{Part Count} / 8\rceil$ octets.
 - Taille maximale de trame : 65 536 octets (suffisant pour $65535 / 8 = 8192$ octets de masque).
 
-### Décodage EMule-Rust
+### Décodage eMule-Rust
 - Décodé dans `Ed2kFileStatus { file_hash, part_count, status_bitfield }`.
 - **`Part Count == 0` = source complète** (convention eD2K : la source détient le fichier entier et n'envoie pas de bitfield — eMule `ProcessFileStatus` matérialise `memset(m_abyPartStatus, 1, …)`). `compute_part_summaries` compte une telle source pour toutes les parts.
 - Le masque reçu alimente `availableSourceCount` (barre de parts eMule) via `record_source_availability`, y compris sur keep-alive en file d'attente ; les masques périmés > 30 min sont ignorés.

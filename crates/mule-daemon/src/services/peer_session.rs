@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
-use tracing::{info, warn};
+use tracing::{info, warn, Instrument};
 
 use mule_core::model::{PeerFailureReason, PeerSourceStatus};
 use mule_network_policy::SocketPermit;
@@ -37,6 +37,61 @@ pub use types::{
     SwarmStatusSnapshot, MAX_GLOBAL_PEERS, MAX_PEERS_PER_DOWNLOAD, MAX_PEER_READ_BUFFER_SIZE,
 };
 use types::{PeerSessionHandle, SwarmInnerState};
+
+/// Pseudonymiseur de session partagé par les sous-modules `peer_session`
+/// : les adresses de pairs externes n'apparaissent jamais en clair dans
+/// les fichiers de log persistants — `peer-NN:port` (loopback en clair,
+/// inoffensif pour la lab).
+static LOG_PSEUDONYMIZER: std::sync::OnceLock<mule_filter::SessionPseudonymizer> =
+    std::sync::OnceLock::new();
+
+/// Formate une adresse de pair pour les logs : loopback en clair,
+/// adresses externes pseudonymisées de façon déterministe par session.
+/// À utiliser à chaque émission de log contenant une adresse distante.
+pub fn log_peer_addr(addr: SocketAddr) -> String {
+    if addr.ip().is_loopback() {
+        addr.to_string()
+    } else {
+        LOG_PSEUDONYMIZER
+            .get_or_init(mule_filter::SessionPseudonymizer::new)
+            .pseudonymize_peer(addr)
+    }
+}
+
+/// Variante serveur : `server-NN:port` pour les endpoints eD2K/Kad UDP
+/// côté serveur (table distincte des pairs).
+pub fn log_server_addr(addr: SocketAddr) -> String {
+    if addr.ip().is_loopback() {
+        addr.to_string()
+    } else {
+        LOG_PSEUDONYMIZER
+            .get_or_init(mule_filter::SessionPseudonymizer::new)
+            .pseudonymize_server(addr)
+    }
+}
+
+/// Pour une adresse déjà formatée (`"ip:port"`) — pseudonymisée si
+/// parseable, inchangée sinon (`lowid:<id>` n'est pas une IP).
+pub fn log_addr_str(s: impl std::fmt::Display) -> String {
+    let raw = s.to_string();
+    match raw.parse::<SocketAddr>() {
+        Ok(addr) => log_peer_addr(addr),
+        Err(_) => raw,
+    }
+}
+
+/// Pour une IP nue sans port — `peer-NN` (partage la table des pairs).
+/// Accepte `IpAddr` ou `Ipv4Addr` (`Into<IpAddr>`).
+pub fn log_peer_ip(ip: impl Into<std::net::IpAddr>) -> String {
+    let ip = ip.into();
+    if ip.is_loopback() {
+        ip.to_string()
+    } else {
+        LOG_PSEUDONYMIZER
+            .get_or_init(mule_filter::SessionPseudonymizer::new)
+            .pseudonymize_ip(ip)
+    }
+}
 
 /// Thread-safe manager for multi-source eD2K peer connections.
 #[derive(Clone)]
@@ -270,7 +325,10 @@ impl PeerSessionManager {
             if matches && s.snapshot.status == PeerConnectionStatus::Queued {
                 s.snapshot.queue_rank = Some(rank);
                 emit_event(&self.event_tx, &self.sequence, &s.snapshot);
-                tracing::info!("Peer {ip}: queue rank #{rank} updated via OP_REASKACK (UDP)");
+                tracing::info!(
+                    "Peer {peer}: queue rank #{rank} updated via OP_REASKACK (UDP)",
+                    peer = log_peer_ip(*ip)
+                );
             }
         }
     }
@@ -418,134 +476,138 @@ impl PeerSessionManager {
         let sui_stats = self.sui_stats.read().unwrap().clone();
         let rate_limiters_opt = self.rate_limiters();
 
-        let join_handle = tokio::spawn(async move {
-            info!("Starting peer connection to {}", target_addr);
-            let res = connection::run_peer_connection(
-                file_hash_str.clone(),
-                dl_hash_arr,
-                address_str.clone(),
-                target_addr,
-                client_port,
-                nickname,
-                user_hash,
-                Arc::clone(&downloads),
-                cancel_token,
-                Arc::clone(&inner_clone),
-                event_tx_clone.clone(),
-                seq_clone.clone(),
-                timeouts,
-                client_id,
-                server_ip,
-                server_port,
-                kad_port,
-                kad_svc_opt,
-                target_user_hash,
-                peer_crypt_options,
-                obfuscation_enabled,
-                obfuscation_required,
-                obfuscation_padding_max,
-                identity_opt,
-                sui_stats,
-                rate_limiters_opt,
-                sx_env,
-            )
-            .await;
+        // Span de session : `peer` pseudonymisé est joint à tous les
+        // événements de la tâche dans le JSONL (corrélation sans IP brute).
+        let log_addr = log_peer_addr(target_addr);
+        let session_span = tracing::info_span!("peer_session", peer = %log_addr);
+        let join_handle = tokio::spawn(
+            async move {
+                info!("Starting peer connection to {log_addr}");
+                let res = connection::run_peer_connection(
+                    file_hash_str.clone(),
+                    dl_hash_arr,
+                    address_str.clone(),
+                    target_addr,
+                    client_port,
+                    nickname,
+                    user_hash,
+                    Arc::clone(&downloads),
+                    cancel_token,
+                    Arc::clone(&inner_clone),
+                    event_tx_clone.clone(),
+                    seq_clone.clone(),
+                    timeouts,
+                    client_id,
+                    server_ip,
+                    server_port,
+                    kad_port,
+                    kad_svc_opt,
+                    target_user_hash,
+                    peer_crypt_options,
+                    obfuscation_enabled,
+                    obfuscation_required,
+                    obfuscation_padding_max,
+                    identity_opt,
+                    sui_stats,
+                    rate_limiters_opt,
+                    sx_env,
+                )
+                .await;
 
-            let mut final_status = PeerConnectionStatus::Disconnected;
-            let mut err_msg = None;
-            let mut failure_reason = None;
+                let mut final_status = PeerConnectionStatus::Disconnected;
+                let mut err_msg = None;
+                let mut failure_reason = None;
 
-            match res {
-                Ok(bytes) => {
-                    info!(
-                        "Peer connection to {} completed cleanly. Total transferred: {} bytes",
-                        address_str, bytes
-                    );
-                    final_status = PeerConnectionStatus::Disconnected;
-                }
-                Err(e) => {
-                    warn!(
-                        "Peer connection to {} ended with error: {:?}",
-                        address_str, e
-                    );
-                    err_msg = Some(e.message.clone());
-                    failure_reason = Some(e.reason);
-                }
-            }
-
-            // Cleanup session and free in-flight blocks
-            let final_snapshot = {
-                let mut g = inner_clone.lock().await;
-                g.in_flight_blocks.retain(|b| b.peer_id != address_str);
-
-                if let Some(mut session) = g.sessions.remove(&address_str) {
-                    session.snapshot.status = final_status;
-                    session.snapshot.transfer_rate_bps = 0;
-                    session.snapshot.last_error = err_msg.clone();
-                    session.snapshot.failure_reason = failure_reason;
-                    g.last_session = Some(session.snapshot.clone());
-                    Some(session.snapshot)
-                } else {
-                    None
-                }
-            };
-
-            if let Some(snap) = final_snapshot {
-                connection::emit_event(&event_tx_clone, &seq_clone, &snap);
-            }
-
-            // Update SQLite PeerSource record (cooldown, fail_count, status)
-            {
-                let mut dl_svc = downloads.lock().await;
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as i64;
-
-                // Real consecutive-failure count (the UPDATE increments it on
-                // Failed) so the backoff actually escalates instead of being
-                // stuck at the first step.
-                let next_fail_count = dl_svc
-                    .list_peer_sources(&file_hash_str)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .find(|s| s.address == address_str)
-                    .map(|s| s.fail_count + 1)
-                    .unwrap_or(1);
-
-                let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
-                    match reason {
-                        PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
-                        // eMule "No Needed Parts": keep the source allowed but
-                        // reask it only after a long cooldown (~30 min), its
-                        // advertised parts may become needed later.
-                        PeerFailureReason::NoNeededParts => {
-                            (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
-                        }
-                        _ => {
-                            if err_msg.as_deref() == Some("Disconnected in queue") {
-                                // Standard eMule queue behavior: remote peer returned queue rank and closed TCP socket.
-                                // Keep status as Allowed (not Failed) with a 10-minute re-ask cooldown.
-                                (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
-                            } else {
-                                let cd = calculate_backoff_cooldown_ms(next_fail_count);
-                                (PeerSourceStatus::Failed, Some(now_ms + cd))
-                            }
-                        }
+                match res {
+                    Ok(bytes) => {
+                        info!(
+                            "Peer connection to {} completed cleanly. Total transferred: {} bytes",
+                            log_addr, bytes
+                        );
+                        final_status = PeerConnectionStatus::Disconnected;
                     }
-                } else {
-                    (PeerSourceStatus::Candidate, None)
+                    Err(e) => {
+                        warn!("Peer connection to {} ended with error: {:?}", log_addr, e);
+                        err_msg = Some(e.message.clone());
+                        failure_reason = Some(e.reason);
+                    }
+                }
+
+                // Cleanup session and free in-flight blocks
+                let final_snapshot = {
+                    let mut g = inner_clone.lock().await;
+                    g.in_flight_blocks.retain(|b| b.peer_id != address_str);
+
+                    if let Some(mut session) = g.sessions.remove(&address_str) {
+                        session.snapshot.status = final_status;
+                        session.snapshot.transfer_rate_bps = 0;
+                        session.snapshot.last_error = err_msg.clone();
+                        session.snapshot.failure_reason = failure_reason;
+                        g.last_session = Some(session.snapshot.clone());
+                        Some(session.snapshot)
+                    } else {
+                        None
+                    }
                 };
 
-                let _ = dl_svc.update_peer_source_status(
-                    &file_hash_str,
-                    &address_str,
-                    new_status,
-                    err_msg.as_deref(),
-                    new_cooldown,
-                );
+                if let Some(snap) = final_snapshot {
+                    connection::emit_event(&event_tx_clone, &seq_clone, &snap);
+                }
+
+                // Update SQLite PeerSource record (cooldown, fail_count, status)
+                {
+                    let mut dl_svc = downloads.lock().await;
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
+
+                    // Real consecutive-failure count (the UPDATE increments it on
+                    // Failed) so the backoff actually escalates instead of being
+                    // stuck at the first step.
+                    let next_fail_count = dl_svc
+                        .list_peer_sources(&file_hash_str)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .find(|s| s.address == address_str)
+                        .map(|s| s.fail_count + 1)
+                        .unwrap_or(1);
+
+                    let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
+                        match reason {
+                            PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
+                            // eMule "No Needed Parts": keep the source allowed but
+                            // reask it only after a long cooldown (~30 min), its
+                            // advertised parts may become needed later.
+                            PeerFailureReason::NoNeededParts => {
+                                (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
+                            }
+                            _ => {
+                                if err_msg.as_deref() == Some("Disconnected in queue") {
+                                    // Standard eMule queue behavior: remote peer returned queue rank and closed TCP socket.
+                                    // Keep status as Allowed (not Failed) with a 10-minute re-ask cooldown.
+                                    (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
+                                } else {
+                                    let cd = calculate_backoff_cooldown_ms(next_fail_count);
+                                    (PeerSourceStatus::Failed, Some(now_ms + cd))
+                                }
+                            }
+                        }
+                    } else {
+                        (PeerSourceStatus::Candidate, None)
+                    };
+
+                    let _ = dl_svc.update_peer_source_status(
+                        &file_hash_str,
+                        &address_str,
+                        new_status,
+                        err_msg.as_deref(),
+                        new_cooldown,
+                    );
+                }
             }
-        });
+            .instrument(session_span),
+        );
 
         let session_handle = PeerSessionHandle {
             snapshot: initial_snapshot.clone(),
@@ -631,10 +693,13 @@ impl PeerSessionManager {
         let sui_stats = self.sui_stats.read().unwrap().clone();
         let rate_limiters_opt = self.rate_limiters();
 
-        let join_handle = tokio::spawn(async move {
+        let log_addr = log_peer_addr(peer_addr);
+        let session_span = tracing::info_span!("peer_session", peer = %log_addr);
+        let join_handle = tokio::spawn(
+            async move {
             info!(
                 "Starting callback peer session to {} for {}",
-                peer_addr, file_hash_str
+                log_addr, file_hash_str
             );
             let res = connection::run_callback_session(
                 stream,
@@ -666,13 +731,13 @@ impl PeerSessionManager {
 
             match res {
                 Ok(bytes) => {
-                    info!("Callback peer session to {} completed cleanly. Total transferred: {} bytes", address_str, bytes);
+                    info!("Callback peer session to {} completed cleanly. Total transferred: {} bytes", log_addr, bytes);
                     final_status = PeerConnectionStatus::Disconnected;
                 }
                 Err(e) => {
                     warn!(
                         "Callback peer session to {} ended with error: {:?}",
-                        address_str, e
+                        log_addr, e
                     );
                     err_msg = Some(e.message.clone());
                     failure_reason = Some(e.reason);
@@ -742,7 +807,8 @@ impl PeerSessionManager {
                     new_cooldown,
                 );
             }
-        });
+        }
+        .instrument(session_span));
 
         let session_handle = PeerSessionHandle {
             snapshot: initial_snapshot.clone(),

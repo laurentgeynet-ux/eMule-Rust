@@ -9,6 +9,8 @@
 //! positive datagram proves the port is open; if all candidates fail, the
 //! port is considered firewalled (eMule ~6 min overall timeout).
 
+use crate::services::peer_session::log_peer_addr;
+use crate::services::peer_session::log_peer_ip;
 use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -142,8 +144,8 @@ impl KadService {
                     // eMule SetUDPFWCheckResult: a datagram is only conclusive
                     // when error_code == 0 and the probed port is a port we
                     // actually advertised (intern or known extern).
-                    let valid_port = res.port_tested == intern_port
-                        || (extern_port == Some(res.port_tested));
+                    let valid_port =
+                        res.port_tested == intern_port || (extern_port == Some(res.port_tested));
                     if res.error_code == 0 && valid_port {
                         let mut fw = tracker.lock().await;
                         if res.port_tested != intern_port {
@@ -153,21 +155,21 @@ impl KadService {
                             tracing::info!(
                                 "Kad UDP firewall check: OPEN via extern port {} (from {})",
                                 res.port_tested,
-                                contact.ip
+                                log_peer_ip(contact.ip)
                             );
                         } else {
                             fw.use_extern = false;
                             tracing::info!(
                                 "Kad UDP firewall check: OPEN on intern port {} (from {})",
                                 intern_port,
-                                contact.ip
+                                log_peer_ip(contact.ip)
                             );
                         }
                         return UdpFirewallStatus::Open;
                     }
                     tracing::warn!(
                         "Kad UDP firewall check from {} returned unusable result (error={}, port={}) — trying next candidate",
-                        contact.ip,
+                        log_peer_ip(contact.ip),
                         res.error_code,
                         res.port_tested
                     );
@@ -175,7 +177,7 @@ impl KadService {
                 Err(e) => {
                     tracing::debug!(
                         "Kad UDP firewall check via {} failed: {} — trying next candidate",
-                        contact.ip,
+                        log_peer_ip(contact.ip),
                         e
                     );
                 }
@@ -291,9 +293,9 @@ impl KadService {
             .map_err(|e| format!("failed to send OP_FWCHECKUDPREQ: {e}"))?;
 
         tracing::info!(
-            "Kad UDP firewall check: OP_FWCHECKUDPREQ sent to {addr} (intern={intern_port}, extern={})",
+            "Kad UDP firewall check: OP_FWCHECKUDPREQ sent to {peer} (intern={intern_port}, extern={})",
             extern_port.unwrap_or(0)
-        );
+        , peer = log_peer_addr(addr));
 
         // Keep the TCP connection open while waiting for the datagram (eMule
         // drops the test if the requesting client disconnects).

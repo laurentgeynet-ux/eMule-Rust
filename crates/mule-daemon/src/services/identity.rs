@@ -226,7 +226,7 @@ impl IdentityService {
 
     /// Returns the 16-byte user hash, marked with eMule magic bytes.
     /// Note: eMule derives the user hash randomly at first run (preferences.dat);
-    /// EMule-Rust derives it from the identity so a rotated key detaches credits.
+    /// eMule-Rust derives it from the identity so a rotated key detaches credits.
     pub fn user_hash(&self) -> [u8; 16] {
         let hash = Md4::digest(&self.public_key);
         let mut out = [0u8; 16];

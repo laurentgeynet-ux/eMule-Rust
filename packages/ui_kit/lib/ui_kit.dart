@@ -7,4 +7,5 @@ export 'src/theme.dart';
 export 'src/tokens.dart';
 export 'src/formatters.dart';
 export 'src/strings.dart';
+export 'src/app_logger.dart';
 export 'src/part_availability_bar.dart';

@@ -31,7 +31,7 @@ pub use services::{
     PartProgressSummary, SourceAvailabilitySummary,
 };
 pub use session::DaemonSession;
-pub use state::AppState;
+pub use state::{AppState, LogControl};
 pub use workdir::{
     ResolvedDirectories, ResolvedWorkDir, WorkDirMode, WorkDirectoryResolver, ENV_DOWNLOADS_DIR,
     ENV_LEGACY_WORKDIR, ENV_WORKDIR, PORTABLE_FLAG_FILENAME,

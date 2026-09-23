@@ -1009,7 +1009,7 @@ fn test_no_endgame_when_remaining_exceeds_threshold() {
 }
 
 // ---------------------------------------------------------------------------
-// Swarm healing (EMule-Rust) — rarest-part-first via scarcity hint
+// Swarm healing (eMule-Rust) — rarest-part-first via scarcity hint
 // ---------------------------------------------------------------------------
 
 #[test]

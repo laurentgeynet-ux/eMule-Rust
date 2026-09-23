@@ -146,7 +146,7 @@ void main() {
       await tester.pump();
 
       expect(copiedText, isNotNull);
-      expect(copiedText, contains('=== EMule-Rust Download Diagnostic (Sanitized) ==='));
+      expect(copiedText, contains('=== eMule-Rust Download Diagnostic (Sanitized) ==='));
       expect(copiedText, contains('Download ID: 00000000-0000-0000-0000-000000000001'));
       expect(copiedText, contains('File Name: Debian_12_netinst.iso'));
       expect(copiedText, contains('eD2K Hash: 31d6cfe0d16ae931b73c59d7e0c089c0'));

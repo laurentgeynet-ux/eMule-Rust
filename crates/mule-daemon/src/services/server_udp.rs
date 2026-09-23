@@ -9,6 +9,7 @@
 //! (conventionally TCP port + 4 for Lugdunum servers), then ingests
 //! `OP_GLOBFOUNDSOURCES` / `OP_GLOBSERVSTATRES` replies.
 
+use crate::services::peer_session::log_server_addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -176,12 +177,12 @@ impl ServerUdpService {
                                 };
                                 if accepted {
                                     tracing::info!(
-                                        "Server UDP: GlobServStatRes from {peer_addr} (users={users}, files={files}, udp_flags=0x{udp_flags:08X}, obf_tcp={tcp_obfuscation_port}, obf_udp={udp_obfuscation_port})"
-                                    );
+                                        "Server UDP: GlobServStatRes from {server} (users={users}, files={files}, udp_flags=0x{udp_flags:08X}, obf_tcp={tcp_obfuscation_port}, obf_udp={udp_obfuscation_port})"
+                                    , server = log_server_addr(peer_addr));
                                 } else {
                                     tracing::debug!(
-                                        "Server UDP: ignoring unsolicited/mismatched GlobServStatRes from {peer_addr} (challenge={challenge})"
-                                    );
+                                        "Server UDP: ignoring unsolicited/mismatched GlobServStatRes from {server} (challenge={challenge})"
+                                    , server = log_server_addr(peer_addr));
                                 }
                             }
                             Ok(ServerUdpMessage::GlobSearchRes(payload)) => {
@@ -193,8 +194,9 @@ impl ServerUdpService {
                                 ) {
                                     Ok(sr) => {
                                         tracing::info!(
-                                            "Server UDP: {} global search result(s) from {peer_addr}",
-                                            sr.files.len()
+                                            "Server UDP: {} global search result(s) from {server}",
+                                            sr.files.len(),
+                                            server = log_server_addr(peer_addr)
                                         );
                                         let chan = event_channel.read().unwrap().clone();
                                         if let Some((tx, seq)) = chan {
@@ -205,18 +207,22 @@ impl ServerUdpService {
                                     }
                                     Err(e) => {
                                         tracing::info!(
-                                            "Server UDP: malformed GlobSearchRes from {peer_addr}: {e}"
-                                        );
+                                            "Server UDP: malformed GlobSearchRes from {server}: {e}"
+                                        , server = log_server_addr(peer_addr));
                                     }
                                 }
                             }
                             Ok(ServerUdpMessage::Unknown { opcode }) => {
                                 tracing::info!(
-                                    "Server UDP: unknown opcode 0x{opcode:02X} from {peer_addr}"
+                                    "Server UDP: unknown opcode 0x{opcode:02X} from {server}",
+                                    server = log_server_addr(peer_addr)
                                 );
                             }
                             Err(e) => {
-                                tracing::info!("Server UDP: decode error from {peer_addr}: {e}");
+                                tracing::info!(
+                                    "Server UDP: decode error from {server}: {e}",
+                                    server = log_server_addr(peer_addr)
+                                );
                             }
                         }
                     }
@@ -249,7 +255,8 @@ impl ServerUdpService {
             Ok(_) => true,
             Err(e) => {
                 tracing::debug!(
-                    "Server UDP: send_glob_get_sources to {server_udp_addr} failed: {e}"
+                    "Server UDP: send_glob_get_sources to {server} failed: {e}",
+                    server = log_server_addr(server_udp_addr)
                 );
                 false
             }
@@ -273,7 +280,10 @@ impl ServerUdpService {
         match socket.send_to(&pkt, server_udp_addr).await {
             Ok(_) => true,
             Err(e) => {
-                tracing::debug!("Server UDP: send_servstat_req to {server_udp_addr} failed: {e}");
+                tracing::debug!(
+                    "Server UDP: send_servstat_req to {server} failed: {e}",
+                    server = log_server_addr(server_udp_addr)
+                );
                 false
             }
         }
@@ -313,7 +323,8 @@ impl ServerUdpService {
                 Ok(_) => Some("REQ1"),
                 Err(e) => {
                     tracing::debug!(
-                        "Server UDP: send_glob_search to {server_udp_addr} failed: {e}"
+                        "Server UDP: send_glob_search to {server} failed: {e}",
+                        server = log_server_addr(server_udp_addr)
                     );
                     None
                 }
@@ -331,12 +342,16 @@ impl ServerUdpService {
             (server_udp::encode_glob_search_req(search_payload), "REQ1")
         };
         tracing::debug!(
-            "Server UDP: GLOBSEARCH{form} to {server_udp_addr} (udp_flags=0x{flags:08X})"
+            "Server UDP: GLOBSEARCH{form} to {server} (udp_flags=0x{flags:08X})",
+            server = log_server_addr(server_udp_addr)
         );
         match socket.send_to(&pkt, server_udp_addr).await {
             Ok(_) => Some(form),
             Err(e) => {
-                tracing::debug!("Server UDP: send_glob_search to {server_udp_addr} failed: {e}");
+                tracing::debug!(
+                    "Server UDP: send_glob_search to {server} failed: {e}",
+                    server = log_server_addr(server_udp_addr)
+                );
                 None
             }
         }
@@ -417,7 +432,7 @@ async fn handle_glob_found_sources(
                 user_hash: None,
                 crypt_options: 0,
                 buddy_id: None,
-software: None,
+                software: None,
                 availability: None,
             });
         }

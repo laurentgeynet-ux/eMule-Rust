@@ -1,6 +1,6 @@
 # mule_client
 
-Client daemon partagé pour les applications EMule-Rust (desktop, mobile, web).
+Client daemon partagé pour les applications eMule-Rust (desktop, mobile, web).
 
 Contient le contrat d'interface `MuleDaemonClient`, le transport
 `RpcDaemonClient` (JSON-RPC 2.0 sur WebSocket), le `FakeMuleDaemonClient`

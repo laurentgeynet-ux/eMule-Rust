@@ -58,7 +58,7 @@ pub struct InboundListenerService {
     /// cryptkey.dat): challenges must not be issued without it. Mutable à
     /// chaud pour suivre la rotation d'identité.
     pub(crate) sui_pubkey_der: std::sync::Arc<std::sync::RwLock<Option<Vec<u8>>>>,
-    /// Mode « paranoid » (propre à EMule-Rust) : n'accorde de slot d'upload
+    /// Mode « paranoid » (propre à eMule-Rust) : n'accorde de slot d'upload
     /// qu'aux pairs obfusqués ET dont la signature SUI a été vérifiée.
     pub(crate) paranoid_mode: Arc<AtomicBool>,
     /// Local identity (private key access) for answering inbound peer
@@ -101,6 +101,7 @@ pub struct InboundListenerService {
 
     /// Source Exchange partagé (policy + journaux de throttle eMule
     /// `SetLastSrcReqTime`/`GetLastAskedForSources`) — injecté par `AppState`.
-    pub(crate) sx_env:
-        std::sync::Arc<std::sync::RwLock<Option<crate::services::peer_session::source_exchange::SxEnv>>>,
+    pub(crate) sx_env: std::sync::Arc<
+        std::sync::RwLock<Option<crate::services::peer_session::source_exchange::SxEnv>>,
+    >,
 }

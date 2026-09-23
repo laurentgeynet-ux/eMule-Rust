@@ -7,46 +7,43 @@ import 'package:flutter/material.dart';
 
 import 'package:mule_client/mule_client.dart';
 
-/// eMule 0.72a `CPartFile::DrawStatusBar` semantics over a desaturated
-/// palette (Tailwind shades shared with `AppTheme`): same meaning as the
-/// original colors, softer on the dark theme. Shared with the part-map
-/// card so both views stay in sync.
+/// eMule 0.72a `CPartFile::DrawStatusBar` semantics over a flat standard
+/// palette (plain Material primary shades): standard red/yellow/green/blue,
+/// no pastel tint or glossy gradient. Shared with the part-map card so both
+/// views stay in sync.
 
 /// Received bytes (eMule `crHave`).
-const Color partHaveColor = Color(0xFF94A3B8); // Slate 400
+const Color partHaveColor = Color(0xFF2196F3); // Blue 500
 
 /// Hash-verified bytes — extra local state eMule folds into `crHave`.
-const Color partVerifiedColor = Color(0xFF2DD4BF); // Teal 400
+const Color partVerifiedColor = Color(0xFF4CAF50); // Green 500
 
 /// Missing gap in a part no source advertises (eMule `crMissing`).
-const Color partMissingColor = Color(0xFFF87171); // Red 400
+const Color partMissingColor = Color(0xFFF44336); // Red 500
 
 /// Requested but not yet received block (eMule `crPending`).
-const Color partPendingColor = Color(0xFFFBBF24); // Amber 400
+const Color partPendingColor = Color(0xFFFFEB3B); // Yellow 500
 
 /// Overall progress strip at the top of the bar (eMule `crProgress`).
-const Color partProgressColor = Color(0xFF4ADE80); // Green 400
+const Color partProgressColor = Color(0xFF4CAF50); // Green 500
 
 const int _kPartSizeBytes = 9728000; // eD2K ED2K_PART_SIZE
 const int _kMaskCells = 64;
 
-/// Muted variant of eMule's `RGB(0, 210 - 22*(freq-1), 255)` availability
-/// gradient: rare parts are light sky, common parts sink to deep sky.
+/// eMule's `RGB(0, 210 - 22*(freq-1), 255)` availability gradient: rare
+/// parts are light cyan-blue, common parts sink to pure blue.
 /// 0 sources → [partMissingColor].
 Color availabilityColor(int sourceCount) {
   if (sourceCount <= 0) {
     return partMissingColor;
   }
-  final t = ((sourceCount - 1) / 9).clamp(0.0, 1.0);
-  return Color.lerp(
-    const Color(0xFF7DD3FC), // Sky 300 — rare
-    const Color(0xFF075985), // Sky 800 — common
-    t,
-  )!;
+  final n = sourceCount.clamp(1, 10);
+  final g = math.max(0, 210 - 22 * (n - 1));
+  return Color.fromARGB(255, 0, g, 255);
 }
 
-/// Whole-part color for the part-map card: verified → teal, fully received
-/// → "have" slate, otherwise the availability color of the missing gap.
+/// Whole-part color for the part-map card: verified → green, fully received
+/// → "have" blue, otherwise the availability color of the missing gap.
 Color partColorFor(DownloadPartInfo part) {
   if (part.isVerified) {
     return partVerifiedColor;
@@ -60,12 +57,12 @@ Color partColorFor(DownloadPartInfo part) {
 /// Byte-accurate eD2K chunk bar like eMule's transfer progress bar.
 ///
 /// Per pixel column, the byte's cell is resolved from
-/// [DownloadPartInfo.receivedMask]: received cells are painted slate (teal
+/// [DownloadPartInfo.receivedMask]: received cells are painted blue (green
 /// when the part hash is verified), missing cells are painted with the
-/// part's availability color (soft red = no source, sky gradient
+/// part's availability color (red = no source, cyan→blue gradient
 /// rare→common). [pendingRanges] (in-flight block requests) overlay in
-/// amber, and a thin green strip at the top shows overall progress —
-/// same layout as eMule 0.72a `DrawStatusBar`, muted palette.
+/// yellow, and a thin green strip at the top shows overall progress —
+/// same layout as eMule 0.72a `DrawStatusBar`, flat standard palette.
 class PartAvailabilityBar extends StatelessWidget {
   final List<DownloadPartInfo> parts;
   final int totalBytes;
@@ -232,7 +229,7 @@ class _PartBarPainter extends CustomPainter {
       );
     }
 
-    // 2. Pending (requested, in-flight) blocks — amber.
+    // 2. Pending (requested, in-flight) blocks — yellow.
     paint.color =
         muted ? partPendingColor.withValues(alpha: dim) : partPendingColor;
     for (final r in pendingRanges) {
@@ -243,7 +240,7 @@ class _PartBarPainter extends CustomPainter {
       }
     }
 
-    // 3. Thin progress strip on top — soft green load bar.
+    // 3. Thin progress strip on top — green load bar.
     final stripH = math.min(3.0, h * 0.4);
     final doneW = (w * progress.clamp(0.0, 1.0));
     canvas.drawRect(

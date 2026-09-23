@@ -8,6 +8,7 @@ import '../../../../l10n/l10n_lookup.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 /// Ordre d'affichage de la liste des téléchargements : les éléments
 /// terminés en bas ; les autres triés par avancement décroissant (les plus
@@ -178,6 +179,7 @@ class DownloadsStoreController extends ChangeNotifier {
       await onRefresh?.call();
       return true;
     } catch (e) {
+      AppLogger.warn('downloads', 'addDownload failed', error: e);
       final msg = e.toString().replaceAll(RegExp(r'^Exception:\s*'), '');
       onError?.call(msg);
       return false;
@@ -222,6 +224,7 @@ class DownloadsStoreController extends ChangeNotifier {
       await onRefresh?.call();
       return res;
     } catch (e) {
+      AppLogger.warn('downloads', 'importPartMet failed', error: e);
       onError?.call(L10nLookup.current.msgErrImportPartMet(e));
       return null;
     } finally {
@@ -236,6 +239,7 @@ class DownloadsStoreController extends ChangeNotifier {
       _downloads[updated.id] = updated;
       notifyListeners();
     } catch (e) {
+      AppLogger.warn('downloads', 'pause failed', error: e);
       onError?.call(L10nLookup.current.msgErrPause(e));
       notifyListeners();
     }
@@ -247,6 +251,7 @@ class DownloadsStoreController extends ChangeNotifier {
       _downloads[updated.id] = updated;
       notifyListeners();
     } catch (e) {
+      AppLogger.warn('downloads', 'resume failed', error: e);
       onError?.call(L10nLookup.current.msgErrResume(e));
       notifyListeners();
     }
@@ -263,6 +268,7 @@ class DownloadsStoreController extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      AppLogger.warn('downloads', 'rename failed', error: e);
       onError?.call(L10nLookup.current.msgErrRename(e));
       notifyListeners();
       return false;
@@ -278,6 +284,7 @@ class DownloadsStoreController extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
+      AppLogger.warn('downloads', 'remove failed', error: e);
       onError?.call(L10nLookup.current.msgErrRemove(e));
       notifyListeners();
     }
@@ -292,6 +299,7 @@ class DownloadsStoreController extends ChangeNotifier {
       }
       return detail;
     } catch (e) {
+      AppLogger.warn('downloads', 'fetchDetail failed', error: e);
       onError?.call(L10nLookup.current.msgErrFetchDetails(e));
       notifyListeners();
       return null;
@@ -310,6 +318,7 @@ class DownloadsStoreController extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      AppLogger.warn('downloads', 'changeDestination failed', error: e);
       onError?.call(L10nLookup.current.msgErrChangeDestination(e));
       notifyListeners();
       return false;
@@ -329,6 +338,7 @@ class DownloadsStoreController extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      AppLogger.warn('downloads', 'retryConnection failed', error: e);
       onError?.call(L10nLookup.current.msgErrRetryConn(e));
       notifyListeners();
       return false;
@@ -342,6 +352,7 @@ class DownloadsStoreController extends ChangeNotifier {
     try {
       await systemActions.revealFile(targetPath);
     } catch (e) {
+      AppLogger.warn('downloads', 'openCompletedFile failed', error: e);
       onError?.call(L10nLookup.current.msgErrOpenFile(e));
       notifyListeners();
     }
@@ -368,7 +379,7 @@ class DownloadsStoreController extends ChangeNotifier {
     final missingParts = item.parts.where((p) => p.state == 'missing').length;
 
     final buffer = StringBuffer();
-    buffer.writeln('=== EMule-Rust Download Diagnostic (Sanitized) ===');
+    buffer.writeln('=== eMule-Rust Download Diagnostic (Sanitized) ===');
     buffer.writeln('Generated: ${DateTime.now().toUtc().toIso8601String()}');
     buffer.writeln(
       'Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)',

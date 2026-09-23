@@ -151,7 +151,7 @@ impl Tier3BinaryValidator {
     }
 }
 
-/// Primary orchestrator for running an external reference binary against EMule-Rust.
+/// Primary orchestrator for running an external reference binary against eMule-Rust.
 #[allow(dead_code)]
 pub struct Tier3Harness {
     environment: Tier3Environment,

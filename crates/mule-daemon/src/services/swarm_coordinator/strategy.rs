@@ -3,6 +3,10 @@
 
 //! Swarm evaluation tick, hash validation, and connection scheduling.
 
+use crate::services::peer_session::log_addr_str;
+use crate::services::peer_session::log_peer_addr;
+use crate::services::peer_session::log_peer_ip;
+use crate::services::peer_session::log_server_addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -38,10 +42,7 @@ impl SwarmCoordinator {
             dl_guard.decay_stale_rates()
         };
         for mut snap in decayed_snapshots {
-            snap.pending_ranges = self
-                .state
-                .peer_session
-                .try_pending_ranges(&snap.ed2k_hash);
+            snap.pending_ranges = self.state.peer_session.try_pending_ranges(&snap.ed2k_hash);
             crate::services::peer_session::emit_download_update(
                 &self.state.event_tx,
                 &self.state.sequence,
@@ -353,8 +354,7 @@ impl SwarmCoordinator {
         // Full A4AF rebalance at eMule's `ProcessA4AFClients` cadence (~8 min).
         if self.last_a4af_full.elapsed() >= super::types::A4AF_FULL_INTERVAL {
             self.last_a4af_full = Instant::now();
-            self.a4af_rebalance(&demands, &alloc_config, now_ms)
-                .await;
+            self.a4af_rebalance(&demands, &alloc_config, now_ms).await;
         }
 
         // Client-UDP keep-alives: OP_REASKFILEPING toward sources queued on
@@ -427,8 +427,7 @@ impl SwarmCoordinator {
                 if self.state.server_session.snapshot().await.status
                     == ServerConnectionStatus::Connected
                 {
-                    let req =
-                        GetSourcesRequest::with_obfuscation(hash.0, size, obf_enabled);
+                    let req = GetSourcesRequest::with_obfuscation(hash.0, size, obf_enabled);
                     if let Err(e) = self.state.server_session.get_sources(req).await {
                         tracing::debug!("Swarm coordinator get_sources failed for {hash_hex}: {e}");
                     } else {
@@ -529,11 +528,12 @@ impl SwarmCoordinator {
                 .await;
             let active_count = swarm_snap.active_peer_count;
 
-            let target_quota = quotas
-                .get(&hash_hex)
-                .copied()
-                .unwrap_or(0)
-                .min(file_max_sources.get(&hash_hex).copied().unwrap_or(usize::MAX));
+            let target_quota = quotas.get(&hash_hex).copied().unwrap_or(0).min(
+                file_max_sources
+                    .get(&hash_hex)
+                    .copied()
+                    .unwrap_or(usize::MAX),
+            );
             if active_count >= target_quota {
                 continue;
             }
@@ -637,7 +637,8 @@ impl SwarmCoordinator {
                     let buddy_id = mule_core::kad::KadId(buddy_bytes);
                     let Some(buddy) = self.state.kad.find_contact(&buddy_id).await else {
                         tracing::debug!(
-                            "Kad buddy {buddy_id:?} for LowID source {src_ip} not in routing table"
+                            "Kad buddy {buddy_id:?} for LowID source {peer} not in routing table",
+                            peer = log_peer_ip(src_ip)
                         );
                         continue;
                     };
@@ -662,8 +663,8 @@ impl SwarmCoordinator {
                     {
                         Ok(()) => {
                             tracing::info!(
-                                "Requested Kad buddy callback to LowID source {src_ip} via {buddy_addr} for {hash_hex}"
-                            );
+                                "Requested Kad buddy callback to LowID source {peer} via {buddy} for {hash_hex}"
+                            , peer = log_peer_ip(src_ip), buddy = log_peer_addr(buddy_addr));
                             self.state.peer_session.register_pending_kad_callback(
                                 src_ip,
                                 hash_hex.clone(),
@@ -680,7 +681,10 @@ impl SwarmCoordinator {
                             connected_this_tick += 1;
                         }
                         Err(e) => {
-                            tracing::debug!("Kad buddy callback request for {src_ip} failed: {e}");
+                            tracing::debug!(
+                                "Kad buddy callback request for {peer} failed: {e}",
+                                peer = log_peer_ip(src_ip)
+                            );
                         }
                     }
                     continue;
@@ -720,7 +724,10 @@ impl SwarmCoordinator {
                                 None,
                             );
                         } else {
-                            tracing::debug!("Permit denied for peer {peer_addr}: {e}");
+                            tracing::debug!(
+                                "Permit denied for peer {peer}: {e}",
+                                peer = log_peer_addr(peer_addr)
+                            );
                         }
                         continue;
                     }
@@ -740,10 +747,10 @@ impl SwarmCoordinator {
                 let nickname = nickname.clone();
 
                 tracing::info!(
-                    "Swarm coordinator initiating peer connection to {peer_addr} for {file_hash_str} (quota={target_quota}, active={active_count}, obfu_target_hash={:?}, crypt_opts=0x{:02x})",
+                    "Swarm coordinator initiating peer connection to {peer} for {file_hash_str} (quota={target_quota}, active={active_count}, obfu_target_hash={:?}, crypt_opts=0x{:02x})",
                     target_user_hash.is_some(),
                     peer_crypt_options
-                );
+                , peer = log_peer_addr(peer_addr));
                 tokio::spawn(async move {
                     if let Err(e) = ps
                         .connect(
@@ -767,7 +774,10 @@ impl SwarmCoordinator {
                         )
                         .await
                     {
-                        tracing::debug!("Peer connection to {peer_addr} failed: {e}");
+                        tracing::debug!(
+                            "Peer connection to {peer} failed: {e}",
+                            peer = log_peer_addr(peer_addr)
+                        );
                     }
                 });
 
@@ -868,7 +878,10 @@ impl SwarmCoordinator {
         {
             Ok(p) => p,
             Err(e) => {
-                tracing::debug!("Server failover: permit denied for {addr}: {e}");
+                tracing::debug!(
+                    "Server failover: permit denied for {server}: {e}",
+                    server = log_server_addr(addr)
+                );
                 return;
             }
         };
@@ -876,7 +889,10 @@ impl SwarmCoordinator {
         let user_hash = self.state.identity.lock().await.user_hash();
         let ed2k_port = self.state.ed2k_port();
         let nickname = self.state.current_nickname().await;
-        tracing::info!("Server failover: connecting to {name} ({addr})");
+        tracing::info!(
+            "Server failover: connecting to {name} ({server})",
+            server = log_server_addr(addr)
+        );
         self.last_server_reconnect = Some(Instant::now());
         self.server_attempts.insert(address.clone(), Instant::now());
         let _ = self
@@ -1047,7 +1063,7 @@ impl SwarmCoordinator {
                 }
                 tracing::info!(
                     "[A4AF] Swapping source {} from file {} (prio={}) to starved file {} (prio={})",
-                    peer_addr,
+                    log_addr_str(peer_addr),
                     donor_hash,
                     donor_weight,
                     starved.file_hash,
@@ -1105,8 +1121,7 @@ impl SwarmCoordinator {
                 .unwrap_or(false);
             let unreachable_lowid = (s.address.starts_with("lowid:") && !server_is_high_id)
                 || (s.address.starts_with("kadcb:") && s.buddy_id.is_none());
-            let repeatedly_failed =
-                s.status == PeerSourceStatus::Failed && s.fail_count >= 3;
+            let repeatedly_failed = s.status == PeerSourceStatus::Failed && s.fail_count >= 3;
             if !(nnp || unreachable_lowid || repeatedly_failed) {
                 continue;
             }
@@ -1221,9 +1236,7 @@ impl SwarmCoordinator {
                 if !viable {
                     continue;
                 }
-                let cooling = s
-                    .cooldown_until_unix_ms
-                    .is_some_and(|c| c > now_ms);
+                let cooling = s.cooldown_until_unix_ms.is_some_and(|c| c > now_ms);
                 if !cooling {
                     continue;
                 }

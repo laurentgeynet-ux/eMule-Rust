@@ -1,4 +1,4 @@
-# Politique de Sécurité — EMule-Rust
+# Politique de Sécurité — eMule-Rust
 
 ## Versions supportées
 
@@ -9,7 +9,7 @@
 
 ## Surface de sécurité
 
-EMule-Rust est un client P2P exposé au réseau. Les mécanismes défensifs
+eMule-Rust est un client P2P exposé au réseau. Les mécanismes défensifs
 suivants sont **non négociables** et toute régression y afférente est
 traitée comme un incident de sécurité :
 

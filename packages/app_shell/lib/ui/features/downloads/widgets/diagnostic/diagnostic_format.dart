@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 import 'package:mule_client/mule_client.dart';
+import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../../core/work_dirs.dart';
 
@@ -92,7 +93,7 @@ String formatShareableDiagnostics({
       : 'Public (${networkProfile.toKebabCase()})';
 
   final sb = StringBuffer();
-  sb.writeln('=== EMule-Rust Diagnostics (Sanitized) ===');
+  sb.writeln('=== eMule-Rust Diagnostics (Sanitized) ===');
   sb.writeln('Workdir Mode: $workdirMode');
   sb.writeln('Workdir Path: $maskedWorkdir');
   sb.writeln('Confinement: $confinement');
@@ -103,6 +104,15 @@ String formatShareableDiagnostics({
   sb.writeln('Instance ID: ${maskId(instanceId)}');
   sb.writeln('Session ID: ${maskId(sessionId)}');
   sb.writeln('Active Downloads: $countAll');
+  // Ring buffer UI : compteurs uniquement — les messages peuvent contenir
+  // des chemins/noms de fichiers et ne sortent que dans l'export complet.
+  final entries = AppLogger.entries;
+  final errors =
+      entries.where((e) => e.level == AppLogLevel.error).length;
+  final warnings =
+      entries.where((e) => e.level == AppLogLevel.warning).length;
+  sb.writeln(
+      'UI Log: ${entries.length} entrées ($errors erreurs, $warnings avertissements)');
   return sb.toString();
 }
 
@@ -125,7 +135,7 @@ String formatFullDiagnostics({
       : 'Public (${networkProfile.toKebabCase()})';
 
   final sb = StringBuffer();
-  sb.writeln('=== EMule-Rust Diagnostics (Full Local) ===');
+  sb.writeln('=== eMule-Rust Diagnostics (Full Local) ===');
   sb.writeln('Workdir Mode: $workdirMode');
   sb.writeln('Workdir Path: $workdirPath');
   sb.writeln('Confinement: $confinement');
@@ -139,5 +149,8 @@ String formatFullDiagnostics({
   sb.writeln('Session ID: $sessionId');
   sb.writeln('Active Downloads: $countAll');
   sb.writeln('Security: Auth token strictly redacted (never exported)');
+  final uiLog = AppLogger.dump(maxEntries: 50);
+  sb.writeln('--- UI Log (50 dernières entrées) ---');
+  sb.writeln(uiLog.isEmpty ? '(aucune entrée)' : uiLog);
   return sb.toString();
 }

@@ -1,6 +1,6 @@
 # Index des fichiers du projet
 
-Index exhaustif des fichiers versionnés du dépôt **EMule-Rust** — un client eDonkey/eMule écrit en Rust (daemon + crates protocolaires) avec une application de bureau Flutter.
+Index exhaustif des fichiers versionnés du dépôt **eMule-Rust** — un client eDonkey/eMule écrit en Rust (daemon + crates protocolaires) avec une application de bureau Flutter.
 
 ---
 
@@ -194,7 +194,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `lib/src/tokens.dart` | Design tokens (espacements, rayons, couleurs) |
 | `lib/src/formatters.dart` | `Formatters` : bytes, vitesses, ETA, pourcentages |
 | `lib/src/strings.dart` | `AppStrings` : chaînes UI centralisées (base i18n) |
-| `lib/src/part_availability_bar.dart` | Barre `DrawStatusBar` eMule 0.72a byte-précise (CustomPaint), palette désaturée Tailwind : ardoise = reçu, rouge doux = aucune source, dégradé sky rare→commun, ambre = en vol, strip vert doux = progression ; constantes `partHaveColor`/`partVerifiedColor`/`partMissingColor`/`partPendingColor`/`partProgressColor` partagées avec la carte part-map |
+| `lib/src/part_availability_bar.dart` | Barre `DrawStatusBar` eMule 0.72a byte-précise (CustomPaint), palette standard plate : bleu = reçu, rouge = aucune source, dégradé cyan→bleu `RGB(0,g,255)` eMule rare→commun, jaune = en vol, vert = vérifié et strip de progression ; constantes `partHaveColor`/`partVerifiedColor`/`partMissingColor`/`partPendingColor`/`partProgressColor` partagées avec la carte part-map |
 | `pubspec.yaml` | Manifeste du package |
 | `README.md` | Contenu et règles du design system |
 
@@ -278,7 +278,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 
 | Fichier | Fonction |
 |---|---|
-| `src/main.rs` | Point d'entrée du daemon (init logging `tracing` → stdout + `data/daemon.log`, filtre `RUST_LOG`, défaut `info` ; résolution `--web-dir`/`MULE_WEB_DIR` + auto-détection du dossier UI web) |
+| `src/main.rs` | Point d'entrée du daemon (init logging `tracing` → stdout + `logs/daemon.<date>.log` JSONL rotatif 7j non-bloquant, panic hook → `logs/crash.log`, filtre `RUST_LOG` + reload à chaud via `settings.set` clé `logLevel`, défaut `info` ; résolution `--web-dir`/`MULE_WEB_DIR` + auto-détection du dossier UI web) |
 | `src/lib.rs` | Racine de la bibliothèque daemon |
 | `src/config.rs` | Chargement de la configuration (dont `web_dir` — UI web statique servie par le daemon) |
 | `src/error.rs` | Erreurs du daemon |

@@ -78,8 +78,7 @@ impl RunningDaemon {
 /// sont multiplexés sur le socket et peuvent précéder la réponse RPC.
 async fn next_response<S>(read: &mut S, id: u64) -> Value
 where
-    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
-        + Unpin,
+    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
 {
     for _ in 0..64 {
         let msg = read

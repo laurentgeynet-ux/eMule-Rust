@@ -303,10 +303,7 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
         "Same-address connect must be idempotent: {:?}",
         concurrent_resp.error
     );
-    assert_eq!(
-        concurrent_resp.result.unwrap()["status"],
-        "connected"
-    );
+    assert_eq!(concurrent_resp.result.unwrap()["status"], "connected");
 
     // 4. Test Kill Switch via network.disconnectAll
     let disc_all_req = make_req(4, "network.disconnectAll", None);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+use crate::services::peer_session::log_peer_addr;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -50,7 +51,7 @@ impl KadUdpService {
 
         tracing::info!(
             "Kad sending Ping (0x60) to node {} (tx_id={})",
-            target,
+            log_peer_addr(target),
             tx_id
         );
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
@@ -67,7 +68,7 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!("Kad Ping to node {} timed out after {}s (tx_id={})", target, KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
+                tracing::warn!("Kad Ping to node {} timed out after {}s (tx_id={})", log_peer_addr(target), KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad ping to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx.recv() => {
@@ -75,7 +76,7 @@ impl KadUdpService {
                 match res {
                     Some(Ok(KadMessage::Pong(pong))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!("Kad received Pong (0x61) from node {} in {} ms (client_port={})", target, elapsed.as_millis(), pong.client_port);
+                        tracing::info!("Kad received Pong (0x61) from node {} in {} ms (client_port={})", log_peer_addr(target), elapsed.as_millis(), pong.client_port);
                         Ok((pong, elapsed))
                     }
                     Some(Ok(_)) => Err("Unexpected Kad response type".to_string()),
@@ -122,7 +123,7 @@ impl KadUdpService {
 
         tracing::info!(
             "Kad sending BootstrapReq (0x01) to node {} (tx_id={})",
-            target,
+            log_peer_addr(target),
             tx_id
         );
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
@@ -138,14 +139,14 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!("Kad Bootstrap to node {} timed out after {}s (tx_id={})", target, KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
+                tracing::warn!("Kad Bootstrap to node {} timed out after {}s (tx_id={})", log_peer_addr(target), KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad bootstrap to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx.recv() => {
                 match res {
                     Some(Ok(KadMessage::BootstrapRes(boot_res))) => {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
-                        tracing::info!("Kad received BootstrapRes (0x09) from node {} with {} contacts", target, boot_res.contacts.len());
+                        tracing::info!("Kad received BootstrapRes (0x09) from node {} with {} contacts", log_peer_addr(target), boot_res.contacts.len());
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -234,7 +235,7 @@ impl KadUdpService {
         let find_bytes = KadCodec::encode_find_node_req(&target_kad_id.0, &receiver_kad_id.0);
         tracing::info!(
             "Kad sending FindNodeReq (0x21) to node {} for target {} (receiver={}, tx_id={})",
-            target,
+            log_peer_addr(target),
             target_kad_id.to_hex(),
             receiver_kad_id.to_hex(),
             tx_id
@@ -255,7 +256,7 @@ impl KadUdpService {
                 inf.remove(&tx_id);
                 tracing::warn!(
                     "Kad FindNode to node {} timed out after {}s (target={}, tx_id={})",
-                    target,
+                    log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
                     target_kad_id.to_hex(),
                     tx_id
@@ -268,7 +269,7 @@ impl KadUdpService {
                         self.packets_received.fetch_add(1, Ordering::Relaxed);
                         tracing::info!(
                             "Kad received FindNode response from node {} with {} contacts",
-                            target,
+                            log_peer_addr(target),
                             boot_res.contacts.len()
                         );
                         let now_ms = std::time::SystemTime::now()

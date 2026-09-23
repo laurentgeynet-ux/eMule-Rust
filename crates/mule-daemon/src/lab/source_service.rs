@@ -34,7 +34,7 @@ impl LabSourceService {
                         let engine = engine.clone();
                         tokio::spawn(async move {
                             if let Err(e) = handle_client(socket, engine).await {
-                                debug!(peer = %peer_addr, error = %e, "Lab source client session closed");
+                                debug!(peer = %crate::services::peer_session::log_peer_addr(peer_addr), error = %e, "Lab source client session closed");
                             }
                         });
                     }
