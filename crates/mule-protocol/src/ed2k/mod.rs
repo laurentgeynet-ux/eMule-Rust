@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Passive eD2K protocol archetype: read-only decoders, bounds, and observation types.
 //!
 //! # Safety and Offline Policy

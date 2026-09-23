@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 EMule-Rust Contributors
+
 <#
 .SYNOPSIS
     Automated Phase 7.3 E2E QA loopback test for the packaged EMule-Rust distribution.

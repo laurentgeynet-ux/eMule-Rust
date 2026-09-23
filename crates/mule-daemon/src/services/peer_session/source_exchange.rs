@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Gestion du Source Exchange (SX/SX2) alignée sur eMule 0.72a.
 //!
 //! Références : `ListenSocket.cpp:970-1011,1165-1251` (dispatch + throttle),

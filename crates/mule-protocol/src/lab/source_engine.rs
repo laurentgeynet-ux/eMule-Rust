@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Secure in-memory test file source engine for laboratory loopback transfers.
 
 use std::collections::HashMap;

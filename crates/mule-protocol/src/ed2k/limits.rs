@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Safety thresholds and resource limits dedicated to eD2K wire parsing.
 
 /// Default maximum frame size for general eD2K packets (256 KiB).

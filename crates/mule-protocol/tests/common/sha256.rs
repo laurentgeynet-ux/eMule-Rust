@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Dedicated, isolated SHA-256 implementation exclusively for test fixture integrity validation.
 //! Tested and grounded against official NIST FIPS 180-4 test vectors.
 

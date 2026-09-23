@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Anonymized divergence reporting for Tier 3 external reference orchestration.
 //!
 //! Conforms to the `reference_manifest.json` schema and guarantees zero leakage of

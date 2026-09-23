@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Diffie-Hellman 768-bit MODP key agreement for eMule server obfuscation.
 
 use num_bigint::BigUint;

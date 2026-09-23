@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Kad UDP firewall/reachability test (KADEMLIA2_FIREWALLUDP / OP_FWCHECKUDPREQ).
 //!
 //! Mirrors eMule `CUDPFirewallTester` (UDPFirewallTester.cpp): the local node

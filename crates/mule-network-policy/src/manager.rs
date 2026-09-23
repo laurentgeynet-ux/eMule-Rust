@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 import '../../../../../l10n/l10n_lookup.dart';
 
 /// Result of parsing a candidate `ed2k://|file|…` link.

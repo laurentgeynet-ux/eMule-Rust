@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Legacy eMule Secure User Identification (SUI) — RSA-384, RSASSA-PKCS1v15-SHA1.
 //!
 //! Confirmed against eMule `ClientCredits.cpp` / aMule `ClientCreditsList.cpp`:

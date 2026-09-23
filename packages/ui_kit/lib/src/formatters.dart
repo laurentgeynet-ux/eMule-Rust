@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 class Formatters {
   static String formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';

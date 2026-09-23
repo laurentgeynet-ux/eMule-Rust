@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 /// Historical record of a download transition event in EMule-Rust.
 class HistoryEntry {
   final int id;

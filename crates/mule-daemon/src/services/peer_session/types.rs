@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::InFlightBlock;
 use serde::{Deserialize, Serialize};

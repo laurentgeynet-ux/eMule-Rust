@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Gateway discovery and SSDP searching logic.
 
 use igd_next::{search_gateway, Gateway, SearchOptions};

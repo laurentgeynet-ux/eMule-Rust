@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Wire types and constants for Kad UDP packets.
 
 use crate::ed2k::tags::{Ed2kTag, RawTag, TagName, TagValue};

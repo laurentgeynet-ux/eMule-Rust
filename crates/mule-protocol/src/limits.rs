@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Protocol limits and constants for safe deterministic network handling.
 
 /// Header size of an eD2K packet (1 byte protocol + 4 bytes little-endian length).

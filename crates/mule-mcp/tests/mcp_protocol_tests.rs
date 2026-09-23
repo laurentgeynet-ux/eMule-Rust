@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_daemon::{create_router, AppState, DaemonConfig, DownloadService};
 use mule_mcp::{execute_tool, list_tools, DaemonClient};
 use serde_json::json;

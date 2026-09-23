@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Data structures and constant definitions for eMule Source Exchange (SX/SX2).
 
 /// Default version of Source Exchange 2 implemented by modern eMule clients.

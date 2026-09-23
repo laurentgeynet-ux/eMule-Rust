@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_core::kad::{KadContact, KadId};
 use mule_filter::IpFilter;
 use mule_format::kad::{NodesDatFile, MAX_NODES_DAT_SIZE};

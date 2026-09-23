@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Strongly-typed messages for the deterministic laboratory protocol (`PR_LAB = 0xEE`).
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};

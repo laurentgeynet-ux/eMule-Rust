@@ -1,0 +1,84 @@
+name: 🐛 Rapport de bug
+description: Signaler un comportement inattendu d'EMule-Rust
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de votre retour. Pour les **vulnérabilités de sécurité**,
+        utilisez [Security Advisories](../../security/advisories) — ne pas
+        ouvrir d'issue publique.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Version du bundle (champ `version` de version.json ou tag)
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: flavor
+    attributes:
+      label: Flavor de distribution
+      options:
+        - standard
+        - qa-loopback (lab)
+        - build depuis les sources
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Composant concerné
+      options:
+        - Interface desktop (Flutter)
+        - Interface web
+        - Daemon / RPC (mule-daemon)
+        - Protocole eD2K (mule-protocol)
+        - Kad / DHT
+        - MCP (mule-mcp)
+        - CLI (mule-cli)
+        - Installation / packaging
+        - Autre
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description du bug
+      description: Comportement observé vs comportement attendu
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Étapes de reproduction
+      description: Environnement hors-ligne / loopback de préférence
+      placeholder: |
+        1. Lancer eMuleRust.exe
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs pertinents
+      description: Sortie du daemon (tracing), console, captures — anonymisés
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vérifications préalables
+      options:
+        - label: J'ai vérifié qu'aucune issue existante ne couvre ce bug
+          required: true
+        - label: J'ai reproduit le bug sur la dernière version disponible
+          required: false

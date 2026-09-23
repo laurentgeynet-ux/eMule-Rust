@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Framing and packet structures for eMule protocol obfuscation handshakes.
 
 use rand::RngCore;

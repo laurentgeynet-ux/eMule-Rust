@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tests for `.part.met` companion file emission (eMule SavePartFile parity).
 
 use md4::{Digest, Md4};

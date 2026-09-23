@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tests for the AICH wire codec:
 //! `OP_AICHREQUEST` (0x9B), `OP_AICHANSWER` (0x9C),
 //! `OP_AICHFILEHASHREQ` (0x9E), `OP_AICHFILEHASHANS` (0x9D) — valeurs eMule 0.72a.

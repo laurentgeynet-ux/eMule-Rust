@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! eD2K Server Connection Manager.
 //!
 //! Manages at most 1 active TCP connection to an eD2K server.

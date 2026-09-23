@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_core::{Download, DownloadStatus, PartFile, RangeSet};
 use mule_protocol::ed2k::{PartAvailabilityMask, ED2K_PART_SIZE};
 use std::collections::{HashMap, HashSet, VecDeque};

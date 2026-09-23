@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! eD2K Tag and tag name encoders.
 
 use super::super::error::{Ed2kEncodeError, Ed2kErrorKind};

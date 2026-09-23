@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Controlled loopback transport and test peer for closed eD2K handshake verification.
 //! Strictly confined to the local loopback interface (127.0.0.1 / ::1).
 

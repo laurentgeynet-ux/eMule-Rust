@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Decoders for Kad sources and search responses.
 
 use crate::ed2k::limits::Ed2kLimits;

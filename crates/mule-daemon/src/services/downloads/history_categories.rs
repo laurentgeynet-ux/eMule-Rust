@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_core::HistoryEntry;
 use mule_core::{Database, Download, DownloadCategory, HistoryFilter, HistoryStats};
 use std::collections::HashMap;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Bounded decoding for Kad UDP wire datagrams.
 
 use crate::ed2k::{Ed2kErrorKind, Ed2kParseError};

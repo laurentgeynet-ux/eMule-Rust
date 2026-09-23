@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Server UDP service (`UDPSocket`, eMule 0.72a).
 //!
 //! eMule uses a *separate* UDP socket (from the client UDP socket) for

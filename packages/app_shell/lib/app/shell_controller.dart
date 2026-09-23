@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 import 'package:flutter/foundation.dart';
 
 enum AppNavSection { downloads, uploads, shares, history, servers, search, kad, settings }

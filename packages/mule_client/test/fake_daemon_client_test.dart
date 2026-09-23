@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
 

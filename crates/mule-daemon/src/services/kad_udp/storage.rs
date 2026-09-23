@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! In-memory Kad indexed-entry storage (DHT storage node role).
 //!
 //! Mirrors eMule `CKademlia` indexed data: remote nodes publish source and

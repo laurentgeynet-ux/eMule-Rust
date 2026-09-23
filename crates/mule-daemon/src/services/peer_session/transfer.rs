@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use bytes::BytesMut;
 use flate2::{Decompress, FlushDecompress, Status};
 use std::net::SocketAddr;

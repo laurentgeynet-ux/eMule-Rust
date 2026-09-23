@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_daemon::{
     WorkDirMode, WorkDirectoryResolver, ENV_DOWNLOADS_DIR, ENV_LEGACY_WORKDIR, ENV_WORKDIR,
     PORTABLE_FLAG_FILENAME,

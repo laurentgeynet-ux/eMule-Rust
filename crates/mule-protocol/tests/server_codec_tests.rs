@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_protocol::ed2k::{
     decode_server_response, Ed2kLimits, GetSourcesRequest, SearchQuery, SearchResult,
     ServerIdChange, ServerLoginRequest, ServerResponse, ServerStatus, OP_FOUNDSOURCES,

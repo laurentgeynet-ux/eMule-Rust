@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Zero-copy streaming encoder and decoder for eD2K wire packets.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_core::{AllocationPolicy, Database, Download, DownloadStatus, PartFile, RangeSet};
 use mule_format::Ed2kFileLink;
 use mule_protocol::ed2k::PartAvailabilityMask;

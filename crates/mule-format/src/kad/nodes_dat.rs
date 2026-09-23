@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use crate::error::FormatError;
 use crate::met::error::MetError;
 use crate::met::reader::CountingReader;

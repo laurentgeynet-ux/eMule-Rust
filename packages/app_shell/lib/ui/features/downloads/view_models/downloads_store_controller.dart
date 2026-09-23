@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 import 'dart:async';
 import '../../../../core/system_actions.dart';
 import '../../../../l10n/enum_labels.dart';

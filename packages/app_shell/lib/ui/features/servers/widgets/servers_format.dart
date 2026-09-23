@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 // Servers feature display helpers.
 
 /// Compact large counts: 1234567 → `1.2M`, 1500 → `1.5k`.

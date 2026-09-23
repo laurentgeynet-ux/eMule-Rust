@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! High-level asynchronous traits decoupling the wire protocol engine from
 //! underlying storage (`mule-core`) and piece scheduling logic.
 

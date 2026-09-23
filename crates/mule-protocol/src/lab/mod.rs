@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Laboratory loopback peer protocol for controlled, safe transfer validation.
 //!
 //! Note: This module is strictly separated from historical eD2K wire formats to prevent

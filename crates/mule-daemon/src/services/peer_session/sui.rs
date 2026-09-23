@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Outbound eMule Secure User Identification (signer side).
 //!
 //! When a remote client challenges us with `OP_SECIDENTSTATE`, we answer with

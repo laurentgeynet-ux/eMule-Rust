@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use crate::client::DaemonClient;
 use crate::protocol::{ToolCallResult, ToolDefinition};
 use serde_json::{json, Value};

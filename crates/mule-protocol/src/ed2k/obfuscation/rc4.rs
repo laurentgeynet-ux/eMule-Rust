@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! RC4 stream cipher implementation conforming to eMule protocol obfuscation (`RC4-drop1024`).
 
 /// Deterministic 256-byte state RC4 stream cipher.

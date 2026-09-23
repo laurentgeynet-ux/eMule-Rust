@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 EMule-Rust Contributors
+
 <#
 .SYNOPSIS
     Generates CycloneDX 1.5 JSON Software Bill of Materials (SBOM) for EMule-Rust.

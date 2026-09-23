@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 class FilterReportModel {
   final int totalLines;
   final int commentOrEmptyLines;

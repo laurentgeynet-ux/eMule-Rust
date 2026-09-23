@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! AICH message encoders (`OP_AICHFILEHASHREQ`/`ANS`, `OP_AICHREQUEST`/`ANSWER`).
 
 use bytes::Bytes;

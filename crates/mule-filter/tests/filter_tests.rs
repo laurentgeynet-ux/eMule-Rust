@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_filter::{parse_ipfilter, IpFilter};
 use std::io::Cursor;
 use std::net::IpAddr;

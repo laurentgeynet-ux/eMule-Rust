@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! RPC execution handlers for shares, sources, history, uploads, and listeners.
 
 use crate::client::DaemonClient;

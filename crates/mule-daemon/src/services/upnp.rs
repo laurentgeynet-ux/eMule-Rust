@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! UPnP IGD (Internet Gateway Device) Service.
 //!
 //! Automatically discovers UPnP-enabled gateway routers/boxes on the local network,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use futures_util::{SinkExt, StreamExt};
 use mule_daemon::{DaemonSession, WorkDirectoryResolver};
 use serde_json::{json, Value};

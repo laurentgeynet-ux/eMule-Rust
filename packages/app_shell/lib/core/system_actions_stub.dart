@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 /// Platform abstraction for OS-level file actions (open folder, reveal file).
 /// Stub implementation used on web: local filesystem doesn't exist.
 class SystemActions {

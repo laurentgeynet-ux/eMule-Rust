@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Search queries and results for eD2K servers.
 
 use crate::ed2k::error::{Ed2kEncodeError, Ed2kErrorKind};

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Safe, bounded parsing for historical eD2K Type-Length-Value (TLV) tags.
 
 use super::error::{Ed2kErrorKind, Ed2kParseError};

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Compatibility profiles for eD2K wire disambiguation.
 //!
 //! Historical variations across eDonkey2000, eMule, and aMule resulted in overlapping

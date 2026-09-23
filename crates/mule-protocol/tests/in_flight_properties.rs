@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_protocol::lab::{InFlightError, InFlightTracker};
 use mule_protocol::traits::BlockRequest;
 use proptest::prelude::*;

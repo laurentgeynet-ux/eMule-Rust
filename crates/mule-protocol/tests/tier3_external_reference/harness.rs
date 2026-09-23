@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Process management, cryptographic validation, and loopback confinement for Tier 3 reference execution.
 
 #![allow(dead_code)]

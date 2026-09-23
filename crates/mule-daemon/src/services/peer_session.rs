@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Swarm eD2K Peer Connection & In-flight Block Manager (Dual-source Multi-Peer).
 //!
 //! Manages active TCP peer connections per download and globally.

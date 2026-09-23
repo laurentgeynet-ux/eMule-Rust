@@ -1,0 +1,20 @@
+# Fins de ligne déterministes pour tous les contributeurs
+* text=auto
+
+# Scripts Windows : CRLF requis pour un comportement sûr
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaires — jamais de conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.jar binary
+*.bin binary
+*.dat binary
+*.zip binary
+*.exe binary
+*.dll binary

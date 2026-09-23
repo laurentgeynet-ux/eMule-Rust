@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Comprehensive eD2K closed loopback session tests (Phase 6.2).
 //! Strictly confined to 127.0.0.1.
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Kad notes index model (file comments / ratings, storage-node role).
 
 /// A note entry indexed for a target file, mirroring eMule `CEntry` with

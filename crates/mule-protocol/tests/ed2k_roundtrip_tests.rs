@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Comprehensive roundtrip and deterministic encoding test suite for eD2K wire messages.
 
 use std::fs;

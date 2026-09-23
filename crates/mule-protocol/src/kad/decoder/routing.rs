@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Decoders for Kad bootstrap and find node messages.
 
 use crate::ed2k::{Ed2kErrorKind, Ed2kParseError};

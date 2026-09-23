@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tests for eMule 0.72a extended wire messages:
 //! `FileIdentifier`, `OP_HASHSETREQUEST2`/`OP_HASHSETANSWER2` (0xB1/0xB2),
 //! `OP_MULTIPACKET*` (0x92/0xA4/0xA9) and `OP_MULTIPACKETANSWER*` (0x93/0xB0),

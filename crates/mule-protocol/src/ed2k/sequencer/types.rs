@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Error and tracking types for eD2K sequencing and block planning.
 
 /// Errors arising during download sequencing and block request planning.

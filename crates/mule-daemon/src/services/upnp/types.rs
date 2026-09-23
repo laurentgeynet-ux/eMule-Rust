@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! UPnP types, status snapshot, and IP classification utilities.
 
 use igd_next::PortMappingProtocol;

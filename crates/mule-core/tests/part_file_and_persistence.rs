@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use md4::{Digest, Md4};
 use mule_core::{
     finalize_file, verify_part_hash, AllocationPolicy, CollisionStrategy, CoreError, Database,

@@ -21,9 +21,13 @@ Index exhaustif des fichiers versionnés du dépôt **EMule-Rust** — un client
 | `NOTICE` | Attributions : sources adaptées (eMule © Merkur, aMule, eDonkey2000, Kademlia) |
 | `CONTRIBUTING.md` | Guide de contribution (flux de branches, validation, conventions) |
 | `SECURITY.md` | Politique de sécurité et signalement des vulnérabilités |
+| `CODE_OF_CONDUCT.md` | Code de conduite communautaire (Contributor Covenant 2.1) |
+| `.gitattributes` | Fins de ligne déterministes (CRLF scripts, binaires) |
 | `.github/workflows/ci.yml` | CI GitHub Actions (Rust check/clippy/test + Flutter analyze/test) |
 | `.github/workflows/release.yml` | Pipeline release sur tag `v*` (build standard + publication GitHub Release) |
 | `.github/dependabot.yml` | Mises à jour automatiques des dépendances (cargo, pub, actions) |
+| `.github/ISSUE_TEMPLATE/` | Formulaires d'issues GitHub (bug, feature, contact sécurité) |
+| `.github/PULL_REQUEST_TEMPLATE.md` | Checklist PR (validation, fidélité protocolaire, sécurité) |
 | `Asset/generated-image.png` | Image source de l'icône d'application (1254×1254 RGBA) — déclinée en `app_icon.ico` Windows/tray et icônes web/macOS/iOS |
 
 ## .agents/ — Configuration agents/MCP

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_format::{AichHash, Ed2kHash};
 use std::path::PathBuf;
 use uuid::Uuid;

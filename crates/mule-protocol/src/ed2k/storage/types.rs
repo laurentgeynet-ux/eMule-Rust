@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Storage types, status enums, and resume state tracking for eD2K.
 
 use serde::{Deserialize, Serialize};

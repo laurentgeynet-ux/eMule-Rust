@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! ICMP probing for USS — eMule `LastCommonRouteFinder` equivalent.
 //!
 //! eMule traces ICMP routes (increasing TTL) toward a sample of remote

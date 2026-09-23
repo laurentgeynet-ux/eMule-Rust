@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tier 3 External Reference Orchestration module.
 //!
 //! Exposes environment management, binary validation, process guard, and divergence reporting

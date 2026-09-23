@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Decoders for eMule 0.72a extended messages: `FileIdentifier`-based hashsets
 //! (`OP_HASHSETREQUEST2`/`OP_HASHSETANSWER2`), grouped `MULTIPACKET*` requests
 //! and answers, queue/queue-rank reports, chat message, file description,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tests for AICH root trust voting and block-level recovery.
 
 use mule_core::AllocationPolicy;

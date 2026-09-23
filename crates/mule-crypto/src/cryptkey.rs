@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! `cryptkey.dat` persistence — eMule-compatible RSA private key file.
 //!
 //! Confirmed against eMule `ClientCredits.cpp:474` / aMule `ClientCreditsList.cpp:CreateKeyPair`:

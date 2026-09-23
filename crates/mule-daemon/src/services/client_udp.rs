@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Client-to-client UDP service (`ClientUDPSocket`, eMule 0.72a).
 //!
 //! Shares the daemon UDP socket with Kad (eMule multiplexes eD2K UDP and

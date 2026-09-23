@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Hermetic unit and integration tests for eD2K Part 0 storage persistence,
 //! crash-resilient `.resume.json` state journaling, gap calculation, and MD4 verification.
 

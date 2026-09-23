@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use md4::{Digest, Md4};
 use mule_format::{
     hash_reader, Ed2kHasher, FormatError, PatternReader, FIXTURE_1_BYTE, FIXTURE_EXACT_ONE_PART,

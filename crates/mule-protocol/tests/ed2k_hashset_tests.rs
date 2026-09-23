@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tests for OP_HASHSETREQUEST (0x51) / OP_HASHSETANSWER (0x52) wire codec.
 //! Local-only: no network, no file writes.
 

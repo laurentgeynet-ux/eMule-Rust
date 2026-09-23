@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_protocol::ed2k::obfuscation::{
     derive_initiator_peer_ciphers, derive_responder_peer_ciphers, derive_server_ciphers,
     generate_semi_random_marker, Dh768KeyPair, Rc4Cipher, ENM_OBFUSCATION, MAGICVALUE_SYNC,

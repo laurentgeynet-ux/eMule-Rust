@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Peer metadata and capability representation negotiated during the eD2K handshake.
 
 use super::packet::{Ed2kEmuleInfo, Ed2kHello, Ed2kHelloAnswer};

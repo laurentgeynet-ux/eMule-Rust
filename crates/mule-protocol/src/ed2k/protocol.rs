@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Protocol magic bytes and identifiers for historical eD2K networks.
 
 /// Standard eDonkey2000 protocol identifier byte (`0xE3`).

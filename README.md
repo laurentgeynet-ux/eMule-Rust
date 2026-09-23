@@ -1,5 +1,10 @@
 # EMule-Rust 🚀
 
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue.svg)](LICENSE)
+[![CI](https://github.com/VOTRE-USER/emule-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/VOTRE-USER/emule-rust/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/VOTRE-USER/emule-rust)](https://github.com/VOTRE-USER/emule-rust/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey)](README.md)
+
 **EMule-Rust** est une réimplémentation moderne, hautement sécurisée et performante des protocoles pair-à-pair historiques **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur natif **Model Context Protocol (MCP)** pour agents d'intelligence artificielle.
 
 Le projet est conçu en **Rust** (moteur de stockage éparse, démon Tokio asynchrone, codecs filaires bornés, allocateur de swarm dynamique) et en **Flutter Desktop** (interface Windows native réactive en Clean Architecture MVVM).

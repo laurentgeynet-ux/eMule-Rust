@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use super::contact::KadContact;
 use super::kad_id::KadId;
 use std::collections::VecDeque;

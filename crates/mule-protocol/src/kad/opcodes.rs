@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Kademlia UDP protocol magic bytes, opcodes, and constants.
 
 /// Standard Kademlia UDP protocol magic byte (0xE4).

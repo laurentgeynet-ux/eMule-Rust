@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 #[test]
 fn test_hash_official_win_magazine() {
     let path = std::path::Path::new(r"D:\eMule0.50a\Incoming\Win Magazine 342 - Ottobre 2026.pdf");

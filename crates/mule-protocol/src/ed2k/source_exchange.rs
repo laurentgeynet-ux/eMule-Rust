@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! eMule Source Exchange (SX / SX2) protocol implementation.
 //!
 //! Provides deterministic wire encoding and strictly bounded decoding for:

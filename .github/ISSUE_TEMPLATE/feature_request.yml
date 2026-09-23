@@ -1,0 +1,38 @@
+name: 💡 Demande de fonctionnalité
+description: Proposer une amélioration ou une nouvelle fonctionnalité
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème ou besoin
+      description: Quel problème cette fonctionnalité résout-elle ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solution proposée
+      description: Décrire le comportement souhaité
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées
+      description: Autres approches considérées
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Périmètre
+      options:
+        - label: Cette demande touche au protocole filaire (eD2K/Kad) — référence eMule 0.72a requise
+          required: false
+        - label: Cette demande touche à la sécurité (anti-SSRF, loopback, kill switch)
+          required: false

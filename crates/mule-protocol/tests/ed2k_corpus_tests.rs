@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Integration test suite for the passive eD2K fixture corpus and read-only decoders.
 
 use std::fs;

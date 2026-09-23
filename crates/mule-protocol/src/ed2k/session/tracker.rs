@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Request and block in-flight trackers for eD2K sessions.
 
 use std::collections::HashMap;

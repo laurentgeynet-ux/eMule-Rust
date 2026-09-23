@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Comprehensive test suite for eD2K file availability exchange (OP_FILESTATUSREQ / OP_FILESTATUS).
 //! Phase 6.3: Strictly confined to local loopback (127.0.0.1). Zero network calls, zero .part writes.
 

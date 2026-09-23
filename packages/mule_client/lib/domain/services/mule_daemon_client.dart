@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 import '../models/category_item.dart';
 import '../models/daemon_event.dart';
 import '../models/daemon_info.dart';

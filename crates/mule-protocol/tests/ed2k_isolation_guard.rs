@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Architectural verification tests enforcing mechanical isolation of eD2K from network,
 //! preventing accidental leaking of sockets, web transports, or lab dependencies.
 

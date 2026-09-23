@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Safe, read-only eD2K wire decoders with strict bounds and context tracking.
 
 use bytes::Bytes;

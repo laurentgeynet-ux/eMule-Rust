@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 import '../../../../l10n/generated/app_localizations.dart';
 
 /// Search transport target: connected eD2K server, global UDP broadcast to

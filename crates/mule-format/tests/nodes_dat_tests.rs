@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_format::kad::{KadContactEntry, NodesDatFile, MAX_NODES_COUNT};
 use std::io::Cursor;
 use std::net::Ipv4Addr;

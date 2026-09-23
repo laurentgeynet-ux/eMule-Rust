@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Historical operation codes (opcodes) for eD2K, eMule extensions, and compressed payloads.
 
 // ---------------------------------------------------------------------------

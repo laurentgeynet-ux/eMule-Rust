@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use std::path::{Path, PathBuf};
 
 pub const PORTABLE_FLAG_FILENAME: &str = "portable.flag";

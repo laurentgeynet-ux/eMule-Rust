@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Incoming-folder sharing (eMule `CSharedFileList` semantics).
 //!
 //! eMule shares every file sitting in its "Incoming" directory. We mirror

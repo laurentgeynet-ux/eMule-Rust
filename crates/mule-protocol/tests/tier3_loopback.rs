@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tier 3 external reference integration test suite.
 //!
 //! Confined strictly to 127.0.0.1 closed loopback with dynamic ephemeral port allocation.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use bytes::{BufMut, Bytes, BytesMut};
 use mule_protocol::{
     PacketCodec, RawPacket, ED2K_BLOCK_SIZE, MAX_FRAME_BYTES, OP_HELLO, OP_SENDINGPART, PR_ED2K,

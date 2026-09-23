@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! `FileIdentifier` — identification composite d'un fichier introduite par eMule 0.50
 //! et généralisée en 0.72a (`FileIdentifier.h` / `FileIdentifier.cpp`).
 //!

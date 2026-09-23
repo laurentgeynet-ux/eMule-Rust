@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Validation module for local interoperability against reference eD2K peers (eMule / aMule).
 //!
 //! Phase 6.5: Strictly confined to local loopback (127.0.0.1). Zero public network,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use bytes::Bytes;
 use mule_protocol::lab::*;
 use mule_protocol::{PeerAction, PeerId, ProtocolViolation};

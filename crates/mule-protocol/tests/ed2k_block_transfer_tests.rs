@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Comprehensive test suite for eD2K block transfer (OP_REQUESTPARTS / OP_SENDINGPART).
 //! Phase 6.4: Strictly confined to local loopback (127.0.0.1). Zero network calls, zero public peers.
 

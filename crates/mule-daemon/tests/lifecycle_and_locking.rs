@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_daemon::{DaemonError, DaemonSession, DirectoryLock};
 use std::net::TcpListener;
 use tempfile::tempdir;

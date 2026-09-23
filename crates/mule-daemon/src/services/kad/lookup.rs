@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Iterative Kad `find_node` convergence shared by search and publish paths.
 //!
 //! eMule only honors a publish/search request when the target key lies within

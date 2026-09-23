@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 use mule_format::{
     calculate_aich_root, verify_aich_proof, AichHash, AichNode, AichProofError, AichSibling,
     SiblingPosition, AICH_BLOCK_SIZE, BLOCKS_PER_PART, ED2K_PART_SIZE, LAST_BLOCK_SIZE_FULL_PART,

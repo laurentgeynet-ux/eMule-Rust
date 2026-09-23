@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Handshake payload decoders (OP_HELLO, OP_HELLO_ANSWER, OP_EMULE_INFO).
 
 use super::super::error::{Ed2kErrorKind, Ed2kParseError};

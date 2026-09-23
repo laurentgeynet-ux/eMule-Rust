@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Persistent storage, sparse .part files, and crash-resilient resume state for eD2K transfers.
 //!
 //! Tier 3.5 formalizes physical file persistence and resume invariants:

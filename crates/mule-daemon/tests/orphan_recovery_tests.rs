@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Tests for startup orphan `.part.met` recovery (eMule CPartFile auto-load
 //! parity), keep-files tombstoning, and explicit `.part.met` flushes.
 

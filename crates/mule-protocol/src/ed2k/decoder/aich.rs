@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! AICH message decoders (`OP_AICHFILEHASHREQ`/`ANS`, `OP_AICHREQUEST`/`ANSWER`).
 
 use crate::ed2k::error::{Ed2kErrorKind, Ed2kParseError};

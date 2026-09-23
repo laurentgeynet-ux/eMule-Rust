@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! AICH part recovery data (eMule `CAICHRecoveryHashSet::CreatePartRecoveryData`
 //! / `ReadRecoveryData` wire semantics).
 //!

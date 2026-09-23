@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Integration tests verifying local interoperability with reference-compliant eD2K peers on loopback.
 //! Phase 6.5: Zero public network, strictly TCP 127.0.0.1. Zero data leakage.
 

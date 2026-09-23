@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 /// Centralized UI strings for the EMule-Rust desktop application.
 /// All user-facing strings are strictly in English to ensure international consistency
 /// and provide a clean foundation for future i18n/localization files.

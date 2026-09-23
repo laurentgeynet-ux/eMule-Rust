@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Pure deterministic state machine for laboratory peer-to-peer sessions.
 
 use thiserror::Error;

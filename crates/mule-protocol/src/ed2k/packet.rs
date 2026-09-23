@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Passive data observation structures representing decoded eD2K wire messages.
 
 use super::tags::{Ed2kTag, RawTag};

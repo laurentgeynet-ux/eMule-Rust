@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 EMule-Rust Contributors
+
 //! Compatibility fixtures modelled on eMule 0.72a and aMule 3.0.1 sources.
 //!
 //! Tag bytes are hand-encoded in eMule "newtags" format (`tag_type | 0x80`
