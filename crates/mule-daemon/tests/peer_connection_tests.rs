@@ -281,6 +281,233 @@ async fn test_peer_connect_nominal_handshake_and_transfer() {
     mock_peer.await.unwrap();
 }
 
+/// Socket-level A4AF (eMule `SwapToAnotherFile`/`DoSwap`) : quand le pair
+/// répond `OP_FILEREQANSNOFILE` pour le fichier demandé, la session ne doit
+/// PAS se fermer — le même socket re-émet la séquence de requête fichier
+/// pour un autre download dont ce pair est source.
+#[tokio::test]
+async fn test_peer_connect_a4af_socket_swap_on_fnf() {
+    let hash_a = "11111111111111111111111111111111";
+    let hash_b = "22222222222222222222222222222222";
+    let (state, _dir, _) =
+        download_state("test_token_a4af", "file_a.iso", 9728001, hash_a).await;
+    let mut authenticated = true;
+
+    // Second download = swap candidate.
+    let link_b = format!("ed2k://|file|file_b.iso|9728001|{hash_b}|/");
+    let req = make_req(0, "downloads.addEd2kLink", Some(json!({ "link": link_b })));
+    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    assert!(resp.error.is_none());
+
+    // Mock eD2K peer; registered as a source for file B only.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let peer_addr = listener.local_addr().unwrap();
+    let req = make_req(
+        1,
+        "sources.addManual",
+        Some(json!({ "fileHash": hash_b, "address": peer_addr.to_string() })),
+    );
+    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    assert!(resp.error.is_none());
+
+    let ha_bytes: [u8; 16] = hex::decode(hash_a).unwrap().try_into().unwrap();
+    let hb_bytes: [u8; 16] = hex::decode(hash_b).unwrap().try_into().unwrap();
+    let swapped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let swapped_mock = swapped.clone();
+
+    let mock_peer = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut read_buf = bytes::BytesMut::with_capacity(65536);
+        let mut raw_buf = [0u8; 8192];
+        let codec = PacketCodec::new();
+        let encoder = Ed2kEncoder::default();
+        let mut sent_fnf_a = false;
+        let mut sent_status_b = false;
+        let mut sent_part = false;
+
+        async fn send_pkt(socket: &mut tokio::net::TcpStream, pkt: mule_protocol::framing::RawPacket) {
+            let mut out = Vec::with_capacity(pkt.payload.len() + 6);
+            out.push(pkt.protocol);
+            out.extend_from_slice(&(pkt.frame_len() as u32).to_le_bytes());
+            out.push(pkt.opcode);
+            out.extend_from_slice(&pkt.payload);
+            socket.write_all(&out).await.unwrap();
+        }
+
+        // 1. OP_HELLO → OP_HELLOANSWER
+        loop {
+            let n = socket.read(&mut raw_buf).await.unwrap();
+            assert!(n > 0);
+            read_buf.extend_from_slice(&raw_buf[..n]);
+            let mut got_hello = false;
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.protocol == PR_ED2K && pkt.opcode == OP_HELLO {
+                    got_hello = true;
+                }
+            }
+            if got_hello {
+                break;
+            }
+        }
+        let hello_answer = Ed2kHelloAnswer {
+            user_hash: [0x55u8; 16],
+            client_id: 0x0100007F,
+            tcp_port: peer_addr.port(),
+            tags: vec![],
+            unknown_tags: vec![],
+            server_ip: 0,
+            server_port: 0,
+        };
+        send_pkt(&mut socket, encoder.encode_hello_answer(&hello_answer).unwrap()).await;
+
+        // 2. Request flow: FNF for A, full service for B on the same socket.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.protocol != PR_ED2K {
+                    continue;
+                }
+                match pkt.opcode {
+                    mule_protocol::ed2k::OP_REQFILENAME
+                    | mule_protocol::ed2k::OP_SETREQFILEID_EMULE => {
+                        if pkt.payload.len() < 16 {
+                            continue;
+                        }
+                        if pkt.payload[..16] == ha_bytes[..] {
+                            if pkt.opcode == mule_protocol::ed2k::OP_REQFILENAME && !sent_fnf_a {
+                                send_pkt(
+                                    &mut socket,
+                                    mule_protocol::framing::RawPacket::new(
+                                        PR_ED2K,
+                                        mule_protocol::ed2k::OP_FILEREQANSNOFILE,
+                                        Bytes::copy_from_slice(&ha_bytes),
+                                    ),
+                                )
+                                .await;
+                                sent_fnf_a = true;
+                            }
+                        } else if pkt.payload[..16] == hb_bytes[..] {
+                            if pkt.opcode == mule_protocol::ed2k::OP_REQFILENAME {
+                                swapped_mock
+                                    .store(true, std::sync::atomic::Ordering::SeqCst);
+                            } else if !sent_status_b {
+                                let fs = Ed2kFileStatus {
+                                    file_hash: hb_bytes,
+                                    part_count: 2,
+                                    availability_mask: PartAvailabilityMask::from_parts(
+                                        &[0, 1], 2,
+                                    ),
+                                };
+                                send_pkt(&mut socket, encoder.encode_file_status(&fs).unwrap())
+                                    .await;
+                                sent_status_b = true;
+                            }
+                        }
+                    }
+                    OP_STARTUPLOADREQ => {
+                        send_pkt(
+                            &mut socket,
+                            mule_protocol::framing::RawPacket::new(
+                                PR_ED2K,
+                                OP_ACCEPTUPLOADREQ,
+                                Bytes::new(),
+                            ),
+                        )
+                        .await;
+                    }
+                    OP_REQUESTPARTS | OP_REQUESTPARTS_EMULE
+                        if !sent_part =>
+                    {
+                        let part = Ed2kSendingPart::new(
+                            hb_bytes,
+                            0,
+                            1024,
+                            Bytes::from(vec![0xCDu8; 1024]),
+                        );
+                        send_pkt(&mut socket, encoder.encode_sending_part(&part).unwrap())
+                            .await;
+                        sent_part = true;
+                    }
+                    _ => {}
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            let n = match tokio::time::timeout(
+                deadline - tokio::time::Instant::now(),
+                socket.read(&mut raw_buf),
+            )
+            .await
+            {
+                Ok(Ok(0)) => break, // session closed
+                Ok(Ok(n)) => n,
+                _ => break,
+            };
+            read_buf.extend_from_slice(&raw_buf[..n]);
+        }
+    });
+
+    // Connect for file A — peer FNF's it; the session must swap to file B.
+    let req = make_req(
+        2,
+        "sources.connect",
+        Some(json!({ "fileHash": hash_a, "address": peer_addr.to_string() })),
+    );
+    let resp = handle_request(&state, req, &mut authenticated)
+        .await
+        .unwrap();
+    assert!(resp.error.is_none(), "sources.connect failed: {:?}", resp.error);
+
+    // Wait for the swap + transfer to complete (mock ends by deadline).
+    tokio::time::timeout(Duration::from_secs(15), mock_peer)
+        .await
+        .expect("mock peer timed out")
+        .unwrap();
+
+    assert!(
+        swapped.load(std::sync::atomic::Ordering::SeqCst),
+        "client must re-request file B on the same socket (A4AF swap)"
+    );
+
+    // File A source is deadlisted (FNF → Rejected) — the session outcome was
+    // written on file B, so A's bookkeeping must survive.
+    let req = make_req(3, "sources.list", Some(json!({ "fileHash": hash_a })));
+    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let list_a: Vec<Value> = serde_json::from_value(resp.result.unwrap()).unwrap();
+    let src_a = list_a
+        .iter()
+        .find(|s| s["address"] == peer_addr.to_string())
+        .expect("source for file A must exist");
+    assert_eq!(src_a["status"], "rejected", "FNF must deadlist the source on file A");
+
+    // File B source was actively served on the swapped socket.
+    let req = make_req(4, "sources.list", Some(json!({ "fileHash": hash_b })));
+    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let list_b: Vec<Value> = serde_json::from_value(resp.result.unwrap()).unwrap();
+    assert!(
+        list_b.iter().any(|s| s["address"] == peer_addr.to_string()),
+        "peer must remain a source for file B"
+    );
+
+    // Real bytes flowed on the swapped socket and landed in file B.
+    let req = make_req(5, "downloads.list", None);
+    let resp = handle_request(&state, req, &mut authenticated).await.unwrap();
+    let result = resp.result.unwrap();
+    let dl_b = result["downloads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["ed2kHash"].as_str().unwrap_or("") == hash_b)
+        .cloned()
+        .expect("file B download must exist");
+    assert!(
+        dl_b["receivedBytes"].as_u64().unwrap_or(0) >= 1024,
+        "post-swap transfer must have delivered bytes into file B: {:?}",
+        dl_b
+    );
+}
+
 #[tokio::test]
 async fn test_peer_connect_swarm_peer_limit() {
     let (state, _dir, hash) = download_state("test_token_peer", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;

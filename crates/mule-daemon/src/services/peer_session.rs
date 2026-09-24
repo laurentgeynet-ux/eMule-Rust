@@ -22,6 +22,7 @@ use mule_network_policy::SocketPermit;
 use crate::error::DaemonError;
 use crate::services::downloads::DownloadService;
 
+pub mod a4af;
 pub mod connection;
 pub mod events;
 pub mod handshake;
@@ -601,7 +602,7 @@ impl PeerSessionManager {
                 }
 
                 // Cleanup session and free in-flight blocks
-                let final_snapshot = {
+                let (final_snapshot, outcome_hash) = {
                     let mut g = inner_clone.lock().await;
                     g.in_flight_blocks.retain(|b| b.peer_id != address_str);
 
@@ -611,9 +612,14 @@ impl PeerSessionManager {
                         session.snapshot.last_error = err_msg.clone();
                         session.snapshot.failure_reason = failure_reason;
                         g.last_session = Some(session.snapshot.clone());
-                        Some(session.snapshot)
+                        // After an A4AF socket swap the session served another
+                        // file — the outcome belongs to the file actually
+                        // requested last (eMule `RemoveSource` on `m_reqfile`),
+                        // not the originally-dialed one.
+                        let outcome = session.snapshot.file_hash.clone();
+                        (Some(session.snapshot), outcome)
                     } else {
-                        None
+                        (None, None)
                     }
                 };
 
@@ -628,12 +634,13 @@ impl PeerSessionManager {
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis() as i64;
+                    let outcome_hash = outcome_hash.as_deref().unwrap_or(&file_hash_str);
 
                     // Real consecutive-failure count (the UPDATE increments it on
                     // Failed) so the backoff actually escalates instead of being
                     // stuck at the first step.
                     let next_fail_count = dl_svc
-                        .list_peer_sources(&file_hash_str)
+                        .list_peer_sources(outcome_hash)
                         .unwrap_or_default()
                         .into_iter()
                         .find(|s| s.address == address_str)
@@ -666,7 +673,7 @@ impl PeerSessionManager {
                     };
 
                     let _ = dl_svc.update_peer_source_status(
-                        &file_hash_str,
+                        outcome_hash,
                         &address_str,
                         new_status,
                         err_msg.as_deref(),
@@ -813,7 +820,7 @@ impl PeerSessionManager {
                 }
             }
 
-            let final_snapshot = {
+            let (final_snapshot, outcome_hash) = {
                 let mut g = inner_clone.lock().await;
                 g.in_flight_blocks.retain(|b| b.peer_id != address_str);
 
@@ -823,9 +830,12 @@ impl PeerSessionManager {
                     session.snapshot.last_error = err_msg.clone();
                     session.snapshot.failure_reason = failure_reason;
                     g.last_session = Some(session.snapshot.clone());
-                    Some(session.snapshot)
+                    // Post-A4AF : l'issue s'écrit sur le fichier servi en
+                    // dernier (`m_reqfile` eMule), pas sur le hash dialé.
+                    let outcome = session.snapshot.file_hash.clone();
+                    (Some(session.snapshot), outcome)
                 } else {
-                    None
+                    (None, None)
                 }
             };
 
@@ -840,9 +850,10 @@ impl PeerSessionManager {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as i64;
+                let outcome_hash = outcome_hash.as_deref().unwrap_or(&file_hash_str);
 
                 let next_fail_count = dl_svc
-                    .list_peer_sources(&file_hash_str)
+                    .list_peer_sources(outcome_hash)
                     .unwrap_or_default()
                     .into_iter()
                     .find(|s| s.address == source_address)
@@ -871,7 +882,7 @@ impl PeerSessionManager {
                 };
 
                 let _ = dl_svc.update_peer_source_status(
-                    &file_hash_str,
+                    outcome_hash,
                     &source_address,
                     new_status,
                     err_msg.as_deref(),

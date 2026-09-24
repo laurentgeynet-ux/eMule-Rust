@@ -72,13 +72,13 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
   (`OP_REQFILENAME`, `OP_SETREQFILEID`, `OP_STARTUPLOADREQ`) plutôt que
   groupés dans `OP_MULTIPACKET*` — comportement que les pairs eMule
   attendent des clients qui n'annoncent pas toujours la capacité.
-- **NNP (No Needed Parts)** : la session TCP est fermée et la source
+- **NNP (No Needed Parts)** : la session tente d'abord un swap A4AF
+  socket-level (§11) ; sans candidat elle est fermée et la source
   redemandée après ~58 min (`FILEREASKTIME * 2`), tandis qu'eMule garde
-  `DS_NONEEDEDPARTS` sur le socket ouvert. Même cycle de reask, socket
-  non conservé.
-- **Pas d'A4AF socket-level** (`SwapToAnotherFile` sur un socket déjà
-  connecté) : l'A4AF est réalisé au niveau allocation des sources
-  (reconnexion), pas en réutilisant la session TCP du pair.
+  `DS_NONEEDEDPARTS` sur le socket ouvert. Même cycle de reask.
+- **A4AF socket-level implémenté (§11)** : `SwapToAnotherFile`/`DoSwap`
+  porté — le socket réémet la séquence `SendFileRequest` pour le
+  fichier cible au lieu de reconnecter.
 - **Chat et browsing de partages non implémentés** : `OP_MESSAGE`,
   `OP_ASKSHAREDFILES*`, `OP_QUEUERANK (0x5C)`, `OP_CHANGE_SLOT (0x5B)`
   sont décodés ou ignorés sans logique métier.
@@ -391,3 +391,64 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
 - Pas de purge partielle `ShouldPartiallyPurgeFile` : sans `known.met`,
   pas de métadonnées longue durée à élaguer — le pruning des entrées
   SQLite suit la politique locale.
+
+---
+
+## 11. A4AF socket-level (`SwapToAnotherFile`/`DoSwap`) — audit phase B, passe 5
+
+### Implémentation (`peer_session/a4af.rs`, `connection.rs`)
+
+- `run_status_transfer_with_a4af` : boucle partagée par
+  `run_peer_connection` et `run_callback_session` — sur `PeerError`
+  `NoNeededParts` ou `FileNotFound` (`is_swap_eligible`, eMule appelle
+  `SwapToAnotherFile` depuis `ProcessFileStatus`, `SendBlockRequests`,
+  `UDPReaskFNF`, `OP_FILEREQANSNOFILE` `ListenSocket.cpp:428`), le même
+  socket rejoue `query_file_status_and_enter_queue` pour le fichier
+  cible au lieu de mourir. Borné à `MAX_A4AF_SWAPS = 4` swaps
+  consécutifs (eMule n'a pas de borne — `DontSwapTo` + timing de
+  reask ; notre cap couvre le ping-pong pathologique).
+- `find_swap_target` : candidats = downloads actifs
+  (`queued`/`waiting_for_sources`/`downloading`, `PS_READY|PS_EMPTY`
+  eMule) listant l'adresse comme source, sous leur `max_sources`
+  (`GetSourceCount() < GetMaxSources()`). Tri : sources propres
+  (`m_OtherRequests_list`) avant NNP-flaggées
+  (`m_OtherNoNeeded_list`), puis priorité de download
+  (`RightFileHasHigherPrio`), puis hash déterministe.
+  `Rejected`/`Filtered` exclus ; **cooldown appliqué à tous les
+  statuts** — une source NNP (`Allowed` + 58 min) n'est pas re-élue
+  dans la même chaîne (`DontSwapTo`/`GetTimeUntilReask`).
+- `apply_swap` : bookkeeping `DoSwap` — FNF → `Rejected` (deadlist,
+  `bRemoveCompletely=true`), NNP → `Allowed` + cooldown 58 min
+  (`FILEREASKTIME * 2`), fichier cible → `Connected`
+  (`SwapTo->srclist.AddTail(this)`).
+- `try_a4af_swap` : purge les `in_flight_blocks` du pair
+  (`m_PendingBlocks_list` abandonné), met à jour le snapshot session
+  (`SetRequestFile`), émet l'événement.
+- **Correction annexe** : le teardown de session écrit l'issue sur
+  `snapshot.file_hash` (fichier servi en dernier), pas sur le hash
+  dialé — eMule `RemoveSource` s'applique à `m_reqfile` ; sans ça le
+  bookkeeping du swap était écrasé et la source cible restait
+  `Connected` à jamais.
+- **Correction annexe** : `WaitingForSources` sérialise
+  `"waiting_for_sources"` — le filtre de statuts du swap matche les
+  noms réels de `DownloadStatus::as_str`.
+
+### Test d'intégration
+
+`test_peer_connect_a4af_socket_swap_on_fnf` (mock TCP loopback) :
+`OP_FILEREQANSNOFILE` sur A → même socket reçoit `OP_REQFILENAME`/`OP_SETREQFILEID`
+pour B, transfert réel (≥1024 o injectés dans B), source A `rejected`.
+
+### Écarts assumés
+
+- Pas de `ProcessA4AFClients` périodique (`ClientList.cpp:846`) ni de
+  swap proactif à la découverte d'une nouvelle source
+  (`CheckAndAddSource`/`CheckAndAddKnownSource`) : nos swaps restent
+  déclenchés par NNP/FNF en session, pas par réévaluation périodique
+  de la liste A4AF d'un client idle — couvert par le re-dial normal.
+- Le mismatch de hash AICH (`ProcessAICHFileHash` eMule → swap
+  `bRemoveCompletely`) ne swap pas : notre modèle AICH est par vote
+  (`record_aich_root_vote`) — un vote divergent ne tue pas la session.
+- Pas de `DontSwapTo` temporel ni d'`aggressiveSwapping` : le cap
+  `MAX_A4AF_SWAPS` + exclusion du hash courant + cooldowns bornent
+  déjà le ping-pong.

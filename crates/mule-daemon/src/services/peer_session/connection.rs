@@ -116,10 +116,13 @@ pub(crate) async fn run_peer_connection(
         tcp_port: client_port,
         is_high_id: client_id >= 16_777_216,
     };
-    let file_status = query_file_status_and_enter_queue(
+    // 8-10. Multi-source block planner, request blocks, and streaming
+    // transfers — with socket-level A4AF swap on NNP/FNF
+    // (`SwapToAnotherFile`: the live connection re-asks another file).
+    run_status_transfer_with_a4af(
         &mut handshake_res.stream,
         target_addr,
-        &file_hash_str,
+        file_hash_str,
         dl_hash_bytes,
         &address_str,
         &sx_caps,
@@ -131,35 +134,196 @@ pub(crate) async fn run_peer_connection(
         &event_tx,
         &sequence,
         &downloads,
-        &sx_env,
-        &sx_local,
-        &mut sui,
-    )
-    .await?;
-
-    // 8-10. Multi-source block planner, request blocks, and streaming transfers
-    run_transfer_loop(
-        &mut handshake_res.stream,
-        target_addr,
-        &file_hash_str,
-        dl_hash_bytes,
-        &address_str,
-        file_status,
-        handshake_res.peer_supports_aich,
-        handshake_res.peer_ext_req,
-        &timeouts,
-        &cancel_token,
-        &inner,
-        &event_tx,
-        &sequence,
-        &downloads,
-        &sx_caps,
         &sx_env,
         &sx_local,
         &mut sui,
         rate_limiters.as_deref(),
     )
     .await
+}
+
+/// Runs `query_file_status_and_enter_queue` + `run_transfer_loop` for the
+/// requested file, applying eMule's socket-level A4AF on NNP/FNF
+/// (`CUpDownClient::SwapToAnotherFile`): instead of dropping the
+/// connection, the same socket re-issues `OP_SETREQFILEID` for the best
+/// alternate file this peer is a source of. Bounded to
+/// `a4af::max_swaps()` consecutive swaps.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_status_transfer_with_a4af(
+    stream: &mut crate::services::obfuscation_stream::ObfuscatedStream<tokio::net::TcpStream>,
+    target_addr: SocketAddr,
+    file_hash_str: String,
+    dl_hash_bytes: [u8; 16],
+    address_str: &str,
+    sx_caps: &PeerSxCaps,
+    peer_supports_aich: bool,
+    peer_ext_req: u8,
+    timeouts: &PeerTimeouts,
+    cancel_token: &mule_network_policy::CancellationToken,
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    event_tx: &broadcast::Sender<String>,
+    sequence: &Arc<AtomicU64>,
+    downloads: &Arc<Mutex<DownloadService>>,
+    sx_env: &SxEnv,
+    sx_local: &SxLocalIds,
+    sui: &mut super::sui::OutboundSui,
+    rate_limiters: Option<&mule_network_policy::PolicyRateLimiters>,
+) -> Result<u64, PeerError> {
+    let mut cur_hash_str = file_hash_str;
+    let mut cur_hash = dl_hash_bytes;
+    let mut swaps = 0u32;
+    loop {
+        let file_status = match query_file_status_and_enter_queue(
+            stream,
+            target_addr,
+            &cur_hash_str,
+            cur_hash,
+            address_str,
+            sx_caps,
+            peer_supports_aich,
+            peer_ext_req,
+            timeouts,
+            cancel_token,
+            inner,
+            event_tx,
+            sequence,
+            downloads,
+            sx_env,
+            sx_local,
+            sui,
+        )
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                match try_a4af_swap(
+                    downloads,
+                    inner,
+                    event_tx,
+                    sequence,
+                    address_str,
+                    &cur_hash_str,
+                    &e,
+                    &mut swaps,
+                )
+                .await
+                {
+                    Some((h, b)) => {
+                        cur_hash_str = h;
+                        cur_hash = b;
+                        continue;
+                    }
+                    None => return Err(e),
+                }
+            }
+        };
+        match run_transfer_loop(
+            stream,
+            target_addr,
+            &cur_hash_str,
+            cur_hash,
+            address_str,
+            file_status,
+            peer_supports_aich,
+            peer_ext_req,
+            timeouts,
+            cancel_token,
+            inner,
+            event_tx,
+            sequence,
+            downloads,
+            sx_caps,
+            sx_env,
+            sx_local,
+            sui,
+            rate_limiters,
+        )
+        .await
+        {
+            Ok(n) => return Ok(n),
+            Err(e) => {
+                match try_a4af_swap(
+                    downloads,
+                    inner,
+                    event_tx,
+                    sequence,
+                    address_str,
+                    &cur_hash_str,
+                    &e,
+                    &mut swaps,
+                )
+                .await
+                {
+                    Some((h, b)) => {
+                        cur_hash_str = h;
+                        cur_hash = b;
+                        continue;
+                    }
+                    None => return Err(e),
+                }
+            }
+        }
+    }
+}
+
+/// Attempts one socket-level A4AF swap: writes the NNP/FNF bookkeeping on
+/// the old file, marks the source live on the new file and updates the
+/// session snapshot (`DoSwap`). Returns the new `(hash_hex, hash_bytes)`
+/// or `None` when no viable alternate file exists.
+#[allow(clippy::too_many_arguments)]
+async fn try_a4af_swap(
+    downloads: &Arc<Mutex<DownloadService>>,
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    event_tx: &broadcast::Sender<String>,
+    sequence: &Arc<AtomicU64>,
+    address_str: &str,
+    from_hash: &str,
+    err: &PeerError,
+    swaps: &mut u32,
+) -> Option<(String, [u8; 16])> {
+    if *swaps >= super::a4af::max_swaps() || !super::a4af::is_swap_eligible(&err.reason) {
+        return None;
+    }
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let max_per_file = inner.lock().await.max_peers_per_download;
+    let (to_hash, to_hash_bytes) = super::a4af::find_swap_target(
+        downloads,
+        address_str,
+        from_hash,
+        max_per_file,
+        now_ms,
+    )
+    .await?;
+    super::a4af::apply_swap(downloads, address_str, from_hash, &to_hash, &err.reason, now_ms).await;
+    *swaps += 1;
+    tracing::info!(
+        "[A4AF] Socket swap: {} re-requested for {to_hash} (was {from_hash}, reason: {})",
+        address_str,
+        err.reason.as_str()
+    );
+    // Reflect the swap in the live session snapshot (eMule `SetRequestFile`)
+    // and release blocks in flight for the old file — eMule resets the
+    // download state on `DoSwap` (`m_PendingBlocks_list` is abandoned).
+    let snap = {
+        let mut g = inner.lock().await;
+        g.in_flight_blocks.retain(|b| b.peer_id != address_str);
+        if let Some(session) = g.sessions.get_mut(address_str) {
+            session.snapshot.file_hash = Some(to_hash.clone());
+            // The next status query sets Queued/Transferring itself.
+            session.snapshot.queue_rank = None;
+            session.snapshot.current_part = None;
+            Some(session.snapshot.clone())
+        } else {
+            None
+        }
+    };
+    if let Some(s) = snap {
+        super::events::emit_event(event_tx, sequence, &s);
+    }
+    Some((to_hash, to_hash_bytes))
 }
 
 /// Runs a client-role download session over an *accepted* inbound connection
@@ -194,10 +358,10 @@ pub(crate) async fn run_callback_session(
     sui.set_peer_sec_ident(peer_sec_ident);
     sui.initiate(target_addr, &Ed2kEncoder::default(), &mut stream)
         .await;
-    let file_status = query_file_status_and_enter_queue(
+    run_status_transfer_with_a4af(
         &mut stream,
         target_addr,
-        &file_hash_str,
+        file_hash_str,
         dl_hash_bytes,
         &address_str,
         &sx_caps,
@@ -209,28 +373,6 @@ pub(crate) async fn run_callback_session(
         &event_tx,
         &sequence,
         &downloads,
-        &sx_env,
-        &sx_local,
-        &mut sui,
-    )
-    .await?;
-
-    run_transfer_loop(
-        &mut stream,
-        target_addr,
-        &file_hash_str,
-        dl_hash_bytes,
-        &address_str,
-        file_status,
-        peer_supports_aich,
-        peer_ext_req,
-        &timeouts,
-        &cancel_token,
-        &inner,
-        &event_tx,
-        &sequence,
-        &downloads,
-        &sx_caps,
         &sx_env,
         &sx_local,
         &mut sui,
