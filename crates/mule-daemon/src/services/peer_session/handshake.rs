@@ -217,6 +217,8 @@ pub(crate) async fn perform_peer_handshake(
     // UDPVer<<24 | DataComp<<20 | SecIdent<<16 | SrcExch<<12 | ExtReq<<8 |
     // Comments<<4 | NoView<<2 | MultiPkt<<1 | Preview<<0.
     // SecIdent = 3 (v1+v2) when a usable RSA key is loaded, else 0.
+    // MultiPacket = 1 (comme eMule — OP_MULTIPACKET* est décodé) ;
+    // Preview = 0 : OP_REQUESTPREVIEW/PREVIEWANSWER non implémentés.
     let misc1: u32 = (1 << 29)
         | (1 << 28)
         | (4 << 24)
@@ -225,7 +227,7 @@ pub(crate) async fn perform_peer_handshake(
         | (4 << 12)
         | (2 << 8)
         | (1 << 4)
-        | 1;
+        | (1 << 1);
     tags.push(mule_protocol::ed2k::tags::Ed2kTag {
         name: mule_protocol::ed2k::tags::TagName::Id(
             mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS1,
@@ -243,7 +245,10 @@ pub(crate) async fn perform_peer_handshake(
     let u_supports_crypt = obfuscation_enabled as u32;
     let u_requests_crypt = obfuscation_enabled as u32;
     let u_requires_crypt = obfuscation_required as u32;
-    let misc2: u32 = (1 << 10)
+    // FileIdent<<13 = 1 : les codecs FileIdentifier (OP_MULTIPACKET_EXT2,
+    // OP_HASHSET*2) sont implémentés — eMule 0.72a l'annonce aussi.
+    let misc2: u32 = (1 << 13)
+        | (1 << 10)
         | (u_requires_crypt << 9)
         | (u_requests_crypt << 8)
         | (u_supports_crypt << 7)
@@ -619,7 +624,9 @@ pub(crate) fn build_emule_info(
             t(TAG_SPECIAL_EMULE_EXT_COMPRESSION, 1),
             t(TAG_SPECIAL_EMULE_EXT_UDPVER, 4),
             t(TAG_SPECIAL_EMULE_EXT_UDPPORT, udp_port as u32),
-            t(TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE, 4),
+            // eMule 0.72a envoie 3 ici (SX1 déprécié) — la version SX1 v4
+            // reste annoncée dans MiscOptions1 bits 12-15.
+            t(TAG_SPECIAL_EMULE_EXT_SOURCEEXCHANGE, 3),
             t(TAG_SPECIAL_EMULE_EXT_COMMENTS, 1),
             t(TAG_SPECIAL_EMULE_EXT_EXTENDEDREQUEST, 2),
             // ET_FEATURES: bits 0-1 = secure ident level (eMule m_uEmuleFeatures).

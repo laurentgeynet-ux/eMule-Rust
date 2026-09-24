@@ -73,14 +73,25 @@ pub const OP_SETREQFILEID: u8 = 0x47;
 /// Response indicating requested file is not shared (`0x48`).
 pub const OP_FILEREQANSNOFILE: u8 = 0x48;
 
-/// Request parts availability bitfield (`0x49`).
+/// Request parts availability bitfield — legacy eDonkey2000 (`0x49`).
+/// In eMule 0.72a this wire value is `OP_END_OF_DOWNLOAD`; the two are
+/// disambiguated by `Ed2kCompatibilityProfile`.
 pub const OP_FILESTATUSREQ: u8 = 0x49;
 
-/// Request specific block ranges in a part (`0x4B`).
+/// eMule end-of-download notification (`0x49`) — `<hash16>`; the uploader
+/// removes the client from its upload queue (`ListenSocket.cpp:537`).
+/// Same wire value as legacy `OP_FILESTATUSREQ` — never both under one
+/// `Ed2kCompatibilityProfile`.
+pub const OP_END_OF_DOWNLOAD: u8 = 0x49;
+
+/// Request specific block ranges in a part — legacy eDonkey2000 (`0x4B`).
+/// In eMule 0.72a this wire value is `OP_ASKSHAREDFILESANSWER`.
 pub const OP_REQUESTPARTS: u8 = 0x4B;
 
-/// Notify completion of file download (`0x4D`).
-pub const OP_END_OF_DOWNLOAD: u8 = 0x4D;
+/// eMule client-ID change notification (`0x4D`) —
+/// `<u32 newUserID><u32 newServerIP>` (`ListenSocket.cpp:590`).
+/// Legacy eDonkey2000 used this wire value for `OP_END_OF_DOWNLOAD`.
+pub const OP_CHANGE_CLIENT_ID: u8 = 0x4D;
 
 /// Canonical eMule set requested file hash / file status request (`0x4F`).
 pub const OP_SETREQFILEID_EMULE: u8 = 0x4F;
@@ -347,9 +358,9 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
             OP_SENDINGPART => "OP_SENDINGPART",
             OP_SETREQFILEID => "OP_SETREQFILEID",
             OP_FILEREQANSNOFILE => "OP_FILEREQANSNOFILE",
-            OP_FILESTATUSREQ => "OP_FILESTATUSREQ",
+            OP_FILESTATUSREQ => "OP_FILESTATUSREQ/OP_END_OF_DOWNLOAD",
             OP_REQUESTPARTS => "OP_REQUESTPARTS",
-            OP_END_OF_DOWNLOAD => "OP_END_OF_DOWNLOAD",
+            OP_CHANGE_CLIENT_ID => "OP_CHANGE_CLIENT_ID",
             OP_FILESTATUS => "OP_FILESTATUS",
             OP_HASHSETREQUEST => "OP_HASHSETREQUEST",
             OP_HASHSETANSWER => "OP_HASHSETANSWER",

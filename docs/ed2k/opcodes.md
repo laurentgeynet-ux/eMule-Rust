@@ -23,11 +23,12 @@ Ces messages constituent le socle d'interconnexion pair-à-pair originel défini
 | `0x4C` | `OP_HELLOANSWER` | Pair $\rightarrow$ Client | Réponse à la poignée de main initiale avec les informations du pair distant |
 | `0x15` | `OP_OFFERFILES` | Client $\rightarrow$ Serveur | Annonce de fichiers partagés au serveur |
 | `0x46` | `OP_SENDINGPART` | Pair $\rightarrow$ Client | Transmission d'un bloc de données de fichier (offset + payload) |
-| `0x47` | `OP_SETREQFILEID` | Client $\rightarrow$ Pair | Déclaration du hash de fichier ciblé par le téléchargement |
+| `0x47` | `OP_REQUESTPARTS` (eMule) / `OP_SETREQFILEID` (eDonkey) | Client $\rightarrow$ Pair | eMule : requête de blocs (3 slots, payload 40 o) ; eDonkey legacy : hash de fichier ciblé |
 | `0x48` | `OP_FILEREQANSNOFILE`| Pair $\rightarrow$ Client | Indique que le fichier demandé n'est pas ou plus partagé par le pair |
-| `0x49` | `OP_FILESTATUSREQ` | Client $\rightarrow$ Pair | Demande des parts disponibles pour le fichier ciblé |
-| `0x4B` | `OP_REQUESTPARTS` | Client $\rightarrow$ Pair | Requête d'une plage d'octets précise à l'intérieur d'une part |
-| `0x4D` | `OP_END_OF_DOWNLOAD` | Client $\rightarrow$ Pair | Notification de fin de téléchargement complet du fichier |
+| `0x49` | `OP_END_OF_DOWNLOAD` (eMule) / `OP_FILESTATUSREQ` (eDonkey) | Client $\rightarrow$ Pair | eMule : fin de téléchargement (`hash16`) — le client est retiré de la file d'upload si le hash correspond (`ListenSocket.cpp:537`) ; eDonkey legacy : demande de statut des parts |
+| `0x4B` | `OP_REQUESTPARTS` (eDonkey) / `OP_ASKSHAREDFILESANSWER` (eMule) | Client $\rightarrow$ Pair | eDonkey : requête de blocs ; eMule : réponse « fichiers partagés » |
+| `0x4D` | `OP_CHANGE_CLIENT_ID` (eMule) / `OP_END_OF_DOWNLOAD` (eDonkey) | Client $\rightarrow$ Pair | eMule : changement d'ID client (`u32 newUserID + u32 newServerIP` — `ListenSocket.cpp:590`) ; eDonkey legacy : fin de téléchargement |
+| `0x4F` | `OP_SETREQFILEID` (eMule) | Client $\rightarrow$ Pair | Déclaration du hash de fichier ciblé par le téléchargement — réponse `OP_FILESTATUS` |
 | `0x50` | `OP_FILESTATUS` | Pair $\rightarrow$ Client | Envoi du masque de disponibilité des parts du fichier |
 | `0x51` | `OP_HASHSETREQUEST` | Client $\rightarrow$ Pair | Demande de la liste des hashs de parts (hashset) pour un fichier multi-parts |
 | `0x52` | `OP_HASHSETANSWER` | Pair $\rightarrow$ Client | Réponse contenant la liste des hashs MD4 de 16 octets des parts |

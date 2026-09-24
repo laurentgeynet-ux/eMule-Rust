@@ -587,11 +587,12 @@ impl PeerSessionManager {
                     let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                         match reason {
                             PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
-                            // eMule "No Needed Parts": keep the source allowed but
-                            // reask it only after a long cooldown (~30 min), its
-                            // advertised parts may become needed later.
+                            // eMule "No Needed Parts" (DS_NONEEDEDPARTS) : la
+                            // source est conservée et redemandée au cycle
+                            // doublé `FILEREASKTIME * 2` = 58 min
+                            // (`DownloadClient.cpp:1888`, `PartFile.cpp:2276`).
                             PeerFailureReason::NoNeededParts => {
-                                (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
+                                (PeerSourceStatus::Allowed, Some(now_ms + 58 * 60 * 1000))
                             }
                             _ => {
                                 if err_msg.as_deref() == Some("Disconnected in queue") {
@@ -794,8 +795,10 @@ impl PeerSessionManager {
                 let (new_status, new_cooldown) = if let Some(reason) = failure_reason {
                     match reason {
                         PeerFailureReason::FileNotFound => (PeerSourceStatus::Rejected, None),
+                        // eMule DS_NONEEDEDPARTS : source conservée, reask
+                        // doublé `FILEREASKTIME * 2` = 58 min.
                         PeerFailureReason::NoNeededParts => {
-                            (PeerSourceStatus::Allowed, Some(now_ms + 30 * 60 * 1000))
+                            (PeerSourceStatus::Allowed, Some(now_ms + 58 * 60 * 1000))
                         }
                         _ => {
                             if err_msg.as_deref() == Some("Disconnected in queue") {

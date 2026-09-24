@@ -92,7 +92,7 @@ pub const OP_HELLO_ANSWER: u8 = 0x4C;
 /// Request file name by hash.
 pub const OP_REQUESTFILENAME: u8 = 0x59;
 /// File name response.
-pub const OP_REQFILENAME_ANSWER: u8 = 0x5A;
+pub const OP_REQFILENAME_ANSWER: u8 = 0x59;
 /// Tell peer which file hash we are requesting.
 pub const OP_SETREQFILEID: u8 = 0x47;
 /// Response indicating requested file is not shared.
@@ -113,8 +113,12 @@ pub const OP_OUTOFPARTS: u8 = 0x57;
 pub const OP_REQUESTPARTS: u8 = 0x4B;
 /// Data block payload response.
 pub const OP_SENDINGPART: u8 = 0x46;
-/// Signal that client completed the download of this file.
-pub const OP_END_OF_DOWNLOAD: u8 = 0x4D;
+/// eMule: signal that client completed the download of this file (`0x49`).
+/// Same wire value as legacy `OP_FILESTATUSREQ` above.
+pub const OP_END_OF_DOWNLOAD: u8 = 0x49;
+/// eMule: client-ID change notification (`0x4D`) —
+/// `<u32 newUserID><u32 newServerIP>` (`ListenSocket.cpp:590`).
+pub const OP_CHANGE_CLIENT_ID: u8 = 0x4D;
 /// Request hashset for multi-part file.
 pub const OP_HASHSETREQUEST: u8 = 0x51;
 /// Hashset payload answer.

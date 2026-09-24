@@ -18,8 +18,9 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::ed2k::loopback::Ed2kLoopbackClient;
 use crate::ed2k::opcodes::{
-    OP_FILESTATUS, OP_FILESTATUSREQ, OP_HELLO, OP_HELLOANSWER, OP_REQUESTPARTS,
-    OP_REQUESTPARTS_EMULE, OP_SENDINGPART, OP_SETREQFILEID_EMULE,
+    OP_CHANGE_CLIENT_ID, OP_END_OF_DOWNLOAD, OP_FILESTATUS, OP_HELLO,
+    OP_HELLOANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_SENDINGPART,
+    OP_SETREQFILEID_EMULE,
 };
 use crate::ed2k::packet::{Ed2kFileStatus, Ed2kSendingPart};
 use crate::ed2k::peer_info::Ed2kPeerInfo;
@@ -166,7 +167,8 @@ pub fn opcode_to_str(opcode: u8) -> &'static str {
     match opcode {
         OP_HELLO => "OP_HELLO (0x01)",
         OP_HELLOANSWER => "OP_HELLOANSWER (0x4C)",
-        OP_FILESTATUSREQ => "OP_FILESTATUSREQ (0x49)",
+        OP_END_OF_DOWNLOAD => "OP_END_OF_DOWNLOAD/OP_FILESTATUSREQ (0x49)",
+        OP_CHANGE_CLIENT_ID => "OP_CHANGE_CLIENT_ID (0x4D)",
         OP_SETREQFILEID_EMULE => "OP_SETREQFILEID_EMULE (0x4F)",
         OP_FILESTATUS => "OP_FILESTATUS (0x50)",
         OP_REQUESTPARTS => "OP_REQUESTPARTS (0x4B)",

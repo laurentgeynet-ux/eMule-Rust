@@ -39,6 +39,13 @@ use crate::services::upload_queue::UploadManager;
 pub const UDP_REASK_INTERVAL: Duration = Duration::from_secs(21 * 60);
 /// A reask stays "pending" this long awaiting its ack.
 const PENDING_TTL: Duration = Duration::from_secs(120);
+/// eMule `UDPReaskForDownload` (`DownloadClient.cpp:1340`) — the failure
+/// guard engages only once more than this many UDP packets were sent to
+/// the peer (`m_nTotalUDPPackets > 3`).
+const UDP_GUARD_MIN_ATTEMPTS: u32 = 3;
+/// eMule `m_nFailedUDPPackets / m_nTotalUDPPackets > .3f` — above this
+/// failure ratio (percent) UDP reasks to the peer are abandoned.
+const UDP_GUARD_MAX_FAILED_PERCENT: u32 = 30;
 
 /// Result of a remote UDP reask, recorded per peer IP.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,11 +71,27 @@ pub struct UdpReaskTarget {
     pub connected_at_unix_ms: Option<i64>,
 }
 
+/// Compteurs UDP par pair — eMule `m_nTotalUDPPackets` /
+/// `m_nFailedUDPPackets` (`updownclient.h:561-562`).
+#[derive(Debug, Default, Clone)]
+struct UdpPeerStats {
+    /// Total `OP_REASKFILEPING` envoyés au pair.
+    total: u32,
+    /// Pings restés sans réponse jusqu'au reask suivant.
+    failed: u32,
+}
+
 #[derive(Default)]
 struct ClientUdpInner {
     socket: Option<Arc<UdpSocket>>,
-    /// In-flight outbound reasks: (peer IP, file hash) → sent at.
+    /// Intervalle de reask : (peer IP, file hash) → sent at (throttle
+    /// `UDP_REASK_INTERVAL`, indépendant de l'attente d'ack).
     pending: HashMap<(IpAddr, [u8; 16]), Instant>,
+    /// Pings en attente d'une réponse (eMule `m_bUDPPending`) — expirés
+    /// après `PENDING_TTL` et alors comptés comme échecs.
+    awaiting_ack: HashMap<(IpAddr, [u8; 16]), Instant>,
+    /// Compteurs d'échec par IP (garde 30 % de `UDPReaskForDownload`).
+    udp_stats: HashMap<IpAddr, UdpPeerStats>,
     /// Last result per peer IP.
     results: HashMap<IpAddr, (UdpReaskResult, Instant)>,
     /// UDP version announced by each queued inbound client (IP → version),
@@ -137,9 +160,48 @@ impl ClientUdpService {
         target: &UdpReaskTarget,
         complete_sources: u16,
     ) -> bool {
-        let key = (target.addr.ip(), target.file_hash);
+        let ip = target.addr.ip();
+        let key = (ip, target.file_hash);
         {
             let mut inner = self.inner.lock().await;
+
+            // Un ping sans réponse au-delà de `PENDING_TTL` est un échec —
+            // eMule incrémente `m_nFailedUDPPackets` quand le reask TCP
+            // suivant trouve `m_bUDPPending` encore vrai (`AskForDownload`).
+            let mut expired: Vec<IpAddr> = Vec::new();
+            inner.awaiting_ack.retain(|(eip, _), at| {
+                if at.elapsed() >= PENDING_TTL {
+                    expired.push(*eip);
+                    false
+                } else {
+                    true
+                }
+            });
+            for eip in expired {
+                inner.udp_stats.entry(eip).or_default().failed += 1;
+            }
+
+            // Garde eMule `UDPReaskForDownload` (`DownloadClient.cpp:1340`) :
+            // après >3 paquets, on cesse les reasks UDP quand plus de 30 %
+            // sont restés sans réponse.
+            if inner.udp_stats.get(&ip).is_some_and(|st| {
+                st.total > UDP_GUARD_MIN_ATTEMPTS
+                    && st.failed * 100 > st.total * UDP_GUARD_MAX_FAILED_PERCENT
+            }) {
+                tracing::debug!(
+                    "Client UDP: reask skipped for {} — UDP failure ratio > {}%",
+                    log_peer_addr(target.addr),
+                    UDP_GUARD_MAX_FAILED_PERCENT
+                );
+                return false;
+            }
+
+            // eMule `if (!m_reqfile || m_bUDPPending) return;` — un seul
+            // reask UDP en vol par pair, quel que soit le fichier.
+            if inner.awaiting_ack.keys().any(|(eip, _)| *eip == ip) {
+                return false;
+            }
+
             inner
                 .pending
                 .retain(|_, at| at.elapsed() < UDP_REASK_INTERVAL);
@@ -149,7 +211,10 @@ impl ClientUdpService {
             let Some(socket) = inner.socket.clone() else {
                 return false;
             };
-            inner.pending.insert(key, Instant::now());
+            let now = Instant::now();
+            inner.pending.insert(key, now);
+            inner.awaiting_ack.insert(key, now);
+            inner.udp_stats.entry(ip).or_default().total += 1;
             let pkt = client_udp::encode_reask_file_ping(&target.file_hash, complete_sources);
             tracing::debug!(
                 "Client UDP: OP_REASKFILEPING -> {} (hash {})",
@@ -351,12 +416,16 @@ impl ClientUdpService {
     ) {
         let had_pending = {
             let mut inner = self.inner.lock().await;
+            // Ack attendu = ping encore dans sa fenêtre `PENDING_TTL` —
+            // eMule `m_bUDPPending` (remis à faux par `UDPReaskACK`).
             let key_exists = inner
-                .pending
+                .awaiting_ack
                 .iter()
                 .any(|((ip, _), at)| *ip == peer_addr.ip() && at.elapsed() < PENDING_TTL);
             if key_exists {
-                inner.pending.retain(|(ip, _), _| *ip != peer_addr.ip());
+                inner
+                    .awaiting_ack
+                    .retain(|(ip, _), _| *ip != peer_addr.ip());
                 inner
                     .results
                     .insert(peer_addr.ip(), (result.clone(), Instant::now()));
@@ -385,5 +454,113 @@ impl ClientUdpService {
                 ps.apply_udp_queue_rank(&peer_addr.ip(), rank as u32).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    fn target(ip: IpAddr, file_hash: [u8; 16]) -> UdpReaskTarget {
+        UdpReaskTarget {
+            addr: SocketAddr::new(ip, 12345),
+            file_hash,
+            connected_at_unix_ms: Some(0),
+        }
+    }
+
+    async fn bound_service() -> ClientUdpService {
+        let svc = ClientUdpService::new();
+        let sock = UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))
+            .await
+            .expect("bind loopback UDP socket");
+        svc.set_socket(Arc::new(sock)).await;
+        svc
+    }
+
+    /// Vieillit les entrées internes comme si le ping précédent n'avait
+    /// jamais reçu de réponse : `pending` au-delà de `UDP_REASK_INTERVAL`
+    /// (le throttle laisse repasser l'appel) et `awaiting_ack` au-delà de
+    /// `PENDING_TTL` (compté comme échec au prochain `send`).
+    async fn age_out(svc: &ClientUdpService) {
+        let mut inner = svc.inner.lock().await;
+        for at in inner.pending.values_mut() {
+            *at = Instant::now() - (UDP_REASK_INTERVAL + Duration::from_secs(60));
+        }
+        for at in inner.awaiting_ack.values_mut() {
+            *at = Instant::now() - (PENDING_TTL + Duration::from_secs(60));
+        }
+    }
+
+    /// eMule `UDPReaskForDownload` : après >3 paquets et >30 % d'échecs,
+    /// le pair n'est plus sollicité en UDP (`DownloadClient.cpp:1340`).
+    #[tokio::test]
+    async fn udp_failure_ratio_guard_stops_reasks() {
+        let svc = bound_service().await;
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let t = target(ip, [0xAA; 16]);
+
+        // 4 pings tous restés sans réponse → 100 % d'échecs.
+        for _ in 0..4 {
+            assert!(svc.send_reask_file_ping(&t, 0).await);
+            age_out(&svc).await;
+        }
+        let stats = svc.inner.lock().await.udp_stats.get(&ip).cloned().unwrap_or_default();
+        assert_eq!(stats.total, 4);
+        assert_eq!(stats.failed, 3); // le 4e échec est compté au send suivant
+
+        // 5e appel : le 4e ping expire → failed=4, total=4>3, ratio 100 %
+        // > 30 % → la garde bloque l'envoi.
+        assert!(!svc.send_reask_file_ping(&t, 0).await);
+    }
+
+    /// Ratio ≤ 30 % : les reasks UDP continuent (1 échec sur 4 = 25 %).
+    #[tokio::test]
+    async fn udp_reasks_continue_below_failure_threshold() {
+        let svc = bound_service().await;
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
+        let t = target(ip, [0xBB; 16]);
+        let peer_addr = t.addr;
+
+        // 4 pings : 3 acks + 1 silence.
+        for round in 0..4 {
+            assert!(svc.send_reask_file_ping(&t, 0).await);
+            if round < 3 {
+                svc.handle_reask_ack(peer_addr, UdpReaskResult::Rank(7), None)
+                    .await;
+            }
+            age_out(&svc).await;
+        }
+
+        // total=4, failed=1 → 25 % ≤ 30 % : le reask suivant est permis.
+        assert!(svc.send_reask_file_ping(&t, 0).await);
+    }
+
+    /// `m_bUDPPending` : tant qu'un ack peut encore arriver, aucun nouveau
+    /// ping ne part vers ce pair (même pour un autre fichier).
+    #[tokio::test]
+    async fn udp_pending_blocks_second_ping_same_peer() {
+        let svc = bound_service().await;
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3));
+        let t1 = target(ip, [0xCC; 16]);
+        let t2 = target(ip, [0xDD; 16]);
+
+        assert!(svc.send_reask_file_ping(&t1, 0).await);
+        assert!(!svc.send_reask_file_ping(&t2, 0).await);
+    }
+
+    /// Un ack non sollicité (aucun ping en attente) est ignoré.
+    #[tokio::test]
+    async fn udp_unsolicited_ack_ignored() {
+        let svc = bound_service().await;
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 4));
+        svc.handle_reask_ack(
+            SocketAddr::new(ip, 12345),
+            UdpReaskResult::Rank(3),
+            None,
+        )
+        .await;
+        assert!(svc.last_result(ip).await.is_none());
     }
 }

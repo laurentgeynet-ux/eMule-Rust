@@ -375,6 +375,22 @@ pub(crate) async fn query_file_status_and_enter_queue(
     let file_status_req = Ed2kFileStatusReq {
         file_hash: dl_hash_bytes,
     };
+    // Nombre de parts du fichier ciblé — eMule saute `OP_SETREQFILEID`
+    // pour les fichiers ≤ 1 part (`DownloadClient.cpp:362-366`) : la
+    // réponse `OP_REQFILENAMEANSWER` suffit à établir la complétude.
+    let file_part_count = {
+        let dl_svc = downloads.lock().await;
+        let total_bytes = dl_svc
+            .find_by_ed2k_hash(file_hash_str)
+            .map(|d| d.total_bytes)
+            .unwrap_or(0);
+        if total_bytes == 0 {
+            0
+        } else {
+            total_bytes.div_ceil(mule_protocol::ed2k::ED2K_PART_SIZE as u64) as u16
+        }
+    };
+
     let req_filename_pkt = if peer_ext_req > 0 {
         // Notre propre part-status : parts dont la plage complète est déjà
         // téléchargée (comme PartFile::WritePartStatus chez eMule).
@@ -443,27 +459,31 @@ pub(crate) async fn query_file_status_and_enter_queue(
         ));
     }
 
-    // 4b. Send OP_SETREQFILEID_EMULE
-    let status_pkt = encoder
-        .encode_file_status_req_with_opcode(&file_status_req, OP_SETREQFILEID_EMULE)
-        .map_err(|e| {
-            PeerError::new(
-                PeerFailureReason::InvalidHandshake,
-                format!("Failed to encode OP_SETREQFILEID_EMULE: {e}"),
-            )
-        })?;
+    // 4b. Send OP_SETREQFILEID_EMULE — omis pour les fichiers ≤ 1 part
+    // (eMule `SendFileRequest`, `DownloadClient.cpp:366`) : un pair qui
+    // répond `OP_REQFILENAMEANSWER` possède alors le fichier complet.
+    if file_part_count != 1 {
+        let status_pkt = encoder
+            .encode_file_status_req_with_opcode(&file_status_req, OP_SETREQFILEID_EMULE)
+            .map_err(|e| {
+                PeerError::new(
+                    PeerFailureReason::InvalidHandshake,
+                    format!("Failed to encode OP_SETREQFILEID_EMULE: {e}"),
+                )
+            })?;
 
-    out_wire.clear();
-    out_wire.push(status_pkt.protocol);
-    out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
-    out_wire.push(status_pkt.opcode);
-    out_wire.extend_from_slice(&status_pkt.payload);
+        out_wire.clear();
+        out_wire.push(status_pkt.protocol);
+        out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
+        out_wire.push(status_pkt.opcode);
+        out_wire.extend_from_slice(&status_pkt.payload);
 
-    if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(
-            PeerFailureReason::ConnectRefused,
-            format!("Failed to send OP_SETREQFILEID_EMULE: {e}"),
-        ));
+        if let Err(e) = stream.write_all(&out_wire).await {
+            return Err(PeerError::new(
+                PeerFailureReason::ConnectRefused,
+                format!("Failed to send OP_SETREQFILEID_EMULE: {e}"),
+            ));
+        }
     }
 
     // 4b'. Request the per-part MD4 hashset (OP_HASHSETREQUEST) when unknown,
@@ -652,6 +672,21 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                         Err(e) => return Err(PeerError::new(PeerFailureReason::CorruptedData, format!("Malformed OP_FILESTATUS: {e}"))),
                                     }
                                 } else if packet.opcode == OP_REQFILENAME_ANSWER {
+                                    // Fichier ≤ 1 part : `OP_SETREQFILEID`
+                                    // n'a pas été envoyé — la réponse au nom
+                                    // vaut statut « source complète » (eMule
+                                    // `DownloadClient.cpp:362-365`).
+                                    if file_part_count == 1
+                                        && packet.payload.len() >= 16
+                                        && packet.payload[..16] == dl_hash_bytes
+                                    {
+                                        file_status_opt = Some(mule_protocol::ed2k::Ed2kFileStatus {
+                                            file_hash: dl_hash_bytes,
+                                            part_count: 0,
+                                            availability_mask: mule_protocol::ed2k::PartAvailabilityMask::from_parts(&[], 0),
+                                        });
+                                        break;
+                                    }
                                     tracing::debug!("Peer {peer} sent OP_REQFILENAME_ANSWER (len={})", packet.payload.len(), peer = log_peer_addr(target_addr));
                                 } else if packet.opcode == OP_QUEUERANKING {
                                     let rank = if packet.payload.len() >= 4 {
@@ -878,25 +913,43 @@ pub(crate) async fn wait_in_queue(
         file_hash: dl_hash_bytes,
     };
 
+    // eMule saute `OP_SETREQFILEID` pour les fichiers ≤ 1 part
+    // (`DownloadClient.cpp:366`) — à chaque cycle de reask, pas seulement
+    // à la requête initiale.
+    let file_part_count = {
+        let dl_svc = downloads.lock().await;
+        let total_bytes = dl_svc
+            .find_by_ed2k_hash(file_hash_str)
+            .map(|d| d.total_bytes)
+            .unwrap_or(0);
+        if total_bytes == 0 {
+            0
+        } else {
+            total_bytes.div_ceil(mule_protocol::ed2k::ED2K_PART_SIZE as u64) as u16
+        }
+    };
+
     if requeue_now {
-        let status_pkt = encoder
-            .encode_file_status_req(&file_status_req)
-            .map_err(|e| {
-                PeerError::new(
-                    PeerFailureReason::CorruptedData,
-                    format!("Failed to encode file status re-ask: {e}"),
-                )
-            })?;
-        out_wire.clear();
-        out_wire.push(status_pkt.protocol);
-        out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
-        out_wire.push(status_pkt.opcode);
-        out_wire.extend_from_slice(&status_pkt.payload);
-        if let Err(e) = stream.write_all(&out_wire).await {
-            return Err(PeerError::new(
-                PeerFailureReason::ConnectRefused,
-                format!("Failed to send file status re-ask: {e}"),
-            ));
+        if file_part_count != 1 {
+            let status_pkt = encoder
+                .encode_file_status_req(&file_status_req)
+                .map_err(|e| {
+                    PeerError::new(
+                        PeerFailureReason::CorruptedData,
+                        format!("Failed to encode file status re-ask: {e}"),
+                    )
+                })?;
+            out_wire.clear();
+            out_wire.push(status_pkt.protocol);
+            out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
+            out_wire.push(status_pkt.opcode);
+            out_wire.extend_from_slice(&status_pkt.payload);
+            if let Err(e) = stream.write_all(&out_wire).await {
+                return Err(PeerError::new(
+                    PeerFailureReason::ConnectRefused,
+                    format!("Failed to send file status re-ask: {e}"),
+                ));
+            }
         }
         send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
     }
@@ -922,16 +975,19 @@ pub(crate) async fn wait_in_queue(
                 // eMule `SendFileRequest` re-ask: file status request keeps
                 // the part bitmap fresh, then `OP_STARTUPLOADREQ` refreshes
                 // `LastUpRequest` on the remote queue (prevents the 1 h purge).
-                let status_pkt = encoder.encode_file_status_req(&file_status_req).map_err(|e| {
-                    PeerError::new(PeerFailureReason::CorruptedData, format!("Failed to encode re-ask: {e}"))
-                })?;
-                out_wire.clear();
-                out_wire.push(status_pkt.protocol);
-                out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
-                out_wire.push(status_pkt.opcode);
-                out_wire.extend_from_slice(&status_pkt.payload);
-                if let Err(e) = stream.write_all(&out_wire).await {
-                    return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send re-ask: {e}")));
+                // Fichier ≤ 1 part : `OP_SETREQFILEID` omis comme eMule.
+                if file_part_count != 1 {
+                    let status_pkt = encoder.encode_file_status_req(&file_status_req).map_err(|e| {
+                        PeerError::new(PeerFailureReason::CorruptedData, format!("Failed to encode re-ask: {e}"))
+                    })?;
+                    out_wire.clear();
+                    out_wire.push(status_pkt.protocol);
+                    out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
+                    out_wire.push(status_pkt.opcode);
+                    out_wire.extend_from_slice(&status_pkt.payload);
+                    if let Err(e) = stream.write_all(&out_wire).await {
+                        return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send re-ask: {e}")));
+                    }
                 }
                 send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
                 // Re-ask SX périodique — eMule attache la requête source au

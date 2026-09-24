@@ -1104,6 +1104,33 @@ impl UploadManager {
         self.emit_uploads_updated().await;
     }
 
+    /// `OP_END_OF_DOWNLOAD` (`0x49`) — eMule `ListenSocket.cpp:537` : le
+    /// downloader signale qu'il a terminé le fichier. Si `file_hash`
+    /// correspond au fichier actuellement uploadé ou demandé par ce client,
+    /// celui-ci est retiré du slot actif / de la file (`RemoveFromUploadQueue`).
+    /// Retourne `true` si le client a été retiré ; `false` quand le hash ne
+    /// correspond à aucun fichier servi pour ce client (l'appelant applique
+    /// alors `CheckFailedFileIdReqs`).
+    pub async fn end_of_download(&self, client_key: &str, file_hash: &str) -> bool {
+        let hash_matches = {
+            let active = self.active_uploads.lock().await;
+            let in_active = active.values().any(|s| {
+                (s.client_key == client_key || s.client_address == client_key)
+                    && s.file_hash.eq_ignore_ascii_case(file_hash)
+            });
+            let q = self.queue.lock().await;
+            let in_queue = q.iter().any(|e| {
+                (e.client_key == client_key || e.client_address == client_key)
+                    && e.file_hash.eq_ignore_ascii_case(file_hash)
+            });
+            in_active || in_queue
+        };
+        if hash_matches {
+            self.release_slot(client_key).await;
+        }
+        hash_matches
+    }
+
     /// Handle de promotion de l'entrée en file de `client_key` — le
     /// dispatcher l'attend pour pousser `OP_ACCEPTUPLOADREQ` dès que le
     /// client est promu (eMule `AddUpNextClient` écrit sur le socket).

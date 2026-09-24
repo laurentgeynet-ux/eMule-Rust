@@ -48,3 +48,66 @@ Dans `OP_HELLO` et `OP_HELLOANSWER` :
 - Après la liste des tags, eMule transmet l'adresse IPv4 (4 octets LE) et le port (2 octets LE) du serveur eD2K auquel le client est actuellement connecté.
 - Si le client fonctionne sans être connecté à un serveur central (mode Kademlia pur ou hors-ligne), eMule et aMule écrivent `0.0.0.0:0` (6 octets nuls).
 - Notre décodeur passif extrait ces champs optionnels sans présumer de leur signification réseau.
+
+---
+
+## 5. Écarts assumés face à eMule 0.72a
+
+Deviations volontaires ou simplifications documentées après l'audit de
+fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
+
+- **Identité annoncée = eMule 0.70a** (`CT_EMULE_VERSION = 70<<10`) alors
+  que la référence est 0.72a : cohérent avec `KadVersion = 8` annoncé
+  (eMule 0.72a = Kad 10). Passer à 0.72a/Kad 10 exige d'abord la revue
+  des features Kad v9/v10 (AUD-P03).
+- **Timeout de file d'attente** : le daemon abandonne un pair en file
+  silencieux après `FILEREASKTIME + 15 min` (`PeerTimeouts::queue_timeout`).
+  eMule n'a aucun timeout de file — le socket vit jusqu'à la mort TCP.
+  Approximation retenue pour borner les sockets dormants.
+- **Reask UDP à cadence fixe (~21 min)** au lieu du modèle eMule (ping UDP
+  dans la fenêtre de 2 min précédant le reask TCP, throttle ~20 min). La
+  garde « >3 paquets et >30 % d'échecs → stop UDP » est en revanche
+  fidèle (`DownloadClient.cpp:1340`).
+- **Reasks standalone** : les reasks sont émis en paquets simples
+  (`OP_REQFILENAME`, `OP_SETREQFILEID`, `OP_STARTUPLOADREQ`) plutôt que
+  groupés dans `OP_MULTIPACKET*` — comportement que les pairs eMule
+  attendent des clients qui n'annoncent pas toujours la capacité.
+- **NNP (No Needed Parts)** : la session TCP est fermée et la source
+  redemandée après ~58 min (`FILEREASKTIME * 2`), tandis qu'eMule garde
+  `DS_NONEEDEDPARTS` sur le socket ouvert. Même cycle de reask, socket
+  non conservé.
+- **Pas d'A4AF socket-level** (`SwapToAnotherFile` sur un socket déjà
+  connecté) : l'A4AF est réalisé au niveau allocation des sources
+  (reconnexion), pas en réutilisant la session TCP du pair.
+- **Chat et browsing de partages non implémentés** : `OP_MESSAGE`,
+  `OP_ASKSHAREDFILES*`, `OP_QUEUERANK (0x5C)`, `OP_CHANGE_SLOT (0x5B)`
+  sont décodés ou ignorés sans logique métier.
+- **Preview non annoncée** (bit 0 `MiscOptions1` = 0) : contrairement à
+  une version antérieure, la capacité n'est plus affichée puisque
+  `OP_REQUESTPREVIEW`/`OP_PREVIEWANSWER` ne sont pas implémentés.
+- **`OP_CHANGE_CLIENT_ID` (0x4D) journalisé, non appliqué** : eMule
+  met à jour `m_nUserIDHybrid`/l'IP serveur du pair ; le daemon borne
+  le parsing (2×u32) et log sans modifier l'état — suffisant car
+  l'opcode n'est plus émis par les clients modernes.
+
+### Corrections d'alignement (audit phase B)
+
+- `OP_END_OF_DOWNLOAD` émis/routé en `0x49` (eMule) ; `0x4D` décodé
+  comme `OP_CHANGE_CLIENT_ID` (`Opcodes.h:218-219`). Le profil eDonkey
+  legacy conserve `0x49` = `OP_FILESTATUSREQ` via le dispatch par
+  profil (`profile.rs`).
+- Inbound `0x49` → retrait du pair de la file d'upload si le hash
+  correspond au fichier uploadé (`ListenSocket.cpp:537`) ; `0x4F`
+  reste le `SETREQFILEID` canonique.
+- `OP_REQFILENAME (0x58)` standalone servi hors multipacket : réponse
+  `OP_REQFILENAMEANSWER`, lecture bornée de l'ext-info part-status
+  (`ProcessExtendedInfo`), `OP_FILEREQANSNOFILE` si le fichier est
+  inconnu ou partiel sans part complète (`ListenSocket.cpp:310`),
+  compteur anti-flood `CheckFailedFileIdReqs` → ban après 4 fautes.
+- Handshake : `MultiPacket=1`, `FileIdent=1`, `Preview=0`,
+  `ET_SOURCEEXCHANGE=3` (`BaseClient.cpp:715`) ; réponse inbound
+  `EMULEINFO → HELLOANSWER` dans l'ordre eMule, `client_id` et champs
+  serveur réels (ID assigné par le serveur courant).
+- `OP_SETREQFILEID` non émis pour les fichiers ≤ 1 part
+  (`DownloadClient.cpp:366`) — la réponse `OP_REQFILENAMEANSWER`
+  suffit à établir la complétude.

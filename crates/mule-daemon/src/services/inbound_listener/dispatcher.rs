@@ -20,11 +20,13 @@ use mule_protocol::ed2k::{
     Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kMessage, Ed2kMultiPacketAnswer,
     Ed2kMultiPacketSubAnswer, Ed2kMultiPacketSubRequest, Ed2kPublicKey, Ed2kRequestSources,
     Ed2kSecIdentState, Ed2kSendingPart, Ed2kSignature, PartAvailabilityMask, OP_ACCEPTUPLOADREQ,
-    OP_AICHFILEHASHREQ, OP_AICH_REQUEST, OP_CANCELTRANSFER, OP_COMPRESSEDPART,
-    OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_FILESTATUS, OP_FILESTATUSREQ,
-    OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_MULTIPACKET, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2,
-    OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
-    OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE, OP_SIGNATURE,
+    OP_AICHFILEHASHREQ, OP_AICH_REQUEST, OP_CANCELTRANSFER, OP_CHANGE_CLIENT_ID,
+    OP_COMPRESSEDPART, OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER,
+    OP_END_OF_DOWNLOAD, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST,
+    OP_MULTIPACKET, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_OUTOFPARTS, OP_PUBLICKEY,
+    OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    OP_REQUESTPARTS_I64,
+    OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
     OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
 };
 use mule_protocol::framing::PacketCodec;
@@ -74,6 +76,7 @@ impl InboundListenerService {
         peer_user_hash: Option<[u8; 16]>,
         mut sx_caps: sx::PeerSxCaps,
         peer_ext_req: u8,
+        peer_tcp_port: u16,
     ) {
         let mut read_buf = BytesMut::with_capacity(65536);
         let mut raw_buf = [0u8; 8192];
@@ -118,6 +121,11 @@ impl InboundListenerService {
         // `CreateSrcInfoPacket` pour ne servir que des sources utiles.
         let mut peer_masks: std::collections::HashMap<[u8; 16], Vec<u8>> =
             std::collections::HashMap::new();
+        // eMule `CheckFailedFileIdReqs` — compteur par connexion des
+        // requêtes fichier sur des hash totalement inconnus ; à 6 eMule
+        // incrémente le strike clientlist et coupe la connexion
+        // (`throwCStr`, `BaseClient.cpp:2550`).
+        let mut failed_file_id_reqs: u8 = 0;
 
         loop {
             tokio::select! {
@@ -677,7 +685,7 @@ impl InboundListenerService {
                         }
 
                         match pkt.opcode {
-                            OP_FILESTATUSREQ | 0x4F => {
+                            OP_SETREQFILEID_EMULE => {
                                 if let Ok(req) = decoder.decode_file_status_req(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
                                     let hash_hex = hex::encode(req.file_hash);
 
@@ -686,49 +694,206 @@ impl InboundListenerService {
                                         dl_svc.get_shared_file(&hash_hex).unwrap_or(None)
                                     };
 
-                                     let file_status = if let Some(sf) = shared_file {
-                                         if sf.enabled {
-                                             let part_count = if sf.file_size == 0 {
-                                                 1
-                                             } else {
-                                                 sf.file_size.div_ceil(9728000).max(1) as u16
-                                             };
-                                             let avail: Vec<u16> = if sf.is_partial {
-                                                 // eMule CPartFile: advertise only
-                                                 // fully-received parts (PARTSTATUS).
-                                                 sf.completed_parts.clone()
-                                             } else {
-                                                 (0..part_count).collect()
-                                             };
-                                             Ed2kFileStatus {
-                                                 file_hash: req.file_hash,
-                                                 part_count,
-                                                 availability_mask: PartAvailabilityMask::from_parts(&avail, part_count),
-                                             }
-                                         } else {
-                                             Ed2kFileStatus {
-                                                 file_hash: req.file_hash,
-                                                 part_count: 0,
-                                                 availability_mask: PartAvailabilityMask::empty(),
-                                             }
-                                         }
-                                     } else {
-                                         Ed2kFileStatus {
-                                             file_hash: req.file_hash,
-                                             part_count: 0,
-                                             availability_mask: PartAvailabilityMask::empty(),
-                                         }
-                                     };
+                                    // eMule `ListenSocket.cpp:359` : fichier
+                                    // servi = partagé actif, ou `.part` du
+                                    // downloadqueue avec `partcount > 1`.
+                                    // Sinon `OP_FILEREQANSNOFIL` + compteur
+                                    // anti-flood (uniquement si le hash est
+                                    // totalement inconnu).
+                                    let servable = shared_file.as_ref().is_some_and(|sf| {
+                                        sf.enabled && {
+                                            let part_count = if sf.file_size == 0 {
+                                                1
+                                            } else {
+                                                sf.file_size.div_ceil(9728000).max(1) as u16
+                                            };
+                                            !sf.is_partial || part_count > 1
+                                        }
+                                    });
 
-                                     if let Ok(st_pkt) = encoder.encode_file_status(&file_status) {
-                                         let mut out = Vec::new();
-                                         out.push(st_pkt.protocol);
-                                         out.extend_from_slice(&(st_pkt.frame_len() as u32).to_le_bytes());
-                                         out.push(st_pkt.opcode);
-                                         out.extend_from_slice(&st_pkt.payload);
-                                         let _ = stream.write_all(&out).await;
-                                     }
-                                 }
+                                    if servable {
+                                        let sf = shared_file.as_ref().expect("checked");
+                                        let part_count = if sf.file_size == 0 {
+                                            1
+                                        } else {
+                                            sf.file_size.div_ceil(9728000).max(1) as u16
+                                        };
+                                        let avail: Vec<u16> = if sf.is_partial {
+                                            // eMule CPartFile: advertise only
+                                            // fully-received parts (PARTSTATUS).
+                                            sf.completed_parts.clone()
+                                        } else {
+                                            (0..part_count).collect()
+                                        };
+                                        let file_status = Ed2kFileStatus {
+                                            file_hash: req.file_hash,
+                                            part_count,
+                                            availability_mask: PartAvailabilityMask::from_parts(&avail, part_count),
+                                        };
+                                        if let Ok(st_pkt) = encoder.encode_file_status(&file_status) {
+                                            let mut out = Vec::new();
+                                            out.push(st_pkt.protocol);
+                                            out.extend_from_slice(&(st_pkt.frame_len() as u32).to_le_bytes());
+                                            out.push(st_pkt.opcode);
+                                            out.extend_from_slice(&st_pkt.payload);
+                                            let _ = stream.write_all(&out).await;
+                                        }
+                                    } else {
+                                        let mut out = Vec::with_capacity(6 + 16);
+                                        out.push(PR_ED2K);
+                                        out.extend_from_slice(&(17u32).to_le_bytes());
+                                        out.push(OP_FILEREQANSNOFILE);
+                                        out.extend_from_slice(&req.file_hash);
+                                        let _ = stream.write_all(&out).await;
+                                        if shared_file.is_none() {
+                                            failed_file_id_reqs = failed_file_id_reqs.saturating_add(1);
+                                        }
+                                    }
+                                }
+                            }
+                            OP_END_OF_DOWNLOAD => {
+                                // eMule `ListenSocket.cpp:537` : `0x49` +
+                                // `hash16` — le downloader a terminé ; on le
+                                // retire de la file d'upload si le hash
+                                // correspond à son fichier servi, sinon
+                                // compteur anti-flood.
+                                if pkt.payload.len() >= 16 {
+                                    let mut file_hash = [0u8; 16];
+                                    file_hash.copy_from_slice(&pkt.payload[..16]);
+                                    let hash_hex = hex::encode(file_hash);
+                                    if !self
+                                        .upload_manager
+                                        .end_of_download(&client_key, &hash_hex)
+                                        .await
+                                    {
+                                        // Hash ne correspond à aucun fichier
+                                        // servi pour ce client — n'incrémenter
+                                        // que si totalement inconnu (eMule
+                                        // `CheckFailedFileIdReqs` skip les
+                                        // fichiers connus non partagés).
+                                        let known = {
+                                            let dl_svc = self.downloads.lock().await;
+                                            dl_svc.get_shared_file(&hash_hex).unwrap_or(None).is_some()
+                                        };
+                                        if !known {
+                                            failed_file_id_reqs = failed_file_id_reqs.saturating_add(1);
+                                        }
+                                    }
+                                }
+                            }
+                            OP_CHANGE_CLIENT_ID => {
+                                // eMule `ListenSocket.cpp:590` : `<u32
+                                // newUserID><u32 newServerIP>` — l'identité
+                                // d'upload est indexée par `client_key`
+                                // (userhash/IP), l'ID ed2k est journalisé.
+                                if pkt.payload.len() >= 8 {
+                                    let new_user_id = u32::from_le_bytes(
+                                        pkt.payload[..4].try_into().unwrap_or_default(),
+                                    );
+                                    let new_server_ip = u32::from_le_bytes(
+                                        pkt.payload[4..8].try_into().unwrap_or_default(),
+                                    );
+                                    tracing::debug!(
+                                        "Inbound peer {} sent OP_CHANGE_CLIENT_ID (newUserID={new_user_id:#010x}, newServerIP={new_server_ip:#010x})",
+                                        log_addr_str(&remote_str),
+                                    );
+                                }
+                            }
+                            OP_REQFILENAME => {
+                                // eMule `ListenSocket.cpp:292` — requête de
+                                // nom standalone (chemin emprunté par les
+                                // pairs n'ayant pas annoncé MultiPacket).
+                                if pkt.payload.len() >= 16 {
+                                    let mut file_hash = [0u8; 16];
+                                    file_hash.copy_from_slice(&pkt.payload[..16]);
+                                    let hash_hex = hex::encode(file_hash);
+                                    let shared_file = {
+                                        let dl_svc = self.downloads.lock().await;
+                                        dl_svc.get_shared_file(&hash_hex).unwrap_or(None)
+                                    };
+                                    // Servi si partagé actif, ou `.part` avec
+                                    // au moins une part complète (eMule :
+                                    // `GetCompletedSize() < PARTSIZE` →
+                                    // silence + compteur anti-flood).
+                                    let servable = shared_file.as_ref().is_some_and(|sf| {
+                                        sf.enabled && (!sf.is_partial || !sf.completed_parts.is_empty())
+                                    });
+                                    if let Some(sf) = shared_file.as_ref().filter(|_| servable) {
+                                        // Ext-info du demandeur (eMule
+                                        // `ProcessExtendedInfo`) : part-status
+                                        // puis complete-sources quand
+                                        // `ExtendedRequestsVersion > 1` —
+                                        // nourrit `reqstatus` SX.
+                                        if peer_ext_req > 0 {
+                                            let mut off = 16usize;
+                                            if pkt.payload.len() >= off + 2 {
+                                                let n = u16::from_le_bytes(
+                                                    [pkt.payload[off], pkt.payload[off + 1]],
+                                                ) as usize;
+                                                off += 2;
+                                                let mask_len = n.div_ceil(8);
+                                                if n > 0 && pkt.payload.len() >= off + mask_len {
+                                                    peer_masks.insert(
+                                                        file_hash,
+                                                        pkt.payload[off..off + mask_len].to_vec(),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        let name = sf.file_name.as_bytes();
+                                        let mut out = Vec::with_capacity(6 + 18 + name.len());
+                                        out.push(PR_ED2K);
+                                        out.extend_from_slice(
+                                            &((17 + name.len()) as u32).to_le_bytes(),
+                                        );
+                                        out.push(OP_REQFILENAME_ANSWER);
+                                        out.extend_from_slice(&file_hash);
+                                        out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+                                        out.extend_from_slice(name);
+                                        let _ = stream.write_all(&out).await;
+
+                                        // eMule `CheckAndAddKnownSource` : le
+                                        // demandeur annonce (ext-info) des
+                                        // parts du même `.part` → source
+                                        // candidate passive pour ce fichier.
+                                        if sf.is_partial
+                                            && sf.file_size > 9728000
+                                            && peer_tcp_port > 0
+                                            && peer_masks.get(&file_hash).is_some_and(|m| {
+                                                m.iter().any(|b| *b != 0)
+                                            })
+                                        {
+                                            if let Some(ip) = peer_ip {
+                                                let now_ms = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .map(|d| d.as_millis() as i64)
+                                                    .unwrap_or(0);
+                                                let src = mule_core::model::PeerSource {
+                                                    file_hash: hash_hex.clone(),
+                                                    address: format!("{ip}:{peer_tcp_port}"),
+                                                    ip: ip_to_u32(Some(ip)),
+                                                    port: peer_tcp_port,
+                                                    origin: mule_core::model::PeerSourceOrigin::SourceExchange,
+                                                    discovered_at_unix_ms: now_ms,
+                                                    last_seen_unix_ms: now_ms,
+                                                    status: mule_core::model::PeerSourceStatus::Candidate,
+                                                    fail_count: 0,
+                                                    last_error: None,
+                                                    cooldown_until_unix_ms: None,
+                                                    user_hash: peer_user_hash.map(hex::encode),
+                                                    crypt_options: 0,
+                                                    buddy_id: None,
+                                                    software: None,
+                                                    availability: peer_masks.get(&file_hash).cloned(),
+                                                };
+                                                let mut dl_svc = self.downloads.lock().await;
+                                                let _ = dl_svc.upsert_peer_sources(&hash_hex, &[src]);
+                                            }
+                                        }
+                                    } else if shared_file.is_none() {
+                                        failed_file_id_reqs = failed_file_id_reqs.saturating_add(1);
+                                    }
+                                }
                             }
                             OP_FILESTATUS => {
                                 // eMule `CUpDownClient::ProcessFileStatus` :
@@ -1178,6 +1343,19 @@ impl InboundListenerService {
                                 }
                             }
                             _ => {}
+                        }
+
+                        // eMule `CheckFailedFileIdReqs` — à 6 requêtes sur
+                        // des fichiers inconnus, la connexion est coupée
+                        // (`throwCStr`) ; le strike clientlist est approché
+                        // par la coupure stricte côté daemon.
+                        if failed_file_id_reqs >= 6 {
+                            warn!(
+                                "Inbound peer {} flooded file-id requests ({}), dropping connection (eMule FileReq flood)",
+                                log_addr_str(&remote_str),
+                                failed_file_id_reqs,
+                            );
+                            break;
                         }
                     }
                 }

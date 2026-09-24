@@ -204,6 +204,7 @@ impl InboundListenerService {
                 } else {
                     0
                 };
+                // MultiPacket = 1 (comme eMule), Preview = 0 (non implémenté).
                 let misc1: u32 = (1 << 29)
                     | (1 << 28)
                     | (4 << 24)
@@ -212,15 +213,16 @@ impl InboundListenerService {
                     | (4 << 12)
                     | (2 << 8)
                     | (1 << 4)
-                    | 1;
+                    | (1 << 1);
                 tags.push(Ed2kTag {
                     name: TagName::Id(TAG_SPECIAL_EMULE_MISCOPTIONS1),
                     value: TagValue::UInt32(misc1),
                 });
                 // MiscOptions2 — same layout as the outbound HELLO:
-                // SrcExch2<<10 | CryptReq<<9 | CryptWants<<8 | CryptSup<<7 |
-                // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0 (8).
-                let mut misc2: u32 = (1 << 10)
+                // FileIdent<<13 | SrcExch2<<10 | CryptReq<<9 | CryptWants<<8 |
+                // CryptSup<<7 | ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0 (8).
+                let mut misc2: u32 = (1 << 13)
+                    | (1 << 10)
                     | (1 << 5)
                     | (1 << 4)
                     | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
@@ -241,37 +243,44 @@ impl InboundListenerService {
                     value: TagValue::UInt32(misc2),
                 });
 
+                // Identité ed2k réelle (ID assigné par le serveur courant,
+                // IP/port du serveur) — eMule `SendHelloTypePacket` écrit
+                // `GetUserIDHybrid()` et `GetCurrentServer()` ; 0 si non
+                // connecté.
+                let ids = self.sx_local_ids(actual_listen_addr.port()).await;
                 let ans = Ed2kHelloAnswer {
                     user_hash: *self.user_hash.read().unwrap(),
-                    client_id: 0x0100007F,
+                    client_id: ids.client_id,
                     tcp_port: actual_listen_addr.port(),
                     tags,
                     unknown_tags: vec![],
-                    server_ip: 0,
-                    server_port: 0,
+                    server_ip: ids.server_ip,
+                    server_port: ids.server_port,
                 };
                 if let Ok(ans_pkt) = encoder.encode_hello_answer(&ans) {
+                    // eMule `ListenSocket.cpp:273-275` : le répondeur envoie
+                    // OP_EMULEINFO *avant* OP_HELLOANSWER quand le pair est
+                    // eMule-compatible (`SendMuleInfoPacket(false)`).
+                    if peer_info.is_emule() {
+                        let info = crate::services::peer_session::handshake::build_emule_info(
+                            self.kad_udp_port,
+                            sec_ident as u8,
+                        );
+                        if let Ok(info_pkt) = encoder.encode_emule_info(&info) {
+                            let mut out = Vec::with_capacity(6 + info_pkt.payload.len());
+                            out.push(info_pkt.protocol);
+                            out.extend_from_slice(&(info_pkt.frame_len() as u32).to_le_bytes());
+                            out.push(info_pkt.opcode);
+                            out.extend_from_slice(&info_pkt.payload);
+                            let _ = stream.write_all(&out).await;
+                        }
+                    }
                     let mut out = Vec::new();
                     out.push(ans_pkt.protocol);
                     out.extend_from_slice(&(ans_pkt.frame_len() as u32).to_le_bytes());
                     out.push(ans_pkt.opcode);
                     out.extend_from_slice(&ans_pkt.payload);
                     let _ = stream.write_all(&out).await;
-
-                    // eMule ProcessHelloPacket sends OP_EMULEINFOANSWER right
-                    // after the hello answer (SendMuleInfoPacket(true)).
-                    let info = crate::services::peer_session::handshake::build_emule_info(
-                        self.kad_udp_port,
-                        sec_ident as u8,
-                    );
-                    if let Ok(info_pkt) = encoder.encode_emule_info_answer(&info) {
-                        let mut out = Vec::with_capacity(6 + info_pkt.payload.len());
-                        out.push(info_pkt.protocol);
-                        out.extend_from_slice(&(info_pkt.frame_len() as u32).to_le_bytes());
-                        out.push(info_pkt.opcode);
-                        out.extend_from_slice(&info_pkt.payload);
-                        let _ = stream.write_all(&out).await;
-                    }
                 }
             }
             _ => {
@@ -504,6 +513,7 @@ impl InboundListenerService {
                 .as_ref()
                 .map(|p| p.extended_requests_version())
                 .unwrap_or(0),
+            callback_hello.as_ref().map(|h| h.tcp_port).unwrap_or(0),
         )
         .await;
     }
@@ -677,6 +687,7 @@ impl InboundListenerService {
             peer_hash,
             crate::services::peer_session::source_exchange::peer_sx_caps(&peer_info, None),
             peer_info.extended_requests_version(),
+            answer.tcp_port,
         )
         .await;
         Ok(())
