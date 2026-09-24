@@ -46,6 +46,9 @@ const UDP_GUARD_MIN_ATTEMPTS: u32 = 3;
 /// eMule `m_nFailedUDPPackets / m_nTotalUDPPackets > .3f` — above this
 /// failure ratio (percent) UDP reasks to the peer are abandoned.
 const UDP_GUARD_MAX_FAILED_PERCENT: u32 = 30;
+/// eMule `AllowCalbackRequest` (`ClientList.cpp:921`) — at most one
+/// accepted `OP_DIRECTCALLBACKREQ` per source IP in this window.
+const DIRECT_CALLBACK_MIN_INTERVAL: Duration = Duration::from_secs(180);
 
 /// Result of a remote UDP reask, recorded per peer IP.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +100,9 @@ struct ClientUdpInner {
     /// UDP version announced by each queued inbound client (IP → version),
     /// used to shape the `OP_REASKACK` payload (`sender->GetUDPVersion()`).
     client_udp_versions: HashMap<IpAddr, u8>,
+    /// Dernière demande de rappel direct acceptée par IP —
+    /// `listDirectCallbackRequests` eMule (fenêtre 180 s).
+    direct_callbacks: HashMap<IpAddr, Instant>,
 }
 
 /// Shared client UDP service (cloneable handle).
@@ -109,6 +115,18 @@ pub struct ClientUdpService {
     /// Buddy relay registry — `OP_REASKCALLBACKUDP` datagrams for our buddy
     /// client's ID are forwarded onto its TCP link as `OP_REASKCALLBACKTCP`.
     buddy: Arc<std::sync::RwLock<Option<Arc<Mutex<crate::services::kad_udp::BuddyRegistry>>>>>,
+    /// Inbound listener used for `connect_back` when a peer asks a
+    /// Kad-firewalled us to dial out (`OP_DIRECTCALLBACKREQ` → eMule
+    /// `TryToConnect`).
+    inbound: Arc<std::sync::RwLock<Option<crate::services::inbound_listener::InboundListenerService>>>,
+    /// Kad UDP firewall tracker — direct callbacks are only honoured
+    /// while `UdpFirewallStatus::Firewalled` (eMule `CKademlia::
+    /// IsRunning() && IsFirewalled()`).
+    firewall_tracker:
+        Arc<std::sync::RwLock<Option<Arc<Mutex<crate::services::kad_udp::FirewallTestTracker>>>>>,
+    /// Server session — provides our eD2K `client_id` for the connect-back
+    /// hello (eMule sends its real ID in `TryToConnect`).
+    server_session: Arc<std::sync::RwLock<Option<crate::services::ServerSessionManager>>>,
 }
 
 impl ClientUdpService {
@@ -140,6 +158,27 @@ impl ClientUdpService {
     /// Injects the buddy relay registry shared with `KadUdpService`.
     pub fn set_buddy_registry(&self, reg: Arc<Mutex<crate::services::kad_udp::BuddyRegistry>>) {
         *self.buddy.write().unwrap() = Some(reg);
+    }
+
+    /// Injects the inbound listener used for direct-callback connect-back.
+    pub fn set_inbound_listener(
+        &self,
+        svc: crate::services::inbound_listener::InboundListenerService,
+    ) {
+        *self.inbound.write().unwrap() = Some(svc);
+    }
+
+    /// Injects the Kad UDP firewall tracker (`OP_DIRECTCALLBACKREQ` gate).
+    pub fn set_firewall_tracker(
+        &self,
+        tracker: Arc<Mutex<crate::services::kad_udp::FirewallTestTracker>>,
+    ) {
+        *self.firewall_tracker.write().unwrap() = Some(tracker);
+    }
+
+    /// Injects the server session (eD2K `client_id` for connect-back).
+    pub fn set_server_session(&self, svc: crate::services::ServerSessionManager) {
+        *self.server_session.write().unwrap() = Some(svc);
     }
 
     /// Records the UDP version an inbound client announced in its hello,
@@ -282,6 +321,24 @@ impl ClientUdpService {
             ClientUdpMessage::ReaskCallback { buddy_id, rest } => {
                 self.handle_reask_callback(peer_addr, buddy_id, rest).await
             }
+            ClientUdpMessage::DirectCallbackReq {
+                tcp_port,
+                user_hash,
+                conn_opts,
+            } => {
+                self.handle_direct_callback_req(peer_addr, tcp_port, user_hash, conn_opts)
+                    .await
+            }
+            ClientUdpMessage::PortTest { request } => {
+                // eMule répond au test `0x12` via sa socket TCP de test
+                // dédiée (`SendPortTestReply('1')`) — pas de réponse UDP.
+                // Nous n'implémentons pas l'outil de test de ports :
+                // accusé journalisé uniquement.
+                tracing::debug!(
+                    "Client UDP: OP_PORTTEST 0x{request:02X} from {peer} (no reply — port test tool unsupported)",
+                    peer = log_peer_addr(peer_addr)
+                );
+            }
             ClientUdpMessage::Unknown { opcode } => {
                 tracing::debug!(
                     "Client UDP: ignoring opcode 0x{opcode:02X} from {peer}",
@@ -310,34 +367,67 @@ impl ClientUdpService {
         };
 
         let mgr = self.upload_manager.read().unwrap().clone();
-        let rank = match &mgr {
-            Some(m) => m.waiting_rank_by_ip(&peer_addr.ip()).await,
-            None => None,
+        // eMule `GetWaitingClientByIP_UDP` + `md4equ(reqfilehash,
+        // sender->GetUploadFileID())` : le rang n'est révélé qu'au client
+        // effectivement en file **pour ce fichier** — un pair en file pour
+        // un autre fichier (ou plusieurs clients derrière la même IP sans
+        // correspondance de port UDP) ne reçoit aucune réponse.
+        let lookup = match &mgr {
+            Some(m) => {
+                m.waiting_rank_for_udp(&peer_addr.ip(), peer_addr.port(), &hash_hex)
+                    .await
+            }
+            None => crate::services::upload_queue::UdpRankLookup::NoSender,
         };
 
+        use crate::services::upload_queue::UdpRankLookup;
         let response = if !shared {
             client_udp::encode_file_not_found()
-        } else if let Some(rank) = rank {
-            let include_status = {
-                let inner = self.inner.lock().await;
-                inner
-                    .client_udp_versions
-                    .get(&peer_addr.ip())
-                    .copied()
-                    .unwrap_or(0)
-                    > 3
-            };
-            client_udp::encode_reask_ack(rank as u16, include_status)
         } else {
-            let nearly_full = match &mgr {
-                Some(m) => m.is_nearly_full().await,
-                None => false,
-            };
-            if nearly_full {
-                client_udp::encode_queue_full()
-            } else {
-                // eMule: "Don't answer him. Force him to establish a TCP connection."
-                return;
+            match lookup {
+                UdpRankLookup::Rank(rank) => {
+                    // eMule `sender->SetLastUpRequest()` sur ping accepté.
+                    if let Some(m) = &mgr {
+                        m.note_udp_reask(&peer_addr.ip()).await;
+                    }
+                    let include_status = {
+                        let inner = self.inner.lock().await;
+                        inner
+                            .client_udp_versions
+                            .get(&peer_addr.ip())
+                            .copied()
+                            .unwrap_or(0)
+                            > 3
+                    };
+                    client_udp::encode_reask_ack(rank as u16, include_status)
+                }
+                UdpRankLookup::NoSender => {
+                    let nearly_full = match &mgr {
+                        Some(m) => m.is_nearly_full().await,
+                        None => false,
+                    };
+                    if nearly_full {
+                        client_udp::encode_queue_full()
+                    } else {
+                        // eMule: "Don't answer him. Force him to establish
+                        // a TCP connection."
+                        return;
+                    }
+                }
+                UdpRankLookup::Ambiguous => {
+                    tracing::debug!(
+                        "Client UDP: REASKFILEPING from {peer} dropped — multiple queued clients share this IP (bSenderMultipleIpUnknown)",
+                        peer = log_peer_addr(peer_addr)
+                    );
+                    return;
+                }
+                UdpRankLookup::FileMismatch => {
+                    tracing::debug!(
+                        "Client UDP: REASKFILEPING from {peer} dropped — reqfile does not match queued file",
+                        peer = log_peer_addr(peer_addr)
+                    );
+                    return;
+                }
             }
         };
 
@@ -406,15 +496,103 @@ impl ClientUdpService {
         }
     }
 
+    /// eMule `case OP_DIRECTCALLBACKREQ` — a peer that cannot reach us
+    /// over TCP asks us (as a Kad-firewalled node) to dial out to it.
+    /// Honoured only while our Kad UDP firewall status is `Firewalled`
+    /// (`CKademlia::IsRunning() && IsFirewalled()`), rate-limited to one
+    /// accepted request per IP per `DIRECT_CALLBACK_MIN_INTERVAL`
+    /// (`AllowCalbackRequest`, 180 s).
+    async fn handle_direct_callback_req(
+        &self,
+        peer_addr: SocketAddr,
+        tcp_port: u16,
+        user_hash: [u8; 16],
+        conn_opts: u8,
+    ) {
+        // Rate limit — eMule drops repeat requesters inside the window.
+        {
+            let mut inner = self.inner.lock().await;
+            let now = Instant::now();
+            inner
+                .direct_callbacks
+                .retain(|_, at| now.duration_since(*at) < DIRECT_CALLBACK_MIN_INTERVAL);
+            if inner.direct_callbacks.contains_key(&peer_addr.ip()) {
+                tracing::debug!(
+                    "Client UDP: DIRECTCALLBACKREQ from {peer} dropped — too many requests",
+                    peer = log_peer_addr(peer_addr)
+                );
+                return;
+            }
+        }
+
+        // Gate — eMule only accepts when Kad is running and firewalled.
+        let tracker = { self.firewall_tracker.read().unwrap().clone() };
+        let firewalled = match tracker {
+            Some(t) => {
+                t.lock().await.status
+                    == crate::services::kad_udp::UdpFirewallStatus::Firewalled
+            }
+            None => false,
+        };
+        if !firewalled {
+            tracing::debug!(
+                "Client UDP: DIRECTCALLBACKREQ from {peer} ignored — not Kad-firewalled",
+                peer = log_peer_addr(peer_addr)
+            );
+            return;
+        }
+
+        let Some(inbound) = self.inbound.read().unwrap().clone() else {
+            return;
+        };
+        let server_session = { self.server_session.read().unwrap().clone() };
+        let our_id = match server_session {
+            Some(s) => s.snapshot().await.client_id.unwrap_or(0),
+            None => 0,
+        };
+
+        // eMule `AddTrackCallbackRequests` — tracked only once accepted.
+        self.inner
+            .lock()
+            .await
+            .direct_callbacks
+            .insert(peer_addr.ip(), Instant::now());
+
+        let target = SocketAddr::new(peer_addr.ip(), tcp_port);
+        tracing::info!(
+            "Client UDP: DIRECTCALLBACKREQ accepted from {peer} — connect-back to {target} (conn_opts=0x{conn_opts:02X})",
+            peer = log_peer_addr(peer_addr),
+            target = log_peer_addr(target)
+        );
+        tokio::spawn(async move {
+            // server_ip/port: inconnus hors session serveur — `0` est le
+            // fallback utilisé par `sx_local_ids` quand on n'est pas
+            // connecté à un serveur.
+            if let Err(e) = inbound
+                .connect_back(target, Some(user_hash), conn_opts, our_id, 0, 0)
+                .await
+            {
+                tracing::debug!(
+                    "Client UDP: direct callback connect-back to {target} failed: {e}",
+                    target = log_peer_addr(target)
+                );
+            }
+        });
+    }
+
     /// Validates an ack against pending reasks and applies the rank to the
     /// queued peer session (eMule `sender->UDPReaskACK(nRank)`).
     async fn handle_reask_ack(
         &self,
         peer_addr: SocketAddr,
         result: UdpReaskResult,
-        _part_status: Option<Vec<u8>>,
+        part_status: Option<client_udp::UdpPartStatus>,
     ) {
-        let had_pending = {
+        // Hash du fichier pour lequel le ping était en vol — eMule le
+        // retrouve via `sender->m_reqfile` ; un seul ping en vol par pair
+        // (`m_bUDPPending`), on retire donc toutes les entrées de l'IP et
+        // on garde le hash pour les traitements FNF / part-status.
+        let (had_pending, pending_hash) = {
             let mut inner = self.inner.lock().await;
             // Ack attendu = ping encore dans sa fenêtre `PENDING_TTL` —
             // eMule `m_bUDPPending` (remis à faux par `UDPReaskACK`).
@@ -422,15 +600,21 @@ impl ClientUdpService {
                 .awaiting_ack
                 .iter()
                 .any(|((ip, _), at)| *ip == peer_addr.ip() && at.elapsed() < PENDING_TTL);
+            let mut hash = None;
             if key_exists {
-                inner
-                    .awaiting_ack
-                    .retain(|(ip, _), _| *ip != peer_addr.ip());
+                inner.awaiting_ack.retain(|(ip, h), _| {
+                    if *ip == peer_addr.ip() {
+                        hash = Some(*h);
+                        false
+                    } else {
+                        true
+                    }
+                });
                 inner
                     .results
                     .insert(peer_addr.ip(), (result.clone(), Instant::now()));
             }
-            key_exists
+            (key_exists, hash)
         };
 
         if !had_pending {
@@ -448,11 +632,134 @@ impl ClientUdpService {
             peer = log_peer_addr(peer_addr)
         );
 
-        if let UdpReaskResult::Rank(rank) = result {
-            let ps = self.peer_session.read().unwrap().clone();
-            if let Some(ps) = ps {
-                ps.apply_udp_queue_rank(&peer_addr.ip(), rank as u32).await;
+        let ps = self.peer_session.read().unwrap().clone();
+        match result {
+            UdpReaskResult::Rank(rank) => {
+                // eMule `SetRemoteQueueFull(false)` + `UDPReaskACK(nRank)`.
+                if let Some(ps) = ps {
+                    ps.apply_udp_queue_rank(&peer_addr.ip(), rank as u32)
+                        .await;
+                }
+                // UDP ver > 3 : `ProcessFileStatus` — le bitfield décrit
+                // les parts que le pair possède du fichier requis ; il
+                // alimente la rareté (`m_SrcPartFrequency`).
+                if let (Some(status), Some(hash)) = (part_status, pending_hash) {
+                    self.apply_ack_part_status(peer_addr, hash, status)
+                        .await;
+                }
             }
+            UdpReaskResult::QueueFull => {
+                // eMule `SetRemoteQueueFull(true)` + `UDPReaskACK(0)`.
+                if let Some(ps) = ps {
+                    ps.apply_udp_queue_full(&peer_addr.ip()).await;
+                }
+            }
+            UdpReaskResult::FileNotFound => {
+                // eMule `UDPReaskFNF` : la source est « deadlistée » pour
+                // ce fichier et retirée des sources.
+                if let Some(ps) = ps {
+                    ps.apply_udp_file_not_found(&peer_addr.ip()).await;
+                }
+                if let Some(hash) = pending_hash {
+                    self.mark_source_file_not_found(peer_addr, hash).await;
+                }
+            }
+        }
+    }
+
+    /// eMule `ProcessFileStatus(true, data_in, reqfile)` : applique le
+    /// bitfield de parts annoncé par le pair à sa disponibilité pour le
+    /// fichier requis (rareté `m_SrcPartFrequency` + statut persisté).
+    async fn apply_ack_part_status(
+        &self,
+        peer_addr: SocketAddr,
+        file_hash: [u8; 16],
+        status: client_udp::UdpPartStatus,
+    ) {
+        let Some(dl_arc) = self.downloads.read().unwrap().clone() else {
+            return;
+        };
+        let mask = match mule_protocol::ed2k::PartAvailabilityMask::from_bytes(
+            bytes::Bytes::from(status.bitfield.clone()),
+            status.part_count,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::debug!(
+                    "Client UDP: malformed REASKACK part status from {peer}: {e:?}",
+                    peer = log_peer_addr(peer_addr)
+                );
+                return;
+            }
+        };
+        let hash_hex = hex::encode(file_hash);
+        let mut dl = dl_arc.lock().await;
+        let Some(dl_id) = dl.find_by_ed2k_hash(&hash_hex).map(|s| s.id) else {
+            return;
+        };
+        // La session TCP du pair (le port UDP du datagramme ≠ le port TCP
+        // de la connexion) : on retrouve sa `ActiveSource` par IP.
+        if let Some(src_addr) = dl
+            .get_sources(&dl_id)
+            .and_then(|srcs| {
+                srcs.keys()
+                    .find(|a| a.ip() == peer_addr.ip())
+                    .copied()
+            })
+        {
+            let _ = dl.record_source_availability(&dl_id, src_addr, mask);
+        }
+        if let Some(src) = dl
+            .list_peer_sources(&hash_hex)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|s| {
+                s.address
+                    .rsplit_once(':')
+                    .and_then(|(h, _)| h.parse::<IpAddr>().ok())
+                    .is_some_and(|ip| ip == peer_addr.ip())
+            })
+        {
+            let _ = dl.update_peer_source_details(
+                &hash_hex,
+                &src.address,
+                None,
+                Some(status.bitfield.as_slice()),
+            );
+        }
+    }
+
+    /// eMule `UDPReaskFNF` — `m_DeadSourceList.AddDeadSource` : le pair a
+    /// répondu `OP_FILENOTFOUND` pour le fichier requis ; la source est
+    /// marquée morte (statut `Failed`, hors du srclist — deadlist eMule).
+    async fn mark_source_file_not_found(&self, peer_addr: SocketAddr, file_hash: [u8; 16]) {
+        let Some(dl_arc) = self.downloads.read().unwrap().clone() else {
+            return;
+        };
+        let hash_hex = hex::encode(file_hash);
+        let mut dl = dl_arc.lock().await;
+        let src = dl
+            .list_peer_sources(&hash_hex)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|s| {
+                s.address
+                    .rsplit_once(':')
+                    .and_then(|(h, _)| h.parse::<IpAddr>().ok())
+                    .is_some_and(|ip| ip == peer_addr.ip())
+            });
+        if let Some(src) = src {
+            let _ = dl.update_peer_source_status(
+                &hash_hex,
+                &src.address,
+                mule_core::model::PeerSourceStatus::Failed,
+                Some("peer answered OP_FILENOTFOUND (UDP deadlist)"),
+                None,
+            );
+            tracing::info!(
+                "Client UDP: source {} marked dead for {hash_hex} (OP_FILENOTFOUND)",
+                src.address
+            );
         }
     }
 }

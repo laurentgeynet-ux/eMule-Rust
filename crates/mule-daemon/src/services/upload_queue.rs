@@ -144,6 +144,23 @@ impl UploadSessionSnapshot {
     }
 }
 
+/// Résultat du lookup `OP_REASKFILEPING` dans la file d'attente —
+/// eMule `GetWaitingClientByIP_UDP` + contrôle `GetUploadFileID`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UdpRankLookup {
+    /// Client identifié, hash conforme : répondre `OP_REASKACK` + rang.
+    Rank(u32),
+    /// Plusieurs clients en file partagent cette IP sans correspondance
+    /// de port UDP — eMule ne répond pas (force la connexion TCP).
+    Ambiguous,
+    /// Client identifié mais le hash demandé ≠ son fichier en attente —
+    /// eMule journalise l'erreur et ne répond pas.
+    FileMismatch,
+    /// Aucun client en file à cette IP — eMule répond `OP_QUEUEFULL`
+    /// seulement si la file approche la saturation.
+    NoSender,
+}
+
 /// Entry waiting in the upload queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -179,6 +196,12 @@ pub struct QueuedUpload {
     /// re-ask, ~30 min).
     #[serde(skip)]
     pub promote_notify: std::sync::Arc<tokio::sync::Notify>,
+    /// Port UDP eMule annoncé dans le HELLO du client (`emule_udp_port`)
+    /// — eMule `GetUDPPort()` : permet à `GetWaitingClientByIP_UDP` de
+    /// distinguer deux clients derrière la même IP (NAT) lors d'un
+    /// `OP_REASKFILEPING`.
+    #[serde(default)]
+    pub client_udp_port: Option<u16>,
     /// `true` quand le fichier demandé a `up_priority == "auto"` (eMule
     /// `m_bAutoUpPriority`) — `file_prio_num` est alors rafraîchi depuis
     /// `auto_up_prio` à chaque tri de la file, comme eMule lit
@@ -517,6 +540,7 @@ impl UploadManager {
         credit_multiplier: f64,
         file_prio: &str,
         banned: bool,
+        client_udp_port: Option<u16>,
     ) -> Result<(UploadSlotState, Option<u32>), String> {
         let mut active = self.active_uploads.lock().await;
         let now = std::time::SystemTime::now()
@@ -734,6 +758,7 @@ impl UploadManager {
             last_request_unix_ms: now,
             bad_requests: 0,
             promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+            client_udp_port,
             auto_prio,
         });
 
@@ -1354,6 +1379,88 @@ impl UploadManager {
             .map(|pos| (pos + 1) as u32)
     }
 
+    /// eMule `GetWaitingClientByIP_UDP(ip, udp_port, bIgnorePortOnUniqueIP
+    /// = true, &bSenderMultipleIpUnknown)` + contrôle `md4equ(reqfilehash,
+    /// sender->GetUploadFileID())` de `ClientUDPSocket.cpp` :
+    /// - un client en file avec la même IP **et** le même port UDP annoncé
+    ///   est identifié directement ;
+    /// - sinon, s'il n'existe qu'**un seul** client en file à cette IP, il
+    ///   est retenu (tolérance au port, `bIgnorePortOnUniqueIP`) ;
+    /// - plusieurs clients à la même IP sans correspondance de port →
+    ///   [`UdpRankLookup::Ambiguous`] (eMule ne répond pas : il force une
+    ///   connexion TCP pour lever l'ambiguïté NAT) ;
+    /// - le hash demandé doit correspondre au fichier du client trouvé,
+    ///   sinon [`UdpRankLookup::FileMismatch`] (eMule ne répond pas).
+    pub async fn waiting_rank_for_udp(
+        &self,
+        ip: &std::net::IpAddr,
+        udp_port: u16,
+        file_hash: &str,
+    ) -> UdpRankLookup {
+        let ip_str = ip.to_string();
+        let clean_hash = file_hash.trim().to_lowercase();
+        let q = self.queue.lock().await;
+        let same_ip = |e: &&QueuedUpload| {
+            e.client_address
+                .rsplit_once(':')
+                .map(|(host, _)| host == ip_str)
+                .unwrap_or(false)
+        };
+        // 1. Correspondance exacte IP + port UDP (désambiguïsation NAT).
+        if let Some(pos) = q.iter().position(|e| {
+            same_ip(&e) && e.client_udp_port.is_some_and(|p| p == udp_port)
+        }) {
+            let entry = &q[pos];
+            return if entry.file_hash.eq_ignore_ascii_case(&clean_hash) {
+                UdpRankLookup::Rank((pos + 1) as u32)
+            } else {
+                UdpRankLookup::FileMismatch
+            };
+        }
+        // 2. Tolérance « unique IP » : un seul client en file à cette IP.
+        let matches: Vec<usize> = q
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| same_ip(e))
+            .map(|(pos, _)| pos)
+            .collect();
+        match matches.as_slice() {
+            [] => UdpRankLookup::NoSender,
+            [pos] => {
+                let entry = &q[*pos];
+                if entry.file_hash.eq_ignore_ascii_case(&clean_hash) {
+                    UdpRankLookup::Rank((*pos + 1) as u32)
+                } else {
+                    UdpRankLookup::FileMismatch
+                }
+            }
+            _ => UdpRankLookup::Ambiguous,
+        }
+    }
+
+    /// eMule `SetLastUpRequest` — un `OP_REASKFILEPING` accepté d'un
+    /// client en file rafraîchit son horodatage de re-ask (la purge
+    /// `MAX_PURGEQUEUETIME` 1 h ne doit pas frapper un client vivant qui
+    /// n'a plus de socket TCP ouverte de re-ask).
+    pub async fn note_udp_reask(&self, ip: &std::net::IpAddr) {
+        let ip_str = ip.to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let mut q = self.queue.lock().await;
+        for entry in q.iter_mut() {
+            if entry
+                .client_address
+                .rsplit_once(':')
+                .map(|(host, _)| host == ip_str)
+                .unwrap_or(false)
+            {
+                entry.last_request_unix_ms = now;
+            }
+        }
+    }
+
     /// Number of clients currently waiting in the upload queue.
     pub async fn waiting_len(&self) -> usize {
         self.queue.lock().await.len()
@@ -1411,6 +1518,7 @@ mod tests {
                     1.0,
                     "normal",
                     false,
+                    None,
                 )
                 .await
                 .unwrap();
@@ -1418,7 +1526,7 @@ mod tests {
         }
         // 4th client queues
         let (state, rank) = mgr
-            .request_upload_slot("c3", "c3", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("c3", "c3", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1430,16 +1538,16 @@ mod tests {
     async fn release_promotes_until_slots_full() {
         let mgr = UploadManager::new();
         mgr.set_max_active(2);
-        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c", "c", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c", "c", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("d", "d", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("d", "d", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
 
@@ -1463,11 +1571,11 @@ mod tests {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
         // Same userhash reconnecting from a different IP is the same client.
-        mgr.request_upload_slot("uh:AA", "1.1.1.1:4662", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("uh:AA", "1.1.1.1:4662", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let (state, _) = mgr
-            .request_upload_slot("uh:AA", "2.2.2.2:4662", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("uh:AA", "2.2.2.2:4662", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
@@ -1482,13 +1590,13 @@ mod tests {
         mgr.set_max_active(1);
         // c1 takes the only slot.
         let (state, _) = mgr
-            .request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
         // c2 waits.
         let (state, _) = mgr
-            .request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1527,13 +1635,13 @@ mod tests {
             1000u64,
         )]));
         // Deux slots actifs sur le même hash (casse mixte) + un autre fichier.
-        mgr.request_upload_slot("c1", "c1", "HAA", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "HAA", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c2", "c2", "haa", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c2", "c2", "haa", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c3", "c3", "hbb", "g", 1.0, "normal", false)
+        mgr.request_upload_slot("c3", "c3", "hbb", "g", 1.0, "normal", false, None)
             .await
             .unwrap();
         // Fenêtre de mesure amorcée il y a 1 s → premier échantillon au
@@ -1583,7 +1691,7 @@ mod tests {
     async fn fast_slot_within_grace_is_not_demoted() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         // Slow rate but still within grace period → stays Uploading.
@@ -1599,7 +1707,7 @@ mod tests {
         mgr.set_uss_gate(flag.clone());
         // Gate closed: free slots exist but the client must queue.
         let (state, rank) = mgr
-            .request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1608,7 +1716,7 @@ mod tests {
         // Gate open: next request is granted immediately.
         flag.store(true, Ordering::SeqCst);
         let (state, _) = mgr
-            .request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("b", "b", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
@@ -1621,14 +1729,14 @@ mod tests {
         mgr.set_event_channel(tx, Arc::new(AtomicU64::new(1)));
 
         mgr.set_max_active(1);
-        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let ev = rx.recv().await.unwrap();
         assert!(ev.contains("upload.uploadsUpdated"));
         assert!(ev.contains("\"uploadRateBps\""));
 
-        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let ev = rx.recv().await.unwrap();
@@ -1643,10 +1751,10 @@ mod tests {
     #[tokio::test]
     async fn progress_tracked_per_client() {
         let mgr = UploadManager::new();
-        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("b", "b", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         mgr.update_progress("a", 100).await;
@@ -1673,7 +1781,7 @@ mod tests {
     #[tokio::test]
     async fn rate_is_measured_per_window_and_decays_on_stall() {
         let mgr = UploadManager::new();
-        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let now_ms = || {
@@ -1714,14 +1822,14 @@ mod tests {
         // Les 4 slots garantis passent toujours (max(MIN_UP_CLIENTS,4)).
         for i in 0..4 {
             let (state, _) = mgr
-                .request_upload_slot(&format!("c{i}"), &format!("c{i}"), "h", "f", 1.0, "normal", false)
+                .request_upload_slot(&format!("c{i}"), &format!("c{i}"), "h", "f", 1.0, "normal", false, None)
                 .await
                 .unwrap();
             assert_eq!(state, UploadSlotState::Uploading);
         }
         // 5e : 12 KiB/s / 4 KiB/s cible = 3 < 4 slots → refus → file.
         let (state, _) = mgr
-            .request_upload_slot("c5", "c5", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("c5", "c5", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1735,7 +1843,7 @@ mod tests {
             }
         }
         let (state, _) = mgr
-            .request_upload_slot("c6", "c6", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("c6", "c6", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1743,7 +1851,7 @@ mod tests {
         // Limite relevée à 200 KiB/s → 200/4 = 50 > 4 → slot ouvert.
         speed.store(200 * 1024, Ordering::Relaxed);
         let (state, _) = mgr
-            .request_upload_slot("c7", "c7", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("c7", "c7", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
@@ -1756,11 +1864,11 @@ mod tests {
     async fn downloading_client_other_file_keeps_slot() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h1", "f1", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "h1", "f1", 1.0, "normal", false, None)
             .await
             .unwrap();
         let (state, _) = mgr
-            .request_upload_slot("c1", "c1", "h2", "f2", 1.0, "normal", false)
+            .request_upload_slot("c1", "c1", "h2", "f2", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
@@ -1776,14 +1884,14 @@ mod tests {
     async fn queued_client_single_entry_and_updates_on_reask() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c2", "c2", "h1", "f1", 1.0, "normal", false)
+        mgr.request_upload_slot("c2", "c2", "h1", "f1", 1.0, "normal", false, None)
             .await
             .unwrap();
         let (state, _) = mgr
-            .request_upload_slot("c2", "c2", "h2", "f2", 1.0, "high", false)
+            .request_upload_slot("c2", "c2", "h2", "f2", 1.0, "high", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1800,10 +1908,10 @@ mod tests {
     async fn process_tick_rotates_full_session_and_preserves_wait() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let now = std::time::SystemTime::now()
@@ -1827,7 +1935,7 @@ mod tests {
         // Re-ask de c1 : wait start restauré → enqueued_at antérieur à now,
         // le score accumulé n'est pas perdu.
         let (state, rank) = mgr
-            .request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1847,10 +1955,10 @@ mod tests {
     async fn promotion_notify_fires_when_slot_frees() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let notify = mgr.promotion_notify("c2").await.unwrap();
@@ -1867,10 +1975,10 @@ mod tests {
     async fn stale_queue_entries_purged_after_one_hour() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         {
@@ -1890,25 +1998,25 @@ mod tests {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
         mgr.set_max_queue(10); // soft=10, hard=210
-        mgr.request_upload_slot("c0", "c0", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c0", "c0", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         // Remplit la soft limit avec des clients très scorés
         // (veryhigh=18 × 10.0 crédits → combined 1800).
         for i in 0..10 {
-            mgr.request_upload_slot(&format!("q{i}"), &format!("q{i}"), "h", "f", 10.0, "veryhigh", false)
+            mgr.request_upload_slot(&format!("q{i}"), &format!("q{i}"), "h", "f", 10.0, "veryhigh", false, None)
                 .await
                 .unwrap();
         }
         assert_eq!(mgr.waiting_len().await, 10);
         // Combined faible (normal ×1.0 = 70 < 1800) → refus.
         assert!(mgr
-            .request_upload_slot("low1", "low1", "h", "f", 1.0, "normal", false)
+            .request_upload_slot("low1", "low1", "h", "f", 1.0, "normal", false, None)
             .await
             .is_err());
         // Combined égal à la moyenne → admis.
         let (state, _) = mgr
-            .request_upload_slot("hi1", "hi1", "h", "f", 10.0, "veryhigh", false)
+            .request_upload_slot("hi1", "hi1", "h", "f", 10.0, "veryhigh", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -1920,19 +2028,19 @@ mod tests {
     async fn aggressive_reasks_mark_client_banned() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
-        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         for _ in 0..3 {
-            mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
+            mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
                 .await
                 .unwrap();
         }
         assert!(!mgr.queue.lock().await[0].banned);
-        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false)
+        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let q = mgr.queue.lock().await;
@@ -1966,7 +2074,7 @@ mod tests {
     async fn auto_up_priority_tracks_uploader_count() {
         let mgr = UploadManager::new();
         let (state, _) = mgr
-            .request_upload_slot("c1", "c1", "haa", "f", 1.0, "auto", false)
+            .request_upload_slot("c1", "c1", "haa", "f", 1.0, "auto", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
@@ -2037,11 +2145,11 @@ mod tests {
     async fn auto_prio_queue_entry_refresh_and_manual_override() {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
-        mgr.request_upload_slot("busy", "busy", "hzz", "z", 1.0, "normal", false)
+        mgr.request_upload_slot("busy", "busy", "hzz", "z", 1.0, "normal", false, None)
             .await
             .unwrap();
         let (state, _) = mgr
-            .request_upload_slot("q1", "q1", "haa", "f", 1.0, "auto", false)
+            .request_upload_slot("q1", "q1", "haa", "f", 1.0, "auto", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Waiting);
@@ -2084,7 +2192,7 @@ mod tests {
             }
             mgr.update_auto_up_prio(&active, "haa");
         }
-        mgr.request_upload_slot("q1", "q1", "haa", "f", 1.0, "auto", false)
+        mgr.request_upload_slot("q1", "q1", "haa", "f", 1.0, "auto", false, None)
             .await
             .unwrap();
         {
@@ -2094,7 +2202,7 @@ mod tests {
         }
 
         // Bascule manuelle : sortie du registre auto + poids explicite.
-        mgr.request_upload_slot("q1", "q1", "haa", "f", 1.0, "high", false)
+        mgr.request_upload_slot("q1", "q1", "haa", "f", 1.0, "high", false, None)
             .await
             .unwrap();
         {
@@ -2103,5 +2211,109 @@ mod tests {
             assert_eq!(q[0].file_prio_num, 9);
         }
         assert!(!mgr.auto_up_prio.read().unwrap().contains_key("haa"));
+    }
+
+    #[tokio::test]
+    async fn udp_rank_lookup_matches_emule() {
+        use std::net::{IpAddr, Ipv4Addr};
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5));
+
+        // Occupe l'unique slot actif pour que les clients suivants
+        // rejoignent la file.
+        mgr.request_upload_slot("uh:F", "f", "hf", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+
+        // Un client en file pour "haa" avec port UDP annoncé 4672.
+        mgr.request_upload_slot(
+            "uh:AAAA",
+            "10.0.0.5:5000",
+            "haa",
+            "f",
+            1.0,
+            "normal",
+            false,
+            Some(4672),
+        )
+        .await
+        .unwrap();
+
+        // Hash conforme + port conforme → rang 1.
+        assert_eq!(
+            mgr.waiting_rank_for_udp(&ip, 4672, "haa").await,
+            UdpRankLookup::Rank(1)
+        );
+        // Port inconnu mais IP unique → tolérance `bIgnorePortOnUniqueIP`.
+        assert_eq!(
+            mgr.waiting_rank_for_udp(&ip, 9999, "haa").await,
+            UdpRankLookup::Rank(1)
+        );
+        // Hash différent → silence eMule (`reqfile does not match`).
+        assert_eq!(
+            mgr.waiting_rank_for_udp(&ip, 4672, "hbb").await,
+            UdpRankLookup::FileMismatch
+        );
+        // IP inconnue → NoSender (→ QUEUEFULL seulement si quasi-pleine).
+        assert_eq!(
+            mgr.waiting_rank_for_udp(&IpAddr::V4(Ipv4Addr::new(10, 0, 0, 6)), 4672, "haa")
+                .await,
+            UdpRankLookup::NoSender
+        );
+    }
+
+    #[tokio::test]
+    async fn udp_rank_lookup_disambiguates_same_ip_by_port() {
+        use std::net::{IpAddr, Ipv4Addr};
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 9));
+
+        mgr.request_upload_slot("uh:F", "f", "hf", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+
+        // Deux clients derrière la même IP (NAT), ports UDP distincts.
+        mgr.request_upload_slot(
+            "uh:A",
+            "10.0.0.9:5000",
+            "haa",
+            "f",
+            1.0,
+            "normal",
+            false,
+            Some(4672),
+        )
+        .await
+        .unwrap();
+        mgr.request_upload_slot(
+            "uh:B",
+            "10.0.0.9:5001",
+            "hbb",
+            "g",
+            1.0,
+            "normal",
+            false,
+            Some(4673),
+        )
+        .await
+        .unwrap();
+
+        // Le port UDP désambiguïse → le bon client et le bon fichier.
+        assert_eq!(
+            mgr.waiting_rank_for_udp(&ip, 4673, "hbb").await,
+            UdpRankLookup::Rank(2)
+        );
+        // Sans correspondance de port → Ambiguous (eMule force le TCP).
+        assert_eq!(
+            mgr.waiting_rank_for_udp(&ip, 1111, "haa").await,
+            UdpRankLookup::Ambiguous
+        );
+        // Port exact mais fichier différent → FileMismatch (silence).
+        assert_eq!(
+            mgr.waiting_rank_for_udp(&ip, 4672, "hcc").await,
+            UdpRankLookup::FileMismatch
+        );
     }
 }

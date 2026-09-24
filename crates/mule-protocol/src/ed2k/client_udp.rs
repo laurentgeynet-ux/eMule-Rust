@@ -12,9 +12,14 @@
 //! - `OP_REASKACK` (`0x91`) — carries the upload queue rank.
 //! - `OP_FILENOTFOUND` (`0x92`) — requested file is not shared.
 //! - `OP_QUEUEFULL` (`0x93`) — remote upload queue is full.
+//! - `OP_REASKCALLBACKUDP` (`0x94`) — buddy relay toward a LowID source.
+//! - `OP_DIRECTCALLBACKREQ` (`0x95`) — outbound-connect request toward a
+//!   Kad-firewalled peer.
+//! - `OP_PORTTEST` (`0xFE`) — UDP connectivity test (single `0x12` byte).
 
 use super::opcodes::{
-    OP_FILENOTFOUND, OP_QUEUEFULL, OP_REASKACK, OP_REASKCALLBACKUDP, OP_REASKFILEPING,
+    OP_DIRECTCALLBACKREQ, OP_FILENOTFOUND, OP_PORTTEST, OP_QUEUEFULL, OP_REASKACK,
+    OP_REASKCALLBACKUDP, OP_REASKFILEPING,
 };
 use super::protocol::PR_EMULE;
 
@@ -35,8 +40,8 @@ pub enum ClientUdpMessage {
     ReaskAck {
         /// 1-based position in the remote upload queue.
         queue_rank: u16,
-        /// Raw part status bitfield when the peer sent one (UDP ver > 3).
-        part_status: Option<Vec<u8>>,
+        /// Part status block when the peer sent one (UDP ver > 3).
+        part_status: Option<UdpPartStatus>,
     },
     /// `OP_FILENOTFOUND` — the peer does not share the requested file.
     FileNotFound,
@@ -53,11 +58,42 @@ pub enum ClientUdpMessage {
         /// IP/port header (eMule `memcpy(packet + 10)` packing).
         rest: Vec<u8>,
     },
+    /// `OP_DIRECTCALLBACKREQ` — the sender asks us (as a Kad-firewalled
+    /// peer) to open an outbound TCP connection to it
+    /// (`[tcp_port:2][userhash:16][connect_options:1]`).
+    DirectCallbackReq {
+        /// TCP port the requester listens on.
+        tcp_port: u16,
+        /// Requester user hash (identity + crypt layer key).
+        user_hash: [u8; 16],
+        /// eMule connection options byte (crypt support/request/require).
+        conn_opts: u8,
+    },
+    /// `OP_PORTTEST` — UDP connectivity probe. eMule answers only a
+    /// single `0x12` byte, and does so over its dedicated TCP test
+    /// socket rather than on this UDP channel.
+    PortTest {
+        /// Single request byte (eMule expects `0x12`).
+        request: u8,
+    },
     /// Any other opcode received on the client UDP channel.
     Unknown {
         /// Raw opcode byte.
         opcode: u8,
     },
+}
+
+/// Part-status block carried by `OP_REASKACK` for UDP version > 3 peers:
+/// `u16 part_count` followed by a `ceil(part_count/8)`-byte bitfield
+/// (eMule `CUpDownClient::ProcessFileStatus` — the parts the remote
+/// upload client has of the requested file).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UdpPartStatus {
+    /// Total part count the bitfield describes.
+    pub part_count: u16,
+    /// Availability bitfield, `ceil(part_count/8)` bytes, bit *i* set =
+    /// the peer has part *i*.
+    pub bitfield: Vec<u8>,
 }
 
 /// Encodes `OP_REASKFILEPING` in the UDP version > 3 wire form:
@@ -138,10 +174,13 @@ pub fn decode_client_udp(data: &[u8]) -> Result<ClientUdpMessage, String> {
             let queue_rank = u16::from_le_bytes([payload[rank_off], payload[rank_off + 1]]);
             // UDP ver > 3 form: u16 bitfield count + ceil(count/8) bytes.
             let part_status = if rank_off >= 2 {
-                let count = u16::from_le_bytes([payload[0], payload[1]]) as usize;
-                let bitfield_len = count.div_ceil(8);
+                let count = u16::from_le_bytes([payload[0], payload[1]]);
+                let bitfield_len = (count as usize).div_ceil(8);
                 if 2 + bitfield_len == rank_off {
-                    Some(payload[2..rank_off].to_vec())
+                    Some(UdpPartStatus {
+                        part_count: count,
+                        bitfield: payload[2..rank_off].to_vec(),
+                    })
                 } else {
                     None
                 }
@@ -155,6 +194,27 @@ pub fn decode_client_udp(data: &[u8]) -> Result<ClientUdpMessage, String> {
         }
         OP_FILENOTFOUND => Ok(ClientUdpMessage::FileNotFound),
         OP_QUEUEFULL => Ok(ClientUdpMessage::QueueFull),
+        OP_DIRECTCALLBACKREQ => {
+            if payload.len() < 19 {
+                return Err("truncated OP_DIRECTCALLBACKREQ".into());
+            }
+            let mut user_hash = [0u8; 16];
+            user_hash.copy_from_slice(&payload[2..18]);
+            Ok(ClientUdpMessage::DirectCallbackReq {
+                tcp_port: u16::from_le_bytes([payload[0], payload[1]]),
+                user_hash,
+                conn_opts: payload[18],
+            })
+        }
+        OP_PORTTEST => {
+            // eMule only honours a single-byte `0x12` probe.
+            if payload.len() != 1 {
+                return Err("malformed OP_PORTTEST".into());
+            }
+            Ok(ClientUdpMessage::PortTest {
+                request: payload[0],
+            })
+        }
         OP_REASKCALLBACKUDP => {
             if payload.len() < 17 {
                 return Err("truncated OP_REASKCALLBACKUDP".into());
@@ -231,23 +291,34 @@ mod tests {
                 part_status,
             } => {
                 assert_eq!(queue_rank, 9);
-                assert_eq!(part_status, Some(vec![]));
+                assert_eq!(
+                    part_status,
+                    Some(UdpPartStatus {
+                        part_count: 0,
+                        bitfield: vec![]
+                    })
+                );
             }
             m => panic!("unexpected {m:?}"),
         }
         // With a real bitfield: count=3 + 1 byte bitfield + rank
-        let mut raw = vec![PR_EMULE, OP_REASKACK, 3, 0, 0b101, 17, 0];
+        let raw = vec![PR_EMULE, OP_REASKACK, 3, 0, 0b101, 17, 0];
         match decode_client_udp(&raw).unwrap() {
             ClientUdpMessage::ReaskAck {
                 queue_rank,
                 part_status,
             } => {
                 assert_eq!(queue_rank, 17);
-                assert_eq!(part_status, Some(vec![0b101]));
+                assert_eq!(
+                    part_status,
+                    Some(UdpPartStatus {
+                        part_count: 3,
+                        bitfield: vec![0b101]
+                    })
+                );
             }
             m => panic!("unexpected {m:?}"),
         }
-        raw.clear();
     }
 
     #[test]
@@ -264,5 +335,39 @@ mod tests {
             decode_client_udp(&[PR_EMULE, 0x55, 1]).unwrap(),
             ClientUdpMessage::Unknown { opcode: 0x55 }
         );
+    }
+
+    #[test]
+    fn direct_callback_req_wire_format() {
+        // eMule Opcodes.h: <TCPPort 2><Userhash 16><ConnectionOptions 1>
+        let mut raw = vec![PR_EMULE, OP_DIRECTCALLBACKREQ];
+        raw.extend_from_slice(&4662u16.to_le_bytes());
+        raw.extend_from_slice(&[0xAB; 16]);
+        raw.push(0x07);
+        match decode_client_udp(&raw).unwrap() {
+            ClientUdpMessage::DirectCallbackReq {
+                tcp_port,
+                user_hash,
+                conn_opts,
+            } => {
+                assert_eq!(tcp_port, 4662);
+                assert_eq!(user_hash, [0xAB; 16]);
+                assert_eq!(conn_opts, 0x07);
+            }
+            m => panic!("unexpected {m:?}"),
+        }
+        // Truncated (< 19-byte payload) is rejected.
+        assert!(decode_client_udp(&raw[..18]).is_err());
+    }
+
+    #[test]
+    fn port_test_wire_format() {
+        match decode_client_udp(&[PR_EMULE, OP_PORTTEST, 0x12]).unwrap() {
+            ClientUdpMessage::PortTest { request } => assert_eq!(request, 0x12),
+            m => panic!("unexpected {m:?}"),
+        }
+        // eMule ignores anything but a single request byte.
+        assert!(decode_client_udp(&[PR_EMULE, OP_PORTTEST]).is_err());
+        assert!(decode_client_udp(&[PR_EMULE, OP_PORTTEST, 0x12, 0x34]).is_err());
     }
 }

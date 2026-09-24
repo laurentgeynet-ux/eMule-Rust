@@ -42,7 +42,7 @@ Ces messages constituent le socle d'interconnexion pair-à-pair originel défini
 | `0x4E` | `OP_MESSAGE` | Bidirectionnel | Chat pair-à-pair : `u16 len` + message |
 | `0x5B` | `OP_CHANGE_SLOT` | Bidirectionnel | Requête de changement de slot (`hash16`) — toléré/ignoré par eMule 0.72a |
 | `0x5C` | `OP_QUEUERANK` | Pair $\rightarrow$ Client | Rang de file d'attente `u32` (forme eD2K legacy) |
-| `0xFE` | `OP_PORTTEST` | Bidirectionnel | Test de connectivité TCP : `u8` statut (eMule répond `0x12`) |
+| `0xFE` | `OP_PORTTEST` | Bidirectionnel | Test de connectivité : `u8` statut — traité aussi sur le canal client-UDP (voir §2) |
 
 ---
 
@@ -63,6 +63,9 @@ Introduit par les versions d'eMule pour ajouter des capacités avancées (compre
 | `0x91` | `OP_REASKACK` | Pair $\rightarrow$ Client (UDP) | Rang de file d'attente : `[u16 count + bitfield]` (UDP ver > 3) + `u16` rang |
 | `0x92` | `OP_FILENOTFOUND` | Pair $\rightarrow$ Client (UDP) | Le fichier demandé n'est pas partagé (payload vide) |
 | `0x93` | `OP_QUEUEFULL` | Pair $\rightarrow$ Client (UDP) | File d'attente du pair saturée (payload vide) |
+| `0x94` | `OP_REASKCALLBACKUDP` | Client $\rightarrow$ Pair (UDP) | Re-ask relayé au buddy Kad d'une source LowID : `buddy_id16 + file_hash16 + info étendue` — le relai réécrit `[ip:4][port:2]` aux octets 10–15 et transfère en `OP_REASKCALLBACKTCP` (à ne pas confondre avec `0x94` TCP = `OP_PEERCACHE_QUERY`, *defunct*) |
+| `0x95` | `OP_DIRECTCALLBACKREQ` | Client $\rightarrow$ Pair (UDP) | Demande de rappel direct vers un pair **Kad-firewalled** : `u16 tcp_port + userhash16 + u8 connect_options` — le récepteur compose `tcp_port` en sortant (eMule `TryToConnect`, 1 requête/IP/180 s) |
+| `0xFE` | `OP_PORTTEST` | Bidirectionnel (UDP) | Test de connectivité UDP : exactement `u8 0x12` — eMule accuse réception via sa socket de test TCP dédiée (`SendPortTestReply('1')`), pas de réponse UDP |
 | `0x21` | `OP_SOURCESREQUEST` | Client $\rightarrow$ Pair | Demande de sources connues pour un fichier (Source Exchange) |
 | `0x22` | `OP_SOURCESANSWER` | Pair $\rightarrow$ Client | Réponse contenant la liste de pairs pour un fichier |
 | `0x60` | `OP_QUEUERANKING` | Pair $\rightarrow$ Client | Position dans la file d'upload eMule : exactement 12 octets (`u16` rang + 10 réservés, `ProcessEmuleQueueRank`) |

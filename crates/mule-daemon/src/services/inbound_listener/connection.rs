@@ -514,6 +514,7 @@ impl InboundListenerService {
                 .map(|p| p.extended_requests_version())
                 .unwrap_or(0),
             callback_hello.as_ref().map(|h| h.tcp_port).unwrap_or(0),
+            peer_info.as_ref().and_then(|p| p.emule_udp_port),
         )
         .await;
     }
@@ -688,6 +689,7 @@ impl InboundListenerService {
             crate::services::peer_session::source_exchange::peer_sx_caps(&peer_info, None),
             peer_info.extended_requests_version(),
             answer.tcp_port,
+            peer_info.emule_udp_port,
         )
         .await;
         Ok(())

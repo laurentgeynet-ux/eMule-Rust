@@ -77,6 +77,7 @@ impl InboundListenerService {
         mut sx_caps: sx::PeerSxCaps,
         peer_ext_req: u8,
         peer_tcp_port: u16,
+        peer_udp_port: Option<u16>,
     ) {
         let mut read_buf = BytesMut::with_capacity(65536);
         let mut raw_buf = [0u8; 8192];
@@ -1039,7 +1040,7 @@ impl InboundListenerService {
                                         continue;
                                     }
 
-                                    match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected).await {
+                                    match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected, peer_udp_port).await {
                                         Ok((UploadSlotState::Uploading, _)) => {
                                             let mut out = Vec::new();
                                             out.push(PR_ED2K);
@@ -1111,7 +1112,7 @@ impl InboundListenerService {
                                          continue;
                                      }
 
-                                     match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected).await {
+                                     match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected, peer_udp_port).await {
                                          Ok((UploadSlotState::Uploading, _)) => {
                                              if let Some(target_range) = req_ranges.first() {
                                                  let (start, end) = *target_range;

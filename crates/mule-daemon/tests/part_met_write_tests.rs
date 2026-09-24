@@ -487,10 +487,10 @@ async fn shares_list_enriches_per_file_upload_stats() {
     assert_eq!(um.per_file_uploaded_bytes()["haa"], 7000);
 
     // Deux slots actifs sur le même fichier (casse différente du hash).
-    um.request_upload_slot("c1", "c1", "HAA", "f.iso", 1.0, "normal", false)
+    um.request_upload_slot("c1", "c1", "HAA", "f.iso", 1.0, "normal", false, None)
         .await
         .unwrap();
-    um.request_upload_slot("c2", "c2", "haa", "f.iso", 1.0, "normal", false)
+    um.request_upload_slot("c2", "c2", "haa", "f.iso", 1.0, "normal", false, None)
         .await
         .unwrap();
     um.update_progress("c1", 3000).await;

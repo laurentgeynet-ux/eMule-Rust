@@ -225,3 +225,57 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
   serveur) ou à notre `HighID:port` public est ignorée ; les clients
   bannis sont filtrés dès `upsert_peer_sources` et avant le dial
   (`IsBannedClient`).
+
+## 8. Client UDP (`ClientUDPSocket.cpp`) — écarts assumés et corrections (audit phase B, passe 3b)
+
+### Écarts assumés
+
+- **Datagrammes toujours en clair** : eMule peut chiffrer le canal
+  client-UDP (`ShouldReceiveCryptUDPPackets` + `CreateSafeKeyAndIV`) ;
+  nous émettons en clair et ne décodons pas les datagrammes obfusqués
+  entrants (loggés en `debug`, ignorés).
+- **Pas d'émission `OP_REASKCALLBACKUDP`** : pour un re-ask d'une
+  source **LowID** en file, eMule relaie via le buddy de la source.
+  Nos sessions en file gardent leur socket TCP — le re-ask TCP couvre
+  le cas (le callback initial `kadcb:` passe déjà par
+  `KADEMLIA_CALLBACK_REQ`).
+- **Ext-info du ping inbound non appliquée** : le part-status /
+  complete-sources du demandeur (`ProcessExtendedInfo`) n'est pas
+  stocké — il n'a d'effet que sur la disponibilité annoncée aux autres
+  clients de notre upload queue, statistique non exposée.
+- **`OP_PORTTEST` sans réponse** : eMule accuse le test `0x12` via sa
+  socket TCP de test dédiée (`SendPortTestReply('1')`), pas en UDP ;
+  nous ne livrons pas l'outil de test de ports — décodé, journalisé.
+- **Purge `RemoteQueueFull` à 80 %** : le drapeau existe désormais sur
+  la session (`remote_queue_full`), mais l'éviction préférentielle des
+  sources remote-queue-full quand la srclist déborde reste à faire.
+
+### Corrections d'alignement
+
+- **`OP_REASKFILEPING`** : le rang n'est plus révélé à tout pair
+  partageant l'IP — eMule `GetWaitingClientByIP_UDP` + contrôle
+  `md4equ(reqfilehash, sender->GetUploadFileID())` reproduit :
+  correspondance exacte IP **+ port UDP annoncé** (stocké par entrée
+  de file), tolérance « unique IP », silence sur ambiguïté multi-NAT
+  (`bSenderMultipleIpUnknown`) et sur mismatch de hash. La rangée
+  `client_udp_port` est alimentée par le HELLO du client.
+- **`SetLastUpRequest`** : un ping accepté rafraîchit
+  `last_request_unix_ms` de l'entrée — la purge
+  `MAX_PURGEQUEUETIME` (1 h) ne frappe plus un client qui ne survit
+  que par re-asks UDP.
+- **`OP_REASKACK` UDP ver > 3** : le bloc part-status
+  (`u16 count` + bitfield) est décodé (`UdpPartStatus`) et appliqué à
+  la disponibilité de la source (`ProcessFileStatus` eMule) —
+  rareté `m_SrcPartFrequency` + persistance `availability`.
+- **`OP_QUEUEFULL`** : marque `remote_queue_full` + rang 0 sur la
+  session en file (`SetRemoteQueueFull` + `UDPReaskACK(0)`) — avant,
+  le résultat était stocké sans consommateur.
+- **`OP_FILENOTFOUND`** : deadlist — la source passe `Failed`
+  (persisté, hors srclist) et la session en file est terminée
+  (`UDPReaskFNF` → `RemoveSource` + `m_DeadSourceList`).
+- **`OP_DIRECTCALLBACKREQ` (0x95)** : décodé
+  (`u16 tcp_port + userhash16 + u8 conn_opts`), limité à 1 requête/IP/
+  180 s (`AllowCalbackRequest`), accepté seulement quand notre état
+  firewall UDP Kad est `Firewalled` (`CKademlia::IsFirewalled()`) —
+  alors `connect_back` compose le pair en sortant
+  (`TryToConnect`) et sert la session comme un inbound.

@@ -182,6 +182,10 @@ pub const OP_QUEUEFULL: u8 = 0x93;
 
 /// UDP callback re-request relayed through a Kad buddy (`0x94`).
 pub const OP_REASKCALLBACKUDP: u8 = 0x94;
+/// UDP direct callback request (`0x95`, eMule `OP_DIRECTCALLBACKREQ`):
+/// `<tcp_port u16><userhash 16><connect_options u8>` — sent to a
+/// Kad-firewalled peer asking it to open an outbound TCP connection.
+pub const OP_DIRECTCALLBACKREQ: u8 = 0x95;
 
 /// Buddy-relayed callback notification over the buddy TCP link (`0x99`):
 /// `[buddy_id:16][file_id:16][requester_ip:4][requester_tcp:2]`.

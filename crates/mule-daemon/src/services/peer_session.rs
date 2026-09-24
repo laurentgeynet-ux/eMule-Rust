@@ -324,9 +324,64 @@ impl PeerSessionManager {
                 .unwrap_or(false);
             if matches && s.snapshot.status == PeerConnectionStatus::Queued {
                 s.snapshot.queue_rank = Some(rank);
+                // eMule `UDPReaskACK` → `SetRemoteQueueFull(false)`.
+                s.snapshot.remote_queue_full = false;
                 emit_event(&self.event_tx, &self.sequence, &s.snapshot);
                 tracing::info!(
                     "Peer {peer}: queue rank #{rank} updated via OP_REASKACK (UDP)",
+                    peer = log_peer_ip(*ip)
+                );
+            }
+        }
+    }
+
+    /// Applies `OP_QUEUEFULL` to the queued session of that peer — eMule
+    /// `SetRemoteQueueFull(true)` + `UDPReaskACK(0)` (rank cleared to 0).
+    pub async fn apply_udp_queue_full(&self, ip: &std::net::IpAddr) {
+        let ip_str = ip.to_string();
+        let mut g = self.inner.lock().await;
+        for s in g.sessions.values_mut() {
+            let matches = s
+                .snapshot
+                .peer_address
+                .as_ref()
+                .and_then(|a| a.rsplit_once(':'))
+                .map(|(host, _)| host == ip_str)
+                .unwrap_or(false);
+            if matches && s.snapshot.status == PeerConnectionStatus::Queued {
+                s.snapshot.remote_queue_full = true;
+                s.snapshot.queue_rank = Some(0);
+                emit_event(&self.event_tx, &self.sequence, &s.snapshot);
+                tracing::info!(
+                    "Peer {peer}: remote queue full via OP_QUEUEFULL (UDP)",
+                    peer = log_peer_ip(*ip)
+                );
+            }
+        }
+    }
+
+    /// Applies `OP_FILENOTFOUND` to the queued session of that peer —
+    /// eMule `UDPReaskFNF` removes the download client for that file.
+    pub async fn apply_udp_file_not_found(&self, ip: &std::net::IpAddr) {
+        let ip_str = ip.to_string();
+        let mut g = self.inner.lock().await;
+        for s in g.sessions.values_mut() {
+            let matches = s
+                .snapshot
+                .peer_address
+                .as_ref()
+                .and_then(|a| a.rsplit_once(':'))
+                .map(|(host, _)| host == ip_str)
+                .unwrap_or(false);
+            if matches && s.snapshot.status == PeerConnectionStatus::Queued {
+                s.snapshot.status = PeerConnectionStatus::Disconnected;
+                s.snapshot.failure_reason =
+                    Some(mule_core::model::PeerFailureReason::FileNotFound);
+                s.snapshot.last_error =
+                    Some("peer answered OP_FILENOTFOUND (UDP)".to_string());
+                emit_event(&self.event_tx, &self.sequence, &s.snapshot);
+                tracing::info!(
+                    "Peer {peer}: queued session dropped via OP_FILENOTFOUND (UDP)",
                     peer = log_peer_ip(*ip)
                 );
             }
@@ -458,6 +513,7 @@ impl PeerSessionManager {
             transfer_rate_bps: 0,
             current_part: None,
             queue_rank: None,
+            remote_queue_full: false,
             last_error: None,
             failure_reason: None,
             connected_at_unix_ms: None,
@@ -684,6 +740,7 @@ impl PeerSessionManager {
             transfer_rate_bps: 0,
             current_part: None,
             queue_rank: None,
+            remote_queue_full: false,
             last_error: None,
             failure_reason: None,
             connected_at_unix_ms: Some(

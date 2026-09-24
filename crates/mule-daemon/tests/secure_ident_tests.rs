@@ -1672,6 +1672,7 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         last_request_unix_ms: now_ms,
         bad_requests: 0,
         promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        client_udp_port: None,
         auto_prio: false,
     };
 
@@ -1687,6 +1688,7 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         last_request_unix_ms: now_ms,
         bad_requests: 0,
         promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        client_udp_port: None,
         auto_prio: false,
     };
 

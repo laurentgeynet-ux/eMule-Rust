@@ -109,6 +109,11 @@ pub struct PeerSessionSnapshot {
     pub transferred_bytes: u64,
     /// Queue rank reported by remote peer.
     pub queue_rank: Option<u32>,
+    /// eMule `m_bRemoteQueueFull` — set by `OP_QUEUEFULL` (UDP reask),
+    /// cleared by `OP_REASKACK`. Sources flagged remote-queue-full are
+    /// purged first when the source list overflows (eMule 80 % rule).
+    #[serde(default)]
+    pub remote_queue_full: bool,
     /// Last error message or failure reason.
     pub last_error: Option<String>,
     /// Normalized failure reason, if failed.
@@ -130,6 +135,7 @@ impl Default for PeerSessionSnapshot {
             transfer_rate_bps: 0,
             transferred_bytes: 0,
             queue_rank: None,
+            remote_queue_full: false,
             last_error: None,
             failure_reason: None,
             connected_at_unix_ms: None,

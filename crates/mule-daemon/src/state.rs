@@ -432,6 +432,11 @@ impl AppState {
         client_udp.set_upload_manager(inbound_listener.upload_manager().clone());
         client_udp.set_peer_session(peer_session.clone());
         client_udp.set_buddy_registry(kad.udp().buddy_registry());
+        // OP_DIRECTCALLBACKREQ : connect-back via le listener, gate sur
+        // l'état firewall UDP Kad (eMule `CKademlia::IsFirewalled()`).
+        client_udp.set_inbound_listener(inbound_listener.clone());
+        client_udp.set_firewall_tracker(kad.udp().firewall_tracker());
+        client_udp.set_server_session(server_session.clone());
         inbound_listener.set_client_udp(client_udp.clone());
         let server_udp = crate::services::server_udp::ServerUdpService::new(network_policy.clone());
         server_udp.set_downloads(Arc::clone(&dl_arc));
