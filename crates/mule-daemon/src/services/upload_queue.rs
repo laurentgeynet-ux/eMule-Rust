@@ -48,6 +48,10 @@ const SESSION_MAX_TRANS_BYTES: u64 = 9_728_000 + 20 * 1024;
 /// 10 min compte comme « bad request » ; `BADCLIENTBAN` (4) cumulés → ban.
 const MIN_REQUEST_TIME_MS: i64 = 10 * 60 * 1000;
 const BAD_CLIENT_BAN: u8 = 4;
+/// eMule `AddClientToQueue` (`UploadQueue.cpp:586-596`) : au plus 3
+/// clients depuis la même IP en file d'attente — file + slots actifs
+/// combinés (la `TrackedClientsList` eMule couvre les deux côtés).
+const MAX_SAME_IP_QUEUED: usize = 3;
 
 /// Fenêtre d'échantillonnage du débit upload (~2 s, cadence du statsTick) :
 /// `upload_rate_bps` est recalculé à chaque fenêtre échue — même approche
@@ -272,6 +276,12 @@ pub struct UploadManager {
     /// `enqueued_at` s'il re-demande (eMule conserve le wait start dans
     /// `credits` ; le score accumulé n'est pas perdu).
     rotation_grace: Arc<Mutex<std::collections::HashMap<String, i64>>>,
+    /// Instantané des hash actuellement partagés (minuscules) — rafraîchi
+    /// par la boucle de tick via [`Self::set_shared_hashes`]. eMule purge
+    /// de la file les clients dont le fichier demandé n'est plus partagé
+    /// (`FindBestClientInQueue` → `!sharedfiles->GetFileByID`). `None` =
+    /// sonde non câblée → la purge par partage est inactive (tests).
+    shared_hashes: Arc<std::sync::RwLock<Option<std::collections::HashSet<String>>>>,
     /// Priorité effective recalculée des fichiers en `up_priority = "auto"`
     /// (hash en minuscules → `GetFilePrioAsNumber`) — registre des
     /// fichiers auto *et* cache du dernier `UpdateAutoUpPriority`.
@@ -306,10 +316,30 @@ impl UploadManager {
             total_uploaded_bytes: Arc::new(AtomicU64::new(0)),
             file_upload_totals: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             rotation_grace: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            shared_hashes: Arc::new(std::sync::RwLock::new(None)),
             auto_up_prio: Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
         }
+    }
+
+    /// Remplace l'instantané des hash partagés — appelé périodiquement par
+    /// la boucle de tick (eMule lit `sharedfiles` en direct dans
+    /// `FindBestClientInQueue`). Passer `Some(set)` active la purge des
+    /// entrées de file dont le fichier n'est plus partagé.
+    pub fn set_shared_hashes(&self, hashes: std::collections::HashSet<String>) {
+        *self.shared_hashes.write().unwrap() = Some(hashes);
+    }
+
+    /// `true` quand le hash est absent de l'instantané des partages —
+    /// `true` aussi quand la sonde n'est pas câblée (pas de purge dans ce
+    /// cas, eMule `sharedfiles` étant la source de vérité).
+    fn hash_still_shared(&self, file_hash: &str) -> bool {
+        self.shared_hashes
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_none_or(|set| set.contains(file_hash))
     }
 
     /// Hydrate les totaux uploadés par fichier persistés en SQLite
@@ -670,6 +700,26 @@ impl UploadManager {
             }
         }
 
+        // eMule `AddClientToQueue` : refuse l'entrée quand 3 clients de
+        // la même IP sont déjà en file ou actifs (`cSameIP >= 3` +
+        // `GetClientsFromIP >= 3`). L'IP est extraite de `client_address`
+        // via `rsplit_once(':')` pour supporter les adresses IPv6
+        // bracketées.
+        let req_ip = client_address.rsplit_once(':').map(|(h, _)| h).unwrap_or("");
+        if !req_ip.is_empty() {
+            let same_ip = q
+                .iter()
+                .filter(|e| e.client_address.rsplit_once(':').is_some_and(|(h, _)| h == req_ip))
+                .count()
+                + active
+                    .values()
+                    .filter(|s| s.client_address.rsplit_once(':').is_some_and(|(h, _)| h == req_ip))
+                    .count();
+            if same_ip >= MAX_SAME_IP_QUEUED {
+                return Err("Too many clients from the same IP".to_string());
+            }
+        }
+
         let enqueued_at = rotation_grace.unwrap_or(now);
 
         q.push_back(QueuedUpload {
@@ -919,8 +969,12 @@ impl UploadManager {
             .as_millis() as i64;
         // Purge des entrées mortes — eMule `FindBestClientInQueue` retire
         // les clients dont le dernier re-ask date de plus de
-        // `MAX_PURGEQUEUETIME` (1 h).
-        q.retain(|e| now.saturating_sub(e.last_request_unix_ms) <= MAX_PURGEQUEUE_MS);
+        // `MAX_PURGEQUEUETIME` (1 h) ou dont le fichier demandé n'est
+        // plus partagé (`!sharedfiles->GetFileByID`).
+        q.retain(|e| {
+            now.saturating_sub(e.last_request_unix_ms) <= MAX_PURGEQUEUE_MS
+                && self.hash_still_shared(&e.file_hash)
+        });
         // Le score évolue avec l'attente : re-trier avant de choisir le
         // meilleur (eMule lit `GetScore` en direct).
         self.sort_queue_by_score(&mut q, now);
@@ -944,6 +998,14 @@ impl UploadManager {
             // client, capacité `MaxSpeed` et veto USS s'appliquent aussi
             // à la promotion.
             if !self.can_open_slot(active, now) {
+                break;
+            }
+            // Un client banni (score 0, re-asks abusifs ou SUI rejeté)
+            // n'est jamais promu — eMule `GetScore` = 0 l'empêche de
+            // gagner `FindBestClientInQueue`. La file est triée par score
+            // décroissant : un banni en tête signifie qu'il ne reste que
+            // des bannis.
+            if q.front().is_some_and(|e| e.banned) {
                 break;
             }
             let Some(next) = q.pop_front() else {
@@ -1169,7 +1231,10 @@ impl UploadManager {
         {
             let mut q = self.queue.lock().await;
             let before = q.len();
-            q.retain(|e| now.saturating_sub(e.last_request_unix_ms) <= MAX_PURGEQUEUE_MS);
+            q.retain(|e| {
+                now.saturating_sub(e.last_request_unix_ms) <= MAX_PURGEQUEUE_MS
+                    && self.hash_still_shared(&e.file_hash)
+            });
             changed |= q.len() != before;
             // Rotation : tant que la file est disputée (pas de nouveau slot
             // ouvrable), les sessions au-delà de SESSIONMAXTRANS cèdent leur

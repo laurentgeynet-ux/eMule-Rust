@@ -12,6 +12,14 @@ pub const OP_HELLO: u8 = 0x01;
 /// Client login request to server (`0x01`).
 pub const OP_LOGINREQUEST: u8 = 0x01;
 
+/// Server rejects the last client command (`0x05`, empty payload).
+///
+/// eMule `Opcodes.h` `OP_REJECT` — sent e.g. when a command uses the wrong
+/// protocol (uncompressed packet to a compression-only server) or when the
+/// server refuses the login. `ServerSocket.cpp` only logs it; the server
+/// typically closes the socket itself right after.
+pub const OP_REJECT: u8 = 0x05;
+
 /// Server status response with user and file counts (`0x34`, legacy `0x14`).
 pub const OP_SERVERSTATUS: u8 = 0x34;
 /// Legacy server status response opcode (`0x14`).
@@ -341,6 +349,7 @@ pub fn opcode_name(protocol: u8, opcode: u8) -> &'static str {
         super::protocol::PR_ED2K => match opcode {
             OP_HELLO => "OP_HELLO / OP_LOGINREQUEST",
             OP_HELLO_ANSWER => "OP_HELLO_ANSWER",
+            OP_REJECT => "OP_REJECT",
             OP_SERVERMESSAGE => "OP_SERVERMESSAGE",
             OP_IDCHANGE => "OP_IDCHANGE",
             OP_SERVERSTATUS => "OP_SERVERSTATUS",

@@ -58,7 +58,7 @@ pub use opcodes::{
     OP_CHANGE_SLOT, OP_CHATCAPTCHAREQ, OP_CHATCAPTCHARES, OP_FILEDESC, OP_HASHSETANSWER2,
     OP_HASHSETREQUEST2, OP_MESSAGE, OP_MULTIPACKET, OP_MULTIPACKETANSWER,
     OP_MULTIPACKETANSWER_EXT2, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_PEERCACHE_ACK,
-    OP_PEERCACHE_ANSWER, OP_PEERCACHE_QUERY, OP_PORTTEST, OP_QUEUERANK,
+    OP_PEERCACHE_ANSWER, OP_PEERCACHE_QUERY, OP_PORTTEST, OP_QUEUERANK, OP_REJECT,
 };
 pub use file_identifier::{
     Ed2kFileIdentifier, AICH_HASH_LEN, FILE_IDENTIFIER_OPT_AICH, FILE_IDENTIFIER_OPT_MD4,
@@ -89,7 +89,7 @@ pub use server::{
     FoundSourcePeer, FoundSourcePeerObfu, FoundSources, FoundSourcesObfu, GetSourcesRequest,
     OfferFiles, OfferedFile, SearchQuery, SearchResult, SearchResultFile, ServerIdChange,
     ServerIdent, ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus,
-    SRV_TCPFLG_COMPRESSION, SRV_TCPFLG_LARGEFILES,
+    ANNOUNCED_EMULE_VERSION_TAG, SRV_TCPFLG_COMPRESSION, SRV_TCPFLG_LARGEFILES,
 };
 pub use session::{
     BlockRequestKey, BlockRequestTracker, Ed2kSession, Ed2kSessionError, Ed2kSessionState,

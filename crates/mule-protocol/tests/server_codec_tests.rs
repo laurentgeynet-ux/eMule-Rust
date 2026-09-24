@@ -23,6 +23,85 @@ fn test_encode_server_login_request() {
     assert_eq!(&packet.payload[0..16], &user_hash);
 }
 
+/// Vecteur filaire eMule 0.72a (`ServerConnect.cpp:170-198`) : le login
+/// contient exactement 4 tags dans l'ordre `CT_NAME`, `CT_VERSION`,
+/// `CT_SERVER_FLAGS`, `CT_EMULE_VERSION` ; les flags de base sont
+/// `SRVCAP_ZLIB | SRVCAP_NEWTAGS | SRVCAP_LARGEFILES | SRVCAP_UNICODE` et la
+/// version eMule est encodée `(mjr << 17) | (min << 10) | (upd << 7)`.
+#[test]
+fn test_encode_server_login_request_emule_wire_layout() {
+    use mule_protocol::ed2k::tags::{
+        SRVCAP_LARGEFILES, SRVCAP_NEWTAGS, SRVCAP_REQUESTCRYPT, SRVCAP_SUPPORTCRYPT,
+        SRVCAP_UNICODE, SRVCAP_ZLIB,
+    };
+    use mule_protocol::ed2k::ANNOUNCED_EMULE_VERSION_TAG;
+
+    let limits = Ed2kLimits::default();
+    let user_hash = [0xABu8; 16];
+    let req = ServerLoginRequest::new(user_hash, 4662, "Nick", 0x3c);
+    let packet = req.encode(&limits).expect("encode login");
+    let p = &packet.payload;
+
+    // user_hash + client_id + tcp_port + tagcount.
+    assert_eq!(&p[0..16], &user_hash);
+    assert_eq!(&p[16..20], &0u32.to_le_bytes());
+    assert_eq!(&p[20..22], &4662u16.to_le_bytes());
+    assert_eq!(&p[22..26], &4u32.to_le_bytes());
+
+    let mut pos = 26;
+    // Tag 1 — CT_NAME (string, id 0x01).
+    assert_eq!(&p[pos..pos + 4], &[0x02, 0x01, 0x00, 0x01]);
+    pos += 4;
+    let name_len = u16::from_le_bytes([p[pos], p[pos + 1]]) as usize;
+    pos += 2;
+    assert_eq!(&p[pos..pos + name_len], b"Nick");
+    pos += name_len;
+    // Tag 2 — CT_VERSION (uint32, id 0x11) = EDONKEYVERSION 0x3C.
+    assert_eq!(&p[pos..pos + 4], &[0x03, 0x01, 0x00, 0x11]);
+    pos += 4;
+    assert_eq!(&p[pos..pos + 4], &0x3cu32.to_le_bytes());
+    pos += 4;
+    // Tag 3 — CT_SERVER_FLAGS (uint32, id 0x20).
+    assert_eq!(&p[pos..pos + 4], &[0x03, 0x01, 0x00, 0x20]);
+    pos += 4;
+    let flags = u32::from_le_bytes([p[pos], p[pos + 1], p[pos + 2], p[pos + 3]]);
+    assert_eq!(flags, SRVCAP_ZLIB | SRVCAP_NEWTAGS | SRVCAP_LARGEFILES | SRVCAP_UNICODE);
+    pos += 4;
+    // Tag 4 — CT_EMULE_VERSION (uint32, id 0xFB) = 0.70a eMule packing.
+    assert_eq!(&p[pos..pos + 4], &[0x03, 0x01, 0x00, 0xFB]);
+    pos += 4;
+    assert_eq!(&p[pos..pos + 4], &ANNOUNCED_EMULE_VERSION_TAG.to_le_bytes());
+    pos += 4;
+    assert_eq!(pos, p.len(), "no trailing bytes after the 4 login tags");
+
+    // `with_server_flags` OR-merges crypt capabilities into tag 3.
+    let req_crypt = ServerLoginRequest::new(user_hash, 4662, "Nick", 0x3c)
+        .with_server_flags(SRVCAP_SUPPORTCRYPT | SRVCAP_REQUESTCRYPT);
+    let packet = req_crypt.encode(&limits).expect("encode login crypt");
+    let p = &packet.payload;
+    // tag1 = 4 hdr + 2 len + 4 "Nick" = 10 ; tag2 = 4 hdr + 4 = 8 ;
+    // tag3 header at 26+10+8, value 4 bytes later.
+    let base = 26 + 10 + 8 + 4;
+    let flags = u32::from_le_bytes([p[base], p[base + 1], p[base + 2], p[base + 3]]);
+    assert_eq!(
+        flags,
+        SRVCAP_ZLIB | SRVCAP_NEWTAGS | SRVCAP_LARGEFILES | SRVCAP_UNICODE
+            | SRVCAP_SUPPORTCRYPT | SRVCAP_REQUESTCRYPT
+    );
+}
+
+#[test]
+fn test_decode_server_reject() {
+    use mule_protocol::ed2k::OP_REJECT;
+    let limits = Ed2kLimits::default();
+    // eMule `OP_REJECT` — payload `(null)`; any bytes present are ignored.
+    let resp = decode_server_response(PR_ED2K, OP_REJECT, &[], &limits).expect("decode OP_REJECT");
+    assert!(matches!(resp, ServerResponse::Rejected));
+    let resp = decode_server_response(PR_ED2K, OP_REJECT, &[0xAA, 0xBB], &limits)
+        .expect("decode OP_REJECT with stray payload");
+    assert!(matches!(resp, ServerResponse::Rejected));
+}
+
 #[test]
 fn test_decode_server_message() {
     let limits = Ed2kLimits::default();

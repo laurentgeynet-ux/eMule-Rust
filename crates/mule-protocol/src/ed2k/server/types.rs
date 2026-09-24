@@ -10,10 +10,16 @@ use crate::ed2k::opcodes::{OP_CALLBACKREQUEST, OP_LOGINREQUEST, OP_OFFERFILES};
 use crate::ed2k::protocol::PR_ED2K;
 use crate::ed2k::tags::{
     Ed2kTag, RawTag, TagName, TagValue, SRVCAP_LARGEFILES, SRVCAP_NEWTAGS, SRVCAP_UNICODE,
-    TAG_SPECIAL_CT_EMULE_VERSION, TAG_SPECIAL_EMULE_MISCOPTIONS1, TAG_SPECIAL_EMULE_VERSION,
-    TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILESIZE_HI, TAG_SPECIAL_FILETYPE, TAG_SPECIAL_NAME,
-    TAG_SPECIAL_SERVER_FLAGS, TAG_SPECIAL_VERSION,
+    SRVCAP_ZLIB, TAG_SPECIAL_CT_EMULE_VERSION, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILESIZE_HI,
+    TAG_SPECIAL_FILETYPE, TAG_SPECIAL_NAME, TAG_SPECIAL_SERVER_FLAGS, TAG_SPECIAL_VERSION,
 };
+
+/// Version eMule annoncée dans le tag `CT_EMULE_VERSION` du login serveur —
+/// encodage eMule `(mjr << 17) | (min << 10) | (upd << 7)` ; `0.70a` ici,
+/// cohérent avec l'identité annoncée par le handshake client.
+// Formule filaire eMule conservée telle quelle (identity_op voulu).
+#[allow(clippy::identity_op)]
+pub const ANNOUNCED_EMULE_VERSION_TAG: u32 = (0 << 17) | (70 << 10) | (0 << 7);
 use crate::framing::RawPacket;
 use bytes::Bytes;
 
@@ -31,11 +37,12 @@ pub struct ServerLoginRequest {
 }
 
 impl ServerLoginRequest {
-    /// Creates a new default login request with user hash, port, and standard modern nickname and version tags (eMule 0.60d compatible).
+    /// Creates a login request with eMule's exact `OP_LOGINREQUEST` tag set
+    /// (`ServerConnect.cpp:175-202`) : `CT_NAME`, `CT_VERSION`,
+    /// `CT_SERVER_FLAGS` (`ZLIB | NEWTAGS | LARGEFILES | UNICODE`) et
+    /// `CT_EMULE_VERSION` (identité `0.70a` annoncée). `version` est la
+    /// valeur du tag `CT_VERSION` (eMule passe `EDONKEYVERSION` = `0x3C`).
     pub fn new(user_hash: [u8; 16], tcp_port: u16, nickname: &str, version: u32) -> Self {
-        let emule_ver_packed: u32 = (60 << 10) | (4 << 7);
-        let emule_ver_ext: u32 = (0x3c << 24) | (60 << 17) | 4;
-
         let tags = vec![
             Ed2kTag {
                 name: TagName::Id(TAG_SPECIAL_NAME),
@@ -47,19 +54,13 @@ impl ServerLoginRequest {
             },
             Ed2kTag {
                 name: TagName::Id(TAG_SPECIAL_SERVER_FLAGS),
-                value: TagValue::UInt32(SRVCAP_NEWTAGS | SRVCAP_UNICODE | SRVCAP_LARGEFILES),
-            },
-            Ed2kTag {
-                name: TagName::Id(TAG_SPECIAL_EMULE_VERSION),
-                value: TagValue::UInt32(emule_ver_ext),
+                value: TagValue::UInt32(
+                    SRVCAP_ZLIB | SRVCAP_NEWTAGS | SRVCAP_UNICODE | SRVCAP_LARGEFILES,
+                ),
             },
             Ed2kTag {
                 name: TagName::Id(TAG_SPECIAL_CT_EMULE_VERSION),
-                value: TagValue::UInt32(emule_ver_packed),
-            },
-            Ed2kTag {
-                name: TagName::Id(TAG_SPECIAL_EMULE_MISCOPTIONS1),
-                value: TagValue::UInt32(0x01),
+                value: TagValue::UInt32(ANNOUNCED_EMULE_VERSION_TAG),
             },
         ];
         Self {
@@ -68,6 +69,21 @@ impl ServerLoginRequest {
             tcp_port,
             tags,
         }
+    }
+
+    /// Ajoute des drapeaux `SRVCAP_*` au tag `CT_SERVER_FLAGS` — eMule y
+    /// OR `SUPPORTCRYPT`/`REQUESTCRYPT`/`REQUIRECRYPT` selon les préfs
+    /// d'obfuscation (`ServerConnect.cpp:184-191`).
+    #[must_use]
+    pub fn with_server_flags(mut self, extra_flags: u32) -> Self {
+        for tag in &mut self.tags {
+            if tag.name == TagName::Id(TAG_SPECIAL_SERVER_FLAGS) {
+                if let TagValue::UInt32(v) = &mut tag.value {
+                    *v |= extra_flags;
+                }
+            }
+        }
+        self
     }
 
     /// Encodes the login request into a `RawPacket`.
@@ -165,6 +181,42 @@ impl ServerIdent {
     /// accepting obfuscated server datagrams.
     pub fn obfuscation_udp_port(&self) -> Option<u16> {
         self.server_tag_u16(0x98)
+    }
+
+    /// eMule `ST_SOFTFILES` (`0x88`, uint32) — soft limit on files a client
+    /// may publish via `OP_OFFERFILES` (`CServer::GetSoftFiles`).
+    pub fn soft_files(&self) -> Option<u32> {
+        self.server_tag_u32(0x88)
+    }
+
+    /// eMule `ST_HARDFILES` (`0x89`, uint32) — hard limit on indexed files
+    /// per client (`CServer::GetHardFiles`).
+    pub fn hard_files(&self) -> Option<u32> {
+        self.server_tag_u32(0x89)
+    }
+
+    fn server_tag_u32(&self, tag_id: u8) -> Option<u32> {
+        for t in &self.tags {
+            if t.name == TagName::Id(tag_id) {
+                match t.value {
+                    TagValue::UInt32(v) => return Some(v),
+                    TagValue::UInt16(v) => return Some(u32::from(v)),
+                    _ => {}
+                }
+            }
+        }
+        self.unknown_tags.iter().find_map(|t| {
+            if t.name == TagName::Id(tag_id) && t.raw_bytes.len() == 4 {
+                Some(u32::from_le_bytes([
+                    t.raw_bytes[0],
+                    t.raw_bytes[1],
+                    t.raw_bytes[2],
+                    t.raw_bytes[3],
+                ]))
+            } else {
+                None
+            }
+        })
     }
 
     fn server_tag_u16(&self, tag_id: u8) -> Option<u16> {
@@ -411,6 +463,11 @@ pub enum ServerResponse {
     FoundSourcesObfu(super::sources::FoundSourcesObfu),
     /// A peer asked the server to relay a callback to us (`OP_CALLBACKREQUESTED`).
     CallbackRequested(CallbackRequested),
+    /// Server rejected the last command (`OP_REJECT`, empty payload).
+    ///
+    /// eMule `ServerSocket.cpp` treats this as a debug-level diagnostic and
+    /// keeps the socket; the server normally closes it right after.
+    Rejected,
     /// The server could not relay our callback request (`OP_CALLBACK_FAIL`).
     CallbackFail {
         /// Target client ID that could not be called back, when echoed.

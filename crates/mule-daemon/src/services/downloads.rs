@@ -1312,6 +1312,39 @@ impl DownloadService {
         Ok(None)
     }
 
+    /// Hashs actuellement présents dans la liste des partages — eMule
+    /// `sharedfiles` : entrées actives dont le fichier existe + downloads
+    /// complétés persistés ou chargés dont le fichier existe encore.
+    /// Les `.part` en cours n'y figurent **pas** (eMule `FindBestClientInQueue`
+    /// ne consulte que `sharedfiles->GetFileByID` — les attendeurs d'un
+    /// fichier partiel sont purgés comme chez eMule). Utilisé par
+    /// `UploadManager` pour purger la file des requêtes orphelines.
+    pub fn list_shared_hashes(&self) -> std::collections::HashSet<String> {
+        let mut set = std::collections::HashSet::new();
+        if let Ok(shares) = peers_servers::list_shared_files(&self.db) {
+            for sf in shares {
+                if sf.enabled && (sf.file_path.is_empty() || Path::new(&sf.file_path).is_file()) {
+                    set.insert(sf.file_hash.to_lowercase());
+                }
+            }
+        }
+        for act in self.active.values() {
+            if act.download.status == DownloadStatus::Completed
+                && act.download.target_path.is_file()
+            {
+                set.insert(act.download.ed2k_hash.to_hex().to_lowercase());
+            }
+        }
+        if let Ok(dls) = self.db.get_all_downloads() {
+            for d in dls {
+                if d.status == DownloadStatus::Completed && d.target_path.is_file() {
+                    set.insert(d.ed2k_hash.to_hex().to_lowercase());
+                }
+            }
+        }
+        set
+    }
+
     /// Resolves a completed download from the DB into a shareable entry —
     /// only when the target file actually exists on disk.
     fn shared_entry_for_completed_db(

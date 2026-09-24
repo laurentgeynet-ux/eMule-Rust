@@ -225,7 +225,17 @@ pub fn spawn_connection_task(
 
         // 2. Send OP_LOGINREQUEST
         let limits = Ed2kLimits::for_server();
-        let login_req = ServerLoginRequest::new(user_hash, client_port, &nickname, 0x3c);
+        // eMule `ServerConnect.cpp:184-191` : quand l'obfuscation est
+        // préférée, le login annonce `SUPPORTCRYPT | REQUESTCRYPT` dans
+        // `CT_SERVER_FLAGS` (le port dédié `ST_TCPPORTOBFUSCATION` reste
+        // le mécanisme principal côté Rust).
+        let login_req = ServerLoginRequest::new(user_hash, client_port, &nickname, 0x3c)
+            .with_server_flags(if prefer_obfuscation {
+                mule_protocol::ed2k::tags::SRVCAP_SUPPORTCRYPT
+                    | mule_protocol::ed2k::tags::SRVCAP_REQUESTCRYPT
+            } else {
+                0
+            });
         info!(
             "Sending OP_LOGINREQUEST to eD2K server {} (nick='{}', port={}, hash={:?})",
             log_server_addr(target_addr),
@@ -285,6 +295,10 @@ pub fn spawn_connection_task(
             tokio::time::Instant::now() + Duration::from_millis(handshake_timeout_ms);
         let mut is_connecting = true;
         let mut publish_login: Option<mule_protocol::ed2k::ServerIdChange> = None;
+        // eMule `CServer::GetSoftFiles` (`ST_SOFTFILES` tag 0x88 from
+        // OP_SERVERIDENT) — caps how many files we may offer; eMule clamps
+        // it to ≤200 (`CSharedFileList::SendListToServer`).
+        let mut soft_files_limit: Option<u32> = None;
         // Credentials from the last OP_IDCHANGE, kept for periodic
         // OP_OFFERFILES re-publication (eMule keeps the shared file list
         // fresh on the server and uses an empty offer packet as keep-alive).
@@ -410,6 +424,9 @@ pub fn spawn_connection_task(
                                                                     info!("Server ident: ip={:08x}, port={}", ident.ip, ident.port);
                                                                     if let Some(name) = ident.name() {
                                                                         g.snapshot.server_name = Some(name);
+                                                                    }
+                                                                    if let Some(sf) = ident.soft_files() {
+                                                                        soft_files_limit = Some(sf);
                                                                     }
                                                                     let obf_tcp = ident.obfuscation_tcp_port();
                                                                     let obf_udp = ident.obfuscation_udp_port();
@@ -694,6 +711,12 @@ pub fn spawn_connection_task(
                                                                         ),
                                                                     }
                                                                 }
+                                                                ServerResponse::Rejected => {
+                                                                    // eMule `ServerSocket.cpp:572` —
+                                                                    // OP_REJECT is only logged; the
+                                                                    // server closes the socket itself.
+                                                                    warn!("Server rejected last command (OP_REJECT)");
+                                                                }
                                                                 ServerResponse::Other { opcode, .. } => {
                                                                     info!("Received other server opcode: 0x{:02x}", opcode);
                                                                 }
@@ -717,6 +740,7 @@ pub fn spawn_connection_task(
                                                                     client_port,
                                                                     &limits,
                                                                     &downloads_clone,
+                                                                    soft_files_limit,
                                                                 )
                                                                 .await;
                                                             }
@@ -754,6 +778,7 @@ pub fn spawn_connection_task(
                                         client_port,
                                         &limits,
                                         &downloads_clone,
+                                        soft_files_limit,
                                     )
                                     .await;
                                 }
@@ -785,7 +810,10 @@ async fn publish_shared_files(
     client_port: u16,
     limits: &Ed2kLimits,
     downloads: &Option<Arc<Mutex<DownloadService>>>,
+    soft_files_limit: Option<u32>,
 ) {
+    /// eMule hard cap on offered files when the server does not advertise a
+    /// lower `ST_SOFTFILES` limit (`CSharedFileList::SendListToServer`).
     const MAX_OFFER_FILES: usize = 200;
 
     let Some(dl_service) = downloads else { return };
@@ -801,9 +829,12 @@ async fn publish_shared_files(
         ))
     });
 
-    let mut files = Vec::with_capacity(shared.len().min(MAX_OFFER_FILES));
+    let offer_limit = soft_files_limit
+        .map(|s| (s as usize).min(MAX_OFFER_FILES))
+        .unwrap_or(MAX_OFFER_FILES);
+    let mut files = Vec::with_capacity(shared.len().min(offer_limit));
     for sf in shared.iter().filter(|sf| sf.enabled) {
-        if files.len() >= MAX_OFFER_FILES {
+        if files.len() >= offer_limit {
             break;
         }
         let Ok(hash_bytes) = <[u8; 16]>::try_from(
@@ -832,11 +863,29 @@ async fn publish_shared_files(
     let offer = mule_protocol::ed2k::OfferFiles { files };
     match offer.encode(limits) {
         Ok(pkt) => {
-            let mut out = Vec::with_capacity(6 + pkt.payload.len());
-            out.push(pkt.protocol);
-            out.extend_from_slice(&(pkt.frame_len() as u32).to_le_bytes());
+            // eMule `Packet::PackPacket` : quand le serveur annonce
+            // `SRV_TCPFLG_COMPRESSION`, l'offre est zlib-compressée au
+            // niveau max et envoyée sous `PR_EMULE_COMPRESSED (0xD4)` —
+            // seulement si le résultat est plus petit.
+            let (protocol, payload): (u8, Vec<u8>) = {
+                let compressed = if tcp_flags
+                    & mule_protocol::ed2k::SRV_TCPFLG_COMPRESSION
+                    != 0
+                {
+                    pack_packet_payload(&pkt.payload)
+                } else {
+                    None
+                };
+                match compressed {
+                    Some(buf) => (mule_protocol::ed2k::PR_EMULE_COMPRESSED, buf),
+                    None => (pkt.protocol, pkt.payload.to_vec()),
+                }
+            };
+            let mut out = Vec::with_capacity(6 + payload.len());
+            out.push(protocol);
+            out.extend_from_slice(&((payload.len() as u32 + 1).to_le_bytes()));
             out.push(pkt.opcode);
-            out.extend_from_slice(&pkt.payload);
+            out.extend_from_slice(&payload);
             match stream.write_all(&out).await {
                 Ok(()) => info!(
                     "Published {} shared file(s) to server {} via OP_OFFERFILES",
@@ -856,6 +905,19 @@ async fn publish_shared_files(
             e
         ),
     }
+}
+
+/// eMule `Packet::PackPacket` : zlib-déflate le payload au niveau maximal
+/// (`Z_BEST_COMPRESSION`) ; renvoie `Some(buf)` seulement si le résultat est
+/// strictement plus petit que l'original (sinon le paquet part non compressé).
+fn pack_packet_payload(payload: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Write;
+    let mut encoder =
+        flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+    if encoder.write_all(payload).is_err() {
+        return None;
+    }
+    encoder.finish().ok().filter(|buf| buf.len() < payload.len())
 }
 
 /// eMule `Packet::UnPackPacket` for server packets: zlib-inflate the packed

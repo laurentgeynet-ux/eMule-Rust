@@ -20,14 +20,15 @@ pub use types::{
     ed2k_file_type_term, CallbackRequest, CallbackRequested, OfferFiles, OfferedFile,
     ServerIdChange, ServerIdent, ServerLoginRequest, ServerMessage, ServerResponse, ServerStatus,
     OFFER_COMPLETE_CLIENT_ID, OFFER_COMPLETE_CLIENT_PORT, OFFER_INCOMPLETE_CLIENT_ID,
-    OFFER_INCOMPLETE_CLIENT_PORT, SRV_TCPFLG_COMPRESSION, SRV_TCPFLG_LARGEFILES,
+    OFFER_INCOMPLETE_CLIENT_PORT, ANNOUNCED_EMULE_VERSION_TAG, SRV_TCPFLG_COMPRESSION,
+    SRV_TCPFLG_LARGEFILES,
 };
 
 use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
     OP_CALLBACKREQUESTED, OP_CALLBACK_FAIL, OP_FOUNDSOURCES, OP_FOUNDSOURCES_OBFU, OP_IDCHANGE,
-    OP_SEARCH_RESULT, OP_SERVERIDENT, OP_SERVERLIST, OP_SERVERMESSAGE, OP_SERVERSTATUS,
+    OP_REJECT, OP_SEARCH_RESULT, OP_SERVERIDENT, OP_SERVERLIST, OP_SERVERMESSAGE, OP_SERVERSTATUS,
     OP_SERVERSTATUS_LEGACY,
 };
 use super::protocol::PR_ED2K;
@@ -239,6 +240,10 @@ pub fn decode_server_response(
                 user_hash,
             }))
         }
+
+        // eMule `OP_REJECT` (`(null)` payload) — server-side refusal of the
+        // last command; payload bytes, if any, are ignored.
+        OP_REJECT => Ok(ServerResponse::Rejected),
 
         OP_CALLBACK_FAIL => {
             let client_id = if payload.len() >= 4 {

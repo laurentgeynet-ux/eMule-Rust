@@ -11,6 +11,7 @@ Ces messages constituent le socle d'interconnexion pair-à-pair originel défini
 | Opcode Hex | Nom Symbolique | Direction | Rôle & Sémantique |
 | :---: | :--- | :--- | :--- |
 | `0x01` | `OP_HELLO` | Bidirectionnel | Poignée de main initiale : annonce du hash utilisateur, port d'écoute et capacités |
+| `0x05` | `OP_REJECT` | Serveur $\rightarrow$ Client | Refus de la dernière commande (payload vide — `(null)` dans `Opcodes.h`) ; eMule se contente de le journaliser, le serveur ferme la socket juste après (`ServerSocket.cpp:572`) |
 | `0x1C` | `OP_CALLBACKREQUEST` | Client $\rightarrow$ Serveur | Demande au serveur de relayer une invitation vers un client LowID |
 | `0x35` | `OP_CALLBACKREQUESTED` | Serveur $\rightarrow$ Client | Relai serveur : IP + port (optionnel : crypt options + user hash) d'un client LowID qui nous appelle |
 | `0x32` | `OP_SERVERLIST` | Serveur $\rightarrow$ Client | Serveurs additionnels annoncés : `u8 count` puis `count × (u32 ip_le + u16 port)` |

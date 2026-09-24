@@ -16,6 +16,12 @@ use crate::services::peer_session::PeerSessionManager;
 use crate::services::server_session::ServerSessionManager;
 use crate::services::DaemonEvent;
 
+/// Cadence de rafraîchissement de l'instantané `sharedfiles` utilisé par
+/// l'UploadManager pour purger les requêtes orphelines — en ticks de 1 s
+/// (eMule lit la liste en direct à chaque promotion ; ici un snapshot à
+/// ~15 s suffit, les partages changent rarement).
+const SHARED_HASH_REFRESH_TICKS: u64 = 15;
+
 /// Contrôle à chaud du `EnvFilter` global (clé `logLevel` de
 /// `settings.set`). Le binaire installe le `reload::Handle` au démarrage ;
 /// les handlers RPC n'ont ensuite qu'à appeler [`LogControl::set`].
@@ -463,12 +469,22 @@ impl AppState {
         // doit fonctionner en mode headless).
         {
             let upload_mgr = inbound_listener.upload_manager().clone();
+            let dl_arc = Arc::clone(&dl_arc);
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                let mut tick_count = 0u64;
                 loop {
                     interval.tick().await;
                     upload_mgr.process_tick().await;
+                    // Instantané `sharedfiles` pour la purge « fichier plus
+                    // partagé » de `FindBestClientInQueue` — rafraîchi à
+                    // cadence réduite (les partages changent rarement).
+                    tick_count += 1;
+                    if tick_count.is_multiple_of(SHARED_HASH_REFRESH_TICKS) {
+                        let hashes = dl_arc.lock().await.list_shared_hashes();
+                        upload_mgr.set_shared_hashes(hashes);
+                    }
                 }
             });
         }
