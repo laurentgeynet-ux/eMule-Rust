@@ -11,6 +11,31 @@ use mule_network_policy::{classify_ip, IpCategory, NetworkPolicyManager, Network
 
 use crate::services::kad_udp::KadUdpService;
 
+/// Standard tag list published with each keyword entry — eMule writes
+/// `TAG_FILENAME`, `TAG_FILESIZE` and `TAG_SOURCES` for every file
+/// (`WriteTagListWithPublishInfo`).
+fn standard_keyword_tags(
+    file_name: &str,
+    file_size: u64,
+    source_count: u32,
+) -> Vec<mule_protocol::ed2k::tags::Ed2kTag> {
+    use mule_protocol::ed2k::tags::{Ed2kTag, TagName, TagValue};
+    vec![
+        Ed2kTag {
+            name: TagName::Id(mule_protocol::ed2k::tags::TAG_SPECIAL_NAME),
+            value: TagValue::String(file_name.to_string()),
+        },
+        Ed2kTag {
+            name: TagName::Id(mule_protocol::ed2k::tags::TAG_SPECIAL_FILESIZE),
+            value: TagValue::UInt64(file_size),
+        },
+        Ed2kTag {
+            name: TagName::Id(0x15),
+            value: TagValue::UInt32(source_count),
+        },
+    ]
+}
+
 pub async fn search_keywords_iterative(
     term: &str,
     min_size: Option<u64>,
@@ -197,6 +222,10 @@ pub async fn publish_keyword(
             file_name: file_name.to_string(),
             file_size,
             source_count: 1,
+            // Standard published tag list (filename/filesize/sources) —
+            // remote indexers evaluate restrictive search expressions
+            // against these tags (eMule `WriteTagListWithPublishInfo`).
+            tags: standard_keyword_tags(file_name, file_size, 1),
         }];
 
         let mut futs = Vec::with_capacity(targets.len());

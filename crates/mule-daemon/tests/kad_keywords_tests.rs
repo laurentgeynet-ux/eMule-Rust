@@ -77,6 +77,7 @@ async fn test_kad_keyword_publish_and_search_flow() {
                         file_name: "Ubuntu-22.04-live-server.iso".to_string(),
                         file_size: 1_400_000_000,
                         source_count: 15,
+                        tags: Vec::new(),
                     }];
                     let res = KadCodec::encode_search_keyword_res(&s.keyword_hash, &entries);
                     let _ = mock_socket.send_to(&res, from_addr).await;

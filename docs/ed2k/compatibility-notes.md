@@ -127,11 +127,11 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
   binaire eMule (`RoutingZone` — split borné par `KK=5`/`KBASE=4`,
   profondeur accrue près de notre propre KadID). La capacité par bin
   est alignée (`K=10`) mais la topologie de couverture diffère.
-- **Expressions de recherche restrictives décodées mais non
-  appliquées** : le flag `0x8000` de `KADEMLIA2_SEARCH_KEY_REQ` et les
-  octets d'expression (`SSearchTerm`) sont conservés dans
-  `KadSearchKeywordReq::search_expression`, mais les entrées servies
-  ne sont pas filtrées (`StartSearchTermsMatch` non implémenté).
+- **Tags publiés non persistés au redémarrage** : les entrées
+  keywords réhydratées depuis SQLite retrouvent `file_name`/`file_size`/
+  `source_count` mais pas leur taglist complète — les recherches
+  restrictives sur des métadonnées tierces ne matcheront ces entrées
+  qu'après republication (eMule ne persiste pas son index du tout).
 - **Convergence `find_node`** : arrêt anticipé dès que 12 candidats
   sont dans `SEARCHTOLERANCE` (≥ 2 itérations) ; eMule poursuit
   jusqu'à épuisement de `m_mapPossible` ou `SEARCHFILE_TOTAL=300`.
@@ -148,6 +148,19 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
   `[keyword_hash 16][start_pos u16]` — pas de `sender_id` terminal ;
   bit 15 = recherche restrictive, offset = `start_pos & 0x7FFF`
   (`KademliaUDPListener.cpp:1057` `Process_KADEMLIA2_SEARCH_KEY_REQ`).
+- **Expressions restrictives appliquées** : `kad::search_expr`
+  parse l'arbre `SSearchTerm` (`CreateSearchExpressionTree` — AND/OR/
+  NOT binaires, feuilles string/meta/numeric u32+u64, profondeur max
+  24) et l'évalue comme `CKeyEntry::SearchTermsMatch` : termes de nom
+  de fichier pré-tokenisés (`TokenizeOptQuotedSearchTerm`, quotes
+  préservées, sous-chaîne case-insensitive, multi-mots = AND), égalité
+  de chaînes de métadonnées (cas spécial `fileformat` → extension du
+  nom), relations entières sur les tags publiés avec `filesize`
+  virtuel (`GetIntTagValue`). Expression malformée → datagramme
+  rejeté comme le `try/catch` eMule ; `start_pos` pagine **après**
+  filtrage (`Indexed.cpp` `SendValidKeywordResult`). La taglist
+  publiée est conservée sur `KadKeywordEntryWire::tags` et réémise
+  verbatim dans les résultats (`WriteTagList`).
 - **`KADEMLIA2_PUBLISH_RES (0x4B)`** : byte d'options optionnel après
   `[hash16][status]` — bit 0 → renvoi d'un datagramme `0x4C` nu
   (`KademliaUDPListener.cpp:1438` `Process_KADEMLIA2_PUBLISH_RES`).

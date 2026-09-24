@@ -234,7 +234,9 @@ pub struct KadPublishSourceRes {
 }
 
 /// Wire representation of a keyword search entry.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Not `Eq` because `tags` may contain `Float32` values.
+#[derive(Debug, Clone, PartialEq)]
 pub struct KadKeywordEntryWire {
     /// 128-bit file hash.
     pub file_hash: KadIdBytes,
@@ -244,6 +246,12 @@ pub struct KadKeywordEntryWire {
     pub file_size: u64,
     /// Number of sources advertising this file.
     pub source_count: u32,
+    /// Published metadata tag list retained verbatim from `PUBLISH_KEY_REQ`
+    /// or the `SEARCH_RES` tag list (eMule `CKeyEntry::m_listTag`). Used to
+    /// evaluate restrictive search expressions
+    /// (`CKeyEntry::SearchTermsMatch`). Empty for entries decoded from the
+    /// legacy flat format.
+    pub tags: Vec<Ed2kTag>,
 }
 
 /// Kad2 Search Keyword Request (0x33).
@@ -257,14 +265,16 @@ pub struct KadSearchKeywordReq {
     /// Start position for pagination (`start_pos & 0x7FFF` on the wire).
     pub start_pos: u16,
     /// Raw search-expression bytes trailing the request when `restrictive`
-    /// is set. Bounded by the frame limit; the daemon currently serves the
-    /// stored entries unfiltered (documented deviation — eMule applies
-    /// `StartSearchTermsMatch`).
+    /// is set. Bounded by the frame limit. Parsed via
+    /// `crate::kad::search_expr::KadSearchExpression` and applied by the
+    /// daemon before pagination (eMule `StartSearchTermsMatch`).
     pub search_expression: Option<Vec<u8>>,
 }
 
 /// Kad2 Search Keyword Response (0x3B, unified search response, or legacy 0x2C).
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Not Eq: entries carry metadata tags which may be floats.
+#[derive(Debug, Clone, PartialEq)]
 pub struct KadSearchKeywordRes {
     /// 128-bit MD4 hash of the keyword.
     pub keyword_hash: KadIdBytes,
@@ -273,7 +283,9 @@ pub struct KadSearchKeywordRes {
 }
 
 /// Kad2 Publish Keyword Request (0x43).
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Not Eq: entries carry metadata tags which may be floats.
+#[derive(Debug, Clone, PartialEq)]
 pub struct KadPublishKeywordReq {
     /// 128-bit MD4 hash of the keyword.
     pub keyword_hash: KadIdBytes,

@@ -203,6 +203,19 @@ impl KadStorage {
         keyword_hash: &KadIdBytes,
         start_pos: u16,
     ) -> Vec<KadKeywordEntryWire> {
+        self.get_keyword_entries_filtered(keyword_hash, start_pos, |_| true)
+    }
+
+    /// Returns live keyword entries matching `filter`, honoring `start_pos`
+    /// over the *matching* set — eMule `SendValidKeywordResult` counts the
+    /// start position after `StartSearchTermsMatch` filtering, not before
+    /// (`Indexed.cpp:630`).
+    pub fn get_keyword_entries_filtered(
+        &mut self,
+        keyword_hash: &KadIdBytes,
+        start_pos: u16,
+        filter: impl Fn(&KadKeywordEntryWire) -> bool,
+    ) -> Vec<KadKeywordEntryWire> {
         let now = Instant::now();
         let Some(entries) = self.keywords.get_mut(keyword_hash) else {
             return Vec::new();
@@ -216,6 +229,7 @@ impl KadStorage {
         }
         entries
             .iter()
+            .filter(|e| filter(&e.entry))
             .skip(start_pos as usize)
             .take(MAX_SEARCH_RESULT_PAGE)
             .map(|e| e.entry.clone())
@@ -410,6 +424,11 @@ impl KadStorage {
                         file_name: e.file_name,
                         file_size: e.file_size,
                         source_count: e.source_count,
+                        // Published metadata tags are kept in memory only
+                        // (eMule does not persist its index either), so
+                        // rehydrated entries answer filename/filesize
+                        // restrictive terms only.
+                        tags: Vec::new(),
                     },
                     expires_at: Instant::now() + Duration::from_millis(remaining),
                 });
@@ -444,6 +463,7 @@ mod tests {
             file_name: "file.bin".to_string(),
             file_size: 1234,
             source_count: 1,
+            tags: Vec::new(),
         }
     }
 
@@ -499,6 +519,39 @@ mod tests {
         );
         // Empty entry list is rejected.
         assert!(!st.store_keyword_entries([4u8; 16], Vec::new()));
+    }
+
+    #[test]
+    fn keyword_filtered_query_paginates_after_filter() {
+        // eMule `SendValidKeywordResult`: `start_pos` counts the entries
+        // that pass `StartSearchTermsMatch`, not the raw stored set.
+        let mut st = KadStorage::default();
+        let kw = [6u8; 16];
+        let mk = |id: u16, name: &str| {
+            let mut e = kw_entry(id);
+            e.file_name = name.to_string();
+            e
+        };
+        assert!(st.store_keyword_entries(
+            kw,
+            vec![
+                mk(1, "skip.bin"),
+                mk(2, "keep-one.bin"),
+                mk(3, "skip.bin"),
+                mk(4, "keep-two.bin"),
+                mk(5, "keep-three.bin"),
+            ]
+        ));
+        let got = st.get_keyword_entries_filtered(&kw, 0, |e| e.file_name.starts_with("keep"));
+        assert_eq!(got.len(), 3);
+        // start_pos=2 must skip two *matching* entries.
+        let got = st.get_keyword_entries_filtered(&kw, 2, |e| e.file_name.starts_with("keep"));
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].file_name, "keep-three.bin");
+        // No match -> empty, no panic.
+        assert!(st
+            .get_keyword_entries_filtered(&kw, 0, |e| e.file_name == "nope")
+            .is_empty());
     }
 
     #[test]

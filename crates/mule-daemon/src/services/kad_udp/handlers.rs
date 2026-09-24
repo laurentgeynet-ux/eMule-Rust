@@ -499,13 +499,44 @@ pub async fn handle_incoming_message(
             }
         }
         KadMessage::SearchKeywordReq(req) => {
+            // eMule `Process_KADEMLIA2_SEARCH_KEY_REQ`: when `restrictive`
+            // is set the trailing bytes form a search-expression tree
+            // (`CreateSearchExpressionTree`). A malformed tree throws and the
+            // whole datagram is dropped.
+            let expr = if req.restrictive {
+                match req.search_expression.as_deref() {
+                    Some(bytes) => {
+                        match KadSearchExpression::parse(
+                            PR_KADEMLIA,
+                            KADEMLIA2_SEARCH_KEY_REQ,
+                            bytes,
+                        ) {
+                            Ok(e) => Some(e),
+                            Err(err) => {
+                                tracing::debug!(
+                                    "Kad UDP: dropping SearchKeywordReq from {peer}: \
+                                     malformed restrictive expression ({err})",
+                                    peer = log_peer_addr(peer_addr)
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    // Restrictive flag without an expression: eMule serves
+                    // unfiltered results (pSearchTerms == NULL).
+                    None => None,
+                }
+            } else {
+                None
+            };
             let entries = {
                 let mut store = storage.lock().await;
-                store.get_keyword_entries(&req.keyword_hash, req.start_pos)
+                store.get_keyword_entries_filtered(&req.keyword_hash, req.start_pos, |entry| {
+                    expr.as_ref().is_none_or(|e| {
+                        e.matches(&KadKeywordSearchView::new(entry))
+                    })
+                })
             };
-            // Deviation documentée : eMule applique `StartSearchTermsMatch`
-            // quand `req.restrictive` (arbre d'expression dans
-            // `search_expression`); les entrées servies restent non filtrées.
             let packets =
                 KadCodec::encode_search_keyword_res_fragmented(&req.keyword_hash, &entries);
             tracing::debug!(

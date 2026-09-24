@@ -5,6 +5,9 @@
 
 use bytes::{BufMut, Bytes, BytesMut};
 
+use crate::ed2k::encoder::tags::encode_tag;
+use crate::ed2k::limits::Ed2kLimits;
+
 use super::opcodes::*;
 use super::types::*;
 
@@ -429,29 +432,7 @@ impl KadEncoder {
         buf.put_slice(keyword_hash);
         buf.put_u16_le(count as u16);
         for entry in &entries[..count] {
-            buf.put_slice(&entry.file_hash);
-            buf.put_u8(3);
-
-            let name_bytes = entry.file_name.as_bytes();
-            let name_len = name_bytes.len().min(255) as u16;
-            // TAG_FILENAME (0x01) -> TAGTYPE_STRING (0x02)
-            buf.put_u8(0x02);
-            buf.put_u16_le(1);
-            buf.put_u8(0x01);
-            buf.put_u16_le(name_len);
-            buf.put_slice(&name_bytes[..name_len as usize]);
-
-            // TAG_FILESIZE (0x02) -> TAGTYPE_UINT64 (0x0B)
-            buf.put_u8(0x0B);
-            buf.put_u16_le(1);
-            buf.put_u8(0x02);
-            buf.put_u64_le(entry.file_size);
-
-            // TAG_SOURCES (0x15) -> TAGTYPE_UINT32 (0x03)
-            buf.put_u8(0x03);
-            buf.put_u16_le(1);
-            buf.put_u8(0x15);
-            buf.put_u32_le(entry.source_count);
+            write_kw_entry(&mut buf, entry);
         }
         buf.freeze()
     }
@@ -544,6 +525,23 @@ fn kw_entry_wire_len(e: &KadKeywordEntryWire) -> usize {
 /// Writes one keyword entry of a `KADEMLIA2_SEARCH_RES` (0x3B) packet.
 fn write_kw_entry(buf: &mut BytesMut, entry: &KadKeywordEntryWire) {
     buf.put_slice(&entry.file_hash);
+    if !entry.tags.is_empty() {
+        // eMule `WriteTagList`: echo the published tag list verbatim so
+        // restrictive-search requesters see the same metadata the
+        // expression was evaluated against.
+        let count = entry.tags.len().min(u8::MAX as usize);
+        let limits = Ed2kLimits::default();
+        let mut tmp = Vec::with_capacity(32 * count);
+        let ok = entry.tags[..count]
+            .iter()
+            .all(|tag| encode_tag(&limits, KADEMLIA2_SEARCH_RES, tag, &mut tmp).is_ok());
+        if ok {
+            buf.put_u8(count as u8);
+            buf.put_slice(&tmp);
+            return;
+        }
+        // Re-encode failed — fall through to the synthesized minimal list.
+    }
     buf.put_u8(3);
 
     let name_bytes = entry.file_name.as_bytes();

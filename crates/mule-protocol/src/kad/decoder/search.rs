@@ -5,7 +5,7 @@
 
 use crate::ed2k::limits::Ed2kLimits;
 use crate::ed2k::tags::{
-    TagName, TagReader, TagValue, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME, TAG_SPECIAL_PORT,
+    Ed2kTag, TagName, TagReader, TagValue, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_NAME, TAG_SPECIAL_PORT,
 };
 use crate::ed2k::{Ed2kErrorKind, Ed2kParseError};
 use crate::kad::opcodes::*;
@@ -95,11 +95,13 @@ pub fn decode_search_res(
                 let mut encryption = 0u8;
                 let mut buddy_id: Option<KadIdBytes> = None;
                 let mut entry_is_source = false;
+                let mut parsed_tags: Vec<Ed2kTag> = Vec::new();
 
                 let mut reader = TagReader::new(raw_bytes, cursor, protocol, Some(opcode));
                 for _ in 0..tag_count {
                     match reader.read_tag(&limits) {
                         Ok((Some(tag), _)) => {
+                            parsed_tags.push(tag.clone());
                             match &tag.name {
                                 TagName::Id(TAG_SPECIAL_NAME) => {
                                     if let TagValue::String(s) = tag.value {
@@ -301,6 +303,7 @@ pub fn decode_search_res(
                         file_name,
                         file_size,
                         source_count,
+                        tags: parsed_tags,
                     });
                 }
             }
@@ -680,6 +683,7 @@ pub fn decode_search_keyword_res_legacy(
             file_name,
             file_size,
             source_count,
+            tags: Vec::new(),
         });
     }
 
@@ -735,12 +739,15 @@ pub fn decode_publish_keyword_req(
             let mut file_name = String::new();
             let mut file_size = 0u64;
             let mut source_count = 1u32;
+            let mut parsed_tags: Vec<Ed2kTag> = Vec::new();
             let mut reader = TagReader::new(payload, cursor, protocol, Some(opcode));
             let mut parse_ok = true;
 
             for _ in 0..tag_count {
                 match reader.read_tag(&limits) {
-                    Ok((Some(tag), _)) => match &tag.name {
+                    Ok((Some(tag), _)) => {
+                        parsed_tags.push(tag.clone());
+                        match &tag.name {
                         TagName::Id(TAG_SPECIAL_NAME) => {
                             if let TagValue::String(s) = tag.value {
                                 file_name = s.chars().filter(|c| !c.is_control()).collect();
@@ -778,7 +785,8 @@ pub fn decode_publish_keyword_req(
                             }
                         }
                         _ => {}
-                    },
+                        }
+                    }
                     Ok((None, _)) => {}
                     Err(_) => {
                         parse_ok = false;
@@ -794,6 +802,7 @@ pub fn decode_publish_keyword_req(
                     file_name,
                     file_size,
                     source_count,
+                    tags: parsed_tags,
                 });
                 continue;
             }
@@ -829,6 +838,7 @@ pub fn decode_publish_keyword_req(
             file_name,
             file_size,
             source_count,
+            tags: Vec::new(),
         });
     }
 
