@@ -932,6 +932,25 @@ impl PeerSessionManager {
         }
     }
 
+    /// Insère une session factice pour les tests — la tâche associée est
+    /// un pending sans socket ; `abort_handle` la termine proprement.
+    #[cfg(test)]
+    pub async fn insert_test_session(&self, snapshot: PeerSessionSnapshot) {
+        let key = snapshot
+            .peer_address
+            .clone()
+            .unwrap_or_else(|| "test-peer".to_string());
+        let jh = tokio::spawn(std::future::pending::<()>());
+        self.inner.lock().await.sessions.insert(
+            key,
+            types::PeerSessionHandle {
+                snapshot,
+                abort_handle: jh.abort_handle(),
+                _permit: None,
+            },
+        );
+    }
+
     /// Returns a single session snapshot for backward compatibility.
     pub async fn snapshot(&self) -> PeerSessionSnapshot {
         let g = self.inner.lock().await;

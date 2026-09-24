@@ -36,7 +36,7 @@ pub(crate) fn db_err<E: std::fmt::Display>(
 
 /// Extrait l'`IpAddr` d'une adresse source `ip:port` ; `None` pour les
 /// adresses symboliques `lowid:`/`kadcb:` (pas d'IP directe à bannir).
-fn source_addr_ip(addr: &str) -> Option<std::net::IpAddr> {
+pub(crate) fn source_addr_ip(addr: &str) -> Option<std::net::IpAddr> {
     addr.parse::<std::net::SocketAddr>()
         .map(|a| a.ip())
         .ok()

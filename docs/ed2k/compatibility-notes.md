@@ -246,9 +246,11 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
 - **`OP_PORTTEST` sans réponse** : eMule accuse le test `0x12` via sa
   socket TCP de test dédiée (`SendPortTestReply('1')`), pas en UDP ;
   nous ne livrons pas l'outil de test de ports — décodé, journalisé.
-- **Purge `RemoteQueueFull` à 80 %** : le drapeau existe désormais sur
-  la session (`remote_queue_full`), mais l'éviction préférentielle des
-  sources remote-queue-full quand la srclist déborde reste à faire.
+- **Purge en masse vs par unité** : eMule retire **1** source
+  `RemoteQueueFull` par minute (et 1 NNP / 40 s, 1 LowToLowIP / 30 s)
+  via `m_lastpurgetime` partagé ; notre passe `SOURCE_PURGE_INTERVAL`
+  (60 s) retire d'un coup tout le budget `count - seuil + 1` —
+  cadence identique, descente vers `seuil - 1` plus rapide.
 
 ### Corrections d'alignement
 
@@ -279,6 +281,14 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
   firewall UDP Kad est `Firewalled` (`CKademlia::IsFirewalled()`) —
   alors `connect_back` compose le pair en sortant
   (`TryToConnect`) et sert la session comme un inbound.
+- **Purge `RemoteQueueFull` à 80 %** (`PartFile.cpp:2285-2295`) : les
+  sessions `remote_queue_full` (flag levé par `OP_QUEUEFULL` UDP)
+  rejoignent les critères de `purge_excess_sources` — suppression de la
+  ligne source + `disconnect_peer` de la session live (`RemoveSource`
+  détruit le download client). Correspondance adresse exacte puis IP
+  seule pour les sources `lowid:`/`kadcb:`. Correction annexe : à
+  égalité `count == seuil` eMule purge encore → budget
+  `count - seuil + 1`.
 
 ## 9. Bande passante / USS (`UploadBandwidthThrottler.cpp`, `UploadQueue.cpp`, `LastCommonRouteFinder.cpp`) — audit phase B, passe 4
 

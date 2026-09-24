@@ -1174,9 +1174,15 @@ impl SwarmCoordinator {
     /// - `kadcb:` sources without a buddy id (unreachable);
     /// - sources flagged "no needed parts" (NNP) — their part mask covers
     ///   nothing we still need;
-    /// - sources that failed repeatedly (fail_count >= 3).
+    /// - sources that failed repeatedly (fail_count >= 3);
+    /// - sessions flagged `remote_queue_full` (`OP_QUEUEFULL` reçu sur le
+    ///   re-ask UDP) — eMule `DS_ONQUEUE && IsRemoteQueueFull()` : ces
+    ///   sources sont purgées en priorité quand la srclist atteint 80 % de
+    ///   `GetMaxSources` (`PartFile.cpp:2285-2295`, cadence 1 min).
     ///
-    /// Purge removes at most `count - threshold` rows per pass.
+    /// Purge removes at most `count - threshold + 1` rows per pass —
+    /// eMule descends sous le seuil (`GetSourceCount() >= 4/5` → retire
+    /// encore à égalité), l'état final est `threshold - 1`.
     async fn purge_excess_sources(
         &mut self,
         file_hash: &str,
@@ -1188,18 +1194,40 @@ impl SwarmCoordinator {
         if file_max == 0 || sources.len() < file_max * 4 / 5 {
             return;
         }
-        let budget = sources.len() - file_max * 4 / 5;
-        if budget == 0 {
-            return;
+        // eMule purge tant que `GetSourceCount() >= GetMaxSources()*4/5` —
+        // l'état final est `seuil - 1` (à 8/10 il retire 1 source, pas 0).
+        let budget = sources.len() - file_max * 4 / 5 + 1;
+
+        // Sessions live marquées remote-queue-full — eMule garde le flag
+        // sur le client (`m_bRemoteQueueFull`), nous sur le snapshot de
+        // session. Correspondance adresse exacte puis IP seule (les sources
+        // `lowid:`/`kadcb:` ont un peer_address ip:port différent de leur
+        // adresse source).
+        let rqfs = self.state.peer_session.swarm_snapshot(Some(file_hash)).await;
+        let mut rqf_addrs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut rqf_ips: std::collections::HashSet<std::net::IpAddr> =
+            std::collections::HashSet::new();
+        for p in &rqfs.peers {
+            if !p.remote_queue_full {
+                continue;
+            }
+            if let Some(addr) = &p.peer_address {
+                rqf_addrs.insert(addr.clone());
+                if let Ok(sa) = addr.parse::<std::net::SocketAddr>() {
+                    rqf_ips.insert(sa.ip());
+                }
+            }
         }
+        let rqf_source = |s: &&mule_core::model::PeerSource| {
+            rqf_addrs.contains(&s.address)
+                || crate::services::downloads::source_addr_ip(&s.address)
+                    .is_some_and(|ip| rqf_ips.contains(&ip))
+        };
 
         let mut removed = 0usize;
         for s in sources {
             if removed >= budget {
                 break;
-            }
-            if s.status == PeerSourceStatus::Connected {
-                continue;
             }
             let nnp = s
                 .last_error
@@ -1209,10 +1237,18 @@ impl SwarmCoordinator {
             let unreachable_lowid = (s.address.starts_with("lowid:") && !server_is_high_id)
                 || (s.address.starts_with("kadcb:") && s.buddy_id.is_none());
             let repeatedly_failed = s.status == PeerSourceStatus::Failed && s.fail_count >= 3;
-            if !(nnp || unreachable_lowid || repeatedly_failed) {
+            let remote_queue_full = rqf_source(&s);
+            if !(nnp || unreachable_lowid || repeatedly_failed || remote_queue_full) {
                 continue;
             }
-            let why = if nnp {
+            // eMule purge aussi les DS_ONQUEUE connectés quand ils sont
+            // RemoteQueueFull — le statut Connected ne les protège pas.
+            if s.status == PeerSourceStatus::Connected && !remote_queue_full {
+                continue;
+            }
+            let why = if remote_queue_full {
+                "remote queue full"
+            } else if nnp {
                 "NNP"
             } else if unreachable_lowid {
                 "unreachable LowID"
@@ -1227,6 +1263,25 @@ impl SwarmCoordinator {
                         "[SOURCE_PURGE] {file_hash}: dropped {why} source {} (swarm over 80% of maxSources={file_max})",
                         s.address
                     );
+                    // eMule `RemoveSource` détruit le download client —
+                    // terminer la session live associée si elle existe
+                    // (clé de session = peer_address réel, pas l'adresse
+                    // source `lowid:`/`kadcb:`).
+                    let session_addr = rqfs.peers.iter().find_map(|p| {
+                        let pa = p.peer_address.as_ref()?;
+                        let src_ip =
+                            crate::services::downloads::source_addr_ip(&s.address)?;
+                        let pa_ip = crate::services::downloads::source_addr_ip(pa)?;
+                        (p.remote_queue_full && (pa == &s.address || pa_ip == src_ip))
+                            .then(|| pa.clone())
+                    });
+                    if let Some(addr) = session_addr {
+                        let _ = self
+                            .state
+                            .peer_session
+                            .disconnect_peer(Some(&addr))
+                            .await;
+                    }
                 }
                 Ok(false) => {}
                 Err(e) => {
@@ -1340,5 +1395,175 @@ impl SwarmCoordinator {
                 break; // one event swap per file per tick
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::peer_session::{PeerConnectionStatus, PeerSessionSnapshot};
+    use crate::services::swarm_coordinator::types::SwarmCoordinator;
+    use mule_core::model::PeerSource;
+    use std::collections::HashMap;
+
+    fn make_source(file_hash: &str, addr: &str) -> PeerSource {
+        PeerSource {
+            file_hash: file_hash.to_string(),
+            address: addr.to_string(),
+            ip: 0,
+            port: 0,
+            origin: PeerSourceOrigin::Server,
+            discovered_at_unix_ms: 0,
+            last_seen_unix_ms: 0,
+            status: PeerSourceStatus::Candidate,
+            fail_count: 0,
+            last_error: None,
+            cooldown_until_unix_ms: None,
+            user_hash: None,
+            crypt_options: 0,
+            buddy_id: None,
+            software: None,
+            availability: None,
+        }
+    }
+
+    /// État daemon minimal en mémoire — `mule_test_support` ne peut pas
+    /// servir ici : ses helpers renvoient l'`AppState` de la crate externe
+    /// (double version du type en unit-test).
+    fn test_state(dir: &std::path::Path, hash_hex: &str) -> crate::state::AppState {
+        let config = crate::config::DaemonConfig::new(dir.join("data"), "test-token")
+            .with_workdir_mode(crate::workdir::WorkDirMode::Portable);
+        let mut downloads = crate::services::downloads::DownloadService::in_memory(
+            dir.join("temp"),
+        )
+        .unwrap();
+        let link = format!(
+            "ed2k://|file|f.bin|10000000|{hash_hex}|/"
+        );
+        downloads
+            .add_ed2k_link(
+                &link,
+                &dir.join("downloads"),
+                mule_core::storage::part_file::AllocationPolicy::None,
+                None,
+            )
+            .unwrap();
+        crate::state::AppState::new(config, downloads)
+    }
+
+    fn coordinator(state: crate::state::AppState) -> SwarmCoordinator {
+        SwarmCoordinator {
+            state,
+            last_source_query_tcp: HashMap::new(),
+            last_source_query_udp: HashMap::new(),
+            kad_source_search: HashMap::new(),
+            last_kad_file_request: Instant::now(),
+            last_heartbeat: Instant::now(),
+            server_attempts: HashMap::new(),
+            last_server_reconnect: None,
+            last_connected_server: None,
+            last_source_purge: HashMap::new(),
+            last_a4af_full: Instant::now(),
+        }
+    }
+
+    /// eMule `CPartFile::Process` (`PartFile.cpp:2285-2295`) : à ≥80 % de
+    /// `GetMaxSources`, une source `DS_ONQUEUE && IsRemoteQueueFull` est
+    /// purgée — la session live est terminée et la ligne source supprimée,
+    /// alors qu'une source connectée sans flag survit.
+    #[tokio::test]
+    async fn purge_evicts_remote_queue_full_sources_at_80_percent() {
+        let dir = tempfile::tempdir().unwrap();
+        let hash = "0123456789abcdef0123456789abcdef".to_string();
+        let state = test_state(dir.path(), &hash);
+        let file_max = 10usize;
+        // 8 sources sur un cap de 10 → 80 %, seuil eMule atteint.
+        let sources: Vec<PeerSource> = (0..8)
+            .map(|i| make_source(&hash, &format!("10.0.0.{i}:4662")))
+            .collect();
+        {
+            let mut dl = state.downloads.lock().await;
+            dl.upsert_peer_sources(&hash, &sources).unwrap();
+        }
+
+        // Session live queued + remote_queue_full sur la source 10.0.0.3.
+        state
+            .peer_session
+            .insert_test_session(PeerSessionSnapshot {
+                status: PeerConnectionStatus::Queued,
+                file_hash: Some(hash.clone()),
+                peer_address: Some("10.0.0.3:4662".to_string()),
+                remote_queue_full: true,
+                ..Default::default()
+            })
+            .await;
+
+        let mut coord = coordinator(state.clone());
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        coord
+            .purge_excess_sources(&hash, &sources, file_max, false, now_ms)
+            .await;
+
+        // La source RQF est supprimée de la liste persistée.
+        let remaining = state
+            .downloads
+            .lock()
+            .await
+            .list_peer_sources(&hash)
+            .unwrap();
+        assert_eq!(remaining.len(), 7);
+        assert!(!remaining.iter().any(|s| s.address == "10.0.0.3:4662"));
+        // Sa session live est terminée (eMule `RemoveSource` détruit le
+        // download client).
+        let snap = state.peer_session.swarm_snapshot(Some(&hash)).await;
+        assert!(snap.peers.is_empty());
+    }
+
+    /// Sous le seuil de 80 %, aucune purge n'a lieu même avec une session
+    /// remote-queue-full.
+    #[tokio::test]
+    async fn purge_keeps_remote_queue_full_below_80_percent() {
+        let dir = tempfile::tempdir().unwrap();
+        let hash = "0123456789abcdef0123456789abcdef".to_string();
+        let state = test_state(dir.path(), &hash);
+        let sources: Vec<PeerSource> = (0..5)
+            .map(|i| make_source(&hash, &format!("10.0.1.{i}:4662")))
+            .collect();
+        {
+            let mut dl = state.downloads.lock().await;
+            dl.upsert_peer_sources(&hash, &sources).unwrap();
+        }
+        state
+            .peer_session
+            .insert_test_session(PeerSessionSnapshot {
+                status: PeerConnectionStatus::Queued,
+                file_hash: Some(hash.clone()),
+                peer_address: Some("10.0.1.3:4662".to_string()),
+                remote_queue_full: true,
+                ..Default::default()
+            })
+            .await;
+
+        let mut coord = coordinator(state.clone());
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        coord
+            .purge_excess_sources(&hash, &sources, 10, false, now_ms)
+            .await;
+
+        let remaining = state
+            .downloads
+            .lock()
+            .await
+            .list_peer_sources(&hash)
+            .unwrap();
+        assert_eq!(remaining.len(), 5);
+        let snap = state.peer_session.swarm_snapshot(Some(&hash)).await;
+        assert_eq!(snap.peers.len(), 1);
     }
 }
