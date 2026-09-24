@@ -1717,6 +1717,10 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         credit_multiplier_bps: 100,                 // 1.0x
         file_prio_num: 7,
         banned: false,
+        last_request_unix_ms: now_ms,
+        bad_requests: 0,
+        promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        auto_prio: false,
     };
 
     let peer_b = QueuedUpload {
@@ -1728,6 +1732,10 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         credit_multiplier_bps: 1000,               // 10.0x
         file_prio_num: 7,
         banned: false,
+        last_request_unix_ms: now_ms,
+        bad_requests: 0,
+        promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        auto_prio: false,
     };
 
     let score_a = peer_a.effective_score(now_ms);

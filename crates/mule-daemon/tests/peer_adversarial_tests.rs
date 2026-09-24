@@ -14,7 +14,7 @@ use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart, PartAvailabilityMask,
     OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ, OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
-    OP_STARTUPLOADREQ, PR_ED2K,
+    OP_SENDINGPART, OP_STARTUPLOADREQ, PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
 
@@ -429,11 +429,23 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
             }
         }
 
-        // Send OP_SENDINGPART with OUT OF BOUNDS offset (e.g. 500_000 > 184320)
-        let dummy_chunk = vec![0xABu8; 1024];
-        let sending_part =
-            Ed2kSendingPart::new(hash_bytes, 500_000, 501_024, Bytes::from(dummy_chunk));
-        let send_pkt = encoder.encode_sending_part(&sending_part).unwrap();
+        // Send OP_SENDINGPART with a declared range that does not match the
+        // payload size — eMule ProcessBlockPacket throws IDS_ERR_BADDATABLOCK
+        // (`size != (end-start) + header`) → protocol violation → disconnect.
+        // (An in-file range simply not matching a pending block is *ignored*
+        // by eMule, so it cannot be used to assert the rejection path.)
+        // The encoder itself validates range/payload consistency, so the
+        // malformed frame is assembled manually.
+        let mut payload = Vec::with_capacity(24 + 1024);
+        payload.extend_from_slice(&hash_bytes);
+        payload.extend_from_slice(&500_000u32.to_le_bytes()); // start
+        payload.extend_from_slice(&502_048u32.to_le_bytes()); // declared end: 2048 bytes
+        payload.extend_from_slice(&vec![0xABu8; 1024]); // actual payload: 1024 bytes
+        let send_pkt = mule_protocol::framing::RawPacket::new(
+            PR_ED2K,
+            OP_SENDINGPART,
+            Bytes::from(payload),
+        );
         out.clear();
         out.push(send_pkt.protocol);
         out.extend_from_slice(&(send_pkt.frame_len() as u32).to_le_bytes());
@@ -462,7 +474,7 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
         .unwrap();
     let status_obj: Value = resp.result.unwrap();
     assert_eq!(status_obj["status"], "disconnected");
-    assert_eq!(status_obj["failureReason"], "invalid_range");
+    assert_eq!(status_obj["failureReason"], "corrupted_data");
 }
 
 #[tokio::test]

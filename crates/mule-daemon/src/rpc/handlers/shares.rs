@@ -58,8 +58,15 @@ pub async fn handle_shares_add(
         .or_else(|| params["path"].as_str())
         .unwrap_or("");
 
-    let shared = mule_core::model::SharedFile::new(file_hash, file_name, file_size, file_path);
-    state.downloads.lock().await.add_shared_file(&shared)?;
+    let mut shared = mule_core::model::SharedFile::new(file_hash, file_name, file_size, file_path);
+    {
+        let mut dl_svc = state.downloads.lock().await;
+        // eMule `UAPPref` : un nouveau partage démarre en priorité « auto ».
+        if dl_svc.auto_up_priority_enabled() {
+            shared.up_priority = "auto".to_string();
+        }
+        dl_svc.add_shared_file(&shared)?;
+    }
     emit_shares_changed(state);
     Ok(serde_json::to_value(shared).unwrap_or_default())
 }
@@ -115,9 +122,10 @@ pub async fn handle_shares_rename(
     Ok(json!({ "renamed": true }))
 }
 
-/// `shares.rescan` — re-scans the configured download (Incoming) directory
-/// and registers newly found files as shared, like eMule's manual reload of
-/// the shared-files list. Honors the `share_download_dir` opt-out.
+/// `shares.rescan` — re-scans the configured download (Incoming) directory,
+/// registers newly found files as shared and drops shares whose file was
+/// deleted from disk, like eMule's manual reload of the shared-files list.
+/// Honors the `share_download_dir` opt-out.
 pub async fn handle_shares_rescan(state: &AppState) -> Result<Value, JsonRpcError> {
     let dir = {
         let dl = state.downloads.lock().await;
@@ -125,14 +133,15 @@ pub async fn handle_shares_rescan(state: &AppState) -> Result<Value, JsonRpcErro
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| state.config.default_download_dir.clone())
     };
-    let added =
+    let report =
         crate::services::incoming_share::scan_download_dir_shares(&state.downloads, dir.clone())
             .await;
-    if added > 0 {
+    if report.added + report.removed > 0 {
         emit_shares_changed(state);
     }
     Ok(json!({
-        "added": added,
+        "added": report.added,
+        "removed": report.removed,
         "dir": dir.to_string_lossy(),
     }))
 }
@@ -170,8 +179,11 @@ pub async fn handle_shares_set_enabled(
     }
 }
 
-/// `shares.setUploadPriority` — eMule upload priority (powershare) for a
-/// shared file: "verylow" | "low" | "normal" | "high" | "veryhigh".
+/// `shares.setUploadPriority` — eMule upload priority for a shared file:
+/// "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare" |
+/// "auto". "auto" est eMule `m_bAutoUpPriority` : la priorité effective
+/// est recalculée selon le nombre de clients qui uploadent le fichier
+/// (`UpdateAutoUpPriority` : >20 → low, >1 → normal, sinon → high).
 /// Weighted into the upload queue score (`GetFilePrioAsNumber` semantics).
 pub async fn handle_shares_set_upload_priority(
     state: &AppState,
@@ -187,7 +199,7 @@ pub async fn handle_shares_set_upload_priority(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'priority'"))?
         .to_lowercase();
     match priority.as_str() {
-        "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare" => {}
+        "verylow" | "low" | "normal" | "high" | "veryhigh" | "powershare" | "auto" => {}
         _ => return Err(JsonRpcError::invalid_params("Invalid priority")),
     }
     let mut dl_svc = state.downloads.lock().await;

@@ -120,18 +120,28 @@ pub fn save_part_met(db: &Database, act: &ActiveDownload) -> Result<PathBuf, Dae
         transferred: act.ranges.covered_len(),
         aich_hash: act.download.aich_root,
         gaps,
-        // Persist the per-file source limit as eMule FT_MAXSOURCES so a
-        // re-imported .part.met (or eMule itself) restores the cap.
-        tags: act
-            .download
-            .max_sources
-            .map(|ms| {
-                vec![mule_format::met::tags::Tag::new_id(
+        // eMule `SavePartFile` écrit toujours `FT_DLPRIORITY`
+        // (`PR_AUTO`=5 quand `m_bAutoDownPriority`, sinon `m_iDownPriority`)
+        // — plus `FT_MAXSOURCES` quand la limite par fichier existe.
+        tags: {
+            let pr: u64 = match act.download.priority.as_str() {
+                "auto" => 5,  // PR_AUTO
+                "low" => 0,   // PR_LOW
+                "high" => 2,  // PR_HIGH
+                _ => 1,       // PR_NORMAL
+            };
+            let mut t = vec![mule_format::met::tags::Tag::new_id(
+                mule_format::met::tags::FT_DLPRIORITY,
+                mule_format::met::tags::TagValue::Uint64(pr),
+            )];
+            if let Some(ms) = act.download.max_sources {
+                t.push(mule_format::met::tags::Tag::new_id(
                     mule_format::met::tags::FT_MAXSOURCES,
                     mule_format::met::tags::TagValue::Uint64(ms as u64),
-                )]
-            })
-            .unwrap_or_default(),
+                ));
+            }
+            t
+        },
     };
 
     met.save(&met_path)
@@ -311,6 +321,23 @@ pub fn import_part_met(
         .and_then(|v| u32::try_from(v).ok())
         .filter(|&v| v > 0);
 
+    // eMule `FT_DLPRIORITY` : `PR_AUTO` (5) restaure le flag auto
+    // (`SetAutoDownPriority(true)`, priorité effective initiale HIGH) ;
+    // les valeurs hors low/normal/high retombent sur normal.
+    let priority = met
+        .tags
+        .iter()
+        .find(|t| t.name_id == mule_format::met::tags::FT_DLPRIORITY)
+        .and_then(|t| t.as_u64())
+        .map(|v| match v {
+            5 => "auto",
+            0 => "low",
+            2 => "high",
+            _ => "normal",
+        })
+        .unwrap_or("normal")
+        .to_string();
+
     let now = now_ms();
     let download = Download {
         id,
@@ -324,7 +351,7 @@ pub fn import_part_met(
         created_at: now,
         updated_at: now,
         category_id: category_id.clone(),
-        priority: "normal".to_string(),
+        priority,
         max_sources,
     };
 

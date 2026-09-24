@@ -35,9 +35,14 @@ impl Default for PeerTimeouts {
             connect_timeout: Duration::from_secs(10),
             handshake_timeout: Duration::from_secs(8),
             status_timeout: Duration::from_secs(20),
+            // eMule has no fixed queue timeout: the entry dies only when the
+            // peer stays silent through a whole FILEREASKTIME (29 min) cycle
+            // plus this grace window.
             queue_timeout: Duration::from_secs(900),
-            first_data_timeout: Duration::from_secs(25),
-            inactivity_timeout: Duration::from_secs(25),
+            // eMule DOWNLOADTIMEOUT is ~100 s (measured from
+            // `m_dwLastBlockReceived`) — a slower cap drops trickle sources.
+            first_data_timeout: Duration::from_secs(100),
+            inactivity_timeout: Duration::from_secs(100),
         }
     }
 }

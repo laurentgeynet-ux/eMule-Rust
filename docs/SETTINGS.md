@@ -80,9 +80,9 @@ pipeline anti-SSRF sont inchangés.
 
 | Clé | Persistée | Type | Défaut | Effet | eMule |
 |---|---|---|---|---|---|
-| `maxGlobalDownloadPeers` | `max_global_download_peers` | usize | `500` | Quota de **sources activées** par l'allocateur swarm, tous fichiers confondus — couche allocation, pas sockets (cf. `maxConnections`) | — (eMule n'a pas de quota global équivalent ; `MaxSourcesPerFile` seul) |
-| `maxPeersPerDownload` | `max_peers_per_download` | usize | `400` | Plafond de sources par fichier (surchargeable via `downloads.setMaxSources` / `FT_MAXSOURCES`) | `MaxSourcesPerFile` |
-| `minPeersPerDownload` | `min_peers_per_download` | usize | `5` | Quota garanti sous saturation | — |
+| `maxGlobalDownloadPeers` | `max_global_download_peers` | usize | `500` | Plafond global de connexions pairs actives, tous fichiers confondus — borne les nouvelles tentatives de connexion | `MaxConnections` (`TooManySockets`) |
+| `maxPeersPerDownload` | `max_peers_per_download` | usize | `400` | Plafond de sources par fichier (surchargeable via `downloads.setMaxSources` / `FT_MAXSOURCES`) — chaque fichier connecte ses sources jusqu'à ce cap | `MaxSourcesPerFile` |
+| `minPeersPerDownload` | `min_peers_per_download` | usize | `5` | Seuil de famine déclenchant un swap A4AF depuis un fichier moins prioritaire | — (extension eMule-Rust) |
 | `maxUploadQueue` | `max_upload_queue` | usize 10–5000 | `5000` | `UploadManager.max_queue` (live) | `QueueSize` (défaut eMule 5000) |
 | `minUploadKbs` | `min_upload_kbs` | Ko/s 0–100000 | `1` | Plancher par slot : pas de nouveau slot si la moyenne descend sous le seuil (live). **0 = seuil désactivé** — les slots s'ouvrent tant que `max_active` n'est pas atteint (extension ; eMule force `MinUpload ≥ 1`) | `MinUpload` (défaut eMule 1, plancher obligatoire) |
 | `autoPriorityNewDownloads` | `auto_priority_new_downloads` | bool | `false` | Fichiers ≥ 9 728 000 B créés en priorité `high` | auto-priorité |

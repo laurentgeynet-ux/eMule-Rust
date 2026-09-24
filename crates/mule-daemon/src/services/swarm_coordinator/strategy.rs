@@ -9,17 +9,19 @@ use crate::services::peer_session::log_peer_ip;
 use crate::services::peer_session::log_server_addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use mule_core::model::{DownloadStatus, PeerSourceStatus};
 use mule_protocol::ed2k::GetSourcesRequest;
 
 use crate::services::downloads::types::DownloadSnapshot;
 use crate::services::server_session::ServerConnectionStatus;
-use crate::services::swarm_allocator::{FileDemand, SwarmAllocationConfig, SwarmAllocator};
 
 use super::types::{
-    SwarmCoordinator, HEARTBEAT_INTERVAL, MAX_CONNECT_PER_TICK, SOURCE_REQUERY_INTERVAL,
+    max_source_per_file_soft, max_source_per_file_udp, A4afFileState, KadSourceSearchState,
+    SwarmCoordinator, SwarmLimits, HEARTBEAT_INTERVAL, KADEMLIA_ASK_INTERVAL,
+    KADEMLIA_REASK_INTERVAL, KAD_MAX_FILE_SEARCHES, KAD_MAX_TOTAL_SEARCHES, MAX_CONNECT_PER_TICK,
+    SERVER_REASK_INTERVAL, UDP_SERVER_REASK_INTERVAL,
 };
 
 impl SwarmCoordinator {
@@ -246,56 +248,36 @@ impl SwarmCoordinator {
             .unwrap_or_default()
             .as_millis() as i64;
 
-        // Build demands and compute dynamic swarm quotas using Water-filling allocator
-        let mut demands = Vec::with_capacity(active_downloads.len());
+        // État A4AF par fichier (eMule `ProcessA4AFClients`) : poids de
+        // priorité et pairs actifs — plus aucun quota d'allocation n'est
+        // calculé, chaque fichier connecte ses sources jusqu'à son plafond.
+        // `source_count` alimente `UpdateAutoDownPriority` (priorité « auto »).
+        let mut a4af_states = Vec::with_capacity(active_downloads.len());
         for dl in &active_downloads {
-            let file_info = {
-                let dl_guard = self.state.downloads.lock().await;
-                dl_guard.get_download_file_info(&dl.id)
-            };
-            if let Some((_, _, hash, _)) = file_info {
-                let hash_hex = hex::encode(hash.0);
-                let viable_sources = {
-                    let dl_guard = self.state.downloads.lock().await;
-                    dl_guard
-                        .list_peer_sources(&hash_hex)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|s| match s.status {
-                            PeerSourceStatus::Candidate
-                            | PeerSourceStatus::Tried
-                            | PeerSourceStatus::Allowed => true,
-                            PeerSourceStatus::Failed => {
-                                if let Some(cooldown) = s.cooldown_until_unix_ms {
-                                    cooldown <= now_ms
-                                } else {
-                                    true
-                                }
-                            }
-                            _ => false,
-                        })
-                        .count()
-                };
-
-                let remaining_bytes = dl.total_bytes.saturating_sub(dl.received_bytes);
-                let remaining_parts = remaining_bytes.div_ceil(9_728_000) as usize;
-                let active_peers = self
-                    .state
-                    .peer_session
-                    .active_peer_count_for_hash(&hash_hex)
-                    .await;
-
-                demands.push(FileDemand::new(
-                    hash_hex,
-                    &dl.priority,
-                    viable_sources,
-                    remaining_parts,
-                    active_peers,
-                ));
+            if dl.ed2k_hash.is_empty() {
+                continue;
             }
+            let source_count = {
+                let dl_guard = self.state.downloads.lock().await;
+                dl_guard
+                    .list_peer_sources(&dl.ed2k_hash)
+                    .map(|v| v.len())
+                    .unwrap_or(0)
+            };
+            let active_peers = self
+                .state
+                .peer_session
+                .active_peer_count_for_hash(&dl.ed2k_hash)
+                .await;
+            a4af_states.push(A4afFileState::new(
+                dl.ed2k_hash.clone(),
+                &dl.priority,
+                source_count,
+                active_peers,
+            ));
         }
 
-        let alloc_config = {
+        let limits = {
             let dl_guard = self.state.downloads.lock().await;
             let max_g = dl_guard
                 .get_setting("max_global_download_peers")
@@ -315,18 +297,28 @@ impl SwarmCoordinator {
                 .flatten()
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(self.state.config.min_peers_per_download);
-            SwarmAllocationConfig {
+            SwarmLimits {
                 max_global_peers: max_g,
                 max_peers_per_file: max_f,
                 min_peers_per_file: min_f,
             }
         };
-        let quotas = SwarmAllocator::compute_quotas(&demands, &alloc_config);
+
+        // eMule `CListenSocket::TooManySockets` : la limite globale de
+        // connexions borne les nouvelles tentatives de ce tick, quel que
+        // soit le fichier — premier arrivé, premier servi.
+        let mut connect_budget = limits.max_global_peers.saturating_sub(
+            self.state
+                .peer_session
+                .swarm_snapshot(None)
+                .await
+                .active_peer_count,
+        );
 
         // Per-file source caps (eMule `.part.met` FT_MAXSOURCES /
         // `CPartFile::GetMaxSources`): when present, the per-file limit
-        // overrides the global `max_peers_per_file` for quota, requery and
-        // purge-threshold decisions.
+        // overrides the global `max_peers_per_file` for connect, requery
+        // and purge-threshold decisions.
         let file_max_sources: std::collections::HashMap<String, usize> = active_downloads
             .iter()
             .filter_map(|d| {
@@ -336,7 +328,7 @@ impl SwarmCoordinator {
                 let cap = d
                     .max_sources
                     .map(|v| v as usize)
-                    .unwrap_or(alloc_config.max_peers_per_file);
+                    .unwrap_or(limits.max_peers_per_file);
                 Some((d.ed2k_hash.clone(), cap))
             })
             .collect();
@@ -354,7 +346,7 @@ impl SwarmCoordinator {
         // Full A4AF rebalance at eMule's `ProcessA4AFClients` cadence (~8 min).
         if self.last_a4af_full.elapsed() >= super::types::A4AF_FULL_INTERVAL {
             self.last_a4af_full = Instant::now();
-            self.a4af_rebalance(&demands, &alloc_config, now_ms).await;
+            self.a4af_rebalance(&a4af_states, &limits, now_ms).await;
         }
 
         // Client-UDP keep-alives: OP_REASKFILEPING toward sources queued on
@@ -401,67 +393,96 @@ impl SwarmCoordinator {
                     .then_with(|| b.last_seen_unix_ms.cmp(&a.last_seen_unix_ms))
             });
 
-            let query_interval = if candidate_sources.is_empty() {
-                Duration::from_secs(30)
-            } else if candidate_sources.len() < 15 {
-                Duration::from_secs(60)
-            } else {
-                SOURCE_REQUERY_INTERVAL
-            };
-
-            let should_query = match self.last_source_query.get(&hash_hex) {
-                Some(last) => now.duration_since(*last) >= query_interval,
-                None => true,
-            };
-
-            // Match official eMule: if file has already reached its max sources
-            // limit (per-file FT_MAXSOURCES or the global cap), do not waste
-            // server and Kad bandwidth re-querying.
+            // eMule `CPartFile::Process` + `CDownloadQueue::Process`
+            // (Opcodes.h) : chaque canal de découverte a sa propre cadence
+            // et son propre seuil — pas de fenêtre adaptative.
+            //   TCP OP_GETSOURCES      : SERVERREASKTIME (15 min), si
+            //       sources < GetMaxSourcePerFileSoft (90 % du cap, ≤750)
+            //   UDP OP_GLOBGETSOURCES2 : UDPSERVERREASKTIME (30 min), si
+            //       sources < GetMaxSourcePerFileUDP (75 % du cap, ≤50)
+            //   Kad search_sources     : KADEMLIAREASKTIME (1 h) *
+            //       m_TotalSearchesKad (≤7), même seuil que l'UDP, plus
+            //       KADEMLIATOTALFILE recherches simultanées et
+            //       KADEMLIAASKTIME entre deux démarrages.
+            let source_count = candidate_sources.len();
             let file_max = file_max_sources
                 .get(&hash_hex)
                 .copied()
-                .unwrap_or(alloc_config.max_peers_per_file);
-            if should_query && candidate_sources.len() < file_max {
-                self.last_source_query.insert(hash_hex.clone(), now);
+                .unwrap_or(limits.max_peers_per_file);
 
-                if self.state.server_session.snapshot().await.status
+            let tcp_due = self
+                .last_source_query_tcp
+                .get(&hash_hex)
+                .is_none_or(|t| now.duration_since(*t) >= SERVER_REASK_INTERVAL);
+            if tcp_due
+                && source_count < max_source_per_file_soft(file_max)
+                && self.state.server_session.snapshot().await.status
                     == ServerConnectionStatus::Connected
-                {
-                    let req = GetSourcesRequest::with_obfuscation(hash.0, size, obf_enabled);
-                    if let Err(e) = self.state.server_session.get_sources(req).await {
-                        tracing::debug!("Swarm coordinator get_sources failed for {hash_hex}: {e}");
-                    } else {
-                        tracing::info!(
-                            "Swarm coordinator requested sources from eD2K server for file {hash_hex} (obfuscated={})",
-                            obf_enabled
-                        );
-                    }
+            {
+                self.last_source_query_tcp.insert(hash_hex.clone(), now);
+                let req = GetSourcesRequest::with_obfuscation(hash.0, size, obf_enabled);
+                if let Err(e) = self.state.server_session.get_sources(req).await {
+                    tracing::debug!("Swarm coordinator get_sources failed for {hash_hex}: {e}");
+                } else {
+                    tracing::info!(
+                        "Swarm coordinator requested sources from eD2K server for file {hash_hex} (obfuscated={})",
+                        obf_enabled
+                    );
                 }
+            }
 
+            let udp_due = self
+                .last_source_query_udp
+                .get(&hash_hex)
+                .is_none_or(|t| now.duration_since(*t) >= UDP_SERVER_REASK_INTERVAL);
+            if udp_due && source_count < max_source_per_file_udp(file_max) {
                 // UDP source query (OP_GLOBGETSOURCES2) toward the connected
                 // server — its UDP port is TCP+4 (eMule convention).
                 // Fire-and-forget; answers arrive as OP_GLOBFOUNDSOURCES.
                 if let Some(addr_str) = self.state.server_session.snapshot().await.server_address {
                     if let Ok(mut udp_addr) = addr_str.parse::<SocketAddr>() {
                         udp_addr.set_port(udp_addr.port().saturating_add(4));
+                        self.last_source_query_udp.insert(hash_hex.clone(), now);
                         self.state
                             .server_udp
                             .send_glob_get_sources(udp_addr, &hash.0, size)
                             .await;
                     }
                 }
+            }
 
-                if self.state.network_policy.profile().allows_udp_kad() {
-                    let kad = Arc::clone(&self.state.kad);
-                    let h = hash_hex.clone();
-                    tracing::info!(
-                        "Swarm coordinator triggering Kad search_sources for file {hash_hex} (known sources in DB: {})",
-                        candidate_sources.len()
-                    );
-                    tokio::spawn(async move {
-                        let _ = kad.search_sources(&h, size).await;
-                    });
-                }
+            let kad_due = self
+                .kad_source_search
+                .get(&hash_hex)
+                .is_none_or(|s| now >= s.next_reask);
+            if kad_due
+                && source_count < max_source_per_file_udp(file_max)
+                && self.state.network_policy.profile().allows_udp_kad()
+                && self.state.kad.in_flight_file_searches().await < KAD_MAX_FILE_SEARCHES
+                && now.duration_since(self.last_kad_file_request) >= KADEMLIA_ASK_INTERVAL
+            {
+                let total_searches = self
+                    .kad_source_search
+                    .get(&hash_hex)
+                    .map(|s| (s.total_searches + 1).min(KAD_MAX_TOTAL_SEARCHES))
+                    .unwrap_or(1);
+                self.kad_source_search.insert(
+                    hash_hex.clone(),
+                    KadSourceSearchState {
+                        next_reask: now + KADEMLIA_REASK_INTERVAL * total_searches,
+                        total_searches,
+                    },
+                );
+                self.last_kad_file_request = now;
+
+                let kad = Arc::clone(&self.state.kad);
+                let h = hash_hex.clone();
+                tracing::info!(
+                    "Swarm coordinator triggering Kad search_sources for file {hash_hex} (known sources in DB: {source_count}, search #{total_searches})",
+                );
+                tokio::spawn(async move {
+                    let _ = kad.search_sources(&h, size).await;
+                });
             }
 
             let (client_id, server_ip, server_port, server_is_high_id) = {
@@ -511,10 +532,7 @@ impl SwarmCoordinator {
                 self.purge_excess_sources(
                     &hash_hex,
                     &candidate_sources,
-                    file_max_sources
-                        .get(&hash_hex)
-                        .copied()
-                        .unwrap_or(alloc_config.max_peers_per_file),
+                    file_max,
                     server_is_high_id,
                     now_ms,
                 )
@@ -528,17 +546,15 @@ impl SwarmCoordinator {
                 .await;
             let active_count = swarm_snap.active_peer_count;
 
-            let target_quota = quotas.get(&hash_hex).copied().unwrap_or(0).min(
-                file_max_sources
-                    .get(&hash_hex)
-                    .copied()
-                    .unwrap_or(usize::MAX),
-            );
-            if active_count >= target_quota {
-                continue;
-            }
-
-            let needed = (target_quota - active_count).min(MAX_CONNECT_PER_TICK);
+            // eMule : pas de quota par fichier — chaque fichier connecte
+            // ses sources viables jusqu'à son plafond (`GetMaxSources` /
+            // `maxsourceperfile`). Seule la limite globale de connexions
+            // (`connect_budget`, eMule `maxconnections`) et le pacing par
+            // tick bornent les nouvelles tentatives.
+            let needed = file_max
+                .saturating_sub(active_count)
+                .min(connect_budget)
+                .min(MAX_CONNECT_PER_TICK);
             if needed == 0 {
                 continue;
             }
@@ -747,7 +763,7 @@ impl SwarmCoordinator {
                 let nickname = nickname.clone();
 
                 tracing::debug!(
-                    "Swarm coordinator initiating peer connection to {peer} for {file_hash_str} (quota={target_quota}, active={active_count}, obfu_target_hash={:?}, crypt_opts=0x{:02x})",
+                    "Swarm coordinator initiating peer connection to {peer} for {file_hash_str} (max={file_max}, active={active_count}, obfu_target_hash={:?}, crypt_opts=0x{:02x})",
                     target_user_hash.is_some(),
                     peer_crypt_options
                 , peer = log_peer_addr(peer_addr));
@@ -797,6 +813,10 @@ impl SwarmCoordinator {
                      skipped: cooldown={skipped_cooldown}, already_connected={skipped_connected})"
                 );
             }
+
+            // Chaque tentative de ce fichier consomme le budget global de
+            // connexions (eMule `maxconnections` — `TooManySockets`).
+            connect_budget = connect_budget.saturating_sub(connected_this_tick);
 
             if (active_count > 0 || connected_this_tick > 0) && dl.status.to_lowercase() == "queued"
             {
@@ -997,12 +1017,12 @@ impl SwarmCoordinator {
     /// At most one swap per tick keeps the system stable.
     async fn a4af_rebalance(
         &mut self,
-        demands: &[FileDemand],
-        alloc_config: &SwarmAllocationConfig,
+        states: &[A4afFileState],
+        limits: &SwarmLimits,
         now_ms: i64,
     ) {
-        for starved in demands {
-            if starved.current_active_peers >= alloc_config.min_peers_per_file {
+        for starved in states {
+            if starved.current_active_peers >= limits.min_peers_per_file {
                 continue;
             }
 
@@ -1032,7 +1052,7 @@ impl SwarmCoordinator {
 
             // Live sessions connected to other files.
             let swarm = self.state.peer_session.swarm_snapshot(None).await;
-            let donors: std::collections::HashMap<&str, u32> = demands
+            let donors: std::collections::HashMap<&str, u32> = states
                 .iter()
                 .map(|d| (d.file_hash.as_str(), d.priority_weight))
                 .collect();
@@ -1058,7 +1078,7 @@ impl SwarmCoordinator {
                     .peer_session
                     .active_peer_count_for_hash(donor_hash)
                     .await;
-                if donor_active <= alloc_config.min_peers_per_file {
+                if donor_active <= limits.min_peers_per_file {
                     continue;
                 }
                 tracing::info!(

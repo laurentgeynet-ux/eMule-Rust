@@ -271,26 +271,29 @@ async fn test_swarm_dual_peer_disjoint_block_allocation() {
     let swarm: Value = resp.result.unwrap();
     assert_eq!(swarm["activePeerCount"], 2);
     let in_flight = swarm["inFlightBlocks"].as_array().unwrap();
-    assert_eq!(
-        in_flight.len(),
-        2,
-        "Both peers should have in-flight blocks"
+    assert!(
+        in_flight.len() >= 2,
+        "Both peers should have in-flight blocks (eMule blockCount pipeline: up to 3 each)"
     );
 
-    // 4. Verify that requested ranges are DISJOINT (no overlap)
+    // 4. Verify that requested ranges are DISJOINT (no overlap) — each peer
+    // may request several ranges in one OP_REQUESTPARTS packet (eMule packs
+    // up to 3), so check every pair across peers.
     let p1_r = peer1_ranges.lock().unwrap().clone();
     let p2_r = peer2_ranges.lock().unwrap().clone();
     assert!(!p1_r.is_empty(), "Peer 1 should have received a request");
     assert!(!p2_r.is_empty(), "Peer 2 should have received a request");
 
-    let r1 = p1_r[0];
-    let r2 = p2_r[0];
-    assert!(
-        r1.1 <= r2.0 || r2.1 <= r1.0,
-        "Ranges must be disjoint: peer1={:?}, peer2={:?}",
-        r1,
-        r2
-    );
+    for r1 in &p1_r {
+        for r2 in &p2_r {
+            assert!(
+                r1.1 <= r2.0 || r2.1 <= r1.0,
+                "Ranges must be disjoint: peer1={:?}, peer2={:?}",
+                p1_r,
+                p2_r
+            );
+        }
+    }
 
     // 5. Disconnect single peer (peer 1)
     let req = make_req(

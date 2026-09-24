@@ -41,6 +41,7 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "serverAutoupdatePath",
     "safeConnect",
     "autoPriorityNewDownloads",
+    "autoPriorityUploads",
     "swarmHealing",
     "tempDir",
     "identityRotationHours",
@@ -259,7 +260,9 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
             "serverAutoremoveDead": read("server_autoremove_dead", true),
             "serverAutoupdateList": read("server_autoupdate_list", false),
             "safeConnect": read("safe_connect", false),
-            "autoPriorityNewDownloads": read("auto_priority_new_downloads", false),
+            // eMule `DAPPref`/`UAPPref` — défauts `true` dans les deux cas.
+            "autoPriorityNewDownloads": read("auto_priority_new_downloads", true),
+            "autoPriorityUploads": read("auto_priority_uploads", true),
             // Options propres à eMule-Rust (pas d'équivalent eMule).
             "identityRotationHours": u64_setting("identity_rotation_hours"),
             "dailyUploadQuotaGb": u64_setting("daily_upload_quota_gb"),
@@ -654,6 +657,7 @@ pub async fn handle_settings_set(
         ("serverAutoupdateList", "server_autoupdate_list"),
         ("safeConnect", "safe_connect"),
         ("autoPriorityNewDownloads", "auto_priority_new_downloads"),
+        ("autoPriorityUploads", "auto_priority_uploads"),
         ("swarmHealing", "swarm_healing"),
     ] {
         if let Some(val) = params.get(camel) {

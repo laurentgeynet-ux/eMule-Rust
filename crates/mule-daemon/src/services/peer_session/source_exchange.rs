@@ -1408,13 +1408,17 @@ mod tests {
     ) -> (tempfile::TempDir, Arc<Mutex<DownloadService>>, String) {
         let (tmp, downloads) = memory_downloads().await;
         let hex_hash = hex::encode(file_hash);
+        // Le fichier doit exister : `get_shared_file` ignore désormais
+        // les entrées dont le payload a disparu du disque.
+        let file_path = tmp.path().join("file.bin");
+        std::fs::write(&file_path, b"shared-payload").unwrap();
         {
             let mut dl = downloads.lock().await;
             dl.add_shared_file(&SharedFile::new(
                 hex_hash.clone(),
                 "file.bin",
                 9_728_000,
-                tmp.path().join("file.bin").to_string_lossy().to_string(),
+                file_path.to_string_lossy().to_string(),
             ))
             .unwrap();
             let useful = peer_source(

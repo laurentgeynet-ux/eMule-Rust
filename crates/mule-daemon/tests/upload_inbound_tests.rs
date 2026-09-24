@@ -965,6 +965,63 @@ async fn test_shares_rescan_is_recursive() {
 }
 
 #[tokio::test]
+async fn test_shares_rescan_prunes_files_deleted_from_disk() {
+    let dir = tempdir().unwrap();
+    let download_dir = dir.path().join("downloads");
+    std::fs::create_dir_all(&download_dir).unwrap();
+    std::fs::write(download_dir.join("keep.bin"), b"keep").unwrap();
+    std::fs::write(download_dir.join("gone.bin"), b"gone").unwrap();
+
+    let token = "test_token_prune".to_string();
+    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
+        .with_workdir_mode(WorkDirMode::Portable)
+        .with_default_download_dir(download_dir.clone());
+    let downloads = DownloadService::in_memory(dir.path().join("temp")).unwrap();
+    let state = AppState::new(config, downloads);
+    let mut authenticated = true;
+
+    let resp = handle_request(
+        &state,
+        make_req(1, "shares.rescan", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.as_ref().unwrap()["added"], 2);
+
+    // Suppression physique du fichier hors daemon.
+    std::fs::remove_file(download_dir.join("gone.bin")).unwrap();
+
+    // La liste ne doit déjà plus annoncer le fichier mort (filtre à la
+    // lecture dans `list_all_shared_files`), avant même un nouveau scan.
+    let resp = handle_request(&state, make_req(2, "shares.list", None), &mut authenticated)
+        .await
+        .unwrap();
+    let shares = resp.result.as_ref().unwrap()["sharedFiles"]
+        .as_array()
+        .unwrap();
+    let names: Vec<&str> = shares
+        .iter()
+        .map(|s| s["fileName"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"keep.bin"));
+    assert!(!names.contains(&"gone.bin"));
+
+    // Le rescan purge définitivement la ligne `shared_files`.
+    let resp = handle_request(
+        &state,
+        make_req(3, "shares.rescan", None),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.as_ref().unwrap()["removed"], 1);
+    assert_eq!(resp.result.as_ref().unwrap()["added"], 0);
+}
+
+#[tokio::test]
 async fn test_shares_rescan_respects_share_download_dir_optout() {
     let dir = tempdir().unwrap();
     let download_dir = dir.path().join("downloads");

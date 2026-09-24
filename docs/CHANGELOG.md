@@ -5,6 +5,55 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+- **Priorités download/upload alignées sur eMule 0.72a** (`mule-daemon`,
+  `app_shell`) :
+  - **Priorité « auto » download** (`PR_AUTO` = 5) : acceptée par
+    `downloads.setPriority`, persistée en DB et dans le `.part.met`
+    (`FT_DLPRIORITY`, import `PR_AUTO` ↔ `"auto"` — une priorité
+    automatique importée n'est plus convertie en manuelle). Le poids
+    effectif est recalculé à chaque tick du coordinateur selon
+    `CPartFile::UpdateAutoDownPriority` : plus de 100 sources connues →
+    low, plus de 20 → normal, sinon → high ; il alimente le rebalance
+    A4AF (`ProcessA4AFClients`). Les priorités manuelles ignorent le
+    compte de sources.
+  - **Priorité « auto » upload** : acceptée par
+    `shares.setUploadPriority` ; un registre par fichier recalcule la
+    priorité effective selon `CKnownFile::UpdateAutoUpPriority` à chaque
+    entrée/sortie d'uploader (plus de 20 uploaders → low = 6, plus de
+    1 → normal = 7, sinon → high = 9). Les scores de file sont
+    rafraîchis à chaque tri (attente × crédits × priorité effective) —
+    grants directs, file, reasks, promotions, rotation et publication
+    serveur utilisent tous la valeur effective.
+  - **Préférences eMule** : `autoPriorityNewDownloads` (eMule
+    `DAPPref`) et `autoPriorityUploads` (`UAPPref`), toutes deux `true`
+    par défaut comme eMule — les nouveaux downloads et partages
+    démarrent en mode auto. Une priorité importée depuis un
+    `.part.met` prime sur le défaut global.
+  - **UI** : option « Auto » dans le sélecteur de priorité des
+    téléchargements et des partages ; interrupteur
+    `autoPriorityUploads` dans Paramètres.
+  - Régressions couvertes : seuils `UpdateAutoDownPriority` bornes
+    exactes (20/21/100/101), `UpdateAutoUpPriority` transitions (1/2/20/
+    21 uploaders), manuel désactive auto, roundtrip `.part.met`
+    `FT_DLPRIORITY`/`PR_AUTO`.
+
+- **Alignement swarm sur eMule 0.72a** (`mule-daemon`) :
+  - **Réinterrogation des sources par canal** (au lieu de la fenêtre
+    adaptative 30 s/60 s/300 s) : TCP `OP_GETSOURCES` toutes les
+    `SERVERREASKTIME` = 15 min si sources < `GetMaxSourcePerFileSoft`
+    (90 % du cap, ≤ 750) ; UDP `OP_GLOBGETSOURCES2` toutes les
+    `UDPSERVERREASKTIME` = 30 min si sources < `GetMaxSourcePerFileUDP`
+    (75 % du cap, ≤ 50) ; Kad `search_sources` à `KADEMLIAREASKTIME` = 1 h
+    × `m_TotalSearchesKad` (backoff jusqu'à 7 h), borné par
+    `KADEMLIATOTALFILE` = 5 recherches simultanées et `KADEMLIAASKTIME`
+    = 1 s entre démarrages.
+  - **Suppression de l'allocateur water-filling** : plus de quota par
+    fichier — chaque fichier connecte ses sources viables jusqu'à son
+    plafond (`FT_MAXSOURCES` / `max_peers_per_download`), la limite
+    globale `max_global_download_peers` jouant le rôle de
+    `maxconnections` (`TooManySockets`). `swarm_allocator.rs` supprimé ;
+    `min_peers_per_download` ne sert plus qu'au rebalance A4AF.
+
 - **Observabilité locale complète** (`mule-daemon`, `mule-mcp`,
   `app_shell`, `mule_client`, `ui_kit`) :
   - **Logs rotatifs structurés** : `data/logs/daemon.<date>.log` en
@@ -88,6 +137,122 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
   (gitignoré, chemin machine) ; les processus lancés depuis la cible
   sont arrêtés avant la copie (exe verrouillés) ; le merge-copy
   préserve `data\`, `downloads\` et `ipfilter*`.
+
+- **Partages — purge des fichiers supprimés du disque** (`mule-daemon`) :
+  un fichier effacé physiquement dans le dossier de téléchargement
+  restait listé dans Partages (la ligne `shared_files` survivait — le
+  scan Incoming n'ajoutait que des entrées). Désormais
+  `list_all_shared_files` filtre à la lecture les partages dont le
+  fichier n'existe plus (ni UI, ni offre serveur, ni publication Kad
+  n'annoncent un fichier mort), le download complété encore en mémoire
+  applique la même garde `is_file()`, et `scan_download_dir_shares`
+  supprime définitivement les entrées obsolètes sous le dossier Incoming
+  — uniquement si celui-ci est joignable (un lecteur débranché ne vide
+  pas la liste) et sans toucher les partages hors dossier. `shares.rescan`
+  renvoie `{added, removed, dir}`. `get_shared_file` applique la même
+  garde (l'échange de sources ne se déclare plus source d'un fichier
+  absent). Régression :
+  `test_shares_rescan_prunes_files_deleted_from_disk`.
+
+- **Downloads — suppression du `.part` physique au boot** (`mule-daemon`) :
+  un `.part` effacé pendant que le daemon était arrêté laissait les
+  plages persistées en DB prétendre des données perdues (fichier recréé
+  vide, zéros servis jusqu'à l'éviction ICH). Au démarrage, tout
+  téléchargement non complété dont le `.part` a disparu — dossier parent
+  joignable, donc suppression réelle et non lecteur hors-ligne — voit
+  son entrée retirée (`delete_download` + `.part.met` orphelin nettoyé,
+  event historique « removed »). Régression :
+  `missing_part_file_removes_download_at_startup`.
+
+- **Upload queue — alignement eMule 0.72a** (`mule-daemon`) : audit
+  complet contre `UploadQueue.cpp`/`UploadClient.cpp` et corrections des
+  divergences de comportement :
+  - **Nombre de slots dynamique** (`AcceptNewClient`) : le plafond n'est
+    plus un 100 fixe — au-delà des 4 slots garantis
+    (`max(MIN_UP_CLIENTS_ALLOWED,4)`), un nouveau slot n'est ouvert que
+    si le débit mesuré nourrit encore chaque client au plancher
+    (`datarate / minTarget`, cible par client ≤3 slots → 3 KiB/s sinon
+    `slots × 1 KiB/s` plafonné à 25 KiB/s) **et** si la capacité upload
+    configurée le permet (`MaxSpeed / target` — sonde lue en direct sur
+    `upload_bucket.rate_per_sec()`, donc la limite `limits.set` comme la
+    valeur pilotée par USS s'appliquent). Avant : jusqu'à 100 slots
+    simultanés → débit par client dilué et file jamais remplie.
+  - **`Process()` périodique** (`process_tick`, 1 s, indépendant des
+    abonnés UI) : purge des entrées sans re-ask depuis >1 h
+    (`MAX_PURGEQUEUETIME`), promotion des meilleurs clients dès qu'un
+    slot peut s'ouvrir, et **rotation des sessions** — un client ayant
+    reçu plus de `SESSIONMAXTRANS` (~9,7 Mo) est renvoyé en file quand
+    aucun slot ne peut s'ouvrir (`CheckForTimeOver` + `ForceNewClient`) ;
+    son wait start d'origine est restauré à son re-ask (`rotation_grace`,
+    équivalent du `credits` eMule — le score accumulé survit à la
+    rotation).
+  - **Promotion push** : le client promu reçoit `OP_ACCEPTUPLOADREQ`
+    immédiatement (`AddUpNextClient` eMule écrit sur le socket en
+    attente) via un `Notify` porté par l'entrée de file — avant, la
+    promotion restait latente jusqu'au prochain re-ask du client (~30 min).
+  - **Une entrée par client** : dedup sur `client_key` seul (eMule : un
+    objet client = une entrée) ; le re-ask met à jour fichier/prio/crédits
+    et rafraîchit `last_request`. Un client actif qui demande un autre
+    fichier garde son slot (`IsDownloading` → `ACCEPTUPLOADREQ` +
+    `SetUploadFileID`) au lieu d'être remis en file.
+  - **Soft/hard limits** : `hard = soft + max(soft,800)/4` ; entre les
+    deux, seuls les clients à slot ami ou dont
+    `combined(prio × crédits)` dépasse la moyenne de la file sont admis
+    (remplace la règle anti-leecher 90 %, non-eMule).
+  - **Ordre de file recalculé à la demande** : tri par `effective_score`
+    vivant avant promotion, rang rapporté et tick (eMule évalue
+    `GetScore` en continu, pas à l'insertion).
+  - **Anti-abus** : `MIN_REQUESTTIME` (10 min) / `BADCLIENTBAN` (4) —
+    les re-asks agressifs du même fichier bannissent le client (score 0).
+  - **`PR_POWER`** (powershare) → `GetFilePrioAsNumber` = 7 (branche
+    `default` eMule) au lieu de 18.
+  Régressions : 8 nouveaux tests `upload_queue` (plafond `MaxSpeed`,
+  switch fichier, entrée unique, rotation + wait préservé, notify,
+  purge 1 h, soft/hard, ban anti-abus).
+
+- **Download queue & pipeline — alignement eMule 0.72a** (`mule-daemon`,
+  `mule-protocol`) : audit contre `DownloadClient.cpp`/`DownloadQueue.cpp`
+  et corrections des divergences de comportement :
+  - **`SendBlockRequests` multi-blocs** (`plan_next_blocks_for_peer64` +
+    `fill_and_send_block_requests`) : le daemon ne demandait qu'un bloc
+    à la fois par source — débit plafonné à ~180 Ko/RTT. Désormais
+    `blockCount` adaptatif au débit mesuré (clients eMule <4 KiB/s → 1,
+    <9 KiB/s → 2 ; >150 KiB/s → 9, >75 KiB/s → 6, sinon 3) et jusqu'à
+    **3 ranges par paquet** `OP_REQUESTPARTS`/`_I64` (format filaire
+    eMule, slots inutilisés à zéro). Les blocs end-game restent un
+    fallback unitaire (pas de duplication batchée).
+  - **Re-ask de file 29 min** (`FILE_REASK_INTERVAL`, eMule
+    `FILEREASKTIME`) : l'attente en upload queue réémet
+    `OP_SETREQFILEID_EMULE` + `OP_STARTUPLOADREQ` toutes les 29 min —
+    l'uploader distant purge les entrées dont `LastUpRequest` dépasse
+    1 h (`MAX_PURGEQUEUETIME`) ; l'ancien keep-alive `SETREQFILEID` à
+    60 s ne rafraîchissait **pas** ce compteur → notre slot était purgé
+    au bout d'une heure chez les clients eMule officiels.
+  - **Pas de timeout de file fixe** : remplacé par « silence pendant un
+    cycle re-ask complet + `queue_timeout` » — tout paquet reçu (rang,
+    promotion, réponse au re-ask) prolonge l'attente, comme eMule qui
+    n'a aucun timeout de file.
+  - **`DOWNLOADTIMEOUT` 100 s + re-queue même socket** : les timeouts
+    `first_data`/`inactivity` passent de 25 s à 100 s ; un stall
+    déclenche `OP_CANCELTRANSFER` puis **ré-entrée en file sur la même
+    socket** (`wait_in_queue` partagé, bitmap de parts rafraîchi,
+    séquenceur reconstruit) au lieu de tuer la connexion — 3 stalls
+    consécutifs max avant abandon.
+  - **In-flight sans réallocation prématurée** : TTL des blocs en vol
+    porté à 100 s et **rafraîchi à chaque bloc reçu** — un bloc n'est
+    plus redemandé à un autre pair pendant qu'une source lente le sert
+    encore ; libération à la complétion, à la fin de session ou au
+    re-queue.
+  - **`ProcessBlockPacket` fidèle** : `size != (end−start)+header` ou
+    `end ≤ start` → violation de protocole (déconnexion) ; bloc hors
+    pending → ignoré ; `end` débordant la range → `RemoveBlockFromList`
+    (bloc libéré) sans déconnecter.
+  - **`Pending_Block_Struct`** : `queued`/`recv_to` par bloc ; streams
+    zlib par bloc en vol (map par offset de début) au lieu d'un
+    decompressor global.
+  Régressions : `test_emule_pending_block_count_tiers`, 4 tests
+  `plan_next_blocks_*` (disjoints, skip completed/in-flight, shadow,
+  end-game unique), tests adversariaux et dual-peer adaptés.
 
 - **UI web — état eD2K réel affiché à la connexion** (`app_shell`) :
   `AppController.refresh()` appelle désormais

@@ -121,6 +121,17 @@ pub fn add_shared_file(db: &mut Database, file: &SharedFile) -> Result<(), Daemo
         .map_err(|e| DaemonError::Business(format!("DB error adding shared file: {e}")))
 }
 
+/// eMule `UAPPref` (`GetNewAutoUp`, défaut `true`) : les nouveaux fichiers
+/// partagés démarrent en priorité upload « auto » — `UpdateAutoUpPriority`
+/// recalcule l'effectif selon le nombre de clients en upload.
+pub fn auto_up_priority_enabled(db: &Database) -> bool {
+    db.get_setting("auto_priority_uploads")
+        .ok()
+        .flatten()
+        .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
+        .unwrap_or(true)
+}
+
 pub fn remove_shared_file(db: &mut Database, file_hash: &str) -> Result<bool, DaemonError> {
     db.delete_shared_file(file_hash)
         .map_err(|e| DaemonError::Business(format!("DB error deleting shared file: {e}")))

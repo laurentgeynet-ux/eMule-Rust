@@ -1076,3 +1076,109 @@ fn test_swarm_healing_ignores_mismatched_scarcity_len() {
         .expect("a block must be planned");
     assert_eq!(res.0, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Multi-block planning (eMule SendBlockRequests blockCount pipeline)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_plan_next_blocks_returns_disjoint_batch() {
+    let hash = sample_hash();
+    let file_size = ED2K_PART_SIZE as u64; // one full part, 53 blocks
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).unwrap();
+
+    let planned = seq
+        .plan_next_blocks_for_peer64("peerA", &[], &[], 1_000, 6)
+        .unwrap();
+    assert_eq!(planned.len(), 6, "six disjoint blocks must be planned");
+    // All disjoint and within the part.
+    for (i, (_, a)) in planned.iter().enumerate() {
+        for (_, b) in planned.iter().skip(i + 1) {
+            assert!(
+                a.end <= b.start || b.end <= a.start,
+                "planned blocks must not overlap"
+            );
+        }
+        assert!(a.end <= file_size);
+        assert!(a.start < a.end);
+    }
+}
+
+#[test]
+fn test_plan_next_blocks_skips_completed_and_in_flight() {
+    let hash = sample_hash();
+    let file_size = ED2K_PART_SIZE as u64;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).unwrap();
+
+    // First two blocks already received; block 2 in-flight on another peer.
+    let completed = vec![(0u64, 2 * ED2K_BLOCK_SIZE as u64)];
+    let in_flight = vec![InFlightBlock::new(
+        "peerB".into(),
+        0,
+        2 * ED2K_BLOCK_SIZE as u64,
+        3 * ED2K_BLOCK_SIZE as u64,
+        0,
+        30_000,
+    )];
+    let planned = seq
+        .plan_next_blocks_for_peer64("peerA", &completed, &in_flight, 1_000, 3)
+        .unwrap();
+    assert_eq!(planned.len(), 3);
+    for (_, r) in &planned {
+        assert!(r.start >= 3 * ED2K_BLOCK_SIZE as u64);
+    }
+}
+
+#[test]
+fn test_plan_next_blocks_self_shadow_no_duplicates() {
+    // The shadow list must prevent the same block being planned twice inside
+    // a single pass even when parts still have free blocks.
+    let hash = sample_hash();
+    let file_size = ED2K_PART_SIZE as u64 * 2;
+    let status = Ed2kFileStatus {
+        file_hash: hash,
+        part_count: 0,
+        availability_mask: PartAvailabilityMask::empty(),
+    };
+    let seq = Ed2kDownloadSequencer::new(hash, file_size, status).unwrap();
+    let planned = seq
+        .plan_next_blocks_for_peer64("peerA", &[], &[], 1_000, 9)
+        .unwrap();
+    assert_eq!(planned.len(), 9);
+    let mut ranges: Vec<(u64, u64)> = planned.iter().map(|(_, r)| (r.start, r.end)).collect();
+    ranges.sort_unstable();
+    for w in ranges.windows(2) {
+        assert!(w[0].1 <= w[1].0, "ranges must be disjoint: {:?}", ranges);
+    }
+}
+
+#[test]
+fn test_plan_next_blocks_endgame_single_duplicate_only() {
+    // End-game: one block remaining already in-flight on peerA — a batch may
+    // duplicate that one block for peerB but must not invent more duplicates.
+    let file_size = ED2K_BLOCK_SIZE as u64;
+    let seq = endgame_sequencer(file_size);
+    let in_flight = vec![InFlightBlock::new("peerA".into(), 0, 0, file_size, 0, 30_000)];
+    let planned = seq
+        .plan_next_blocks_for_peer64("peerB", &[], &in_flight, 1_000, 3)
+        .unwrap();
+    assert_eq!(
+        planned.len(),
+        1,
+        "end-game batching stops after the single duplicate block"
+    );
+    assert_eq!(
+        (planned[0].1.start, planned[0].1.end),
+        (0, file_size)
+    );
+}

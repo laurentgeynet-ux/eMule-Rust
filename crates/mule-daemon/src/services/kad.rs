@@ -818,6 +818,12 @@ impl KadService {
             .map_err(|e| format!("Database error clearing kad contacts: {e}"))
     }
 
+    /// Nombre de recherches de sources actuellement en vol — équivalent de
+    /// `CKademlia::GetTotalFile()` (borne eMule `KADEMLIATOTALFILE`).
+    pub async fn in_flight_file_searches(&self) -> usize {
+        self.in_flight_searches.lock().await.len()
+    }
+
     /// Iterative search for sources of a target file hash in Kad DHT.
     /// Discovered sources are filtered, converted to PeerSource (origin Kad) and automatically injected into DownloadService if present.
     pub async fn search_sources(

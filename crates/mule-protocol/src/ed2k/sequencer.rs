@@ -413,6 +413,67 @@ impl Ed2kDownloadSequencer {
         self.endgame_block64(peer_id, completed_ranges, in_flight_blocks, now_unix_ms)
     }
 
+    /// Plans up to `max_blocks` disjoint block ranges for a peer in a single
+    /// pass — eMule `CreateBlockRequests` + `SendBlockRequests` semantics:
+    /// one `OP_REQUESTPARTS` packet carries up to
+    /// [`MAX_REQUEST_RANGES_PER_PACKET`] ranges so several blocks stay in
+    /// flight per source instead of round-tripping one at a time.
+    ///
+    /// The returned ranges are treated as already assigned: the caller is
+    /// expected to register them in `in_flight_blocks` before planning again.
+    /// Selection order follows `plan_next_block_for_peer64` (preview edges,
+    /// scarcity/progress-first); end-game duplicates are intentionally not
+    /// batched — they remain a single-range fallback.
+    pub fn plan_next_blocks_for_peer64(
+        &self,
+        peer_id: &str,
+        completed_ranges: &[(u64, u64)],
+        in_flight_blocks: &[InFlightBlock],
+        now_unix_ms: i64,
+        max_blocks: usize,
+    ) -> Result<Vec<(u16, Ed2kBlockRange64)>, Ed2kSequencerError> {
+        let mut planned: Vec<(u16, Ed2kBlockRange64)> = Vec::new();
+        // Shadow list: real in-flight blocks plus the ranges already reserved
+        // by this pass so no range is planned twice.
+        let mut shadow: Vec<InFlightBlock> = in_flight_blocks.to_vec();
+        while planned.len() < max_blocks {
+            match self.plan_next_block_for_peer64(
+                peer_id,
+                completed_ranges,
+                &shadow,
+                now_unix_ms,
+            )? {
+                Some((part_idx, block)) => {
+                    shadow.push(InFlightBlock::new(
+                        peer_id.to_string(),
+                        part_idx,
+                        block.start,
+                        block.end,
+                        now_unix_ms,
+                        i64::MAX - now_unix_ms, // never expires inside a pass
+                    ));
+                    planned.push((part_idx, block));
+                }
+                None => break,
+            }
+            // End-game duplicates must not be batched into one request:
+            // `plan_next_block_for_peer64` falls back to `endgame_block64`
+            // only when nothing else is free — detect that case by checking
+            // whether the block it returned was already in flight on another
+            // peer, and stop batching there.
+            if let Some((_, block)) = planned.last() {
+                if in_flight_blocks.iter().any(|ifb| {
+                    !ifb.is_expired(now_unix_ms)
+                        && ifb.peer_id != peer_id
+                        && ifb.overlaps(block.start, block.end)
+                }) {
+                    break;
+                }
+            }
+        }
+        Ok(planned)
+    }
+
     /// eMule end-game fallback: when fewer than `ENDGAME_REMAINING_BYTES`
     /// remain, allows requesting a block already in-flight on a *different*
     /// peer (max `MAX_INFLIGHT_PER_BLOCK` concurrent assignments per block).

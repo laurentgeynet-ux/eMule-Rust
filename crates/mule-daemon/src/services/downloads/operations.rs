@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::history_categories::record_history_event;
+use super::peers_servers;
 use super::types::{
     compute_part_summaries, make_snapshot, now_ms, ActiveDownload, ActiveSource, DownloadDetail,
     DownloadSnapshot,
@@ -63,17 +64,20 @@ pub fn add_ed2k_link(
             .unwrap_or_default()
             .as_millis() as i64,
         category_id,
-        // eMule auto-priority (`auto_priority_new_downloads`): large files
-        // (>= one full eD2K part) start at "high", the rest at "normal".
+        // eMule `DAPPref` (`GetNewAutoDown`, défaut true) : un nouveau
+        // download démarre en priorité « auto » — le flag est stocké et
+        // l'allocateur résout low/normal/high à chaque tick selon le
+        // nombre de sources (`UpdateAutoDownPriority`). Ce n'est pas une
+        // assignation ponctuelle : « auto » reste actif tant que
+        // l'utilisateur ne choisit pas une priorité manuelle.
         priority: if db
             .get_setting("auto_priority_new_downloads")
             .ok()
             .flatten()
             .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "on"))
-            .unwrap_or(false)
-            && link.size >= mule_protocol::ED2K_PART_SIZE as u64
+            .unwrap_or(true)
         {
-            "high".to_string()
+            "auto".to_string()
         } else {
             "normal".to_string()
         },
@@ -1059,12 +1063,16 @@ pub fn finalize_download(
         None,
     );
 
-    let shared = mule_core::model::SharedFile::new(
+    let mut shared = mule_core::model::SharedFile::new(
         finalized_dl.ed2k_hash.to_hex(),
         &finalized_dl.display_name,
         finalized_dl.total_size,
         target_path.to_string_lossy().as_ref(),
     );
+    // eMule `UAPPref` : le fichier complété devient un partage « auto ».
+    if peers_servers::auto_up_priority_enabled(db) {
+        shared.up_priority = "auto".to_string();
+    }
     let _ = db.upsert_shared_file(&shared);
 
     let act = active.get(id).unwrap();

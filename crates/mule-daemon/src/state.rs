@@ -448,6 +448,30 @@ impl AppState {
         inbound_listener
             .upload_manager()
             .set_event_channel(event_tx.clone(), Arc::clone(&sequence));
+        // `MaxSpeed` eMule pour `AcceptNewClient` — lit le débit effectif du
+        // bucket upload : limite manuelle (`limits.set`) ou valeur mesurée
+        // pilotée par USS quand il est actif.
+        {
+            let rl = network_policy.rate_limiters();
+            inbound_listener
+                .upload_manager()
+                .set_upload_speed_probe(move || rl.upload_bucket.rate_per_sec());
+        }
+        // Tick de la file d'upload — `CUploadQueue::Process()` eMule : purge
+        // des entrées mortes, rotation des sessions pleines, promotion des
+        // meilleurs clients. Tourne indépendamment des abonnés WS (la file
+        // doit fonctionner en mode headless).
+        {
+            let upload_mgr = inbound_listener.upload_manager().clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    interval.tick().await;
+                    upload_mgr.process_tick().await;
+                }
+            });
+        }
         // Friend slots: load persisted friends into the upload manager
         // (eMule friends.met → dedicated slots for `uh:<userhash>` keys).
         {

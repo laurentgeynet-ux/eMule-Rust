@@ -4,6 +4,7 @@
 use crate::services::peer_session::log_peer_addr;
 use bytes::BytesMut;
 use flate2::{Decompress, FlushDecompress, Status};
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -15,10 +16,11 @@ use tracing::info;
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kBlockRange64, Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder, Ed2kFileStatus,
-    Ed2kRequestParts, Ed2kRequestPartsI64, InFlightBlock, OP_ANSWERSOURCES, OP_ANSWERSOURCES2,
-    OP_CANCELTRANSFER, OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES,
-    OP_REQUESTSOURCES2, OP_SENDINGPART, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
+    Ed2kBlockRange, Ed2kBlockRange64, Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder,
+    Ed2kFileStatus, Ed2kRequestParts, Ed2kRequestPartsI64, InFlightBlock,
+    MAX_REQUEST_RANGES_PER_PACKET, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CANCELTRANSFER,
+    OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
+    OP_SENDINGPART, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
 };
 use mule_protocol::framing::PacketCodec;
 
@@ -65,35 +67,208 @@ fn is_download_active_status(status: &str) -> bool {
     )
 }
 
-fn encode_block_request(
+/// Block request pending toward one peer — eMule `Pending_Block_Struct`:
+/// the range was planned (`fQueued == false`) or already sent in an
+/// `OP_REQUESTPARTS` packet (`fQueued == true`); `recv_to` is the frontier
+/// up to which data has been delivered.
+struct PendingBlock {
+    part_idx: u16,
+    range: Ed2kBlockRange64,
+    queued: bool,
+    recv_to: u64,
+}
+
+/// eMule `SendBlockRequests` pending-block count, adaptive to the measured
+/// download rate of this source (DownloadClient.cpp):
+/// `<4 KiB/s → 1`, `<9 KiB/s → 2`, `>150 KiB/s → 9`, `>75 KiB/s → 6`, else 3.
+/// The low-rate tiers only apply to eMule clients (`IsEmuleClient()`).
+fn emule_pending_block_count(peer_bps: u64, is_emule_client: bool) -> usize {
+    if is_emule_client && peer_bps < 9 * 1024 {
+        if peer_bps < 4 * 1024 {
+            1
+        } else {
+            2
+        }
+    } else if peer_bps > 150 * 1024 {
+        9
+    } else if peer_bps > 75 * 1024 {
+        6
+    } else {
+        3
+    }
+}
+
+/// How long an in-flight block stays reserved after its last sign of life —
+/// eMule has no TTL at all (the block is released when the session ends or
+/// stalls into requeue); the refresh-on-data approach bounds stale entries
+/// without duplicating requests toward slow trickle sources.
+const INFLIGHT_BLOCK_TTL_MS: i64 = 100_000;
+
+/// Consecutive stall→requeue recoveries allowed on one socket before the
+/// session is dropped — eMule re-queues forever; the cap keeps a pathological
+/// peer from pinning a session slot while the swarm rotates sources.
+const MAX_CONSECUTIVE_STALL_REQUEUES: u32 = 3;
+
+/// Builds one `OP_REQUESTPARTS`/`OP_REQUESTPARTS_I64` packet carrying up to
+/// [`MAX_REQUEST_RANGES_PER_PACKET`] ranges — the eMule wire layout packs
+/// three `start`/`end` slots per packet. The I64 variant is required when any
+/// range crosses the 4 GiB boundary and needs `ExtendedRequestsVer >= 2`
+/// (eMule `GetExtendedRequestsVersion`); returns `None` when the peer cannot
+/// serve the requested ranges.
+fn encode_block_request_packet(
     encoder: &Ed2kEncoder,
     file_hash: [u8; 16],
-    range: Ed2kBlockRange64,
+    ranges: &[Ed2kBlockRange64],
     peer_ext_req: u8,
 ) -> Option<mule_protocol::framing::RawPacket> {
-    if range.end <= u32::MAX as u64 {
+    if ranges.is_empty() || ranges.len() > MAX_REQUEST_RANGES_PER_PACKET {
+        return None;
+    }
+    let needs_i64 = ranges.iter().any(|r| r.end > u32::MAX as u64);
+    if !needs_i64 {
+        let ranges32: Vec<Ed2kBlockRange> = ranges
+            .iter()
+            .map(|r| Ed2kBlockRange::new(r.start as u32, r.end as u32))
+            .collect();
         encoder
-            .encode_request_parts(&Ed2kRequestParts::single(
-                file_hash,
-                range.start as u32,
-                range.end as u32,
-            ))
+            .encode_request_parts(&Ed2kRequestParts::multi(file_hash, ranges32))
             .ok()
     } else if peer_ext_req >= 2 {
         encoder
             .encode_request_parts_i64(&Ed2kRequestPartsI64 {
                 file_hash,
-                ranges: vec![range],
+                ranges: ranges.to_vec(),
             })
             .ok()
     } else {
         tracing::warn!(
-            "Block range [{}, {}) exceeds 4 GiB but peer does not support extended requests (ext_req={peer_ext_req}) — cannot request",
-            range.start,
-            range.end
+            "Block ranges cross the 4 GiB boundary but peer does not support extended requests (ext_req={peer_ext_req}) — cannot request"
         );
         None
     }
+}
+
+/// eMule `SendBlockRequests`: tops `pending` up to `block_count` disjoint
+/// blocks via the sequencer, registers each as in-flight, then emits
+/// `OP_REQUESTPARTS` packets of up to three ranges each. Returns `true` when
+/// at least one new range was sent on the wire.
+#[allow(clippy::too_many_arguments)]
+async fn fill_and_send_block_requests(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    encoder: &Ed2kEncoder,
+    sequencer: &mut Ed2kDownloadSequencer,
+    address_str: &str,
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    dl_hash_bytes: [u8; 16],
+    peer_ext_req: u8,
+    completed_ranges: &[(u64, u64)],
+    pending: &mut VecDeque<PendingBlock>,
+    block_count: usize,
+    target_addr: SocketAddr,
+) -> Result<bool, PeerError> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
+    // Plan the missing blocks and reserve them in the shared in-flight list.
+    let planned = {
+        let mut g = inner.lock().await;
+        let want = block_count.saturating_sub(pending.len());
+        let blocks = if want == 0 {
+            Vec::new()
+        } else {
+            sequencer
+                .plan_next_blocks_for_peer64(
+                    address_str,
+                    completed_ranges,
+                    &g.in_flight_blocks,
+                    now_ms,
+                    want,
+                )
+                .map_err(|e| {
+                    PeerError::new(
+                        PeerFailureReason::InvalidRange,
+                        format!("Planning error: {e}"),
+                    )
+                })?
+        };
+        for (part_idx, block) in &blocks {
+            g.in_flight_blocks.push(InFlightBlock::new(
+                address_str.to_string(),
+                *part_idx,
+                block.start,
+                block.end,
+                now_ms,
+                INFLIGHT_BLOCK_TTL_MS,
+            ));
+            pending.push_back(PendingBlock {
+                part_idx: *part_idx,
+                range: *block,
+                queued: false,
+                recv_to: block.start,
+            });
+        }
+        blocks.len()
+    };
+
+    // Emit the un-queued pending blocks in packets of ≤3 ranges.
+    let mut sent_any = false;
+    let unqueued: Vec<Ed2kBlockRange64> = pending
+        .iter()
+        .filter(|p| !p.queued)
+        .map(|p| p.range)
+        .collect();
+    for chunk in unqueued.chunks(MAX_REQUEST_RANGES_PER_PACKET) {
+        let Some(pkt) = encode_block_request_packet(encoder, dl_hash_bytes, chunk, peer_ext_req)
+        else {
+            // Unencodable chunk (e.g. >4 GiB without I64 support): mark the
+            // ranges as sent so they stop blocking the pipeline; they will be
+            // re-planned on the next pass for a different peer.
+            tracing::warn!(
+                "Peer {peer}: dropping unencodable request chunk ({} range(s))",
+                chunk.len(),
+                peer = log_peer_addr(target_addr)
+            );
+            for r in chunk {
+                if let Some(p) = pending
+                    .iter_mut()
+                    .find(|p| p.range.start == r.start && p.range.end == r.end)
+                {
+                    p.queued = true;
+                }
+            }
+            continue;
+        };
+        let mut out_wire = Vec::with_capacity(6 + pkt.payload.len());
+        out_wire.push(pkt.protocol);
+        out_wire.extend_from_slice(&(pkt.frame_len() as u32).to_le_bytes());
+        out_wire.push(pkt.opcode);
+        out_wire.extend_from_slice(&pkt.payload);
+        if let Err(e) = stream.write_all(&out_wire).await {
+            return Err(PeerError::new(
+                PeerFailureReason::ConnectRefused,
+                format!("Failed to send OP_REQUESTPARTS: {e}"),
+            ));
+        }
+        for r in chunk {
+            if let Some(p) = pending
+                .iter_mut()
+                .find(|p| p.range.start == r.start && p.range.end == r.end)
+            {
+                p.queued = true;
+            }
+        }
+        sent_any = true;
+    }
+    if planned > 0 {
+        tracing::debug!(
+            "Peer {peer}: {planned} new pending block(s) planned ({sent} sent, cap {block_count})",
+            peer = log_peer_addr(target_addr),
+            sent = pending.iter().filter(|p| p.queued).count()
+        );
+    }
+    Ok(sent_any)
 }
 
 async fn sync_transfer_rates(
@@ -160,7 +335,6 @@ pub(crate) async fn run_transfer_loop(
     let encoder = Ed2kEncoder::default();
     let decoder = Ed2kDecoder::default().with_extended_requests_version(peer_ext_req);
     let codec = PacketCodec::new();
-    let mut out_wire = Vec::with_capacity(64);
     let mut read_buf = BytesMut::with_capacity(65536);
     let mut raw_buf = [0u8; 8192];
     // État du pair capturé avant que `file_status` ne soit consommé par le
@@ -169,6 +343,10 @@ pub(crate) async fn run_transfer_loop(
     // pas de sources à une source complète).
     let peer_part_status: Vec<u8> = file_status.availability_mask.raw_bytes().to_vec();
     let peer_is_complete = file_status.is_complete();
+    // Copie conservée pour le chemin stall→requeue (`file_status` est consommé
+    // par le séquenceur) ; rafraîchie par `wait_in_queue` à chaque re-entrée.
+    let file_status_fallback = file_status.clone();
+    let mut file_status_refreshed: Option<Ed2kFileStatus> = None;
 
     // Flush any pending AICH recovery requests accumulated before this session
     // (eMule SendAICHRequest for corrupted parts).
@@ -233,91 +411,58 @@ pub(crate) async fn run_transfer_loop(
             )
         })?
         .with_preview_priority(is_previewable);
-    if let Some(counts) = part_scarcity {
-        sequencer = sequencer.with_part_scarcity(counts);
+    if let Some(counts) = &part_scarcity {
+        sequencer = sequencer.with_part_scarcity(counts.clone());
     }
 
-    // Plan disjoint block
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64;
+    // eMule `SendBlockRequests` — pending-block pipeline. `blockCount` is
+    // adaptive to the measured rate of this source (1/2/3/6/9) and each
+    // OP_REQUESTPARTS packet packs up to three ranges.
+    let is_emule_client = peer_ext_req > 0;
+    let peer_bps = inner
+        .lock()
+        .await
+        .sessions
+        .get(address_str)
+        .map(|s| s.snapshot.transfer_rate_bps)
+        .unwrap_or(0);
+    let mut pending: VecDeque<PendingBlock> = VecDeque::new();
+    fill_and_send_block_requests(
+        stream,
+        &encoder,
+        &mut sequencer,
+        address_str,
+        inner,
+        dl_hash_bytes,
+        peer_ext_req,
+        &completed_ranges,
+        &mut pending,
+        emule_pending_block_count(peer_bps, is_emule_client),
+        target_addr,
+    )
+    .await?;
 
-    let planned_block_opt = {
-        let mut g = inner.lock().await;
-        let block_opt = sequencer
-            .plan_next_block_for_peer64(address_str, &completed_ranges, &g.in_flight_blocks, now_ms)
-            .map_err(|e| {
-                PeerError::new(
-                    PeerFailureReason::InvalidRange,
-                    format!("Planning error: {e}"),
-                )
-            })?;
-
-        if let Some((part_idx, block)) = block_opt {
-            let ifb = InFlightBlock::new(
-                address_str.to_string(),
-                part_idx,
-                block.start,
-                block.end,
-                now_ms,
-                30_000,
-            );
-            g.in_flight_blocks.push(ifb);
-            Some((part_idx, block))
-        } else {
-            None
-        }
-    };
-
-    let (part_idx, req_range) = match planned_block_opt {
-        Some(b) => b,
-        None => {
-            info!(
-                "No unassigned/missing blocks available for peer {}",
-                log_peer_addr(target_addr)
-            );
-            // eMule CUpDownClient::SendOutOfPartReqsAndPacket: notify the
-            // uploader that we currently have no pending block requests
-            // (OP_OUTOFPARTS, empty payload) before leaving the session.
-            let mut out_wire = Vec::with_capacity(6);
-            out_wire.push(PR_ED2K);
-            out_wire.extend_from_slice(&1u32.to_le_bytes());
-            out_wire.push(OP_OUTOFPARTS);
-            let _ = stream.write_all(&out_wire).await;
-            return Ok(0);
-        }
-    };
-
-    // Send OP_REQUESTPARTS (or OP_REQUESTPARTS_I64 for >4 GiB files when the
-    // peer announced extended requests v2, eMule GetExtendedRequestsVersion).
-    let req_pkt = encode_block_request(&encoder, dl_hash_bytes, req_range, peer_ext_req)
-        .ok_or_else(|| {
-            PeerError::new(
-                PeerFailureReason::CorruptedData,
-                "Failed to encode OP_REQUESTPARTS (unsupported range or peer capability)"
-                    .to_string(),
-            )
-        })?;
-
-    out_wire.clear();
-    out_wire.push(req_pkt.protocol);
-    out_wire.extend_from_slice(&(req_pkt.frame_len() as u32).to_le_bytes());
-    out_wire.push(req_pkt.opcode);
-    out_wire.extend_from_slice(&req_pkt.payload);
-
-    if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(
-            PeerFailureReason::ConnectRefused,
-            format!("Failed to send OP_REQUESTPARTS: {e}"),
-        ));
+    if pending.is_empty() {
+        info!(
+            "No unassigned/missing blocks available for peer {}",
+            log_peer_addr(target_addr)
+        );
+        // eMule CUpDownClient::SendOutOfPartReqsAndPacket: notify the
+        // uploader that we currently have no pending block requests
+        // (OP_OUTOFPARTS, empty payload) before leaving the session.
+        let mut out_wire = Vec::with_capacity(6);
+        out_wire.push(PR_ED2K);
+        out_wire.extend_from_slice(&1u32.to_le_bytes());
+        out_wire.push(OP_OUTOFPARTS);
+        let _ = stream.write_all(&out_wire).await;
+        return Ok(0);
     }
 
     let transferring_snapshot = {
         let mut g = inner.lock().await;
         if let Some(session) = g.sessions.get_mut(address_str) {
             session.snapshot.status = PeerConnectionStatus::Transferring;
-            session.snapshot.current_part = Some(part_idx);
+            session.snapshot.current_part = pending.front().map(|p| p.part_idx);
             Some(session.snapshot.clone())
         } else {
             None
@@ -327,24 +472,18 @@ pub(crate) async fn run_transfer_loop(
         emit_event(event_tx, sequence, &snap);
     }
 
-    tracing::debug!(
-        "Requested sub-block [{}, {}) from peer {}",
-        req_range.start,
-        req_range.end,
-        log_peer_addr(target_addr)
-    );
-
     // Receive chunks loop
     let mut total_received = 0u64;
-    let mut last_activity = tokio::time::Instant::now();
-    let mut first_data_received = false;
+    // eMule DOWNLOADTIMEOUT (100 s) is measured from `m_dwLastBlockReceived`,
+    // which SendBlockRequests refreshes — a request send counts as activity.
+    let mut last_block_data = tokio::time::Instant::now();
     let mut last_rate_check = std::time::Instant::now();
     let mut bytes_since_rate_check = 0u64;
-    let mut decompressor: Option<Decompress> = None;
-    let mut decompressed_offset = req_range.start;
-    let mut current_part_idx = part_idx;
-    let mut current_req_range = req_range;
+    // Zlib streams are per pending block (eMule attaches `zStream` to the
+    // Pending_Block_Struct, keyed here by the block's start offset).
+    let mut zstreams: HashMap<u64, Decompress> = HashMap::new();
     let mut last_dl_progress_log = std::time::Instant::now();
+    let mut consecutive_stall_requeues = 0u32;
     // eMule credits: received bytes accumulate here and are persisted under
     // the peer's verified pubkey identity in batches (clients.met semantics).
     let mut credit_pending_bytes = 0u64;
@@ -411,7 +550,10 @@ pub(crate) async fn run_transfer_loop(
     };
 
     'transfer_loop: loop {
-        let timeout_duration = if !first_data_received {
+        // eMule DOWNLOADTIMEOUT (100 s): no block data since the last request
+        // send / received packet → SendCancelTransfer + back to queue on the
+        // same socket. `first_data_timeout` covers the pre-first-block window.
+        let stall_timeout = if total_received == 0 {
             timeouts.first_data_timeout
         } else {
             timeouts.inactivity_timeout
@@ -427,11 +569,101 @@ pub(crate) async fn run_transfer_loop(
                     .await;
                 return Err(PeerError::new(PeerFailureReason::KillSwitchAborted, "Transfer aborted by kill switch"));
             }
-            _ = tokio::time::sleep_until(last_activity + timeout_duration) => {
-                if !first_data_received {
-                    return Err(PeerError::new(PeerFailureReason::TimeoutFirstData, "Timed out waiting for first data packet"));
-                } else {
-                    return Err(PeerError::new(PeerFailureReason::TimeoutInactivity, "Transfer stall / inactivity timeout exceeded"));
+            _ = tokio::time::sleep_until(last_block_data + stall_timeout) => {
+                // eMule CUpDownClient::CheckDownloadTimeout: the remote
+                // uploader stalled → OP_CANCELTRANSFER then re-enter its
+                // upload queue on the same socket (queue position handled by
+                // the remote, which moves us back like a normal re-ask).
+                consecutive_stall_requeues += 1;
+                if consecutive_stall_requeues > MAX_CONSECUTIVE_STALL_REQUEUES {
+                    return Err(PeerError::new(PeerFailureReason::TimeoutInactivity, "Peer stalled repeatedly — giving up on this session"));
+                }
+                info!(
+                    "Peer {peer}: no block data for {}s — OP_CANCELTRANSFER + re-queue on same socket (stall #{consecutive_stall_requeues})",
+                    stall_timeout.as_secs(),
+                    peer = log_peer_addr(target_addr)
+                );
+                let _ = stream
+                    .write_all(&[PR_ED2K, 1, 0, 0, 0, OP_CANCELTRANSFER])
+                    .await;
+                // Drop local pending state and free the in-flight ranges so
+                // other peers can take them over while we wait.
+                pending.clear();
+                zstreams.clear();
+                {
+                    let mut g = inner.lock().await;
+                    g.in_flight_blocks.retain(|b| b.peer_id != address_str);
+                    if let Some(session) = g.sessions.get_mut(address_str) {
+                        session.snapshot.status = PeerConnectionStatus::Queued;
+                        session.snapshot.queue_rank = None;
+                        let snap = session.snapshot.clone();
+                        emit_event(event_tx, sequence, &snap);
+                    }
+                }
+                match super::status_query::wait_in_queue(
+                    stream,
+                    target_addr,
+                    file_hash_str,
+                    dl_hash_bytes,
+                    address_str,
+                    sx_caps,
+                    timeouts,
+                    cancel_token,
+                    inner,
+                    event_tx,
+                    sequence,
+                    downloads,
+                    sx_env,
+                    sx_local,
+                    sui,
+                    peer_ext_req,
+                    peer_supports_aich,
+                    file_status_refreshed.take().unwrap_or_else(|| file_status_fallback.clone()),
+                    true,
+                )
+                .await
+                {
+                    Ok(fresh_status) => {
+                        file_status_refreshed = Some(fresh_status.clone());
+                        // Rebuild the sequencer with the refreshed part
+                        // bitmap — the peer's availability may have changed
+                        // while we were queued.
+                        let mut rebuilt = Ed2kDownloadSequencer::new(dl_hash_bytes, file_size, fresh_status)
+                            .map_err(|e| PeerError::new(PeerFailureReason::CorruptedData, format!("Sequencer init error: {e}")))?
+                            .with_preview_priority(is_previewable);
+                        if let Some(counts) = &part_scarcity {
+                            rebuilt = rebuilt.with_part_scarcity(counts.clone());
+                        }
+                        sequencer = rebuilt;
+                        let completed = downloads.lock().await.get_completed_ranges_by_hash(file_hash_str);
+                        let peer_bps = inner.lock().await.sessions.get(address_str).map(|s| s.snapshot.transfer_rate_bps).unwrap_or(0);
+                        fill_and_send_block_requests(
+                            stream, &encoder, &mut sequencer, address_str, inner,
+                            dl_hash_bytes, peer_ext_req, &completed, &mut pending,
+                            emule_pending_block_count(peer_bps, is_emule_client), target_addr,
+                        ).await?;
+                        if pending.is_empty() {
+                            info!("Peer {peer}: no more needed blocks after re-queue", peer = log_peer_addr(target_addr));
+                            let mut end_wire = Vec::with_capacity(6 + 16);
+                            end_wire.push(PR_ED2K);
+                            end_wire.extend_from_slice(&(17u32).to_le_bytes());
+                            end_wire.push(OP_END_OF_DOWNLOAD);
+                            end_wire.extend_from_slice(&dl_hash_bytes);
+                            let _ = stream.write_all(&end_wire).await;
+                            break 'transfer_loop;
+                        }
+                        {
+                            let mut g = inner.lock().await;
+                            if let Some(session) = g.sessions.get_mut(address_str) {
+                                session.snapshot.status = PeerConnectionStatus::Transferring;
+                                session.snapshot.current_part = pending.front().map(|p| p.part_idx);
+                                let snap = session.snapshot.clone();
+                                emit_event(event_tx, sequence, &snap);
+                            }
+                        }
+                        last_block_data = tokio::time::Instant::now();
+                    }
+                    Err(e) => return Err(e),
                 }
             }
             _ = tokio::time::sleep_until(next_sx_check) => {
@@ -455,7 +687,6 @@ pub(crate) async fn run_transfer_loop(
                         break;
                     }
                     Ok(n) => {
-                        last_activity = tokio::time::Instant::now();
                         read_buf.extend_from_slice(&raw_buf[..n]);
                         if read_buf.len() > MAX_PEER_READ_BUFFER_SIZE {
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit during transfer"));
@@ -473,11 +704,16 @@ pub(crate) async fn run_transfer_loop(
                             if super::status_query::handle_aich_answer(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
                                 continue;
                             }
-                            let mut block_finished = false;
+                            // Pending block completed by this packet — drained
+                            // after the opcode dispatch (removes the pending
+                            // entry, frees the in-flight range, refills the
+                            // pipeline up to `blockCount`).
+                            let mut finished_pending: Option<(u16, Ed2kBlockRange64)> = None;
                             if packet.protocol == PR_ED2K
                                 && (packet.opcode == OP_SENDINGPART || packet.opcode == OP_SENDINGPART_I64)
                             {
-                                first_data_received = true;
+                                last_block_data = tokio::time::Instant::now();
+                                consecutive_stall_requeues = 0;
                                 let (part_hash, part_start, part_end, part_data) = if packet.opcode == OP_SENDINGPART_I64 {
                                     let part = mule_protocol::ed2k::decoder::decode_sending_part_i64(packet.protocol, packet.opcode, &packet.payload, 0)
                                         .map_err(|e| PeerError::new(PeerFailureReason::CorruptedData, format!("Malformed OP_SENDINGPART_I64: {e}")))?;
@@ -492,12 +728,76 @@ pub(crate) async fn run_transfer_loop(
                                     return Err(PeerError::new(PeerFailureReason::HashMismatch, "OP_SENDINGPART returned mismatched file hash"));
                                 }
 
-                                if part_start < current_req_range.start || part_end > current_req_range.end || part_start >= part_end {
-                                    return Err(PeerError::new(PeerFailureReason::InvalidRange, format!("OP_SENDINGPART range out of bounds: [{}, {}) vs [{}, {})", part_start, part_end, current_req_range.start, current_req_range.end)));
+                                // eMule ProcessBlockPacket: the declared range
+                                // must match the payload size exactly
+                                // (IDS_ERR_BADDATABLOCK → protocol violation).
+                                if part_start >= part_end
+                                    || part_data.len() as u64 != part_end - part_start
+                                {
+                                    return Err(PeerError::new(PeerFailureReason::InvalidRange, format!("OP_SENDINGPART declared range [{}, {}) does not match {} bytes payload", part_start, part_end, part_data.len())));
                                 }
 
-                                if part_end >= current_req_range.end {
-                                    block_finished = true;
+                                // eMule ProcessBlockPacket: locate the pending
+                                // block this packet belongs to — any of the up
+                                // to `blockCount` queued ranges may be served.
+                                let pending_idx = pending.iter().position(|p| {
+                                    p.range.start <= part_start && part_start < p.range.end
+                                });
+                                let Some(pi) = pending_idx else {
+                                    // Not-requested block — eMule drops it
+                                    // silently and keeps the session alive.
+                                    tracing::debug!(
+                                        "Peer {peer}: OP_SENDINGPART [{}, {}) matches no pending block — ignored",
+                                        part_start,
+                                        part_end,
+                                        peer = log_peer_addr(target_addr)
+                                    );
+                                    continue;
+                                };
+                                if part_end > pending[pi].range.end {
+                                    // eMule: "exceeds requested boundaries" →
+                                    // RemoveBlockFromList (frees the range)
+                                    // and ignores the packet — no disconnect.
+                                    tracing::warn!(
+                                        "Peer {peer}: OP_SENDINGPART [{}, {}) exceeds pending block [{}, {}) — block freed",
+                                        part_start,
+                                        part_end,
+                                        pending[pi].range.start,
+                                        pending[pi].range.end,
+                                        peer = log_peer_addr(target_addr)
+                                    );
+                                    let freed = pending.remove(pi).expect("pending idx in bounds");
+                                    {
+                                        let mut g = inner.lock().await;
+                                        g.in_flight_blocks.retain(|b| {
+                                            !(b.peer_id == address_str
+                                                && b.start == freed.range.start
+                                                && b.end == freed.range.end)
+                                        });
+                                    }
+                                    continue;
+                                }
+                                pending[pi].recv_to = pending[pi].recv_to.max(part_end);
+
+                                if part_end >= pending[pi].range.end {
+                                    finished_pending =
+                                        Some((pending[pi].part_idx, pending[pi].range));
+                                }
+
+                                // Refresh the in-flight reservation while the
+                                // peer keeps delivering — the block must not be
+                                // re-planned to another source mid-transfer.
+                                {
+                                    let mut g = inner.lock().await;
+                                    let now_ms = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis() as i64;
+                                    for b in g.in_flight_blocks.iter_mut() {
+                                        if b.peer_id == address_str {
+                                            b.deadline_unix_ms = now_ms + INFLIGHT_BLOCK_TTL_MS;
+                                        }
+                                    }
                                 }
 
                                 let data_len = part_data.len() as u64;
@@ -603,21 +903,40 @@ pub(crate) async fn run_transfer_loop(
                                     (bs, &packet.payload[24..])
                                 };
 
-                                first_data_received = true;
+                                last_block_data = tokio::time::Instant::now();
+                                consecutive_stall_requeues = 0;
 
-                                if decompressor.is_none() {
-                                    decompressor = Some(Decompress::new(true));
-                                    decompressed_offset = block_start;
-                                }
-
-                                let decomp = decompressor.as_mut().unwrap();
+                                // eMule attaches the zlib stream to the
+                                // Pending_Block_Struct — locate which pending
+                                // block this compressed chunk belongs to.
+                                let pending_idx = pending.iter().position(|p| {
+                                    p.range.start <= block_start && block_start < p.range.end
+                                });
+                                let Some(pi) = pending_idx else {
+                                    tracing::debug!(
+                                        "Peer {peer}: OP_COMPRESSEDPART at {} matches no pending block — ignored",
+                                        block_start,
+                                        peer = log_peer_addr(target_addr)
+                                    );
+                                    continue;
+                                };
+                                let range_key = pending[pi].range.start;
+                                let range_end = pending[pi].range.end;
+                                // Take ownership of the block's zlib stream so
+                                // `pending` stays borrowable inside the loop;
+                                // reinserted below unless the block completed.
+                                let mut decomp = zstreams
+                                    .remove(&range_key)
+                                    .unwrap_or_else(|| Decompress::new(true));
+                                let mut zstream_alive = true;
                                 let mut out = vec![0u8; 65536];
                                 let mut input_slice = chunk;
 
                                 while !input_slice.is_empty() {
                                     let before_in = decomp.total_in();
                                     let before_out = decomp.total_out();
-                                    let res = decomp.decompress(input_slice, &mut out, FlushDecompress::Sync);
+                                    let res = decomp
+                                        .decompress(input_slice, &mut out, FlushDecompress::Sync);
                                     let produced = (decomp.total_out() - before_out) as usize;
                                     let consumed = (decomp.total_in() - before_in) as usize;
                                     input_slice = &input_slice[consumed..];
@@ -646,12 +965,13 @@ pub(crate) async fn run_transfer_loop(
                                         if credit_pending_bytes >= CREDIT_FLUSH_BYTES {
                                             flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
                                         }
+                                        let write_at = pending[pi].recv_to;
                                         let is_complete = {
                                             let mut dl_svc = downloads.lock().await;
                                             if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
                                                 if let Ok(snap) = dl_svc.inject_range(
                                                     &dl.id,
-                                                    decompressed_offset,
+                                                    write_at,
                                                     &out[..produced],
                                                 ) {
                                                     let s = snap.status.to_lowercase();
@@ -663,7 +983,7 @@ pub(crate) async fn run_transfer_loop(
                                                 false
                                             }
                                         };
-                                        decompressed_offset += produced as u64;
+                                        pending[pi].recv_to += produced as u64;
 
                                         let elapsed = last_rate_check.elapsed();
                                         if elapsed >= Duration::from_millis(500) || is_complete {
@@ -690,30 +1010,34 @@ pub(crate) async fn run_transfer_loop(
 
                                     match res {
                                         Ok(Status::StreamEnd) => {
-                                            if decompressed_offset < current_req_range.end {
+                                            if pending[pi].recv_to < range_end {
                                                 tracing::warn!(
                                                     "Peer {peer}: Zlib stream ended at offset {} before reaching sub-block boundary {}",
-                                                    decompressed_offset,
-                                                    current_req_range.end
+                                                    pending[pi].recv_to,
+                                                    range_end
                                                 , peer = log_peer_addr(target_addr));
                                             } else {
                                                 tracing::debug!(
                                                     "Peer {peer}: completed decompression of block at offset {}",
-                                                    decompressed_offset
+                                                    pending[pi].recv_to
                                                 , peer = log_peer_addr(target_addr));
                                             }
-                                            decompressor = None;
-                                            block_finished = decompressed_offset >= current_req_range.end;
+                                            zstream_alive = false;
+                                            if pending[pi].recv_to >= range_end {
+                                                finished_pending =
+                                                    Some((pending[pi].part_idx, pending[pi].range));
+                                            }
                                             break;
                                         }
                                         Ok(Status::Ok) => {
-                                            if decompressed_offset >= current_req_range.end {
+                                            if pending[pi].recv_to >= range_end {
                                                 tracing::debug!(
                                                     "Peer {peer}: sub-block reached requested boundary {}",
-                                                    decompressed_offset
+                                                    pending[pi].recv_to
                                                 , peer = log_peer_addr(target_addr));
-                                                decompressor = None;
-                                                block_finished = true;
+                                                zstream_alive = false;
+                                                finished_pending =
+                                                    Some((pending[pi].part_idx, pending[pi].range));
                                                 break;
                                             }
                                             if consumed == 0 && produced == 0 {
@@ -726,6 +1050,9 @@ pub(crate) async fn run_transfer_loop(
                                             break;
                                         }
                                     }
+                                }
+                                if zstream_alive {
+                                    zstreams.insert(range_key, decomp);
                                 }
 
                                 let elapsed = last_rate_check.elapsed();
@@ -802,11 +1129,23 @@ pub(crate) async fn run_transfer_loop(
                                 .await;
                             }
 
-                            // Pipeline next block
-                            if block_finished {
+                            // A pending block completed — drain it and top the
+                            // pipeline back up to `blockCount` (eMule
+                            // SendBlockRequests is re-run per received packet).
+                            if let Some((fin_part, fin_range)) = finished_pending {
+                                pending.retain(|p| {
+                                    !(p.part_idx == fin_part
+                                        && p.range.start == fin_range.start
+                                        && p.range.end == fin_range.end)
+                                });
+                                zstreams.remove(&fin_range.start);
                                 {
                                     let mut g = inner.lock().await;
-                                    g.in_flight_blocks.retain(|b| !(b.peer_id == address_str && b.part_index == current_part_idx && b.start == current_req_range.start));
+                                    g.in_flight_blocks.retain(|b| {
+                                        !(b.peer_id == address_str
+                                            && b.start == fin_range.start
+                                            && b.end == fin_range.end)
+                                    });
                                 }
 
                                 let (completed, dl_still_active) = {
@@ -827,50 +1166,40 @@ pub(crate) async fn run_transfer_loop(
                                     break 'transfer_loop;
                                 }
 
-                                let now_ms = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis() as i64;
+                                let peer_bps = inner
+                                    .lock()
+                                    .await
+                                    .sessions
+                                    .get(address_str)
+                                    .map(|s| s.snapshot.transfer_rate_bps)
+                                    .unwrap_or(0);
+                                fill_and_send_block_requests(
+                                    stream,
+                                    &encoder,
+                                    &mut sequencer,
+                                    address_str,
+                                    inner,
+                                    dl_hash_bytes,
+                                    peer_ext_req,
+                                    &completed,
+                                    &mut pending,
+                                    emule_pending_block_count(peer_bps, is_emule_client),
+                                    target_addr,
+                                )
+                                .await?;
+                                // A request send counts as transfer activity
+                                // (eMule refreshes m_dwLastBlockReceived there).
+                                last_block_data = tokio::time::Instant::now();
 
-                                let next_block = {
+                                let cur_part = pending.front().map(|p| p.part_idx);
+                                {
                                     let mut g = inner.lock().await;
-                                    match sequencer.plan_next_block_for_peer64(address_str, &completed, &g.in_flight_blocks, now_ms) {
-                                        Ok(Some((next_p, next_r))) => {
-                                            let ifb = InFlightBlock::new(
-                                                address_str.to_string(),
-                                                next_p,
-                                                next_r.start,
-                                                next_r.end,
-                                                now_ms,
-                                                30_000,
-                                            );
-                                            g.in_flight_blocks.push(ifb);
-                                            Some((next_p, next_r))
-                                        }
-                                        _ => None,
+                                    if let Some(session) = g.sessions.get_mut(address_str) {
+                                        session.snapshot.current_part = cur_part;
                                     }
-                                };
+                                }
 
-                                if let Some((next_p, next_r)) = next_block {
-                                    current_part_idx = next_p;
-                                    current_req_range = next_r;
-                                    decompressor = None;
-                                    decompressed_offset = next_r.start;
-
-                                    if let Some(req_pkt) = encode_block_request(&encoder, dl_hash_bytes, next_r, peer_ext_req) {
-                                        let mut out_wire = Vec::with_capacity(6 + req_pkt.payload.len());
-                                        out_wire.push(req_pkt.protocol);
-                                        out_wire.extend_from_slice(&(req_pkt.frame_len() as u32).to_le_bytes());
-                                        out_wire.push(req_pkt.opcode);
-                                        out_wire.extend_from_slice(&req_pkt.payload);
-                                        if let Err(e) = stream.write_all(&out_wire).await {
-                                            tracing::warn!("Failed to send chained OP_REQUESTPARTS to {peer}: {e}", peer = log_peer_addr(target_addr));
-                                            break;
-                                        }
-                                        tracing::debug!("Peer {peer}: requested next sub-block [{}, {}) in part {}", next_r.start, next_r.end, next_p, peer = log_peer_addr(target_addr));
-                                        last_activity = tokio::time::Instant::now();
-                                    }
-                                } else {
+                                if pending.is_empty() {
                                     tracing::info!("Peer {peer}: all blocks completed or no more blocks needed", peer = log_peer_addr(target_addr));
                                     let mut end_wire = Vec::with_capacity(6 + 16);
                                     end_wire.push(PR_ED2K);
@@ -949,5 +1278,30 @@ async fn flush_download_credit(
             );
         }
         *pending = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::emule_pending_block_count;
+
+    /// eMule `SendBlockRequests` blockCount tiers (DownloadClient.cpp):
+    /// eMule clients below 9 KiB/s get the 1/2 low tiers; everyone else gets
+    /// the 3/6/9 tiers regardless of client family.
+    #[test]
+    fn test_emule_pending_block_count_tiers() {
+        // eMule client, low-rate tiers
+        assert_eq!(emule_pending_block_count(0, true), 1);
+        assert_eq!(emule_pending_block_count(4 * 1024 - 1, true), 1);
+        assert_eq!(emule_pending_block_count(4 * 1024, true), 2);
+        assert_eq!(emule_pending_block_count(9 * 1024 - 1, true), 2);
+        // eMule client, upper tiers
+        assert_eq!(emule_pending_block_count(9 * 1024, true), 3);
+        assert_eq!(emule_pending_block_count(75 * 1024 + 1, true), 6);
+        assert_eq!(emule_pending_block_count(150 * 1024 + 1, true), 9);
+        // Non-eMule client: skips the low tiers entirely
+        assert_eq!(emule_pending_block_count(0, false), 3);
+        assert_eq!(emule_pending_block_count(2 * 1024, false), 3);
+        assert_eq!(emule_pending_block_count(200 * 1024, false), 9);
     }
 }

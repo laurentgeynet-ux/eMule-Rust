@@ -13,7 +13,7 @@
 **eMule-Rust** est une réimplémentation moderne, modulaire et hautement sécurisée des protocoles historiques de partage pair-à-pair **eD2K (eDonkey2000)** et de table de hachage distribuée **Kademlia (Kad DHT)**, ainsi qu'un écosystème outillé pour les agents IA via le protocole **MCP (Model Context Protocol)**.
 
 Le système est architecturé en trois composantes majeures :
-1. **Un moteur bas niveau en Rust (`crates/`)** : gestionnaire de stockage éparse, codecs filaires bornés, machine d'états protocolaire, démon local asynchrone (Tokio), swarm dynamique équitable (water-filling), routage DHT Kad v2 avec métrique numérique 128-bit, persistance SQLite WAL, politique réseau défensive en 7 couches avec anti-SSRF et limitation de débit.
+1. **Un moteur bas niveau en Rust (`crates/`)** : gestionnaire de stockage éparse, codecs filaires bornés, machine d'états protocolaire, démon local asynchrone (Tokio), swarm multi-sources conforme eMule, routage DHT Kad v2 avec métrique numérique 128-bit, persistance SQLite WAL, politique réseau défensive en 7 couches avec anti-SSRF et limitation de débit.
 2. **Une interface graphique de bureau en Flutter Desktop (Windows)** : interface réactive Clean Architecture (MVVM), ergonomique et modulaire connectée au démon via une liaison bidirectionnelle WebSocket JSON-RPC 2.0.
 3. **Un serveur d'outils d'agent IA (`mule-mcp`)** : serveur MCP natif exposant l'intégralité du contrôle d'eMule-Rust (téléchargements, swarm, serveurs, Kad DHT, upload/shares, identité et politique réseau) sous forme d'outils invocables par des assistants IA.
 
@@ -67,7 +67,6 @@ flowchart TB
         
         subgraph Services ["Services Métier Découpés (Clean Architecture)"]
             DownloadSvc["DownloadService\n(Pipeline Téléchargement, AICH, PartFiles)"]
-            SwarmAlloc["SwarmAllocator\n(Water-Filling Max-Min Fair Share)"]
             SwarmCoord["SwarmCoordinator\n(Orchestration & Auto-Discovery)"]
             PeerMgr["PeerSessionManager\n(Sessions TCP, Handshake, SX1/SX2, Transferts zlib)"]
             ServerMgr["ServerSessionManager\n(Session TCP Serveur eD2K, Ping, Recherche)"]
@@ -109,7 +108,7 @@ flowchart TB
     State --> Services
 
     DownloadSvc --> MuleCore
-    SwarmCoord --> SwarmAlloc & PeerMgr & DownloadSvc
+    SwarmCoord --> PeerMgr & DownloadSvc
     PeerMgr --> MuleProtocol & MulePolicy
     ServerMgr --> MuleProtocol & MulePolicy
     InboundListener --> MuleProtocol & MulePolicy & UploadMgr
@@ -188,8 +187,7 @@ Refactorisé selon une architecture modulaire propre :
 * **Découpage des Handlers RPC (`rpc/handlers/`)** :
   * Handlers spécialisés par domaine : `downloads.rs`, `servers.rs`, `kad.rs`, `sources.rs`, `shares.rs`, `friends.rs`, `history.rs`, `categories.rs`, `network.rs`, `settings.rs`, `upnp.rs`, `lab.rs`.
 * **Services Découpés (`services/`)** :
-  * `swarm_allocator.rs` : algorithme **Weighted Max-Min Fair-Share Water-filling** distribuant dynamiquement les connexions pairs entre fichiers selon leur priorité et rareté.
-  * `swarm_coordinator/` : orchestration d'essaim multi-sources, auto-découverte cadencée (30s / 60s / 300s), calcul dynamique du débit global agrégé par fichier.
+  * `swarm_coordinator/` : orchestration d'essaim multi-sources alignée sur eMule 0.72a — chaque fichier connecte ses sources jusqu'à son plafond (`maxsourceperfile` / `FT_MAXSOURCES`), la limite globale `max_global_download_peers` jouant le rôle de `maxconnections` ; réinterrogation des sources par canal : TCP `SERVERREASKTIME` 15 min (seuil 90 % ≤ 750), UDP `UDPSERVERREASKTIME` 30 min (seuil 75 % ≤ 50), Kad `KADEMLIAREASKTIME` 1 h × `m_TotalSearchesKad` (≤ 7, `KADEMLIATOTALFILE` = 5 recherches simultanées). Rebalance A4AF à cadence 8 min.
   * `peer_session/` : découpé en `connection.rs`, `handshake.rs`, `status_query.rs`, `source_exchange.rs`, `transfer.rs`.
   * `inbound_listener/` : écoute TCP entrante, `connection.rs`, `dispatcher.rs` pour traiter `OP_HELLO`, `OP_REQUESTPARTS`, `OP_REQUESTSOURCES` entrants.
   * `upload_queue.rs` : file d'attente d'upload avec gestion de rangs, slots actifs et comptabilisation des crédits.

@@ -27,6 +27,14 @@ pub const SETTING_SHARE_DOWNLOAD_DIR: &str = "share_download_dir";
 /// artifacts, never shareable payloads).
 const SKIP_EXTENSIONS: &[&str] = &["part", "met", "part.met", "bak", "tmp", "ts", "emuletd"];
 
+/// Résultat d'un scan du dossier Incoming : entrées nouvellement
+/// enregistrées et entrées devenues orphelines purgées.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ShareScanReport {
+    pub added: usize,
+    pub removed: usize,
+}
+
 /// Scans `dir` recursively and registers every regular file as a shared
 /// file (eMule shares subdirectories too).
 ///
@@ -35,7 +43,7 @@ const SKIP_EXTENSIONS: &[&str] = &["part", "met", "part.met", "bak", "tmp", "ts"
 pub async fn scan_download_dir_shares(
     downloads: &Arc<Mutex<DownloadService>>,
     dir: PathBuf,
-) -> usize {
+) -> ShareScanReport {
     // Opt-out setting; defaults to enabled like eMule's Incoming folder.
     let enabled = {
         let dl = downloads.lock().await;
@@ -47,7 +55,7 @@ pub async fn scan_download_dir_shares(
     };
     if !enabled {
         tracing::info!("[INCOMING_SHARE] download-dir sharing disabled by setting");
-        return 0;
+        return ShareScanReport::default();
     }
 
     // eMule shares subdirectories recursively — collect all shareable
@@ -61,9 +69,24 @@ pub async fn scan_download_dir_shares(
         Ok(v) => v,
         Err(e) => {
             tracing::warn!("[INCOMING_SHARE] directory walk failed: {e}");
-            return 0;
+            return ShareScanReport::default();
         }
     };
+
+    // Réconciliation façon `CSharedFileList::Reload` : les partages dont
+    // le fichier sous le dossier Incoming a disparu du disque
+    // (suppression physique hors daemon) sont retirés. Garde
+    // `dir.is_dir()` : si le dossier entier est injoignable (lecteur
+    // débranché) chaque fichier semble manquant — ne rien purger.
+    let mut removed = 0usize;
+    if dir.is_dir() {
+        removed = prune_stale_incoming_shares(downloads, &dir).await;
+    } else {
+        tracing::warn!(
+            "[INCOMING_SHARE] {} unreachable — stale-share prune skipped",
+            dir.display()
+        );
+    }
 
     let mut added = 0usize;
     for path in entries {
@@ -104,12 +127,16 @@ pub async fn scan_download_dir_shares(
             continue;
         }
 
-        let shared = mule_core::model::SharedFile::new(
+        let mut shared = mule_core::model::SharedFile::new(
             &hash_hex,
             &file_name,
             hashed.total_bytes,
             path.to_string_lossy().as_ref(),
         );
+        // eMule `UAPPref` : un nouveau partage démarre en priorité « auto ».
+        if dl.auto_up_priority_enabled() {
+            shared.up_priority = "auto".to_string();
+        }
         if let Err(e) = dl.add_shared_file(&shared) {
             tracing::warn!(
                 "[INCOMING_SHARE] failed to register {}: {e}",
@@ -134,7 +161,73 @@ pub async fn scan_download_dir_shares(
             dir.display()
         );
     }
-    added
+    ShareScanReport { added, removed }
+}
+
+/// Retire les entrées `shared_files` pointant sous `dir` dont le fichier
+/// n'existe plus sur le disque. Les partages hors `dir` sont ignorés :
+/// un chemin injoignable y est indiscernable d'un lecteur hors-ligne.
+/// Le test `exists()` par fichier (et non l'appartenance à la liste
+/// scannée) immunise contre les sous-dossiers illisibles.
+async fn prune_stale_incoming_shares(
+    downloads: &Arc<Mutex<DownloadService>>,
+    dir: &Path,
+) -> usize {
+    let dir_norm = normalize_path_str(dir);
+    let mut dl = downloads.lock().await;
+    let shares = match dl.list_shared_files() {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("[INCOMING_SHARE] cannot list shares for prune: {e}");
+            return 0;
+        }
+    };
+    let mut removed = 0usize;
+    for sf in shares {
+        if sf.file_path.is_empty() || !path_is_under_dir(&sf.file_path, &dir_norm) {
+            continue;
+        }
+        if Path::new(&sf.file_path).exists() {
+            continue;
+        }
+        match dl.remove_shared_file(&sf.file_hash, false) {
+            Ok(true) => {
+                removed += 1;
+                tracing::info!(
+                    "[INCOMING_SHARE] unshared {} — fichier supprimé du disque",
+                    sf.file_name
+                );
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!(
+                    "[INCOMING_SHARE] failed to drop stale share {}: {e}",
+                    sf.file_name
+                );
+            }
+        }
+    }
+    if removed > 0 {
+        tracing::info!(
+            "[INCOMING_SHARE] {removed} stale share(s) removed under {}",
+            dir.display()
+        );
+    }
+    removed
+}
+
+/// Normalisation lexicale pour comparaison de chemins Windows :
+/// insensible à la casse, séparateurs `/` vs `\` unifiés.
+fn normalize_path_str(p: &Path) -> String {
+    p.to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_lowercase()
+}
+
+fn path_is_under_dir(file_path: &str, dir_norm: &str) -> bool {
+    let p = normalize_path_str(Path::new(file_path));
+    p == dir_norm || p.starts_with(&format!("{dir_norm}/"))
 }
 
 /// Depth-first walk collecting every shareable file under `dir`.

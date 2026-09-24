@@ -15,8 +15,8 @@ pub mod types;
 use std::collections::HashMap;
 use std::time::Instant;
 pub use types::{
-    SwarmCoordinator, COORDINATOR_TICK_INTERVAL, HEARTBEAT_INTERVAL, MAX_CONNECT_PER_TICK,
-    SOURCE_REQUERY_INTERVAL,
+    SwarmCoordinator, SwarmLimits, COORDINATOR_TICK_INTERVAL, HEARTBEAT_INTERVAL,
+    MAX_CONNECT_PER_TICK,
 };
 
 use crate::state::AppState;
@@ -27,7 +27,10 @@ impl SwarmCoordinator {
         tokio::spawn(async move {
             let mut coordinator = Self {
                 state,
-                last_source_query: HashMap::new(),
+                last_source_query_tcp: HashMap::new(),
+                last_source_query_udp: HashMap::new(),
+                kad_source_search: HashMap::new(),
+                last_kad_file_request: Instant::now(),
                 last_heartbeat: Instant::now(),
                 server_attempts: HashMap::new(),
                 last_server_reconnect: None,

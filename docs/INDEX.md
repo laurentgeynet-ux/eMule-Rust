@@ -363,7 +363,6 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/services/server_session/connection.rs` | Connexion au serveur |
 | `src/services/server_session/events.rs` | Événements de session serveur |
 | `src/services/server_session/types.rs` | Types de session serveur |
-| `src/services/swarm_allocator.rs` | Allocation des ressources dans l'essaim |
 | `src/services/swarm_coordinator.rs` | Coordination de l'essaim de pairs |
 | `src/services/swarm_coordinator/strategy.rs` | Stratégie de coordination (A4AF rebalance inclus) |
 | `src/services/swarm_coordinator/types.rs` | Types du coordinateur |

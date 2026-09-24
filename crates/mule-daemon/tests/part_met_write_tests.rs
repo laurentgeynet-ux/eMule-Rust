@@ -459,14 +459,26 @@ async fn shares_list_enriches_per_file_upload_stats() {
     let config = DaemonConfig::new(tmp.path().to_path_buf(), "t");
     let state = AppState::new(config, downloads);
 
+    // Les partages pointent des fichiers réels : `list_all_shared_files`
+    // filtre désormais les entrées dont le payload a disparu du disque.
+    let f_path = tmp.path().join("f.iso");
+    let g_path = tmp.path().join("g.iso");
+    std::fs::write(&f_path, b"f").unwrap();
+    std::fs::write(&g_path, b"g").unwrap();
     {
         let mut dl = state.downloads.lock().await;
         dl.add_shared_file(&mule_core::model::SharedFile::new(
-            "haa", "f.iso", 100, "f.iso",
+            "haa",
+            "f.iso",
+            100,
+            f_path.to_string_lossy().as_ref(),
         ))
         .unwrap();
         dl.add_shared_file(&mule_core::model::SharedFile::new(
-            "hbb", "g.iso", 100, "g.iso",
+            "hbb",
+            "g.iso",
+            100,
+            g_path.to_string_lossy().as_ref(),
         ))
         .unwrap();
     }
@@ -499,4 +511,101 @@ async fn shares_list_enriches_per_file_upload_stats() {
     let g = files.iter().find(|f| f["fileHash"] == "hbb").unwrap();
     assert_eq!(g["uploadedBytes"].as_u64().unwrap(), 0);
     assert_eq!(g["uploadRateBps"].as_u64().unwrap(), 0);
+}
+
+/// Le `.part` supprimé physiquement pendant que le daemon est arrêté :
+/// au redémarrage l'entrée est retirée de la liste (données perdues) et
+/// le `.part.met` orphelin nettoyé — au lieu de ressusciter avec des
+/// plages fantômes pointant vers un fichier vide.
+#[test]
+fn missing_part_file_removes_download_at_startup() {
+    let tmp = tempdir().unwrap();
+    let db_path = tmp.path().join("downloads.db");
+    let temp_dir = tmp.path().join("temp");
+    let target_dir = tmp.path().join("incoming");
+
+    let (temp_path, met_path) = {
+        let mut svc = DownloadService::new(&db_path, temp_dir.clone()).unwrap();
+        let link = format!(
+            "ed2k://|file|gone.bin|500|{}|/",
+            hex::encode([0x66u8; 16])
+        );
+        let snap = svc
+            .add_ed2k_link(&link, &target_dir, AllocationPolicy::None, None)
+            .unwrap();
+        let (temp_path, _, _, _) = svc.get_download_file_info(&snap.id).unwrap();
+        let mut met_name = temp_path.as_os_str().to_os_string();
+        met_name.push(".met");
+        (temp_path, std::path::PathBuf::from(met_name))
+    };
+    assert!(temp_path.exists());
+    assert!(met_path.exists());
+
+    // Suppression physique du .part pendant que le daemon est arrêté.
+    std::fs::remove_file(&temp_path).unwrap();
+
+    // Redémarrage : l'entrée est retirée, le .met orphelin nettoyé.
+    let svc = DownloadService::new(&db_path, temp_dir).unwrap();
+    assert!(svc.list_downloads().is_empty());
+    assert!(!met_path.exists());
+}
+
+/// eMule `DAPPref` (défaut `true`) : un nouveau download démarre en
+/// priorité « auto » ; `SavePartFile` écrit `FT_DLPRIORITY = PR_AUTO` (5) ;
+/// une priorité manuelle écrit la valeur `PR_*` correspondante et sort du
+/// mode auto ; la ré-importation du `.part.met` restaure le flag.
+#[test]
+fn auto_down_priority_defaults_on_and_roundtrips_via_part_met() {
+    let tmp = tempdir().unwrap();
+    let mut svc = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
+
+    let link = format!("ed2k://|file|prio.bin|1000|{}|/", hex::encode([0x44u8; 16]));
+    let snap = svc
+        .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
+        .unwrap();
+    assert_eq!(snap.priority, "auto", "DAPPref on → new download is auto");
+
+    let (temp_path, _, _, _) = svc.get_download_file_info(&snap.id).unwrap();
+    let mut met_name = temp_path.as_os_str().to_os_string();
+    met_name.push(".met");
+    let met_path = std::path::PathBuf::from(met_name);
+
+    let dl_prio = |path: &std::path::Path| {
+        mule_format::PartMetFile::open(path)
+            .unwrap()
+            .tags
+            .iter()
+            .find(|t| t.name_id == mule_format::met::tags::FT_DLPRIORITY)
+            .and_then(|t| t.as_u64())
+    };
+    assert_eq!(dl_prio(&met_path), Some(5), "PR_AUTO tag in .part.met");
+
+    // Priorité manuelle → désactive l'auto (eMule SetDownPriority(PR_LOW)).
+    let snap = svc.set_priority(&snap.id, "low").unwrap();
+    assert_eq!(snap.priority, "low");
+    svc.save_active_part_mets();
+    assert_eq!(dl_prio(&met_path), Some(0), "PR_LOW tag in .part.met");
+
+    // Retour en auto → flag restauré.
+    let snap = svc.set_priority(&snap.id, "auto").unwrap();
+    assert_eq!(snap.priority, "auto");
+    svc.save_active_part_mets();
+    assert_eq!(dl_prio(&met_path), Some(5));
+
+    // Priorité invalide → refusée, l'état n'est pas modifié.
+    assert!(svc.set_priority(&snap.id, "urgent").is_err());
+    assert_eq!(svc.get_download(&snap.id).unwrap().priority, "auto");
+
+    // Ré-import du met « auto » → flag restauré côté download. Copie sous
+    // un nom neutre : `remove_download` renomme le companion en `.keep`
+    // pour éviter la résurrection au boot — la paire reste importable.
+    let import_dir = tmp.path().join("import");
+    std::fs::create_dir_all(&import_dir).unwrap();
+    let import_met = import_dir.join("foreign.part.met");
+    std::fs::copy(&met_path, &import_met).unwrap();
+    svc.remove_download(&snap.id, false).unwrap();
+    let imported = svc
+        .import_part_met(&import_met, Some(&temp_path), tmp.path(), None)
+        .unwrap();
+    assert_eq!(imported.download.priority, "auto");
 }

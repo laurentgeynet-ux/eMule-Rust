@@ -778,51 +778,162 @@ pub(crate) async fn query_file_status_and_enter_queue(
     }
 
     // 6. Send OP_STARTUPLOADREQ
+    send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
+
+    // 7. Wait in upload queue (eMule DS_ONQUEUE + FILEREASKTIME re-asks)
+    wait_in_queue(
+        stream,
+        target_addr,
+        file_hash_str,
+        dl_hash_bytes,
+        address_str,
+        sx_caps,
+        timeouts,
+        cancel_token,
+        inner,
+        event_tx,
+        sequence,
+        downloads,
+        sx_env,
+        sx_local,
+        sui,
+        peer_ext_req,
+        peer_supports_aich,
+        file_status,
+        false,
+    )
+    .await
+}
+
+/// eMule `OP_STARTUPLOADREQ` (hash payload) — (re)enters the remote upload
+/// queue for `file_hash`. Repeated at each `FILEREASKTIME` re-ask so the
+/// remote `LastUpRequest` stays fresh (purge horizon is 1 hour).
+pub(crate) async fn send_start_upload_req(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    dl_hash_bytes: [u8; 16],
+    file_hash_str: &str,
+    target_addr: SocketAddr,
+) -> Result<(), PeerError> {
     info!(
         "Requesting upload slot via OP_STARTUPLOADREQ for file {} from peer {}",
         file_hash_str,
         log_peer_addr(target_addr)
     );
-    out_wire.clear();
+    let mut out_wire = Vec::with_capacity(23);
     out_wire.push(PR_ED2K);
     out_wire.extend_from_slice(&(17u32).to_le_bytes());
     out_wire.push(OP_STARTUPLOADREQ);
     out_wire.extend_from_slice(&dl_hash_bytes);
-
-    if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(
+    stream.write_all(&out_wire).await.map_err(|e| {
+        PeerError::new(
             PeerFailureReason::ConnectRefused,
             format!("Failed to send OP_STARTUPLOADREQ: {e}"),
-        ));
+        )
+    })
+}
+
+/// eMule file re-ask cadence (`FILEREASKTIME`, Opcodes.h): while queued, the
+/// client resends the file-request bundle + `OP_STARTUPLOADREQ` every
+/// ~29 minutes. The remote uploader purges entries whose `LastUpRequest` is
+/// older than `MAX_PURGEQUEUETIME` (1 h), so this keep-alive is what actually
+/// preserves the queue position — a bare `OP_SETREQFILEID` does NOT refresh it.
+pub(crate) const FILE_REASK_INTERVAL: Duration = Duration::from_secs(29 * 60);
+
+/// Waits for `OP_ACCEPTUPLOADREQ` on the remote upload queue — eMule
+/// `DS_ONQUEUE`. Shared between the initial status query and the
+/// stall-recovery path (`CheckDownloadTimeout` → `SendCancelTransfer` → back
+/// to queue on the same socket).
+///
+/// `requeue_now` resends `OP_SETREQFILEID` + `OP_STARTUPLOADREQ` immediately
+/// (post-stall re-entry); the initial path already sent them before calling.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn wait_in_queue(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    target_addr: SocketAddr,
+    file_hash_str: &str,
+    dl_hash_bytes: [u8; 16],
+    address_str: &str,
+    sx_caps: &PeerSxCaps,
+    timeouts: &PeerTimeouts,
+    cancel_token: &mule_network_policy::CancellationToken,
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    event_tx: &broadcast::Sender<String>,
+    sequence: &Arc<AtomicU64>,
+    downloads: &Arc<Mutex<DownloadService>>,
+    sx_env: &SxEnv,
+    sx_local: &SxLocalIds,
+    sui: &mut super::sui::OutboundSui,
+    peer_ext_req: u8,
+    peer_supports_aich: bool,
+    mut file_status: Ed2kFileStatus,
+    requeue_now: bool,
+) -> Result<Ed2kFileStatus, PeerError> {
+    let encoder = Ed2kEncoder::default();
+    let decoder = Ed2kDecoder::default().with_extended_requests_version(peer_ext_req);
+    let codec = PacketCodec::new();
+    let mut out_wire = Vec::with_capacity(64);
+    let mut read_buf = BytesMut::with_capacity(65536);
+    let mut raw_buf = [0u8; 8192];
+    let file_status_req = Ed2kFileStatusReq {
+        file_hash: dl_hash_bytes,
+    };
+
+    if requeue_now {
+        let status_pkt = encoder
+            .encode_file_status_req(&file_status_req)
+            .map_err(|e| {
+                PeerError::new(
+                    PeerFailureReason::CorruptedData,
+                    format!("Failed to encode file status re-ask: {e}"),
+                )
+            })?;
+        out_wire.clear();
+        out_wire.push(status_pkt.protocol);
+        out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
+        out_wire.push(status_pkt.opcode);
+        out_wire.extend_from_slice(&status_pkt.payload);
+        if let Err(e) = stream.write_all(&out_wire).await {
+            return Err(PeerError::new(
+                PeerFailureReason::ConnectRefused,
+                format!("Failed to send file status re-ask: {e}"),
+            ));
+        }
+        send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
     }
 
-    // 7. Wait in upload queue
-    let mut last_queue_activity = tokio::time::Instant::now();
-    let mut last_keepalive_sent = tokio::time::Instant::now();
-    let keepalive_interval = Duration::from_secs(60);
+    // eMule re-ask cycle: resend the request bundle every FILE_REASK_INTERVAL;
+    // the peer is considered dead when nothing is heard for a whole
+    // re-ask interval + `queue_timeout` (a remote answering our re-asks keeps
+    // this alive indefinitely — eMule has no queue timeout at all).
+    let mut next_reask = tokio::time::Instant::now() + FILE_REASK_INTERVAL;
+    let mut activity_deadline =
+        tokio::time::Instant::now() + FILE_REASK_INTERVAL + timeouts.queue_timeout;
 
     'queue_loop: loop {
         tokio::select! {
             _ = cancel_token.cancelled() => {
                 return Err(PeerError::new(PeerFailureReason::KillSwitchAborted, "Connection aborted by kill switch while in queue"));
             }
-            _ = tokio::time::sleep_until(last_queue_activity + timeouts.queue_timeout) => {
-                return Err(PeerError::new(PeerFailureReason::TimeoutStatus, "Timed out waiting in queue without updates"));
+            _ = tokio::time::sleep_until(activity_deadline) => {
+                return Err(PeerError::new(PeerFailureReason::TimeoutStatus, "Peer silent for a full re-ask cycle in queue"));
             }
-            _ = tokio::time::sleep_until(last_keepalive_sent + keepalive_interval) => {
+            _ = tokio::time::sleep_until(next_reask) => {
+                next_reask = tokio::time::Instant::now() + FILE_REASK_INTERVAL;
+                // eMule `SendFileRequest` re-ask: file status request keeps
+                // the part bitmap fresh, then `OP_STARTUPLOADREQ` refreshes
+                // `LastUpRequest` on the remote queue (prevents the 1 h purge).
                 let status_pkt = encoder.encode_file_status_req(&file_status_req).map_err(|e| {
-                    PeerError::new(PeerFailureReason::CorruptedData, format!("Failed to encode keep-alive: {e}"))
+                    PeerError::new(PeerFailureReason::CorruptedData, format!("Failed to encode re-ask: {e}"))
                 })?;
                 out_wire.clear();
                 out_wire.push(status_pkt.protocol);
                 out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
                 out_wire.push(status_pkt.opcode);
                 out_wire.extend_from_slice(&status_pkt.payload);
-
                 if let Err(e) = stream.write_all(&out_wire).await {
-                    return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send keep-alive: {e}")));
+                    return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send re-ask: {e}")));
                 }
-                last_keepalive_sent = tokio::time::Instant::now();
+                send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
                 // Re-ask SX périodique — eMule attache la requête source au
                 // cycle de reask (`SendFileRequest` → `IsSourceRequestAllowed`).
                 // `complete_source` : le pair est source complète quand son
@@ -856,7 +967,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                         }
                     }
                     Ok(n) => {
-                        last_queue_activity = tokio::time::Instant::now();
+                        activity_deadline = tokio::time::Instant::now() + FILE_REASK_INTERVAL + timeouts.queue_timeout;
                         read_buf.extend_from_slice(&raw_buf[..n]);
                         if read_buf.len() > MAX_PEER_READ_BUFFER_SIZE {
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit while in queue"));
@@ -909,6 +1020,10 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                     0,
                                 ) {
                                     if status.file_hash == dl_hash_bytes {
+                                        // eMule ProcessFileStatus : le bitmap
+                                        // du pair est remplacé — le séquenceur
+                                        // recalcule la dispo à la reprise.
+                                        file_status = status.clone();
                                         let mut dl_svc = downloads.lock().await;
                                         if let Some(dl_id) = dl_svc
                                             .find_by_ed2k_hash(file_hash_str)

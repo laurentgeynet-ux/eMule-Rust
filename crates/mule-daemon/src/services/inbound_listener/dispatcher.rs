@@ -100,6 +100,11 @@ impl InboundListenerService {
         let client_key = peer_user_hash
             .map(|h| format!("uh:{}", hex::encode(h)))
             .unwrap_or_else(|| remote_str.clone());
+        // Signal de promotion depuis la file d'upload — eMule
+        // `AddUpNextClient` pousse OP_ACCEPTUPLOADREQ sur le socket que le
+        // client en attente garde ouvert ; sans lui le client ne serait
+        // servi qu'à son prochain re-ask (~30 min).
+        let mut promote_notify: Option<std::sync::Arc<tokio::sync::Notify>> = None;
 
         // Environnement SX partagé (policy + journaux de throttle eMule).
         let sx_env = self.sx_env();
@@ -118,6 +123,22 @@ impl InboundListenerService {
             tokio::select! {
                 _ = cancel_token.cancelled() => {
                     break;
+                }
+                _ = async {
+                    match &promote_notify {
+                        Some(n) => n.notified().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    // Le client vient d'être promu depuis la file — pousser
+                    // OP_ACCEPTUPLOADREQ (eMule `AddUpNextClient` écrit sur
+                    // le socket en attente).
+                    promote_notify = None;
+                    let mut out = Vec::new();
+                    out.push(PR_ED2K);
+                    out.extend_from_slice(&1u32.to_le_bytes());
+                    out.push(OP_ACCEPTUPLOADREQ);
+                    let _ = stream.write_all(&out).await;
                 }
                 read_res = stream.read(&mut raw_buf) => {
                     let n = match read_res {
@@ -868,6 +889,10 @@ impl InboundListenerService {
                                             out.push(OP_QUEUERANKING);
                                             out.extend_from_slice(&rank.to_le_bytes());
                                             let _ = stream.write_all(&out).await;
+                                            promote_notify = self
+                                                .upload_manager
+                                                .promotion_notify(&client_key)
+                                                .await;
                                         }
                                         _ => {}
                                     }
@@ -1141,6 +1166,10 @@ impl InboundListenerService {
                                             out.push(OP_QUEUERANKING);
                                             out.extend_from_slice(&rank.to_le_bytes());
                                             let _ = stream.write_all(&out).await;
+                                            promote_notify = self
+                                                .upload_manager
+                                                .promotion_notify(&client_key)
+                                                .await;
                                         }
                                         _ => {
                                             continue;

@@ -68,6 +68,38 @@ impl DownloadService {
                 let _ = db.update_status(&dl.id, DownloadStatus::Completed);
             }
 
+            // Le .part a été supprimé physiquement pendant que le daemon
+            // était arrêté : les plages persistées en DB pointent vers
+            // des données perdues — l'entrée est retirée comme une
+            // suppression de download. Garde : le dossier parent doit
+            // être joignable, sinon (lecteur débranché) impossible de
+            // distinguer une suppression d'un chemin inaccessible.
+            if !matches!(
+                dl.status,
+                DownloadStatus::Completed | DownloadStatus::Removed
+            ) && !dl.temp_path.exists()
+                && dl.temp_path.parent().is_some_and(|p| p.is_dir())
+            {
+                tracing::warn!(
+                    "Download {} ('{}'): .part file missing on disk — removing download entry",
+                    dl.id,
+                    dl.display_name
+                );
+                let _ = db.delete_download(&dl.id);
+                part_met::delete_part_met(&dl.temp_path);
+                history_categories::record_history_event(
+                    &mut db,
+                    &dl,
+                    covered,
+                    0,
+                    0,
+                    "removed",
+                    "unverified",
+                    None,
+                );
+                continue;
+            }
+
             let part_file = if dl.status == DownloadStatus::Completed {
                 None
             } else {
@@ -437,7 +469,14 @@ impl DownloadService {
         Ok(snapshot)
     }
 
-    /// Updates the eMule-style file priority ("low" | "normal" | "high").
+    /// Updates the eMule-style file priority ("low" | "normal" | "high" |
+    /// "auto"). "auto" is eMule `PR_AUTO` (`m_bAutoDownPriority`) : la
+    /// priorité effective est recalculée par l'allocateur à chaque tick
+    /// selon le nombre de sources (`UpdateAutoDownPriority` : plus de 100
+    /// sources → low, plus de 20 → normal, sinon → high). Choisir une
+    /// valeur manuelle désactive l'auto — le flag est la valeur stockée,
+    /// comme `FT_DLPRIORITY`.
+    ///
     /// The swarm allocator uses it to bias the slot quota per file.
     pub fn set_priority(
         &mut self,
@@ -448,9 +487,9 @@ impl DownloadService {
             .active
             .get_mut(id)
             .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
-        if !matches!(priority, "low" | "normal" | "high") {
+        if !matches!(priority, "low" | "normal" | "high" | "auto") {
             return Err(DaemonError::Business(format!(
-                "Invalid priority '{priority}' (expected low|normal|high)"
+                "Invalid priority '{priority}' (expected low|normal|high|auto)"
             )));
         }
         act.download.priority = priority.to_string();
@@ -1133,6 +1172,12 @@ impl DownloadService {
         peers_servers::add_shared_file(&mut self.db, file)
     }
 
+    /// eMule `UAPPref` (`GetNewAutoUp`) : les nouveaux fichiers partagés
+    /// démarrent-ils en priorité upload « auto » ? (défaut `true`).
+    pub fn auto_up_priority_enabled(&self) -> bool {
+        peers_servers::auto_up_priority_enabled(&self.db)
+    }
+
     /// Ajoute `delta` octets au total uploadé persisté d'un fichier partagé.
     pub fn add_share_uploaded_bytes(
         &mut self,
@@ -1228,7 +1273,11 @@ impl DownloadService {
         file_hash: &str,
     ) -> Result<Option<mule_core::model::SharedFile>, DaemonError> {
         if let Some(sf) = peers_servers::get_shared_file(&self.db, file_hash)? {
-            return Ok(Some(sf));
+            if sf.file_path.is_empty() || Path::new(&sf.file_path).is_file() {
+                return Ok(Some(sf));
+            }
+            // Entrée persistée dont le fichier n'existe plus : non
+            // servable — on laisse les sources synthétisées trancher.
         }
         for act in self.active.values() {
             if !act
@@ -1236,6 +1285,11 @@ impl DownloadService {
                 .ed2k_hash
                 .to_hex()
                 .eq_ignore_ascii_case(file_hash)
+            {
+                continue;
+            }
+            if act.download.status == DownloadStatus::Completed
+                && !act.download.target_path.is_file()
             {
                 continue;
             }
@@ -1324,10 +1378,23 @@ impl DownloadService {
     /// parts only), like eMule's `CSharedFileList` including `CPartFile`s.
     pub fn list_all_shared_files(&self) -> Result<Vec<mule_core::model::SharedFile>, DaemonError> {
         let mut list = self.list_shared_files()?;
+        // Les partages persistés dont le fichier a disparu du disque ne
+        // sont plus servables — filtrés à la lecture pour que ni l'UI,
+        // ni l'offre serveur, ni la publication Kad n'annoncent un
+        // fichier mort. Les entrées sans chemin (partage par hash seul)
+        // sont conservées.
+        list.retain(|f| f.file_path.is_empty() || Path::new(&f.file_path).is_file());
         let persisted: std::collections::HashSet<String> =
             list.iter().map(|f| f.file_hash.to_lowercase()).collect();
         for act in self.active.values() {
             if persisted.contains(&act.download.ed2k_hash.to_hex().to_lowercase()) {
+                continue;
+            }
+            // Même garde que `shared_entry_for_completed_db` : cible
+            // effacée physiquement → rien de servable à synthétiser.
+            if act.download.status == DownloadStatus::Completed
+                && !act.download.target_path.is_file()
+            {
                 continue;
             }
             let mut sf = Self::shared_entry_for_active(act);
