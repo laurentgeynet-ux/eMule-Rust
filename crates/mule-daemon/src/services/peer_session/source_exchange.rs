@@ -106,9 +106,12 @@ pub struct SxLocalIds {
     pub server_port: u16,
     /// Notre port TCP d'écoute eD2K.
     pub tcp_port: u16,
-    /// `true` quand notre `client_id` est un HighID (non `IsLowID`) —
-    /// eMule `!theApp.IsFirewalled()`.
+    /// `true` quand notre `client_id` est un HighID (non `IsLowID`).
     pub is_high_id: bool,
+    /// `CKademlia::IsConnected() && !IsFirewalled()` — avec `is_high_id`,
+    /// forme `!theApp.IsFirewalled()` : l'union détermine si une LowID
+    /// peut nous rappeler.
+    pub kad_open: bool,
 }
 
 /// Capacités SX annoncées par le pair distant + état de complétude.
@@ -475,9 +478,10 @@ pub async fn handle_sx_answer(
         }
 
         let addr_str = if src.is_low_id() {
-            // eMule `CanAddSource` : LowID inutilisable quand on est
-            // firewalled (impossible de recevoir son callback).
-            if !local.is_high_id {
+            // eMule `CanAddSource` : LowID refusée quand
+            // `theApp.IsFirewalled()` — ni HighID eD2K ni Kad UDP ouvert,
+            // donc impossible de recevoir son connect-back.
+            if !local.is_high_id && !local.kad_open {
                 dropped_lowid_firewalled += 1;
                 continue;
             }
@@ -532,6 +536,11 @@ pub async fn handle_sx_answer(
             buddy_id: None,
             software: None,
             availability: None,
+            // Serveur du source (eMule `m_dwServerIP`/`m_nServerPort`) — les
+            // LowIDs ne sont uniques que par serveur : le callback serveur
+            // n'est valable que si `IsLocalServer` matche notre serveur.
+            server_ip: src.server_ip,
+            server_port: src.server_port,
         });
     }
 
@@ -993,6 +1002,8 @@ mod tests {
             buddy_id: None,
             software: None,
             availability,
+            server_ip: 0,
+            server_port: 0,
         }
     }
 
@@ -1240,7 +1251,14 @@ mod tests {
             server_port: 4661,
             tcp_port: 4662,
             is_high_id: true,
+            kad_open: false,
         };
+        // HighID → `!IsFirewalled()` : les `lowid:` sont acceptées au
+        // funnel d'ingestion comme au filtre SX.
+        downloads
+            .lock()
+            .await
+            .set_lowid_source_acceptance(true);
 
         let sources = vec![
             // Valide : IP publique HighID.
@@ -1302,9 +1320,11 @@ mod tests {
         let env = test_env();
         let file_hash = [0x22; 16];
         let file_hash_str = hex::encode(file_hash);
-        // Nous-mêmes LowID → impossible de recevoir le callback.
+        // Nous-mêmes LowID sans Kad ouvert → `IsFirewalled()`, impossible
+        // de recevoir le callback.
         let local = SxLocalIds {
             is_high_id: false,
+            kad_open: false,
             ..SxLocalIds::default()
         };
         let sources = vec![

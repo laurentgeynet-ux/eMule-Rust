@@ -210,6 +210,9 @@ pub async fn search_sources_iterative(
                         buddy_id: buddy_hex,
                         software: None,
                         availability: None,
+                        // Kad results carry no server context (buddy path).
+                        server_ip: 0,
+                        server_port: 0,
                     });
                 }
             }

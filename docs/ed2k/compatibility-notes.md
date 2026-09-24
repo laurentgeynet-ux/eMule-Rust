@@ -452,3 +452,64 @@ pour B, transfert réel (≥1024 o injectés dans B), source A `rejected`.
 - Pas de `DontSwapTo` temporel ni d'`aggressiveSwapping` : le cap
   `MAX_A4AF_SWAPS` + exclusion du hash courant + cooldowns bornent
   déjà le ping-pong.
+
+## 12. LowID↔LowID (`DS_LOWTOLOWIP`/`DS_WAITCALLBACK`, `CanDoCallback`, `IsLocalServer`) — audit phase B, passe 6
+
+Références : `Emule.cpp:1056-1085` (`IsFirewalled`/`CanDoCallback`),
+`BaseClient.cpp:1342-1457` (`TryToConnect`), `PartFile.cpp:2368-2403`
+(`CanAddSource`, ingestion), `PartFile.cpp:2242-2261` (purge DS_LOWTOLOWIP
+30 s), `ServerConnect.cpp:519` (`IsLocalServer`),
+`DownloadClient.cpp:191-203` (parking `m_bReaskPending`).
+
+### Implémenté
+
+- **`CallbackCtx`** (`swarm_coordinator/lowid_callback.rs`) : contexte de
+  joignabilité par tick — `server_connected`, `server_high_id`, endpoint
+  du serveur connecté, `kad_open` (`CKademlia::IsConnected() &&
+  !IsFirewalled()` = socket UDP actif + `UdpFirewallStatus::Open`).
+- **`can_do_callback`** : port exact de `CemuleApp::CanDoCallback` —
+  sans Kad ouvert : `server_high_id` seul ; Kad ouvert + nous LowID :
+  refus des LowID **du même serveur** (relay sur nous-mêmes = violation
+  de protocole, ban chez eMule).
+- **`is_local_server`** : les LowIDs ne sont uniques que par serveur —
+  `OP_CALLBACKREQUEST` n'est émis que pour les sources dont le serveur
+  enregistré (`PeerSource.server_ip`/`server_port`, nouveaux champs
+  persistés, remplis par SX filaire et par l'endpoint du serveur
+  répondant TCP/UDP) matche notre serveur connecté. `server_ip == 0` →
+  local seulement si `origin == Server` ; `server_port == 0` → match IP
+  seule (réponses UDP globales).
+- **`DS_LOWTOLOWIP`** : source `lowid:`/`kadcb:` sans `can_do_callback`
+  → ignorée au dial (parquée, réévaluée à chaque tick quand notre état
+  change — `DS_ONQUEUE` eMule). Les `lowid:` étrangères (serveur
+  différent) alors qu'on est joignable → `Rejected` (deadlist), comme
+  eMule `Disconnected("LowID: No Callback Option available")`.
+- **Refus à l'ingestion** (`IsFirewalled` = ni HighID ni Kad ouvert) :
+  `DownloadService.accept_lowid_sources` rafraîchi par le coordinateur,
+  appliqué dans le funnel `upsert_peer_sources` pour tous les canaux
+  (`CPartFile::CanAddSource` `IsLowID && IsFirewalled` → drop) ; le
+  filtre SX existant gagne aussi l'exemption `kad_open` (`SxLocalIds`).
+- **`DS_WAITCALLBACK`** : pending callbacks existants (TTL 5 min,
+  adoption inbound par `client_id`/`IP`) — inchangé, conforme.
+- **Purge** : `unreachable_lowid` étendu à `!can_do_callback` (couvre le
+  cas même-serveur-LowID) ; eMule purge les DS_LOWTOLOWIP à ≥80 %.
+
+### Écarts assumés
+
+- **`OP_DIRECTCALLBACKREQ` sortant non implémenté** : eMule essaie en
+  premier un callback UDP direct sur `GetConnectIP():GetKadPort()` quand
+  la source a déjà annoncé sa vraie IP + `SupportsDirectUDPCallback` —
+  informations qu'une source `lowid:` apprise par SX/serveur ne porte
+  pas (`GetConnectIP() == 0` chez eMule aussi). Le cas ne vaut que pour
+  des LowID déjà connectés inbound (leur vraie IP connue) — chez nous
+  ils deviennent des sources `ip:port`. Inbound `OP_DIRECTCALLBACKREQ`
+  est lui déjà traité (rate-limit, gate Kad-firewalled, connect-back).
+- **`m_bReaskPending`** (`DownloadClient.cpp:193-198`) : eMule retarde
+  le re-ask download d'un LowID **dans notre file d'upload** en
+  espérant sa connexion inbound réutilisable — notre modèle n'a qu'un
+  rôle par socket (upload XOR download), la connexion inbound ne peut
+  pas servir de session download ; parquer équivaut au résultat.
+- **Cadence de purge unifiée 60 s** vs eMule 30 s (LOWTOLOWIP) / 40 s
+  (NNP) / 60 s (RQF) — eMule partage `m_lastpurgetime` entre les trois
+  critères, notre intervalle unique est entre les valeurs.
+- Pending callbacks serveur non purgés à la reconnexion serveur — le
+  TTL 5 min couvre le changement de namespace LowID.

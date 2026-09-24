@@ -89,6 +89,23 @@ impl InboundListenerService {
         listen_port: u16,
     ) -> crate::services::peer_session::source_exchange::SxLocalIds {
         use crate::services::peer_session::source_exchange::SxLocalIds;
+        // `CKademlia::IsConnected() && !IsFirewalled()` — socket UDP
+        // active + test firewall positif.
+        let kad_udp_svc = { self.kad_udp.read().unwrap().clone() };
+        let kad_open = match kad_udp_svc {
+            Some(svc) => {
+                let snap = svc.get_snapshot().await;
+                let fw_status = {
+                    let tracker = svc.firewall_tracker();
+                    let fw = tracker.lock().await;
+                    fw.status
+                };
+                snap.is_active
+                    && fw_status
+                        == crate::services::kad_udp::types::UdpFirewallStatus::Open
+            }
+            None => false,
+        };
         let session = self.server_session.read().unwrap().clone();
         match session {
             Some(sm) => {
@@ -108,10 +125,12 @@ impl InboundListenerService {
                     server_port,
                     tcp_port: listen_port,
                     is_high_id: snap.is_high_id,
+                    kad_open,
                 }
             }
             None => SxLocalIds {
                 tcp_port: listen_port,
+                kad_open,
                 ..SxLocalIds::default()
             },
         }

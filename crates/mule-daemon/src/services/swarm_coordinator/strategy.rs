@@ -547,6 +547,41 @@ impl SwarmCoordinator {
                 }
             };
 
+            // eMule `CemuleApp::CanDoCallback` (Emule.cpp:1067) :
+            // la joignabilité des sources LowID dépend de notre propre
+            // état — HighID serveur OU Kad connecté non firewalled — et,
+            // quand nous sommes LowID, du serveur sur lequel vit la source
+            // (`IsLocalServer`). `kad_open` = `CKademlia::IsConnected() &&
+            // !IsFirewalled()` : socket UDP actif + test firewall positif.
+            let cb_ctx = {
+                let udp_snap = self.state.kad.udp().get_snapshot().await;
+                let fw_status = {
+                    let tracker = self.state.kad.udp().firewall_tracker();
+                    let fw = tracker.lock().await;
+                    fw.status
+                };
+                super::lowid_callback::CallbackCtx {
+                    server_connected: client_id != 0,
+                    server_high_id: server_is_high_id,
+                    our_server_ip: server_ip,
+                    our_server_port: server_port,
+                    kad_open: udp_snap.is_active
+                        && fw_status
+                            == crate::services::kad_udp::types::UdpFirewallStatus::Open,
+                }
+            };
+
+            // eMule `CanAddSource` refuse les sources `lowid:` tant que
+            // `IsFirewalled()` (ni HighID eD2K ni Kad ouvert) — le flag est
+            // propagé au funnel d'ingestion `upsert_peer_sources` pour tous
+            // les canaux de découverte (serveur TCP/UDP, SX, inbound).
+            {
+                let mut dl_guard = self.state.downloads.lock().await;
+                dl_guard.set_lowid_source_acceptance(
+                    cb_ctx.server_high_id || cb_ctx.kad_open,
+                );
+            }
+
             // eMule `CPartFile::Process`: near the per-file source cap
             // (>= 80%), periodically drop sources that cannot serve us —
             // unreachable LowIDs, NNP-flagged and repeatedly failed sources.
@@ -560,7 +595,7 @@ impl SwarmCoordinator {
                     &hash_hex,
                     &candidate_sources,
                     file_max,
-                    server_is_high_id,
+                    &cb_ctx,
                     now_ms,
                 )
                 .await;
@@ -643,19 +678,37 @@ impl SwarmCoordinator {
                 // The target then connects inbound; the inbound listener
                 // matches it by client_id and adopts it as a download session.
                 if let Some(lowid_str) = src.address.strip_prefix("lowid:") {
-                    if !server_is_high_id {
-                        // Callbacks are useless while we are LowID ourselves:
-                        // the target cannot connect back to us.
-                        continue;
-                    }
                     let Ok(lowid) = lowid_str.parse::<u32>() else {
                         continue;
                     };
+                    // eMule `CemuleApp::CanDoCallback` — si ni notre ID
+                    // eD2K ni Kad ne permettent le connect-back, la source
+                    // reste parquée (eMule `DS_LOWTOLOWIP`, reprise
+                    // possible dès que notre état change).
+                    if !super::lowid_callback::can_do_callback(&src, &cb_ctx) {
+                        continue;
+                    }
                     // eMule `CanAddSource` : notre propre LowID répercuté par
                     // le serveur connecté ne doit pas être rappelé (les LowIDs
                     // ne sont uniques que par serveur — limité aux sources
                     // d'origine serveur comme chez eMule).
                     if lowid == client_id && src.origin == PeerSourceOrigin::Server {
+                        continue;
+                    }
+                    // `OP_CALLBACKREQUEST` ne joindra la LowID que si elle
+                    // vit sur notre serveur (`IsLocalServer`) — aucune autre
+                    // option eMule (direct callback, buddy) n'est portée par
+                    // les sources `lowid:`. Sans option, eMule supprime la
+                    // source (`Disconnected("No Callback Option")`).
+                    if !super::lowid_callback::has_server_callback_option(&src, &cb_ctx) {
+                        let mut dl_guard = self.state.downloads.lock().await;
+                        let _ = dl_guard.update_peer_source_status(
+                            &hash_hex,
+                            &src.address,
+                            PeerSourceStatus::Rejected,
+                            Some("LowID on a foreign server — no callback path"),
+                            None,
+                        );
                         continue;
                     }
                     if self.state.peer_session.has_pending_callback(lowid) {
@@ -700,6 +753,12 @@ impl SwarmCoordinator {
                     let Some(buddy_bytes) = src.buddy_id_bytes() else {
                         continue;
                     };
+                    // Le pair va tenter de se connecter à notre port TCP :
+                    // même condition `CanDoCallback` que les sources
+                    // `lowid:` (HighID serveur ou Kad ouvert).
+                    if !super::lowid_callback::can_do_callback(&src, &cb_ctx) {
+                        continue;
+                    }
                     if self.state.peer_session.has_pending_kad_callback(src_ip) {
                         continue;
                     }
@@ -1170,7 +1229,8 @@ impl SwarmCoordinator {
     ///
     /// Only runs when the file's known-source count reaches ~80% of its
     /// `maxSources` (`FT_MAXSOURCES` or the global per-file cap). Purged:
-    /// - `lowid:` sources we cannot call back (we are LowID ourselves);
+    /// - `lowid:`/`kadcb:` sources we cannot call back at all
+    ///   (`!CanDoCallback` — eMule `DS_LOWTOLOWIP`, purgées à 80 %);
     /// - `kadcb:` sources without a buddy id (unreachable);
     /// - sources flagged "no needed parts" (NNP) — their part mask covers
     ///   nothing we still need;
@@ -1188,7 +1248,7 @@ impl SwarmCoordinator {
         file_hash: &str,
         sources: &[mule_core::model::PeerSource],
         file_max: usize,
-        server_is_high_id: bool,
+        cb_ctx: &super::lowid_callback::CallbackCtx,
         now_ms: i64,
     ) {
         if file_max == 0 || sources.len() < file_max * 4 / 5 {
@@ -1234,8 +1294,10 @@ impl SwarmCoordinator {
                 .as_deref()
                 .map(|e| e.to_lowercase().contains("no needed parts"))
                 .unwrap_or(false);
-            let unreachable_lowid = (s.address.starts_with("lowid:") && !server_is_high_id)
-                || (s.address.starts_with("kadcb:") && s.buddy_id.is_none());
+            let unreachable_lowid = (s.address.starts_with("lowid:")
+                || s.address.starts_with("kadcb:"))
+                && (!super::lowid_callback::can_do_callback(s, cb_ctx)
+                    || (s.address.starts_with("kadcb:") && s.buddy_id.is_none()));
             let repeatedly_failed = s.status == PeerSourceStatus::Failed && s.fail_count >= 3;
             let remote_queue_full = rqf_source(&s);
             if !(nnp || unreachable_lowid || repeatedly_failed || remote_queue_full) {
@@ -1424,6 +1486,8 @@ mod tests {
             buddy_id: None,
             software: None,
             availability: None,
+            server_ip: 0,
+            server_port: 0,
         }
     }
 
@@ -1449,6 +1513,18 @@ mod tests {
             )
             .unwrap();
         crate::state::AppState::new(config, downloads)
+    }
+
+    /// Contexte « LowID sans Kad » — `can_do_callback` faux pour toute
+    /// source (équivalent de l'ancien `server_is_high_id = false`).
+    fn test_cb_ctx() -> super::super::lowid_callback::CallbackCtx {
+        super::super::lowid_callback::CallbackCtx {
+            server_connected: true,
+            server_high_id: false,
+            our_server_ip: 0,
+            our_server_port: 0,
+            kad_open: false,
+        }
     }
 
     fn coordinator(state: crate::state::AppState) -> SwarmCoordinator {
@@ -1504,7 +1580,7 @@ mod tests {
             .unwrap()
             .as_millis() as i64;
         coord
-            .purge_excess_sources(&hash, &sources, file_max, false, now_ms)
+            .purge_excess_sources(&hash, &sources, file_max, &test_cb_ctx(), now_ms)
             .await;
 
         // La source RQF est supprimée de la liste persistée.
@@ -1553,7 +1629,7 @@ mod tests {
             .unwrap()
             .as_millis() as i64;
         coord
-            .purge_excess_sources(&hash, &sources, 10, false, now_ms)
+            .purge_excess_sources(&hash, &sources, 10, &test_cb_ctx(), now_ms)
             .await;
 
         let remaining = state

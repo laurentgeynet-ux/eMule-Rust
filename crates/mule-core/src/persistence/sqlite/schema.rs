@@ -321,6 +321,27 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
         conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN availability BLOB;")?;
     }
 
+    let mut stmt_peer4 = conn.prepare("PRAGMA table_info(peer_sources)")?;
+    let mut rows_peer4 = stmt_peer4.query([])?;
+    let (mut has_server_ip, mut has_server_port) = (false, false);
+    while let Some(row) = rows_peer4.next()? {
+        let col: String = row.get(1)?;
+        if col == "server_ip" {
+            has_server_ip = true;
+        }
+        if col == "server_port" {
+            has_server_port = true;
+        }
+    }
+    drop(rows_peer4);
+    drop(stmt_peer4);
+    if !has_server_ip {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN server_ip INTEGER DEFAULT 0;")?;
+    }
+    if !has_server_port {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN server_port INTEGER DEFAULT 0;")?;
+    }
+
     let mut stmt_sf = conn.prepare("PRAGMA table_info(shared_files)")?;
     let mut rows_sf = stmt_sf.query([])?;
     let mut has_aich_root = false;

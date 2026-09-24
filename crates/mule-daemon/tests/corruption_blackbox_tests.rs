@@ -33,6 +33,8 @@ fn make_source(file_hash: &str, addr: &str) -> PeerSource {
         buddy_id: None,
         software: None,
         availability: None,
+        server_ip: 0,
+        server_port: 0,
     }
 }
 

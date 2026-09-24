@@ -545,6 +545,10 @@ pub(crate) async fn perform_peer_handshake(
                                             buddy_id: None,
                                             software: Some(software.trim().to_string()),
                                             availability: None,
+                                            // Serveur du pair appris via le
+                                            // hello (eMule `m_dwServerIP`).
+                                            server_ip: ans.server_ip,
+                                            server_port: ans.server_port,
                                         };
                                         let _ = downloads.lock().await.upsert_peer_sources(file_hash_str, &[updated_src]);
 

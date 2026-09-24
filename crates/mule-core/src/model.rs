@@ -422,6 +422,17 @@ pub struct PeerSource {
     /// (`ceil(part_count/8)` bytes, bit set = source has the part).
     #[serde(default)]
     pub availability: Option<Vec<u8>>,
+    /// eD2K server (IPv4, little-endian u32) the source is connected to —
+    /// eMule `m_dwServerIP`. Decoded from source-exchange entries and filled
+    /// with the answering server for `OP_FOUNDSOURCES` results. 0 = unknown.
+    /// LowIDs are only unique per server: a `lowid:` source is callable via
+    /// `OP_CALLBACKREQUEST` only when this matches our connected server
+    /// (eMule `CServerConnect::IsLocalServer`).
+    #[serde(default)]
+    pub server_ip: u32,
+    /// eD2K server port of the source — eMule `m_nServerPort`. 0 = unknown.
+    #[serde(default)]
+    pub server_port: u16,
 }
 
 impl PeerSource {

@@ -225,6 +225,8 @@ mod tests {
             buddy_id: None,
             software: None,
             availability: None,
+            server_ip: 0,
+            server_port: 0,
         }
     }
 

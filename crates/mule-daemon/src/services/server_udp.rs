@@ -151,7 +151,14 @@ impl ServerUdpService {
                         }
                         match server_udp::decode_server_udp(&buf[..len]) {
                             Ok(ServerUdpMessage::GlobFoundSources(entries)) => {
-                                handle_glob_found_sources(&downloads_arc, entries).await;
+                                let responder_ip = match peer_addr.ip() {
+                                    std::net::IpAddr::V4(v4) => {
+                                        u32::from_le_bytes(v4.octets())
+                                    }
+                                    _ => 0,
+                                };
+                                handle_glob_found_sources(&downloads_arc, entries, responder_ip)
+                                    .await;
                             }
                             Ok(ServerUdpMessage::GlobServStatRes {
                                 challenge,
@@ -379,10 +386,13 @@ impl ServerUdpService {
 
 /// Ingests `OP_GLOBFOUNDSOURCES` entries into the peer source DB —
 /// same filtering as the TCP `FoundSources` path (invalid IPs rejected,
-/// LowID sources kept as `lowid:<id>` for server callback).
+/// LowID sources kept as `lowid:<id>` for server callback). The responder's
+/// IP is recorded as the sources' server (eMule `m_dwServerIP`) so the
+/// dialer can tell local-server LowIDs from foreign ones.
 async fn handle_glob_found_sources(
     downloads: &Arc<std::sync::RwLock<Option<Arc<Mutex<DownloadService>>>>>,
     entries: Vec<server_udp::GlobFoundSourcesEntry>,
+    responder_ip: u32,
 ) {
     let downloads = downloads.read().unwrap().clone();
     let Some(dl_service) = downloads else {
@@ -434,6 +444,10 @@ async fn handle_glob_found_sources(
                 buddy_id: None,
                 software: None,
                 availability: None,
+                // Serveur répondant (IP seule — son port TCP est inconnu du
+                // canal UDP ; la localité se compare alors sur l'IP).
+                server_ip: responder_ip,
+                server_port: 0,
             });
         }
 

@@ -31,6 +31,8 @@ fn test_peer_sources_crud_and_deduplication() {
         buddy_id: None,
         software: None,
         availability: None,
+        server_ip: 0,
+        server_port: 0,
     };
 
     let s2 = PeerSource {
@@ -50,6 +52,8 @@ fn test_peer_sources_crud_and_deduplication() {
         buddy_id: None,
         software: None,
         availability: None,
+        server_ip: 0,
+        server_port: 0,
     };
 
     let inserted = db

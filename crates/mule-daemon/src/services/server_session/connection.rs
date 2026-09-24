@@ -491,6 +491,16 @@ pub fn spawn_connection_task(
                                                                                 continue;
                                                                             }
 
+                                                                            // Sources answered by the connected
+                                                                            // server live on it (eMule records
+                                                                            // the answering server's
+                                                                            // `nServerIP`/`nServerPort`).
+                                                                            let (srv_ip, srv_port) = match target_addr.ip() {
+                                                                                std::net::IpAddr::V4(v4) => {
+                                                                                    (u32::from_le_bytes(v4.octets()), target_addr.port())
+                                                                                }
+                                                                                _ => (0u32, 0u16),
+                                                                            };
                                                                             discovered.push(PeerSource {
                                                                                 file_hash: file_hash_hex.clone(),
                                                                                 address: addr_str,
@@ -508,6 +518,8 @@ pub fn spawn_connection_task(
                                                                                 buddy_id: None,
             software: None,
                                                                                 availability: None,
+                                                                                server_ip: srv_ip,
+                                                                                server_port: srv_port,
                                                                             });
                                                                         }
 
@@ -568,6 +580,15 @@ pub fn spawn_connection_task(
                                                                                 continue;
                                                                             }
 
+                                                                            // Sources answered by the connected
+                                                                            // server live on it (eMule
+                                                                            // `nServerIP`/`nServerPort`).
+                                                                            let (srv_ip, srv_port) = match target_addr.ip() {
+                                                                                std::net::IpAddr::V4(v4) => {
+                                                                                    (u32::from_le_bytes(v4.octets()), target_addr.port())
+                                                                                }
+                                                                                _ => (0u32, 0u16),
+                                                                            };
                                                                             discovered.push(PeerSource {
                                                                                 file_hash: file_hash_hex.clone(),
                                                                                 address: addr_str,
@@ -585,6 +606,8 @@ pub fn spawn_connection_task(
                                                                                 availability: None,
                                                                                 crypt_options: src.obf_settings,
                                                                                 buddy_id: None,
+                                                                                server_ip: srv_ip,
+                                                                                server_port: srv_port,
                                                                             });
                                                                         }
 

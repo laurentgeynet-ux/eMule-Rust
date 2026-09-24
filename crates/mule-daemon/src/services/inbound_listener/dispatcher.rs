@@ -886,6 +886,8 @@ impl InboundListenerService {
                                                     buddy_id: None,
                                                     software: None,
                                                     availability: peer_masks.get(&file_hash).cloned(),
+                                                    server_ip: 0,
+                                                    server_port: 0,
                                                 };
                                                 let mut dl_svc = self.downloads.lock().await;
                                                 let _ = dl_svc.upsert_peer_sources(&hash_hex, &[src]);

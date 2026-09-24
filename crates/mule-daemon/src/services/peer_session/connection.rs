@@ -109,12 +109,26 @@ pub(crate) async fn run_peer_connection(
         sx2: handshake_res.peer_supports_sx2,
         complete_source: false,
     };
+    let kad_open = match &kad_service {
+        Some(kad) => {
+            let udp_snap = kad.udp().get_snapshot().await;
+            let fw_status = {
+                let tracker = kad.udp().firewall_tracker();
+                let fw = tracker.lock().await;
+                fw.status
+            };
+            udp_snap.is_active
+                && fw_status == crate::services::kad_udp::types::UdpFirewallStatus::Open
+        }
+        None => false,
+    };
     let sx_local = SxLocalIds {
         client_id,
         server_ip,
         server_port,
         tcp_port: client_port,
         is_high_id: client_id >= 16_777_216,
+        kad_open,
     };
     // 8-10. Multi-source block planner, request blocks, and streaming
     // transfers — with socket-level A4AF swap on NNP/FNF

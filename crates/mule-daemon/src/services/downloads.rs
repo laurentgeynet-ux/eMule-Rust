@@ -55,6 +55,14 @@ pub struct DownloadService {
     /// IPs bannies pour la session par le `CorruptionBlackBox` (eMule
     /// `clientlist->AddBannedClient` — portée session, tous fichiers).
     banned_source_ips: std::collections::HashSet<std::net::IpAddr>,
+    /// `!theApp.IsFirewalled()` — le daemon accepte les sources `lowid:`
+    /// uniquement tant qu'il est joignable pour un connect-back (HighID
+    /// eD2K ou Kad UDP ouvert vérifié) ; sinon aucun `OP_CALLBACKREQUEST`
+    /// ne peut les faire nous rappeler (eMule `CPartFile::CanAddSource`,
+    /// `PartFile.cpp:2397-2402`, refus à l'ingestion). Rafraîchi par le
+    /// swarm coordinator à chaque tick ; `false` au démarrage — eMule
+    /// naît firewalled jusqu'à attribution d'un ID ou ouverture Kad.
+    accept_lowid_sources: bool,
 }
 
 impl DownloadService {
@@ -172,6 +180,7 @@ impl DownloadService {
             active,
             session_start_ms,
             banned_source_ips: Default::default(),
+            accept_lowid_sources: false,
             event_tx: None,
             sequence: None,
         })
@@ -187,6 +196,7 @@ impl DownloadService {
             active: HashMap::new(),
             session_start_ms: now_ms(),
             banned_source_ips: Default::default(),
+            accept_lowid_sources: false,
             event_tx: None,
             sequence: None,
         })
@@ -831,6 +841,15 @@ impl DownloadService {
         peers_servers::clear_servers(&mut self.db)
     }
 
+    /// Met à jour `!theApp.IsFirewalled()` — appelé par le swarm
+    /// coordinator à chaque tick (HighID eD2K ou Kad UDP ouvert vérifié).
+    /// Tant que nous sommes injoignables, les sources `lowid:` sont
+    /// refusées à l'ingestion : aucun callback ne peut nous faire
+    /// rappeler (`CPartFile::CanAddSource`, `PartFile.cpp:2397-2402`).
+    pub fn set_lowid_source_acceptance(&mut self, accept: bool) {
+        self.accept_lowid_sources = accept;
+    }
+
     pub fn upsert_peer_sources(
         &mut self,
         file_hash: &str,
@@ -838,9 +857,14 @@ impl DownloadService {
     ) -> Result<usize, DaemonError> {
         // eMule `AddSources` : les clients bannis (`IsBannedClient`) sont
         // ignorés dès l'ingestion, quel que soit le canal de découverte.
+        // `IsLowID && IsFirewalled` est refusé au même endroit chez eMule
+        // (`CanAddSource`) — une LowID ne sert à rien tant que nous ne
+        // pouvons pas être rappelés.
+        let accept_lowid = self.accept_lowid_sources;
         let filtered: Vec<mule_core::model::PeerSource> = sources
             .iter()
             .filter(|s| !self.is_source_banned(&s.address))
+            .filter(|s| accept_lowid || !s.address.starts_with("lowid:"))
             .cloned()
             .collect();
         if filtered.is_empty() {

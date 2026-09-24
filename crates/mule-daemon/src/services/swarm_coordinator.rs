@@ -9,6 +9,7 @@
 //!    requests network policy permits, and establishes peer sessions up to MAX_PEERS_PER_DOWNLOAD.
 //! 3. Lifecycle state propagation: automatically moves downloads from Queued/Waiting to Downloading.
 
+pub mod lowid_callback;
 pub mod strategy;
 pub mod types;
 
