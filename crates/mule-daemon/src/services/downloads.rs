@@ -25,6 +25,14 @@ pub use types::{
     MAX_IMPORT_PART_COUNT, MAX_IMPORT_TOTAL_SIZE,
 };
 
+/// Fabrique une closure `map_err` enveloppant une erreur de persistance en
+/// `DaemonError::Business` avec un contexte lisible : `"DB error {context}: {e}"`.
+pub(crate) fn db_err<E: std::fmt::Display>(
+    context: &'static str,
+) -> impl FnOnce(E) -> DaemonError {
+    move |e| DaemonError::Business(format!("DB error {context}: {e}"))
+}
+
 pub struct DownloadService {
     db: Database,
     temp_dir: PathBuf,
@@ -616,19 +624,19 @@ impl DownloadService {
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, DaemonError> {
         self.db
             .get_setting(key)
-            .map_err(|e| DaemonError::Business(format!("DB error reading setting: {e}")))
+            .map_err(db_err("reading setting"))
     }
 
     pub fn set_setting(&mut self, key: &str, value: &str) -> Result<(), DaemonError> {
         self.db
             .set_setting(key, value)
-            .map_err(|e| DaemonError::Business(format!("DB error saving setting: {e}")))
+            .map_err(db_err("saving setting"))
     }
 
     pub fn remove_setting(&mut self, key: &str) -> Result<bool, DaemonError> {
         self.db
             .remove_setting(key)
-            .map_err(|e| DaemonError::Business(format!("DB error removing setting: {e}")))
+            .map_err(db_err("removing setting"))
     }
 
     pub fn query_history(
@@ -736,9 +744,7 @@ impl DownloadService {
 
         self.db
             .set_download_category(download_id, cat_opt.as_deref())
-            .map_err(|e| {
-                DaemonError::Business(format!("DB error setting download category: {e}"))
-            })?;
+            .map_err(db_err("setting download category"))?;
 
         let now = now_ms();
         let active = self.active.get_mut(download_id).unwrap();
@@ -1025,7 +1031,7 @@ impl DownloadService {
     ) -> Result<(), DaemonError> {
         self.db
             .store_part_hashes(&hex_hash.trim().to_lowercase(), part_hashes)
-            .map_err(|e| DaemonError::Business(format!("DB error storing part hashes: {e}")))
+            .map_err(db_err("storing part hashes"))
     }
 
     /// Loads the per-part MD4 hashset for a file hash, if known.
@@ -1143,7 +1149,7 @@ impl DownloadService {
     ) -> Result<bool, DaemonError> {
         self.db
             .set_shared_aich_root(file_hash, aich_root)
-            .map_err(|e| DaemonError::Business(format!("DB error: {e}")))
+            .map_err(db_err("setting share AICH root"))
     }
 
     pub fn get_completed_ranges_by_hash(&self, hex_hash: &str) -> Vec<(u64, u64)> {
@@ -1452,7 +1458,7 @@ impl DownloadService {
         if let Some(id) = active_id {
             self.db
                 .set_download_category(&id, cat.as_deref())
-                .map_err(|e| DaemonError::Business(format!("DB error setting category: {e}")))?;
+                .map_err(db_err("setting category"))?;
             if let Some(a) = self.active.get_mut(&id) {
                 a.download.category_id = cat.clone();
             }
@@ -1468,9 +1474,7 @@ impl DownloadService {
             if let Some(id) = db_id {
                 self.db
                     .set_download_category(&id, cat.as_deref())
-                    .map_err(|e| {
-                        DaemonError::Business(format!("DB error setting category: {e}"))
-                    })?;
+                    .map_err(db_err("setting category"))?;
                 touched = true;
             }
         }
@@ -1478,7 +1482,7 @@ impl DownloadService {
         if self
             .db
             .set_shared_file_category(file_hash, cat.as_deref())
-            .map_err(|e| DaemonError::Business(format!("DB error setting share category: {e}")))?
+            .map_err(db_err("setting share category"))?
         {
             touched = true;
         }

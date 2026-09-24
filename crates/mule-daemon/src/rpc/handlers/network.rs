@@ -184,7 +184,7 @@ pub async fn handle_network_set_budgets(
 
 pub async fn handle_filter_get_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let stats = state.network_policy.ip_filter().stats();
-    Ok(serde_json::to_value(stats).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&stats))
 }
 
 pub async fn handle_filter_import_file(

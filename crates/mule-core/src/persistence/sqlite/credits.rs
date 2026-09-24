@@ -53,25 +53,39 @@ pub fn get_peer_credit(
     }
 }
 
-pub fn record_credit_upload(
+/// Ajoute `bytes` au compteur `column` (`uploaded_bytes` ou `downloaded_bytes`).
+/// Le nom de colonne est une constante interne — jamais d'entrée utilisateur.
+fn record_credit_delta(
     conn: &mut Connection,
     pubkey_hash: &str,
     pubkey_hex: &str,
     bytes: u64,
+    column: &str,
 ) -> Result<(), CoreError> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64;
     conn.execute(
-        "INSERT INTO peer_credits (pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms)
-         VALUES (?1, ?2, ?3, 0, ?4, ?4)
-         ON CONFLICT(pubkey_hash) DO UPDATE SET
-            uploaded_bytes = uploaded_bytes + ?3,
-            last_seen_unix_ms = ?4",
+        &format!(
+            "INSERT INTO peer_credits (pubkey_hash, pubkey_hex, {column}, first_seen_unix_ms, last_seen_unix_ms)
+             VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(pubkey_hash) DO UPDATE SET
+                {column} = {column} + ?3,
+                last_seen_unix_ms = ?4"
+        ),
         params![pubkey_hash, pubkey_hex, bytes as i64, now],
     )?;
     Ok(())
+}
+
+pub fn record_credit_upload(
+    conn: &mut Connection,
+    pubkey_hash: &str,
+    pubkey_hex: &str,
+    bytes: u64,
+) -> Result<(), CoreError> {
+    record_credit_delta(conn, pubkey_hash, pubkey_hex, bytes, "uploaded_bytes")
 }
 
 pub fn record_credit_download(
@@ -80,19 +94,7 @@ pub fn record_credit_download(
     pubkey_hex: &str,
     bytes: u64,
 ) -> Result<(), CoreError> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64;
-    conn.execute(
-        "INSERT INTO peer_credits (pubkey_hash, pubkey_hex, uploaded_bytes, downloaded_bytes, first_seen_unix_ms, last_seen_unix_ms)
-         VALUES (?1, ?2, 0, ?3, ?4, ?4)
-         ON CONFLICT(pubkey_hash) DO UPDATE SET
-            downloaded_bytes = downloaded_bytes + ?3,
-            last_seen_unix_ms = ?4",
-        params![pubkey_hash, pubkey_hex, bytes as i64, now],
-    )?;
-    Ok(())
+    record_credit_delta(conn, pubkey_hash, pubkey_hex, bytes, "downloaded_bytes")
 }
 
 pub fn list_peer_credits(conn: &Connection, limit: usize) -> Result<Vec<PeerCredit>, CoreError> {

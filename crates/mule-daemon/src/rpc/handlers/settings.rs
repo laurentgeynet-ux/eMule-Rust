@@ -51,31 +51,7 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
 
 pub async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let dl_count = state.downloads.lock().await.list_downloads().len();
-    let capabilities = vec![
-        "downloads",
-        "download-events",
-        "history",
-        "categories",
-        "import_part_met",
-        "network-policy",
-        "ip-filter",
-        "rate-limits",
-        "servers",
-        "server-connection",
-        "server-search",
-        "server-sources",
-        "peer-sources",
-        "peer-connection",
-        "peer-robustness",
-        "swarm-dual-source",
-        "shared-files",
-        "upload-single-slot",
-        "secure-ident",
-        "peer-credits",
-        "kad-contacts",
-        #[cfg(feature = "lab-tools")]
-        "lab-tools",
-    ];
+    let capabilities = crate::rpc::capabilities::daemon_capabilities();
 
     let default_dl_dir = {
         state

@@ -5,14 +5,14 @@ use std::fmt;
 
 /// A peer source discovered through an eD2K link or source exchange.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerSource {
+pub struct LinkSource {
     pub host: String,
     pub port: u16,
     pub crypt_options: Option<u8>,
     pub client_hash: Option<[u8; 16]>,
 }
 
-impl PeerSource {
+impl LinkSource {
     pub fn new(host: impl Into<String>, port: u16) -> Self {
         Self {
             host: host.into(),
@@ -54,7 +54,7 @@ impl PeerSource {
     }
 }
 
-impl fmt::Display for PeerSource {
+impl fmt::Display for LinkSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.host, self.port)?;
         if let Some(hash) = &self.client_hash {

@@ -15,24 +15,24 @@ fn test_nominal_server_met_roundtrip() {
     entry1.tags.push(Tag {
         name_id: SN_NAME,
         name: String::new(),
-        value: TagValue::String("eMule Security No1".to_string()),
+        value: MetTagValue::String("eMule Security No1".to_string()),
     });
     entry1.tags.push(Tag {
         name_id: SN_DESCRIPTION,
         name: String::new(),
-        value: TagValue::String("Primary secure server".to_string()),
+        value: MetTagValue::String("Primary secure server".to_string()),
     });
     entry1.tags.push(Tag {
         name_id: SN_PING,
         name: String::new(),
-        value: TagValue::Uint64(45),
+        value: MetTagValue::Uint64(45),
     });
 
     let mut entry2 = ServerEntry::new(Ipv4Addr::new(212, 83, 150, 5), 4242, "Peerates.net");
     entry2.tags.push(Tag {
         name_id: SN_NAME,
         name: String::new(),
-        value: TagValue::String("Peerates.net".to_string()),
+        value: MetTagValue::String("Peerates.net".to_string()),
     });
 
     let file = ServerMetFile {

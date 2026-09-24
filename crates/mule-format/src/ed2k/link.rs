@@ -5,7 +5,7 @@ use std::fmt;
 use url::Url;
 
 use crate::ed2k::hash::Ed2kHash;
-use crate::ed2k::source::PeerSource;
+use crate::ed2k::source::LinkSource;
 use crate::error::FormatError;
 
 const MAX_LINK_LENGTH: usize = 8192;
@@ -21,7 +21,7 @@ pub struct Ed2kFileLink {
     pub aich_root: Option<[u8; 20]>,
     pub part_hashes: Vec<[u8; 16]>,
     pub web_sources: Vec<Url>,
-    pub peer_sources: Vec<PeerSource>,
+    pub peer_sources: Vec<LinkSource>,
     pub unknown_fields: Vec<String>,
 }
 
@@ -133,7 +133,7 @@ impl Ed2kFileLink {
             let cleaned = extra_section.trim_end_matches('/').trim_end_matches('|');
             if let Some(sources_list) = cleaned.strip_prefix("sources,") {
                 for src_item in sources_list.split(',') {
-                    if let Some(src) = PeerSource::parse(src_item) {
+                    if let Some(src) = LinkSource::parse(src_item) {
                         if peer_sources.len() < MAX_SOURCES_COUNT {
                             peer_sources.push(src);
                         }

@@ -17,12 +17,12 @@ pub async fn handle_history_list(
     };
 
     let entries = state.downloads.lock().await.query_history(&filter)?;
-    Ok(serde_json::to_value(entries).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&entries))
 }
 
 pub async fn handle_history_stats(state: &AppState) -> Result<Value, JsonRpcError> {
     let stats = state.downloads.lock().await.get_history_stats()?;
-    Ok(serde_json::to_value(stats).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&stats))
 }
 
 pub async fn handle_history_clear(state: &AppState) -> Result<Value, JsonRpcError> {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-use std::fs::File;
 use std::io::{Read, Write};
 use std::net::Ipv4Addr;
 use std::path::Path;
@@ -55,10 +54,7 @@ pub struct ServerMetFile {
 
 impl ServerMetFile {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, MetError> {
-        let mut file = File::open(path).map_err(|e| MetError::Io {
-            offset: 0,
-            message: e.to_string(),
-        })?;
+        let mut file = crate::met::reader::open_met_file(path)?;
         Self::read_from(&mut file)
     }
 
@@ -120,37 +116,37 @@ impl ServerMetFile {
                 let tag = cr.read_tag()?;
                 match tag.name_id {
                     SN_NAME => {
-                        if let TagValue::String(ref s) = tag.value {
+                        if let MetTagValue::String(ref s) = tag.value {
                             name = s.clone();
                         }
                     }
                     SN_DESCRIPTION => {
-                        if let TagValue::String(ref s) = tag.value {
+                        if let MetTagValue::String(ref s) = tag.value {
                             description = s.clone();
                         }
                     }
                     SN_PING => {
-                        if let TagValue::Uint64(v) = tag.value {
+                        if let MetTagValue::Uint64(v) = tag.value {
                             ping = v as u32;
                         }
                     }
                     SN_PREFERENCE => {
-                        if let TagValue::Uint64(v) = tag.value {
+                        if let MetTagValue::Uint64(v) = tag.value {
                             preference = v as u32;
                         }
                     }
                     SN_FAIL => {
-                        if let TagValue::Uint64(v) = tag.value {
+                        if let MetTagValue::Uint64(v) = tag.value {
                             failed_count = v as u32;
                         }
                     }
                     SN_DYNIP => {
-                        if let TagValue::String(ref s) = tag.value {
+                        if let MetTagValue::String(ref s) = tag.value {
                             dyn_ip = Some(s.clone());
                         }
                     }
                     SN_VERSION => {
-                        if let TagValue::String(ref s) = tag.value {
+                        if let MetTagValue::String(ref s) = tag.value {
                             version_str = Some(s.clone());
                         }
                     }
@@ -198,8 +194,8 @@ impl ServerMetFile {
                 let is_numeric = tag.name_id != 0;
                 let name_bytes = tag.name.as_bytes();
                 let type_byte = match &tag.value {
-                    TagValue::String(_) => TAGTYPE_STRING,
-                    TagValue::Uint64(v) => {
+                    MetTagValue::String(_) => TAGTYPE_STRING,
+                    MetTagValue::Uint64(v) => {
                         if *v <= u8::MAX as u64 {
                             TAGTYPE_UINT8
                         } else if *v <= u16::MAX as u64 {
@@ -210,11 +206,11 @@ impl ServerMetFile {
                             TAGTYPE_UINT64
                         }
                     }
-                    TagValue::Float32(_) => TAGTYPE_FLOAT32,
-                    TagValue::Hash16(_) => TAGTYPE_HASH16,
-                    TagValue::Blob(_) => TAGTYPE_BLOB,
-                    TagValue::Bsob(_) => TAGTYPE_BSOB,
-                    TagValue::Bool(_) => TAGTYPE_BOOL,
+                    MetTagValue::Float32(_) => TAGTYPE_FLOAT32,
+                    MetTagValue::Hash16(_) => TAGTYPE_HASH16,
+                    MetTagValue::Blob(_) => TAGTYPE_BLOB,
+                    MetTagValue::Bsob(_) => TAGTYPE_BSOB,
+                    MetTagValue::Bool(_) => TAGTYPE_BOOL,
                 };
 
                 writer.write_all(&[type_byte])?;
@@ -227,24 +223,24 @@ impl ServerMetFile {
                 }
 
                 match &tag.value {
-                    TagValue::String(s) => {
+                    MetTagValue::String(s) => {
                         let bytes = s.as_bytes();
                         writer.write_all(&(bytes.len() as u16).to_le_bytes())?;
                         writer.write_all(bytes)?;
                     }
-                    TagValue::Uint64(v) => match type_byte {
+                    MetTagValue::Uint64(v) => match type_byte {
                         TAGTYPE_UINT8 => writer.write_all(&[*v as u8])?,
                         TAGTYPE_UINT16 => writer.write_all(&(*v as u16).to_le_bytes())?,
                         TAGTYPE_UINT32 => writer.write_all(&(*v as u32).to_le_bytes())?,
                         _ => writer.write_all(&v.to_le_bytes())?,
                     },
-                    TagValue::Float32(f) => writer.write_all(&f.to_le_bytes())?,
-                    TagValue::Hash16(h) => writer.write_all(&h.0)?,
-                    TagValue::Blob(b) | TagValue::Bsob(b) => {
+                    MetTagValue::Float32(f) => writer.write_all(&f.to_le_bytes())?,
+                    MetTagValue::Hash16(h) => writer.write_all(&h.0)?,
+                    MetTagValue::Blob(b) | MetTagValue::Bsob(b) => {
                         writer.write_all(&(b.len() as u32).to_le_bytes())?;
                         writer.write_all(b)?;
                     }
-                    TagValue::Bool(b) => writer.write_all(&[if *b { 1 } else { 0 }])?,
+                    MetTagValue::Bool(b) => writer.write_all(&[if *b { 1 } else { 0 }])?,
                 }
             }
         }

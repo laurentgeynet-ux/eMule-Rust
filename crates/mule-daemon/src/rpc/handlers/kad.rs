@@ -8,7 +8,7 @@ use crate::state::AppState;
 
 pub async fn handle_kad_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let status = state.kad.get_status().await;
-    Ok(serde_json::to_value(status).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&status))
 }
 
 pub async fn handle_kad_inspect_nodes_dat(
@@ -37,7 +37,7 @@ pub async fn handle_kad_inspect_nodes_dat(
         .inspect_nodes_dat(&bytes)
         .map_err(JsonRpcError::business)?;
 
-    Ok(serde_json::to_value(report).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&report))
 }
 
 pub async fn handle_kad_import_nodes_dat(

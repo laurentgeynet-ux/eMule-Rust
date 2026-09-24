@@ -11,12 +11,19 @@ use super::types::*;
 /// Bounded wire packet encoder for Kad UDP packets.
 pub struct KadEncoder;
 
+/// Allocates a buffer pre-filled with the `[PR_KADEMLIA][opcode]` header —
+/// shared frame of every Kad UDP encoder below.
+fn kad_buf(opcode: u8, capacity: usize) -> BytesMut {
+    let mut buf = BytesMut::with_capacity(capacity);
+    buf.put_u8(PR_KADEMLIA);
+    buf.put_u8(opcode);
+    buf
+}
+
 impl KadEncoder {
     /// Encodes a KadPing request packet.
     pub fn encode_ping(kad_id: &KadIdBytes, udp_port: u16) -> Bytes {
-        let mut buf = BytesMut::with_capacity(20);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_PING);
+        let mut buf = kad_buf(KADEMLIA2_PING, 20);
         buf.put_slice(kad_id);
         buf.put_u16_le(udp_port);
         buf.freeze()
@@ -24,9 +31,7 @@ impl KadEncoder {
 
     /// Encodes a KadPong response packet.
     pub fn encode_pong(client_port: u16) -> Bytes {
-        let mut buf = BytesMut::with_capacity(4);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_PONG);
+        let mut buf = kad_buf(KADEMLIA2_PONG, 4);
         buf.put_u16_le(client_port);
         buf.freeze()
     }
@@ -35,9 +40,7 @@ impl KadEncoder {
     /// [u8 error_code][u16 tested_udp_port] — official eMule format
     /// (`ProcessFirewallCheckUDPRequest` in BaseClient.cpp).
     pub fn encode_firewall_udp(error_code: u8, udp_port: u16) -> Bytes {
-        let mut buf = BytesMut::with_capacity(5);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_FIREWALLUDP);
+        let mut buf = kad_buf(KADEMLIA2_FIREWALLUDP, 5);
         buf.put_u8(error_code);
         buf.put_u16_le(udp_port);
         buf.freeze()
@@ -52,9 +55,7 @@ impl KadEncoder {
         tcp_port: u16,
         connect_options: u8,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(37);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA_FINDBUDDY_RES);
+        let mut buf = kad_buf(KADEMLIA_FINDBUDDY_RES, 37);
         buf.put_slice(buddy_id);
         buf.put_slice(client_id);
         buf.put_u16_le(tcp_port);
@@ -70,9 +71,7 @@ impl KadEncoder {
         file_id: &KadIdBytes,
         tcp_port: u16,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(36);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA_CALLBACK_REQ);
+        let mut buf = kad_buf(KADEMLIA_CALLBACK_REQ, 36);
         buf.put_slice(buddy_id);
         buf.put_slice(file_id);
         buf.put_u16_le(tcp_port);
@@ -90,9 +89,7 @@ impl KadEncoder {
         misc_options: Option<u8>,
     ) -> Bytes {
         let tag_count = 1 + u8::from(misc_options.is_some());
-        let mut buf = BytesMut::with_capacity(22 + tag_count as usize * 6);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(opcode);
+        let mut buf = kad_buf(opcode, 22 + tag_count as usize * 6);
         buf.put_slice(kad_id);
         buf.put_u16_le(tcp_port);
         buf.put_u8(version);
@@ -161,9 +158,7 @@ impl KadEncoder {
     /// Sent after a HELLO_RES that requested it via `TAG_KADMISCOPTIONS` bit 2,
     /// proving our IP is not spoofed (eMule Process_KADEMLIA2_HELLO_RES).
     pub fn encode_hello_res_ack(kad_id: &KadIdBytes) -> Bytes {
-        let mut buf = BytesMut::with_capacity(19);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_HELLO_RES_ACK);
+        let mut buf = kad_buf(KADEMLIA2_HELLO_RES_ACK, 19);
         buf.put_slice(kad_id);
         buf.put_u8(0); // no tags
         buf.freeze()
@@ -176,9 +171,7 @@ impl KadEncoder {
         user_hash: &[u8; 16],
         connect_options: u8,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(21);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA_FIREWALLED2_REQ);
+        let mut buf = kad_buf(KADEMLIA_FIREWALLED2_REQ, 21);
         buf.put_u16_le(tcp_port);
         buf.put_slice(user_hash);
         buf.put_u8(connect_options);
@@ -188,19 +181,14 @@ impl KadEncoder {
     /// Encodes a `KADEMLIA_FIREWALLED_RES` (0x58): `[ip u32]` echoing the
     /// requester's public IPv4 address.
     pub fn encode_firewalled_res(ip: u32) -> Bytes {
-        let mut buf = BytesMut::with_capacity(6);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA_FIREWALLED_RES);
+        let mut buf = kad_buf(KADEMLIA_FIREWALLED_RES, 6);
         buf.put_u32_le(ip);
         buf.freeze()
     }
 
     /// Encodes a Kad2 Bootstrap request packet (0x01).
     pub fn encode_bootstrap_req(_kad_id: &KadIdBytes, _udp_port: u16) -> Bytes {
-        let mut buf = BytesMut::with_capacity(2);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_BOOTSTRAP_REQ);
-        buf.freeze()
+        kad_buf(KADEMLIA2_BOOTSTRAP_REQ, 2).freeze()
     }
 
     /// Encodes a Kad2 Bootstrap response packet (0x09).
@@ -214,9 +202,7 @@ impl KadEncoder {
         contacts: &[KadContactWire],
     ) -> Bytes {
         let count = contacts.len().min(MAX_KAD_RES_CONTACTS);
-        let mut buf = BytesMut::with_capacity(2 + 16 + 2 + 1 + 2 + count * 25);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_BOOTSTRAP_RES);
+        let mut buf = kad_buf(KADEMLIA2_BOOTSTRAP_RES, 2 + 16 + 2 + 1 + 2 + count * 25);
         buf.put_slice(kad_id);
         buf.put_u16_le(tcp_port);
         buf.put_u8(version);
@@ -238,9 +224,7 @@ impl KadEncoder {
     /// Official format: [target_id: 16] [count: u8] followed by count * 25-byte contact records.
     pub fn encode_find_node_res(target_id: &KadIdBytes, contacts: &[KadContactWire]) -> Bytes {
         let count = contacts.len().min(MAX_KAD_RES_CONTACTS);
-        let mut buf = BytesMut::with_capacity(2 + 16 + 1 + count * 25);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_RES);
+        let mut buf = kad_buf(KADEMLIA2_RES, 2 + 16 + 1 + count * 25);
         buf.put_slice(target_id);
         buf.put_u8(count as u8);
         for c in &contacts[..count] {
@@ -258,9 +242,7 @@ impl KadEncoder {
 
     /// Encodes a Kad2 Find Node request packet.
     pub fn encode_find_node_req(target_id: &KadIdBytes, receiver_id: &KadIdBytes) -> Bytes {
-        let mut buf = BytesMut::with_capacity(35);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_REQ);
+        let mut buf = kad_buf(KADEMLIA2_REQ, 35);
         buf.put_u8(KADEMLIA_FIND_NODE);
         buf.put_slice(target_id);
         buf.put_slice(receiver_id);
@@ -274,9 +256,7 @@ impl KadEncoder {
         start_pos: u16,
         file_size: u64,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(28);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_SEARCH_SOURCE_REQ);
+        let mut buf = kad_buf(KADEMLIA2_SEARCH_SOURCE_REQ, 28);
         buf.put_slice(target_file_hash);
         buf.put_u16_le(start_pos);
         buf.put_u64_le(file_size);
@@ -289,9 +269,7 @@ impl KadEncoder {
         sources: &[KadSourceWire],
     ) -> Bytes {
         let count = sources.len().min(MAX_KAD_SEARCH_SOURCES);
-        let mut buf = BytesMut::with_capacity(2 + 34 + count * 64);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_SEARCH_RES);
+        let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
         buf.put_slice(&[0u8; 16]); // sender Kad ID
         buf.put_slice(target_file_hash);
         buf.put_u16_le(count as u16);
@@ -350,9 +328,7 @@ impl KadEncoder {
         contact: &KadContactWire,
         file_size: u64,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(2 + 32 + 1 + 5 * 10);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_PUBLISH_SOURCE_REQ);
+        let mut buf = kad_buf(KADEMLIA2_PUBLISH_SOURCE_REQ, 2 + 32 + 1 + 5 * 10);
         buf.put_slice(target_file_hash);
         buf.put_slice(&contact.kad_id);
         buf.put_u8(5); // 5 tags
@@ -392,9 +368,7 @@ impl KadEncoder {
 
     /// Encodes a Kad2 Publish Source response packet.
     pub fn encode_publish_source_res(target_file_hash: &KadIdBytes, status: u8) -> Bytes {
-        let mut buf = BytesMut::with_capacity(19);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_PUBLISH_SOURCE_RES);
+        let mut buf = kad_buf(KADEMLIA2_PUBLISH_SOURCE_RES, 19);
         buf.put_slice(target_file_hash);
         buf.put_u8(status);
         buf.freeze()
@@ -407,9 +381,7 @@ impl KadEncoder {
         start_pos: u16,
         _sender_id: &KadIdBytes,
     ) -> Bytes {
-        let mut buf = BytesMut::with_capacity(20);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_SEARCH_KEYWORD_REQ);
+        let mut buf = kad_buf(KADEMLIA2_SEARCH_KEYWORD_REQ, 20);
         buf.put_slice(keyword_hash);
         buf.put_u16_le(start_pos);
         buf.freeze()
@@ -421,9 +393,7 @@ impl KadEncoder {
         entries: &[KadKeywordEntryWire],
     ) -> Bytes {
         let count = entries.len().min(MAX_KAD_SEARCH_KEYWORDS);
-        let mut buf = BytesMut::with_capacity(2 + 34 + count * 64);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_SEARCH_RES);
+        let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
         buf.put_slice(&[0u8; 16]);
         buf.put_slice(keyword_hash);
         buf.put_u16_le(count as u16);
@@ -461,9 +431,7 @@ impl KadEncoder {
         entries: &[KadKeywordEntryWire],
     ) -> Bytes {
         let count = entries.len().min(MAX_KAD_SEARCH_KEYWORDS);
-        let mut buf = BytesMut::with_capacity(2 + 16 + 2 + count * 64);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_PUBLISH_KEYWORD_REQ);
+        let mut buf = kad_buf(KADEMLIA2_PUBLISH_KEYWORD_REQ, 2 + 16 + 2 + count * 64);
         buf.put_slice(keyword_hash);
         buf.put_u16_le(count as u16);
         for entry in &entries[..count] {
@@ -496,9 +464,7 @@ impl KadEncoder {
 
     /// Encodes a Kad2 Publish Keyword response packet (0x4B, unified publish response).
     pub fn encode_publish_keyword_res(keyword_hash: &KadIdBytes, status: u8) -> Bytes {
-        let mut buf = BytesMut::with_capacity(19);
-        buf.put_u8(PR_KADEMLIA);
-        buf.put_u8(KADEMLIA2_PUBLISH_KEYWORD_RES);
+        let mut buf = kad_buf(KADEMLIA2_PUBLISH_KEYWORD_RES, 19);
         buf.put_slice(keyword_hash);
         buf.put_u8(status);
         buf.freeze()
@@ -512,9 +478,7 @@ impl KadEncoder {
 /// Encodes a `KADEMLIA2_SEARCH_NOTES_REQ` (0x35):
 /// `[target_file_hash:16][file_size:u64]`.
 pub fn encode_search_notes_req_payload(target_file_hash: &KadIdBytes, file_size: u64) -> Bytes {
-    let mut buf = BytesMut::with_capacity(26);
-    buf.put_u8(PR_KADEMLIA);
-    buf.put_u8(KADEMLIA2_SEARCH_NOTES_REQ);
+    let mut buf = kad_buf(KADEMLIA2_SEARCH_NOTES_REQ, 26);
     buf.put_slice(target_file_hash);
     buf.put_u64_le(file_size);
     buf.freeze()
@@ -534,9 +498,7 @@ pub fn encode_search_notes_res(
 ) -> Option<Bytes> {
     let limits = crate::ed2k::limits::Ed2kLimits::default();
     let count = notes.len().min(MAX_NOTE_SEARCH_RESULTS);
-    let mut buf = BytesMut::with_capacity(2 + 34 + count * 96);
-    buf.put_u8(PR_KADEMLIA);
-    buf.put_u8(KADEMLIA2_SEARCH_RES);
+    let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 96);
     buf.put_slice(sender_id);
     buf.put_slice(target_file_hash);
     buf.put_u16_le(count as u16);
@@ -571,9 +533,7 @@ pub fn encode_publish_notes_req(
         return None;
     }
     let limits = crate::ed2k::limits::Ed2kLimits::default();
-    let mut buf = BytesMut::with_capacity(2 + 33 + tags.len() * 32);
-    buf.put_u8(PR_KADEMLIA);
-    buf.put_u8(KADEMLIA2_PUBLISH_NOTES_REQ);
+    let mut buf = kad_buf(KADEMLIA2_PUBLISH_NOTES_REQ, 2 + 33 + tags.len() * 32);
     buf.put_slice(target_file_hash);
     buf.put_slice(source_id);
     buf.put_u8(tags.len() as u8);
@@ -611,9 +571,7 @@ pub fn encode_note_tags_blob(
 /// Encodes a `KADEMLIA2_PUBLISH_RES` (0x4B) for notes:
 /// `[target_file_hash:16][load:u8]`.
 pub fn encode_publish_notes_res(target_file_hash: &KadIdBytes, load: u8) -> Bytes {
-    let mut buf = BytesMut::with_capacity(19);
-    buf.put_u8(PR_KADEMLIA);
-    buf.put_u8(KADEMLIA2_PUBLISH_RES);
+    let mut buf = kad_buf(KADEMLIA2_PUBLISH_RES, 19);
     buf.put_slice(target_file_hash);
     buf.put_u8(load);
     buf.freeze()

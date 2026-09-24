@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-use mule_format::{Ed2kFileLink, Ed2kHash, FormatError, PeerSource};
+use mule_format::{Ed2kFileLink, Ed2kHash, FormatError, LinkSource};
 
 #[test]
 fn test_parse_minimal_link() {
@@ -41,10 +41,10 @@ fn test_parse_link_with_aich_and_sources() {
     assert_eq!(aich_b32, "OBTXIKUQC6F7E4424IWSU5V5MOMN2WZA");
 
     assert_eq!(link.peer_sources.len(), 2);
-    assert_eq!(link.peer_sources[0], PeerSource::new("192.168.1.50", 39735));
+    assert_eq!(link.peer_sources[0], LinkSource::new("192.168.1.50", 39735));
     assert_eq!(
         link.peer_sources[1],
-        PeerSource::new("node.network.org", 39735)
+        LinkSource::new("node.network.org", 39735)
     );
 }
 

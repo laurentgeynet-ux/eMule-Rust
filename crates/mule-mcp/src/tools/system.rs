@@ -3,6 +3,7 @@
 
 use crate::client::DaemonClient;
 use crate::protocol::ToolDefinition;
+use super::{obj_schema, prop};
 use serde_json::{json, Value};
 
 pub fn list_tools() -> Vec<ToolDefinition> {
@@ -10,190 +11,91 @@ pub fn list_tools() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "emule_status".to_string(),
             description: "Get overall eMule-Rust daemon status, uptime, transfer speeds, active downloads count, server connection, and Kad status.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_get_settings".to_string(),
             description: "Get eMule-Rust daemon configuration, default paths, limits, and retention policy.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_update_settings".to_string(),
             description: "Update daemon settings: default download folder, history retention, peer connection quotas.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "default_download_dir": {
-                        "type": "string",
-                        "description": "Absolute path to the new default completed downloads folder"
-                    },
-                    "history_retention_days": {
-                        "type": "integer",
-                        "description": "Number of days to keep download history records (0 = forever)"
-                    },
-                    "max_global_download_peers": {
-                        "type": "integer",
-                        "description": "Maximum number of simultaneous peer connections across all downloads"
-                    },
-                    "max_peers_per_download": {
-                        "type": "integer",
-                        "description": "Maximum active peer connections allowed for a single download"
-                    },
-                    "min_peers_per_download": {
-                        "type": "integer",
-                        "description": "Target minimum peers to maintain per active download"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"default_download_dir": prop("string", "Absolute path to the new default completed downloads folder"),
+                    "history_retention_days": prop("integer", "Number of days to keep download history records (0 = forever)"),
+                    "max_global_download_peers": prop("integer", "Maximum number of simultaneous peer connections across all downloads"),
+                    "max_peers_per_download": prop("integer", "Maximum active peer connections allowed for a single download"),
+                    "min_peers_per_download": prop("integer", "Target minimum peers to maintain per active download")}), &[]),
         },
         ToolDefinition {
             name: "emule_reset_download_dir".to_string(),
             description: "Reset the default download directory to the default data folder.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_set_limits".to_string(),
             description: "Configure global download and upload rate limits in KB/s (0 = unlimited).".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "download_limit_kbps": {
-                        "type": "integer",
-                        "description": "Max download rate in KB/s (0 for unlimited)"
-                    },
-                    "upload_limit_kbps": {
-                        "type": "integer",
-                        "description": "Max upload rate in KB/s (0 for unlimited)"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"download_limit_kbps": prop("integer", "Max download rate in KB/s (0 for unlimited)"),
+                    "upload_limit_kbps": prop("integer", "Max upload rate in KB/s (0 for unlimited)")}), &[]),
         },
         ToolDefinition {
             name: "emule_shutdown".to_string(),
             description: "Gracefully shut down the eMule-Rust background daemon.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_get_network_policy".to_string(),
             description: "Get active network security policy, profile ('standard', 'vpn_only', 'tor_proxy', 'paranoid', 'local_lab'), budgets, and active connection counts.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_set_network_profile".to_string(),
             description: "Switch the network isolation profile ('standard', 'vpn_only', 'tor_proxy', 'paranoid', 'local_lab').".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["profile"],
-                "properties": {
-                    "profile": {
+            input_schema: obj_schema(json!({"profile": {
                         "type": "string",
                         "enum": ["standard", "vpn_only", "tor_proxy", "paranoid", "local_lab"],
                         "description": "Target network profile"
-                    }
-                }
-            }),
+                    }}), &["profile"]),
         },
         ToolDefinition {
             name: "emule_network_disconnect_all".to_string(),
             description: "Emergency network killswitch: immediately disconnects all server, peer, and listener sockets.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_network_enable".to_string(),
             description: "Re-enable network communications after a killswitch disconnect.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_get_audit_log".to_string(),
             description: "Inspect network security audit log events (blocked connections, profile violations, rate limiting).".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max entries to retrieve (default: 50)"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"limit": prop("integer", "Max entries to retrieve (default: 50)")}), &[]),
         },
         ToolDefinition {
             name: "emule_set_network_budgets".to_string(),
             description: "Set network bandwidth and connection budgets dynamically.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["budgets"],
-                "properties": {
-                    "budgets": {
-                        "type": "object",
-                        "description": "Budget definitions for rate limits and concurrent socket limits"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"budgets": prop("object", "Budget definitions for rate limits and concurrent socket limits")}), &["budgets"]),
         },
         ToolDefinition {
             name: "emule_get_filter_status".to_string(),
             description: "Get IP filter security status, loaded rules count, and blocked connection statistics.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_import_ip_filter".to_string(),
             description: "Import IP blocklist file (ipfilter.dat, guarding.p2p, or peerguardian format) to block malicious peers.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["file_path"],
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "Path to ipfilter.dat file"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"file_path": prop("string", "Path to ipfilter.dat file")}), &["file_path"]),
         },
         ToolDefinition {
             name: "emule_set_filter_enabled".to_string(),
             description: "Enable or disable IP blocklist filtering dynamically.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["enabled"],
-                "properties": {
-                    "enabled": {
-                        "type": "boolean",
-                        "description": "Whether the IP filter is active"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"enabled": prop("boolean", "Whether the IP filter is active")}), &["enabled"]),
         },
         ToolDefinition {
             name: "emule_clear_ip_filter".to_string(),
             description: "Clear all IP filter rules from memory.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
     ]
 }

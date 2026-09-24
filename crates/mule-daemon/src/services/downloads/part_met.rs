@@ -5,6 +5,7 @@ use mule_core::{AllocationPolicy, Database, Download, DownloadStatus, PartFile, 
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+use super::db_err;
 use super::types::{
     make_snapshot, now_ms, ActiveDownload, ImportPartMetResult, PartMetInspection,
     MAX_IMPORT_PART_COUNT, MAX_IMPORT_TOTAL_SIZE,
@@ -132,12 +133,12 @@ pub fn save_part_met(db: &Database, act: &ActiveDownload) -> Result<PathBuf, Dae
             };
             let mut t = vec![mule_format::met::tags::Tag::new_id(
                 mule_format::met::tags::FT_DLPRIORITY,
-                mule_format::met::tags::TagValue::Uint64(pr),
+                mule_format::met::tags::MetTagValue::Uint64(pr),
             )];
             if let Some(ms) = act.download.max_sources {
                 t.push(mule_format::met::tags::Tag::new_id(
                     mule_format::met::tags::FT_MAXSOURCES,
-                    mule_format::met::tags::TagValue::Uint64(ms as u64),
+                    mule_format::met::tags::MetTagValue::Uint64(ms as u64),
                 ));
             }
             t
@@ -356,7 +357,7 @@ pub fn import_part_met(
     };
 
     db.insert_download(&download)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
+        .map_err(db_err("persisting state"))?;
 
     db.sync_received_ranges(&id, &range_set)
         .map_err(|e| DaemonError::Business(format!("Failed to sync ranges: {e}")))?;

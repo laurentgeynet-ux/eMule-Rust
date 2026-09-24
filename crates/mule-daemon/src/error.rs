@@ -44,6 +44,14 @@ impl JsonRpcError {
         }
     }
 
+    pub fn parse_error() -> Self {
+        Self::new(CODE_PARSE_ERROR, "Parse error")
+    }
+
+    pub fn invalid_request(msg: impl Into<String>) -> Self {
+        Self::new(CODE_INVALID_REQUEST, msg)
+    }
+
     pub fn method_not_found(method: &str) -> Self {
         Self::new(
             CODE_METHOD_NOT_FOUND,

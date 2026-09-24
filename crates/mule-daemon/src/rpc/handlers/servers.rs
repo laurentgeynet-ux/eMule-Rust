@@ -240,7 +240,7 @@ pub async fn handle_servers_connect(
         use crate::services::server_session::ServerConnectionStatus as S;
         match snap.status {
             S::Connected if snap.server_address.as_deref() == Some(address_str) => {
-                return Ok(serde_json::to_value(snap).unwrap_or_default());
+                return Ok(crate::rpc::handlers::json_value(&snap));
             }
             S::Connected | S::Connecting | S::Disconnecting => {
                 let _ = state.server_session.disconnect().await;
@@ -276,18 +276,18 @@ pub async fn handle_servers_connect(
         .await?;
 
     let snapshot = state.server_session.snapshot().await;
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_servers_disconnect(state: &AppState) -> Result<Value, JsonRpcError> {
     state.server_session.disconnect().await?;
     let snapshot = state.server_session.snapshot().await;
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_servers_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let snapshot = state.server_session.snapshot().await;
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_servers_search(

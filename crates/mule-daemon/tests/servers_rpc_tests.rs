@@ -69,11 +69,11 @@ async fn test_servers_rpc_workflow() {
         tags: vec![
             Tag::new_id(
                 mule_format::SN_NAME,
-                mule_format::TagValue::String("Allowed Donkey".to_string()),
+                mule_format::MetTagValue::String("Allowed Donkey".to_string()),
             ),
             Tag::new_id(
                 mule_format::SN_DESCRIPTION,
-                mule_format::TagValue::String("Fast server".to_string()),
+                mule_format::MetTagValue::String("Fast server".to_string()),
             ),
         ],
     };
@@ -89,7 +89,7 @@ async fn test_servers_rpc_workflow() {
         version: None,
         tags: vec![Tag::new_id(
             mule_format::SN_NAME,
-            mule_format::TagValue::String("Rogue Donkey".to_string()),
+            mule_format::MetTagValue::String("Rogue Donkey".to_string()),
         )],
     };
 

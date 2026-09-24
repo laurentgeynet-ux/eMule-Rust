@@ -6,6 +6,25 @@ use rusqlite::{params, Connection};
 use crate::error::CoreError;
 use crate::kad::{KadContact, KadId, KadIndexedNote, KadIndexedSource, KadKeywordEntry};
 
+/// `SELECT COUNT(*)` sur une table interne (nom fixe, jamais d'entrée utilisateur).
+fn count_rows(conn: &Connection, table: &str) -> Result<usize, CoreError> {
+    let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))?;
+    Ok(count.max(0) as usize)
+}
+
+/// `DELETE` des lignes expirées d'une table d'index Kad (nom fixe interne).
+fn purge_expired(
+    conn: &mut Connection,
+    table: &str,
+    now_unix_ms: u64,
+) -> Result<usize, CoreError> {
+    let count = conn.execute(
+        &format!("DELETE FROM {table} WHERE expires_at_unix_ms <= ?1"),
+        params![now_unix_ms as i64],
+    )?;
+    Ok(count)
+}
+
 pub fn upsert_kad_contact(conn: &mut Connection, contact: &KadContact) -> Result<(), CoreError> {
     conn.execute(
         "INSERT INTO kad_contacts (
@@ -115,8 +134,7 @@ pub fn list_kad_contacts(conn: &Connection, limit: usize) -> Result<Vec<KadConta
 }
 
 pub fn count_kad_contacts(conn: &Connection) -> Result<usize, CoreError> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_contacts", [], |r| r.get(0))?;
-    Ok(count.max(0) as usize)
+    count_rows(conn, "kad_contacts")
 }
 
 pub fn clear_kad_contacts(conn: &mut Connection) -> Result<usize, CoreError> {
@@ -302,16 +320,11 @@ pub fn purge_expired_kad_sources(
     conn: &mut Connection,
     now_unix_ms: u64,
 ) -> Result<usize, CoreError> {
-    let count = conn.execute(
-        "DELETE FROM kad_sources_index WHERE expires_at_unix_ms <= ?1",
-        params![now_unix_ms as i64],
-    )?;
-    Ok(count)
+    purge_expired(conn, "kad_sources_index", now_unix_ms)
 }
 
 pub fn count_kad_indexed_sources(conn: &Connection) -> Result<usize, CoreError> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_sources_index", [], |r| r.get(0))?;
-    Ok(count.max(0) as usize)
+    count_rows(conn, "kad_sources_index")
 }
 
 pub fn insert_kad_keyword_entries(
@@ -398,16 +411,11 @@ pub fn purge_expired_kad_keywords(
     conn: &mut Connection,
     now_unix_ms: u64,
 ) -> Result<usize, CoreError> {
-    let count = conn.execute(
-        "DELETE FROM kad_keywords_index WHERE expires_at_unix_ms <= ?1",
-        params![now_unix_ms as i64],
-    )?;
-    Ok(count)
+    purge_expired(conn, "kad_keywords_index", now_unix_ms)
 }
 
 pub fn count_kad_keyword_entries(conn: &Connection) -> Result<usize, CoreError> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_keywords_index", [], |r| r.get(0))?;
-    Ok(count.max(0) as usize)
+    count_rows(conn, "kad_keywords_index")
 }
 
 // ---------------------------------------------------------------------------
@@ -488,14 +496,9 @@ pub fn purge_expired_kad_notes(
     conn: &mut Connection,
     now_unix_ms: u64,
 ) -> Result<usize, CoreError> {
-    let count = conn.execute(
-        "DELETE FROM kad_notes_index WHERE expires_at_unix_ms <= ?1",
-        params![now_unix_ms as i64],
-    )?;
-    Ok(count)
+    purge_expired(conn, "kad_notes_index", now_unix_ms)
 }
 
 pub fn count_kad_notes(conn: &Connection) -> Result<usize, CoreError> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM kad_notes_index", [], |r| r.get(0))?;
-    Ok(count.max(0) as usize)
+    count_rows(conn, "kad_notes_index")
 }

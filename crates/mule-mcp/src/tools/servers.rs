@@ -3,6 +3,7 @@
 
 use crate::client::DaemonClient;
 use crate::protocol::{ToolCallResult, ToolDefinition};
+use super::{obj_schema, prop};
 use serde_json::{json, Value};
 
 pub fn list_tools() -> Vec<ToolDefinition> {
@@ -10,173 +11,70 @@ pub fn list_tools() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "emule_list_servers".to_string(),
             description: "List all known eD2K servers, connection status, IP filter state, ping, and preference.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_connect_server".to_string(),
             description: "Connect to an eD2K server by address 'ip:port' or automatically pick the best allowed server.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "address": {
-                        "type": "string",
-                        "description": "Server address as 'ip:port' (optional, auto-picks available server if omitted)"
-                    },
-                    "ip": {
-                        "type": "string",
-                        "description": "Server IP (optional)"
-                    },
-                    "port": {
-                        "type": "integer",
-                        "description": "Server port (optional)"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"address": prop("string", "Server address as 'ip:port' (optional, auto-picks available server if omitted)"),
+                    "ip": prop("string", "Server IP (optional)"),
+                    "port": prop("integer", "Server port (optional)")}), &[]),
         },
         ToolDefinition {
             name: "emule_disconnect_server".to_string(),
             description: "Disconnect from the currently connected eD2K server.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_update_servers_from_url".to_string(),
             description: "Download and import server list from a remote server.met URL.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "URL to server.met file (default: http://upd.emule-security.org/server.met)"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"url": prop("string", "URL to server.met file (default: http://upd.emule-security.org/server.met)")}), &[]),
         },
         ToolDefinition {
             name: "emule_inspect_server_met".to_string(),
             description: "Inspect an offline server.met file on disk to examine its server list and IP filter status.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["file_path"],
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "Path to server.met file"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"file_path": prop("string", "Path to server.met file")}), &["file_path"]),
         },
         ToolDefinition {
             name: "emule_import_server_met".to_string(),
             description: "Import servers from a local server.met file into the daemon database.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["file_path"],
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "Path to server.met file"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"file_path": prop("string", "Path to server.met file")}), &["file_path"]),
         },
         ToolDefinition {
             name: "emule_set_server_enabled".to_string(),
             description: "Enable or disable a server in the local server list.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["address", "enabled"],
-                "properties": {
-                    "address": {
-                        "type": "string",
-                        "description": "Server address as 'ip:port'"
-                    },
-                    "enabled": {
-                        "type": "boolean",
-                        "description": "Whether server is enabled"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"address": prop("string", "Server address as 'ip:port'"),
+                    "enabled": prop("boolean", "Whether server is enabled")}), &["address", "enabled"]),
         },
         ToolDefinition {
             name: "emule_delete_server".to_string(),
             description: "Delete an eD2K server from the local server list.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["address"],
-                "properties": {
-                    "address": {
-                        "type": "string",
-                        "description": "Server address as 'ip:port'"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"address": prop("string", "Server address as 'ip:port'")}), &["address"]),
         },
         ToolDefinition {
             name: "emule_clear_servers".to_string(),
             description: "Clear all servers from the local server list.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            input_schema: obj_schema(json!({}), &[]),
         },
         ToolDefinition {
             name: "emule_query_server_sources".to_string(),
             description: "Send a GetSources request to the connected server for a file hash.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["file_hash"],
-                "properties": {
-                    "file_hash": {
-                        "type": "string",
-                        "description": "32-character hex eD2K hash"
-                    },
-                    "file_size": {
-                        "type": "integer",
-                        "description": "File size in bytes (optional)"
-                    }
-                }
-            }),
+            input_schema: obj_schema(json!({"file_hash": prop("string", "32-character hex eD2K hash"),
+                    "file_size": prop("integer", "File size in bytes (optional)")}), &["file_hash"]),
         },
         ToolDefinition {
             name: "emule_search".to_string(),
             description: "Search for files on connected ED2K servers and Kad DHT network. Automatically waits for and returns search results including synthesized ed2k links ready for download.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "required": ["query"],
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search keyword query (e.g. 'ubuntu iso')"
-                    },
+            input_schema: obj_schema(json!({"query": prop("string", "Search keyword query (e.g. 'ubuntu iso')"),
                     "network": {
                         "type": "string",
                         "enum": ["server", "kad", "both"],
                         "description": "Network to search on ('server', 'kad', or 'both', default: 'kad')"
                     },
-                    "min_size_mb": {
-                        "type": "number",
-                        "description": "Minimum file size in megabytes"
-                    },
-                    "max_size_mb": {
-                        "type": "number",
-                        "description": "Maximum file size in megabytes"
-                    },
-                    "extension": {
-                        "type": "string",
-                        "description": "Filter by file extension without dot (e.g. 'iso', 'zip')"
-                    },
-                    "wait_seconds": {
-                        "type": "integer",
-                        "description": "Seconds to wait for incoming search results (default: 4)"
-                    }
-                }
-            }),
+                    "min_size_mb": prop("number", "Minimum file size in megabytes"),
+                    "max_size_mb": prop("number", "Maximum file size in megabytes"),
+                    "extension": prop("string", "Filter by file extension without dot (e.g. 'iso', 'zip')"),
+                    "wait_seconds": prop("integer", "Seconds to wait for incoming search results (default: 4)")}), &["query"]),
         },
     ]
 }

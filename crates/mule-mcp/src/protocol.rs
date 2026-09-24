@@ -4,6 +4,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Type d'erreur JSON-RPC canonique — défini dans `mule-daemon` (source de
+/// vérité unique pour les codes et constructeurs du workspace).
+pub use mule_daemon::error::JsonRpcError;
+
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 pub const SERVER_NAME: &str = "emule-rust";
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,58 +25,6 @@ pub struct JsonRpcMessage {
     pub result: Option<Value>,
     #[serde(default)]
     pub error: Option<JsonRpcError>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct JsonRpcError {
-    pub code: i64,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
-}
-
-#[allow(dead_code)]
-impl JsonRpcError {
-    pub fn parse_error() -> Self {
-        Self {
-            code: -32700,
-            message: "Parse error".to_string(),
-            data: None,
-        }
-    }
-
-    pub fn invalid_request(msg: impl Into<String>) -> Self {
-        Self {
-            code: -32600,
-            message: msg.into(),
-            data: None,
-        }
-    }
-
-    pub fn method_not_found(method: &str) -> Self {
-        Self {
-            code: -32601,
-            message: format!("Method not found: {method}"),
-            data: None,
-        }
-    }
-
-    pub fn invalid_params(msg: impl Into<String>) -> Self {
-        Self {
-            code: -32602,
-            message: msg.into(),
-            data: None,
-        }
-    }
-
-    pub fn internal_error(msg: impl Into<String>) -> Self {
-        Self {
-            code: -32603,
-            message: msg.into(),
-            data: None,
-        }
-    }
 }
 
 pub fn make_response(id: Value, result: Value) -> Value {

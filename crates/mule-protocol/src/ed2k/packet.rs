@@ -28,7 +28,7 @@ pub struct Ed2kHello {
 impl Ed2kHello {
     /// Finds a recognized tag by name display string.
     pub fn find_tag(&self, name: &str) -> Option<&Ed2kTag> {
-        self.tags.iter().find(|t| t.name.display_name() == name)
+        crate::ed2k::tags::find_tag_by_name(&self.tags, name)
     }
 }
 
@@ -54,7 +54,7 @@ pub struct Ed2kHelloAnswer {
 impl Ed2kHelloAnswer {
     /// Finds a recognized tag by name display string.
     pub fn find_tag(&self, name: &str) -> Option<&Ed2kTag> {
-        self.tags.iter().find(|t| t.name.display_name() == name)
+        crate::ed2k::tags::find_tag_by_name(&self.tags, name)
     }
 }
 
@@ -74,7 +74,7 @@ pub struct Ed2kEmuleInfo {
 impl Ed2kEmuleInfo {
     /// Finds a recognized tag by name display string.
     pub fn find_tag(&self, name: &str) -> Option<&Ed2kTag> {
-        self.tags.iter().find(|t| t.name.display_name() == name)
+        crate::ed2k::tags::find_tag_by_name(&self.tags, name)
     }
 
     /// Returns true if compression capability tag was announced by remote peer.

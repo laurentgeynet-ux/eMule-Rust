@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+use super::db_err;
 use super::history_categories::record_history_event;
 use super::peers_servers;
 use super::types::{
@@ -88,7 +89,7 @@ pub fn add_ed2k_link(
         .map_err(|e| DaemonError::Business(format!("Storage error: {e}")))?;
 
     db.insert_download(&download)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
+        .map_err(db_err("persisting state"))?;
 
     if !link.part_hashes.is_empty() {
         let _ = db.store_part_hashes(&clean_hex, &link.part_hashes);
@@ -223,7 +224,7 @@ pub fn pause_download(
     act.download.updated_at = now;
     act.last_status_change_unix_ms = now;
     db.update_status(id, DownloadStatus::Paused)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
+        .map_err(db_err("persisting state"))?;
 
     // Persist .part.met on pause (eMule saves met on status transitions).
     let _ = super::part_met::save_part_met(db, act);
@@ -344,7 +345,7 @@ pub fn remove_download(
 
     let db_deleted = db
         .delete_download(id)
-        .map_err(|e| DaemonError::Business(format!("DB error deleting download: {e}")))?;
+        .map_err(db_err("deleting download"))?;
 
     if let Some(temp_path) = temp_path_to_delete {
         if temp_path.exists() {
@@ -972,7 +973,7 @@ pub fn update_status(
     };
 
     db.update_status(id, status)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
+        .map_err(db_err("persisting state"))?;
 
     if status == DownloadStatus::Failed {
         let verif = if old_status == DownloadStatus::Verifying {
@@ -1048,7 +1049,7 @@ pub fn finalize_download(
         let _ = act.part_file.take();
     }
     db.update_status(id, DownloadStatus::Completed)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
+        .map_err(db_err("persisting state"))?;
 
     let mut finalized_dl = dl;
     finalized_dl.status = DownloadStatus::Completed;
@@ -1109,7 +1110,7 @@ pub fn set_destination(
     act.download.updated_at = now_ms();
 
     db.update_target_path(id, &new_target_path)
-        .map_err(|e| DaemonError::Business(format!("DB error updating target path: {e}")))?;
+        .map_err(db_err("updating target path"))?;
 
     get_download_detail(db, active, id)
         .ok_or_else(|| DaemonError::NotFound(format!("Download {id} detail not found")))
@@ -1201,7 +1202,7 @@ pub fn rename_download(
     act.download.target_path = new_target.clone();
     act.download.updated_at = now_ms();
     db.update_download_name_and_target(id, new_name, &new_target)
-        .map_err(|e| DaemonError::Business(format!("DB error renaming download: {e}")))?;
+        .map_err(db_err("renaming download"))?;
     Ok(act.snapshot())
 }
 
@@ -1227,7 +1228,7 @@ pub fn rename_shared_file(
 
     let mut shared = db
         .get_shared_file(file_hash)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?
+        .map_err(db_err("persisting state"))?
         .ok_or_else(|| DaemonError::NotFound(format!("Shared file {file_hash} not found")))?;
 
     let old_path = PathBuf::from(&shared.file_path);
@@ -1250,7 +1251,7 @@ pub fn rename_shared_file(
     shared.file_name = new_name.to_string();
     shared.file_path = new_path.to_string_lossy().to_string();
     db.upsert_shared_file(&shared)
-        .map_err(|e| DaemonError::Business(format!("DB error: {e}")))?;
+        .map_err(db_err("persisting state"))?;
     Ok(())
 }
 

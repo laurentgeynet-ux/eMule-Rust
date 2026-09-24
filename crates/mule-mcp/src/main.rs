@@ -39,12 +39,12 @@ struct Cli {
     app: Option<PathBuf>,
 }
 
-struct AppState {
+struct McpState {
     cli: Cli,
     client: Option<DaemonClient>,
 }
 
-impl AppState {
+impl McpState {
     async fn get_or_reconnect_client(&mut self) -> Result<DaemonClient, String> {
         if let Some(ref c) = self.client {
             // Test if connection is still alive via a quick status check
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let state = Arc::new(Mutex::new(AppState {
+    let state = Arc::new(Mutex::new(McpState {
         cli,
         client: initial_client,
     }));

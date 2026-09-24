@@ -185,6 +185,23 @@ pub struct RawTag {
     pub raw_bytes: Vec<u8>,
 }
 
+/// Finds a recognized tag in `tags` by its display name (e.g. `"Nick"`).
+///
+/// Single implementation shared by `Ed2kHello`, `Ed2kHelloAnswer`,
+/// `Ed2kEmuleInfo` and `Ed2kPeerInfo` `find_tag` accessors.
+pub fn find_tag_by_name<'a>(tags: &'a [Ed2kTag], display_name: &str) -> Option<&'a Ed2kTag> {
+    tags.iter().find(|t| t.name.display_name() == display_name)
+}
+
+/// Extracts the string payload of a special (numeric-id) tag such as
+/// `TAG_SPECIAL_NAME`; `None` when absent or when the payload is not a string.
+pub fn special_string_tag(tags: &[Ed2kTag], tag_id: u8) -> Option<String> {
+    tags.iter().find_map(|t| match (&t.name, &t.value) {
+        (TagName::Id(id), TagValue::String(s)) if *id == tag_id => Some(s.clone()),
+        _ => None,
+    })
+}
+
 /// Helper reader for safe tag extraction from a byte slice.
 pub struct TagReader<'a> {
     buf: &'a [u8],
@@ -263,44 +280,37 @@ impl<'a> TagReader<'a> {
         Ok(bytes[0])
     }
 
+    /// Reads exactly `N` bytes into a fixed-size array.
+    fn read_arr<const N: usize>(&mut self, context: &'static str) -> Result<[u8; N], Ed2kParseError> {
+        let bytes = self.read_bytes(N, context)?;
+        let mut arr = [0u8; N];
+        arr.copy_from_slice(bytes);
+        Ok(arr)
+    }
+
     /// Reads a little-endian 16-bit unsigned integer.
     pub fn read_u16_le(&mut self, context: &'static str) -> Result<u16, Ed2kParseError> {
-        let bytes = self.read_bytes(2, context)?;
-        let mut arr = [0u8; 2];
-        arr.copy_from_slice(bytes);
-        Ok(u16::from_le_bytes(arr))
+        Ok(u16::from_le_bytes(self.read_arr(context)?))
     }
 
     /// Reads a little-endian 32-bit unsigned integer.
     pub fn read_u32_le(&mut self, context: &'static str) -> Result<u32, Ed2kParseError> {
-        let bytes = self.read_bytes(4, context)?;
-        let mut arr = [0u8; 4];
-        arr.copy_from_slice(bytes);
-        Ok(u32::from_le_bytes(arr))
+        Ok(u32::from_le_bytes(self.read_arr(context)?))
     }
 
     /// Reads a little-endian 64-bit unsigned integer.
     pub fn read_u64_le(&mut self, context: &'static str) -> Result<u64, Ed2kParseError> {
-        let bytes = self.read_bytes(8, context)?;
-        let mut arr = [0u8; 8];
-        arr.copy_from_slice(bytes);
-        Ok(u64::from_le_bytes(arr))
+        Ok(u64::from_le_bytes(self.read_arr(context)?))
     }
 
     /// Reads a little-endian 32-bit float.
     pub fn read_f32_le(&mut self, context: &'static str) -> Result<f32, Ed2kParseError> {
-        let bytes = self.read_bytes(4, context)?;
-        let mut arr = [0u8; 4];
-        arr.copy_from_slice(bytes);
-        Ok(f32::from_le_bytes(arr))
+        Ok(f32::from_le_bytes(self.read_arr(context)?))
     }
 
     /// Reads a 16-byte MD4 hash.
     pub fn read_hash(&mut self, context: &'static str) -> Result<[u8; 16], Ed2kParseError> {
-        let bytes = self.read_bytes(16, context)?;
-        let mut arr = [0u8; 16];
-        arr.copy_from_slice(bytes);
-        Ok(arr)
+        self.read_arr(context)
     }
 
     /// Reads a length-prefixed string (16-bit LE length + UTF-8/lossy bytes), enforcing `max_string_bytes`.

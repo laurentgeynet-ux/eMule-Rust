@@ -34,7 +34,7 @@ pub async fn handle_inject_range(
         .inject_range(&id, offset, &data)?;
     state.broadcast_download_update(snapshot.clone());
 
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_get_sources(

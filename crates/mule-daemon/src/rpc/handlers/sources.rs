@@ -302,7 +302,7 @@ pub async fn handle_sources_connect(
         .await?;
 
     let snapshot = state.peer_session.snapshot().await;
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_sources_disconnect(
@@ -312,7 +312,7 @@ pub async fn handle_sources_disconnect(
     let address = params.as_ref().and_then(|p| p["address"].as_str());
     state.peer_session.disconnect_peer(address).await?;
     let snapshot = state.peer_session.snapshot().await;
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_sources_clear(
@@ -344,10 +344,10 @@ pub async fn handle_sources_status(
         .map(|p| p.get("fileHash").is_some() || p.get("swarm").is_some())
         .unwrap_or(false)
     {
-        Ok(serde_json::to_value(swarm_snap).unwrap_or_default())
+        Ok(crate::rpc::handlers::json_value(&swarm_snap))
     } else {
         // Return first active peer snapshot or disconnected for legacy single peer callers, but augmented with swarm fields
-        let mut val = serde_json::to_value(state.peer_session.snapshot().await).unwrap_or_default();
+        let mut val = crate::rpc::handlers::json_value(&state.peer_session.snapshot().await);
         if let Value::Object(ref mut map) = val {
             map.insert(
                 "activePeerCount".to_string(),

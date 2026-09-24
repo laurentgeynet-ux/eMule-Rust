@@ -58,7 +58,7 @@ pub const SN_HARDFILES: u8 = 0x92;
 
 /// Tag value payload.
 #[derive(Debug, Clone, PartialEq)]
-pub enum TagValue {
+pub enum MetTagValue {
     String(String),
     Uint64(u64),
     Float32(f32),
@@ -73,11 +73,11 @@ pub enum TagValue {
 pub struct Tag {
     pub name_id: u8,
     pub name: String,
-    pub value: TagValue,
+    pub value: MetTagValue,
 }
 
 impl Tag {
-    pub fn new_id(name_id: u8, value: TagValue) -> Self {
+    pub fn new_id(name_id: u8, value: MetTagValue) -> Self {
         Self {
             name_id,
             name: String::new(),
@@ -85,7 +85,7 @@ impl Tag {
         }
     }
 
-    pub fn new_named(name: impl Into<String>, value: TagValue) -> Self {
+    pub fn new_named(name: impl Into<String>, value: MetTagValue) -> Self {
         Self {
             name_id: 0,
             name: name.into(),
@@ -95,14 +95,14 @@ impl Tag {
 
     pub fn as_str(&self) -> Option<&str> {
         match &self.value {
-            TagValue::String(s) => Some(s.as_str()),
+            MetTagValue::String(s) => Some(s.as_str()),
             _ => None,
         }
     }
 
     pub fn as_u64(&self) -> Option<u64> {
         match self.value {
-            TagValue::Uint64(v) => Some(v),
+            MetTagValue::Uint64(v) => Some(v),
             _ => None,
         }
     }

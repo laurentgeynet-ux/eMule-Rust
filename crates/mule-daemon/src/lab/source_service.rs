@@ -8,10 +8,11 @@ use std::sync::Arc;
 use bytes::BytesMut;
 use mule_protocol::lab::*;
 use mule_protocol::{PacketCodec, PeerId};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tracing::{debug, info};
+
+use super::io::{read_msg, send_msg};
 
 pub struct LabSourceService {
     addr: SocketAddr,
@@ -119,33 +120,4 @@ async fn handle_client(
     Ok(())
 }
 
-async fn send_msg(
-    stream: &mut TcpStream,
-    codec: &PacketCodec,
-    msg: &LabMessage,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let raw = msg.to_raw_packet()?;
-    let mut buf = BytesMut::new();
-    codec.encode(&raw, &mut buf)?;
-    stream.write_all(&buf).await?;
-    stream.flush().await?;
-    Ok(())
-}
 
-async fn read_msg(
-    stream: &mut TcpStream,
-    codec: &PacketCodec,
-    buf: &mut BytesMut,
-) -> Result<LabMessage, Box<dyn std::error::Error + Send + Sync>> {
-    loop {
-        if let Some(packet) = codec.decode(buf)? {
-            return Ok(LabMessage::from_raw_packet(&packet)?);
-        }
-        let mut chunk = [0u8; 8192];
-        let n = stream.read(&mut chunk).await?;
-        if n == 0 {
-            return Err("Unexpected EOF on socket".into());
-        }
-        buf.extend_from_slice(&chunk[..n]);
-    }
-}

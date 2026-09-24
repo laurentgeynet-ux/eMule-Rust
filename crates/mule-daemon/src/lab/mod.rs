@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 pub mod downloader;
+mod io;
 pub mod source_service;
 
 pub use downloader::run_lab_download;

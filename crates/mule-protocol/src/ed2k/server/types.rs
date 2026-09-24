@@ -152,10 +152,7 @@ pub struct ServerIdent {
 impl ServerIdent {
     /// Helper to find server name in tags.
     pub fn name(&self) -> Option<String> {
-        self.tags.iter().find_map(|t| match (&t.name, &t.value) {
-            (TagName::Id(TAG_SPECIAL_NAME), TagValue::String(s)) => Some(s.clone()),
-            _ => None,
-        })
+        crate::ed2k::tags::special_string_tag(&self.tags, TAG_SPECIAL_NAME)
     }
 
     /// eMule `ST_TCPPORTOBFUSCATION` (`0x97`, uint16) — dedicated TCP port

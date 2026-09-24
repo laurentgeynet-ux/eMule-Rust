@@ -10,6 +10,15 @@ use crate::met::tags::*;
 pub const MAX_TAG_STRING_LEN: usize = 65_536;
 pub const MAX_BLOB_LEN: usize = 16 * 1024 * 1024; // 16 MiB
 
+/// Opens a `.met` file for reading, mapping I/O failures to `MetError::Io` at
+/// offset 0 (shared by every `*::open` in this module).
+pub(crate) fn open_met_file<P: AsRef<std::path::Path>>(path: P) -> Result<std::fs::File, MetError> {
+    std::fs::File::open(path).map_err(|e| MetError::Io {
+        offset: 0,
+        message: e.to_string(),
+    })
+}
+
 /// A reader wrapper that tracks the exact byte offset into the stream.
 pub struct CountingReader<R> {
     inner: R,
@@ -117,19 +126,19 @@ impl<R: Read> CountingReader<R> {
         let value = match tag_type {
             TAGTYPE_STRING => {
                 let len = self.read_u16_le("string tag length")? as usize;
-                TagValue::String(self.read_string(len, "string tag value")?)
+                MetTagValue::String(self.read_string(len, "string tag value")?)
             }
-            TAGTYPE_UINT32 => TagValue::Uint64(self.read_u32_le("uint32 tag value")? as u64),
-            TAGTYPE_UINT64 => TagValue::Uint64(self.read_u64_le("uint64 tag value")?),
-            TAGTYPE_UINT16 => TagValue::Uint64(self.read_u16_le("uint16 tag value")? as u64),
-            TAGTYPE_UINT8 => TagValue::Uint64(self.read_u8("uint8 tag value")? as u64),
-            TAGTYPE_FLOAT32 => TagValue::Float32(self.read_f32_le("float32 tag value")?),
-            TAGTYPE_BOOL => TagValue::Bool(self.read_u8("bool tag value")? != 0),
+            TAGTYPE_UINT32 => MetTagValue::Uint64(self.read_u32_le("uint32 tag value")? as u64),
+            TAGTYPE_UINT64 => MetTagValue::Uint64(self.read_u64_le("uint64 tag value")?),
+            TAGTYPE_UINT16 => MetTagValue::Uint64(self.read_u16_le("uint16 tag value")? as u64),
+            TAGTYPE_UINT8 => MetTagValue::Uint64(self.read_u8("uint8 tag value")? as u64),
+            TAGTYPE_FLOAT32 => MetTagValue::Float32(self.read_f32_le("float32 tag value")?),
+            TAGTYPE_BOOL => MetTagValue::Bool(self.read_u8("bool tag value")? != 0),
             TAGTYPE_HASH16 => {
                 let bytes = self.read_exact_bytes(16, "hash16 tag value")?;
                 let mut h = [0u8; 16];
                 h.copy_from_slice(&bytes);
-                TagValue::Hash16(Ed2kHash(h))
+                MetTagValue::Hash16(Ed2kHash(h))
             }
             TAGTYPE_BLOB => {
                 let len_offset = self.offset;
@@ -142,21 +151,21 @@ impl<R: Read> CountingReader<R> {
                         context: "blob payload",
                     });
                 }
-                TagValue::Blob(self.read_exact_bytes(len, "blob tag payload")?)
+                MetTagValue::Blob(self.read_exact_bytes(len, "blob tag payload")?)
             }
             TAGTYPE_BSOB => {
                 let len = self.read_u8("bsob tag length")? as usize;
-                TagValue::Bsob(self.read_exact_bytes(len, "bsob tag payload")?)
+                MetTagValue::Bsob(self.read_exact_bytes(len, "bsob tag payload")?)
             }
             TAGTYPE_BOOLARRAY => {
                 let len = self.read_u16_le("boolarray length")? as usize;
                 let bytes_to_skip = (len / 8) + 1;
                 let _ = self.read_exact_bytes(bytes_to_skip, "boolarray payload")?;
-                TagValue::Blob(Vec::new())
+                MetTagValue::Blob(Vec::new())
             }
             _ if (TAGTYPE_STR1..=TAGTYPE_STR16).contains(&tag_type) => {
                 let len = (tag_type - TAGTYPE_STR1 + 1) as usize;
-                TagValue::String(self.read_string(len, "compressed string tag value")?)
+                MetTagValue::String(self.read_string(len, "compressed string tag value")?)
             }
             _ => {
                 return Err(MetError::InvalidTagType {

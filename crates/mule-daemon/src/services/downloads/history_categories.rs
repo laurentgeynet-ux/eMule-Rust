@@ -6,7 +6,7 @@ use mule_core::{Database, Download, DownloadCategory, HistoryFilter, HistoryStat
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::types::{now_ms, ActiveDownload};
+use super::{db_err, types::{now_ms, ActiveDownload}};
 use crate::error::DaemonError;
 
 pub fn record_history_event(
@@ -65,7 +65,7 @@ pub fn query_history(
     filter: &HistoryFilter,
 ) -> Result<Vec<HistoryEntry>, DaemonError> {
     db.query_history(filter)
-        .map_err(|e| DaemonError::Business(format!("DB error querying history: {e}")))
+        .map_err(db_err("querying history"))
 }
 
 pub fn get_history_stats(
@@ -73,12 +73,12 @@ pub fn get_history_stats(
     session_start_ms: i64,
 ) -> Result<HistoryStats, DaemonError> {
     db.get_history_stats(session_start_ms)
-        .map_err(|e| DaemonError::Business(format!("DB error calculating history stats: {e}")))
+        .map_err(db_err("calculating history stats"))
 }
 
 pub fn clear_history(db: &mut Database) -> Result<usize, DaemonError> {
     db.clear_history()
-        .map_err(|e| DaemonError::Business(format!("DB error clearing history: {e}")))
+        .map_err(db_err("clearing history"))
 }
 
 pub fn apply_retention_policy(
@@ -86,7 +86,7 @@ pub fn apply_retention_policy(
     retention_days: u32,
 ) -> Result<usize, DaemonError> {
     db.apply_retention_policy(retention_days)
-        .map_err(|e| DaemonError::Business(format!("DB error applying retention policy: {e}")))
+        .map_err(db_err("applying retention policy"))
 }
 
 pub fn export_history(
@@ -139,12 +139,12 @@ pub fn export_history(
 
 pub fn list_categories(db: &Database) -> Result<Vec<DownloadCategory>, DaemonError> {
     db.get_categories()
-        .map_err(|e| DaemonError::Business(format!("DB error listing categories: {e}")))
+        .map_err(db_err("listing categories"))
 }
 
 pub fn get_category(db: &Database, id: &str) -> Result<Option<DownloadCategory>, DaemonError> {
     db.get_category(id)
-        .map_err(|e| DaemonError::Business(format!("DB error getting category: {e}")))
+        .map_err(db_err("getting category"))
 }
 
 pub fn create_category(
@@ -177,7 +177,7 @@ pub fn create_category(
     );
 
     db.insert_category(&category)
-        .map_err(|e| DaemonError::Business(format!("DB error creating category: {e}")))?;
+        .map_err(db_err("creating category"))?;
 
     Ok(category)
 }
@@ -227,7 +227,7 @@ pub fn update_category(
     cat.updated_at = now_ms();
 
     db.update_category(&cat)
-        .map_err(|e| DaemonError::Business(format!("DB error updating category: {e}")))?;
+        .map_err(db_err("updating category"))?;
 
     Ok(cat)
 }
@@ -239,7 +239,7 @@ pub fn delete_category(
 ) -> Result<usize, DaemonError> {
     let reassigned = db
         .delete_category(id)
-        .map_err(|e| DaemonError::Business(format!("DB error deleting category: {e}")))?;
+        .map_err(db_err("deleting category"))?;
 
     let now = now_ms();
     for a in active.values_mut() {
@@ -254,5 +254,5 @@ pub fn delete_category(
 
 pub fn reorder_categories(db: &mut Database, category_ids: &[String]) -> Result<(), DaemonError> {
     db.reorder_categories(category_ids)
-        .map_err(|e| DaemonError::Business(format!("DB error reordering categories: {e}")))
+        .map_err(db_err("reordering categories"))
 }

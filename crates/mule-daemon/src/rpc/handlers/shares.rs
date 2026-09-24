@@ -68,7 +68,7 @@ pub async fn handle_shares_add(
         dl_svc.add_shared_file(&shared)?;
     }
     emit_shares_changed(state);
-    Ok(serde_json::to_value(shared).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&shared))
 }
 
 pub async fn handle_shares_remove(
@@ -173,7 +173,7 @@ pub async fn handle_shares_set_enabled(
             dl_svc.add_shared_file(sf)?;
             drop(dl_svc);
             emit_shares_changed(state);
-            Ok(serde_json::to_value(sf).unwrap_or_default())
+            Ok(crate::rpc::handlers::json_value(&sf))
         }
         None => Err(JsonRpcError::business("Shared file not found")),
     }
@@ -282,7 +282,7 @@ pub async fn handle_listener_stop(state: &AppState) -> Result<Value, JsonRpcErro
 
 pub async fn handle_listener_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let snap = state.inbound_listener.snapshot().await;
-    Ok(serde_json::to_value(snap).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snap))
 }
 
 pub async fn handle_uploads_list(state: &AppState) -> Result<Value, JsonRpcError> {
@@ -328,8 +328,8 @@ pub async fn handle_uploads_cancel(
 
 pub async fn handle_identity_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let id_guard = state.identity.lock().await;
-    let status = serde_json::to_value(id_guard.status()).unwrap_or_default();
-    let sui = serde_json::to_value(state.sui_stats.snapshot()).unwrap_or_default();
+    let status = crate::rpc::handlers::json_value(&id_guard.status());
+    let sui = crate::rpc::handlers::json_value(&state.sui_stats.snapshot());
     match status {
         Value::Object(mut m) => {
             m.insert("sui".to_string(), sui);
@@ -344,7 +344,7 @@ pub async fn handle_identity_rotate(state: &AppState) -> Result<Value, JsonRpcEr
         .rotate_identity()
         .await
         .map_err(JsonRpcError::business)?;
-    Ok(serde_json::to_value(status).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&status))
 }
 
 pub async fn handle_credits_list(

@@ -68,22 +68,11 @@ impl KadId {
 
     /// Converts a Kad wire ID back to an eD2K hash hex string.
     pub fn to_hash_hex(&self) -> String {
-        let hash = self.to_hash_be();
-        let mut s = String::with_capacity(32);
-        for b in &hash {
-            use std::fmt::Write;
-            let _ = write!(s, "{:02x}", b);
-        }
-        s
+        hex::encode(self.to_hash_be())
     }
 
     pub fn to_hex(&self) -> String {
-        let mut s = String::with_capacity(32);
-        for b in &self.0 {
-            use std::fmt::Write;
-            let _ = write!(s, "{:02x}", b);
-        }
-        s
+        hex::encode(self.0)
     }
 
     /// Returns the 32-bit DWORD chunk at `index` (0..4), where chunk 0 is the most significant DWORD.

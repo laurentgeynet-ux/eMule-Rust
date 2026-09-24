@@ -9,7 +9,7 @@ use crate::state::AppState;
 
 pub async fn handle_upnp_status(state: &AppState) -> Result<Value, JsonRpcError> {
     let snap = state.upnp.snapshot().await;
-    Ok(serde_json::to_value(snap).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snap))
 }
 
 pub async fn handle_upnp_map_ports(
@@ -42,7 +42,7 @@ pub async fn handle_upnp_map_ports(
     }
     .send(&state.event_tx);
 
-    Ok(serde_json::to_value(updated_snap).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&updated_snap))
 }
 
 pub async fn handle_upnp_unmap_ports(state: &AppState) -> Result<Value, JsonRpcError> {
@@ -54,7 +54,7 @@ pub async fn handle_upnp_unmap_ports(state: &AppState) -> Result<Value, JsonRpcE
     }
     .send(&state.event_tx);
 
-    Ok(serde_json::to_value(snap).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snap))
 }
 
 pub async fn handle_upnp_set_enabled(
@@ -77,5 +77,5 @@ pub async fn handle_upnp_set_enabled(
     }
     .send(&state.event_tx);
 
-    Ok(serde_json::to_value(snap).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snap))
 }

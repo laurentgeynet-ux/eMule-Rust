@@ -36,10 +36,7 @@ pub struct PartMetFile {
 impl PartMetFile {
     /// Reads and validates a `.part.met` file from disk.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, MetError> {
-        let mut file = File::open(path).map_err(|e| MetError::Io {
-            offset: 0,
-            message: e.to_string(),
-        })?;
+        let mut file = crate::met::reader::open_met_file(path)?;
         Self::read_from(&mut file)
     }
 
@@ -302,26 +299,26 @@ impl PartMetFile {
         // Build the tag list: filename, size, transferred, AICH, gaps.
         let mut tags: Vec<Tag> = Vec::new();
         if let Some(name) = &self.file_name {
-            tags.push(Tag::new_id(FT_FILENAME, TagValue::String(name.clone())));
+            tags.push(Tag::new_id(FT_FILENAME, MetTagValue::String(name.clone())));
         }
         if let Some(size) = self.file_size {
-            tags.push(Tag::new_id(FT_FILESIZE, TagValue::Uint64(size)));
+            tags.push(Tag::new_id(FT_FILESIZE, MetTagValue::Uint64(size)));
         }
         if self.transferred > 0 {
             tags.push(Tag::new_id(
                 FT_TRANSFERRED,
-                TagValue::Uint64(self.transferred),
+                MetTagValue::Uint64(self.transferred),
             ));
         }
         if let Some(aich) = &self.aich_hash {
             tags.push(Tag::new_id(
                 FT_AICH_HASH,
-                TagValue::String(aich.to_base32()),
+                MetTagValue::String(aich.to_base32()),
             ));
         }
         // Extra caller-supplied tags (str/int only, mirroring eMule m_taglist).
         for t in &self.tags {
-            if matches!(t.value, TagValue::String(_) | TagValue::Uint64(_)) {
+            if matches!(t.value, MetTagValue::String(_) | MetTagValue::Uint64(_)) {
                 tags.push(t.clone());
             }
         }
@@ -333,14 +330,14 @@ impl PartMetFile {
             tags.push(Tag {
                 name_id: 0,
                 name: String::from_utf8_lossy(&sname).into_owned(),
-                value: TagValue::Uint64(*start),
+                value: MetTagValue::Uint64(*start),
             });
             let mut ename = vec![FT_GAPEND];
             ename.extend_from_slice(i.to_string().as_bytes());
             tags.push(Tag {
                 name_id: 0,
                 name: String::from_utf8_lossy(&ename).into_owned(),
-                value: TagValue::Uint64(*end),
+                value: MetTagValue::Uint64(*end),
             });
         }
 
@@ -400,14 +397,14 @@ fn met_io_err(offset: u64, e: std::io::Error) -> MetError {
 /// `large_file` is set (eMule `IsLargeFile()` convention).
 fn write_tag<W: Write>(w: &mut W, tag: &Tag, large_file: bool) -> Result<(), MetError> {
     let tag_type: u8 = match &tag.value {
-        TagValue::String(_) => TAGTYPE_STRING,
-        TagValue::Uint64(v) if large_file || *v > u32::MAX as u64 => TAGTYPE_UINT64,
-        TagValue::Uint64(_) => TAGTYPE_UINT32,
-        TagValue::Float32(_) => TAGTYPE_FLOAT32,
-        TagValue::Hash16(_) => TAGTYPE_HASH16,
-        TagValue::Blob(_) => TAGTYPE_BLOB,
-        TagValue::Bsob(_) => TAGTYPE_BSOB,
-        TagValue::Bool(_) => TAGTYPE_BOOL,
+        MetTagValue::String(_) => TAGTYPE_STRING,
+        MetTagValue::Uint64(v) if large_file || *v > u32::MAX as u64 => TAGTYPE_UINT64,
+        MetTagValue::Uint64(_) => TAGTYPE_UINT32,
+        MetTagValue::Float32(_) => TAGTYPE_FLOAT32,
+        MetTagValue::Hash16(_) => TAGTYPE_HASH16,
+        MetTagValue::Blob(_) => TAGTYPE_BLOB,
+        MetTagValue::Bsob(_) => TAGTYPE_BSOB,
+        MetTagValue::Bool(_) => TAGTYPE_BOOL,
     };
     w.write_all(&[tag_type]).map_err(|e| met_io_err(0, e))?;
 
@@ -423,12 +420,12 @@ fn write_tag<W: Write>(w: &mut W, tag: &Tag, large_file: bool) -> Result<(), Met
     }
 
     match &tag.value {
-        TagValue::String(s) => {
+        MetTagValue::String(s) => {
             w.write_all(&(s.len() as u16).to_le_bytes())
                 .map_err(|e| met_io_err(0, e))?;
             w.write_all(s.as_bytes()).map_err(|e| met_io_err(0, e))?;
         }
-        TagValue::Uint64(v) => {
+        MetTagValue::Uint64(v) => {
             if tag_type == TAGTYPE_UINT64 {
                 w.write_all(&v.to_le_bytes())
                     .map_err(|e| met_io_err(0, e))?;
@@ -437,24 +434,24 @@ fn write_tag<W: Write>(w: &mut W, tag: &Tag, large_file: bool) -> Result<(), Met
                     .map_err(|e| met_io_err(0, e))?;
             }
         }
-        TagValue::Float32(f) => {
+        MetTagValue::Float32(f) => {
             w.write_all(&f.to_le_bytes())
                 .map_err(|e| met_io_err(0, e))?;
         }
-        TagValue::Hash16(h) => {
+        MetTagValue::Hash16(h) => {
             w.write_all(&h.0).map_err(|e| met_io_err(0, e))?;
         }
-        TagValue::Blob(b) => {
+        MetTagValue::Blob(b) => {
             w.write_all(&(b.len() as u32).to_le_bytes())
                 .map_err(|e| met_io_err(0, e))?;
             w.write_all(b).map_err(|e| met_io_err(0, e))?;
         }
-        TagValue::Bsob(b) => {
+        MetTagValue::Bsob(b) => {
             w.write_all(&[b.len() as u8])
                 .map_err(|e| met_io_err(0, e))?;
             w.write_all(b).map_err(|e| met_io_err(0, e))?;
         }
-        TagValue::Bool(v) => {
+        MetTagValue::Bool(v) => {
             w.write_all(&[*v as u8]).map_err(|e| met_io_err(0, e))?;
         }
     }

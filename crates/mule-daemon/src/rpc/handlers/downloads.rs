@@ -48,7 +48,7 @@ pub async fn handle_downloads_get(
         .pending_ranges_for_file(&dl.ed2k_hash)
         .await;
 
-    Ok(serde_json::to_value(dl).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&dl))
 }
 
 #[tracing::instrument(
@@ -198,7 +198,7 @@ pub async fn handle_pause(state: &AppState, params: Option<Value>) -> Result<Val
     let snapshot = state.downloads.lock().await.pause_download(&id)?;
     state.broadcast_download_update(snapshot.clone());
 
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 #[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
@@ -254,7 +254,7 @@ pub async fn handle_resume(state: &AppState, params: Option<Value>) -> Result<Va
         }
     }
 
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 #[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
@@ -298,7 +298,7 @@ pub async fn handle_set_destination(
 
     state.broadcast_download_update(detail.snapshot.clone());
 
-    Ok(serde_json::to_value(detail).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&detail))
 }
 
 /// `downloads.rename` — renomme le fichier (`{id, newName}`). Pour un
@@ -322,7 +322,7 @@ pub async fn handle_rename(state: &AppState, params: Option<Value>) -> Result<Va
         .rename_download(&id, new_name)?;
     state.broadcast_download_update(snapshot.clone());
 
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_set_priority(
@@ -341,7 +341,7 @@ pub async fn handle_set_priority(
     let snapshot = state.downloads.lock().await.set_priority(&id, priority)?;
     state.broadcast_download_update(snapshot.clone());
 
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 /// `downloads.setMaxSources` — per-file source limit (eMule FT_MAXSOURCES).
@@ -367,7 +367,7 @@ pub async fn handle_set_max_sources(
         .set_max_sources(&id, max_sources)?;
     state.broadcast_download_update(snapshot.clone());
 
-    Ok(serde_json::to_value(snapshot).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&snapshot))
 }
 
 pub async fn handle_inspect_part_met(
@@ -389,7 +389,7 @@ pub async fn handle_inspect_part_met(
         .await
         .inspect_part_met(met_path, part_path)?;
 
-    Ok(serde_json::to_value(inspection).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&inspection))
 }
 
 pub async fn handle_import_part_met(
@@ -475,7 +475,7 @@ pub async fn handle_import_part_met(
 
     state.broadcast_download_update(result.download.clone());
 
-    Ok(serde_json::to_value(result).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&result))
 }
 
 #[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
@@ -494,7 +494,7 @@ pub async fn handle_retry_connection(
 
     state.broadcast_download_update(detail.snapshot.clone());
 
-    Ok(serde_json::to_value(detail).unwrap_or_default())
+    Ok(crate::rpc::handlers::json_value(&detail))
 }
 
 pub async fn handle_downloads_set_category(

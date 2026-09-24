@@ -104,9 +104,9 @@ pub use source_exchange::{
 #[cfg(feature = "ed2k-loopback")]
 pub use storage::{Ed2kBlockWriter, Ed2kPartDownloadStatus, Ed2kPartFileSink, Ed2kPartResumeState};
 pub use tags::{
-    Ed2kTag, RawTag, TagName, TagReader, TagValue, TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_FILESIZE,
-    TAG_SPECIAL_FILETYPE, TAG_SPECIAL_MISCOPTIONS1, TAG_SPECIAL_MISCOPTIONS2, TAG_SPECIAL_NAME,
-    TAG_SPECIAL_UDPOPTIONS, TAG_SPECIAL_VERSION,
+    find_tag_by_name, special_string_tag, Ed2kTag, RawTag, TagName, TagReader, TagValue,
+    TAG_SPECIAL_EMULE_VERSION, TAG_SPECIAL_FILESIZE, TAG_SPECIAL_FILETYPE, TAG_SPECIAL_MISCOPTIONS1,
+    TAG_SPECIAL_MISCOPTIONS2, TAG_SPECIAL_NAME, TAG_SPECIAL_UDPOPTIONS, TAG_SPECIAL_VERSION,
 };
 
 #[cfg(feature = "ed2k-loopback")]

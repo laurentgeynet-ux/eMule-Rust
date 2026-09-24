@@ -14,6 +14,24 @@ use tracing::info;
 
 pub use downloads::resolve_download_id;
 
+/// Propriété de schéma simple `{ "type": ty, "description": desc }`.
+///
+/// Source unique du boilerplate répété dans les ~87 définitions d'outils ;
+/// les propriétés complexes (enum, items, default…) restent en `json!` brut.
+pub(crate) fn prop(ty: &str, desc: &str) -> Value {
+    serde_json::json!({ "type": ty, "description": desc })
+}
+
+/// Schéma d'entrée d'un outil : `{"type":"object","properties":…,"required":…}`.
+/// `required` est omis quand la liste est vide.
+pub(crate) fn obj_schema(properties: Value, required: &[&str]) -> Value {
+    let mut schema = serde_json::json!({ "type": "object", "properties": properties });
+    if !required.is_empty() {
+        schema["required"] = serde_json::json!(required);
+    }
+    schema
+}
+
 pub fn list_tools() -> Vec<ToolDefinition> {
     let mut tools = Vec::with_capacity(64);
     tools.extend(system::list_tools());

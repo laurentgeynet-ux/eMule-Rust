@@ -134,10 +134,7 @@ pub struct SearchResultFile {
 impl SearchResultFile {
     /// Helper to extract filename from tags.
     pub fn name(&self) -> Option<String> {
-        self.tags.iter().find_map(|t| match (&t.name, &t.value) {
-            (TagName::Id(TAG_SPECIAL_NAME), TagValue::String(s)) => Some(s.clone()),
-            _ => None,
-        })
+        crate::ed2k::tags::special_string_tag(&self.tags, TAG_SPECIAL_NAME)
     }
 
     /// Helper to extract file size in bytes from tags.
