@@ -126,6 +126,27 @@ pub struct PeerSxCaps {
     /// `m_bCompleteSource` : le pair détient le fichier complet — eMule ne
     /// demande pas de sources à une source complète.
     pub complete_source: bool,
+    /// Enveloppe multipacket négociée (`SendFileRequest`,
+    /// `DownloadClient.cpp:266-280`).
+    pub multipacket: MultiPacketLevel,
+}
+
+/// Niveau d'enveloppe multipacket annoncé par le pair — eMule
+/// `SupportMultiPacket` (MISCOPTIONS1 bit1), `SupportExtMultiPacket`
+/// (MISCOPTIONS2 bit5), `SupportsFileIdentifiers` (MISCOPTIONS2 bit13).
+/// eMule choisit la plus haute variante supportée dans `SendFileRequest`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MultiPacketLevel {
+    /// Pas de multipacket — requêtes émises en paquets séparés.
+    #[default]
+    None,
+    /// `OP_MULTIPACKET` (`0x92`) — enveloppe hash seul.
+    Basic,
+    /// `OP_MULTIPACKET_EXT` (`0xA4`) — hash + taille u64.
+    Ext,
+    /// `OP_MULTIPACKET_EXT2` (`0xA9`) — `FileIdentifier`
+    /// (hash + taille + racine AICH).
+    Ext2,
 }
 
 /// eMule `CUpDownClient::IsSourceRequestAllowed` (`DownloadClient.cpp:212-255`)
@@ -242,6 +263,22 @@ pub fn emule_info_sx_version(info: &mule_protocol::ed2k::Ed2kEmuleInfo) -> u8 {
         .unwrap_or(0)
 }
 
+/// eMule `SendFileRequest` (`DownloadClient.cpp:266-280`) — choisit
+/// l'enveloppe multipacket la plus riche annoncée par le pair :
+/// `SupportsFileIdentifiers()` → EXT2, sinon `SupportExtMultiPacket()` →
+/// EXT, sinon `SupportMultiPacket()` → BASIC.
+pub fn multipacket_level(info: &mule_protocol::ed2k::Ed2kPeerInfo) -> MultiPacketLevel {
+    if info.supports_file_identifiers() {
+        MultiPacketLevel::Ext2
+    } else if info.supports_ext_multi_packet() {
+        MultiPacketLevel::Ext
+    } else if info.supports_multi_packet() {
+        MultiPacketLevel::Basic
+    } else {
+        MultiPacketLevel::None
+    }
+}
+
 /// Construit les capacités SX d'un pair depuis son `Ed2kPeerInfo` (HELLO)
 /// et son `OP_EMULEINFO` éventuel — eMule `GetSourceExchange1Version()`
 /// (misc1 bits 12-15) avec repli sur la valeur du tag `ET_SOURCEEXCHANGE`.
@@ -255,6 +292,7 @@ pub fn peer_sx_caps(
             .max(emule_info.map(emule_info_sx_version).unwrap_or(0)),
         sx2: info.supports_source_exchange2(),
         complete_source: false,
+        multipacket: multipacket_level(info),
     }
 }
 
@@ -293,21 +331,18 @@ fn max_source_soft(
         .unwrap_or(global * 9 / 10)
 }
 
-/// Évalue `IsSourceRequestAllowed` puis émet `OP_REQUESTSOURCES(2)` vers le
-/// pair — eMule envoie la requête SX à chaque `SendFileRequest` permis
-/// (~reask cycle) ; `mark_sx_request_sent` n'est appelé qu'en cas d'écriture
-/// réussie (`SetLastAskedForSources` + `SetLastAnsweredTimeTimeout`).
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn maybe_send_sx_request(
-    stream: &mut ObfuscatedStream<TcpStream>,
-    encoder: &Ed2kEncoder,
+/// Évalue `IsSourceRequestAllowed` et renvoie la requête SX à émettre,
+/// sans l'envoyer — factorisation de `maybe_send_sx_request` pour le
+/// chemin multipacket (`SendFileRequest` eMule regroupe la requête SX
+/// dans l'enveloppe `OP_MULTIPACKET*` quand le pair la supporte).
+pub(crate) async fn planned_sx_request(
     target_addr: SocketAddr,
     file_hash_str: &str,
     dl_hash_bytes: [u8; 16],
     downloads: &Arc<Mutex<DownloadService>>,
     env: &SxEnv,
     caps: &PeerSxCaps,
-) {
+) -> Option<Ed2kRequestSources> {
     let (source_count, valid_count, soft) = {
         let dl_svc = downloads.lock().await;
         let sources = dl_svc.list_peer_sources(file_hash_str).unwrap_or_default();
@@ -326,12 +361,41 @@ pub(crate) async fn maybe_send_sx_request(
         soft,
         caps,
     ) {
-        return;
+        return None;
     }
-    let sx_req = if caps.sx2 {
+    Some(if caps.sx2 {
         Ed2kRequestSources::new_v2(dl_hash_bytes)
     } else {
         Ed2kRequestSources::new_v1(dl_hash_bytes)
+    })
+}
+
+/// Évalue `IsSourceRequestAllowed` puis émet `OP_REQUESTSOURCES(2)` vers le
+/// pair — eMule envoie la requête SX à chaque `SendFileRequest` permis
+/// (~reask cycle) ; `mark_sx_request_sent` n'est appelé qu'en cas d'écriture
+/// réussie (`SetLastAskedForSources` + `SetLastAnsweredTimeTimeout`).
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn maybe_send_sx_request(
+    stream: &mut ObfuscatedStream<TcpStream>,
+    encoder: &Ed2kEncoder,
+    target_addr: SocketAddr,
+    file_hash_str: &str,
+    dl_hash_bytes: [u8; 16],
+    downloads: &Arc<Mutex<DownloadService>>,
+    env: &SxEnv,
+    caps: &PeerSxCaps,
+) {
+    let Some(sx_req) = planned_sx_request(
+        target_addr,
+        file_hash_str,
+        dl_hash_bytes,
+        downloads,
+        env,
+        caps,
+    )
+    .await
+    else {
+        return;
     };
     match encoder.encode_request_sources(&sx_req) {
         Ok(pkt) => {
@@ -1035,6 +1099,7 @@ mod tests {
             sx1_version: 0,
             sx2: true,
             complete_source: false,
+            multipacket: MultiPacketLevel::None,
         };
         // Fichier rare, jamais interrogé → autorisé.
         assert!(is_source_request_allowed(&env, ip, &fh, 3, 1, 360, &caps));
@@ -1060,6 +1125,7 @@ mod tests {
             sx1_version: 0,
             sx2: true,
             complete_source: false,
+            multipacket: MultiPacketLevel::None,
         };
         // `GetMaxSourcePerFileSoft` atteint → pas de requête.
         assert!(!is_source_request_allowed(
@@ -1468,6 +1534,7 @@ mod tests {
             sx1_version: 3,
             sx2: true,
             complete_source: false,
+            multipacket: MultiPacketLevel::None,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let peer_addr: SocketAddr = "85.25.13.99:4662".parse().unwrap();
@@ -1507,6 +1574,7 @@ mod tests {
             sx1_version: 3,
             sx2: true,
             complete_source: false,
+            multipacket: MultiPacketLevel::None,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let req = Ed2kRequestSources::new_v1(file_hash);
@@ -1542,6 +1610,7 @@ mod tests {
             sx1_version: 3,
             sx2: true,
             complete_source: false,
+            multipacket: MultiPacketLevel::None,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let peer_addr: SocketAddr = "85.25.13.99:4662".parse().unwrap();
@@ -1581,6 +1650,7 @@ mod tests {
             sx1_version: 3,
             sx2: true,
             complete_source: false,
+            multipacket: MultiPacketLevel::None,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         // Hash inconnu : eMule ne répond pas (`ListenSocket.cpp:1192-1199`).
@@ -1625,6 +1695,7 @@ mod tests {
             sx1_version: 3,
             sx2: true,
             complete_source: false,
+            multipacket: MultiPacketLevel::None,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let req = Ed2kRequestSources::new_v2(file_hash);

@@ -19,10 +19,11 @@ use mule_protocol::ed2k::{
     Ed2kBlockRange, Ed2kBlockRange64, Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder,
     Ed2kFileStatus, Ed2kRequestParts, Ed2kRequestPartsI64, InFlightBlock,
     MAX_REQUEST_RANGES_PER_PACKET, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CANCELTRANSFER,
+    OP_CHANGE_CLIENT_ID,
     OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
     OP_SENDINGPART, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
 };
-use mule_protocol::framing::PacketCodec;
+use mule_protocol::framing::{PacketCodec, RawPacket};
 
 use super::events::{emit_download_update, emit_event};
 use super::source_exchange::{
@@ -738,7 +739,25 @@ pub(crate) async fn run_transfer_loop(
                         if read_buf.len() > MAX_PEER_READ_BUFFER_SIZE {
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit during transfer"));
                         }
-                        while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
+                        // Réponses `OP_MULTIPACKETANSWER*` éclatées —
+                        // `ListenSocket.cpp:1071` (cf. status_query).
+                        let mut expanded: std::collections::VecDeque<RawPacket> =
+                            std::collections::VecDeque::new();
+                        loop {
+                            let packet = if let Some(p) = expanded.pop_front() {
+                                p
+                            } else {
+                                match codec.decode(&mut read_buf) {
+                                    Ok(Some(p)) => p,
+                                    _ => break,
+                                }
+                            };
+                            if let Some(subs) =
+                                super::file_request::expand_multipacket_answer(&packet)
+                            {
+                                expanded.extend(subs);
+                                continue;
+                            }
                             if sui.handle(&packet, target_addr, &decoder, &encoder, stream).await {
                                 continue;
                             }
@@ -1188,6 +1207,16 @@ pub(crate) async fn run_transfer_loop(
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_CANCELTRANSFER {
                                 info!("Peer {peer} cancelled the transfer (OP_CANCELTRANSFER)", peer = log_peer_addr(target_addr));
                                 break 'transfer_loop;
+                            } else if packet.protocol == PR_ED2K && packet.opcode == OP_CHANGE_CLIENT_ID {
+                                // eMule `ListenSocket.cpp:590` — nouvel
+                                // ID/serveur du pair (serveur connu).
+                                super::change_client_id::apply_change_client_id(
+                                    &packet.payload,
+                                    address_str,
+                                    &[file_hash_str.to_string()],
+                                    downloads,
+                                )
+                                .await;
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {

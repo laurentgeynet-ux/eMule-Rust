@@ -244,6 +244,27 @@ impl Ed2kPeerInfo {
         misc_bit(self.misc_options2, 10)
     }
 
+    /// eMule `m_bMultiPacket` — CT_EMULE_MISCOPTIONS1 bit 1
+    /// (`BaseClient.cpp:484`). The peer accepts `OP_MULTIPACKET` file
+    /// requests (hash + embedded sub-opcodes in one `PR_EMULE` packet).
+    pub fn supports_multi_packet(&self) -> bool {
+        misc_bit(self.misc_options1, 1)
+    }
+
+    /// eMule `m_fExtMultiPacket` — CT_EMULE_MISCOPTIONS2 bit 5
+    /// (`BaseClient.cpp:518`). The peer accepts `OP_MULTIPACKET_EXT`
+    /// (hash + u64 file size + sub-opcodes).
+    pub fn supports_ext_multi_packet(&self) -> bool {
+        misc_bit(self.misc_options2, 5)
+    }
+
+    /// eMule `m_fSupportsFileIdent` — CT_EMULE_MISCOPTIONS2 bit 13
+    /// (`BaseClient.cpp:510`). The peer accepts `OP_MULTIPACKET_EXT2`
+    /// requests carrying a `FileIdentifier` (hash + AICH root + size).
+    pub fn supports_file_identifiers(&self) -> bool {
+        misc_bit(self.misc_options2, 13)
+    }
+
     /// Returns true if this peer supports either SX1 (via OP_EMULEINFO) or SX2 (via misc_options2).
     pub fn supports_source_exchange(&self) -> bool {
         self.supports_source_exchange2() || self.has_source_exchange_capability()

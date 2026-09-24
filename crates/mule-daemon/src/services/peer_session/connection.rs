@@ -108,6 +108,7 @@ pub(crate) async fn run_peer_connection(
         sx1_version: handshake_res.peer_sx1_version,
         sx2: handshake_res.peer_supports_sx2,
         complete_source: false,
+        multipacket: handshake_res.peer_multipacket,
     };
     let kad_open = match &kad_service {
         Some(kad) => {

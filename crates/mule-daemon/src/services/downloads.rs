@@ -1031,6 +1031,22 @@ impl DownloadService {
         )
     }
 
+    pub fn update_peer_source_server(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        server_ip: u32,
+        server_port: u16,
+    ) -> Result<bool, DaemonError> {
+        peers_servers::update_peer_source_server(
+            &mut self.db,
+            file_hash,
+            address,
+            server_ip,
+            server_port,
+        )
+    }
+
     pub fn reset_peer_source_cooldown(
         &mut self,
         file_hash: &str,

@@ -23,8 +23,10 @@ use crate::error::DaemonError;
 use crate::services::downloads::DownloadService;
 
 pub mod a4af;
+pub mod change_client_id;
 pub mod connection;
 pub mod events;
+pub mod file_request;
 pub mod handshake;
 pub mod source_exchange;
 pub mod status_query;
@@ -38,6 +40,11 @@ pub use types::{
     SwarmStatusSnapshot, MAX_GLOBAL_PEERS, MAX_PEERS_PER_DOWNLOAD, MAX_PEER_READ_BUFFER_SIZE,
 };
 use types::{PeerSessionHandle, SwarmInnerState};
+
+/// Délai minimal avant de re-dialer une source dont la socket en file vient
+/// de mourir quand la deadline de re-ask est déjà passée (garde anti-spin —
+/// eMule re-ask immédiatement à `GetTimeUntilReask() == 0`).
+const QUEUE_LOSS_REDIAL_FLOOR_MS: i64 = 60_000;
 
 /// Pseudonymiseur de session partagé par les sous-modules `peer_session`
 /// : les adresses de pairs externes n'apparaissent jamais en clair dans
@@ -128,6 +135,7 @@ impl PeerSessionManager {
                 max_peers_per_download: MAX_PEERS_PER_DOWNLOAD,
                 max_global_peers: MAX_GLOBAL_PEERS,
                 peer_udp: HashMap::new(),
+                queued_peers: HashMap::new(),
             })),
             event_tx,
             sequence,
@@ -257,6 +265,7 @@ impl PeerSessionManager {
             max_peers_per_download,
             max_global_peers,
             peer_udp: HashMap::new(),
+            queued_peers: HashMap::new(),
         }));
         self
     }
@@ -284,17 +293,36 @@ impl PeerSessionManager {
     /// UDP endpoints of sessions currently `Queued` on a remote peer that
     /// announced an eMule UDP port — keep-alive targets for
     /// `OP_REASKFILEPING` (`CUpDownClient::UDPReaskForDownload`).
+    /// Peers we are logically queued on — eMule `UDPReaskForDownload`
+    /// requires `!(socket && socket->IsConnected())` (`DownloadClient.cpp:
+    /// 1344`) : the ping is only meaningful once the queue socket died
+    /// (`DS_ONQUEUE` persists with `socket == NULL`), so live sessions are
+    /// excluded and the state comes from `queued_peers`.
     pub async fn queued_udp_targets(&self) -> Vec<crate::services::client_udp::UdpReaskTarget> {
-        let g = self.inner.lock().await;
-        g.sessions
-            .values()
-            .filter(|s| s.snapshot.status == PeerConnectionStatus::Queued)
-            .filter_map(|s| {
-                let addr_str = s.snapshot.peer_address.as_ref()?;
-                let (udp_port, _ver) = g.peer_udp.get(addr_str)?;
+        let mut g = self.inner.lock().await;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        // Drop entries whose re-ask deadline is long past — the source was
+        // purged or re-dialed without re-queueing.
+        g.queued_peers.retain(|_, q| {
+            q.next_tcp_reask_unix_ms
+                .map(|d| d > now_ms - 2 * crate::services::peer_session::status_query::FILE_REASK_INTERVAL.as_millis() as i64)
+                .unwrap_or(true)
+        });
+        g.queued_peers
+            .iter()
+            // Live TCP session → eMule would not emit the UDP ping.
+            .filter(|(addr, _)| !g.sessions.contains_key(*addr))
+            .filter_map(|(addr_str, q)| {
+                let (udp_port, ver) = g.peer_udp.get(addr_str)?;
+                // eMule `UDPReaskForDownload` requires `GetUDPVersion() != 0`.
+                if *ver == 0 {
+                    return None;
+                }
                 let sock_addr = addr_str.parse::<std::net::SocketAddr>().ok()?;
-                let hash_hex = s.snapshot.file_hash.as_ref()?;
-                let hash_bytes = hex::decode(hash_hex).ok()?;
+                let hash_bytes = hex::decode(&q.file_hash).ok()?;
                 if hash_bytes.len() != 16 {
                     return None;
                 }
@@ -303,7 +331,8 @@ impl PeerSessionManager {
                 Some(crate::services::client_udp::UdpReaskTarget {
                     addr: std::net::SocketAddr::new(sock_addr.ip(), *udp_port),
                     file_hash,
-                    connected_at_unix_ms: s.snapshot.connected_at_unix_ms,
+                    connected_at_unix_ms: q.connected_at_unix_ms,
+                    next_tcp_reask_unix_ms: q.next_tcp_reask_unix_ms,
                 })
             })
             .collect()
@@ -518,6 +547,7 @@ impl PeerSessionManager {
             last_error: None,
             failure_reason: None,
             connected_at_unix_ms: None,
+            next_tcp_reask_unix_ms: None,
             obfuscated: false,
         };
 
@@ -602,11 +632,35 @@ impl PeerSessionManager {
                 }
 
                 // Cleanup session and free in-flight blocks
-                let (final_snapshot, outcome_hash) = {
+                let (final_snapshot, outcome_hash, queued_deadline) = {
                     let mut g = inner_clone.lock().await;
                     g.in_flight_blocks.retain(|b| b.peer_id != address_str);
 
                     if let Some(mut session) = g.sessions.remove(&address_str) {
+                        // eMule `DS_ONQUEUE` survives ANY non-terminal
+                        // disconnect (`BaseClient.cpp:1126-1135` : seuls
+                        // DS_CONNECTED/DS_REQHASHSET → deadsource, les autres
+                        // états — ONQUEUE compris — restent en file logique).
+                        // L'entrée `queued_peers` n'est donc supprimée que
+                        // pour les issues qui changent l'état logique :
+                        // FNF → source rejetée, NNP → DS_NONEEDEDPARTS.
+                        let terminal = matches!(
+                            failure_reason,
+                            Some(
+                                PeerFailureReason::FileNotFound
+                                    | PeerFailureReason::NoNeededParts
+                            )
+                        );
+                        if terminal {
+                            g.queued_peers.remove(&address_str);
+                        }
+                        let deadline = if session.snapshot.status
+                            == PeerConnectionStatus::Queued
+                        {
+                            session.snapshot.next_tcp_reask_unix_ms
+                        } else {
+                            None
+                        };
                         session.snapshot.status = final_status;
                         session.snapshot.transfer_rate_bps = 0;
                         session.snapshot.last_error = err_msg.clone();
@@ -617,9 +671,9 @@ impl PeerSessionManager {
                         // requested last (eMule `RemoveSource` on `m_reqfile`),
                         // not the originally-dialed one.
                         let outcome = session.snapshot.file_hash.clone();
-                        (Some(session.snapshot), outcome)
+                        (Some(session.snapshot), outcome, deadline)
                     } else {
-                        (None, None)
+                        (None, None, None)
                     }
                 };
 
@@ -658,10 +712,18 @@ impl PeerSessionManager {
                                 (PeerSourceStatus::Allowed, Some(now_ms + 58 * 60 * 1000))
                             }
                             _ => {
-                                if err_msg.as_deref() == Some("Disconnected in queue") {
-                                    // Standard eMule queue behavior: remote peer returned queue rank and closed TCP socket.
-                                    // Keep status as Allowed (not Failed) with a 10-minute re-ask cooldown.
-                                    (PeerSourceStatus::Allowed, Some(now_ms + 10 * 60 * 1000))
+                                if let Some(deadline) = queued_deadline {
+                                    // Standard eMule queue behavior: the TCP
+                                    // socket died (remote `CheckTimeOut` or our
+                                    // own idle drop) while `DS_ONQUEUE` — the
+                                    // client stays logically queued and is
+                                    // re-asked at the FILEREASKTIME deadline
+                                    // (`GetTimeUntilReask`), with a small floor
+                                    // against immediate re-dial spin.
+                                    (
+                                        PeerSourceStatus::Allowed,
+                                        Some(deadline.max(now_ms + QUEUE_LOSS_REDIAL_FLOOR_MS)),
+                                    )
                                 } else {
                                     let cd = calculate_backoff_cooldown_ms(next_fail_count);
                                     (PeerSourceStatus::Failed, Some(now_ms + cd))
@@ -756,6 +818,7 @@ impl PeerSessionManager {
                     .unwrap_or_default()
                     .as_millis() as i64,
             ),
+            next_tcp_reask_unix_ms: None,
             obfuscated: stream.is_obfuscated(),
         };
 
@@ -1070,3 +1133,115 @@ impl PeerSessionManager {
         g.last_session = None;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::types::{PeerSessionHandle, PeerSessionSnapshot, QueuedPeerState};
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    fn manager() -> PeerSessionManager {
+        let (tx, _rx) = broadcast::channel(1);
+        PeerSessionManager::new(tx, Arc::new(AtomicU64::new(0)))
+    }
+
+    const PEER: &str = "85.25.13.7:4662";
+
+    fn queue_entry(file_hash: &str) -> QueuedPeerState {
+        QueuedPeerState {
+            file_hash: file_hash.to_string(),
+            connected_at_unix_ms: Some(1_000),
+            next_tcp_reask_unix_ms: Some(i64::MAX / 2),
+        }
+    }
+
+    /// eMule `UDPReaskForDownload` — le ping ne part que quand la socket est
+    /// morte : l'état `DS_ONQUEUE` vient de `queued_peers`, pas de la session.
+    #[tokio::test]
+    async fn queued_udp_targets_come_from_logical_queue_state() {
+        let mgr = manager();
+        let file_hash = "aa".repeat(16);
+        {
+            let mut g = mgr.inner.lock().await;
+            g.queued_peers
+                .insert(PEER.to_string(), queue_entry(&file_hash));
+            g.peer_udp.insert(PEER.to_string(), (4672, 4));
+        }
+        let targets = mgr.queued_udp_targets().await;
+        assert_eq!(targets.len(), 1);
+        assert_eq!(
+            targets[0].addr,
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(85, 25, 13, 7)), 4672)
+        );
+        assert_eq!(hex::encode(targets[0].file_hash), file_hash);
+        assert_eq!(targets[0].connected_at_unix_ms, Some(1_000));
+    }
+
+    /// Session TCP vivante → `!(socket && socket->IsConnected())` : eMule
+    /// n'émettrait pas le ping, la cible est exclue.
+    #[tokio::test]
+    async fn queued_udp_targets_excluded_while_session_alive() {
+        let mgr = manager();
+        let file_hash = "bb".repeat(16);
+        {
+            let mut g = mgr.inner.lock().await;
+            g.queued_peers
+                .insert(PEER.to_string(), queue_entry(&file_hash));
+            g.peer_udp.insert(PEER.to_string(), (4672, 4));
+            let task = tokio::spawn(async { std::future::pending::<()>().await });
+            g.sessions.insert(
+                PEER.to_string(),
+                PeerSessionHandle {
+                    snapshot: PeerSessionSnapshot {
+                        status: PeerConnectionStatus::Queued,
+                        ..Default::default()
+                    },
+                    abort_handle: task.abort_handle(),
+                    _permit: None,
+                },
+            );
+        }
+        assert!(mgr.queued_udp_targets().await.is_empty());
+    }
+
+    /// `GetUDPVersion() == 0` → pas de ping (eMule exige une version UDP).
+    #[tokio::test]
+    async fn queued_udp_targets_requires_udp_version() {
+        let mgr = manager();
+        {
+            let mut g = mgr.inner.lock().await;
+            g.queued_peers
+                .insert(PEER.to_string(), queue_entry(&"cc".repeat(16)));
+            g.peer_udp.insert(PEER.to_string(), (4672, 0));
+        }
+        assert!(mgr.queued_udp_targets().await.is_empty());
+    }
+
+    /// Entrée dont la deadline de re-ask est dépassée depuis plus de deux
+    /// cycles → purgée à la lecture (source morte sans re-queue).
+    #[tokio::test]
+    async fn queued_udp_targets_prunes_long_expired_entries() {
+        let mgr = manager();
+        let stale = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+            - 3 * crate::services::peer_session::status_query::FILE_REASK_INTERVAL
+                .as_millis() as i64;
+        {
+            let mut g = mgr.inner.lock().await;
+            g.queued_peers.insert(
+                PEER.to_string(),
+                QueuedPeerState {
+                    file_hash: "dd".repeat(16),
+                    connected_at_unix_ms: Some(1_000),
+                    next_tcp_reask_unix_ms: Some(stale),
+                },
+            );
+            g.peer_udp.insert(PEER.to_string(), (4672, 4));
+        }
+        assert!(mgr.queued_udp_targets().await.is_empty());
+        assert!(mgr.inner.lock().await.queued_peers.is_empty());
+    }
+}
+

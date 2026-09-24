@@ -180,6 +180,25 @@ pub fn clear_peer_sources(conn: &mut Connection, file_hash: &str) -> Result<usiz
     Ok(rows)
 }
 
+/// Updates the eD2K server coordinates of a peer source — eMule
+/// `OP_CHANGE_CLIENT_ID` (`ListenSocket.cpp:590`) applies
+/// `SetServerIP`/`SetServerPort` when the announced server is known in
+/// the local serverlist.
+pub fn update_peer_source_server(
+    conn: &mut Connection,
+    file_hash: &str,
+    address: &str,
+    server_ip: u32,
+    server_port: u16,
+) -> Result<bool, CoreError> {
+    let rows = conn.execute(
+        "UPDATE peer_sources SET server_ip = ?1, server_port = ?2
+         WHERE file_hash = ?3 AND address = ?4",
+        params![server_ip as i64, server_port as i64, file_hash, address],
+    )?;
+    Ok(rows > 0)
+}
+
 /// Updates the learned software name and/or the per-part availability bitmask
 /// of a peer source (filled from the eD2K hello and OP_FILESTATUS).
 pub fn update_peer_source_details(

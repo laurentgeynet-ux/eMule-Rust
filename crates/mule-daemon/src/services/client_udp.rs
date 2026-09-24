@@ -72,6 +72,11 @@ pub struct UdpReaskTarget {
     /// eMule's "last connection attempt older than ~20 min" condition
     /// before spending a UDP reask.
     pub connected_at_unix_ms: Option<i64>,
+    /// Deadline of the next TCP file re-ask on the queued session —
+    /// eMule `GetTimeUntilReask()`. The coordinator fires the UDP
+    /// re-ask only inside eMule's `(1 s, 2 min)` window before this
+    /// deadline (`PartFile.cpp:2291`).
+    pub next_tcp_reask_unix_ms: Option<i64>,
 }
 
 /// Compteurs UDP par pair — eMule `m_nTotalUDPPackets` /
@@ -774,6 +779,7 @@ mod tests {
             addr: SocketAddr::new(ip, 12345),
             file_hash,
             connected_at_unix_ms: Some(0),
+            next_tcp_reask_unix_ms: None,
         }
     }
 

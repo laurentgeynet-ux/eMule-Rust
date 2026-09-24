@@ -88,6 +88,17 @@ pub fn update_peer_source_details(
         .map_err(db_err("updating peer source details"))
 }
 
+pub fn update_peer_source_server(
+    db: &mut Database,
+    file_hash: &str,
+    address: &str,
+    server_ip: u32,
+    server_port: u16,
+) -> Result<bool, DaemonError> {
+    db.update_peer_source_server(file_hash, address, server_ip, server_port)
+        .map_err(db_err("updating peer source server"))
+}
+
 pub fn reset_peer_source_cooldown(
     db: &mut Database,
     file_hash: &str,

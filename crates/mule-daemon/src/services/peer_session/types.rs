@@ -35,10 +35,11 @@ impl Default for PeerTimeouts {
             connect_timeout: Duration::from_secs(10),
             handshake_timeout: Duration::from_secs(8),
             status_timeout: Duration::from_secs(20),
-            // eMule has no fixed queue timeout: the entry dies only when the
-            // peer stays silent through a whole FILEREASKTIME (29 min) cycle
-            // plus this grace window.
-            queue_timeout: Duration::from_secs(900),
+            // eMule `CClientReqSocket::CheckTimeOut` (`ListenSocket.cpp:120`)
+            // kills the socket after `CONNECTION_TIMEOUT` (40 s,
+            // `Opcodes.h:64`) without ANY send or receive — the queued state
+            // survives logically (`DS_ONQUEUE` with `socket == NULL`).
+            queue_timeout: Duration::from_secs(40),
             // eMule DOWNLOADTIMEOUT is ~100 s (measured from
             // `m_dwLastBlockReceived`) — a slower cap drops trickle sources.
             first_data_timeout: Duration::from_secs(100),
@@ -120,6 +121,12 @@ pub struct PeerSessionSnapshot {
     pub failure_reason: Option<PeerFailureReason>,
     /// Timestamp when connection completed (unix ms).
     pub connected_at_unix_ms: Option<i64>,
+    /// Next scheduled TCP file re-ask while queued (unix ms) — eMule
+    /// `GetTimeUntilReask()` anchor (`DS_ONQUEUE` + `FILEREASKTIME`).
+    /// The coordinator uses it to fire the UDP re-ask inside eMule's
+    /// `(1 s, 2 min)` window before the TCP re-ask (`PartFile.cpp:2291`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_tcp_reask_unix_ms: Option<i64>,
     /// Whether this peer session is using encrypted protocol obfuscation.
     #[serde(default)]
     pub obfuscated: bool,
@@ -139,6 +146,7 @@ impl Default for PeerSessionSnapshot {
             last_error: None,
             failure_reason: None,
             connected_at_unix_ms: None,
+            next_tcp_reask_unix_ms: None,
             obfuscated: false,
         }
     }
@@ -180,6 +188,26 @@ pub(crate) struct SwarmInnerState {
     /// Peer UDP endpoints learned from handshakes:
     /// `"ip:tcp_port"` → `(eMule UDP port, client UDP version)`.
     pub peer_udp: HashMap<String, (u16, u8)>,
+    /// Peers logically queued on us being queued on them — eMule
+    /// `DS_ONQUEUE` survives socket death (`socket == NULL`): this map
+    /// keeps the queue state (deadline of next re-ask) after the TCP
+    /// session ends, so `OP_REASKFILEPING` can fire in the eMule window.
+    /// `"ip:tcp_port"` → `QueuedPeerState`.
+    pub queued_peers: HashMap<String, QueuedPeerState>,
+}
+
+/// Logical queue state surviving the TCP session — eMule `DS_ONQUEUE`
+/// with a dead socket (`DownloadClient.cpp:1326-1344` handles `!socket`).
+#[derive(Debug, Clone)]
+pub struct QueuedPeerState {
+    /// File hash the peer was queued for.
+    pub file_hash: String,
+    /// Last TCP connection attempt — eMule `GetLastTriedToConnectTime()`
+    /// (UDP ping requires it ≥ 20 min old, `PartFile.cpp:2294`).
+    pub connected_at_unix_ms: Option<i64>,
+    /// Next re-ask deadline (`GetTimeUntilReask()` = FILEREASKTIME from
+    /// last ask) — the UDP ping fires inside its final 2-minute window.
+    pub next_tcp_reask_unix_ms: Option<i64>,
 }
 
 impl SwarmInnerState {

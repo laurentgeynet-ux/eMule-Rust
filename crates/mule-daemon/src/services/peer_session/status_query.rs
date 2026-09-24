@@ -14,17 +14,17 @@ use tracing::info;
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kAichFileHashReq, Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus,
-    Ed2kFileStatusReq, Ed2kHashSetReq, OP_ACCEPTUPLOADREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER,
+    Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus,
+    Ed2kHashSetReq, OP_ACCEPTUPLOADREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER,
     OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER,
-    OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
-    OP_SETREQFILEID_EMULE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
+    OP_CHANGE_CLIENT_ID, OP_QUEUERANKING, OP_REQFILENAME_ANSWER, OP_REQUESTSOURCES,
+    OP_REQUESTSOURCES2, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
 use super::events::{emit_download_update, emit_event};
 use super::source_exchange::{
-    handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
+    handle_sx_answer, handle_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
 };
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
@@ -368,123 +368,31 @@ pub(crate) async fn query_file_status_and_enter_queue(
         log_peer_addr(target_addr)
     );
 
-    // 4a. Send OP_REQFILENAME. Quand le pair a négocié ExtendedRequestsVersion
-    // > 0, eMule lit l'ext-info (part status + complete sources) de façon
-    // inconditionnelle après le hash (UploadClient.cpp ProcessExtendedInfo) :
-    // un paquet nu provoque une exception filaire et la fermeture de connexion.
-    let file_status_req = Ed2kFileStatusReq {
-        file_hash: dl_hash_bytes,
-    };
-    // Nombre de parts du fichier ciblé — eMule saute `OP_SETREQFILEID`
-    // pour les fichiers ≤ 1 part (`DownloadClient.cpp:362-366`) : la
-    // réponse `OP_REQFILENAMEANSWER` suffit à établir la complétude.
-    let file_part_count = {
-        let dl_svc = downloads.lock().await;
-        let total_bytes = dl_svc
-            .find_by_ed2k_hash(file_hash_str)
-            .map(|d| d.total_bytes)
-            .unwrap_or(0);
-        if total_bytes == 0 {
-            0
-        } else {
-            total_bytes.div_ceil(mule_protocol::ed2k::ED2K_PART_SIZE as u64) as u16
-        }
-    };
-
-    let req_filename_pkt = if peer_ext_req > 0 {
-        // Notre propre part-status : parts dont la plage complète est déjà
-        // téléchargée (comme PartFile::WritePartStatus chez eMule).
-        let (total_bytes, completed_ranges) = {
-            let dl_svc = downloads.lock().await;
-            (
-                dl_svc
-                    .find_by_ed2k_hash(file_hash_str)
-                    .map(|d| d.total_bytes)
-                    .unwrap_or(0),
-                dl_svc.get_completed_ranges_by_hash(file_hash_str),
-            )
-        };
-        let part_size = mule_protocol::ed2k::ED2K_PART_SIZE as u64;
-        let part_count = if total_bytes > 0 {
-            total_bytes.div_ceil(part_size) as u16
-        } else {
-            0
-        };
-        let available: Vec<u16> = (0..part_count)
-            .filter(|&p| {
-                let start = u64::from(p) * part_size;
-                let end = (start + part_size).min(total_bytes);
-                completed_ranges
-                    .iter()
-                    .any(|&(rs, re)| rs <= start && re >= end)
-            })
-            .collect();
-        let part_status =
-            mule_protocol::ed2k::PartAvailabilityMask::from_parts(&available, part_count);
-        // Complete sources : non suivi par part ; 0 est licite (inconnu).
-        mule_protocol::ed2k::encoder::encode_req_filename(
-            &encoder.limits,
-            &dl_hash_bytes,
-            &part_status,
-            0,
-            peer_ext_req,
-        )
-        .map_err(|e| {
-            PeerError::new(
-                PeerFailureReason::InvalidHandshake,
-                format!("Failed to encode OP_REQFILENAME: {e}"),
-            )
-        })?
-    } else {
-        encoder
-            .encode_file_status_req_with_opcode(&file_status_req, OP_REQFILENAME)
-            .map_err(|e| {
-                PeerError::new(
-                    PeerFailureReason::InvalidHandshake,
-                    format!("Failed to encode OP_REQFILENAME: {e}"),
-                )
-            })?
-    };
-
-    out_wire.clear();
-    out_wire.push(req_filename_pkt.protocol);
-    out_wire.extend_from_slice(&(req_filename_pkt.frame_len() as u32).to_le_bytes());
-    out_wire.push(req_filename_pkt.opcode);
-    out_wire.extend_from_slice(&req_filename_pkt.payload);
-
-    if let Err(e) = stream.write_all(&out_wire).await {
-        return Err(PeerError::new(
-            PeerFailureReason::ConnectRefused,
-            format!("Failed to send OP_REQFILENAME: {e}"),
-        ));
-    }
-
-    // 4b. Send OP_SETREQFILEID_EMULE — omis pour les fichiers ≤ 1 part
-    // (eMule `SendFileRequest`, `DownloadClient.cpp:366`) : un pair qui
-    // répond `OP_REQFILENAMEANSWER` possède alors le fichier complet.
-    if file_part_count != 1 {
-        let status_pkt = encoder
-            .encode_file_status_req_with_opcode(&file_status_req, OP_SETREQFILEID_EMULE)
-            .map_err(|e| {
-                PeerError::new(
-                    PeerFailureReason::InvalidHandshake,
-                    format!("Failed to encode OP_SETREQFILEID_EMULE: {e}"),
-                )
-            })?;
-
-        out_wire.clear();
-        out_wire.push(status_pkt.protocol);
-        out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
-        out_wire.push(status_pkt.opcode);
-        out_wire.extend_from_slice(&status_pkt.payload);
-
-        if let Err(e) = stream.write_all(&out_wire).await {
-            return Err(PeerError::new(
-                PeerFailureReason::ConnectRefused,
-                format!("Failed to send OP_SETREQFILEID_EMULE: {e}"),
-            ));
-        }
-    }
+    // 4a-4c. eMule `SendFileRequest` (`DownloadClient.cpp:257-430`) — un
+    // seul `OP_MULTIPACKET*` quand le pair l'a négocié, sinon le bundle
+    // éclaté REQFILENAME(+extinfo) → SETREQFILEID → REQUESTSOURCES →
+    // AICHFILEHASHREQ. `IsSourceRequestAllowed` est évalué une fois dans
+    // `gather` pour décider si la sous-requête SX est embarquée/émise.
+    let req_inputs = super::file_request::gather_file_request_inputs(
+        downloads,
+        sx_env,
+        sx_caps,
+        target_addr,
+        file_hash_str,
+        dl_hash_bytes,
+        peer_ext_req,
+        peer_supports_aich,
+    )
+    .await;
+    let file_part_count = req_inputs.part_count;
+    super::file_request::send_file_request_packets(
+        stream,
+        &encoder,
+        sx_env,
+        target_addr,
+        &req_inputs,
+    )
+    .await?;
 
     // 4b'. Request the per-part MD4 hashset (OP_HASHSETREQUEST) when unknown,
     // so completed parts can be verified incrementally (eMule PartFile hashset).
@@ -521,39 +429,11 @@ pub(crate) async fn query_file_status_and_enter_queue(
         }
     }
 
-    // 4b''. Request the AICH master hash (OP_AICHFILEHASHREQ, eMule protocol)
-    // when the peer advertises AICH support and no trusted root is known yet.
+    // 4b''. AICH : la demande de racine `OP_AICHFILEHASHREQ` fait déjà
+    // partie du bundle `SendFileRequest` (sous-opcode multipacket ou
+    // paquet séparé). Restent les OP_AICHREQUESTs pendantes (recovery
+    // data des parts corrompues) — émises quand le pair annonce AICH.
     if peer_supports_aich {
-        let aich_needed = {
-            let dl_svc = downloads.lock().await;
-            dl_svc
-                .find_by_ed2k_hash(file_hash_str)
-                .and_then(|snap| dl_svc.trusted_aich_root(&snap.id))
-                .is_none()
-        };
-        if aich_needed {
-            let req = Ed2kAichFileHashReq {
-                file_hash: dl_hash_bytes,
-            };
-            match encoder.encode_aich_file_hash_req(&req) {
-                Ok(pkt) => {
-                    if let Err(e) = write_packet(stream, &pkt).await {
-                        tracing::warn!(
-                            "Failed to send OP_AICHFILEHASHREQ to {peer}: {e}",
-                            peer = log_peer_addr(target_addr)
-                        );
-                    } else {
-                        tracing::info!(
-                            "Sent OP_AICHFILEHASHREQ to peer {peer} for {file_hash_str}",
-                            peer = log_peer_addr(target_addr)
-                        );
-                    }
-                }
-                Err(e) => tracing::warn!("Failed to encode OP_AICHFILEHASHREQ: {e}"),
-            }
-        }
-        // A trusted root may already exist while corrupted parts wait for
-        // recovery data — send the pending OP_AICHREQUESTs now.
         send_pending_aich_requests(
             stream,
             &encoder,
@@ -565,22 +445,6 @@ pub(crate) async fn query_file_status_and_enter_queue(
         )
         .await;
     }
-
-    // 4c. OP_REQUESTSOURCES / OP_REQUESTSOURCES2 — eMule envoie la requête
-    // SX quand `IsSourceRequestAllowed` passe (`DownloadClient.cpp:212-255`) :
-    // pas de demande aux sources complètes, pas de spam (40 min/client, 5 min
-    // fichier rare / 20 min fichier commun), cap souple de sources.
-    maybe_send_sx_request(
-        stream,
-        &encoder,
-        target_addr,
-        file_hash_str,
-        dl_hash_bytes,
-        downloads,
-        sx_env,
-        sx_caps,
-    )
-    .await;
 
     let queued_snapshot = {
         let mut g = inner.lock().await;
@@ -615,7 +479,28 @@ pub(crate) async fn query_file_status_and_enter_queue(
                         if read_buf.len() > MAX_PEER_READ_BUFFER_SIZE {
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit awaiting file status"));
                         }
-                        while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
+                        // eMule `ListenSocket.cpp:1071` : une réponse
+                        // `OP_MULTIPACKETANSWER*` est éclatée en
+                        // sous-réponses réinjectées dans cette même boucle
+                        // (le hash de l'enveloppe est réinséré dans chaque
+                        // payload — le dispatch standalone s'y applique).
+                        let mut expanded: std::collections::VecDeque<RawPacket> =
+                            std::collections::VecDeque::new();
+                        loop {
+                            let packet = if let Some(p) = expanded.pop_front() {
+                                p
+                            } else {
+                                match codec.decode(&mut read_buf) {
+                                    Ok(Some(p)) => p,
+                                    _ => break,
+                                }
+                            };
+                            if let Some(subs) =
+                                super::file_request::expand_multipacket_answer(&packet)
+                            {
+                                expanded.extend(subs);
+                                continue;
+                            }
                             if sui.handle(&packet, target_addr, &decoder, &encoder, stream).await {
                                 continue;
                             }
@@ -725,6 +610,17 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                     break;
                                 } else if packet.opcode == OP_FILEREQANSNOFILE {
                                     return Err(PeerError::new(PeerFailureReason::FileNotFound, "Remote peer does not share this file (OP_FILEREQANSNOFILE)"));
+                                } else if packet.protocol == PR_ED2K && packet.opcode == OP_CHANGE_CLIENT_ID {
+                                    // eMule `ListenSocket.cpp:590` — le
+                                    // pair annonce son nouvel ID/serveur
+                                    // (valable dans les deux sens).
+                                    super::change_client_id::apply_change_client_id(
+                                        &packet.payload,
+                                        address_str,
+                                        &[file_hash_str.to_string()],
+                                        downloads,
+                                    )
+                                    .await;
                                 } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                     && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                                 {
@@ -874,6 +770,43 @@ pub(crate) async fn send_start_upload_req(
 /// preserves the queue position — a bare `OP_SETREQFILEID` does NOT refresh it.
 pub(crate) const FILE_REASK_INTERVAL: Duration = Duration::from_secs(29 * 60);
 
+/// Publishes the next TCP re-ask deadline into the session snapshot — the
+/// equivalent of eMule `GetTimeUntilReask()` (`PartFile.cpp:2291`). The
+/// swarm coordinator reads it to fire the UDP re-ask inside the
+/// `(1 s, 2 min)` window preceding the TCP re-ask. Bookkeeping only: no
+/// session event is emitted (scheduling-internal value).
+async fn publish_next_reask(
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    address_str: &str,
+    next_reask: tokio::time::Instant,
+) {
+    let remaining = next_reask.saturating_duration_since(tokio::time::Instant::now());
+    let deadline_unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+        + remaining.as_millis() as i64;
+    let mut g = inner.lock().await;
+    if let Some(session) = g.sessions.get_mut(address_str) {
+        session.snapshot.next_tcp_reask_unix_ms = Some(deadline_unix_ms);
+        let queued = session
+            .snapshot
+            .file_hash
+            .clone()
+            .map(|file_hash| crate::services::peer_session::types::QueuedPeerState {
+                file_hash,
+                connected_at_unix_ms: session.snapshot.connected_at_unix_ms,
+                next_tcp_reask_unix_ms: Some(deadline_unix_ms),
+            });
+        if let Some(state) = queued {
+            // eMule `DS_ONQUEUE` is a logical state that survives the socket —
+            // register it so the UDP re-ask can still fire after `CheckTimeOut`
+            // kills the idle socket (`DownloadClient.cpp:1326-1344`).
+            g.queued_peers.insert(address_str.to_string(), state);
+        }
+    }
+}
+
 /// Waits for `OP_ACCEPTUPLOADREQ` on the remote upload queue — eMule
 /// `DS_ONQUEUE`. Shared between the initial status query and the
 /// stall-recovery path (`CheckDownloadTimeout` → `SendCancelTransfer` → back
@@ -906,61 +839,43 @@ pub(crate) async fn wait_in_queue(
     let encoder = Ed2kEncoder::default();
     let decoder = Ed2kDecoder::default().with_extended_requests_version(peer_ext_req);
     let codec = PacketCodec::new();
-    let mut out_wire = Vec::with_capacity(64);
     let mut read_buf = BytesMut::with_capacity(65536);
     let mut raw_buf = [0u8; 8192];
-    let file_status_req = Ed2kFileStatusReq {
-        file_hash: dl_hash_bytes,
-    };
-
-    // eMule saute `OP_SETREQFILEID` pour les fichiers ≤ 1 part
-    // (`DownloadClient.cpp:366`) — à chaque cycle de reask, pas seulement
-    // à la requête initiale.
-    let file_part_count = {
-        let dl_svc = downloads.lock().await;
-        let total_bytes = dl_svc
-            .find_by_ed2k_hash(file_hash_str)
-            .map(|d| d.total_bytes)
-            .unwrap_or(0);
-        if total_bytes == 0 {
-            0
-        } else {
-            total_bytes.div_ceil(mule_protocol::ed2k::ED2K_PART_SIZE as u64) as u16
-        }
-    };
 
     if requeue_now {
-        if file_part_count != 1 {
-            let status_pkt = encoder
-                .encode_file_status_req(&file_status_req)
-                .map_err(|e| {
-                    PeerError::new(
-                        PeerFailureReason::CorruptedData,
-                        format!("Failed to encode file status re-ask: {e}"),
-                    )
-                })?;
-            out_wire.clear();
-            out_wire.push(status_pkt.protocol);
-            out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
-            out_wire.push(status_pkt.opcode);
-            out_wire.extend_from_slice(&status_pkt.payload);
-            if let Err(e) = stream.write_all(&out_wire).await {
-                return Err(PeerError::new(
-                    PeerFailureReason::ConnectRefused,
-                    format!("Failed to send file status re-ask: {e}"),
-                ));
-            }
-        }
+        // Réentrée en file (post-stall) : eMule rejoue `SendFileRequest`
+        // complet puis `SendStartupLoadReq`.
+        let req_inputs = super::file_request::gather_file_request_inputs(
+            downloads,
+            sx_env,
+            sx_caps,
+            target_addr,
+            file_hash_str,
+            dl_hash_bytes,
+            peer_ext_req,
+            peer_supports_aich,
+        )
+        .await;
+        super::file_request::send_file_request_packets(
+            stream,
+            &encoder,
+            sx_env,
+            target_addr,
+            &req_inputs,
+        )
+        .await?;
         send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
     }
 
     // eMule re-ask cycle: resend the request bundle every FILE_REASK_INTERVAL;
-    // the peer is considered dead when nothing is heard for a whole
-    // re-ask interval + `queue_timeout` (a remote answering our re-asks keeps
-    // this alive indefinitely — eMule has no queue timeout at all).
+    // the SOCKET is dropped after `queue_timeout` (= CONNECTION_TIMEOUT,
+    // 40 s) without any send or receive — `CClientReqSocket::CheckTimeOut`
+    // (`ListenSocket.cpp:120-155`, `ResetTimeOutTimer` on `OnSend`/`OnReceive`/
+    // `SendPacket`). The queued state itself survives on `queued_peers`
+    // (`DS_ONQUEUE` with `socket == NULL`).
     let mut next_reask = tokio::time::Instant::now() + FILE_REASK_INTERVAL;
-    let mut activity_deadline =
-        tokio::time::Instant::now() + FILE_REASK_INTERVAL + timeouts.queue_timeout;
+    publish_next_reask(inner, address_str, next_reask).await;
+    let mut activity_deadline = tokio::time::Instant::now() + timeouts.queue_timeout;
 
     'queue_loop: loop {
         tokio::select! {
@@ -968,48 +883,44 @@ pub(crate) async fn wait_in_queue(
                 return Err(PeerError::new(PeerFailureReason::KillSwitchAborted, "Connection aborted by kill switch while in queue"));
             }
             _ = tokio::time::sleep_until(activity_deadline) => {
-                return Err(PeerError::new(PeerFailureReason::TimeoutStatus, "Peer silent for a full re-ask cycle in queue"));
+                return Err(PeerError::new(PeerFailureReason::TimeoutStatus, "Queue socket idle (eMule CONNECTION_TIMEOUT)"));
             }
             _ = tokio::time::sleep_until(next_reask) => {
                 next_reask = tokio::time::Instant::now() + FILE_REASK_INTERVAL;
-                // eMule `SendFileRequest` re-ask: file status request keeps
-                // the part bitmap fresh, then `OP_STARTUPLOADREQ` refreshes
-                // `LastUpRequest` on the remote queue (prevents the 1 h purge).
-                // Fichier ≤ 1 part : `OP_SETREQFILEID` omis comme eMule.
-                if file_part_count != 1 {
-                    let status_pkt = encoder.encode_file_status_req(&file_status_req).map_err(|e| {
-                        PeerError::new(PeerFailureReason::CorruptedData, format!("Failed to encode re-ask: {e}"))
-                    })?;
-                    out_wire.clear();
-                    out_wire.push(status_pkt.protocol);
-                    out_wire.extend_from_slice(&(status_pkt.frame_len() as u32).to_le_bytes());
-                    out_wire.push(status_pkt.opcode);
-                    out_wire.extend_from_slice(&status_pkt.payload);
-                    if let Err(e) = stream.write_all(&out_wire).await {
-                        return Err(PeerError::new(PeerFailureReason::ConnectRefused, format!("Failed to send re-ask: {e}")));
-                    }
-                }
-                send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
-                // Re-ask SX périodique — eMule attache la requête source au
-                // cycle de reask (`SendFileRequest` → `IsSourceRequestAllowed`).
-                // `complete_source` : le pair est source complète quand son
-                // part-status couvre tout le fichier — eMule ne lui demande
-                // alors pas de sources.
+                publish_next_reask(inner, address_str, next_reask).await;
+                // eMule `SendFileRequest` re-ask : le bundle complet
+                // (REQFILENAME + SETREQFILEID + REQUESTSOURCES + AICHREQ,
+                // groupé en OP_MULTIPACKET* si négocié) puis
+                // `SendStartupLoadReq` qui rafraîchit `LastUpRequest` sur
+                // la file distante (purge à 1 h). `complete_source` : le
+                // pair est source complète quand son part-status couvre
+                // tout le fichier — eMule ne lui demande pas de sources.
                 let reask_caps = PeerSxCaps {
                     complete_source: file_status.is_complete(),
                     ..*sx_caps
                 };
-                maybe_send_sx_request(
-                    stream,
-                    &encoder,
-                    target_addr,
-                    file_hash_str,
-                    dl_hash_bytes,
+                let req_inputs = super::file_request::gather_file_request_inputs(
                     downloads,
                     sx_env,
                     &reask_caps,
+                    target_addr,
+                    file_hash_str,
+                    dl_hash_bytes,
+                    peer_ext_req,
+                    peer_supports_aich,
                 )
                 .await;
+                super::file_request::send_file_request_packets(
+                    stream,
+                    &encoder,
+                    sx_env,
+                    target_addr,
+                    &req_inputs,
+                )
+                .await?;
+                send_start_upload_req(stream, dl_hash_bytes, file_hash_str, target_addr).await?;
+                // `SendPacket` resets `timeout_timer` côté eMule.
+                activity_deadline = tokio::time::Instant::now() + timeouts.queue_timeout;
             }
             read_res = stream.read(&mut raw_buf) => {
                 match read_res {
@@ -1023,12 +934,32 @@ pub(crate) async fn wait_in_queue(
                         }
                     }
                     Ok(n) => {
-                        activity_deadline = tokio::time::Instant::now() + FILE_REASK_INTERVAL + timeouts.queue_timeout;
+                        // `OnReceive` resets `timeout_timer` côté eMule.
+                        activity_deadline = tokio::time::Instant::now() + timeouts.queue_timeout;
                         read_buf.extend_from_slice(&raw_buf[..n]);
                         if read_buf.len() > MAX_PEER_READ_BUFFER_SIZE {
                             return Err(PeerError::new(PeerFailureReason::CorruptedData, "Peer read buffer exceeded limit while in queue"));
                         }
-                        while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
+                        // Réponses `OP_MULTIPACKETANSWER*` éclatées en
+                        // sous-paquets — même mécanisme que la phase de
+                        // requête initiale (`ListenSocket.cpp:1071`).
+                        let mut expanded: std::collections::VecDeque<RawPacket> =
+                            std::collections::VecDeque::new();
+                        loop {
+                            let packet = if let Some(p) = expanded.pop_front() {
+                                p
+                            } else {
+                                match codec.decode(&mut read_buf) {
+                                    Ok(Some(p)) => p,
+                                    _ => break,
+                                }
+                            };
+                            if let Some(subs) =
+                                super::file_request::expand_multipacket_answer(&packet)
+                            {
+                                expanded.extend(subs);
+                                continue;
+                            }
                             if sui.handle(&packet, target_addr, &decoder, &encoder, stream).await {
                                 continue;
                             }
@@ -1097,6 +1028,14 @@ pub(crate) async fn wait_in_queue(
                                 }
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_FILEREQANSNOFILE {
                                 return Err(PeerError::new(PeerFailureReason::FileNotFound, "Remote peer no longer shares this file"));
+                            } else if packet.protocol == PR_ED2K && packet.opcode == OP_CHANGE_CLIENT_ID {
+                                super::change_client_id::apply_change_client_id(
+                                    &packet.payload,
+                                    address_str,
+                                    &[file_hash_str.to_string()],
+                                    downloads,
+                                )
+                                .await;
                             } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {

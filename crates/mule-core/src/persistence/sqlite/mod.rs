@@ -379,6 +379,23 @@ impl Database {
         )
     }
 
+    /// Updates the eD2K server coordinates of a peer source.
+    pub fn update_peer_source_server(
+        &mut self,
+        file_hash: &str,
+        address: &str,
+        server_ip: u32,
+        server_port: u16,
+    ) -> Result<bool, CoreError> {
+        sources::update_peer_source_server(
+            &mut self.conn,
+            file_hash,
+            address,
+            server_ip,
+            server_port,
+        )
+    }
+
     /// Resets the cooldown and fail count for a peer source.
     pub fn reset_peer_source_cooldown(
         &mut self,

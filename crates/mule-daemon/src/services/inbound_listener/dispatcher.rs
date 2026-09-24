@@ -783,22 +783,21 @@ impl InboundListenerService {
                                 }
                             }
                             OP_CHANGE_CLIENT_ID => {
-                                // eMule `ListenSocket.cpp:590` : `<u32
-                                // newUserID><u32 newServerIP>` — l'identité
-                                // d'upload est indexée par `client_key`
-                                // (userhash/IP), l'ID ed2k est journalisé.
-                                if pkt.payload.len() >= 8 {
-                                    let new_user_id = u32::from_le_bytes(
-                                        pkt.payload[..4].try_into().unwrap_or_default(),
-                                    );
-                                    let new_server_ip = u32::from_le_bytes(
-                                        pkt.payload[4..8].try_into().unwrap_or_default(),
-                                    );
-                                    tracing::debug!(
-                                        "Inbound peer {} sent OP_CHANGE_CLIENT_ID (newUserID={new_user_id:#010x}, newServerIP={new_server_ip:#010x})",
-                                        log_addr_str(&remote_str),
-                                    );
-                                }
+                                // eMule `ListenSocket.cpp:590` : applique
+                                // `SetServerIP`/`SetServerPort` sur les
+                                // lignes source des fichiers engagés par
+                                // ce pair (serveur connu en serverlist).
+                                let engaged: Vec<String> = peer_masks
+                                    .keys()
+                                    .map(hex::encode)
+                                    .collect();
+                                crate::services::peer_session::change_client_id::apply_change_client_id(
+                                    &pkt.payload,
+                                    &remote_str,
+                                    &engaged,
+                                    &self.downloads,
+                                )
+                                .await;
                             }
                             OP_REQFILENAME => {
                                 // eMule `ListenSocket.cpp:292` — requête de

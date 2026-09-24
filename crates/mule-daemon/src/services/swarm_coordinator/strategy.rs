@@ -24,7 +24,65 @@ use super::types::{
     SERVER_REASK_INTERVAL, UDP_SERVER_REASK_INTERVAL,
 };
 
+/// eMule `PartFile.cpp:2291` — `UDPReaskForDownload` fires while the
+/// source's next TCP file re-ask is less than 2 minutes away
+/// (`GetTimeUntilReask() < MIN2MS(2)`).
+const UDP_REASK_WINDOW_MS: i64 = 2 * 60 * 1_000;
+/// …but still more than 1 second away (`GetTimeUntilReask() > SEC2MS(1)`)
+/// — the UDP reply needs ~1 min to arrive before the TCP re-ask, and the
+/// window prevents pinging a source whose TCP re-ask already fired.
+const UDP_REASK_MIN_LEAD_MS: i64 = 1_000;
+/// …and only when the last connection attempt is at least 20 min old
+/// (`curTick >= GetLastTriedToConnectTime() + MIN2MS(20)`).
+const UDP_REASK_MIN_CONNECT_AGE_MS: i64 = 20 * 60 * 1_000;
+
+/// eMule `CPartFile::Process` (`PartFile.cpp:2291-2294`): a `DS_ONQUEUE`
+/// source gets one UDP re-ask per cycle, inside the `(1 s, 2 min)` window
+/// before its TCP re-ask, when the connection is ≥ 20 min old and we are
+/// not firewalled (a NAT would drop the reply — eMule gates on
+/// `!theApp.IsFirewalled()`).
+fn should_send_udp_reask(
+    target: &crate::services::client_udp::UdpReaskTarget,
+    now_ms: i64,
+    is_firewalled: bool,
+) -> bool {
+    if is_firewalled {
+        return false;
+    }
+    let Some(next_reask) = target.next_tcp_reask_unix_ms else {
+        return false;
+    };
+    let until_reask = next_reask.saturating_sub(now_ms);
+    if until_reask <= UDP_REASK_MIN_LEAD_MS || until_reask >= UDP_REASK_WINDOW_MS {
+        return false;
+    }
+    if let Some(connected_at) = target.connected_at_unix_ms {
+        if now_ms.saturating_sub(connected_at) < UDP_REASK_MIN_CONNECT_AGE_MS {
+            return false;
+        }
+    }
+    true
+}
+
 impl SwarmCoordinator {
+    /// eMule `CemuleApp::IsFirewalled` — unreachable from the outside:
+    /// neither a HighID on the connected server nor an open Kad UDP
+    /// socket. Firewalled clients skip UDP reasks entirely.
+    async fn is_firewalled(&self) -> bool {
+        let s_snap = self.state.server_session.snapshot().await;
+        let server_high_id =
+            s_snap.status == ServerConnectionStatus::Connected && s_snap.is_high_id;
+        let udp_snap = self.state.kad.udp().get_snapshot().await;
+        let fw_status = {
+            let tracker = self.state.kad.udp().firewall_tracker();
+            let fw = tracker.lock().await;
+            fw.status
+        };
+        !(server_high_id
+            || (udp_snap.is_active
+                && fw_status == crate::services::kad_udp::types::UdpFirewallStatus::Open))
+    }
+
     /// Evaluates all active downloads, runs source discovery, and connects to peers.
     pub async fn tick(&mut self) {
         // Periodic consolidated system heartbeat (every 60s)
@@ -376,18 +434,18 @@ impl SwarmCoordinator {
             self.a4af_rebalance(&a4af_states, &limits, now_ms).await;
         }
 
-        // Client-UDP keep-alives: OP_REASKFILEPING toward sources queued on
-        // a remote peer that announced an eMule UDP port — deduplicated at
-        // ~21 min cadence (CUpDownClient::UDPReaskForDownload). eMule only
-        // spends a UDP reask when the last connection attempt is old
-        // (> ~20 min): skip freshly-queued sessions to avoid UDP noise.
+        // Client-UDP keep-alives — eMule `CPartFile::Process`
+        // (`PartFile.cpp:2291-2294`): the `OP_REASKFILEPING` goes out once
+        // per cycle, inside the `(1 s, 2 min)` window before the queued
+        // session's TCP re-ask (`next_tcp_reask_unix_ms`), only when the
+        // connection is ≥ 20 min old and we are not firewalled. The
+        // service-level dedup (`UDP_REASK_INTERVAL`, pending-ack map)
+        // remains as a backstop against repeated sends inside the window.
+        let is_firewalled = self.is_firewalled().await;
         for target in self.state.peer_session.queued_udp_targets().await {
-            if let Some(connected_at) = target.connected_at_unix_ms {
-                if now_ms.saturating_sub(connected_at) < 20 * 60 * 1000 {
-                    continue;
-                }
+            if should_send_udp_reask(&target, now_ms, is_firewalled) {
+                self.state.client_udp.send_reask_file_ping(&target, 0).await;
             }
-            self.state.client_udp.send_reask_file_ping(&target, 0).await;
         }
 
         // Réglages effectifs lus une fois par tick (persistés en base —
@@ -1641,5 +1699,110 @@ mod tests {
         assert_eq!(remaining.len(), 5);
         let snap = state.peer_session.swarm_snapshot(Some(&hash)).await;
         assert_eq!(snap.peers.len(), 1);
+    }
+
+    fn udp_target(
+        connected_at_unix_ms: Option<i64>,
+        next_tcp_reask_unix_ms: Option<i64>,
+    ) -> crate::services::client_udp::UdpReaskTarget {
+        crate::services::client_udp::UdpReaskTarget {
+            addr: "10.0.0.9:4672".parse().unwrap(),
+            file_hash: [7u8; 16],
+            connected_at_unix_ms,
+            next_tcp_reask_unix_ms,
+        }
+    }
+
+    /// eMule `PartFile.cpp:2291-2294` — bornes de la fenêtre UDP : le ping
+    /// part uniquement quand le re-ask TCP arrive dans `(1 s, 2 min)`,
+    /// la connexion a ≥ 20 min et nous ne sommes pas firewalled.
+    #[test]
+    fn udp_reask_window_boundaries() {
+        let now_ms = 1_000_000_000i64;
+        let old_conn = Some(now_ms - super::UDP_REASK_MIN_CONNECT_AGE_MS);
+        // Deadline pile à 2 min → hors fenêtre (eMule exige < MIN2MS(2)).
+        assert!(!super::should_send_udp_reask(
+            &udp_target(old_conn, Some(now_ms + super::UDP_REASK_WINDOW_MS)),
+            now_ms,
+            false,
+        ));
+        // 1 ms sous la borne haute → dans la fenêtre.
+        assert!(super::should_send_udp_reask(
+            &udp_target(old_conn, Some(now_ms + super::UDP_REASK_WINDOW_MS - 1)),
+            now_ms,
+            false,
+        ));
+        // Deadline pile à 1 s → hors fenêtre (eMule exige > SEC2MS(1)).
+        assert!(!super::should_send_udp_reask(
+            &udp_target(old_conn, Some(now_ms + super::UDP_REASK_MIN_LEAD_MS)),
+            now_ms,
+            false,
+        ));
+        // 1 ms au-dessus de la borne basse → dans la fenêtre.
+        assert!(super::should_send_udp_reask(
+            &udp_target(old_conn, Some(now_ms + super::UDP_REASK_MIN_LEAD_MS + 1)),
+            now_ms,
+            false,
+        ));
+        // Deadline déjà dépassée → jamais de ping.
+        assert!(!super::should_send_udp_reask(
+            &udp_target(old_conn, Some(now_ms - 1)),
+            now_ms,
+            false,
+        ));
+    }
+
+    /// eMule exige `curTick >= LastTriedToConnectTime + MIN2MS(20)` : une
+    /// session en file depuis moins de 20 min ne déclenche pas de ping.
+    #[test]
+    fn udp_reask_requires_old_connection() {
+        let now_ms = 1_000_000_000i64;
+        let in_window = Some(now_ms + 60_000);
+        // Connexion de 19 min → refusé ; pile 20 min → accepté
+        // (eMule utilise >=).
+        assert!(!super::should_send_udp_reask(
+            &udp_target(
+                Some(now_ms - super::UDP_REASK_MIN_CONNECT_AGE_MS + 1),
+                in_window,
+            ),
+            now_ms,
+            false,
+        ));
+        assert!(super::should_send_udp_reask(
+            &udp_target(
+                Some(now_ms - super::UDP_REASK_MIN_CONNECT_AGE_MS),
+                in_window,
+            ),
+            now_ms,
+            false,
+        ));
+        // `connected_at` inconnu → permissif (le champ est toujours rempli
+        // pour une vraie session ; absent = pas de preuve de fraîcheur).
+        assert!(super::should_send_udp_reask(
+            &udp_target(None, in_window),
+            now_ms,
+            false,
+        ));
+        // Pas de deadline publiée (session à peine en file) → pas de ping.
+        assert!(!super::should_send_udp_reask(
+            &udp_target(
+                Some(now_ms - super::UDP_REASK_MIN_CONNECT_AGE_MS),
+                None,
+            ),
+            now_ms,
+            false,
+        ));
+    }
+
+    /// eMule `!theApp.IsFirewalled()` — un client injoignable n'émet pas
+    /// de re-ask UDP (le NAT jetterait la réponse).
+    #[test]
+    fn udp_reask_skipped_when_firewalled() {
+        let now_ms = 1_000_000_000i64;
+        let target = udp_target(
+            Some(now_ms - super::UDP_REASK_MIN_CONNECT_AGE_MS),
+            Some(now_ms + 60_000),
+        );
+        assert!(!super::should_send_udp_reask(&target, now_ms, true));
     }
 }

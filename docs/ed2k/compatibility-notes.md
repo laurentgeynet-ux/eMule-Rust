@@ -611,3 +611,73 @@ Références : `Emule.cpp:1056-1085` (`IsFirewalled`/`CanDoCallback`),
   recovery AICH par part est vérifié par eMule puis servi aux pairs ;
   notre modèle ne conserve que la racine — le recovery set serait
   reconstruit depuis le fichier si nécessaire.
+
+---
+
+## 15. File d'attente distante — cadence, multipacket, identité et durée de vie socket (passe 9)
+
+### Cadence du re-ask UDP — fidèle `PartFile.cpp:2291-2294`
+
+Le ping `OP_REASKFILEPING` n'est plus sur une cadence fixe ~21 min :
+`wait_in_queue` publie la deadline du prochain re-ask TCP
+(`PeerSessionSnapshot.next_tcp_reask_unix_ms` +
+`queued_peers[addr].next_tcp_reask_unix_ms`), et la stratégie n'émet le
+ping que dans la fenêtre `(1 s, 2 min)` précédant cette deadline, avec
+`LastTriedToConnect + 20 min` minimum et `!IsFirewalled()`. Les gardes
+d'échec UDP (`> 3` tentatives, ratio `> 30 %`) sont conservés.
+
+### `OP_MULTIPACKET*` — `SendFileRequest` groupé (`DownloadClient.cpp:266`)
+
+- `PeerSxCaps.multipacket` (`MultiPacketLevel` Basic/Ext/Ext2) déduit des
+  bits `SupportMultiPacket` (MISCOPTIONS1.1), `SupportExtMultiPacket`
+  (MISCOPTIONS2.5), `SupportsFileIdentifiers` (MISCOPTIONS2.13) — la plus
+  haute variante annoncée fait foi, comme eMule.
+- `file_request.rs` construit le bundle `SendFileRequest` unique :
+  `REQFILENAME` (+extinfo quand `ext_req > 0`), `SETREQFILEID` **omis pour
+  ≤ 1 part** (règle eMule conservée), `REQUESTSOURCES(2)` (planifié via
+  `planned_sx_request` factorisé, mêmes gates `IsSourceRequestAllowed`),
+  `AICHFILEHASHREQ`.
+- `OP_MULTIPACKETANSWER*` entrant est éclaté en sous-paquets
+  (`expand_multipacket_answer` + `VecDeque<RawPacket>`) qui réutilisent
+  les handlers existants — preuve socket-level
+  (`test_peer_connect_multipacket_file_request`).
+
+### `OP_CHANGE_CLIENT_ID` appliqué (`ListenSocket.cpp:590`)
+
+Le payload `[newUserID u32][newServerIP u32]` n'est plus seulement
+journalisé : `LowID + serveur connu` (serverlist → port) ou
+`newID == IP du pair` (HighID) mettent à jour `server_ip`/`server_port`
+de la source (`lowid:<id>` et/ou `ip:port`) via
+`update_peer_source_server` — les métadonnées utilisées par
+`IsLocalServer`. Contenu inconnu ou tronqué → ignoré, comme eMule.
+
+### Durée de vie de la socket en file — `CheckTimeOut` fidèle
+
+- eMule tue la socket après `CONNECTION_TIMEOUT` (**40 s**) sans AUCUN
+  trafic (`OnSend`/`OnReceive`/`SendPacket` resettent `timeout_timer`,
+  `ListenSocket.cpp:120-155`) ; `DS_ONQUEUE` survit **logiquement** avec
+  `socket == NULL`. Notre `queue_timeout` (ancien 15 min de silence
+  post-reask) est repris sur cette sémantique : 40 s d'inactivité,
+  resetté à chaque envoi ET réception.
+- La mort de la socket en file (drop local ou fermeture distante) n'est
+  **plus** un échec : la source reste `Allowed` avec cooldown =
+  deadline de re-ask (`GetTimeUntilReask`), et l'entrée `queued_peers`
+  conserve l'état logique — le ping UDP ne part que dans cet état
+  (`!(socket && socket->IsConnected())`, `DownloadClient.cpp:1344`),
+  c'est-à-dire jamais tant qu'une session TCP vit. Seuls FNF/NNP
+  (issues terminales) suppriment l'entrée — eMule garde `DS_ONQUEUE`
+  pour toute autre déconnexion (`BaseClient.cpp:1126-1135`).
+
+### Écarts assumés
+
+- **Socket partagée multi-rôle** : eMule réutilise une connexion encore
+  vivante (upload/chat) pour le re-ask TCP sans reconnecter ; nos
+  sessions sont mono-rôle — le re-ask est toujours une reconnexion,
+  sauf si le pair arrose de paquets > 40 s (alors la branche re-ask
+  interne agit comme le chemin `DS_CONNECTED` eMule).
+- **`queued_peers` en mémoire seule** : le rang de file n'est pas
+  persisté entre redémarrages (eMule non plus ne le restaure pas — un
+  client redémarré repart à `TryToConnect`).
+- **Backoff vs deadline sur mort en transfert** : une déconnexion en
+  `DS_DOWNLOADING` repasse `DS_ONQUEUE` chez eMule (reask à deadline) ;
+  nous gardons `Failed`+backoff (cadence comparable ≤ 20 min).

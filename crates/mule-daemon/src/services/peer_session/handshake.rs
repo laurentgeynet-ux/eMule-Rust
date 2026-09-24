@@ -53,6 +53,10 @@ pub struct HandshakeResult {
     pub peer_ext_req: u8,
     /// Peer's announced Kad version (MiscOptions2 bits 0-4).
     pub peer_kad_version: u8,
+    /// Multipacket envelope negotiated by the peer
+    /// (`SupportMultiPacket`/`SupportExtMultiPacket`/`SupportsFileIdentifiers`)
+    /// — shapes `SendFileRequest` bundles (`file_request`).
+    pub peer_multipacket: super::source_exchange::MultiPacketLevel,
     pub connected_ms: i64,
 }
 
@@ -350,6 +354,7 @@ pub(crate) async fn perform_peer_handshake(
     let mut peer_ext_req: u8 = 0;
     let mut peer_kad_version: u8 = 0;
     let mut peer_supports_compression = false;
+    let mut peer_multipacket = super::source_exchange::MultiPacketLevel::None;
 
     let handshake_deadline = tokio::time::Instant::now() + timeouts.handshake_timeout;
     while !received_hello_answer {
@@ -489,6 +494,9 @@ pub(crate) async fn perform_peer_handshake(
                                         peer_kad_version = peer_info.kad_version();
                                         peer_supports_compression |=
                                             peer_info.has_compression_capability();
+                                        peer_multipacket = super::source_exchange::multipacket_level(
+                                            &peer_info,
+                                        );
 
                                         let unknown_tag_ids: Vec<String> = peer_info
                                             .unknown_tags
@@ -606,6 +614,7 @@ pub(crate) async fn perform_peer_handshake(
         peer_udp_version,
         peer_ext_req,
         peer_kad_version,
+        peer_multipacket,
         connected_ms,
     })
 }
