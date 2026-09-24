@@ -54,6 +54,7 @@ windows = { version = "0.58", features = [
 ] }
 
 [dev-dependencies]
+mule-test-support = { path = "../mule-test-support" }
 tokio-tungstenite.workspace = true
 tempfile.workspace = true
 md-5.workspace = true

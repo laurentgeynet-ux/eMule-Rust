@@ -5,35 +5,11 @@
 //! Phase 6.3: Strictly confined to 127.0.0.1.
 
 use futures_util::{SinkExt, StreamExt};
-use mule_daemon::{create_router, AppState, DaemonConfig, DownloadService};
 use mule_protocol::ed2k::{Ed2kTestPeer, PartAvailabilityMask, TestPeerMode};
+use mule_test_support::spawn_test_daemon_with_temp_dir;
 use serde_json::{json, Value};
-use std::net::SocketAddr;
-use tempfile::tempdir;
-use tokio::net::TcpListener;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
-
-async fn spawn_test_daemon() -> (SocketAddr, String, tempfile::TempDir, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = tempdir().unwrap();
-    let token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token).with_bind_addr(addr);
-    let downloads = DownloadService::in_memory(temp_dir.path().to_path_buf()).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let app = create_router(state);
-
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    (addr, token, dir, temp_dir)
-}
 
 #[tokio::test]
 async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
@@ -55,7 +31,7 @@ async fn test_daemon_ed2k_loopback_discovers_source_without_part_file_writes() {
     let _peer_handle = test_peer.spawn();
 
     // 2. Spawn test daemon
-    let (daemon_addr, token, _data_dir, temp_dir) = spawn_test_daemon().await;
+    let (daemon_addr, token, _data_dir, temp_dir) = spawn_test_daemon_with_temp_dir("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").await;
     let ws_url = format!("ws://{daemon_addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)

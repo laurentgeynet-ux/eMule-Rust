@@ -4,59 +4,21 @@
 use bytes::Bytes;
 use serde_json::{json, Value};
 use std::time::Duration;
-use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart, PartAvailabilityMask,
     OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ, OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
     OP_STARTUPLOADREQ, PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
-
-async fn setup_test_state() -> (AppState, tempfile::TempDir, String) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "test_token_peer".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-    state
-        .network_policy
-        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
-
-    let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
-
-    // Insert download via RPC downloads.addEd2kLink
-    let link = format!("ed2k://|file|test_payload.iso|9728001|{file_hash_hex}|/");
-    let req = make_req(1, "downloads.addEd2kLink", Some(json!({ "link": link })));
-    let mut authenticated = true;
-    let resp = handle_request(&state, req, &mut authenticated)
-        .await
-        .unwrap();
-    assert!(resp.error.is_none());
-
-    (state, dir, file_hash_hex)
-}
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
-}
+use mule_test_support::{download_state, make_req};
 
 #[tokio::test]
 async fn test_sources_list_and_add_manual() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_peer", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // 1. Initial list should be empty
@@ -94,7 +56,7 @@ async fn test_sources_list_and_add_manual() {
 
 #[tokio::test]
 async fn test_peer_connect_refused_when_ip_filtered() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_peer", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Load an IP filter rule blocking 127.0.0.1
@@ -128,7 +90,7 @@ async fn test_peer_connect_refused_when_ip_filtered() {
 
 #[tokio::test]
 async fn test_peer_connect_refused_under_local_lab_profile() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_peer", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Default profile is LocalLab. Connecting to non-loopback IP must be rejected.
@@ -150,7 +112,7 @@ async fn test_peer_connect_refused_under_local_lab_profile() {
 
 #[tokio::test]
 async fn test_peer_connect_nominal_handshake_and_transfer() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_peer", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Start mock eD2K peer TCP server on 127.0.0.1
@@ -321,7 +283,7 @@ async fn test_peer_connect_nominal_handshake_and_transfer() {
 
 #[tokio::test]
 async fn test_peer_connect_swarm_peer_limit() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_peer", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
     state.peer_session.set_swarm_limits(2, 4).await;
 
@@ -393,7 +355,7 @@ async fn test_peer_connect_swarm_peer_limit() {
 
 #[tokio::test]
 async fn test_peer_connect_aborted_by_kill_switch() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_peer", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

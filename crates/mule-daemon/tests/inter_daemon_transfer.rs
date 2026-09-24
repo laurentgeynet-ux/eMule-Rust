@@ -2,69 +2,23 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 use std::io::Read;
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use mule_daemon::lab::LabSourceService;
-use mule_daemon::{create_router, AppState, DaemonConfig, DirectoryLock, DownloadService};
+use mule_daemon::DirectoryLock;
 use mule_format::fixtures::{PatternReader, FIXTURE_EXACT_ONE_PART, REPEATING_0_TO_255};
 use mule_format::Ed2kHash;
 use mule_protocol::lab::LabSourceEngine;
+use mule_test_support::RunningDaemon;
 use serde_json::{json, Value};
 use tempfile::tempdir;
-use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 const FIXTURE_FILE_SIZE: u64 = 9_728_000;
 const AUTH_TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-struct RunningDaemon {
-    addr: SocketAddr,
-    state: AppState,
-    _token: String,
-    _lock: DirectoryLock,
-    server_handle: JoinHandle<()>,
-}
-
-impl RunningDaemon {
-    async fn start(workdir: PathBuf) -> Self {
-        let lock = DirectoryLock::acquire(&workdir).expect("acquires exclusive directory lock");
-        let db_path = workdir.join("mule.db");
-        let temp_dir = workdir.join("part");
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        let token = AUTH_TOKEN.to_string();
-        let config = DaemonConfig::new(workdir, &token).with_bind_addr(addr);
-        let downloads =
-            DownloadService::new(&db_path, temp_dir).expect("opens persistent download service");
-        let state = AppState::new(config, downloads);
-        let app = create_router(state.clone());
-
-        let server_handle = tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-
-        Self {
-            addr,
-            state,
-            _token: token,
-            _lock: lock,
-            server_handle,
-        }
-    }
-
-    async fn stop(self) {
-        self.state.abort_all_tasks().await;
-        self.server_handle.abort();
-    }
-}
 
 #[tokio::test]
 async fn test_inter_daemon_loopback_transfer_and_interruption_resumption() {
@@ -89,7 +43,7 @@ async fn test_inter_daemon_loopback_transfer_and_interruption_resumption() {
     let source_addr = source_service.local_addr();
 
     // 3. Start Client Daemon (Daemon B)
-    let client_daemon = RunningDaemon::start(dir_client.path().to_path_buf()).await;
+    let client_daemon = RunningDaemon::start(dir_client.path().to_path_buf(), AUTH_TOKEN).await;
     let client_addr = client_daemon.addr;
 
     // Connect WebSocket to Client Daemon
@@ -245,7 +199,7 @@ async fn test_inter_daemon_loopback_transfer_and_interruption_resumption() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // 7. Restart Client Daemon on the EXACT SAME workdir!
-    let client_daemon_2 = RunningDaemon::start(dir_client.path().to_path_buf()).await;
+    let client_daemon_2 = RunningDaemon::start(dir_client.path().to_path_buf(), AUTH_TOKEN).await;
     let client_addr_2 = client_daemon_2.addr;
 
     let ws_url_2 = format!("ws://{client_addr_2}/rpc");

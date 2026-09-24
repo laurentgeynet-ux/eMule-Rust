@@ -6,93 +6,25 @@
 //! Phase 6.4: Strictly confined to local loopback (127.0.0.1). Zero public network.
 
 use std::io::Read;
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use mule_core::Database;
-use mule_daemon::{create_router, AppState, DaemonConfig, DirectoryLock, DownloadService};
 use mule_format::fixtures::{
     PatternReader, FIXTURE_EXACT_ONE_PART, FIXTURE_ONE_PART_PLUS_ONE, REPEATING_0_TO_255,
 };
 use mule_format::Ed2kHash;
 use mule_protocol::ed2k::{Ed2kTestPeer, PartAvailabilityMask, TestPeerMode};
+use mule_test_support::{recv_response_by_id as next_response, RunningDaemon};
 use serde_json::{json, Value};
 use tempfile::tempdir;
-use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 const FIXTURE_FILE_SIZE: u64 = 9_728_000;
 const AUTH_TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-struct RunningDaemon {
-    addr: SocketAddr,
-    state: AppState,
-    _token: String,
-    _lock: DirectoryLock,
-    server_handle: JoinHandle<()>,
-}
-
-impl RunningDaemon {
-    async fn start(workdir: PathBuf) -> Self {
-        let lock = DirectoryLock::acquire(&workdir).expect("acquires exclusive directory lock");
-        let db_path = workdir.join("mule.db");
-        let temp_dir = workdir.join("part");
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        let token = AUTH_TOKEN.to_string();
-        let config = DaemonConfig::new(workdir, &token).with_bind_addr(addr);
-        let downloads =
-            DownloadService::new(&db_path, temp_dir).expect("opens persistent download service");
-        let state = AppState::new(config, downloads);
-        let app = create_router(state.clone());
-
-        let server_handle = tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-
-        Self {
-            addr,
-            state,
-            _token: token,
-            _lock: lock,
-            server_handle,
-        }
-    }
-
-    async fn stop(self) {
-        self.state.abort_all_tasks().await;
-        self.server_handle.abort();
-    }
-}
-
-/// Lit la prochaine trame WS portant l'`id` de réponse attendu — les events
-/// broadcast (`event.statsTick`, `upnp.statusChanged`, `downloadUpdated`…)
-/// sont multiplexés sur le socket et peuvent précéder la réponse RPC.
-async fn next_response<S>(read: &mut S, id: u64) -> Value
-where
-    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
-{
-    for _ in 0..64 {
-        let msg = read
-            .next()
-            .await
-            .expect("ws stream ended")
-            .expect("ws frame error");
-        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
-        if val["id"].as_u64() == Some(id) {
-            return val;
-        }
-    }
-    panic!("response id={id} not received within 64 frames");
-}
 
 #[tokio::test]
 async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
@@ -124,7 +56,7 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
     let (peer_handle, peer_stopped) = test_peer.spawn_service();
 
     // 3. Start Client Daemon B
-    let client_daemon = RunningDaemon::start(dir_client.path().to_path_buf()).await;
+    let client_daemon = RunningDaemon::start(dir_client.path().to_path_buf(), AUTH_TOKEN).await;
     let client_addr = client_daemon.addr;
 
     // Connect WebSocket
@@ -302,7 +234,7 @@ async fn test_ed2k_transfer_with_interruption_and_gap_only_resumption() {
     drop(db);
 
     // 8. Cold restart Client Daemon on the EXACT SAME workdir
-    let client_daemon_2 = RunningDaemon::start(dir_client.path().to_path_buf()).await;
+    let client_daemon_2 = RunningDaemon::start(dir_client.path().to_path_buf(), AUTH_TOKEN).await;
     let client_addr_2 = client_daemon_2.addr;
 
     let ws_url_2 = format!("ws://{client_addr_2}/rpc");
@@ -516,7 +448,7 @@ async fn test_ed2k_transfer_residual_part_file_completion() {
     let (peer_handle, peer_stopped) = test_peer.spawn_service();
 
     // 3. Start Client Daemon
-    let client_daemon = RunningDaemon::start(dir_client.path().to_path_buf()).await;
+    let client_daemon = RunningDaemon::start(dir_client.path().to_path_buf(), AUTH_TOKEN).await;
     let client_addr = client_daemon.addr;
 
     // Connect WebSocket RPC

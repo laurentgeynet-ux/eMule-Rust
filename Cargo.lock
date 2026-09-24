@@ -1049,6 +1049,7 @@ dependencies = [
  "mule-format",
  "mule-network-policy",
  "mule-protocol",
+ "mule-test-support",
  "rand 0.9.5",
  "reqwest",
  "rsa",
@@ -1102,6 +1103,7 @@ dependencies = [
  "futures-util",
  "hex",
  "mule-daemon",
+ "mule-test-support",
  "serde",
  "serde_json",
  "tempfile",
@@ -1148,6 +1150,20 @@ dependencies = [
  "tokio",
  "tracing",
  "unicode-normalization",
+]
+
+[[package]]
+name = "mule-test-support"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "futures-util",
+ "mule-daemon",
+ "mule-network-policy",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
 ]
 
 [[package]]

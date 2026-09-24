@@ -3,90 +3,22 @@
 
 use std::fs;
 use std::io::Cursor;
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use mule_daemon::lab::LabSourceService;
-use mule_daemon::{create_router, AppState, DaemonConfig, DirectoryLock, DownloadService};
+use mule_daemon::DownloadService;
 use mule_format::ed2k;
 use mule_protocol::lab::LabSourceEngine;
+use mule_test_support::{recv_response_by_id as read_response, RunningDaemon};
 use serde_json::json;
 use tempfile::tempdir;
 use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 const AUTH_TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-/// Lit la prochaine réponse JSON-RPC portant `id` sur le flux WS, en ignorant
-/// les notifications d'événements broadcast intercalées (le serveur multiplexe
-/// réponses et events via `select!` — l'ordre n'est pas garanti).
-async fn read_response<S>(read: &mut S, id: u64) -> serde_json::Value
-where
-    S: futures_util::Stream<
-            Item = Result<
-                tokio_tungstenite::tungstenite::Message,
-                tokio_tungstenite::tungstenite::Error,
-            >,
-        > + Unpin,
-{
-    for _ in 0..64 {
-        let msg = tokio::time::timeout(Duration::from_secs(10), read.next())
-            .await
-            .expect("timeout waiting for RPC response")
-            .expect("stream closed")
-            .expect("ws error");
-        let v: serde_json::Value = serde_json::from_str(&msg.to_string()).unwrap();
-        if v.get("id").and_then(|i| i.as_u64()) == Some(id) {
-            return v;
-        }
-    }
-    panic!("no JSON-RPC response with id={id} after 64 messages");
-}
-
-struct RunningDaemon {
-    addr: SocketAddr,
-    state: AppState,
-    _lock: DirectoryLock,
-    server_handle: JoinHandle<()>,
-}
-
-impl RunningDaemon {
-    async fn start(workdir: PathBuf) -> Self {
-        let lock = DirectoryLock::acquire(&workdir).expect("acquires exclusive directory lock");
-        let db_path = workdir.join("mule.db");
-        let temp_dir = workdir.join("part");
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        let config = DaemonConfig::new(workdir, AUTH_TOKEN).with_bind_addr(addr);
-        let downloads =
-            DownloadService::new(&db_path, temp_dir).expect("opens persistent download service");
-        let state = AppState::new(config, downloads);
-        let app = create_router(state.clone());
-
-        let server_handle = tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-
-        Self {
-            addr,
-            state,
-            _lock: lock,
-            server_handle,
-        }
-    }
-
-    async fn stop(self) {
-        self.state.abort_all_tasks().await;
-        self.server_handle.abort();
-    }
-}
 
 #[tokio::test]
 async fn test_corrupted_database_fails_explicitly_in_daemon() {
@@ -134,7 +66,7 @@ async fn test_concurrent_downloads_no_crosstalk() {
     let client_dir = tempdir().unwrap();
     let client_target_dir = tempdir().unwrap();
 
-    let client_daemon = RunningDaemon::start(client_dir.path().to_path_buf()).await;
+    let client_daemon = RunningDaemon::start(client_dir.path().to_path_buf(), AUTH_TOKEN).await;
     let client_addr = client_daemon.addr;
 
     // Connect WebSocket client to Daemon B
@@ -345,7 +277,7 @@ async fn test_slow_source_delayed_delivery_recovers_cleanly() {
     let client_dir = tempdir().unwrap();
     let client_target_dir = tempdir().unwrap();
 
-    let client_daemon = RunningDaemon::start(client_dir.path().to_path_buf()).await;
+    let client_daemon = RunningDaemon::start(client_dir.path().to_path_buf(), AUTH_TOKEN).await;
     let client_addr = client_daemon.addr;
 
     let ws_url = format!("ws://{client_addr}/rpc");

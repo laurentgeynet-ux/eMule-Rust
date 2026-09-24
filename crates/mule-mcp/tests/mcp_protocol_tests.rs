@@ -1,33 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-use mule_daemon::{create_router, AppState, DaemonConfig, DownloadService};
 use mule_mcp::{execute_tool, list_tools, DaemonClient};
+use mule_test_support::spawn_test_daemon;
 use serde_json::json;
-use std::net::SocketAddr;
-use tempfile::tempdir;
-use tokio::net::TcpListener;
-
-async fn spawn_test_daemon() -> (SocketAddr, String, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token).with_bind_addr(addr);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let app = create_router(state);
-
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-
-    (addr, token, dir)
-}
 
 #[test]
 fn test_tools_schema_integrity() {
@@ -52,7 +28,7 @@ fn test_tools_schema_integrity() {
 
 #[tokio::test]
 async fn test_mcp_client_e2e_with_daemon() {
-    let (addr, token, _dir) = spawn_test_daemon().await;
+    let (addr, token, _dir) = spawn_test_daemon("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").await;
     let url = format!("ws://{addr}/rpc");
 
     // 1. Connect and perform hello handshake

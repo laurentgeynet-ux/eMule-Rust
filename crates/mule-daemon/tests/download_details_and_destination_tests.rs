@@ -2,58 +2,16 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 use futures_util::{SinkExt, StreamExt};
-use mule_daemon::{create_router, AppState, DaemonConfig, DownloadService, WorkDirMode};
-use serde_json::{json, Value};
-use std::net::SocketAddr;
-use tempfile::tempdir;
-use tokio::net::TcpListener;
+use serde_json::json;
+
+use mule_daemon::{DownloadService, WorkDirMode};
+use mule_test_support::{recv_response_by_id, spawn_test_daemon_with_mode};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
-async fn spawn_test_daemon(mode: WorkDirMode) -> (SocketAddr, String, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "details_test_token_123".to_string();
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_bind_addr(addr)
-        .with_workdir_mode(mode);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let app = create_router(state);
-
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    (addr, token, dir)
-}
-
-async fn recv_response_by_id(
-    read: &mut (impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
-    expected_id: u64,
-) -> Value {
-    for _ in 0..10 {
-        if let Some(Ok(msg)) = read.next().await {
-            if let Ok(text) = msg.to_text() {
-                if let Ok(val) = serde_json::from_str::<Value>(text) {
-                    if val.get("id").and_then(|i| i.as_u64()) == Some(expected_id) {
-                        return val;
-                    }
-                }
-            }
-        }
-    }
-    panic!("Did not receive response for request id {expected_id}");
-}
-
 #[tokio::test]
 async fn test_download_details_part_map_and_boundaries() {
-    let (addr, token, _dir) = spawn_test_daemon(WorkDirMode::Portable).await;
+    let (addr, token, _dir) = spawn_test_daemon_with_mode("details_test_token_123", WorkDirMode::Portable).await;
     let ws_url = format!("ws://{addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)
@@ -144,7 +102,7 @@ async fn test_download_details_part_map_and_boundaries() {
 
 #[tokio::test]
 async fn test_downloads_set_destination_and_retry_connection() {
-    let (addr, token, dir) = spawn_test_daemon(WorkDirMode::Portable).await;
+    let (addr, token, dir) = spawn_test_daemon_with_mode("details_test_token_123", WorkDirMode::Portable).await;
     let ws_url = format!("ws://{addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)
@@ -221,7 +179,7 @@ async fn test_downloads_set_destination_and_retry_connection() {
 
 #[tokio::test]
 async fn test_settings_rpc_get_set_reset() {
-    let (addr, token, dir) = spawn_test_daemon(WorkDirMode::Portable).await;
+    let (addr, token, dir) = spawn_test_daemon_with_mode("details_test_token_123", WorkDirMode::Portable).await;
     let ws_url = format!("ws://{addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)

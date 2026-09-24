@@ -2,40 +2,16 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 use futures_util::{SinkExt, StreamExt};
-use mule_daemon::{create_router, AppState, DaemonConfig, DownloadService, WorkDirMode};
 use serde_json::{json, Value};
-use std::net::SocketAddr;
-use tempfile::tempdir;
-use tokio::net::TcpListener;
+
+use mule_daemon::WorkDirMode;
+use mule_test_support::spawn_test_daemon_with_mode;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
-async fn spawn_test_daemon(mode: WorkDirMode) -> (SocketAddr, String, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "lab_test_token_456".to_string();
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_bind_addr(addr)
-        .with_workdir_mode(mode);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let app = create_router(state);
-
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    (addr, token, dir)
-}
-
 #[tokio::test]
 async fn test_lab_rpc_full_lifecycle() {
-    let (addr, token, dir) = spawn_test_daemon(WorkDirMode::Portable).await;
+    let (addr, token, dir) = spawn_test_daemon_with_mode("lab_test_token_456", WorkDirMode::Portable).await;
     let ws_url = format!("ws://{addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)
@@ -184,7 +160,7 @@ async fn test_lab_rpc_full_lifecycle() {
 
 #[tokio::test]
 async fn test_lab_cleanup_refused_in_installed_default_mode() {
-    let (addr, token, _dir) = spawn_test_daemon(WorkDirMode::InstalledDefault).await;
+    let (addr, token, _dir) = spawn_test_daemon_with_mode("lab_test_token_456", WorkDirMode::InstalledDefault).await;
     let ws_url = format!("ws://{addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)
@@ -232,7 +208,7 @@ async fn test_lab_cleanup_refused_in_installed_default_mode() {
 
 #[tokio::test]
 async fn test_lab_create_fixture_pattern_9728001() {
-    let (addr, token, dir) = spawn_test_daemon(WorkDirMode::Portable).await;
+    let (addr, token, dir) = spawn_test_daemon_with_mode("lab_test_token_456", WorkDirMode::Portable).await;
     let ws_url = format!("ws://{addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)

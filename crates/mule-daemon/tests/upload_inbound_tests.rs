@@ -8,60 +8,20 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{Ed2kDecoder, Ed2kEncoder, Ed2kHello, Ed2kRequestParts, PR_ED2K};
 use mule_protocol::framing::PacketCodec;
+use mule_test_support::{make_req, share_state};
 
-async fn setup_upload_test_state() -> (AppState, tempfile::TempDir, String) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "test_token_upload".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
-
-    // 1. Register an explicitly shared file backed by a real file on disk —
-    // the upload path only serves bytes it can actually read.
-    let shared_path = dir.path().join("test_shared_archive.iso");
-    let shared_bytes: Vec<u8> = (0..262_144u32).map(|i| (i % 251) as u8).collect();
-    std::fs::write(&shared_path, &shared_bytes).unwrap();
-
-    let mut authenticated = true;
-    let share_req = make_req(
-        1,
-        "shares.add",
-        Some(json!({
-            "fileHash": file_hash_hex,
-            "fileName": "test_shared_archive.iso",
-            "fileSize": 18874368,
-            "filePath": shared_path.to_string_lossy()
-        })),
-    );
-    let resp = handle_request(&state, share_req, &mut authenticated)
-        .await
-        .unwrap();
-    assert!(resp.error.is_none());
-
-    (state, dir, file_hash_hex)
-}
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
+/// Contenu du fichier partagé de test : motif périodique de 256 Ko —
+/// le chemin upload ne sert que des octets réellement présents sur disque.
+fn shared_bytes() -> Vec<u8> {
+    (0..262_144u32).map(|i| (i % 251) as u8).collect()
 }
 
 #[tokio::test]
 async fn test_inbound_listener_rejected_under_disabled_network() {
-    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Disconnect network via kill switch
@@ -88,7 +48,7 @@ async fn test_inbound_listener_rejected_under_disabled_network() {
 
 #[tokio::test]
 async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
-    let (state, _dir, hash) = setup_upload_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Start listener on ephemeral loopback port
@@ -223,7 +183,7 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
 
 #[tokio::test]
 async fn test_inbound_request_unshared_file_does_not_upload() {
-    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     let start_resp = handle_request(
@@ -317,7 +277,7 @@ async fn test_inbound_request_unshared_file_does_not_upload() {
 
 #[tokio::test]
 async fn test_upload_queue_ranking_and_single_slot_concurrency() {
-    let (state, _dir, hash) = setup_upload_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Restrict to a single active upload slot so queueing behavior is
@@ -515,7 +475,7 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
 
 #[tokio::test]
 async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
-    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Start listener
@@ -596,7 +556,7 @@ async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
 
 #[tokio::test]
 async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
-    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Start listener
@@ -672,7 +632,7 @@ async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
 
 #[tokio::test]
 async fn test_inbound_connection_per_ip_limit() {
-    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Start listener
@@ -743,7 +703,7 @@ async fn test_inbound_connection_per_ip_limit() {
 
 #[tokio::test]
 async fn test_inbound_secident_signature_without_challenge_rejected() {
-    let (state, _dir, _hash) = setup_upload_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     // Start listener

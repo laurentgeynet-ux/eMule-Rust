@@ -1,36 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-use serde_json::{json, Value};
-use tempfile::tempdir;
+use serde_json::json;
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_network_policy::NetworkProfile;
+use mule_test_support::{make_req, rpc_state_with_config};
 
-fn setup_test_state(profile: NetworkProfile) -> (AppState, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "wan_test_token_456".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable)
-        .with_network_profile(profile)
-        .with_upnp_enabled(false); // disable UPnP auto-probe in test to avoid network delay
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    (state, dir)
-}
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
+/// État de test avec profil réseau forcé et auto-probe UPnP désactivée
+/// (évite le délai réseau dans les tests).
+fn setup_test_state(profile: NetworkProfile) -> (mule_daemon::AppState, tempfile::TempDir) {
+    rpc_state_with_config("wan_test_token_456", |c| {
+        c.with_network_profile(profile).with_upnp_enabled(false)
+    })
 }
 
 #[tokio::test]

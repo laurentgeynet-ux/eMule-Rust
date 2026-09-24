@@ -1,0 +1,18 @@
+[package]
+name = "mule-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Helpers mutualisés pour les tests d'intégration du workspace (loopback uniquement)."
+publish = false
+
+[dependencies]
+mule-daemon = { path = "../mule-daemon" }
+mule-network-policy = { path = "../mule-network-policy" }
+axum.workspace = true
+futures-util.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true

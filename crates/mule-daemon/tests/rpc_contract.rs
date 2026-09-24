@@ -3,37 +3,16 @@
 
 use futures_util::{SinkExt, StreamExt};
 use mule_daemon::{create_router, AppState, DaemonConfig, DownloadService};
+use mule_test_support::{recv_response_by_id, spawn_test_daemon};
 use serde_json::{json, Value};
-use std::net::SocketAddr;
 use tempfile::tempdir;
 use tokio::net::TcpListener;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
-async fn spawn_test_daemon() -> (SocketAddr, String, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "secret_test_token_123".to_string();
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token).with_bind_addr(addr);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let app = create_router(state);
-
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-
-    (addr, token, dir)
-}
-
 #[tokio::test]
 async fn test_full_rpc_contract_and_event_streaming() {
-    let (addr, token, _dir) = spawn_test_daemon().await;
+    let (addr, token, _dir) = spawn_test_daemon("secret_test_token_123").await;
     let ws_url = format!("ws://{addr}/rpc");
 
     let (ws_stream, _) = connect_async(&ws_url)
@@ -243,22 +222,6 @@ async fn test_full_rpc_contract_and_event_streaming() {
     assert_eq!(stop_resp.unwrap()["result"]["stopping"], true);
 }
 
-async fn wait_for_rpc_response<S>(read: &mut S, id: u64) -> Value
-where
-    S: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
-{
-    while let Some(Ok(msg)) = read.next().await {
-        if let Ok(text) = msg.to_text() {
-            if let Ok(val) = serde_json::from_str::<Value>(text) {
-                if val.get("id").and_then(|v| v.as_u64()) == Some(id) {
-                    return val;
-                }
-            }
-        }
-    }
-    panic!("Never received response for id {id}");
-}
-
 #[tokio::test]
 async fn test_downloads_remove_persistence_across_daemon_restart() {
     let dir = tempdir().unwrap();
@@ -300,7 +263,7 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             ))
             .await
             .unwrap();
-        let _ = wait_for_rpc_response(&mut read, 1).await;
+        let _ = recv_response_by_id(&mut read, 1).await;
 
         // Add eD2K link
         write
@@ -316,7 +279,7 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             ))
             .await
             .unwrap();
-        let add_val = wait_for_rpc_response(&mut read, 2).await;
+        let add_val = recv_response_by_id(&mut read, 2).await;
         download_id = add_val["result"]["downloadId"]
             .as_str()
             .unwrap()
@@ -336,7 +299,7 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             ))
             .await
             .unwrap();
-        let list_val = wait_for_rpc_response(&mut read, 3).await;
+        let list_val = recv_response_by_id(&mut read, 3).await;
         assert_eq!(list_val["result"]["downloads"].as_array().unwrap().len(), 1);
 
         // Remove download
@@ -353,7 +316,7 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             ))
             .await
             .unwrap();
-        let rem_val = wait_for_rpc_response(&mut read, 4).await;
+        let rem_val = recv_response_by_id(&mut read, 4).await;
         assert_eq!(rem_val["result"]["success"], true);
 
         // List downloads -> must have 0
@@ -370,7 +333,7 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             ))
             .await
             .unwrap();
-        let list2_val = wait_for_rpc_response(&mut read, 5).await;
+        let list2_val = recv_response_by_id(&mut read, 5).await;
         assert_eq!(
             list2_val["result"]["downloads"].as_array().unwrap().len(),
             0
@@ -409,7 +372,7 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             ))
             .await
             .unwrap();
-        let _ = wait_for_rpc_response(&mut read, 1).await;
+        let _ = recv_response_by_id(&mut read, 1).await;
 
         // List downloads on restarted daemon -> MUST BE 0!
         write
@@ -425,7 +388,7 @@ async fn test_downloads_remove_persistence_across_daemon_restart() {
             ))
             .await
             .unwrap();
-        let list3_val = wait_for_rpc_response(&mut read, 2).await;
+        let list3_val = recv_response_by_id(&mut read, 2).await;
         assert_eq!(
             list3_val["result"]["downloads"].as_array().unwrap().len(),
             0,

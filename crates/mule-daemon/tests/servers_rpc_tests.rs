@@ -1,41 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-use serde_json::{json, Value};
+use serde_json::json;
 use std::fs::File;
 use std::net::Ipv4Addr;
-use tempfile::tempdir;
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_format::{ServerEntry, ServerMetFile, Tag};
-
-fn setup_test_state() -> (AppState, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "servers_test_token_123".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    (state, dir)
-}
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
-}
+use mule_test_support::{make_req, rpc_state};
 
 #[tokio::test]
 async fn test_servers_rpc_workflow() {
-    let (state, dir) = setup_test_state();
+    let (state, dir) = rpc_state("servers_test_token_123");
     let mut authenticated = false;
 
     // 1. Authenticate with system.hello

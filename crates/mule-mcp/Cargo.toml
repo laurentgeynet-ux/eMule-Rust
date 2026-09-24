@@ -23,5 +23,6 @@ uuid.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+mule-test-support = { path = "../mule-test-support" }
 tempfile.workspace = true
 axum.workspace = true

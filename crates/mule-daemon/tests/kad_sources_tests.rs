@@ -5,31 +5,13 @@ use tempfile::tempdir;
 use tokio::net::UdpSocket;
 
 use mule_core::model::PeerSourceOrigin;
-use mule_daemon::services::downloads::DownloadService;
-use mule_daemon::state::AppState;
-use mule_daemon::{DaemonConfig, WorkDirMode};
 use mule_protocol::kad::*;
-
-fn setup_test_state(tmp: &tempfile::TempDir) -> AppState {
-    let data_dir = tmp.path().join("data");
-    let dl_dir = tmp.path().join("downloads");
-    std::fs::create_dir_all(&data_dir).unwrap();
-    std::fs::create_dir_all(&dl_dir).unwrap();
-
-    let db_path = data_dir.join("mule.db");
-    let downloads = DownloadService::new(&db_path, data_dir.join("temp")).unwrap();
-    let config = DaemonConfig::new(data_dir, "test-token")
-        .with_bind_addr("127.0.0.1:0".parse().unwrap())
-        .with_default_download_dir(dl_dir)
-        .with_workdir_mode(WorkDirMode::ExplicitCli);
-
-    AppState::new(config, downloads)
-}
+use mule_test_support::kad_state;
 
 #[tokio::test]
 async fn test_kad_source_publish_and_search_flow() {
     let tmp = tempdir().expect("create tempdir");
-    let state = setup_test_state(&tmp);
+    let state = kad_state(&tmp);
     state
         .network_policy
         .set_profile(mule_network_policy::NetworkProfile::LocalLab);

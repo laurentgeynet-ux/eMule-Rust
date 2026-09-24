@@ -1,69 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-use futures_util::{SinkExt, StreamExt};
-use mule_daemon::{create_router, AppState, DaemonConfig, DownloadService, WorkDirMode};
-use serde_json::{json, Value};
-use std::net::SocketAddr;
-use tempfile::tempdir;
-use tokio::net::TcpListener;
+use futures_util::StreamExt;
+use serde_json::json;
+
+use mule_daemon::WorkDirMode;
+use mule_test_support::{recv_response_by_id, send_json, spawn_test_daemon_with_mode};
 use tokio_tungstenite::connect_async;
-use tokio_tungstenite::tungstenite::Message;
-
-async fn spawn_test_daemon() -> (SocketAddr, String, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "cat_test_token_789".to_string();
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_bind_addr(addr)
-        .with_workdir_mode(WorkDirMode::Portable);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let app = create_router(state);
-
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    (addr, token, dir)
-}
-
-async fn send_json(
-    write: &mut (impl SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
-    val: Value,
-) {
-    write
-        .send(Message::Text(val.to_string().into()))
-        .await
-        .unwrap();
-}
-
-async fn recv_response_by_id(
-    read: &mut (impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
-    expected_id: u64,
-) -> Value {
-    for _ in 0..15 {
-        if let Some(Ok(msg)) = read.next().await {
-            if let Ok(text) = msg.to_text() {
-                if let Ok(val) = serde_json::from_str::<Value>(text) {
-                    if val.get("id").and_then(|v| v.as_u64()) == Some(expected_id) {
-                        return val;
-                    }
-                }
-            }
-        }
-    }
-    panic!("Did not receive response for request id {expected_id}");
-}
 
 #[tokio::test]
 async fn test_category_rpc_lifecycle_and_invariants() {
-    let (addr, token, _dir) = spawn_test_daemon().await;
+    let (addr, token, _dir) =
+        spawn_test_daemon_with_mode("cat_test_token_789", WorkDirMode::Portable).await;
     let ws_url = format!("ws://{addr}/rpc");
     let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
     let (mut write, mut read) = ws_stream.split();

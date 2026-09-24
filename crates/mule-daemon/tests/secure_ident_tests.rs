@@ -2,13 +2,11 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 use md4::{Digest, Md4};
-use serde_json::{json, Value};
-use tempfile::tempdir;
+use serde_json::json;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kDecoder, Ed2kEncoder, Ed2kHello, Ed2kHelloAnswer, Ed2kPublicKey, Ed2kRequestParts,
@@ -17,57 +15,11 @@ use mule_protocol::ed2k::{
     PR_EMULE,
 };
 use mule_protocol::framing::PacketCodec;
-
-async fn setup_secure_ident_test_state() -> (AppState, tempfile::TempDir, String) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "test_token_secure_ident".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    let file_hash_hex = "41d6cfe0d16ae931b73c59d7e0c089c1".to_string();
-
-    // Le partage doit pointer vers un fichier réel : le chemin upload ne
-    // répond jamais à une plage illisible sur disque (comportement eMule),
-    // donc un chemin fictif figerait indéfiniment les tests qui attendent
-    // OP_SENDINGPART. Taille = valeur déclarée dans le share.
-    let shared_path = dir.path().join("secure_shared_data.bin");
-    std::fs::write(&shared_path, vec![0x5Au8; 18874368]).unwrap();
-
-    let mut authenticated = true;
-    let share_req = make_req(
-        1,
-        "shares.add",
-        Some(json!({
-            "fileHash": file_hash_hex,
-            "fileName": "secure_shared_data.bin",
-            "fileSize": 18874368,
-            "filePath": shared_path.to_string_lossy()
-        })),
-    );
-    let resp = handle_request(&state, share_req, &mut authenticated)
-        .await
-        .unwrap();
-    assert!(resp.error.is_none());
-
-    (state, dir, file_hash_hex)
-}
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
-}
+use mule_test_support::{make_req, share_state};
 
 #[tokio::test]
 async fn test_inbound_secure_ident_handshake_and_authentication() {
-    let (state, _dir, hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // 1. Start listener
@@ -242,7 +194,7 @@ async fn test_inbound_secure_ident_handshake_and_authentication() {
 
 #[tokio::test]
 async fn test_inbound_secure_ident_verified_with_real_rsa() {
-    let (state, _dir, hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // Daemon's own public key DER = the challenger key the peer must sign over.
@@ -416,7 +368,7 @@ async fn test_inbound_secure_ident_verified_with_real_rsa() {
 
 #[tokio::test]
 async fn test_credit_weighted_queue_priority() {
-    let (state, _dir, hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // Multi-slot uploads (MAX_ACTIVE_UPLOADS) would grant client 1 an active
@@ -690,7 +642,7 @@ async fn test_credit_weighted_queue_priority() {
 
 #[tokio::test]
 async fn test_outbound_secure_ident_answers_peer_challenge() {
-    let (state, _dir, hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
     state
         .network_policy
@@ -935,7 +887,7 @@ async fn test_outbound_secure_ident_answers_peer_challenge() {
 /// `InfoPacketsReceived` / `SendSecIdentStatePacket` (state=2 = need key+sig).
 #[tokio::test]
 async fn test_outbound_secure_ident_challenges_peer_when_advertised() {
-    let (state, _dir, hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
     state
         .network_policy
@@ -1098,7 +1050,7 @@ async fn test_outbound_secure_ident_challenges_peer_when_advertised() {
 /// lives in its own test below.
 #[tokio::test]
 async fn test_inbound_sui_tier1_malformed_replay_and_wrong_challenge() {
-    let (state, _dir, _hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     let daemon_pubkey_der = {
@@ -1283,7 +1235,7 @@ async fn test_inbound_sui_tier1_malformed_replay_and_wrong_challenge() {
 
 #[tokio::test]
 async fn test_peer_credit_persistence_and_multiplier_formula() {
-    let (state, _dir, _hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
 
     let pubkey_a = vec![0xAAu8; 80];
     let hash_a = hex::encode(Md4::digest(&pubkey_a));
@@ -1343,7 +1295,7 @@ async fn test_peer_credit_persistence_and_multiplier_formula() {
 
 #[tokio::test]
 async fn test_secure_ident_and_credits_rpc_endpoints() {
-    let (state, _dir, _hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // 1. Check identity.status
@@ -1409,8 +1361,8 @@ async fn test_secure_ident_and_credits_rpc_endpoints() {
 
 #[tokio::test]
 async fn test_dual_sandboxed_nodes_distinct_keys_and_restart_persistence() {
-    let (node_a, dir_a, _) = setup_secure_ident_test_state().await;
-    let (node_b, dir_b, _) = setup_secure_ident_test_state().await;
+    let (node_a, dir_a, _) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
+    let (node_b, dir_b, _) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // 1. Get identity status for Node A and Node B
@@ -1472,7 +1424,7 @@ async fn test_dual_sandboxed_nodes_distinct_keys_and_restart_persistence() {
 
 #[tokio::test]
 async fn test_key_rotation_creates_fresh_identity_and_detaches_credits() {
-    let (node, _dir, _) = setup_secure_ident_test_state().await;
+    let (node, _dir, _) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // 1. Check initial identity
@@ -1533,7 +1485,7 @@ async fn test_key_rotation_creates_fresh_identity_and_detaches_credits() {
 
 #[tokio::test]
 async fn test_invalid_and_corrupt_signature_rejection_and_fallback() {
-    let (state, _dir, hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // Start listener
@@ -1756,7 +1708,7 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
 
 #[tokio::test]
 async fn test_kill_switch_during_secure_handshake_aborts_cleanly() {
-    let (state, _dir, _) = setup_secure_ident_test_state().await;
+    let (state, _dir, _) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     // Start listener
@@ -1801,7 +1753,7 @@ async fn test_kill_switch_during_secure_handshake_aborts_cleanly() {
 /// this IP's single signature slot (eMule anti-flood) — needs its own AppState.
 #[tokio::test]
 async fn test_inbound_sui_wrong_challenge_rejected() {
-    let (state, _dir, _hash) = setup_secure_ident_test_state().await;
+    let (state, _dir, _hash) = share_state("test_token_secure_ident", "secure_shared_data.bin", 18874368, &vec![0x5Au8; 18874368], "41d6cfe0d16ae931b73c59d7e0c089c1").await;
     let mut authenticated = true;
 
     let daemon_pubkey_der = {

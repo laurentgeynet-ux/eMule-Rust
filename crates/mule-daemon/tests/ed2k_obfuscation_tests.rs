@@ -1,64 +1,22 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-use serde_json::{json, Value};
+use serde_json::json;
 use std::time::Duration;
-use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
 use mule_daemon::services::obfuscation_stream::ObfuscatedStream;
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kDecoder, Ed2kEncoder, Ed2kHello, Ed2kHelloAnswer, OP_HELLO, OP_HELLOANSWER, PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
-}
-
-async fn setup_obfu_test_state(
-    obfu_enabled: bool,
-    obfu_required: bool,
-) -> (AppState, tempfile::TempDir, String) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "test_token_obfu".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable)
-        .with_obfuscation(obfu_enabled, obfu_required);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-    state
-        .network_policy
-        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
-
-    let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
-
-    // Register a download so peer sessions have a target
-    let link = format!("ed2k://|file|test_obfu_file.iso|9728001|{file_hash_hex}|/");
-    let req = make_req(1, "downloads.addEd2kLink", Some(json!({ "link": link })));
-    let mut authenticated = true;
-    let resp = handle_request(&state, req, &mut authenticated)
-        .await
-        .unwrap();
-    assert!(resp.error.is_none());
-
-    (state, dir, file_hash_hex)
-}
+use mule_test_support::{download_state_with_obfuscation, make_req};
 
 #[tokio::test]
 async fn test_outgoing_connection_to_strict_obfuscated_peer_succeeds() {
-    let (state, _dir, hash) = setup_obfu_test_state(true, false).await;
+    let (state, _dir, hash) = download_state_with_obfuscation("test_token_obfu", "test_obfu_file.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0", true, false).await;
     let mut authenticated = true;
 
     // Strict mock peer listening on 127.0.0.1
@@ -174,7 +132,7 @@ async fn test_outgoing_connection_to_strict_obfuscated_peer_succeeds() {
 
 #[tokio::test]
 async fn test_outgoing_connection_to_strict_peer_fails_when_user_hash_missing() {
-    let (state, _dir, hash) = setup_obfu_test_state(true, false).await;
+    let (state, _dir, hash) = download_state_with_obfuscation("test_token_obfu", "test_obfu_file.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0", true, false).await;
     let mut authenticated = true;
 
     // We configure a peer with crypt_options requiring crypt (0x04), but NO user_hash
@@ -206,7 +164,7 @@ async fn test_outgoing_connection_to_strict_peer_fails_when_user_hash_missing() 
 #[tokio::test]
 async fn test_inbound_listener_strict_obfuscation_rejects_plaintext() {
     // Obfuscation required = true
-    let (state, _dir, _hash) = setup_obfu_test_state(true, true).await;
+    let (state, _dir, _hash) = download_state_with_obfuscation("test_token_obfu", "test_obfu_file.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0", true, true).await;
     let mut authenticated = true;
 
     // Start listener on ephemeral port
@@ -237,7 +195,7 @@ async fn test_inbound_listener_strict_obfuscation_rejects_plaintext() {
 #[tokio::test]
 async fn test_inbound_listener_strict_obfuscation_accepts_encrypted_handshake() {
     // Obfuscation required = true
-    let (state, _dir, _hash) = setup_obfu_test_state(true, true).await;
+    let (state, _dir, _hash) = download_state_with_obfuscation("test_token_obfu", "test_obfu_file.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0", true, true).await;
     let mut authenticated = true;
 
     // Start listener on ephemeral port
@@ -317,7 +275,7 @@ async fn test_inbound_listener_strict_obfuscation_accepts_encrypted_handshake() 
 #[tokio::test]
 async fn test_inbound_listener_opportunistic_accepts_both_plaintext_and_encrypted() {
     // Obfuscation enabled = true, required = false (opportunistic)
-    let (state, _dir, _hash) = setup_obfu_test_state(true, false).await;
+    let (state, _dir, _hash) = download_state_with_obfuscation("test_token_obfu", "test_obfu_file.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0", true, false).await;
     let mut authenticated = true;
 
     let start_req = make_req(40, "listener.start", Some(json!({ "port": 0 })));

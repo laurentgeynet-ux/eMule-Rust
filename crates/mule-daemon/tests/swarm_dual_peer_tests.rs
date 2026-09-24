@@ -5,55 +5,17 @@ use bytes::Bytes;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
-use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_protocol::ed2k::{
     Ed2kEncoder, Ed2kFileStatus, Ed2kHelloAnswer, Ed2kSendingPart, PartAvailabilityMask,
     OP_ACCEPTUPLOADREQ, OP_FILESTATUSREQ, OP_HELLO, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
     OP_STARTUPLOADREQ, PR_ED2K,
 };
 use mule_protocol::framing::PacketCodec;
-
-async fn setup_test_state() -> (AppState, tempfile::TempDir, String) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "test_token_swarm".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-    state
-        .network_policy
-        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
-
-    let file_hash_hex = "31d6cfe0d16ae931b73c59d7e0c089c0".to_string();
-
-    // Insert download of 18 MB (2 parts) via RPC downloads.addEd2kLink
-    let link = format!("ed2k://|file|test_swarm_payload.iso|18874368|{file_hash_hex}|/");
-    let req = make_req(1, "downloads.addEd2kLink", Some(json!({ "link": link })));
-    let mut authenticated = true;
-    let resp = handle_request(&state, req, &mut authenticated)
-        .await
-        .unwrap();
-    assert!(resp.error.is_none());
-
-    (state, dir, file_hash_hex)
-}
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
-}
+use mule_test_support::{download_state, make_req};
 
 /// Helper function to spawn a mock peer server that answers hello, filestatus (full 2 parts),
 /// and records requested block ranges.
@@ -228,7 +190,7 @@ fn spawn_mock_peer_recorder(
 
 #[tokio::test]
 async fn test_swarm_dual_peer_disjoint_block_allocation() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_swarm", "test_swarm_payload.iso", 18874368, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     let peer1_ranges = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -333,7 +295,7 @@ async fn test_swarm_dual_peer_disjoint_block_allocation() {
 
 #[tokio::test]
 async fn test_swarm_disconnect_releases_in_flight_block_for_reallocation() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_swarm", "test_swarm_payload.iso", 18874368, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     let peer1_ranges = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -384,7 +346,7 @@ async fn test_swarm_disconnect_releases_in_flight_block_for_reallocation() {
 
 #[tokio::test]
 async fn test_swarm_kill_switch_aborts_all_peers_and_releases_permits() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_swarm", "test_swarm_payload.iso", 18874368, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     let dummy_ranges1 = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -450,7 +412,7 @@ async fn test_swarm_kill_switch_aborts_all_peers_and_releases_permits() {
 
 #[tokio::test]
 async fn test_swarm_global_peer_limit_across_multiple_downloads() {
-    let (state, _dir, hash1) = setup_test_state().await;
+    let (state, _dir, hash1) = download_state("test_token_swarm", "test_swarm_payload.iso", 18874368, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
     state.peer_session.set_swarm_limits(2, 4).await;
 
@@ -562,7 +524,7 @@ async fn test_swarm_global_peer_limit_across_multiple_downloads() {
 
 #[tokio::test]
 async fn test_swarm_pause_download_aborts_active_leases_and_sessions() {
-    let (state, _dir, hash) = setup_test_state().await;
+    let (state, _dir, hash) = download_state("test_token_swarm", "test_swarm_payload.iso", 18874368, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
     let mut authenticated = true;
 
     let r1 = Arc::new(std::sync::Mutex::new(Vec::new()));

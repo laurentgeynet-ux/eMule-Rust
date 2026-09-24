@@ -3,45 +3,21 @@
 
 use serde_json::{json, Value};
 use std::time::Duration;
-use tempfile::tempdir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 use mule_daemon::rpc::methods::handle_request;
-use mule_daemon::rpc::types::JsonRpcRequest;
-use mule_daemon::{AppState, DaemonConfig, DownloadService, WorkDirMode};
 use mule_network_policy::NetworkProfile;
 use mule_protocol::ed2k::{
     OP_FOUNDSOURCES, OP_GETSOURCES, OP_GETSOURCES_OBFU, OP_IDCHANGE, OP_LOGINREQUEST,
     OP_SEARCHREQUEST, OP_SEARCH_RESULT, OP_SERVERMESSAGE, OP_SERVERSTATUS,
 };
 use mule_protocol::PR_ED2K;
-
-fn setup_test_state() -> (AppState, tempfile::TempDir) {
-    let dir = tempdir().unwrap();
-    let temp_dir = dir.path().join("temp");
-    let token = "test_token_conn".to_string();
-
-    let config = DaemonConfig::new(dir.path().to_path_buf(), &token)
-        .with_workdir_mode(WorkDirMode::Portable);
-    let downloads = DownloadService::in_memory(temp_dir).unwrap();
-    let state = AppState::new(config, downloads);
-
-    (state, dir)
-}
-
-fn make_req(id: u64, method: &str, params: Option<Value>) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(id)),
-        method: method.to_string(),
-        params,
-    }
-}
+use mule_test_support::{make_req, rpc_state};
 
 #[tokio::test]
 async fn test_server_connect_refused_under_local_lab_profile() {
-    let (state, _dir) = setup_test_state();
+    let (state, _dir) = rpc_state("test_token_conn");
     let mut authenticated = true;
 
     // Explicitly test LocalLab profile rejects public WAN address
@@ -64,7 +40,7 @@ async fn test_server_connect_refused_under_local_lab_profile() {
 
 #[tokio::test]
 async fn test_server_connect_refused_when_network_disabled() {
-    let (state, _dir) = setup_test_state();
+    let (state, _dir) = rpc_state("test_token_conn");
     let mut authenticated = true;
 
     // Switch to PublicEd2kPreview
@@ -92,7 +68,7 @@ async fn test_server_connect_refused_when_network_disabled() {
 
 #[tokio::test]
 async fn test_server_connect_refused_when_ip_filtered() {
-    let (state, dir) = setup_test_state();
+    let (state, dir) = rpc_state("test_token_conn");
     let mut authenticated = true;
 
     // Load filter blocking 91.121.0.0 - 91.121.255.255
@@ -131,7 +107,7 @@ async fn test_server_connect_refused_when_ip_filtered() {
 
 #[tokio::test]
 async fn test_server_connect_refused_when_disabled_in_db() {
-    let (state, _dir) = setup_test_state();
+    let (state, _dir) = rpc_state("test_token_conn");
     let mut authenticated = true;
 
     // Insert server as disabled in db
@@ -181,7 +157,7 @@ async fn test_server_connect_refused_when_disabled_in_db() {
 
 #[tokio::test]
 async fn test_server_connect_nominal_loopback_and_kill_switch() {
-    let (state, _dir) = setup_test_state();
+    let (state, _dir) = rpc_state("test_token_conn");
     let mut authenticated = true;
 
     // Profile LocalLab allows 127.0.0.1
@@ -324,7 +300,7 @@ async fn test_server_connect_nominal_loopback_and_kill_switch() {
 
 #[tokio::test]
 async fn test_server_search_and_query_sources() {
-    let (state, _dir) = setup_test_state();
+    let (state, _dir) = rpc_state("test_token_conn");
     let mut authenticated = true;
 
     // 1. Unconnected calls must be rejected
