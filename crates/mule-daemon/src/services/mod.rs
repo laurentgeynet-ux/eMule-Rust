@@ -9,6 +9,7 @@ pub mod inbound_listener;
 pub mod incoming_share;
 pub mod kad;
 pub mod kad_udp;
+pub mod known_met_import;
 pub mod obfuscation_stream;
 pub mod peer_session;
 pub mod server_session;

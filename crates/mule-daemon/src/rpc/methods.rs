@@ -105,6 +105,7 @@ pub async fn handle_request(
         "shares.remove" => handle_shares_remove(state, req.params).await,
         "shares.rename" => handle_shares_rename(state, req.params).await,
         "shares.rescan" => handle_shares_rescan(state).await,
+        "shares.importKnownMet" => handle_shares_import_known_met(state, req.params).await,
         "shares.setEnabled" => handle_shares_set_enabled(state, req.params).await,
         "shares.setCategory" => handle_shares_set_category(state, req.params).await,
         "shares.setUploadPriority" => handle_shares_set_upload_priority(state, req.params).await,

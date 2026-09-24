@@ -233,7 +233,7 @@ fn path_is_under_dir(file_path: &str, dir_norm: &str) -> bool {
 /// Depth-first walk collecting every shareable file under `dir`.
 /// Subdirectories are recursed into (eMule semantics); hidden entries and
 /// symlinks are skipped — the latter prevents filesystem cycles.
-fn collect_shareable_files(dir: &Path) -> Vec<PathBuf> {
+pub(crate) fn collect_shareable_files(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {

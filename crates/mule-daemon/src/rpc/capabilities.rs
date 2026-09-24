@@ -11,6 +11,7 @@ pub fn daemon_capabilities() -> Vec<&'static str> {
         "history",
         "categories",
         "import_part_met",
+        "import_known_met",
         "network-policy",
         "ip-filter",
         "rate-limits",

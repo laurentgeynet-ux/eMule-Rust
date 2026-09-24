@@ -41,6 +41,18 @@ pub const FT_AICH_HASH: u8 = 0x27;
 pub const FT_FILESIZE_HI: u8 = 0x3A;
 pub const FT_CATEGORY: u8 = 0x53;
 
+// known.met tag IDs (`Opcodes.h:367-395`, `KnownFile.cpp` `LoadTagsFromFile`)
+pub const FT_KADLASTPUBLISHKEY: u8 = 0x20;
+pub const FT_KADLASTPUBLISHSRC: u8 = 0x21;
+pub const FT_FLAGS: u8 = 0x22;
+pub const FT_KADLASTPUBLISHNOTES: u8 = 0x26;
+pub const FT_LASTSHARED: u8 = 0x34;
+pub const FT_AICHHASHSET: u8 = 0x35;
+pub const FT_ATTRANSFERRED: u8 = 0x50;
+pub const FT_ATREQUESTED: u8 = 0x51;
+pub const FT_ATACCEPTED: u8 = 0x52;
+pub const FT_ATTRANSFERREDHI: u8 = 0x54;
+
 // Known server tag IDs (SN_*)
 pub const SN_NAME: u8 = 0x01;
 pub const SN_DESCRIPTION: u8 = 0x0B;

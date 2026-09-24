@@ -146,6 +146,52 @@ pub async fn handle_shares_rescan(state: &AppState) -> Result<Value, JsonRpcErro
     }))
 }
 
+/// `shares.importKnownMet` — migration helper importing eMule's
+/// `known.met` index (`CKnownFileList::LoadKnownFiles`).
+///
+/// `{metPath, directory?, verify?}`: for every shareable file found
+/// under `directory` (default = configured download dir), the record
+/// matching on `(fileName, fileSize)` is applied — the file is shared
+/// under eMule's hash without re-hashing (`verify=false`, the migration
+/// fast path) or after a real re-hash comparison (`verify=true`).
+/// Already-shared files matching by hash are *enriched* only
+/// (`aich_root`, uploaded-bytes stats) — user settings are preserved.
+/// Part hashes, AICH root, upload priority and transferred stats are
+/// imported like eMule's `LoadTagsFromFile`.
+pub async fn handle_shares_import_known_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.ok_or_else(|| JsonRpcError::invalid_params("Missing params object"))?;
+    let met_path = params["metPath"]
+        .as_str()
+        .or_else(|| params["path"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'metPath' parameter"))?;
+    let verify = params["verify"].as_bool().unwrap_or(false);
+
+    let dir = match params["directory"].as_str() {
+        Some(d) => std::path::PathBuf::from(d),
+        None => {
+            let dl = state.downloads.lock().await;
+            dl.get_setting("default_download_directory")?
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| state.config.default_download_dir.clone())
+        }
+    };
+
+    let report = crate::services::known_met_import::import_known_met(
+        &state.downloads,
+        std::path::PathBuf::from(met_path),
+        dir,
+        verify,
+    )
+    .await?;
+    if report.imported + report.enriched > 0 {
+        emit_shares_changed(state);
+    }
+    Ok(crate::rpc::handlers::json_value(&report))
+}
+
 pub async fn handle_shares_set_enabled(
     state: &AppState,
     params: Option<Value>,

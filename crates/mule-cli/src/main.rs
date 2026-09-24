@@ -4,7 +4,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use mule_cli::commands::{hash, link, part_met};
+use mule_cli::commands::{hash, known_met, link, part_met};
 
 #[derive(Parser)]
 #[command(name = "mule-cli")]
@@ -31,6 +31,11 @@ enum Commands {
         /// Path to the .part.met file
         file: PathBuf,
     },
+    /// Inspect an eMule known.met file (shared-files index)
+    InspectKnownMet {
+        /// Path to the known.met file
+        file: PathBuf,
+    },
     /// Generate an ed2k:// file link from a local file
     MakeLink {
         /// Path to the local file
@@ -53,6 +58,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::InspectPartMet { file } => {
             part_met::inspect_part_met(&file);
+        }
+        Commands::InspectKnownMet { file } => {
+            known_met::inspect_known_met(&file);
         }
         Commands::MakeLink { file, detailed } => {
             hash::make_link(&file, detailed)?;

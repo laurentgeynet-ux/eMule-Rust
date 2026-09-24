@@ -2,5 +2,6 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 pub mod hash;
+pub mod known_met;
 pub mod link;
 pub mod part_met;

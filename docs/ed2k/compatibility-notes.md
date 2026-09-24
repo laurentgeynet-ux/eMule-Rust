@@ -566,3 +566,48 @@ Références : `Emule.cpp:1056-1085` (`IsFirewalled`/`CanDoCallback`),
   premier nom à popularité maximale — un renommage solitaire ne
   remplace pas le nom consensuel (test `keyword_store_lookup_and_dedup`
   aligné sur cette sémantique).
+
+---
+
+## 14. `known.met` — parseur et import de migration (audit phase B, passe 8)
+
+### Implémenté
+
+- **`mule_format::met::known_met`** — lecture fidèle de
+  `CKnownFileList::LoadKnownFiles` (`KnownFileList.cpp:73`) :
+  headers `MET_HEADER (0x0E)` / `MET_HEADER_I64TAGS (0x0F)`, layout
+  `[date u32][hash16][u16 parts][hashes][u32 tagcount][tags]`,
+  extraction de tous les champs de `LoadTagsFromFile` (FILENAME,
+  FILESIZE, ATTRANSFERRED±HI, ATREQUESTED, ATACCEPTED, ULPRIORITY avec
+  résolution `PR_AUTO → PR_HIGH`, KADLASTPUBLISHSRC/NOTES, FLAGS,
+  AICH_HASH base32, LASTSHARED). Vérification finale fidèle
+  (`HasExpectedMD4HashCount` : `floor(size/PARTSIZE)+1`, et
+  `CalculateMD4HashByHashSet` : root = hash unique ou MD4 de la
+  concaténation) — les records fautifs sont comptés `dropped_records`
+  comme eMule les supprime. Bornes : `MAX_PART_HASH_COUNT`
+  (`MAX_EMULE_FILE_SIZE/PARTSIZE+1`), records ≤ 500 k, tags ≤ 1 k.
+- **`mule-cli InspectKnownMet`** — inspection du fichier (records,
+  drops, métadonnées par entrée).
+- **`shares.importKnownMet {metPath, directory?, verify?}`** —
+  migration : jointure `(fileName, fileSize)` (seule clé commune,
+  known.met ne stocke pas de chemin) sur les fichiers partageables du
+  dossier ; enregistrement du partage sous le hash eMule, part hashes,
+  `aich_root`, priorité upload (`PR_*` → chaînes) et statistiques
+  `share_upload_stats`. Partages existants (match par hash) : enrichi
+  `aich_root`+stats seulement, jamais de reset de la config utilisateur.
+
+### Écarts assumés
+
+- **`verify` par défaut `false`** : l'import fait confiance aux
+  hashsets écrits par eMule — éviter de re-hacher tout le dossier
+  Incoming est précisément l'intérêt de l'outil. eMule lui-même
+  re-hache toujours (`CAddFileThread::Run` — `m_tUTClastModified` est
+  ignoré) ; `verify=true` reproduit ce comportement et ne retient que
+  les records dont le hash recalculé correspond (`mismatched`).
+- **Pas de hash-cache persistant par chemin** : eMule n'en utilise pas
+  non plus en 0.72a — `known.met` n'est consulté que comme index de
+  fichiers déjà hachés, jamais pour sauter le hachage au démarrage.
+- **`FT_AICHHASHSET` (0x35) lu mais non conservé** : le hashset de
+  recovery AICH par part est vérifié par eMule puis servi aux pairs ;
+  notre modèle ne conserve que la racine — le recovery set serait
+  reconstruit depuis le fichier si nécessaire.
