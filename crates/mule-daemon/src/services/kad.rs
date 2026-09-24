@@ -72,9 +72,16 @@ pub struct KadService {
     >,
 }
 
-/// Interval between Kad republication rounds of shared files
-/// (eMule republishes source/keyword entries roughly every 5 hours).
-const KAD_REPUBLISH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5 * 60 * 60);
+/// Interval between Kad **source** republication rounds — eMule
+/// `KADEMLIAREPUBLISHTIMES` (`Opcodes.h:78`, 5 h).
+const KAD_SOURCE_REPUBLISH_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(5 * 60 * 60);
+/// Interval between Kad **keyword** republication rounds — eMule
+/// `KADEMLIAREPUBLISHTIMEK` (`Opcodes.h:80`, 24 h). eMule runs source and
+/// keyword publication on independent timers (`m_tNextSrcPublishTime` /
+/// `m_tNextKeyPublishTime`, `Kademlia.cpp`).
+const KAD_KEYWORD_REPUBLISH_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(24 * 60 * 60);
 
 impl KadService {
     pub fn new(
@@ -625,7 +632,8 @@ impl KadService {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
             // First tick completes immediately, skip it to let startup bootstrap finish
             interval.tick().await;
-            let mut last_publish: Option<std::time::Instant> = None;
+            let mut last_source_publish: Option<std::time::Instant> = None;
+            let mut last_keyword_publish: Option<std::time::Instant> = None;
             // Compteur de contacts déjà notifié — on n'émet
             // `kad.statusChanged` que quand la valeur observable change.
             let mut last_contacts: Option<usize> = None;
@@ -696,13 +704,18 @@ impl KadService {
                             });
                         }
 
-                        // Periodic republication of shared files (eMule
-                        // Kademlia republish cycle ~5h). Also runs a first
-                        // publish as soon as the routing table has contacts.
-                        let publish_due = last_publish
-                            .map(|t| t.elapsed() >= KAD_REPUBLISH_INTERVAL)
+                        // Periodic republication of shared files — eMule runs
+                        // independent source (5 h) and keyword (24 h) timers
+                        // (`Kademlia.cpp` `m_tNextSrcPublishTime` /
+                        // `m_tNextKeyPublishTime`). A first publish of each
+                        // kind also runs as soon as the table has contacts.
+                        let source_due = last_source_publish
+                            .map(|t| t.elapsed() >= KAD_SOURCE_REPUBLISH_INTERVAL)
                             .unwrap_or(true);
-                        if publish_due && total_contacts > 0 {
+                        let keyword_due = last_keyword_publish
+                            .map(|t| t.elapsed() >= KAD_KEYWORD_REPUBLISH_INTERVAL)
+                            .unwrap_or(true);
+                        if (source_due || keyword_due) && total_contacts > 0 {
                             let tcp_port = kad
                                 .ed2k_tcp_port
                                 .load(std::sync::atomic::Ordering::Relaxed);
@@ -717,27 +730,36 @@ impl KadService {
                                     // eMule `CKnownFile::PublishSrc`: part files
                                     // are published as sources too — peers can
                                     // fetch the parts we already completed.
-                                    if let Ok(n) = kad
-                                        .publish_source(&hash, f.file_size, tcp_port)
-                                        .await
-                                    {
-                                        published += n;
+                                    if source_due {
+                                        if let Ok(n) = kad
+                                            .publish_source(&hash, f.file_size, tcp_port)
+                                            .await
+                                        {
+                                            published += n;
+                                        }
                                     }
                                     // eMule keyword publish skips part files
                                     // ("someone else should have the full file
                                     // to publish these keywords").
-                                    if !f.is_partial {
+                                    if keyword_due && !f.is_partial {
                                         let _ = kad
                                             .publish_keyword(&hash, &f.file_name, f.file_size)
                                             .await;
                                     }
                                 }
                                 tracing::info!(
-                                    "[KAD_PUBLISH] Republication round: {} file(s), {} successful source publishes",
+                                    "[KAD_PUBLISH] Republication round: {} file(s), {} successful source publishes (keywords={})",
                                     shared.iter().filter(|f| f.enabled).count(),
-                                    published
+                                    published,
+                                    keyword_due
                                 );
-                                last_publish = Some(std::time::Instant::now());
+                                let now = std::time::Instant::now();
+                                if source_due {
+                                    last_source_publish = Some(now);
+                                }
+                                if keyword_due {
+                                    last_keyword_publish = Some(now);
+                                }
                             }
                         }
                     }

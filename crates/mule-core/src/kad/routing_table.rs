@@ -5,8 +5,10 @@ use super::contact::KadContact;
 use super::kad_id::KadId;
 use std::collections::VecDeque;
 
-/// Bucket capacity (standard Kademlia K = 20).
-pub const K_BUCKET_SIZE: usize = 20;
+/// Bucket capacity — eMule `K` (`kademlia/Defines.h:42` = 10; eMule uses a
+/// binary zone tree of K-sized bins rather than flat buckets, but the
+/// per-bin capacity is the wire-relevant constant).
+pub const K_BUCKET_SIZE: usize = 10;
 /// Replacement cache capacity per bucket.
 pub const REPLACEMENT_CACHE_SIZE: usize = 10;
 /// Total number of K-buckets for 128-bit Kad ID.

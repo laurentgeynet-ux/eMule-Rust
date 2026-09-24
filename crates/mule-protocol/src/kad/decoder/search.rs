@@ -583,9 +583,14 @@ pub fn decode_publish_source_res(
     let mut target_file_hash = [0u8; 16];
     payload.copy_to_slice(&mut target_file_hash);
     let status = payload.get_u8();
+    // eMule `Process_KADEMLIA2_PUBLISH_RES`: an optional trailing options
+    // byte may follow the 17-byte body; bit 0 requests a
+    // `KADEMLIA2_PUBLISH_RES_ACK` datagram back ("for future use").
+    let request_ack = payload.first().is_some_and(|options| options & 0x01 != 0);
     Ok(KadMessage::PublishSourceRes(KadPublishSourceRes {
         target_file_hash,
         status,
+        request_ack,
     }))
 }
 
@@ -609,15 +614,23 @@ pub fn decode_search_keyword_req(
     }
     let mut keyword_hash = [0u8; 16];
     payload.copy_to_slice(&mut keyword_hash);
-    let start_pos = payload.get_u16_le();
-    let mut sender_id = [0u8; 16];
-    if payload.len() >= 16 {
-        payload.copy_to_slice(&mut sender_id);
-    }
+    // eMule `Process_KADEMLIA2_SEARCH_KEY_REQ` (`KademliaUDPListener.cpp:1057`):
+    // bit 15 of start_pos flags a restrictive search-expression tree; the
+    // remaining bits are the pagination offset. Any trailing bytes are the
+    // serialized `SSearchTerm` expression (kept raw for the caller).
+    let raw_start = payload.get_u16_le();
+    let restrictive = (raw_start & 0x8000) != 0;
+    let start_pos = raw_start & 0x7FFF;
+    let search_expression = if restrictive && !payload.is_empty() {
+        Some(payload.to_vec())
+    } else {
+        None
+    };
     Ok(KadMessage::SearchKeywordReq(KadSearchKeywordReq {
         keyword_hash,
-        sender_id,
+        restrictive,
         start_pos,
+        search_expression,
     }))
 }
 

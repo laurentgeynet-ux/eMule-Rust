@@ -362,15 +362,19 @@ fn test_kad_search_and_publish_source_roundtrip() {
 #[test]
 fn test_kad_search_and_publish_keyword_roundtrip() {
     let keyword_hash = [0x55u8; 16];
-    let sender_id = [0xAAu8; 16];
 
-    // 1. Search Keyword Req
-    let enc_req = KadCodec::encode_search_keyword_req(&keyword_hash, 0, &sender_id);
+    // 1. Search Keyword Req — eMule wire layout is `[hash 16][start_pos u16]`
+    //    with no trailing sender id (`KademliaUDPListener.cpp`,
+    //    `Process_KADEMLIA2_SEARCH_KEY_REQ`).
+    let enc_req = KadCodec::encode_search_keyword_req(&keyword_hash, 0);
+    assert_eq!(enc_req.len(), 2 + 16 + 2);
     let dec_req = KadCodec::decode(&enc_req).expect("decode search keyword req");
     match dec_req {
         KadMessage::SearchKeywordReq(r) => {
             assert_eq!(r.keyword_hash, keyword_hash);
             assert_eq!(r.start_pos, 0);
+            assert!(!r.restrictive);
+            assert!(r.search_expression.is_none());
         }
         _ => panic!("expected SearchKeywordReq"),
     }
@@ -792,4 +796,151 @@ fn test_kad_publish_notes_res() {
         }
         _ => panic!("expected PublishSourceRes (shared 0x4B)"),
     }
+}
+
+#[test]
+fn test_search_keyword_req_restrictive_flag() {
+    // eMule `Process_KADEMLIA2_SEARCH_KEY_REQ`: bit 15 of the u16 after the
+    // keyword hash flags a restrictive search-expression tree; the remaining
+    // bytes are the serialized expression (kept opaque here).
+    let keyword_hash = [0x77u8; 16];
+    let expression = [0xDE, 0xAD, 0xBE, 0xEF]; // opaque expression-tree bytes
+    let mut raw = vec![PR_KADEMLIA, KADEMLIA2_SEARCH_KEY_REQ];
+    raw.extend_from_slice(&keyword_hash);
+    raw.extend_from_slice(&(0x8000u16 | 42u16).to_le_bytes());
+    raw.extend_from_slice(&expression);
+
+    match KadCodec::decode(&raw).expect("decode restrictive keyword req") {
+        KadMessage::SearchKeywordReq(r) => {
+            assert_eq!(r.keyword_hash, keyword_hash);
+            assert!(r.restrictive);
+            assert_eq!(r.start_pos, 42);
+            assert_eq!(r.search_expression.as_deref(), Some(&expression[..]));
+        }
+        _ => panic!("expected SearchKeywordReq"),
+    }
+
+    // Plain request: flag clear, no trailing bytes -> not restrictive.
+    let mut plain = vec![PR_KADEMLIA, KADEMLIA2_SEARCH_KEY_REQ];
+    plain.extend_from_slice(&keyword_hash);
+    plain.extend_from_slice(&7u16.to_le_bytes());
+    match KadCodec::decode(&plain).expect("decode plain keyword req") {
+        KadMessage::SearchKeywordReq(r) => {
+            assert!(!r.restrictive);
+            assert_eq!(r.start_pos, 7);
+            assert!(r.search_expression.is_none());
+        }
+        _ => panic!("expected SearchKeywordReq"),
+    }
+}
+
+#[test]
+fn test_publish_source_res_options_byte() {
+    let target = [0x33u8; 16];
+
+    // 17-byte form (what eMule emits today) -> no ack requested.
+    let mut raw = vec![PR_KADEMLIA, KADEMLIA2_PUBLISH_RES];
+    raw.extend_from_slice(&target);
+    raw.push(0);
+    match KadCodec::decode(&raw).expect("decode publish res") {
+        KadMessage::PublishSourceRes(r) => {
+            assert_eq!(r.target_file_hash, target);
+            assert_eq!(r.status, 0);
+            assert!(!r.request_ack);
+        }
+        _ => panic!("expected PublishSourceRes"),
+    }
+
+    // 18-byte form: trailing options byte with bit0 set -> ack requested
+    // (eMule `Process_KADEMLIA2_PUBLISH_RES`, "for future use").
+    let mut raw = vec![PR_KADEMLIA, KADEMLIA2_PUBLISH_RES];
+    raw.extend_from_slice(&target);
+    raw.push(3); // load/status
+    raw.push(0x01); // options: request KADEMLIA2_PUBLISH_RES_ACK
+    match KadCodec::decode(&raw).expect("decode publish res with options") {
+        KadMessage::PublishSourceRes(r) => {
+            assert_eq!(r.status, 3);
+            assert!(r.request_ack);
+        }
+        _ => panic!("expected PublishSourceRes"),
+    }
+}
+
+#[test]
+fn test_search_source_res_fragmented() {
+    // eMule `SendValidSourceResult`: results are packed greedily into
+    // consecutive datagrams each <= UDP_KAD_MAXFRAGMENT.
+    let file_hash = [0x44u8; 16];
+    let sources: Vec<KadSourceWire> = (0..40u16)
+        .map(|i| KadSourceWire {
+            kad_id: [i as u8; 16],
+            ip: [10, 0, (i >> 8) as u8, i as u8],
+            udp_port: 4000 + i,
+            tcp_port: 5000 + i,
+            encryption: 1,
+            buddy_id: None,
+        })
+        .collect();
+
+    let packets = KadCodec::encode_search_source_res_fragmented(&file_hash, &sources);
+    assert!(packets.len() >= 2, "40 sources must overflow one fragment");
+    let mut recovered = Vec::new();
+    for pkt in &packets {
+        assert!(
+            pkt.len() <= UDP_KAD_MAXFRAGMENT,
+            "fragment {} bytes exceeds UDP_KAD_MAXFRAGMENT",
+            pkt.len()
+        );
+        match KadCodec::decode(pkt).expect("decode source res fragment") {
+            KadMessage::SearchSourceRes(r) => {
+                assert_eq!(r.target_file_hash, file_hash);
+                recovered.extend(r.sources);
+            }
+            _ => panic!("expected SearchSourceRes"),
+        }
+    }
+    assert_eq!(recovered.len(), sources.len());
+    assert_eq!(recovered[0].udp_port, 4000);
+    assert_eq!(recovered[39].tcp_port, 5039);
+
+    // Empty input still yields exactly one (empty) response datagram. An
+    // entry-less 0x3B is inherently ambiguous (no tag to sniff): either
+    // variant with zero entries is a faithful decode.
+    let packets = KadCodec::encode_search_source_res_fragmented(&file_hash, &[]);
+    assert_eq!(packets.len(), 1);
+    match KadCodec::decode(&packets[0]).expect("decode empty source res") {
+        KadMessage::SearchSourceRes(r) => assert!(r.sources.is_empty()),
+        KadMessage::SearchKeywordRes(r) => assert!(r.entries.is_empty()),
+        _ => panic!("expected empty search res"),
+    }
+}
+
+#[test]
+fn test_search_keyword_res_fragmented() {
+    let keyword_hash = [0x55u8; 16];
+    // ~200-byte names: each entry ~245 bytes -> ~5 per 1420-byte fragment.
+    let entries: Vec<KadKeywordEntryWire> = (0..20u32)
+        .map(|i| KadKeywordEntryWire {
+            file_hash: [i as u8; 16],
+            file_name: format!("{:0>190}", i),
+            file_size: 1_000_000 + u64::from(i),
+            source_count: i + 1,
+        })
+        .collect();
+
+    let packets = KadCodec::encode_search_keyword_res_fragmented(&keyword_hash, &entries);
+    assert!(packets.len() >= 2, "20 fat entries must overflow one fragment");
+    let mut recovered = Vec::new();
+    for pkt in &packets {
+        assert!(pkt.len() <= UDP_KAD_MAXFRAGMENT);
+        match KadCodec::decode(pkt).expect("decode keyword res fragment") {
+            KadMessage::SearchKeywordRes(r) => {
+                assert_eq!(r.keyword_hash, keyword_hash);
+                recovered.extend(r.entries);
+            }
+            _ => panic!("expected SearchKeywordRes"),
+        }
+    }
+    assert_eq!(recovered.len(), entries.len());
+    assert_eq!(recovered[19].source_count, 20);
 }

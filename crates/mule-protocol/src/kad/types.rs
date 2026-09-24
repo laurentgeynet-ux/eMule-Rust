@@ -11,8 +11,14 @@ pub type KadIdBytes = [u8; 16];
 /// Maximum contacts in a Kad2 Bootstrap or Find Node response (standard K = 20, bounded to 50).
 pub const MAX_KAD_RES_CONTACTS: usize = 50;
 
-/// Maximum sources returned in a Kad2 Search Source response.
-pub const MAX_KAD_SEARCH_SOURCES: usize = 50;
+/// Maximum sources returned in a Kad2 Search Source response
+/// (eMule `iMaxResults = 300`, `Indexed.cpp:707`).
+pub const MAX_KAD_SEARCH_SOURCES: usize = 300;
+
+/// eMule `UDP_KAD_MAXFRAGMENT` (`Opcodes.h:134`) — maximum Kad UDP datagram
+/// size before eMule splits a multi-entry answer into several packets
+/// (conservative 1500-MTU bound leaving room for IP/UDP/tunnel/Kad headers).
+pub const UDP_KAD_MAXFRAGMENT: usize = 1420;
 
 /// Wire representation of a Kad contact in responses.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,6 +227,10 @@ pub struct KadPublishSourceRes {
     pub target_file_hash: KadIdBytes,
     /// Result status code (0 = success).
     pub status: u8,
+    /// Trailing options byte bit 0 (`KademliaUDPListener.cpp:1438`) — the
+    /// indexer requests a `KADEMLIA2_PUBLISH_RES_ACK` datagram in return.
+    /// "For future use": no released client sets it today.
+    pub request_ack: bool,
 }
 
 /// Wire representation of a keyword search entry.
@@ -241,10 +251,16 @@ pub struct KadKeywordEntryWire {
 pub struct KadSearchKeywordReq {
     /// 128-bit MD4 hash of the keyword.
     pub keyword_hash: KadIdBytes,
-    /// Sender Kad ID.
-    pub sender_id: KadIdBytes,
-    /// Start position for pagination.
+    /// `start_pos & 0x8000` on the wire — the requester appended a
+    /// restrictive search-expression tree (`CreateSearchExpressionTree`).
+    pub restrictive: bool,
+    /// Start position for pagination (`start_pos & 0x7FFF` on the wire).
     pub start_pos: u16,
+    /// Raw search-expression bytes trailing the request when `restrictive`
+    /// is set. Bounded by the frame limit; the daemon currently serves the
+    /// stored entries unfiltered (documented deviation — eMule applies
+    /// `StartSearchTermsMatch`).
+    pub search_expression: Option<Vec<u8>>,
 }
 
 /// Kad2 Search Keyword Response (0x3B, unified search response, or legacy 0x2C).

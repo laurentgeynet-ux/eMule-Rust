@@ -294,11 +294,7 @@ impl KadUdpService {
                 .await?
         };
 
-        let search_bytes = KadCodec::encode_search_keyword_req(
-            keyword_hash,
-            start_pos,
-            &self.local_id.read().unwrap().0,
-        );
+        let search_bytes = KadCodec::encode_search_keyword_req(keyword_hash, start_pos);
 
         tracing::debug!(
             "Kad sending SearchKeywordReq (0x33) to node {} for keyword {} (start_pos={}, tx_id={})",

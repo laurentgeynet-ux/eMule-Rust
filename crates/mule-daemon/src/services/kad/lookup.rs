@@ -24,6 +24,13 @@ use mule_network_policy::{classify_ip, IpCategory, NetworkPolicyManager, Network
 
 use crate::services::kad_udp::KadUdpService;
 
+/// eMule `ALPHA_QUERY` (`kademlia/Defines.h:45`) — parallel `find_node`
+/// queries per convergence round.
+const ALPHA_QUERY: usize = 3;
+/// eMule `CSearch::Go` seed pool — `GetClosestTo(3, target, distance, 50,
+/// m_mapPossible)` (`Search.cpp:172`).
+const SEARCH_SEED_CONTACTS: usize = 50;
+
 /// Iteratively queries `find_node` toward `target` starting from the closest
 /// known contacts, until no closer unqueried contact remains or the early
 /// convergence criterion (eMule `SEARCHTOLERANCE`) is met.
@@ -41,7 +48,9 @@ pub async fn converge_closest_contacts(
 ) -> Vec<KadContact> {
     let initial_closest = {
         let table = routing_table.lock().await;
-        table.find_closest_verified(target, 32)
+        // eMule `CSearch::Go` seeds with `GetClosestTo(3, target, distance,
+        // 50, m_mapPossible)` (`Search.cpp:172`).
+        table.find_closest_verified(target, SEARCH_SEED_CONTACTS)
     };
 
     let mut candidates: BTreeMap<KadId, KadContact> = BTreeMap::new();
@@ -51,7 +60,7 @@ pub async fn converge_closest_contacts(
     }
 
     let mut queried_nodes = HashSet::new();
-    const ALPHA: usize = 5;
+    const ALPHA: usize = ALPHA_QUERY;
 
     for iter in 0..max_rounds {
         let unqueried: Vec<_> = candidates

@@ -9,8 +9,12 @@ pub const PR_KADEMLIA: u8 = 0xE4;
 /// Packed Kademlia UDP protocol magic byte (0xE5).
 pub const PR_KADEMLIA_PACKED: u8 = 0xE5;
 
-/// Reserved UDP protocol magic byte (0x8D).
-pub const PR_KADEMLIA_RESERVED: u8 = 0x8D;
+// eMule reserves `OP_UDPRESERVEDPROT1 = 0xA3` and `OP_UDPRESERVEDPROT2 = 0xB2`
+// (`Opcodes.h:142-143`) so that obfuscated UDP datagrams — whose first byte is
+// pseudorandom — can be routed to `EncryptedDatagramSocket`. Any other unknown
+// first byte is likewise tried against the obfuscation layer, which is why no
+// extra protocol magic must be accepted here: a datagram starting with e.g.
+// `0x8D` is an *encrypted* Kad packet candidate, not plaintext.
 
 // --- Kad v1.0 Opcodes (Legacy) ---
 /// Legacy Bootstrap request (0x00).
@@ -80,6 +84,13 @@ pub const KADEMLIA2_PUBLISH_SOURCE_REQ: u8 = 0x44;
 pub const KADEMLIA2_PUBLISH_NOTES_REQ: u8 = 0x45;
 /// Kad2 Publish response (0x4B) — unified response for keyword, source, and notes publish.
 pub const KADEMLIA2_PUBLISH_RES: u8 = 0x4B;
+/// Kad2 Publish-result acknowledgement (0x4C, empty payload).
+///
+/// eMule `KademliaUDPListener.cpp:1444`: sent back when an incoming
+/// `KADEMLIA2_PUBLISH_RES` carries a trailing options byte with bit 0 set
+/// ("for future use" — no released client sets it today). eMule itself does
+/// not handle inbound 0x4C; receiving one is logged and dropped.
+pub const KADEMLIA2_PUBLISH_RES_ACK: u8 = 0x4C;
 /// Alias: Kad2 Publish Source response is the unified KADEMLIA2_PUBLISH_RES (0x4B).
 pub const KADEMLIA2_PUBLISH_SOURCE_RES: u8 = KADEMLIA2_PUBLISH_RES;
 /// Alias: Kad2 Publish Keyword request is KADEMLIA2_PUBLISH_KEY_REQ (0x43).
@@ -118,8 +129,13 @@ pub const TAG_KADMISCOPTIONS: u8 = 0xF2;
 /// eMule `TAG_SOURCEUPORT` (`0xFC`, uint16) — advertised Kad UDP port.
 pub const TAG_SOURCEUPORT: u8 = 0xFC;
 
-/// Maximum allowable search keywords returned in a single packet.
-pub const MAX_KAD_SEARCH_KEYWORDS: usize = 50;
+/// Maximum search entries served/sent per Kad search request.
+///
+/// eMule `CIndexed::SendValidSourceResult`/`SendValidKeywordResult`
+/// (`iMaxResults = 300`, `Indexed.cpp:619/707`): up to 300 results spread
+/// over as many datagrams as needed to stay under `UDP_KAD_MAXFRAGMENT`.
+/// This is also the decode bound — a peer cannot legally send more.
+pub const MAX_KAD_SEARCH_KEYWORDS: usize = 300;
 
 /// Maximum allowable UDP datagram payload size in bytes (maximum IPv4 UDP payload is 65507 bytes).
 pub const MAX_KAD_UDP_PACKET_SIZE: usize = 65507;
@@ -127,8 +143,5 @@ pub const MAX_KAD_UDP_PACKET_SIZE: usize = 65507;
 /// Checks if the protocol byte is a recognized Kademlia UDP protocol magic.
 #[inline]
 pub fn is_valid_kad_protocol(protocol: u8) -> bool {
-    matches!(
-        protocol,
-        PR_KADEMLIA | PR_KADEMLIA_PACKED | PR_KADEMLIA_RESERVED
-    )
+    matches!(protocol, PR_KADEMLIA | PR_KADEMLIA_PACKED)
 }

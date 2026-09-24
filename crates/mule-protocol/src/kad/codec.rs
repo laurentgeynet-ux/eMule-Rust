@@ -125,6 +125,17 @@ impl KadCodec {
         KadEncoder::encode_search_source_res(target_file_hash, sources)
     }
 
+    /// Splits a source search response into consecutive
+    /// `KADEMLIA2_SEARCH_RES` datagrams, each under `UDP_KAD_MAXFRAGMENT`
+    /// (eMule `CIndexed::SendValidSourceResult`, `Indexed.cpp:688`).
+    #[inline]
+    pub fn encode_search_source_res_fragmented(
+        target_file_hash: &KadIdBytes,
+        sources: &[KadSourceWire],
+    ) -> Vec<Bytes> {
+        KadEncoder::encode_search_source_res_fragmented(target_file_hash, sources)
+    }
+
     /// Encodes a Kad2 Publish Source request packet (0x44).
     #[inline]
     pub fn encode_publish_source_req(
@@ -141,14 +152,12 @@ impl KadCodec {
         KadEncoder::encode_publish_source_res(target_file_hash, status)
     }
 
-    /// Encodes a Kad2 Search Keyword request packet (0x33).
+    /// Encodes a Kad2 Search Keyword request packet (0x33) —
+    /// `[keyword_hash 16][start_pos u16]`; `start_pos` carries the `0x8000`
+    /// restrictive-search flag.
     #[inline]
-    pub fn encode_search_keyword_req(
-        keyword_hash: &KadIdBytes,
-        start_pos: u16,
-        sender_id: &KadIdBytes,
-    ) -> Bytes {
-        KadEncoder::encode_search_keyword_req(keyword_hash, start_pos, sender_id)
+    pub fn encode_search_keyword_req(keyword_hash: &KadIdBytes, start_pos: u16) -> Bytes {
+        KadEncoder::encode_search_keyword_req(keyword_hash, start_pos)
     }
 
     /// Encodes a Kad2 Search Keyword response packet (0x3B, unified search response).
@@ -158,6 +167,17 @@ impl KadCodec {
         entries: &[KadKeywordEntryWire],
     ) -> Bytes {
         KadEncoder::encode_search_keyword_res(keyword_hash, entries)
+    }
+
+    /// Splits a keyword search response into consecutive
+    /// `KADEMLIA2_SEARCH_RES` datagrams, each under `UDP_KAD_MAXFRAGMENT`
+    /// (eMule `CIndexed::SendValidKeywordResult`, `Indexed.cpp:601`).
+    #[inline]
+    pub fn encode_search_keyword_res_fragmented(
+        keyword_hash: &KadIdBytes,
+        entries: &[KadKeywordEntryWire],
+    ) -> Vec<Bytes> {
+        KadEncoder::encode_search_keyword_res_fragmented(keyword_hash, entries)
     }
 
     /// Encodes a Kad2 Publish Keyword request packet (0x43).

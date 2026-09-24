@@ -111,3 +111,58 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
 - `OP_SETREQFILEID` non émis pour les fichiers ≤ 1 part
   (`DownloadClient.cpp:366`) — la réponse `OP_REQFILENAMEANSWER`
   suffit à établir la complétude.
+
+---
+
+## 6. Kad — écarts assumés et corrections d'alignement (audit phase B, passe 2)
+
+### Écarts assumés
+
+- **`OUR_KAD_VERSION = 8`** alors qu'eMule 0.72a annonce
+  `KADEMLIA_VERSION = 0x0a` (`Opcodes.h:32`) : Kad 9 ajoute la gestion
+  des hash AICH dans le stockage de mots-clés, non implémentée.
+  Cohérent avec l'identité 0.70a annoncée ; annoncer 10 surestimerait
+  les capacités réelles.
+- **Table de routage plate 128 × K** au lieu de l'arbre de zones
+  binaire eMule (`RoutingZone` — split borné par `KK=5`/`KBASE=4`,
+  profondeur accrue près de notre propre KadID). La capacité par bin
+  est alignée (`K=10`) mais la topologie de couverture diffère.
+- **Expressions de recherche restrictives décodées mais non
+  appliquées** : le flag `0x8000` de `KADEMLIA2_SEARCH_KEY_REQ` et les
+  octets d'expression (`SSearchTerm`) sont conservés dans
+  `KadSearchKeywordReq::search_expression`, mais les entrées servies
+  ne sont pas filtrées (`StartSearchTermsMatch` non implémenté).
+- **Convergence `find_node`** : arrêt anticipé dès que 12 candidats
+  sont dans `SEARCHTOLERANCE` (≥ 2 itérations) ; eMule poursuit
+  jusqu'à épuisement de `m_mapPossible` ou `SEARCHFILE_TOTAL=300`.
+- **Réponse `0x3B` sans entrées ambiguë** : sans tag discriminateur,
+  un résultat vide est décodé comme `SearchKeywordRes` — indifférent
+  côté demandeur (0 entrée dans les deux cas).
+- **`KADEMLIA2_PUBLISH_RES_ACK (0x4C)`** : émis en réponse quand le
+  byte d'options le demande ; un `0x4C` entrant est rejeté « unknown
+  opcode » comme chez eMule (« for future use »).
+
+### Corrections d'alignement
+
+- **`KADEMLIA2_SEARCH_KEY_REQ (0x33)`** : layout filaire corrigé en
+  `[keyword_hash 16][start_pos u16]` — pas de `sender_id` terminal ;
+  bit 15 = recherche restrictive, offset = `start_pos & 0x7FFF`
+  (`KademliaUDPListener.cpp:1057` `Process_KADEMLIA2_SEARCH_KEY_REQ`).
+- **`KADEMLIA2_PUBLISH_RES (0x4B)`** : byte d'options optionnel après
+  `[hash16][status]` — bit 0 → renvoi d'un datagramme `0x4C` nu
+  (`KademliaUDPListener.cpp:1438` `Process_KADEMLIA2_PUBLISH_RES`).
+- **Fragmentation des réponses de recherche** : packing glouton des
+  entrées en datagrammes `KADEMLIA2_SEARCH_RES` consécutifs ≤
+  `UDP_KAD_MAXFRAGMENT = 1420` (`Opcodes.h:134`,
+  `Indexed.cpp:601/707` `SendValid{Keyword,Source}Result`) —
+  auparavant un datagramme unique de plusieurs Ko subissait la
+  fragmentation IP.
+- **Index de stockage** : TTL différenciés — sources 5 h
+  (`KADEMLIAMAXINDEX=50 000` clés), mots-clés 24 h, notes 24 h ;
+  bornes `KADEMLIAMAXSOURCEPERFILE=1 000`,
+  `KADEMLIAMAXENTRIES=60 000`, `KADEMLIAMAXNOTESPERFILE=150`,
+  résultats servis `iMaxResults=300` (`Opcodes.h:78-85`,
+  `Indexed.cpp:619`).
+- **Routage/lookup** : `K_BUCKET_SIZE = 10` (`Defines.h:42`, était 20),
+  `ALPHA_QUERY = 3` (`:45`, était 5), graine de recherche 50 contacts
+  (`Search.cpp:172` `GetClosestTo(3, …, 50, …)`, était 32).

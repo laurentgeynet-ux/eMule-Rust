@@ -10,7 +10,7 @@ use mule_core::kad::{KBucketTable, KadContact, KadId};
 use mule_protocol::ed2k::OP_CALLBACK;
 use mule_protocol::kad::*;
 
-use super::storage::{KadStorage, KAD_STORE_TTL};
+use super::storage::{KadStorage, KAD_KEYWORD_TTL, KAD_NOTE_TTL, KAD_SOURCE_TTL};
 use super::types::{
     BuddyRegistry, FirewallTestTracker, FirewallUdpResult, InFlightMap, KadExpectedResponse,
     UdpFirewallStatus,
@@ -334,13 +334,19 @@ pub async fn handle_incoming_message(
                 let mut store = storage.lock().await;
                 store.get_sources(&req.target_file_hash, req.start_pos)
             };
+            // eMule `SendValidSourceResult`: results are split into as many
+            // datagrams as needed to stay under `UDP_KAD_MAXFRAGMENT`.
+            let packets =
+                KadCodec::encode_search_source_res_fragmented(&req.target_file_hash, &sources);
             tracing::debug!(
-                "Kad UDP: received SearchSourceReq from {peer} for file {}, replying with {} stored sources",
+                "Kad UDP: received SearchSourceReq from {peer} for file {}, replying with {} stored sources in {} packet(s)",
                 hex::encode(req.target_file_hash),
-                sources.len()
+                sources.len(),
+                packets.len()
             , peer = log_peer_addr(peer_addr));
-            let res = KadCodec::encode_search_source_res(&req.target_file_hash, &sources);
-            let _ = socket.send_to(&res, peer_addr).await;
+            for res in packets {
+                let _ = socket.send_to(&res, peer_addr).await;
+            }
         }
         KadMessage::SearchSourceRes(search_res) => {
             let mut inf = in_flight.lock().await;
@@ -442,6 +448,13 @@ pub async fn handle_incoming_message(
             let _ = socket.send_to(&res, peer_addr).await;
         }
         KadMessage::PublishSourceRes(pub_res) => {
+            // eMule `Process_KADEMLIA2_PUBLISH_RES` ("for future use"): a
+            // trailing options byte with bit 0 requests a bare
+            // `KADEMLIA2_PUBLISH_RES_ACK` (0x4C) datagram back.
+            if pub_res.request_ack {
+                let ack = [PR_KADEMLIA, KADEMLIA2_PUBLISH_RES_ACK];
+                let _ = socket.send_to(&ack, peer_addr).await;
+            }
             // Opcode 0x4B is the unified publish response for both source and keyword publish.
             // Match in-flight transactions expecting either PublishSourceRes or PublishKeywordRes.
             let mut inf = in_flight.lock().await;
@@ -490,13 +503,21 @@ pub async fn handle_incoming_message(
                 let mut store = storage.lock().await;
                 store.get_keyword_entries(&req.keyword_hash, req.start_pos)
             };
+            // Deviation documentée : eMule applique `StartSearchTermsMatch`
+            // quand `req.restrictive` (arbre d'expression dans
+            // `search_expression`); les entrées servies restent non filtrées.
+            let packets =
+                KadCodec::encode_search_keyword_res_fragmented(&req.keyword_hash, &entries);
             tracing::debug!(
-                "Kad UDP: received SearchKeywordReq from {peer} for keyword {}, replying with {} stored entries",
+                "Kad UDP: received SearchKeywordReq from {peer} for keyword {} (restrictive={}), replying with {} stored entries in {} packet(s)",
                 hex::encode(req.keyword_hash),
-                entries.len()
+                req.restrictive,
+                entries.len(),
+                packets.len()
             , peer = log_peer_addr(peer_addr));
-            let res = KadCodec::encode_search_keyword_res(&req.keyword_hash, &entries);
-            let _ = socket.send_to(&res, peer_addr).await;
+            for res in packets {
+                let _ = socket.send_to(&res, peer_addr).await;
+            }
         }
         KadMessage::SearchKeywordRes(search_res) => {
             let mut inf = in_flight.lock().await;
@@ -979,7 +1000,7 @@ fn within_publish_tolerance(local_kad_id: &[u8; 16], target: &[u8; 16]) -> bool 
 }
 
 /// Mirrors an accepted `PublishSourceReq` into `kad_sources_index` so the
-/// storage-node role survives daemon restarts (TTL = `KAD_STORE_TTL`).
+/// storage-node role survives daemon restarts (TTL = `KAD_SOURCE_TTL`).
 async fn persist_indexed_source(downloads: &DownloadsSlot, req: &KadPublishSourceReq) {
     let Some(dl) = downloads.read().await.as_ref().cloned() else {
         return;
@@ -993,7 +1014,7 @@ async fn persist_indexed_source(downloads: &DownloadsSlot, req: &KadPublishSourc
         tcp_port: req.contact.tcp_port,
         file_size: req.file_size,
         encryption: 0,
-        expires_at_unix_ms: now_ms + KAD_STORE_TTL.as_millis() as u64,
+        expires_at_unix_ms: now_ms + KAD_SOURCE_TTL.as_millis() as u64,
         updated_at_unix_ms: now_ms,
     };
     let mut dl_guard = dl.lock().await;
@@ -1029,7 +1050,7 @@ async fn persist_indexed_note(
         publisher_udp_port,
         tags_blob: blob,
         discovered_at_unix_ms: now_ms as i64,
-        expires_at_unix_ms: (now_ms + KAD_STORE_TTL.as_millis() as u64) as i64,
+        expires_at_unix_ms: (now_ms + KAD_NOTE_TTL.as_millis() as u64) as i64,
     };
     let mut dl_guard = dl.lock().await;
     if let Err(e) = dl_guard.db_mut().insert_kad_notes(&[row]) {
@@ -1060,7 +1081,7 @@ async fn persist_keyword_entries(
             file_size: e.file_size,
             source_count: e.source_count.max(1),
             discovered_at_unix_ms: now_ms as i64,
-            expires_at_unix_ms: (now_ms + KAD_STORE_TTL.as_millis() as u64) as i64,
+            expires_at_unix_ms: (now_ms + KAD_KEYWORD_TTL.as_millis() as u64) as i64,
         })
         .collect();
     let mut dl_guard = dl.lock().await;

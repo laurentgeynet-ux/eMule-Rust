@@ -274,52 +274,39 @@ impl KadEncoder {
         buf.put_slice(target_file_hash);
         buf.put_u16_le(count as u16);
         for s in &sources[..count] {
-            buf.put_slice(&s.kad_id);
-            buf.put_u8(if s.buddy_id.is_some() { 6 } else { 5 });
-
-            // 1. TAG_SOURCETYPE (0xFF) -> TAGTYPE_UINT8 (0x09)
-            buf.put_u8(0x09);
-            buf.put_u16_le(1);
-            buf.put_u8(0xFF);
-            buf.put_u8(1);
-
-            // 2. TAG_SOURCEIP (0xFE) -> TAGTYPE_UINT32 (0x03)
-            buf.put_u8(0x03);
-            buf.put_u16_le(1);
-            buf.put_u8(0xFE);
-            buf.put_u32_le(u32::from_be_bytes(s.ip));
-
-            // 3. TAG_SOURCEPORT (0xFD) -> TAGTYPE_UINT16 (0x08)
-            buf.put_u8(0x08);
-            buf.put_u16_le(1);
-            buf.put_u8(0xFD);
-            buf.put_u16_le(s.tcp_port);
-
-            // 4. TAG_SOURCEUPORT (0xFC) -> TAGTYPE_UINT16 (0x08)
-            buf.put_u8(0x08);
-            buf.put_u16_le(1);
-            buf.put_u8(0xFC);
-            buf.put_u16_le(s.udp_port);
-
-            // 5. TAG_ENCRYPTION (0xF3) -> TAGTYPE_UINT8 (0x09)
-            buf.put_u8(0x09);
-            buf.put_u16_le(1);
-            buf.put_u8(0xF3);
-            buf.put_u8(s.encryption);
-
-            // 6. TAG_BUDDYHASH (0xF8) -> TAGTYPE_STRING (0x02), 32-char hex
-            //    (eMule CKadTagStr(TAG_BUDDYHASH, md4str(buddyID))) — only on
-            //    LowID sources reachable through a Kad buddy.
-            if let Some(buddy) = &s.buddy_id {
-                let hex_str: String = buddy.iter().map(|b| format!("{b:02X}")).collect();
-                buf.put_u8(0x02);
-                buf.put_u16_le(1);
-                buf.put_u8(0xF8);
-                buf.put_u16_le(hex_str.len() as u16);
-                buf.put_slice(hex_str.as_bytes());
-            }
+            write_source_entry(&mut buf, s);
         }
         buf.freeze()
+    }
+
+    /// eMule `CIndexed::SendValidSourceResult` (`Indexed.cpp:688`) : packs up
+    /// to `MAX_KAD_SEARCH_SOURCES` entries greedily into consecutive
+    /// `KADEMLIA2_SEARCH_RES` datagrams, each staying under
+    /// `UDP_KAD_MAXFRAGMENT` — IP fragmentation would drop Kad answers.
+    /// Returns at least one packet (possibly with 0 entries when `sources`
+    /// is empty).
+    pub fn encode_search_source_res_fragmented(
+        target_file_hash: &KadIdBytes,
+        sources: &[KadSourceWire],
+    ) -> Vec<Bytes> {
+        const HEADER: usize = 2 + 16 + 16 + 2;
+        let mut packets = Vec::new();
+        let mut group: Vec<&KadSourceWire> = Vec::new();
+        let mut used = HEADER;
+        for s in sources.iter().take(MAX_KAD_SEARCH_SOURCES) {
+            let entry_len = source_entry_wire_len(s);
+            if used + entry_len > UDP_KAD_MAXFRAGMENT && !group.is_empty() {
+                packets.push(encode_search_source_res_refs(target_file_hash, &group));
+                group.clear();
+                used = HEADER;
+            }
+            group.push(s);
+            used += entry_len;
+        }
+        if !group.is_empty() || packets.is_empty() {
+            packets.push(encode_search_source_res_refs(target_file_hash, &group));
+        }
+        packets
     }
 
     /// Encodes a Kad2 Publish Source request packet (0x44).
@@ -375,12 +362,11 @@ impl KadEncoder {
     }
 
     /// Encodes a Kad2 Search Keyword request packet (0x33).
-    /// Official format: [keyword_hash 16] [start_pos u16]
-    pub fn encode_search_keyword_req(
-        keyword_hash: &KadIdBytes,
-        start_pos: u16,
-        _sender_id: &KadIdBytes,
-    ) -> Bytes {
+    /// Official format: `[keyword_hash 16][start_pos u16]` — `start_pos`
+    /// carries the `0x8000` restrictive-search flag when set; an expression
+    /// tree may follow (not produced by this client, matching eMule's
+    /// requester which only sets the flag).
+    pub fn encode_search_keyword_req(keyword_hash: &KadIdBytes, start_pos: u16) -> Bytes {
         let mut buf = kad_buf(KADEMLIA2_SEARCH_KEYWORD_REQ, 20);
         buf.put_slice(keyword_hash);
         buf.put_u16_le(start_pos);
@@ -398,31 +384,39 @@ impl KadEncoder {
         buf.put_slice(keyword_hash);
         buf.put_u16_le(count as u16);
         for entry in &entries[..count] {
-            buf.put_slice(&entry.file_hash);
-            buf.put_u8(3);
-
-            let name_bytes = entry.file_name.as_bytes();
-            let name_len = name_bytes.len().min(255) as u16;
-            // TAG_FILENAME (0x01) -> TAGTYPE_STRING (0x02)
-            buf.put_u8(0x02);
-            buf.put_u16_le(1);
-            buf.put_u8(0x01);
-            buf.put_u16_le(name_len);
-            buf.put_slice(&name_bytes[..name_len as usize]);
-
-            // TAG_FILESIZE (0x02) -> TAGTYPE_UINT64 (0x0B)
-            buf.put_u8(0x0B);
-            buf.put_u16_le(1);
-            buf.put_u8(0x02);
-            buf.put_u64_le(entry.file_size);
-
-            // TAG_SOURCES (0x15) -> TAGTYPE_UINT32 (0x03)
-            buf.put_u8(0x03);
-            buf.put_u16_le(1);
-            buf.put_u8(0x15);
-            buf.put_u32_le(entry.source_count);
+            write_kw_entry(&mut buf, entry);
         }
         buf.freeze()
+    }
+
+    /// eMule `CIndexed::SendValidKeywordResult` (`Indexed.cpp:601`) : same
+    /// `UDP_KAD_MAXFRAGMENT` greedy packing as
+    /// [`encode_search_source_res_fragmented`], over at most
+    /// `MAX_KAD_SEARCH_KEYWORDS` entries.
+    ///
+    /// [`encode_search_source_res_fragmented`]: Self::encode_search_source_res_fragmented
+    pub fn encode_search_keyword_res_fragmented(
+        keyword_hash: &KadIdBytes,
+        entries: &[KadKeywordEntryWire],
+    ) -> Vec<Bytes> {
+        const HEADER: usize = 2 + 16 + 16 + 2;
+        let mut packets = Vec::new();
+        let mut group: Vec<&KadKeywordEntryWire> = Vec::new();
+        let mut used = HEADER;
+        for e in entries.iter().take(MAX_KAD_SEARCH_KEYWORDS) {
+            let entry_len = kw_entry_wire_len(e);
+            if used + entry_len > UDP_KAD_MAXFRAGMENT && !group.is_empty() {
+                packets.push(encode_search_keyword_res_refs(keyword_hash, &group));
+                group.clear();
+                used = HEADER;
+            }
+            group.push(e);
+            used += entry_len;
+        }
+        if !group.is_empty() || packets.is_empty() {
+            packets.push(encode_search_keyword_res_refs(keyword_hash, &group));
+        }
+        packets
     }
 
     /// Encodes a Kad2 Publish Keyword request packet (0x43).
@@ -469,6 +463,125 @@ impl KadEncoder {
         buf.put_u8(status);
         buf.freeze()
     }
+}
+
+// --- Search-result entry writers shared by single-packet and fragmented encoders ---
+
+/// Exact wire size of one `KADEMLIA2_SEARCH_RES` source entry (kad_id +
+/// sourcetype + tag list + optional buddy hash).
+fn source_entry_wire_len(s: &KadSourceWire) -> usize {
+    16 + 1 + 5 + 8 + 6 + 6 + 5 + usize::from(s.buddy_id.is_some()) * (4 + 32)
+}
+
+/// Writes one source entry of a `KADEMLIA2_SEARCH_RES` (0x3B) packet.
+fn write_source_entry(buf: &mut BytesMut, s: &KadSourceWire) {
+    buf.put_slice(&s.kad_id);
+    buf.put_u8(if s.buddy_id.is_some() { 6 } else { 5 });
+
+    // 1. TAG_SOURCETYPE (0xFF) -> TAGTYPE_UINT8 (0x09)
+    buf.put_u8(0x09);
+    buf.put_u16_le(1);
+    buf.put_u8(0xFF);
+    buf.put_u8(1);
+
+    // 2. TAG_SOURCEIP (0xFE) -> TAGTYPE_UINT32 (0x03)
+    buf.put_u8(0x03);
+    buf.put_u16_le(1);
+    buf.put_u8(0xFE);
+    buf.put_u32_le(u32::from_be_bytes(s.ip));
+
+    // 3. TAG_SOURCEPORT (0xFD) -> TAGTYPE_UINT16 (0x08)
+    buf.put_u8(0x08);
+    buf.put_u16_le(1);
+    buf.put_u8(0xFD);
+    buf.put_u16_le(s.tcp_port);
+
+    // 4. TAG_SOURCEUPORT (0xFC) -> TAGTYPE_UINT16 (0x08)
+    buf.put_u8(0x08);
+    buf.put_u16_le(1);
+    buf.put_u8(0xFC);
+    buf.put_u16_le(s.udp_port);
+
+    // 5. TAG_ENCRYPTION (0xF3) -> TAGTYPE_UINT8 (0x09)
+    buf.put_u8(0x09);
+    buf.put_u16_le(1);
+    buf.put_u8(0xF3);
+    buf.put_u8(s.encryption);
+
+    // 6. TAG_BUDDYHASH (0xF8) -> TAGTYPE_STRING (0x02), 32-char hex
+    //    (eMule CKadTagStr(TAG_BUDDYHASH, md4str(buddyID))) — only on
+    //    LowID sources reachable through a Kad buddy.
+    if let Some(buddy) = &s.buddy_id {
+        let hex_str: String = buddy.iter().map(|b| format!("{b:02X}")).collect();
+        buf.put_u8(0x02);
+        buf.put_u16_le(1);
+        buf.put_u8(0xF8);
+        buf.put_u16_le(hex_str.len() as u16);
+        buf.put_slice(hex_str.as_bytes());
+    }
+}
+
+/// Encodes a `KADEMLIA2_SEARCH_RES` source response over borrowed entries.
+fn encode_search_source_res_refs(target_file_hash: &KadIdBytes, sources: &[&KadSourceWire]) -> Bytes {
+    let count = sources.len().min(MAX_KAD_SEARCH_SOURCES);
+    let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
+    buf.put_slice(&[0u8; 16]); // sender Kad ID
+    buf.put_slice(target_file_hash);
+    buf.put_u16_le(count as u16);
+    for s in &sources[..count] {
+        write_source_entry(&mut buf, s);
+    }
+    buf.freeze()
+}
+
+/// Exact wire size of one keyword entry (file hash + tag count + name +
+/// size + source-count tags).
+fn kw_entry_wire_len(e: &KadKeywordEntryWire) -> usize {
+    let name_len = e.file_name.len().min(255);
+    16 + 1 + (1 + 2 + 1 + 2 + name_len) + (1 + 2 + 1 + 8) + (1 + 2 + 1 + 4)
+}
+
+/// Writes one keyword entry of a `KADEMLIA2_SEARCH_RES` (0x3B) packet.
+fn write_kw_entry(buf: &mut BytesMut, entry: &KadKeywordEntryWire) {
+    buf.put_slice(&entry.file_hash);
+    buf.put_u8(3);
+
+    let name_bytes = entry.file_name.as_bytes();
+    let name_len = name_bytes.len().min(255) as u16;
+    // TAG_FILENAME (0x01) -> TAGTYPE_STRING (0x02)
+    buf.put_u8(0x02);
+    buf.put_u16_le(1);
+    buf.put_u8(0x01);
+    buf.put_u16_le(name_len);
+    buf.put_slice(&name_bytes[..name_len as usize]);
+
+    // TAG_FILESIZE (0x02) -> TAGTYPE_UINT64 (0x0B)
+    buf.put_u8(0x0B);
+    buf.put_u16_le(1);
+    buf.put_u8(0x02);
+    buf.put_u64_le(entry.file_size);
+
+    // TAG_SOURCES (0x15) -> TAGTYPE_UINT32 (0x03)
+    buf.put_u8(0x03);
+    buf.put_u16_le(1);
+    buf.put_u8(0x15);
+    buf.put_u32_le(entry.source_count);
+}
+
+/// Encodes a `KADEMLIA2_SEARCH_RES` keyword response over borrowed entries.
+fn encode_search_keyword_res_refs(
+    keyword_hash: &KadIdBytes,
+    entries: &[&KadKeywordEntryWire],
+) -> Bytes {
+    let count = entries.len().min(MAX_KAD_SEARCH_KEYWORDS);
+    let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
+    buf.put_slice(&[0u8; 16]);
+    buf.put_slice(keyword_hash);
+    buf.put_u16_le(count as u16);
+    for entry in &entries[..count] {
+        write_kw_entry(&mut buf, entry);
+    }
+    buf.freeze()
 }
 
 // ---------------------------------------------------------------------------

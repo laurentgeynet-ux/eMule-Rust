@@ -12,18 +12,29 @@ use std::time::{Duration, Instant};
 
 use mule_protocol::kad::{KadIdBytes, KadKeywordEntryWire, KadNoteWire, KadSourceWire};
 
-/// Lifetime of a stored entry. eMule republishes sources/keywords roughly
-/// every 5 hours; entries not refreshed by then are dropped.
-pub const KAD_STORE_TTL: Duration = Duration::from_secs(5 * 60 * 60);
-/// Maximum distinct keys indexed.
-pub const MAX_STORE_KEYS: usize = 5_000;
-/// Maximum entries stored per key (also the max page served to searchers).
-pub const MAX_ENTRIES_PER_KEY: usize = 50;
-/// Hard cap on total stored entries (anti-flood).
-pub const MAX_TOTAL_ENTRIES: usize = 20_000;
-/// Maximum note entries stored per target file (eMule allows ~a note per
-/// commenter; cap generously but bounded).
-pub const MAX_NOTES_PER_TARGET: usize = 100;
+/// Lifetime of a stored **source** entry — eMule `KADEMLIAREPUBLISHTIMES`
+/// (`Opcodes.h:78`, 5 h); sources are republished each cycle.
+pub const KAD_SOURCE_TTL: Duration = Duration::from_secs(5 * 60 * 60);
+/// Lifetime of a stored **keyword** entry — eMule `KADEMLIAREPUBLISHTIMEK`
+/// (`Opcodes.h:80`, 24 h).
+pub const KAD_KEYWORD_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+/// Lifetime of a stored **note** entry — eMule `KADEMLIAREPUBLISHTIMEN`
+/// (`Opcodes.h:79`, 24 h).
+pub const KAD_NOTE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+/// Maximum distinct keys indexed — eMule `KADEMLIAMAXINDEX` (`Opcodes.h:82`).
+pub const MAX_STORE_KEYS: usize = 50_000;
+/// Maximum source/keyword entries stored per key — eMule
+/// `KADEMLIAMAXSOURCEPERFILE` (`Opcodes.h:84`).
+pub const MAX_ENTRIES_PER_KEY: usize = 1_000;
+/// Maximum results served per search page — eMule `iMaxResults`
+/// (`Indexed.cpp:619/707`, fragmented over `UDP_KAD_MAXFRAGMENT`).
+pub const MAX_SEARCH_RESULT_PAGE: usize = 300;
+/// Hard cap on total stored entries — eMule `KADEMLIAMAXENTRIES`
+/// (`Opcodes.h:83`), also an anti-flood bound.
+pub const MAX_TOTAL_ENTRIES: usize = 60_000;
+/// Maximum note entries stored per target file — eMule
+/// `KADEMLIAMAXNOTESPERFILE` (`Opcodes.h:85`).
+pub const MAX_NOTES_PER_TARGET: usize = 150;
 
 #[derive(Debug, Clone)]
 struct StoredSource {
@@ -72,7 +83,7 @@ impl KadStorage {
     /// Returns `true` when the entry was accepted.
     pub fn store_source(&mut self, file_hash: KadIdBytes, source: KadSourceWire) -> bool {
         let now = Instant::now();
-        let expires_at = now + KAD_STORE_TTL;
+        let expires_at = now + KAD_SOURCE_TTL;
 
         let dedup_key: [u8; 22] = if source.kad_id != [0u8; 16] {
             let mut k = [0u8; 22];
@@ -137,7 +148,7 @@ impl KadStorage {
         entries
             .iter()
             .skip(start_pos as usize)
-            .take(MAX_ENTRIES_PER_KEY)
+            .take(MAX_SEARCH_RESULT_PAGE)
             .map(|e| e.source.clone())
             .collect()
     }
@@ -153,7 +164,7 @@ impl KadStorage {
             return false;
         }
         let now = Instant::now();
-        let expires_at = now + KAD_STORE_TTL;
+        let expires_at = now + KAD_KEYWORD_TTL;
 
         let is_new_key = !self.keywords.contains_key(&keyword_hash);
         if is_new_key && self.keywords.len() >= MAX_STORE_KEYS {
@@ -206,7 +217,7 @@ impl KadStorage {
         entries
             .iter()
             .skip(start_pos as usize)
-            .take(MAX_ENTRIES_PER_KEY)
+            .take(MAX_SEARCH_RESULT_PAGE)
             .map(|e| e.entry.clone())
             .collect()
     }
@@ -225,7 +236,7 @@ impl KadStorage {
             return false;
         }
         let now = Instant::now();
-        let expires_at = now + KAD_STORE_TTL;
+        let expires_at = now + KAD_NOTE_TTL;
 
         let is_new_key = !self.notes.contains_key(&target_hash);
         if is_new_key && self.notes.len() >= MAX_STORE_KEYS {
@@ -412,9 +423,9 @@ impl KadStorage {
 mod tests {
     use super::*;
 
-    fn source(id_byte: u8, ip: [u8; 4]) -> KadSourceWire {
+    fn source(id: u16, ip: [u8; 4]) -> KadSourceWire {
         let mut kad_id = [0u8; 16];
-        kad_id[0] = id_byte;
+        kad_id[..2].copy_from_slice(&id.to_le_bytes());
         KadSourceWire {
             kad_id,
             ip,
@@ -425,9 +436,9 @@ mod tests {
         }
     }
 
-    fn kw_entry(hash_byte: u8) -> KadKeywordEntryWire {
+    fn kw_entry(hash_id: u16) -> KadKeywordEntryWire {
         let mut file_hash = [0u8; 16];
-        file_hash[0] = hash_byte;
+        file_hash[..2].copy_from_slice(&hash_id.to_le_bytes());
         KadKeywordEntryWire {
             file_hash,
             file_name: "file.bin".to_string(),
@@ -463,10 +474,11 @@ mod tests {
         let mut st = KadStorage::default();
         let key = [3u8; 16];
         for i in 0..MAX_ENTRIES_PER_KEY {
-            assert!(st.store_source(key, source(i as u8, [1, 1, 1, 1])));
+            assert!(st.store_source(key, source(i as u16, [1, 1, 1, 1])));
         }
-        assert!(!st.store_source(key, source(200, [2, 2, 2, 2])));
-        assert_eq!(st.get_sources(&key, 0).len(), MAX_ENTRIES_PER_KEY);
+        assert!(!st.store_source(key, source(2000, [2, 2, 2, 2])));
+        // Serving is paged to `MAX_SEARCH_RESULT_PAGE` (eMule iMaxResults).
+        assert_eq!(st.get_sources(&key, 0).len(), MAX_SEARCH_RESULT_PAGE);
     }
 
     #[test]
@@ -494,10 +506,10 @@ mod tests {
         let mut st = KadStorage::default();
         let kw = [5u8; 16];
         let batch: Vec<_> = (0..MAX_ENTRIES_PER_KEY)
-            .map(|i| kw_entry(i as u8))
+            .map(|i| kw_entry(i as u16))
             .collect();
         assert!(st.store_keyword_entries(kw, batch));
-        assert!(!st.store_keyword_entries(kw, vec![kw_entry(250)]));
+        assert!(!st.store_keyword_entries(kw, vec![kw_entry(2000)]));
     }
 
     #[test]
@@ -578,8 +590,8 @@ mod tests {
         assert!(st.get_notes(&target, 999, 50).is_empty());
         // Null source_id is rejected.
         assert!(!st.store_note(target, note(0, 1000), [1, 1, 1, 1], 1));
-        // Load reflects occupancy.
-        assert_eq!(st.note_load(&target), 2);
+        // Load reflects occupancy as a percentage of MAX_NOTES_PER_TARGET.
+        assert_eq!(st.note_load(&target), (2 * 100 / MAX_NOTES_PER_TARGET) as u8);
         assert_eq!(st.note_load(&[0xEEu8; 16]), 0);
     }
 
