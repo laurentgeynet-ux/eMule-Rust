@@ -233,6 +233,52 @@ pub struct KadPublishSourceRes {
     pub request_ack: bool,
 }
 
+/// Kad version that introduced AICH root hashes in keyword storage —
+/// eMule `KADEMLIA_VERSION9_50a` (`Opcodes.h`).
+pub const KADEMLIA_VERSION_AICH: u8 = 9;
+
+/// Current Kad protocol version — eMule `KADEMLIA_VERSION` (`Opcodes.h`),
+/// advertised by eMule 0.72a.
+pub const KADEMLIA_VERSION_CURRENT: u8 = 10;
+
+/// `TAG_KADAICHHASHPUB` (`\x36`) — BSOB carrying the publisher's 20-byte
+/// AICH root hash inside a `PUBLISH_KEY_REQ` keyword entry. Introduced by
+/// Kad v9 (`KADEMLIA_VERSION9_50a`, eMule `Opcodes.h`).
+pub const TAG_KADAICHHASH_PUB: u8 = 0x36;
+
+/// `TAG_KADAICHHASHRESULT` (`\x37`) — BSOB carrying the AICH popularity
+/// histogram synthesized by the storing node inside `SEARCH_RES` keyword
+/// results (eMule `CKeyEntry::WriteTagListWithPublishInfo`).
+pub const TAG_KADAICHHASH_RESULT: u8 = 0x37;
+
+/// `TAG_PUBLISHINFO` (`\x33`) — u32 `<names u8><publishers u8><trust×100 u16>`
+/// appended by the storing node to keyword search results.
+pub const TAG_PUBLISHINFO: u8 = 0x33;
+
+/// 20-byte AICH root hash (SHA-1) as published via `TAG_KADAICHHASHPUB`.
+pub const AICH_ROOT_HASH_SIZE: usize = 20;
+
+/// Maximum byte size of the `TAG_KADAICHHASHRESULT` BSOB written by eMule
+/// (`CKeyEntry::WriteTagListWithPublishInfo` writes into a 255-byte buffer
+/// and keeps one byte for the count prefix).
+pub const MAX_AICH_RESULT_BSOB: usize = 255;
+
+/// Maximum AICH hashes written into one `TAG_KADAICHHASHRESULT` BSOB —
+/// eMule stops counting when the next `<u8 pop><20B hash>` pair would push
+/// the payload past 250 bytes (`WriteTagListWithPublishInfo`), yielding at
+/// most 11 entries (`1 + 21*11 = 232`).
+pub const MAX_AICH_RESULT_VOTES: usize = 11;
+
+/// One AICH root hash and its publisher popularity inside
+/// `TAG_KADAICHHASHRESULT` (`<u8 count><u8 pop><20B hash>…`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AichHashVote {
+    /// Number of distinct publishers claiming this root hash.
+    pub popularity: u8,
+    /// 20-byte AICH root hash.
+    pub root: [u8; AICH_ROOT_HASH_SIZE],
+}
+
 /// Wire representation of a keyword search entry.
 ///
 /// Not `Eq` because `tags` may contain `Float32` values.
@@ -252,6 +298,20 @@ pub struct KadKeywordEntryWire {
     /// (`CKeyEntry::SearchTermsMatch`). Empty for entries decoded from the
     /// legacy flat format.
     pub tags: Vec<Ed2kTag>,
+    /// `TAG_KADAICHHASHPUB` (0x36) decoded from a `PUBLISH_KEY_REQ` entry —
+    /// the AICH root hash the publisher claims for this file (Kad v9+).
+    /// Never set on entries received via `SEARCH_RES` (eMule ignores/strips
+    /// the pub tag in results); the encoder emits it only for our own
+    /// publish requests.
+    pub aich_pub: Option<[u8; AICH_ROOT_HASH_SIZE]>,
+    /// `TAG_KADAICHHASHRESULT` (0x37) histogram decoded from a `SEARCH_RES`
+    /// entry, or synthesized by the storage node when serving results.
+    /// Entries with `popularity == 0` are filtered on decode (eMule
+    /// `ProcessResultKeyword`).
+    pub aich_votes: Vec<AichHashVote>,
+    /// `TAG_PUBLISHINFO` (0x33) raw u32 decoded from a `SEARCH_RES` entry,
+    /// or synthesized by the storage node when serving results.
+    pub publish_info: Option<u32>,
 }
 
 /// Kad2 Search Keyword Request (0x33).

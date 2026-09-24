@@ -387,6 +387,9 @@ fn test_kad_search_and_publish_keyword_roundtrip() {
             file_size: 1_500_000_000,
             source_count: 42,
             tags: Vec::new(),
+            aich_pub: None,
+            aich_votes: Vec::new(),
+            publish_info: None,
         },
         mule_protocol::kad::codec::KadKeywordEntryWire {
             file_hash: [0x22u8; 16],
@@ -394,6 +397,9 @@ fn test_kad_search_and_publish_keyword_roundtrip() {
             file_size: 650_000_000,
             source_count: 12,
             tags: Vec::new(),
+            aich_pub: None,
+            aich_votes: Vec::new(),
+            publish_info: None,
         },
     ];
 
@@ -501,6 +507,9 @@ fn test_emule_keyword_response_with_publishinfo_roundtrip() {
         file_size: 42_000_000,
         source_count: 7,
         tags: Vec::new(),
+        aich_pub: None,
+        aich_votes: Vec::new(),
+        publish_info: None,
     }];
 
     let encoded = KadCodec::encode_search_keyword_res(&keyword_hash, &entries);
@@ -929,6 +938,9 @@ fn test_search_keyword_res_fragmented() {
             file_size: 1_000_000 + u64::from(i),
             source_count: i + 1,
             tags: Vec::new(),
+            aich_pub: None,
+            aich_votes: Vec::new(),
+            publish_info: None,
         })
         .collect();
 

@@ -56,10 +56,9 @@ Dans `OP_HELLO` et `OP_HELLOANSWER` :
 Deviations volontaires ou simplifications documentées après l'audit de
 fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
 
-- **Identité annoncée = eMule 0.70a** (`CT_EMULE_VERSION = 70<<10`) alors
-  que la référence est 0.72a : cohérent avec `KadVersion = 8` annoncé
-  (eMule 0.72a = Kad 10). Passer à 0.72a/Kad 10 exige d'abord la revue
-  des features Kad v9/v10 (AUD-P03).
+- **Identité annoncée = eMule 0.72a** (`CT_EMULE_VERSION = 72<<10`,
+  `client_version = 72`) alignée sur la référence — voir §13 pour les
+  bits `MISCOPTIONS2` volontairement non annoncés.
 - **Timeout de file d'attente** : le daemon abandonne un pair en file
   silencieux après `FILEREASKTIME + 15 min` (`PeerTimeouts::queue_timeout`).
   eMule n'a aucun timeout de file — le socket vit jusqu'à la mort TCP.
@@ -118,11 +117,10 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
 
 ### Écarts assumés
 
-- **`OUR_KAD_VERSION = 8`** alors qu'eMule 0.72a annonce
-  `KADEMLIA_VERSION = 0x0a` (`Opcodes.h:32`) : Kad 9 ajoute la gestion
-  des hash AICH dans le stockage de mots-clés, non implémentée.
-  Cohérent avec l'identité 0.70a annoncée ; annoncer 10 surestimerait
-  les capacités réelles.
+- **Réponse `0x3B` sans tag discriminateur** : une entrée au format
+  plat legacy (sans `PUBLISHINFO`/`KADAICHHASHRESULT`) reste décodée par
+  le chemin de compatibilité pré-v9 ; eMule ≥ 0.50a émet toujours la
+  taglist complète.
 - **Table de routage plate 128 × K** au lieu de l'arbre de zones
   binaire eMule (`RoutingZone` — split borné par `KK=5`/`KBASE=4`,
   profondeur accrue près de notre propre KadID). La capacité par bin
@@ -513,3 +511,58 @@ Références : `Emule.cpp:1056-1085` (`IsFirewalled`/`CanDoCallback`),
   critères, notre intervalle unique est entre les valeurs.
 - Pending callbacks serveur non purgés à la reconnexion serveur — le
   TTL 5 min couvre le changement de namespace LowID.
+
+---
+
+## 13. AICH-keyword / Kad v9 / identité 0.72a — audit phase B, passe 7
+
+### Implémenté
+
+- **`KADEMLIA_VERSION = 0x0a`** (`KADEMLIA_VERSION_CURRENT = 10`,
+  `Opcodes.h:32`) : annoncé dans le hello Kad, `OUR_KAD_VERSION`,
+  `KadContactWire.version` et les bits `MISCOPTIONS2`.
+- **Identité 0.72a** : `CT_EMULE_VERSION = 72<<10` et
+  `client_version = 72` (`m_uCurVersionShort = MAKELONG(72,0)`).
+- **`TAG_KADAICHHASHPUB (0x36)`** : BSOB de 20 octets publié dans
+  `KADEMLIA2_PUBLISH_KEY_REQ` uniquement vers les contacts
+  `version >= KADEMLIA_VERSION_AICH (9)` (`Search.cpp` —
+  `PreparePacketForTags`) quand le fichier partagé a un `aich_root`.
+- **`TAG_PUBLISHINFO (0x33)`** : `UINT32` émis dans les résultats de
+  recherche uniquement — compte des éditeurs connus
+  (`Indexed.cpp` `WriteTagListWithPublishInfo`).
+- **`TAG_KADAICHHASHRESULT (0x37)`** : histogramme BSOB
+  `[count][popularity u8][hash20]×n` émis dans les résultats, plafonné
+  à 11 entrées (borne eMule ~250 o de charge), votes à popularité nulle
+  filtrés.
+- **Modèle `CKeyEntry` dans `kad_udp::storage`** : par (keyword,
+  file_hash) — registre d'éditeurs dédupliqués par IP (refresh au
+  republish, TTL 24 h `KADEMLIAREPUBLISHTIMEK`, cap 100), votes AICH
+  par éditeur agrégés en histogramme, popularité des noms de fichiers
+  (`GetCommonFileName` — égalité → plus ancien), confiance
+  `GetTrustValue` par agrégation `/24` (`PUBLISHPOINTSSPERSUBNET=10`)
+  avec compteurs globaux cohérents au refresh/expiry/purge ; entrées
+  trusted servies avant les non-trusted (`SendValidKeywordResult`,
+  `start_pos` après filtrage).
+- **Filtrage des tags résultat** : `0x33`/`0x37` (et doublons `0x36`
+  au-delà du premier) extraits du stockage — `m_listTag` conserve
+  `TAG_SOURCES` et les tags standards ; `FILENAME`/`FILESIZE` vivent
+  dans les champs dédiés (`Indexed.cpp` interception au publish).
+- **Ordre des tags à l'émission** (`WriteTagListWithPublishInfo`) :
+  `FILENAME`, `FILESIZE`, taglist stockée, `PUBLISHINFO`,
+  `KADAICHHASHRESULT`.
+
+### Écarts assumés
+
+- **Bits `MISCOPTIONS2` non annoncés** : bit 11 (Captcha — décodé mais
+  pas de réponse implémentée) et bit 12 (`DirectUDPCallback` sortant —
+  cf. §12). Annoncer une capacité non implémentée dégraderait
+  l'interopérabilité réelle.
+- **Vote AICH par IP, pas par publisher-ID** : le registre déduplique
+  par adresse IP (eMule utilise `CKadEntry` indexé IP+port ; la
+  déduplication IP seule est légèrement plus stricte — plusieurs
+  clients NAT derrière une IP comptent pour un éditeur, comme l'agrégat
+  `/24` eMule les rapproche déjà).
+- **`GetCommonFileName` égalité → plus ancien** : eMule conserve le
+  premier nom à popularité maximale — un renommage solitaire ne
+  remplace pas le nom consensuel (test `keyword_store_lookup_and_dedup`
+  aligné sur cette sémantique).

@@ -12,6 +12,93 @@ use crate::kad::opcodes::*;
 use crate::kad::types::*;
 use bytes::Buf;
 
+/// Node-computed tags extracted from a keyword entry tag list — never
+/// part of the stored publisher tag list (`CEntry::m_listTag`).
+#[derive(Default)]
+struct KwExtractedTags {
+    /// `TAG_KADAICHHASHPUB` (0x36) — publisher's AICH root (publish only).
+    aich_pub: Option<[u8; AICH_ROOT_HASH_SIZE]>,
+    /// `TAG_KADAICHHASHRESULT` (0x37) — AICH popularity histogram.
+    aich_votes: Vec<AichHashVote>,
+    /// `TAG_PUBLISHINFO` (0x33) — `<names u8><publishers u8><trust u16>`.
+    publish_info: Option<u32>,
+}
+
+/// Parses a `TAG_KADAICHHASHRESULT` BSOB payload —
+/// `<u8 count>{<u8 popularity><20B root>}` — with strict length validation
+/// (eMule drops the whole vote array on malformed payloads,
+/// `ProcessResultKeyword`). Zero-popularity entries are skipped.
+fn parse_aich_result_bsob(data: &[u8]) -> Vec<AichHashVote> {
+    let Some(&count) = data.first() else {
+        return Vec::new();
+    };
+    let count = count as usize;
+    if data.len() != 1 + count * (1 + AICH_ROOT_HASH_SIZE) {
+        return Vec::new();
+    }
+    data[1..]
+        .as_chunks::<{ 1 + AICH_ROOT_HASH_SIZE }>()
+        .0
+        .iter()
+        .filter_map(|c| {
+            let popularity = c[0];
+            if popularity == 0 {
+                return None;
+            }
+            let mut root = [0u8; AICH_ROOT_HASH_SIZE];
+            root.copy_from_slice(&c[1..]);
+            Some(AichHashVote { popularity, root })
+        })
+        .collect()
+}
+
+/// Partitions a decoded keyword-entry tag list: publisher metadata tags
+/// stay in the returned list (`CEntry::m_listTag`); consumed field tags —
+/// `TAG_FILENAME` (0x01) and `TAG_FILESIZE` (0x02), intercepted by eMule
+/// `KademliaUDPListener` and re-emitted from entry fields at serve
+/// time — plus node-computed tags `TAG_KADAICHHASHPUB` (0x36, first
+/// valid BSOB-20 wins), `TAG_KADAICHHASHRESULT` (0x37) and
+/// `TAG_PUBLISHINFO` (0x33) are extracted (`CEntry::AddTag` deletes the
+/// two result-only tags on publish).
+fn split_kw_wire_tags(tags: Vec<Ed2kTag>) -> (Vec<Ed2kTag>, KwExtractedTags) {
+    let mut out = Vec::with_capacity(tags.len());
+    let mut ext = KwExtractedTags::default();
+    for tag in tags {
+        match tag.name {
+            // Filename and filesize are consumed into entry fields —
+            // eMule never stores them in `m_listTag`.
+            TagName::Id(TAG_SPECIAL_NAME) | TagName::Id(TAG_SPECIAL_FILESIZE) => {}
+            TagName::Id(TAG_KADAICHHASH_PUB) => {
+                if ext.aich_pub.is_none() {
+                    if let TagValue::Blob(b) = &tag.value {
+                        if b.len() == AICH_ROOT_HASH_SIZE {
+                            let mut root = [0u8; AICH_ROOT_HASH_SIZE];
+                            root.copy_from_slice(b);
+                            ext.aich_pub = Some(root);
+                        }
+                    }
+                }
+            }
+            TagName::Id(TAG_KADAICHHASH_RESULT) => {
+                if ext.aich_votes.is_empty() {
+                    if let TagValue::Blob(b) = &tag.value {
+                        ext.aich_votes = parse_aich_result_bsob(b);
+                    }
+                }
+            }
+            TagName::Id(TAG_PUBLISHINFO) => {
+                if ext.publish_info.is_none() {
+                    if let TagValue::UInt32(v) = tag.value {
+                        ext.publish_info = Some(v);
+                    }
+                }
+            }
+            _ => out.push(tag),
+        }
+    }
+    (out, ext)
+}
+
 /// Decodes an `OP_KADEMLIA2_SEARCH_SOURCE_REQ` payload.
 /// Official eMule format: [target_hash 16] [start_pos u16] [file_size u64] (26 bytes).
 pub fn decode_search_source_req(
@@ -124,9 +211,10 @@ pub fn decode_search_res(
                                         _ => {}
                                     }
                                 }
-                                TagName::Id(0x33) => {
+                                TagName::Id(TAG_PUBLISHINFO) => {
                                     // FT_PUBLISHINFO (0x33): (uNames << 24) | (uPublishers << 16) | uTrust
-                                    // publishers_known is (v >> 16) & 0xFF
+                                    // publishers_known is (v >> 16) & 0xFF — extracted
+                                    // out of the tag list by `split_kw_wire_tags` below.
                                     if let TagValue::UInt32(v) = tag.value {
                                         let pubs = (v >> 16) & 0xFF;
                                         if pubs > 0 && source_count == 0 {
@@ -298,12 +386,16 @@ pub fn decode_search_res(
                         buddy_id,
                     });
                 } else {
+                    let (tags, ext) = split_kw_wire_tags(parsed_tags);
                     keyword_entries.push(KadKeywordEntryWire {
                         file_hash: answer_hash,
                         file_name,
                         file_size,
                         source_count,
-                        tags: parsed_tags,
+                        tags,
+                        aich_pub: None,
+                        aich_votes: ext.aich_votes,
+                        publish_info: ext.publish_info,
                     });
                 }
             }
@@ -684,6 +776,9 @@ pub fn decode_search_keyword_res_legacy(
             file_size,
             source_count,
             tags: Vec::new(),
+            aich_pub: None,
+            aich_votes: Vec::new(),
+            publish_info: None,
         });
     }
 
@@ -797,12 +892,16 @@ pub fn decode_publish_keyword_req(
 
             if parse_ok {
                 cursor = reader.pos();
+                let (tags, ext) = split_kw_wire_tags(parsed_tags);
                 entries.push(KadKeywordEntryWire {
                     file_hash,
                     file_name,
                     file_size,
                     source_count,
-                    tags: parsed_tags,
+                    tags,
+                    aich_pub: ext.aich_pub,
+                    aich_votes: Vec::new(),
+                    publish_info: None,
                 });
                 continue;
             }
@@ -839,6 +938,9 @@ pub fn decode_publish_keyword_req(
             file_size,
             source_count,
             tags: Vec::new(),
+            aich_pub: None,
+            aich_votes: Vec::new(),
+            publish_info: None,
         });
     }
 

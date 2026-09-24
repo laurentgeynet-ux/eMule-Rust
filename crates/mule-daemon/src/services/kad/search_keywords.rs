@@ -11,29 +11,21 @@ use mule_network_policy::{classify_ip, IpCategory, NetworkPolicyManager, Network
 
 use crate::services::kad_udp::KadUdpService;
 
-/// Standard tag list published with each keyword entry — eMule writes
-/// `TAG_FILENAME`, `TAG_FILESIZE` and `TAG_SOURCES` for every file
-/// (`WriteTagListWithPublishInfo`).
+/// Standard stored tag list published with each keyword entry — eMule
+/// `PreparePacketForTags` pushes `TAG_SOURCES` (and optional metadata)
+/// into the publish tag list; `TAG_FILENAME`/`TAG_FILESIZE` are emitted
+/// by the encoder from the entry fields (`WriteTagListInc`), not stored
+/// in `m_listTag`.
 fn standard_keyword_tags(
-    file_name: &str,
-    file_size: u64,
+    _file_name: &str,
+    _file_size: u64,
     source_count: u32,
 ) -> Vec<mule_protocol::ed2k::tags::Ed2kTag> {
     use mule_protocol::ed2k::tags::{Ed2kTag, TagName, TagValue};
-    vec![
-        Ed2kTag {
-            name: TagName::Id(mule_protocol::ed2k::tags::TAG_SPECIAL_NAME),
-            value: TagValue::String(file_name.to_string()),
-        },
-        Ed2kTag {
-            name: TagName::Id(mule_protocol::ed2k::tags::TAG_SPECIAL_FILESIZE),
-            value: TagValue::UInt64(file_size),
-        },
-        Ed2kTag {
-            name: TagName::Id(0x15),
-            value: TagValue::UInt32(source_count),
-        },
-    ]
+    vec![Ed2kTag {
+        name: TagName::Id(0x15), // TAG_SOURCES
+        value: TagValue::UInt32(source_count),
+    }]
 }
 
 pub async fn search_keywords_iterative(
@@ -142,11 +134,24 @@ pub async fn search_keywords_iterative(
                     }
 
                     if seen_hashes.insert(file_hash_hex.clone()) {
+                        // eMule `ProcessResultKeyword` (Search.cpp:1165):
+                        // the AICH popularity histogram and publish-info
+                        // u32 accompany each keyword result on Kad >= v9
+                        // nodes.
                         discovered_entries.push(serde_json::json!({
                             "fileHash": file_hash_hex,
                             "fileName": w.file_name,
                             "fileSize": w.file_size,
                             "sourceCount": w.source_count,
+                            "aichVotes": w
+                                .aich_votes
+                                .iter()
+                                .map(|v| serde_json::json!({
+                                    "popularity": v.popularity,
+                                    "aichRoot": hex::encode(v.root),
+                                }))
+                                .collect::<Vec<_>>(),
+                            "publishInfo": w.publish_info,
                         }));
                     }
                 }
@@ -180,6 +185,7 @@ pub async fn publish_keyword(
     file_hash_hex: &str,
     file_name: &str,
     file_size: u64,
+    aich_root: Option<[u8; 20]>,
     routing_table: &Mutex<KBucketTable>,
     policy_mgr: &NetworkPolicyManager,
     ip_filter: &Arc<IpFilter>,
@@ -226,6 +232,9 @@ pub async fn publish_keyword(
             // remote indexers evaluate restrictive search expressions
             // against these tags (eMule `WriteTagListWithPublishInfo`).
             tags: standard_keyword_tags(file_name, file_size, 1),
+            aich_pub: None,
+            aich_votes: Vec::new(),
+            publish_info: None,
         }];
 
         let mut futs = Vec::with_capacity(targets.len());
@@ -233,7 +242,13 @@ pub async fn publish_keyword(
             let addr = SocketAddr::new(IpAddr::V4(contact.ip), contact.udp_port);
             let udp_c = Arc::clone(udp);
             let kw = kw_kad_id.0;
-            let entries_c = entries.clone();
+            let mut entries_c = entries.clone();
+            // eMule `PreparePacketForTags` (`Search.cpp:1390`): the
+            // `TAG_KADAICHHASHPUB` tag is only appended when the target
+            // node advertises Kad >= v9.
+            if contact.version >= mule_protocol::kad::KADEMLIA_VERSION_AICH {
+                entries_c[0].aich_pub = aich_root;
+            }
             futs.push(async move { udp_c.send_publish_keyword(addr, &kw, &entries_c).await });
         }
         for res in futures_util::future::join_all(futs).await {

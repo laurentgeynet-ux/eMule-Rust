@@ -603,9 +603,13 @@ pub async fn handle_incoming_message(
                 .collect();
             let keyword_hash = req.keyword_hash;
             let to_persist = valid_entries.clone();
+            let publisher_ip = match peer_addr.ip() {
+                IpAddr::V4(v4) => v4.octets(),
+                IpAddr::V6(_) => [0u8; 4],
+            };
             let status = {
                 let mut store = storage.lock().await;
-                if store.store_keyword_entries(keyword_hash, valid_entries) {
+                if store.store_keyword_entries(keyword_hash, valid_entries, publisher_ip) {
                     0
                 } else {
                     1

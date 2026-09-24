@@ -477,6 +477,9 @@ mod tests {
             file_size: size,
             source_count: sources,
             tags,
+            aich_pub: None,
+            aich_votes: Vec::new(),
+            publish_info: None,
         }
     }
 

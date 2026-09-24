@@ -743,7 +743,12 @@ impl KadService {
                                     // to publish these keywords").
                                     if keyword_due && !f.is_partial {
                                         let _ = kad
-                                            .publish_keyword(&hash, &f.file_name, f.file_size)
+                                            .publish_keyword(
+                                                &hash,
+                                                &f.file_name,
+                                                f.file_size,
+                                                f.aich_root,
+                                            )
                                             .await;
                                     }
                                 }
@@ -990,16 +995,20 @@ impl KadService {
     }
 
     /// Publishes keyword entries for a file to the closest Kad contacts.
+    /// `aich_root` is attached as `TAG_KADAICHHASHPUB` only to v9+ targets
+    /// (eMule `PreparePacketForTags`).
     pub async fn publish_keyword(
         &self,
         file_hash_hex: &str,
         file_name: &str,
         file_size: u64,
+        aich_root: Option<[u8; 20]>,
     ) -> Result<usize, String> {
         search_keywords::publish_keyword(
             file_hash_hex,
             file_name,
             file_size,
+            aich_root,
             self.routing_table.as_ref(),
             &self.policy_mgr,
             &self.ip_filter,

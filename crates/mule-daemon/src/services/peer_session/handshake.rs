@@ -24,6 +24,15 @@ use super::types::{
 use crate::services::downloads::DownloadService;
 use crate::services::obfuscation_stream::ObfuscatedStream;
 
+/// Our announced eMule version encoded for `CT_EMULE_VERSION` —
+/// `(major<<17)|(minor<<10)|(update<<7)` = eMule 0.72.0
+/// (`BaseClient.cpp` `SendMuleInfoPacket`, `Version.h`: 0.72.0).
+pub(crate) const EMULE_VERSION_TAG: u32 = 72 << 10;
+
+/// `m_uCurVersionShort` = `MAKELONG(minor, major)` — the version byte of
+/// `OP_EMULEINFO`/`OP_EMULEINFOANSWER` (0.72a → 72).
+pub(crate) const EMULE_VERSION_SHORT: u8 = 72;
+
 pub struct HandshakeResult {
     pub stream: ObfuscatedStream<TcpStream>,
     pub peer_supports_sx: bool,
@@ -203,9 +212,9 @@ pub(crate) async fn perform_peer_handshake(
         value: mule_protocol::ed2k::tags::TagValue::UInt32(udp_ports),
     });
 
-    // EmuleVersion — announced as eMule 0.70a: high byte = software ID 0
-    // (SO_EMULE-compatible), low 24 bits = (mjr<<17)|(min<<10)|(upd<<7).
-    let emule_ver: u32 = 70 << 10;
+    // EmuleVersion — eMule 0.72a (`EMULE_VERSION_TAG`); the tag's high
+    // byte stays 0 (SO_EMULE-compatible software ID).
+    let emule_ver: u32 = EMULE_VERSION_TAG;
     tags.push(mule_protocol::ed2k::tags::Ed2kTag {
         name: mule_protocol::ed2k::tags::TagName::Id(
             mule_protocol::ed2k::tags::TAG_SPECIAL_CT_EMULE_VERSION,
@@ -237,11 +246,11 @@ pub(crate) async fn perform_peer_handshake(
 
     // MiscOptions2 — eMule layout: FileIdent<<13 | DirectUDPCallback<<12 |
     // Captcha<<11 | SrcExch2<<10 | CryptReq<<9 | CryptWants<<8 | CryptSup<<7 |
-    // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0. KadVersion = 8
-    // (KADEMLIA_VERSION8_49b): the daemon implements OP_FWCHECKUDPREQ /
-    // KADEMLIA2_FIREWALLUDP, protocol obfuscation, TAG_KADMISCOPTIONS,
-    // KADEMLIA2_HELLO_RES_ACK and the Kad >= 7 TCP firewall-check flow
-    // (FIREWALLED2_REQ / OP_KAD_FWTCPCHECK_ACK).
+    // ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0. KadVersion = 10
+    // (KADEMLIA_VERSION, eMule 0.72a): adds the v9 AICH keyword-storage
+    // feature (TAG_KADAICHHASHPUB / TAG_KADAICHHASHRESULT). Bits 12
+    // (DirectUDPCallback) and 11 (Captcha) stay 0 — the outgoing
+    // OP_DIRECTCALLBACKREQ path and CAPTCHA answers are not implemented.
     let u_supports_crypt = obfuscation_enabled as u32;
     let u_requests_crypt = obfuscation_enabled as u32;
     let u_requires_crypt = obfuscation_required as u32;
@@ -622,7 +631,7 @@ pub(crate) fn build_emule_info(
     };
 
     mule_protocol::ed2k::Ed2kEmuleInfo {
-        client_version: 70, // version short matching our announced 0.70a
+        client_version: EMULE_VERSION_SHORT,
         protocol_version: 0x01,
         tags: vec![
             t(TAG_SPECIAL_EMULE_EXT_COMPRESSION, 1),

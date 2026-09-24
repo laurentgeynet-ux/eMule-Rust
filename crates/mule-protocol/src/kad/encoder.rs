@@ -515,55 +515,141 @@ fn encode_search_source_res_refs(target_file_hash: &KadIdBytes, sources: &[&KadS
     buf.freeze()
 }
 
-/// Exact wire size of one keyword entry (file hash + tag count + name +
-/// size + source-count tags).
+/// Exact wire size of one keyword entry — serializes the tag list into a
+/// scratch buffer (stored tags + node-computed AICH/publish tags) instead
+/// of estimating, so the fragmented packet packer stays exact.
 fn kw_entry_wire_len(e: &KadKeywordEntryWire) -> usize {
-    let name_len = e.file_name.len().min(255);
-    16 + 1 + (1 + 2 + 1 + 2 + name_len) + (1 + 2 + 1 + 8) + (1 + 2 + 1 + 4)
+    let mut tmp = BytesMut::new();
+    write_kw_entry(&mut tmp, e);
+    tmp.len()
 }
 
-/// Writes one keyword entry of a `KADEMLIA2_SEARCH_RES` (0x3B) packet.
-fn write_kw_entry(buf: &mut BytesMut, entry: &KadKeywordEntryWire) {
-    buf.put_slice(&entry.file_hash);
-    if !entry.tags.is_empty() {
-        // eMule `WriteTagList`: echo the published tag list verbatim so
-        // restrictive-search requesters see the same metadata the
-        // expression was evaluated against.
-        let count = entry.tags.len().min(u8::MAX as usize);
-        let limits = Ed2kLimits::default();
-        let mut tmp = Vec::with_capacity(32 * count);
-        let ok = entry.tags[..count]
-            .iter()
-            .all(|tag| encode_tag(&limits, KADEMLIA2_SEARCH_RES, tag, &mut tmp).is_ok());
-        if ok {
-            buf.put_u8(count as u8);
-            buf.put_slice(&tmp);
-            return;
-        }
-        // Re-encode failed — fall through to the synthesized minimal list.
-    }
-    buf.put_u8(3);
+/// Writes a `TAGTYPE_BSOB` Kad tag: `[0x0A][u16 name_len][name][u8 len][data]`
+/// (eMule `CDataIO::WriteTag`/`WriteBsob`).
+fn write_bsob_tag(dst: &mut Vec<u8>, name: u8, data: &[u8]) {
+    debug_assert!(data.len() <= u8::MAX as usize);
+    dst.push(crate::ed2k::tags::TAGTYPE_BSOB);
+    dst.extend_from_slice(&1u16.to_le_bytes());
+    dst.push(name);
+    dst.push(data.len() as u8);
+    dst.extend_from_slice(data);
+}
 
+/// Writes `TAG_FILENAME` (0x01) and `TAG_FILESIZE` (0x02) from the entry
+/// fields — eMule `WriteTagListInc` emits them before `m_listTag`
+/// (filesize is skipped when zero).
+fn write_kw_field_tags(tmp: &mut Vec<u8>, entry: &KadKeywordEntryWire) -> usize {
+    let mut n = 0;
     let name_bytes = entry.file_name.as_bytes();
     let name_len = name_bytes.len().min(255) as u16;
-    // TAG_FILENAME (0x01) -> TAGTYPE_STRING (0x02)
-    buf.put_u8(0x02);
-    buf.put_u16_le(1);
-    buf.put_u8(0x01);
-    buf.put_u16_le(name_len);
-    buf.put_slice(&name_bytes[..name_len as usize]);
+    if name_len > 0 {
+        tmp.push(0x02); // TAGTYPE_STRING
+        tmp.extend_from_slice(&1u16.to_le_bytes());
+        tmp.push(0x01);
+        tmp.extend_from_slice(&name_len.to_le_bytes());
+        tmp.extend_from_slice(&name_bytes[..name_len as usize]);
+        n += 1;
+    }
+    if entry.file_size > 0 {
+        tmp.push(0x0B); // TAGTYPE_UINT64
+        tmp.extend_from_slice(&1u16.to_le_bytes());
+        tmp.push(0x02);
+        tmp.extend_from_slice(&entry.file_size.to_le_bytes());
+        n += 1;
+    }
+    n
+}
 
-    // TAG_FILESIZE (0x02) -> TAGTYPE_UINT64 (0x0B)
-    buf.put_u8(0x0B);
-    buf.put_u16_le(1);
-    buf.put_u8(0x02);
-    buf.put_u64_le(entry.file_size);
-
+/// Writes the synthesized minimal tag list (filename/filesize/sources)
+/// used for flat-format entries and as fallback when the stored tag list
+/// fails to re-encode.
+fn write_kw_synth_tags(tmp: &mut Vec<u8>, entry: &KadKeywordEntryWire) {
+    write_kw_field_tags(tmp, entry);
     // TAG_SOURCES (0x15) -> TAGTYPE_UINT32 (0x03)
-    buf.put_u8(0x03);
-    buf.put_u16_le(1);
-    buf.put_u8(0x15);
-    buf.put_u32_le(entry.source_count);
+    tmp.push(0x03);
+    tmp.extend_from_slice(&1u16.to_le_bytes());
+    tmp.push(0x15);
+    tmp.extend_from_slice(&entry.source_count.to_le_bytes());
+}
+
+/// Writes one keyword entry of a `KADEMLIA2_SEARCH_RES` (0x3B) or
+/// `KADEMLIA2_PUBLISH_KEYWORD_REQ` (0x43) packet.
+///
+/// Tag list layout (eMule `CEntry::WriteTagListInc` /
+/// `CKeyEntry::WriteTagListWithPublishInfo`):
+/// 1. `TAG_FILENAME` + `TAG_FILESIZE` from the entry fields (the stored
+///    tag list — `m_listTag` — never carries them),
+/// 2. the stored publisher tag list verbatim (`TAG_SOURCES` synthesized
+///    for flat-format entries),
+/// 3. `TAG_KADAICHHASHPUB` (0x36) when publishing our own AICH root,
+/// 4. `TAG_PUBLISHINFO` (0x33) then `TAG_KADAICHHASHRESULT` (0x37) when
+///    serving stored entries — node-computed, never part of `entry.tags`.
+fn write_kw_entry(buf: &mut BytesMut, entry: &KadKeywordEntryWire) {
+    buf.put_slice(&entry.file_hash);
+    let limits = Ed2kLimits::default();
+    let mut tmp = Vec::with_capacity(128);
+    let mut n = write_kw_field_tags(&mut tmp, entry);
+    // Leave headroom for the node-computed tags below (u8 count field).
+    let stored = entry.tags.len().min(u8::MAX as usize - 3);
+    if stored > 0 {
+        for tag in &entry.tags[..stored] {
+            if encode_tag(&limits, KADEMLIA2_SEARCH_RES, tag, &mut tmp).is_err() {
+                tmp.clear();
+                n = 0;
+                break;
+            }
+            n += 1;
+        }
+    }
+    if n == 0 {
+        tmp.clear();
+        write_kw_synth_tags(&mut tmp, entry);
+        n = 3;
+    } else if stored == 0 {
+        // Flat-format entry: synthesize the TAG_SOURCES tag so the
+        // historical wire shape is preserved.
+        tmp.push(0x03); // TAGTYPE_UINT32
+        tmp.extend_from_slice(&1u16.to_le_bytes());
+        tmp.push(0x15);
+        tmp.extend_from_slice(&entry.source_count.to_le_bytes());
+        n += 1;
+    }
+    // `TAG_KADAICHHASHPUB` (0x36) — publish path only.
+    if let Some(root) = &entry.aich_pub {
+        write_bsob_tag(&mut tmp, TAG_KADAICHHASH_PUB, root);
+        n += 1;
+    }
+    // `TAG_PUBLISHINFO` (0x33) — u32, eMule `CKadTagUInt` always lands on
+    // TAGTYPE_UINT32 here since the names byte is always non-zero.
+    if let Some(info) = entry.publish_info {
+        tmp.push(crate::ed2k::tags::TAGTYPE_UINT32);
+        tmp.extend_from_slice(&1u16.to_le_bytes());
+        tmp.push(TAG_PUBLISHINFO);
+        tmp.extend_from_slice(&info.to_le_bytes());
+        n += 1;
+    }
+    // `TAG_KADAICHHASHRESULT` (0x37) — BSOB `<u8 count>{<u8 pop><20B root>}`,
+    // capped to `MAX_AICH_RESULT_VOTES` (eMule 250-byte payload bound).
+    if !entry.aich_votes.is_empty() {
+        let votes: Vec<&AichHashVote> = entry
+            .aich_votes
+            .iter()
+            .filter(|v| v.popularity > 0)
+            .take(MAX_AICH_RESULT_VOTES)
+            .collect();
+        if !votes.is_empty() {
+            let mut bsob = Vec::with_capacity(1 + 21 * votes.len());
+            bsob.push(votes.len() as u8);
+            for v in votes {
+                bsob.push(v.popularity);
+                bsob.extend_from_slice(&v.root);
+            }
+            write_bsob_tag(&mut tmp, TAG_KADAICHHASH_RESULT, &bsob);
+            n += 1;
+        }
+    }
+    buf.put_u8(n as u8);
+    buf.put_slice(&tmp);
 }
 
 /// Encodes a `KADEMLIA2_SEARCH_RES` keyword response over borrowed entries.

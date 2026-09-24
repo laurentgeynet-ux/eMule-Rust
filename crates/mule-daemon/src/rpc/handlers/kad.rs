@@ -329,9 +329,21 @@ pub async fn handle_kad_publish_keywords(
         .as_u64()
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileSize' parameter"))?;
 
+    // eMule publishes `TAG_KADAICHHASHPUB` only when the AICH root hash is
+    // already known (`HasAICHHash()` — computed lazily on first request),
+    // never recomputing it at publish time.
+    let aich_root = state
+        .downloads
+        .lock()
+        .await
+        .get_shared_file(file_hash)
+        .ok()
+        .flatten()
+        .and_then(|f| f.aich_root);
+
     let published_count = state
         .kad
-        .publish_keyword(file_hash, file_name, file_size)
+        .publish_keyword(file_hash, file_name, file_size, aich_root)
         .await
         .map_err(JsonRpcError::business)?;
 
