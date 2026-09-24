@@ -207,8 +207,10 @@ impl ServerUdpService {
                                         );
                                         let chan = event_channel.read().unwrap().clone();
                                         if let Some((tx, seq)) = chan {
+                                            let dl = downloads_arc.read().unwrap().clone();
+                                            let cancelled = super::server_session::events::search_result_cancelled_flags(&dl, &sr).await;
                                             super::server_session::events::emit_search_results(
-                                                &tx, &seq, &sr,
+                                                &tx, &seq, &sr, &cancelled,
                                             );
                                         }
                                     }

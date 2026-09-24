@@ -751,8 +751,11 @@ annulés, et identité (clé RSA + user hash) — la continuité des crédits.
   `kadId` lus mais non persistés — notre `Friend` ne les modélise pas.
 - `preferences.dat` : seul le user hash est importé — le reste du
   struct (placement fenêtre) est sans valeur hors eMule.
-- `is_cancelled_file` non câblé au marquage des résultats de recherche
-  (GUI côté client — l'API `downloads.isCancelled` suffit).
+- Marquage des résultats de recherche câblé : `emit_search_results`
+  ajoute `"cancelled"` par fichier (TCP `OP_SEARCHRES` et UDP
+  `OP_GLOBSEARCHRES` via `search_result_cancelled_flags` →
+  `is_cancelled_file`) — le marquage eMule `IsCancelledFileByID`
+  (`m_MyListCtrlItem`) ; l'API `downloads.isCancelled` reste dispo.
 
 ### `clients.met` → `peer_credits`
 

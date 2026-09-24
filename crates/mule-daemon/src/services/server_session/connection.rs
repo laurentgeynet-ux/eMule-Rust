@@ -447,7 +447,8 @@ pub fn spawn_connection_task(
                                                                 }
                                                                 ServerResponse::SearchResult(sr) => {
                                                                     info!("Received {} search results from server", sr.files.len());
-                                                                    emit_search_results(&event_tx_clone, &sequence_clone, &sr);
+                                                                    let cancelled = super::events::search_result_cancelled_flags(&downloads_clone, &sr).await;
+                                                                    emit_search_results(&event_tx_clone, &sequence_clone, &sr, &cancelled);
                                                                 }
                                                                 ServerResponse::FoundSources(fs) => {
                                                                     let total_rcv = fs.sources.len();

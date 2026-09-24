@@ -27,17 +27,22 @@ pub fn emit_search_results(
     event_tx: &broadcast::Sender<String>,
     sequence: &Arc<AtomicU64>,
     sr: &SearchResult,
+    cancelled: &std::collections::HashSet<String>,
 ) {
     let seq = sequence.fetch_add(1, Ordering::SeqCst);
     let files: Vec<serde_json::Value> = sr
         .files
         .iter()
         .map(|f| {
+            let hash = hex::encode(f.file_hash);
             json!({
-                "fileHash": hex::encode(f.file_hash),
+                "fileHash": hash,
                 "fileName": f.name().unwrap_or_else(|| "Unknown".to_string()),
                 "fileSize": f.size().unwrap_or(0),
                 "sourceCount": f.source_count().unwrap_or(1),
+                // eMule marque les fichiers annulés dans les résultats de
+                // recherche (IsCancelledFileByID → m_MyListCtrlItem).
+                "cancelled": cancelled.contains(&hash),
             })
         })
         .collect();
@@ -50,6 +55,23 @@ pub fn emit_search_results(
         }),
     }
     .send(event_tx);
+}
+
+/// eMule `IsCancelledFileByID` sur chaque résultat — l'ensemble des
+/// hashes annulés à marquer dans `server.searchResult`.
+pub async fn search_result_cancelled_flags(
+    downloads: &Option<Arc<tokio::sync::Mutex<crate::services::downloads::DownloadService>>>,
+    sr: &SearchResult,
+) -> std::collections::HashSet<String> {
+    let Some(dl) = downloads else {
+        return Default::default();
+    };
+    let dl = dl.lock().await;
+    sr.files
+        .iter()
+        .map(|f| hex::encode(f.file_hash))
+        .filter(|h| dl.is_cancelled_file(h).unwrap_or(false))
+        .collect()
 }
 
 pub fn emit_found_sources(
@@ -135,4 +157,41 @@ fn emit_found_sources_payload(
         }),
     }
     .send(event_tx);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mule_protocol::ed2k::SearchResultFile;
+
+    #[tokio::test]
+    async fn search_result_marks_cancelled_hashes() {
+        let (tx, mut rx) = broadcast::channel(4);
+        let seq = Arc::new(AtomicU64::new(0));
+        let sr = SearchResult {
+            files: vec![
+                SearchResultFile {
+                    file_hash: [0xAB; 16],
+                    client_id: 0,
+                    client_port: 0,
+                    tags: Vec::new(),
+                },
+                SearchResultFile {
+                    file_hash: [0xCD; 16],
+                    client_id: 0,
+                    client_port: 0,
+                    tags: Vec::new(),
+                },
+            ],
+        };
+        let mut cancelled = std::collections::HashSet::new();
+        cancelled.insert(hex::encode([0xABu8; 16]));
+
+        emit_search_results(&tx, &seq, &sr, &cancelled);
+        let msg = rx.recv().await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(v["method"], "server.searchResult");
+        assert_eq!(v["params"]["files"][0]["cancelled"], true);
+        assert_eq!(v["params"]["files"][1]["cancelled"], false);
+    }
 }
