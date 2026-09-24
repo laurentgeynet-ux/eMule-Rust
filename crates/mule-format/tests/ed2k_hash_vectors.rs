@@ -3,11 +3,26 @@
 
 use md4::{Digest, Md4};
 use mule_format::{
-    hash_reader, Ed2kHasher, FormatError, PatternReader, FIXTURE_1_BYTE, FIXTURE_EXACT_ONE_PART,
-    FIXTURE_EXACT_TWO_PARTS, FIXTURE_JUST_UNDER_PART, FIXTURE_ONE_PART_PLUS_ONE,
-    REPEATING_0_TO_255,
+    hash_reader, BytePatternFixture, Ed2kHasher, FormatError, PatternReader, FIXTURE_1_BYTE,
+    FIXTURE_EXACT_ONE_PART, FIXTURE_EXACT_TWO_PARTS, FIXTURE_JUST_UNDER_PART,
+    FIXTURE_ONE_PART_PLUS_ONE, REPEATING_0_TO_255,
 };
 use std::io::Cursor;
+
+/// Vérifie un fixture `BytePatternFixture` : hash eD2K racine + nombre de parts.
+fn check_pattern_fixture(fx: &BytePatternFixture) {
+    let mut reader = PatternReader::new(&REPEATING_0_TO_255, fx.length);
+    let res = hash_reader(&mut reader).unwrap();
+
+    assert_eq!(res.total_bytes, fx.length, "total_bytes for {}", fx.name);
+    assert_eq!(res.root_hash.to_hex(), fx.expected_ed2k_hex, "root {}", fx.name);
+    assert_eq!(
+        res.part_hashes.len(),
+        fx.expected_part_hashes_count,
+        "part count {}",
+        fx.name
+    );
+}
 
 #[test]
 fn test_empty_input_rejected() {
@@ -23,81 +38,29 @@ fn test_empty_input_rejected() {
 
 #[test]
 fn test_fixture_1_byte() {
-    let mut reader = PatternReader::new(&REPEATING_0_TO_255, FIXTURE_1_BYTE.length);
-    let res = hash_reader(&mut reader).unwrap();
-
-    assert_eq!(res.total_bytes, FIXTURE_1_BYTE.length);
-    assert_eq!(res.root_hash.to_hex(), FIXTURE_1_BYTE.expected_ed2k_hex);
-    assert_eq!(
-        res.part_hashes.len(),
-        FIXTURE_1_BYTE.expected_part_hashes_count
-    );
+    check_pattern_fixture(&FIXTURE_1_BYTE);
 }
 
 #[test]
 fn test_fixture_just_under_part() {
-    let mut reader = PatternReader::new(&REPEATING_0_TO_255, FIXTURE_JUST_UNDER_PART.length);
-    let res = hash_reader(&mut reader).unwrap();
-
-    assert_eq!(res.total_bytes, FIXTURE_JUST_UNDER_PART.length);
-    assert_eq!(
-        res.root_hash.to_hex(),
-        FIXTURE_JUST_UNDER_PART.expected_ed2k_hex
-    );
-    assert_eq!(
-        res.part_hashes.len(),
-        FIXTURE_JUST_UNDER_PART.expected_part_hashes_count
-    );
+    check_pattern_fixture(&FIXTURE_JUST_UNDER_PART);
 }
 
 #[test]
 fn test_fixture_exact_one_part() {
     // 9_728_000 bytes: checks append of empty MD4 block
-    let mut reader = PatternReader::new(&REPEATING_0_TO_255, FIXTURE_EXACT_ONE_PART.length);
-    let res = hash_reader(&mut reader).unwrap();
-
-    assert_eq!(res.total_bytes, FIXTURE_EXACT_ONE_PART.length);
-    assert_eq!(
-        res.root_hash.to_hex(),
-        FIXTURE_EXACT_ONE_PART.expected_ed2k_hex
-    );
-    assert_eq!(
-        res.part_hashes.len(),
-        FIXTURE_EXACT_ONE_PART.expected_part_hashes_count
-    );
+    check_pattern_fixture(&FIXTURE_EXACT_ONE_PART);
 }
 
 #[test]
 fn test_fixture_one_part_plus_one() {
-    let mut reader = PatternReader::new(&REPEATING_0_TO_255, FIXTURE_ONE_PART_PLUS_ONE.length);
-    let res = hash_reader(&mut reader).unwrap();
-
-    assert_eq!(res.total_bytes, FIXTURE_ONE_PART_PLUS_ONE.length);
-    assert_eq!(
-        res.root_hash.to_hex(),
-        FIXTURE_ONE_PART_PLUS_ONE.expected_ed2k_hex
-    );
-    assert_eq!(
-        res.part_hashes.len(),
-        FIXTURE_ONE_PART_PLUS_ONE.expected_part_hashes_count
-    );
+    check_pattern_fixture(&FIXTURE_ONE_PART_PLUS_ONE);
 }
 
 #[test]
 fn test_fixture_exact_two_parts() {
     // 19_456_000 bytes: checks 2 parts + empty MD4 block
-    let mut reader = PatternReader::new(&REPEATING_0_TO_255, FIXTURE_EXACT_TWO_PARTS.length);
-    let res = hash_reader(&mut reader).unwrap();
-
-    assert_eq!(res.total_bytes, FIXTURE_EXACT_TWO_PARTS.length);
-    assert_eq!(
-        res.root_hash.to_hex(),
-        FIXTURE_EXACT_TWO_PARTS.expected_ed2k_hex
-    );
-    assert_eq!(
-        res.part_hashes.len(),
-        FIXTURE_EXACT_TWO_PARTS.expected_part_hashes_count
-    );
+    check_pattern_fixture(&FIXTURE_EXACT_TWO_PARTS);
 }
 
 #[test]

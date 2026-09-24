@@ -9,13 +9,8 @@ use mule_protocol::ed2k::{
     OP_HASHSETANSWER, OP_HASHSETREQUEST, PR_ED2K,
 };
 
-fn sample_file_hash() -> [u8; 16] {
-    let mut h = [0u8; 16];
-    for (i, b) in h.iter_mut().enumerate() {
-        *b = i as u8;
-    }
-    h
-}
+mod common;
+use common::fixtures::sample_file_hash;
 
 fn sample_hashes(n: usize) -> Vec<[u8; 16]> {
     (0..n)

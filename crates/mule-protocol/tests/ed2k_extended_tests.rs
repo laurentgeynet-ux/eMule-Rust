@@ -28,24 +28,19 @@ use mule_protocol::ed2k::encoder::{
 };
 use mule_protocol::ed2k::Ed2kLimits;
 
+mod common;
+use common::fixtures::seeded_hash;
+
 fn limits() -> Ed2kLimits {
     Ed2kLimits::default()
 }
 
 fn hash16(seed: u8) -> [u8; 16] {
-    let mut h = [0u8; 16];
-    for (i, b) in h.iter_mut().enumerate() {
-        *b = seed.wrapping_add(i as u8);
-    }
-    h
+    seeded_hash(seed)
 }
 
 fn hash20(seed: u8) -> [u8; 20] {
-    let mut h = [0u8; 20];
-    for (i, b) in h.iter_mut().enumerate() {
-        *b = seed.wrapping_add(i as u8);
-    }
-    h
+    seeded_hash(seed)
 }
 
 fn roundtrip(msg: Ed2kMessage) -> Ed2kMessage {

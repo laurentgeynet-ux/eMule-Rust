@@ -24,12 +24,8 @@ use mule_protocol::ed2k::{
 use mule_protocol::framing::RawPacket;
 use mule_protocol::PacketCodec;
 
-fn sample_hash() -> [u8; 16] {
-    [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
-        0x3c,
-    ]
-}
+mod common;
+use common::fixtures::resume_file_hash as sample_hash;
 
 // ---------------------------------------------------------------------------
 // 1. Complete Source Eligibility (part_count == 0)

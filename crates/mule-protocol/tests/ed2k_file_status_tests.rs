@@ -5,7 +5,6 @@
 //! Phase 6.3: Strictly confined to local loopback (127.0.0.1). Zero network calls, zero .part writes.
 
 use std::fs;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -14,44 +13,12 @@ use mule_protocol::ed2k::PR_ED2K;
 use mule_protocol::ed2k::{
     Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEncoder, Ed2kErrorKind, Ed2kFileStatus,
     Ed2kFileStatusReq, Ed2kHelloAnswer, Ed2kLoopbackClient, Ed2kMessage, Ed2kPeerInfo, Ed2kSession,
-    Ed2kSessionError, Ed2kSessionState, Ed2kTag, Ed2kTestPeer, FileStatusTracker,
-    PartAvailabilityMask, TagName, TagValue, TestPeerMode, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+    Ed2kSessionError, Ed2kSessionState, Ed2kTestPeer, FileStatusTracker, PartAvailabilityMask,
+    TestPeerMode,
 };
 
-fn sample_user_hash() -> [u8; 16] {
-    let mut h = [0x11; 16];
-    h[0] = 0x42;
-    h
-}
-
-fn sample_client_tags() -> Vec<Ed2kTag> {
-    vec![
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_NAME),
-            value: TagValue::String("StatusTestInitiator".to_string()),
-        },
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_VERSION),
-            value: TagValue::UInt32(60),
-        },
-    ]
-}
-
-async fn setup_nominal_client(peer_addr: SocketAddr) -> Ed2kLoopbackClient {
-    let (client, _info) = Ed2kLoopbackClient::connect_and_handshake(
-        peer_addr,
-        sample_user_hash(),
-        0xC0A80001,
-        39735,
-        sample_client_tags(),
-        0x7F000001,
-        4661,
-        Duration::from_millis(500),
-    )
-    .await
-    .expect("handshake failed");
-    client
-}
+mod common;
+use common::fixtures::{nominal_client, sample_client_tags, sample_user_hash};
 
 // ---------------------------------------------------------------------------
 // 1. Wire Layout & Fixture Byte-by-Byte Verification
@@ -121,7 +88,7 @@ async fn test_nominal_file_status_single_part() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let status = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await
@@ -162,7 +129,7 @@ async fn test_file_status_multi_parts_bits_0_1_7_8_9() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let status = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await
@@ -204,7 +171,7 @@ async fn test_file_status_short_mask_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let res = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await;
@@ -229,7 +196,7 @@ async fn test_file_status_long_mask_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let res = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await;
@@ -254,7 +221,7 @@ async fn test_file_status_excessive_parts_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let res = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await;
@@ -279,7 +246,7 @@ async fn test_file_status_trailing_bits_non_zero_strictly_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let res = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await;
@@ -312,7 +279,7 @@ async fn test_file_status_mismatched_hash_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let res = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await;
@@ -339,7 +306,7 @@ async fn test_file_status_unsolicited_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
 
     // Receive unsolicited packet from remote peer
     let pkt = client
@@ -372,7 +339,7 @@ async fn test_file_status_double_response_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
 
     // First response succeeds and validates the request
     let status = client
@@ -431,7 +398,7 @@ async fn test_file_status_received_before_ready_rejected() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("StatusTestInitiator"),
         0x7F000001,
         4661,
         Duration::from_millis(500),
@@ -460,7 +427,7 @@ async fn test_file_status_compressed_protocol_0xd4_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
     let res = client
         .request_file_status(file_hash, Duration::from_millis(500))
         .await;
@@ -488,7 +455,7 @@ async fn test_file_status_timeout_cleans_tracker_late_response_rejected() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
 
     // Short timeout (50ms)
     let res = client
@@ -570,7 +537,7 @@ async fn test_multiple_distinct_file_requests_no_crosstalk() {
     let peer_addr = test_peer.local_addr();
     let _peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "StatusTestInitiator").await;
 
     let status_a = client
         .request_file_status(hash_a, Duration::from_millis(500))

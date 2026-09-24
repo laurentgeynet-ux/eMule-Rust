@@ -21,164 +21,82 @@ fn fixtures_root() -> PathBuf {
         .join("ed2k")
 }
 
+/// Décode `fixture`, le ré-encode et vérifie l'égalité octet-à-octet
+/// (`encode(decode(fixture)) == fixture`). Renvoie le message décodé pour
+/// permettre des assertions de variante supplémentaires.
+fn roundtrip_fixture(fixture: &str, profile: Option<Ed2kCompatibilityProfile>) -> Ed2kMessage {
+    let raw_bytes = fs::read(fixtures_root().join(fixture))
+        .unwrap_or_else(|e| panic!("failed to read {fixture}: {e}"));
+
+    let decoder = profile.map_or_else(Ed2kDecoder::new, Ed2kDecoder::with_profile);
+    let msg = decoder
+        .decode_packet(&raw_bytes)
+        .unwrap_or_else(|e| panic!("failed to decode {fixture}: {e}"));
+
+    let encoder = profile.map_or_else(Ed2kEncoder::new, Ed2kEncoder::with_profile);
+    let encoded_bytes = encoder
+        .encode_to_bytes(&msg)
+        .unwrap_or_else(|e| panic!("failed to encode {fixture}: {e}"));
+
+    assert_eq!(
+        encoded_bytes.as_ref(),
+        raw_bytes.as_slice(),
+        "roundtrip bytes mismatch for {fixture}"
+    );
+    msg
+}
+
 // ---------------------------------------------------------------------------
 // 1. Fixture Roundtrip Invariance: encode(decode(fixture)) == fixture
 // ---------------------------------------------------------------------------
 
 #[test]
 fn test_fixture_roundtrip_hello_v1_minimal() {
-    let raw_bytes = fs::read(fixtures_root().join("hello_v1_minimal.bin"))
-        .expect("failed to read hello_v1_minimal.bin");
-
-    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let msg = decoder
-        .decode_packet(&raw_bytes)
-        .expect("failed to decode hello_v1_minimal");
-
-    let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let encoded_bytes = encoder
-        .encode_to_bytes(&msg)
-        .expect("failed to encode hello_v1_minimal");
-
-    assert_eq!(
-        encoded_bytes.as_ref(),
-        raw_bytes.as_slice(),
-        "roundtrip bytes mismatch for hello_v1_minimal.bin"
+    roundtrip_fixture(
+        "hello_v1_minimal.bin",
+        Some(Ed2kCompatibilityProfile::LegacyEdonkey),
     );
 }
 
 #[test]
 fn test_fixture_roundtrip_hello_v1_tags() {
-    let raw_bytes = fs::read(fixtures_root().join("hello_v1_tags.bin"))
-        .expect("failed to read hello_v1_tags.bin");
-
-    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let msg = decoder
-        .decode_packet(&raw_bytes)
-        .expect("failed to decode hello_v1_tags");
-
-    let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let encoded_bytes = encoder
-        .encode_to_bytes(&msg)
-        .expect("failed to encode hello_v1_tags");
-
-    assert_eq!(
-        encoded_bytes.as_ref(),
-        raw_bytes.as_slice(),
-        "roundtrip bytes mismatch for hello_v1_tags.bin"
+    roundtrip_fixture(
+        "hello_v1_tags.bin",
+        Some(Ed2kCompatibilityProfile::LegacyEdonkey),
     );
 }
 
 #[test]
 fn test_fixture_roundtrip_hello_answer() {
-    let raw_bytes = fs::read(fixtures_root().join("hello_answer.bin"))
-        .expect("failed to read hello_answer.bin");
-
-    let decoder = Ed2kDecoder::new();
-    let msg = decoder
-        .decode_packet(&raw_bytes)
-        .expect("failed to decode hello_answer");
-
-    let encoder = Ed2kEncoder::new();
-    let encoded_bytes = encoder
-        .encode_to_bytes(&msg)
-        .expect("failed to encode hello_answer");
-
-    assert_eq!(
-        encoded_bytes.as_ref(),
-        raw_bytes.as_slice(),
-        "roundtrip bytes mismatch for hello_answer.bin"
-    );
+    roundtrip_fixture("hello_answer.bin", None);
 }
 
 #[test]
 fn test_fixture_roundtrip_file_status() {
-    let raw_bytes =
-        fs::read(fixtures_root().join("file_status.bin")).expect("failed to read file_status.bin");
-
-    let decoder = Ed2kDecoder::new();
-    let msg = decoder
-        .decode_packet(&raw_bytes)
-        .expect("failed to decode file_status");
-
-    let encoder = Ed2kEncoder::new();
-    let encoded_bytes = encoder
-        .encode_to_bytes(&msg)
-        .expect("failed to encode file_status");
-
-    assert_eq!(
-        encoded_bytes.as_ref(),
-        raw_bytes.as_slice(),
-        "roundtrip bytes mismatch for file_status.bin"
-    );
+    roundtrip_fixture("file_status.bin", None);
 }
 
 #[test]
 fn test_fixture_roundtrip_request_parts() {
-    let raw_bytes = fs::read(fixtures_root().join("request_parts.bin"))
-        .expect("failed to read request_parts.bin");
-
-    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let msg = decoder
-        .decode_packet(&raw_bytes)
-        .expect("failed to decode request_parts");
-    assert!(matches!(msg, Ed2kMessage::RequestParts(_)));
-
-    let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let encoded_bytes = encoder
-        .encode_to_bytes(&msg)
-        .expect("failed to encode request_parts");
-
-    assert_eq!(
-        encoded_bytes.as_ref(),
-        raw_bytes.as_slice(),
-        "roundtrip bytes mismatch for request_parts.bin"
+    let msg = roundtrip_fixture(
+        "request_parts.bin",
+        Some(Ed2kCompatibilityProfile::LegacyEdonkey),
     );
+    assert!(matches!(msg, Ed2kMessage::RequestParts(_)));
 }
 
 #[test]
 fn test_fixture_roundtrip_file_status_req() {
-    let raw_bytes = fs::read(fixtures_root().join("file_status_req.bin"))
-        .expect("failed to read file_status_req.bin");
-
-    let decoder = Ed2kDecoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let msg = decoder
-        .decode_packet(&raw_bytes)
-        .expect("failed to decode file_status_req");
-    assert!(matches!(msg, Ed2kMessage::FileStatusReq(_)));
-
-    let encoder = Ed2kEncoder::with_profile(Ed2kCompatibilityProfile::LegacyEdonkey);
-    let encoded_bytes = encoder
-        .encode_to_bytes(&msg)
-        .expect("failed to encode file_status_req");
-
-    assert_eq!(
-        encoded_bytes.as_ref(),
-        raw_bytes.as_slice(),
-        "roundtrip bytes mismatch for file_status_req.bin"
+    let msg = roundtrip_fixture(
+        "file_status_req.bin",
+        Some(Ed2kCompatibilityProfile::LegacyEdonkey),
     );
+    assert!(matches!(msg, Ed2kMessage::FileStatusReq(_)));
 }
 
 #[test]
 fn test_fixture_roundtrip_sending_part() {
-    let raw_bytes = fs::read(fixtures_root().join("sending_part.bin"))
-        .expect("failed to read sending_part.bin");
-
-    let decoder = Ed2kDecoder::new();
-    let msg = decoder
-        .decode_packet(&raw_bytes)
-        .expect("failed to decode sending_part");
-
-    let encoder = Ed2kEncoder::new();
-    let encoded_bytes = encoder
-        .encode_to_bytes(&msg)
-        .expect("failed to encode sending_part");
-
-    assert_eq!(
-        encoded_bytes.as_ref(),
-        raw_bytes.as_slice(),
-        "roundtrip bytes mismatch for sending_part.bin"
-    );
+    roundtrip_fixture("sending_part.bin", None);
 }
 
 // ---------------------------------------------------------------------------

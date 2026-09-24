@@ -15,12 +15,8 @@ use std::fs;
 use std::time::Duration;
 use tempfile::tempdir;
 
-fn test_file_hash() -> [u8; 16] {
-    [
-        0x69, 0x5b, 0x81, 0xb1, 0x72, 0x76, 0x66, 0x81, 0x89, 0x88, 0x52, 0x4b, 0xd7, 0xfc, 0x82,
-        0x3c,
-    ]
-}
+mod common;
+use common::fixtures::resume_file_hash as test_file_hash;
 
 const TEST_FILE_SIZE: u64 = 9_728_001; // Part 0 (9,728,000) + Part 1 (1 byte)
 

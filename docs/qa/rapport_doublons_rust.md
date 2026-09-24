@@ -70,3 +70,39 @@ Périmètre : `crates/**` src + tests — 330 fichiers, ~106 200 lignes.
 Vérification après chaque lot : `cargo check --workspace --all-targets --all-features`,
 `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
 `cargo test --workspace --all-features` (hors-ligne).
+
+## Bilan post-refactor
+
+Métriques : **338 fichiers / ~104 700 lignes** (était 330 / ~106 200 — soit ~1 500
+lignes nettes retirées, plus la création de `mule-test-support`, `capabilities.rs`,
+`lab/io.rs`, `tests/common/fixtures.rs`).
+
+Réalisé :
+
+- **Lot 1** — crate `mule-test-support` (dev-dependency de `mule-daemon` et
+  `mule-mcp`) : `spawn_test_daemon*` ×3 variantes, `RunningDaemon`, `rpc_state*`,
+  `make_req`, `send_json`/`recv_response_by_id` centralisés (~30 doublons
+  d'infra de test supprimés).
+- **Lot 2** — types : `JsonRpcError` unifié sous `mule-daemon::error`
+  (+ `parse_error`/`invalid_request`), `PeerSource`→`LinkSource`,
+  `met::TagValue`→`MetTagValue`, `AppState`→`McpState`.
+- **Lot 3** — utilitaires src : `rpc/capabilities.rs` (source unique de la
+  liste `capabilities`), `lab/io.rs`, helpers sqlite (`count_rows`,
+  `purge_expired`, `record_credit_delta`), accesseurs bit-field `peer_info`,
+  `downloads::db_err` (~60 sites `map_err`), `handlers::json_value` (~41 sites),
+  `kad_buf` encodeur Kad (~25 sites), `met::reader::open_met_file`,
+  schémas MCP : `obj_schema`/`prop` appliqués aux **87 outils** via
+  `scripts/migrate_mcp_schemas.py`.
+- **Lot 4** — `mule-protocol/tests/common/fixtures.rs` (`sample_user_hash`,
+  `sample_client_tags`, `seeded_hash`, `resume_file_hash`, `nominal_client`,
+  `connect_nominal_client`…) + `roundtrip_fixture`/`decode_malformed` dans les
+  suites concernées ; fixtures `.met` mutualisées dans `mule-format/tests`.
+- **Garde-fou** — `scripts/test_duplicates.ps1` + `scripts/dup_allowlist.txt`,
+  branché en étape 2/5 de `scripts/verify_all.ps1` ; table de propriété des
+  utilitaires ajoutée à `AGENTS.md`.
+
+Restes tolérés (D5, voir `dup_allowlist.txt`) : `read_msg` daemon↔test
+(partage impossible cross-crates), `open` inhérent par type `.met`, squelettes
+de tests paramétrés. Les sections A/B2 du rapport restent informatives :
+homonymes de méthodes sur types distincts, squelettes d'encodeurs filaires,
+accesseurs — répétitions de forme, pas de substance.

@@ -5,7 +5,6 @@
 //! Phase 6.4: Strictly confined to local loopback (127.0.0.1). Zero network calls, zero public peers.
 
 use std::fs;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -15,44 +14,11 @@ use mule_protocol::ed2k::protocol::PR_ED2K;
 use mule_protocol::ed2k::{
     BlockRequestKey, BlockRequestTracker, Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kEncoder,
     Ed2kErrorKind, Ed2kLoopbackClient, Ed2kMessage, Ed2kRequestParts, Ed2kSendingPart, Ed2kSession,
-    Ed2kSessionError, Ed2kSessionState, Ed2kTag, Ed2kTestPeer, TagName, TagValue, TestPeerMode,
-    MAX_IN_FLIGHT_BLOCK_REQUESTS, TAG_SPECIAL_NAME, TAG_SPECIAL_VERSION,
+    Ed2kSessionError, Ed2kSessionState, Ed2kTestPeer, TestPeerMode, MAX_IN_FLIGHT_BLOCK_REQUESTS,
 };
 
-fn sample_user_hash() -> [u8; 16] {
-    let mut h = [0x11; 16];
-    h[0] = 0x42;
-    h
-}
-
-fn sample_client_tags() -> Vec<Ed2kTag> {
-    vec![
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_NAME),
-            value: TagValue::String("BlockTestInitiator".to_string()),
-        },
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_VERSION),
-            value: TagValue::UInt32(60),
-        },
-    ]
-}
-
-async fn setup_nominal_client(peer_addr: SocketAddr) -> Ed2kLoopbackClient {
-    let (client, _info) = Ed2kLoopbackClient::connect_and_handshake(
-        peer_addr,
-        sample_user_hash(),
-        0xC0A80001,
-        39735,
-        sample_client_tags(),
-        0x7F000001,
-        4661,
-        Duration::from_millis(500),
-    )
-    .await
-    .expect("handshake failed");
-    client
-}
+mod common;
+use common::fixtures::{nominal_client, sample_client_tags, sample_user_hash};
 
 // ---------------------------------------------------------------------------
 // 1. Wire Layout & Fixture Byte-by-Byte Verification
@@ -170,7 +136,7 @@ async fn test_nominal_single_block_transfer() {
         .await;
 
     let peer_handle = test_peer.spawn();
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
 
     let part = client
         .request_block(
@@ -219,7 +185,7 @@ async fn test_nominal_multiblock_transfer_sequential() {
         .await;
 
     let peer_handle = test_peer.spawn();
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
 
     let mut received_file = vec![0u8; file_size as usize];
 
@@ -263,7 +229,7 @@ async fn test_nominal_multiblock_transfer_out_of_order() {
         .await;
 
     let peer_handle = test_peer.spawn();
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
 
     // Order: Block 2, then Block 0, then Block 1
     let order = [2, 0, 1];
@@ -306,7 +272,7 @@ async fn test_adversarial_sending_part_before_ready() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("BlockTestInitiator"),
         0x7F000001,
         4661,
         Duration::from_millis(500),
@@ -339,7 +305,7 @@ async fn test_adversarial_unexpected_file_hash() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
     let file_hash = [0x11; 16];
 
     let res = client
@@ -367,7 +333,7 @@ async fn test_adversarial_unexpected_offset() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
     let file_hash = [0x22; 16];
 
     let res = client
@@ -395,7 +361,7 @@ async fn test_adversarial_length_mismatch() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
     let file_hash = [0x33; 16];
 
     let res = client
@@ -423,7 +389,7 @@ async fn test_adversarial_unsolicited_block() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
 
     // Client does not send request_block, but listens for incoming packet
     let res = client
@@ -451,7 +417,7 @@ async fn test_adversarial_duplicate_block() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
     let file_hash = [0x44; 16];
 
     // First receive fulfills the in-flight request
@@ -485,7 +451,7 @@ async fn test_adversarial_hang_timeout() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
     let file_hash = [0x55; 16];
 
     // Send request with short timeout (50ms)
@@ -516,7 +482,7 @@ async fn test_adversarial_compressed_0xd4_rejected() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
     let file_hash = [0x66; 16];
 
     let res = client
@@ -542,7 +508,7 @@ async fn test_adversarial_immediate_close() {
     let peer_addr = test_peer.local_addr();
     let peer_handle = test_peer.spawn();
 
-    let mut client = setup_nominal_client(peer_addr).await;
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
     let file_hash = [0x77; 16];
 
     let res = client

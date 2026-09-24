@@ -32,8 +32,17 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "  [OK] Cargo Clippy passed." -ForegroundColor Green
 
-# 2. Cargo Test
-Write-Host "`n==> [2/4] Running Cargo Test Suite across workspace crates..." -ForegroundColor Yellow
+# 2. Duplication Guard (Rust)
+Write-Host "`n==> [2/5] Running Rust duplication guard..." -ForegroundColor Yellow
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File "$Root\scripts\test_duplicates.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Duplication guard failed."
+    exit $LASTEXITCODE
+}
+Write-Host "  [OK] No new exact code clones." -ForegroundColor Green
+
+# 3. Cargo Test
+Write-Host "`n==> [3/5] Running Cargo Test Suite across workspace crates..." -ForegroundColor Yellow
 cargo test --workspace
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Cargo Test suite failed."
@@ -41,8 +50,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "  [OK] All Cargo tests passed." -ForegroundColor Green
 
-# 3. Flutter Analyze
-Write-Host "`n==> [3/4] Running Flutter Analyze on desktop app..." -ForegroundColor Yellow
+# 4. Flutter Analyze
+Write-Host "`n==> [4/5] Running Flutter Analyze on desktop app..." -ForegroundColor Yellow
 Push-Location "apps/desktop"
 try {
     flutter analyze
@@ -52,8 +61,8 @@ try {
     }
     Write-Host "  [OK] Flutter Analyze passed without warnings." -ForegroundColor Green
 
-    # 4. Flutter Test
-    Write-Host "`n==> [4/4] Running Flutter Test Suite..." -ForegroundColor Yellow
+    # 5. Flutter Test
+    Write-Host "`n==> [5/5] Running Flutter Test Suite..." -ForegroundColor Yellow
     flutter test
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Flutter Test suite failed."

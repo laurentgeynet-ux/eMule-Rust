@@ -14,24 +14,8 @@ use mule_protocol::ed2k::{
 };
 use mule_protocol::framing::RawPacket;
 
-fn sample_user_hash() -> [u8; 16] {
-    let mut h = [0x11; 16];
-    h[0] = 0x42;
-    h
-}
-
-fn sample_client_tags() -> Vec<Ed2kTag> {
-    vec![
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_NAME),
-            value: TagValue::String("LoopbackInitiator".to_string()),
-        },
-        Ed2kTag {
-            name: TagName::Id(TAG_SPECIAL_VERSION),
-            value: TagValue::UInt32(60),
-        },
-    ]
-}
+mod common;
+use common::fixtures::{sample_client_tags, sample_user_hash};
 
 // ---------------------------------------------------------------------------
 // 1. Nominal Loopback Handshake & TCP Confinement
@@ -50,7 +34,7 @@ async fn test_nominal_ed2k_handshake_on_loopback() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0x7F000001,
         4661,
         Duration::from_millis(500),
@@ -79,7 +63,7 @@ async fn test_non_loopback_connection_strictly_rejected() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0,
         0,
         Duration::from_millis(500),
@@ -113,7 +97,7 @@ async fn test_hello_encoded_byte_by_byte_received_faithfully() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0x7F000001,
         4661,
         Duration::from_millis(500),
@@ -152,7 +136,7 @@ async fn test_hello_answer_fragmented_byte_by_byte_reassembled() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0x7F000001,
         4661,
         Duration::from_millis(1500),
@@ -227,7 +211,7 @@ async fn test_zero_user_hash_rejected() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0,
         0,
         Duration::from_millis(500),
@@ -356,7 +340,7 @@ async fn test_unexpected_opcode_rejected() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0,
         0,
         Duration::from_millis(500),
@@ -393,7 +377,7 @@ async fn test_compressed_protocol_0xd4_explicitly_rejected() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0,
         0,
         Duration::from_millis(500),
@@ -432,7 +416,7 @@ async fn test_handshake_timeout_fails_cleanly() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0,
         0,
         timeout_duration,
@@ -466,7 +450,7 @@ async fn test_immediate_remote_close_fails_cleanly() {
         sample_user_hash(),
         0xC0A80001,
         39735,
-        sample_client_tags(),
+        sample_client_tags("LoopbackInitiator"),
         0,
         0,
         Duration::from_millis(500),

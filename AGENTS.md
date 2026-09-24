@@ -135,6 +135,29 @@ if upload_kbs < MIN_UPLOAD_KBS { ... }
 
 Modifier un réglage ne doit jamais demander de fouiller la logique : on ouvre le fichier de constantes/config, on change la valeur, point.
 
+## Anti-duplication (Rust)
+
+Une fonctionnalité = **un seul propriétaire**. Avant d'écrire un helper ou un type, vérifier qu'il n'existe pas déjà :
+
+| Besoin | Propriétaire unique |
+| :--- | :--- |
+| Helpers de tests d'intégration cross-crates (daemon RPC, état, JSON-RPC, WebSocket) | `crates/mule-test-support` (dev-dependency) |
+| Fixtures de tests protocolaires (hashes, tags clients, clients loopback/nominaux) | `crates/mule-protocol/tests/common/` |
+| Helpers de tests intra-crate | `tests/common/` du crate concerné |
+| Erreurs JSON-RPC | `mule-daemon::error::JsonRpcError` |
+| Liste des capacités RPC (`hello`/`status`) | `mule-daemon::rpc::capabilities` |
+| I/O lab (`send_msg`/`read_msg`) | `mule-daemon::lab::io` (feature `lab-loopback`) |
+| Schémas d'outils MCP (`obj_schema`, `prop`) | `mule-mcp::tools` |
+| Lecture bornée de fichiers `.met` | `mule-format::met::reader` |
+| Erreurs SQL/contexte DB du service downloads | `mule-daemon::services::downloads::db_err` |
+
+Distinctions **légitimes** à ne pas fusionner (noms proches, sémantiques différentes) :
+- `mule-protocol::ed2k::tags::TagValue` (tags filaires eD2K) ≠ `mule-format::met::MetTagValue` (tags de fichiers `.met`)
+- `mule-core::PeerSource` (origine d'un pair dans le domaine) ≠ `mule-format::LinkSource` (source dans un lien eD2K)
+- `mule-daemon::AppState` (état RPC du daemon) ≠ `mule-mcp::McpState` (état du serveur MCP)
+
+Garde-fou : `scripts/test_duplicates.ps1` (intégré à `verify_all.ps1`) échoue si un nouveau clone exact apparaît hors de `scripts/dup_allowlist.txt`. Rapport détaillé : `docs/qa/rapport_doublons_rust.md`, régénéré via `python scripts/find_duplicates.py > target/dup-report.txt`.
+
 ## Documentation associée
 
 - `docs/INDEX.md` — inventaire exhaustif des fichiers

@@ -7,8 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use mule_protocol::ed2k::{
-    Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kErrorKind, Ed2kLimits, Ed2kMessage, TagValue,
-    PR_ED2K,
+    Ed2kCompatibilityProfile, Ed2kDecoder, Ed2kErrorKind, Ed2kLimits, Ed2kMessage, Ed2kParseError,
+    TagValue, PR_ED2K,
 };
 use serde::Deserialize;
 
@@ -330,15 +330,16 @@ fn test_decode_file_status_req() {
     assert!(matches!(default_msg, Ed2kMessage::Raw(_)));
 }
 
+/// Décode un fixture du répertoire `malformed/` et renvoie l'erreur attendue.
+fn decode_malformed(fixture: &str) -> Ed2kParseError {
+    let path = fixtures_root().join("malformed").join(fixture);
+    let bytes = fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    Ed2kDecoder::new().decode_packet(&bytes).unwrap_err()
+}
+
 #[test]
 fn test_malformed_truncated_header() {
-    let path = fixtures_root()
-        .join("malformed")
-        .join("hello_truncated_header.bin");
-    let bytes = fs::read(path).unwrap();
-
-    let decoder = Ed2kDecoder::new();
-    let err = decoder.decode_packet(&bytes).unwrap_err();
+    let err = decode_malformed("hello_truncated_header.bin");
 
     assert_eq!(err.context, "header");
     assert_eq!(err.offset, 0);
@@ -347,13 +348,7 @@ fn test_malformed_truncated_header() {
 
 #[test]
 fn test_malformed_truncated_tag() {
-    let path = fixtures_root()
-        .join("malformed")
-        .join("hello_truncated_tag.bin");
-    let bytes = fs::read(path).unwrap();
-
-    let decoder = Ed2kDecoder::new();
-    let err = decoder.decode_packet(&bytes).unwrap_err();
+    let err = decode_malformed("hello_truncated_tag.bin");
 
     assert_eq!(err.context, "tag_value_string");
     assert_eq!(err.offset, 32);
@@ -362,13 +357,7 @@ fn test_malformed_truncated_tag() {
 
 #[test]
 fn test_malformed_oversized_string() {
-    let path = fixtures_root()
-        .join("malformed")
-        .join("oversized_string.bin");
-    let bytes = fs::read(path).unwrap();
-
-    let decoder = Ed2kDecoder::new();
-    let err = decoder.decode_packet(&bytes).unwrap_err();
+    let err = decode_malformed("oversized_string.bin");
 
     assert_eq!(err.context, "tag_value_string");
     assert_eq!(err.offset, 30);
@@ -383,11 +372,7 @@ fn test_malformed_oversized_string() {
 
 #[test]
 fn test_malformed_too_many_tags() {
-    let path = fixtures_root().join("malformed").join("too_many_tags.bin");
-    let bytes = fs::read(path).unwrap();
-
-    let decoder = Ed2kDecoder::new();
-    let err = decoder.decode_packet(&bytes).unwrap_err();
+    let err = decode_malformed("too_many_tags.bin");
 
     assert_eq!(err.context, "hello_tag_count");
     match err.kind {
@@ -401,13 +386,7 @@ fn test_malformed_too_many_tags() {
 
 #[test]
 fn test_malformed_unsupported_protocol_0xd4() {
-    let path = fixtures_root()
-        .join("malformed")
-        .join("unsupported_protocol_0xd4.bin");
-    let bytes = fs::read(path).unwrap();
-
-    let decoder = Ed2kDecoder::new();
-    let err = decoder.decode_packet(&bytes).unwrap_err();
+    let err = decode_malformed("unsupported_protocol_0xd4.bin");
 
     assert_eq!(err.protocol, 0xD4);
     assert_eq!(err.context, "protocol_byte");

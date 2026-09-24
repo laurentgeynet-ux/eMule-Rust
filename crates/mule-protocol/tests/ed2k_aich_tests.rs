@@ -12,13 +12,8 @@ use mule_protocol::ed2k::{
     OP_AICH_ANSWER, OP_AICH_REQUEST, PR_EMULE,
 };
 
-fn sample_file_hash() -> [u8; 16] {
-    let mut h = [0u8; 16];
-    for (i, b) in h.iter_mut().enumerate() {
-        *b = i as u8;
-    }
-    h
-}
+mod common;
+use common::fixtures::sample_file_hash;
 
 fn sample_aich_root() -> [u8; 20] {
     let mut h = [0u8; 20];

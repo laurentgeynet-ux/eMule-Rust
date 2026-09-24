@@ -1,0 +1,27 @@
+# Liste blanche des groupes B1 (corps de fonctions strictement identiques)
+# tolérés par scripts/test_duplicates.ps1 — une ligne = un groupe, tel que
+# rapporté entre crochets par scripts/find_duplicates.py.
+#
+# Chaque entrée DOIT être justifiée :
+#
+# read_msg
+#   mule-daemon/src/lab/io.rs (prod, feature lab-loopback, renvoie Result) vs
+#   mule-protocol/tests/loopback_transfer.rs (test, panic-style). Impossible à
+#   mutualiser : le code src du daemon ne peut pas importer une dev-dependency,
+#   et mule-protocol interdit toute E/S réseau dans la crate.
+read_msg
+#
+# open
+#   PartMetFile::open / ServerMetFile::open — API inhérente par type de fichier,
+#   délègue déjà à met::reader::open_met_file. Corps trivial idiomatique.
+open
+#
+# test_compute_completed_ranges_nominal/test_compute_completed_ranges_overlapping_gaps
+#   Corps de tests paramétrés via gaps_met() — squelette identique, données
+#   différentes : style de test idiomatique.
+test_compute_completed_ranges_nominal/test_compute_completed_ranges_overlapping_gaps
+#
+# test_malformed_truncated_header/test_malformed_truncated_tag
+#   Corps de tests paramétrés via decode_malformed() — squelette identique,
+#   contexte/offset attendus différents.
+test_malformed_truncated_header/test_malformed_truncated_tag

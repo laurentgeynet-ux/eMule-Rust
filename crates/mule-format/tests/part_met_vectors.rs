@@ -121,20 +121,25 @@ fn test_invalid_tag_type_reports_offset() {
     );
 }
 
-#[test]
-fn test_compute_completed_ranges_nominal() {
-    let met = PartMetFile {
+/// `.part.met` de test standard (fichier de 1000 octets) paramétré par ses gaps.
+fn gaps_met(transferred: u64, gaps: Vec<(u64, u64)>) -> PartMetFile {
+    PartMetFile {
         version: PARTFILE_VERSION,
         mod_date: 0,
         file_hash: mule_format::Ed2kHash([0; 16]),
         part_hashes: vec![],
         file_name: Some("test.bin".into()),
         file_size: Some(1000),
-        transferred: 400,
+        transferred,
         aich_hash: None,
-        gaps: vec![(0, 200), (600, 800)],
+        gaps,
         tags: vec![],
-    };
+    }
+}
+
+#[test]
+fn test_compute_completed_ranges_nominal() {
+    let met = gaps_met(400, vec![(0, 200), (600, 800)]);
 
     let completed = met.compute_completed_ranges().unwrap();
     assert_eq!(completed, vec![(200, 600), (800, 1000)]);
@@ -142,18 +147,7 @@ fn test_compute_completed_ranges_nominal() {
 
 #[test]
 fn test_compute_completed_ranges_overlapping_gaps() {
-    let met = PartMetFile {
-        version: PARTFILE_VERSION,
-        mod_date: 0,
-        file_hash: mule_format::Ed2kHash([0; 16]),
-        part_hashes: vec![],
-        file_name: Some("test.bin".into()),
-        file_size: Some(1000),
-        transferred: 500,
-        aich_hash: None,
-        gaps: vec![(100, 300), (250, 500)],
-        tags: vec![],
-    };
+    let met = gaps_met(500, vec![(100, 300), (250, 500)]);
 
     let completed = met.compute_completed_ranges().unwrap();
     // Merged gap is 100..500, so completed is 0..100 and 500..1000
@@ -162,32 +156,10 @@ fn test_compute_completed_ranges_overlapping_gaps() {
 
 #[test]
 fn test_compute_completed_ranges_full_gap_and_empty() {
-    let met_empty = PartMetFile {
-        version: PARTFILE_VERSION,
-        mod_date: 0,
-        file_hash: mule_format::Ed2kHash([0; 16]),
-        part_hashes: vec![],
-        file_name: Some("test.bin".into()),
-        file_size: Some(1000),
-        transferred: 0,
-        aich_hash: None,
-        gaps: vec![(0, 1000)],
-        tags: vec![],
-    };
+    let met_empty = gaps_met(0, vec![(0, 1000)]);
     assert_eq!(met_empty.compute_completed_ranges().unwrap(), vec![]);
 
-    let met_full = PartMetFile {
-        version: PARTFILE_VERSION,
-        mod_date: 0,
-        file_hash: mule_format::Ed2kHash([0; 16]),
-        part_hashes: vec![],
-        file_name: Some("test.bin".into()),
-        file_size: Some(1000),
-        transferred: 1000,
-        aich_hash: None,
-        gaps: vec![],
-        tags: vec![],
-    };
+    let met_full = gaps_met(1000, vec![]);
     assert_eq!(
         met_full.compute_completed_ranges().unwrap(),
         vec![(0, 1000)]
@@ -196,18 +168,7 @@ fn test_compute_completed_ranges_full_gap_and_empty() {
 
 #[test]
 fn test_compute_completed_ranges_invalid_gap_boundary() {
-    let met = PartMetFile {
-        version: PARTFILE_VERSION,
-        mod_date: 0,
-        file_hash: mule_format::Ed2kHash([0; 16]),
-        part_hashes: vec![],
-        file_name: Some("test.bin".into()),
-        file_size: Some(1000),
-        transferred: 100,
-        aich_hash: None,
-        gaps: vec![(200, 1200)], // Exceeds file size 1000
-        tags: vec![],
-    };
+    let met = gaps_met(100, vec![(200, 1200)]); // Exceeds file size 1000
     assert!(met.compute_completed_ranges().is_err());
 }
 
