@@ -390,6 +390,8 @@ pub fn import_part_met(
         aich_pending: Default::default(),
         aich_requested: Default::default(),
         aich_votes: Default::default(),
+        corruption_blackbox: Default::default(),
+        pending_corruption_bans: Vec::new(),
     };
 
     let met_version_str = match met.version {

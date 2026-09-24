@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::error::DaemonError;
 use crate::services::DaemonEvent;
 
+pub mod corruption_blackbox;
 pub mod history_categories;
 pub mod operations;
 pub mod part_met;
@@ -33,6 +34,15 @@ pub(crate) fn db_err<E: std::fmt::Display>(
     move |e| DaemonError::Business(format!("DB error {context}: {e}"))
 }
 
+/// Extrait l'`IpAddr` d'une adresse source `ip:port` ; `None` pour les
+/// adresses symboliques `lowid:`/`kadcb:` (pas d'IP directe à bannir).
+fn source_addr_ip(addr: &str) -> Option<std::net::IpAddr> {
+    addr.parse::<std::net::SocketAddr>()
+        .map(|a| a.ip())
+        .ok()
+        .or_else(|| addr.parse::<std::net::IpAddr>().ok())
+}
+
 pub struct DownloadService {
     db: Database,
     temp_dir: PathBuf,
@@ -42,6 +52,9 @@ pub struct DownloadService {
     /// (`event.downloadAdded/Removed/Completed/Failed`).
     event_tx: Option<tokio::sync::broadcast::Sender<String>>,
     sequence: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
+    /// IPs bannies pour la session par le `CorruptionBlackBox` (eMule
+    /// `clientlist->AddBannedClient` — portée session, tous fichiers).
+    banned_source_ips: std::collections::HashSet<std::net::IpAddr>,
 }
 
 impl DownloadService {
@@ -138,6 +151,8 @@ impl DownloadService {
                     aich_pending: Default::default(),
                     aich_requested: Default::default(),
                     aich_votes: Default::default(),
+                    corruption_blackbox: Default::default(),
+                    pending_corruption_bans: Vec::new(),
                 },
             );
         }
@@ -156,6 +171,7 @@ impl DownloadService {
             temp_dir,
             active,
             session_start_ms,
+            banned_source_ips: Default::default(),
             event_tx: None,
             sequence: None,
         })
@@ -170,6 +186,7 @@ impl DownloadService {
             temp_dir,
             active: HashMap::new(),
             session_start_ms: now_ms(),
+            banned_source_ips: Default::default(),
             event_tx: None,
             sequence: None,
         })
@@ -448,8 +465,39 @@ impl DownloadService {
         id: &Uuid,
         offset: u64,
         data: &[u8],
+        sender: Option<&str>,
     ) -> Result<DownloadSnapshot, DaemonError> {
-        operations::inject_range(&mut self.db, &mut self.active, id, offset, data)
+        operations::inject_range(&mut self.db, &mut self.active, id, offset, data, sender)
+    }
+
+    /// Vide les bannissements demandés par le `CorruptionBlackBox` pour ce
+    /// téléchargement (eMule `Ban`/`AddBannedClient`). L'appelant doit
+    /// déconnecter la session du pair ; les IPs retournées sont ajoutées à
+    /// la liste de bannis de session consultée par l'ingestion et le dialer.
+    pub fn drain_corruption_bans(&mut self, id: &Uuid) -> Vec<String> {
+        let Some(act) = self.active.get_mut(id) else {
+            return Vec::new();
+        };
+        let bans = std::mem::take(&mut act.pending_corruption_bans);
+        for addr in &bans {
+            if let Some(ip) = source_addr_ip(addr) {
+                self.banned_source_ips.insert(ip);
+            }
+        }
+        bans
+    }
+
+    /// eMule `clientlist->IsBannedClient` : l'IP a-t-elle été bannie cette
+    /// session (corruption ou motif explicite) ?
+    pub fn is_source_banned(&self, addr: &str) -> bool {
+        source_addr_ip(addr).is_some_and(|ip| self.banned_source_ips.contains(&ip))
+    }
+
+    /// Bannit explicitement une IP source pour la session.
+    pub fn ban_source(&mut self, addr: &str) {
+        if let Some(ip) = source_addr_ip(addr) {
+            self.banned_source_ips.insert(ip);
+        }
     }
 
     pub fn update_status(
@@ -788,7 +836,17 @@ impl DownloadService {
         file_hash: &str,
         sources: &[mule_core::model::PeerSource],
     ) -> Result<usize, DaemonError> {
-        peers_servers::upsert_peer_sources(&mut self.db, &mut self.active, file_hash, sources)
+        // eMule `AddSources` : les clients bannis (`IsBannedClient`) sont
+        // ignorés dès l'ingestion, quel que soit le canal de découverte.
+        let filtered: Vec<mule_core::model::PeerSource> = sources
+            .iter()
+            .filter(|s| !self.is_source_banned(&s.address))
+            .cloned()
+            .collect();
+        if filtered.is_empty() {
+            return Ok(0);
+        }
+        peers_servers::upsert_peer_sources(&mut self.db, &mut self.active, file_hash, &filtered)
     }
 
     pub fn set_download_rate(&mut self, id: &Uuid, rate_bps: u64) -> Option<DownloadSnapshot> {

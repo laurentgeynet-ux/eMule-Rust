@@ -163,7 +163,7 @@ pub async fn run_ed2k_download(
 
                 let snap = {
                     let mut dls = state.downloads.lock().await;
-                    dls.inject_range(&download_id, part.start_offset as u64, &part.data)?
+                    dls.inject_range(&download_id, part.start_offset as u64, &part.data, None)?
                 };
                 state.broadcast_download_update(snap);
             }

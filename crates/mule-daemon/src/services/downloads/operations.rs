@@ -19,6 +19,10 @@ use super::types::{
 use crate::error::DaemonError;
 use std::time::{Duration, Instant};
 
+/// Taille d'une part eD2K (eMule `PARTSIZE`) — granularité du hachage MD4
+/// incrémental et de la récupération AICH.
+const ED2K_PART_SIZE_U64: u64 = 9_728_000;
+
 pub fn add_ed2k_link(
     db: &mut Database,
     temp_dir: &Path,
@@ -119,6 +123,8 @@ pub fn add_ed2k_link(
             aich_pending: Default::default(),
             aich_requested: Default::default(),
             aich_votes: Default::default(),
+            corruption_blackbox: Default::default(),
+            pending_corruption_bans: Vec::new(),
         },
     );
 
@@ -393,6 +399,7 @@ pub fn inject_range(
     id: &Uuid,
     offset: u64,
     data: &[u8],
+    sender: Option<&str>,
 ) -> Result<DownloadSnapshot, DaemonError> {
     let act = active
         .get_mut(id)
@@ -419,8 +426,41 @@ pub fn inject_range(
         );
         return Ok(act.snapshot());
     }
+    if data.is_empty() {
+        return Ok(act.snapshot());
+    }
 
     let end = offset + data.len() as u64;
+
+    // eMule `WriteToBuffer` : toute donnée touchant une part déjà complète
+    // (sans gap, donc déjà hachée ou en attente de vérif) est ignorée —
+    // « Received data touches already hashed chunk - ignored ». Sans cette
+    // garde, un bloc en vol planifié avant la complétion de la part
+    // écraserait silencieusement des données déjà vérifiées.
+    let first_part = offset / ED2K_PART_SIZE_U64;
+    let last_part = (end - 1) / ED2K_PART_SIZE_U64;
+    for p in first_part..=last_part {
+        let ps = p * ED2K_PART_SIZE_U64;
+        let pe = ((p + 1) * ED2K_PART_SIZE_U64).min(act.download.total_size);
+        if pe > ps && act.ranges.contains(ps..pe) {
+            tracing::warn!(
+                "Download {id}: received data {offset}..{end} touches already complete part {p} — ignored (sender: {sender:?})"
+            );
+            return Ok(act.snapshot());
+        }
+    }
+
+    // eMule `m_CorruptionBlackBox.ReceivedData` : provenance du bloc par part.
+    if let Some(sender) = sender {
+        let mut s = offset;
+        while s < end {
+            let p = s / ED2K_PART_SIZE_U64;
+            let pe = ((p + 1) * ED2K_PART_SIZE_U64).min(end);
+            act.corruption_blackbox
+                .received_data(p as u32, s, pe, sender);
+            s = pe;
+        }
+    }
 
     // Re-open the .part file when it was closed (failed open at startup,
     // post-verify eviction): received bytes must reach disk — the range is
@@ -445,10 +485,9 @@ pub fn inject_range(
     let was_complete =
         act.download.total_size > 0 && act.ranges.covered_len() == act.download.total_size;
 
-    const ED2K_PART_SIZE: u64 = 9_728_000;
-    let part_idx = offset / ED2K_PART_SIZE;
-    let part_start = part_idx * ED2K_PART_SIZE;
-    let part_end = ((part_idx + 1) * ED2K_PART_SIZE).min(act.download.total_size);
+    let part_idx = offset / ED2K_PART_SIZE_U64;
+    let part_start = part_idx * ED2K_PART_SIZE_U64;
+    let part_end = ((part_idx + 1) * ED2K_PART_SIZE_U64).min(act.download.total_size);
     let part_was_complete = part_end > part_start && act.ranges.contains(part_start..part_end);
 
     act.ranges
@@ -459,7 +498,7 @@ pub fn inject_range(
     let mut met_dirty = false;
     if part_is_complete && !part_was_complete {
         met_dirty = true;
-        let total_parts = act.download.total_size.div_ceil(ED2K_PART_SIZE).max(1);
+        let total_parts = act.download.total_size.div_ceil(ED2K_PART_SIZE_U64).max(1);
         let progress =
             (act.ranges.covered_len() as f64 / act.download.total_size.max(1) as f64) * 100.0;
         tracing::info!(
@@ -473,10 +512,11 @@ pub fn inject_range(
             progress
         );
 
-        // Incremental integrity check: verify the freshly completed part against
-        // the known hashset (eMule PartFile::IsCorruptedPart semantics).
-        // `ich_enabled` (eMule ICH pref, default on) gates this early check —
-        // disabled, corruption is only caught by the final root-hash verify.
+        // Vérif d'intégrité incrémentale inconditionnelle : eMule exécute
+        // `HashSinglePart` (MD4 + AICH) sur chaque part complétée,
+        // indépendamment de la préférence ICH. `ich_enabled` ne gate que le
+        // choix entre récupération AICH par blocs et éviction complète de la
+        // part (`IsCorruptedPart && IsICHEnabled` dans FlushBuffer).
         let ich_enabled = db
             .get_setting("ich_enabled")
             .ok()
@@ -484,65 +524,70 @@ pub fn inject_range(
             .map(|v| !matches!(v.trim().to_lowercase().as_str(), "0" | "false" | "off"))
             .unwrap_or(true);
         let hash_hex = act.download.ed2k_hash.to_hex().to_lowercase();
-        if ich_enabled {
-            if let Ok(part_hashes) = db.get_part_hashes(&hash_hex) {
-                // For files strictly smaller than one part, the file hash IS the
-                // part hash. For exact multiples of PART_SIZE eMule appends an
-                // MD4(empty) trailing part, so part 0 hash != file hash there —
-                // never fall back to the file hash in that case.
-                let expected = part_hashes.get(part_idx as usize).copied().or({
-                    if part_hashes.is_empty() && act.download.total_size < ED2K_PART_SIZE {
-                        Some(act.download.ed2k_hash.0)
+        if let Ok(part_hashes) = db.get_part_hashes(&hash_hex) {
+            // For files strictly smaller than one part, the file hash IS the
+            // part hash. For exact multiples of PART_SIZE eMule appends an
+            // MD4(empty) trailing part, so part 0 hash != file hash there —
+            // never fall back to the file hash in that case.
+            let expected = part_hashes.get(part_idx as usize).copied().or({
+                if part_hashes.is_empty() && act.download.total_size < ED2K_PART_SIZE_U64 {
+                    Some(act.download.ed2k_hash.0)
+                } else {
+                    None
+                }
+            });
+            if let Some(expected_hash) = expected {
+                let part_len = (part_end - part_start) as usize;
+                let verified = act
+                    .part_file
+                    .as_mut()
+                    .and_then(|pf| pf.read_range(part_start, part_len).ok())
+                    .map(|bytes| mule_core::verify_part_hash(&bytes, &expected_hash))
+                    .unwrap_or(false);
+                if verified {
+                    let _ = db.mark_part_verified(id, part_idx as u32);
+                    act.corruption_blackbox
+                        .verified_data(part_idx as u32, part_start, part_end);
+                } else {
+                    // La part est corrompue : attribution aux expéditeurs
+                    // (eMule CorruptedData + EvaluateData → Ban >32 %).
+                    mark_part_corrupted(act, part_idx as u32, part_start, part_end);
+                    // eMule AICH path: with a trusted master hash the corrupted
+                    // part is kept and an OP_AICHREQUEST is queued so only the
+                    // corrupted 180 KiB blocks get re-downloaded. Falls back to
+                    // whole-part eviction when AICH is unavailable/exhausted,
+                    // ou quand ICH est désactivé (re-téléchargement complet).
+                    let attempts = act
+                        .aich_requested
+                        .get(&(part_idx as u32))
+                        .map(|&(_, c)| c)
+                        .unwrap_or(0);
+                    let already_pending =
+                        act.aich_pending.iter().any(|&(p, _)| p == part_idx as u32);
+                    if ich_enabled
+                        && act.download.aich_root.is_some()
+                        && attempts < AICH_MAX_ATTEMPTS
+                        && !already_pending
+                    {
+                        tracing::warn!(
+                        "[PART_CORRUPTED] File '{}' (hash: {}): part {} failed MD4 check, queued for AICH block recovery",
+                        act.download.display_name,
+                        hash_hex,
+                        part_idx
+                    );
+                        act.aich_pending
+                            .push_back((part_idx as u32, Instant::now()));
                     } else {
-                        None
-                    }
-                });
-                if let Some(expected_hash) = expected {
-                    let part_len = (part_end - part_start) as usize;
-                    let verified = act
-                        .part_file
-                        .as_mut()
-                        .and_then(|pf| pf.read_range(part_start, part_len).ok())
-                        .map(|bytes| mule_core::verify_part_hash(&bytes, &expected_hash))
-                        .unwrap_or(false);
-                    if verified {
-                        let _ = db.mark_part_verified(id, part_idx as u32);
-                    } else {
-                        // eMule AICH path: with a trusted master hash the corrupted
-                        // part is kept and an OP_AICHREQUEST is queued so only the
-                        // corrupted 180 KiB blocks get re-downloaded. Falls back to
-                        // whole-part eviction when AICH is unavailable/exhausted.
-                        let attempts = act
-                            .aich_requested
-                            .get(&(part_idx as u32))
-                            .map(|&(_, c)| c)
-                            .unwrap_or(0);
-                        let already_pending =
-                            act.aich_pending.iter().any(|&(p, _)| p == part_idx as u32);
-                        if act.download.aich_root.is_some()
-                            && attempts < AICH_MAX_ATTEMPTS
-                            && !already_pending
-                        {
-                            tracing::warn!(
-                            "[PART_CORRUPTED] File '{}' (hash: {}): part {} failed MD4 check, queued for AICH block recovery",
-                            act.download.display_name,
-                            hash_hex,
-                            part_idx
-                        );
-                            act.aich_pending
-                                .push_back((part_idx as u32, Instant::now()));
-                        } else {
-                            tracing::warn!(
-                            "[PART_CORRUPTED] File '{}' (hash: {}): part {} failed MD4 check, evicting range {}..{} for re-download",
-                            act.download.display_name,
-                            hash_hex,
-                            part_idx,
-                            part_start,
-                            part_end
-                        );
-                            let _ = act.ranges.remove(part_start..part_end);
-                            let _ = db.unmark_part_verified(id, part_idx as u32);
-                        }
+                        tracing::warn!(
+                        "[PART_CORRUPTED] File '{}' (hash: {}): part {} failed MD4 check, evicting range {}..{} for re-download",
+                        act.download.display_name,
+                        hash_hex,
+                        part_idx,
+                        part_start,
+                        part_end
+                    );
+                        let _ = act.ranges.remove(part_start..part_end);
+                        let _ = db.unmark_part_verified(id, part_idx as u32);
                     }
                 }
             }
@@ -582,6 +627,29 @@ pub fn inject_range(
     Ok(act.snapshot())
 }
 
+/// Marque les enregistrements de la part comme corrompus puis évalue la
+/// responsabilité des expéditeurs (eMule `CorruptedData` + `EvaluateData`) :
+/// tout expéditeur dépassant `CBB_BANTHRESHOLD` est empilé dans
+/// `pending_corruption_bans` pour déconnexion/rejet par l'appelant.
+fn mark_part_corrupted(
+    act: &mut ActiveDownload,
+    part_idx: u32,
+    part_start: u64,
+    part_end: u64,
+) {
+    act.corruption_blackbox
+        .corrupted_data(part_idx, part_start, part_end);
+    for guilty in act.corruption_blackbox.evaluate(part_idx) {
+        if !act.pending_corruption_bans.contains(&guilty) {
+            tracing::warn!(
+                "[CORRUPTION_BLACKBOX] '{}' : {guilty} a dépassé le seuil de corruption (eMule CBB_BANTHRESHOLD) — bannissement demandé",
+                act.download.display_name
+            );
+            act.pending_corruption_bans.push(guilty);
+        }
+    }
+}
+
 /// Evicts corrupted part ranges from the received RangeSet so they are re-downloaded,
 /// and resets the download back to Downloading. Mirrors eMule `CPartFile` corrupted
 /// part handling after a failed hashset check.
@@ -595,7 +663,7 @@ pub fn evict_corrupted_parts(
         .get_mut(id)
         .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
 
-    const ED2K_PART_SIZE: u64 = 9_728_000;
+    const ED2K_PART_SIZE: u64 = ED2K_PART_SIZE_U64;
     let total_size = act.download.total_size;
 
     for &part_idx in corrupted {
@@ -603,6 +671,7 @@ pub fn evict_corrupted_parts(
         let end = ((part_idx as u64 + 1) * ED2K_PART_SIZE).min(total_size);
         if end > start {
             let _ = act.ranges.remove(start..end);
+            mark_part_corrupted(act, part_idx, start, end);
         }
         let _ = db.unmark_part_verified(id, part_idx);
     }
@@ -739,10 +808,11 @@ pub fn next_aich_recovery(
                 "[AICH] Recovery for part {part} of '{}' expired, evicting whole part",
                 act.download.display_name
             );
-            let start = part as u64 * 9_728_000;
-            let end = ((part as u64 + 1) * 9_728_000).min(act.download.total_size);
+            let start = part as u64 * ED2K_PART_SIZE_U64;
+            let end = ((part as u64 + 1) * ED2K_PART_SIZE_U64).min(act.download.total_size);
             if end > start {
                 let _ = act.ranges.remove(start..end);
+                mark_part_corrupted(act, part, start, end);
             }
             let _ = db.unmark_part_verified(id, part);
             continue;
@@ -798,10 +868,11 @@ pub struct AichRecoveryReport {
 }
 
 fn evict_part_range(db: &mut Database, act: &mut ActiveDownload, id: &Uuid, part: u32) {
-    let start = part as u64 * 9_728_000;
-    let end = ((part as u64 + 1) * 9_728_000).min(act.download.total_size);
+    let start = part as u64 * ED2K_PART_SIZE_U64;
+    let end = ((part as u64 + 1) * ED2K_PART_SIZE_U64).min(act.download.total_size);
     if end > start {
         let _ = act.ranges.remove(start..end);
+        mark_part_corrupted(act, part, start, end);
     }
     let _ = db.unmark_part_verified(id, part);
     let _ = db.sync_received_ranges(id, &act.ranges);
@@ -897,10 +968,28 @@ pub fn apply_aich_recovery(
             })
             .map(|bytes| mule_format::aich_block_hash(&bytes) == *expected)
             .unwrap_or(false);
-        if !ok {
+        if ok {
+            // eMule `m_CorruptionBlackBox.VerifiedData` sur le bloc récupéré.
+            act.corruption_blackbox
+                .verified_data(part, block_start, block_end);
+        } else {
+            // eMule `CorruptedData` : attribution du bloc fautif à
+            // l'expéditeur avant l'évaluation des bannissements.
+            act.corruption_blackbox
+                .corrupted_data(part, block_start, block_end);
             corrupted_blocks += 1;
             evicted_ranges.push((block_start, block_end));
             let _ = act.ranges.remove(block_start..block_end);
+        }
+    }
+    // eMule `m_CorruptionBlackBox.EvaluateData` après le balayage des blocs.
+    for guilty in act.corruption_blackbox.evaluate(part) {
+        if !act.pending_corruption_bans.contains(&guilty) {
+            tracing::warn!(
+                "[CORRUPTION_BLACKBOX] '{}' : {guilty} a dépassé le seuil de corruption — bannissement demandé",
+                act.download.display_name
+            );
+            act.pending_corruption_bans.push(guilty);
         }
     }
 
@@ -1028,10 +1117,12 @@ pub fn finalize_download(
         )
     };
 
-    mule_core::finalize_file(
+    // eMule `PerformFileComplete` : le fichier de destination n'est jamais
+    // écrasé — collision résolue en `name(1).ext`, `name(2).ext`, …
+    let final_path = mule_core::finalize_file(
         &temp_path,
         &target_path,
-        mule_core::CollisionStrategy::Overwrite,
+        mule_core::CollisionStrategy::Rename,
     )
     .map_err(|e| DaemonError::Business(format!("Finalize error: {e}")))?;
 
@@ -1042,17 +1133,31 @@ pub fn finalize_download(
     {
         let act = active.get_mut(id).unwrap();
         act.download.status = DownloadStatus::Completed;
+        act.download.target_path = final_path.clone();
+        // eMule `m_fullname` suit le nom renommé ; le nom affiché reflète
+        // le fichier réellement produit sur disque.
+        if let Some(name) = final_path.file_name().and_then(|n| n.to_str()) {
+            act.download.display_name = name.to_string();
+        }
         act.verification_in_progress = false;
         act.download.updated_at = now;
         act.last_status_change_unix_ms = now;
         act.current_rate_bps = 0;
         let _ = act.part_file.take();
+        // Le blackbox de corruption est libéré à la complétion du fichier.
+        act.corruption_blackbox.clear();
     }
     db.update_status(id, DownloadStatus::Completed)
         .map_err(db_err("persisting state"))?;
+    db.update_target_path(id, &final_path)
+        .map_err(db_err("persisting final path"))?;
 
     let mut finalized_dl = dl;
     finalized_dl.status = DownloadStatus::Completed;
+    finalized_dl.target_path = final_path.clone();
+    if let Some(name) = final_path.file_name().and_then(|n| n.to_str()) {
+        finalized_dl.display_name = name.to_string();
+    }
     record_history_event(
         db,
         &finalized_dl,
@@ -1068,7 +1173,7 @@ pub fn finalize_download(
         finalized_dl.ed2k_hash.to_hex(),
         &finalized_dl.display_name,
         finalized_dl.total_size,
-        target_path.to_string_lossy().as_ref(),
+        final_path.to_string_lossy().as_ref(),
     );
     // eMule `UAPPref` : le fichier complété devient un partage « auto ».
     if peers_servers::auto_up_priority_enabled(db) {

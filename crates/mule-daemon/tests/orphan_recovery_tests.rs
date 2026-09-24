@@ -106,7 +106,7 @@ fn removed_download_with_kept_files_does_not_resurrect() {
     let snap = svc
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
 
     let (temp_path, _, _, _) = svc.get_download_file_info(&snap.id).unwrap();
     let mut met_name = temp_path.as_os_str().to_os_string();
@@ -140,7 +140,7 @@ fn save_active_part_mets_flushes_all_in_progress() {
     let snap = svc
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &[0xAAu8; 100]).unwrap();
+    svc.inject_range(&snap.id, 0, &[0xAAu8; 100], None).unwrap();
 
     // Simulate a dirty met: corrupt the on-disk companion, then flush.
     let (temp_path, _, _, _) = svc.get_download_file_info(&snap.id).unwrap();

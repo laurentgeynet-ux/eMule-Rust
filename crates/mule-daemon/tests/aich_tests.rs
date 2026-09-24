@@ -91,7 +91,7 @@ fn aich_recovery_evicts_only_corrupted_blocks() {
     // Inject the full part with block 1 corrupted.
     let mut received = good.clone();
     received[BLOCK + 100] ^= 0xFF;
-    svc.inject_range(&snap.id, 0, &received).unwrap();
+    svc.inject_range(&snap.id, 0, &received, None).unwrap();
     assert_eq!(svc.get_covered_len(&snap.id), Some(good.len() as u64));
 
     // Build recovery data as an uploader would, then apply it.
@@ -131,7 +131,7 @@ fn aich_recovery_marks_clean_part_verified() {
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
 
-    svc.inject_range(&snap.id, 0, &good).unwrap();
+    svc.inject_range(&snap.id, 0, &good, None).unwrap();
 
     let entries = mule_format::create_part_recovery_data(&tree, good.len() as u64, 0).unwrap();
     let report = svc
@@ -160,7 +160,7 @@ fn aich_recovery_rejects_untrusted_master_hash() {
     let snap = svc
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &good).unwrap();
+    svc.inject_range(&snap.id, 0, &good, None).unwrap();
 
     // Recovery data carrying a different master hash must not overwrite the
     // trusted root nor mutate ranges.

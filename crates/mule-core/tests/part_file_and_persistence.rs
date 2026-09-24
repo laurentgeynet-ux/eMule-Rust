@@ -138,6 +138,67 @@ fn test_download_storage_persistence_and_corruption_lifecycle() {
     finalize_file(&dummy_temp, &target_dest_path, CollisionStrategy::Overwrite).unwrap();
 }
 
+/// eMule `CPartFile::PerformFileComplete`: a completed download never
+/// overwrites an existing destination — it generates `name(1).ext`,
+/// `name(2).ext`, … continuing numbering from an existing `(N)` suffix.
+#[test]
+fn test_finalize_rename_collision() {
+    let dir = tempdir().unwrap();
+
+    let target = dir.path().join("file.bin");
+    std::fs::write(&target, b"existing").unwrap();
+
+    let temp = dir.path().join("001.part");
+    std::fs::write(&temp, b"newdata").unwrap();
+    let resolved = finalize_file(&temp, &target, CollisionStrategy::Rename).unwrap();
+    assert_eq!(
+        resolved.file_name().unwrap().to_str().unwrap(),
+        "file(1).bin"
+    );
+    assert_eq!(std::fs::read(&resolved).unwrap(), b"newdata");
+    // The pre-existing file is untouched.
+    assert_eq!(std::fs::read(&target).unwrap(), b"existing");
+
+    // Second collision: numbering continues at (2).
+    let temp2 = dir.path().join("002.part");
+    std::fs::write(&temp2, b"newer").unwrap();
+    let resolved2 = finalize_file(&temp2, &target, CollisionStrategy::Rename).unwrap();
+    assert_eq!(
+        resolved2.file_name().unwrap().to_str().unwrap(),
+        "file(2).bin"
+    );
+
+    // A stem that already ends with `(N)` continues numbering from N+1:
+    // eMule strips `file(7)` back to `file` before incrementing.
+    let numbered = dir.path().join("file(7).bin");
+    std::fs::write(&numbered, b"exists").unwrap();
+    let temp3 = dir.path().join("003.part");
+    std::fs::write(&temp3, b"payload").unwrap();
+    let resolved3 = finalize_file(&temp3, &numbered, CollisionStrategy::Rename).unwrap();
+    assert_eq!(
+        resolved3.file_name().unwrap().to_str().unwrap(),
+        "file(8).bin"
+    );
+
+    // Extensionless file: `name(N)` without extension.
+    let noext = dir.path().join("README");
+    std::fs::write(&noext, b"old").unwrap();
+    let temp4 = dir.path().join("004.part");
+    std::fs::write(&temp4, b"new").unwrap();
+    let resolved4 = finalize_file(&temp4, &noext, CollisionStrategy::Rename).unwrap();
+    assert_eq!(
+        resolved4.file_name().unwrap().to_str().unwrap(),
+        "README(1)"
+    );
+
+    // No collision: the requested path is used unchanged.
+    let free = dir.path().join("free.bin");
+    let temp5 = dir.path().join("005.part");
+    std::fs::write(&temp5, b"data").unwrap();
+    let resolved5 = finalize_file(&temp5, &free, CollisionStrategy::Rename).unwrap();
+    assert_eq!(resolved5, free);
+}
+
 #[test]
 fn test_get_all_downloads_restoration() {
     let dir = tempdir().unwrap();

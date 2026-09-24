@@ -168,7 +168,7 @@ pub async fn run_lab_download(
                         tracker.validate_and_remove(&resp_hash, start_offset, data.len())?;
                         let snap = {
                             let mut dls = state.downloads.lock().await;
-                            dls.inject_range(&download_id, start_offset, &data)?
+                            dls.inject_range(&download_id, start_offset, &data, None)?
                         };
                         state.broadcast_download_update(snap);
                     }

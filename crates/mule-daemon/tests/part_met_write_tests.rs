@@ -39,7 +39,7 @@ fn part_met_is_written_on_add_and_updated_on_progress() {
     );
 
     // After injecting data the met reflects covered ranges (no gaps).
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
     let met = mule_format::PartMetFile::open(&met_path).unwrap();
     assert_eq!(met.transferred, 1000);
     assert!(met.gaps.is_empty());
@@ -88,7 +88,7 @@ fn completed_file_is_deleted_and_unshared_on_remove_with_files() {
     let snap = svc
         .add_ed2k_link(&link, &target_dir, AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
     svc.finalize_download(&snap.id).unwrap();
 
     let target_path = target_dir.join("done.bin");
@@ -123,7 +123,7 @@ fn completed_file_is_kept_on_remove_without_files() {
     let snap = svc
         .add_ed2k_link(&link, &target_dir, AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
     svc.finalize_download(&snap.id).unwrap();
 
     let target_path = target_dir.join("kept.bin");
@@ -149,9 +149,9 @@ fn session_downloaded_bytes_counts_only_bytes_received_this_session() {
         .unwrap();
 
     assert_eq!(svc.session_downloaded_bytes(), 0);
-    svc.inject_range(&snap.id, 0, &[0xAAu8; 400]).unwrap();
+    svc.inject_range(&snap.id, 0, &[0xAAu8; 400], None).unwrap();
     assert_eq!(svc.session_downloaded_bytes(), 400);
-    svc.inject_range(&snap.id, 400, &[0xBBu8; 200]).unwrap();
+    svc.inject_range(&snap.id, 400, &[0xBBu8; 200], None).unwrap();
     assert_eq!(svc.session_downloaded_bytes(), 600);
 }
 
@@ -240,7 +240,7 @@ fn shared_file_delete_completed_routes_through_remove_download() {
     let snap = svc
         .add_ed2k_link(&link, &target_dir, AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
     svc.finalize_download(&snap.id).unwrap();
 
     let target_path = target_dir.join("shared_done.bin");
@@ -300,7 +300,7 @@ fn rename_completed_renames_disk_file_and_share_entry() {
     let snap = svc
         .add_ed2k_link(&link, &target_dir, AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
     svc.finalize_download(&snap.id).unwrap();
 
     let old_path = target_dir.join("before.iso");
@@ -331,7 +331,7 @@ fn rename_shared_file_by_hash_delegates_to_completed_download() {
     let snap = svc
         .add_ed2k_link(&link, &target_dir, AllocationPolicy::None, None)
         .unwrap();
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
     svc.finalize_download(&snap.id).unwrap();
 
     svc.rename_shared_file(&hash_hex, "dl_renamed.bin").unwrap();
@@ -384,7 +384,7 @@ fn part_met_persists_partial_gaps() {
         .unwrap();
 
     // Partial data does not trigger part completion; force a save via pause.
-    svc.inject_range(&snap.id, 0, &[0xAAu8; 100]).unwrap();
+    svc.inject_range(&snap.id, 0, &[0xAAu8; 100], None).unwrap();
     svc.pause_download(&snap.id).unwrap();
 
     let (temp_path, _, _, _) = svc.get_download_file_info(&snap.id).unwrap();

@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use mule_core::model::{DownloadStatus, PeerSourceStatus};
+use mule_core::model::{DownloadStatus, PeerSourceOrigin, PeerSourceStatus};
 use mule_protocol::ed2k::GetSourcesRequest;
 
 use crate::services::downloads::types::DownloadSnapshot;
@@ -155,18 +155,45 @@ impl SwarmCoordinator {
                                 for part_idx in verified_ok {
                                     let _ = dl_guard.db_mut().mark_part_verified(&id, part_idx);
                                 }
-                                match dl_guard.evict_corrupted_parts(&id, &corrupted) {
+                                let evict_ok = match dl_guard.evict_corrupted_parts(&id, &corrupted)
+                                {
                                     Ok(snap) => {
                                         state_clone.broadcast_download_update(snap);
+                                        true
                                     }
                                     Err(e) => {
                                         tracing::error!("Failed to evict corrupted parts for download {id}: {e}");
-                                        if let Ok(snap) = dl_guard.update_status(
-                                            &id,
-                                            mule_core::model::DownloadStatus::Failed,
-                                        ) {
-                                            state_clone.broadcast_download_update(snap);
-                                        }
+                                        false
+                                    }
+                                };
+                                // eMule `CorruptionBlackBox::EvaluateData` a pu
+                                // condamner des expéditeurs : déconnexion +
+                                // rejet de leurs sources.
+                                let banned = dl_guard.drain_corruption_bans(&id);
+                                drop(dl_guard);
+                                for addr in banned {
+                                    tracing::warn!(
+                                        "[CORRUPTION_BLACKBOX] Banning {addr} for download {id} (>32% corrupted data)"
+                                    );
+                                    let mut dl_guard = state_clone.downloads.lock().await;
+                                    let _ = dl_guard.update_peer_source_status(
+                                        &hex::encode(expected_hash),
+                                        &addr,
+                                        mule_core::model::PeerSourceStatus::Rejected,
+                                        Some("corruption blackbox: exceeded ban threshold"),
+                                        None,
+                                    );
+                                    drop(dl_guard);
+                                    let _ =
+                                        state_clone.peer_session.disconnect_peer(Some(&addr)).await;
+                                }
+                                if !evict_ok {
+                                    let mut dl_guard = state_clone.downloads.lock().await;
+                                    if let Ok(snap) = dl_guard.update_status(
+                                        &id,
+                                        mule_core::model::DownloadStatus::Failed,
+                                    ) {
+                                        state_clone.broadcast_download_update(snap);
                                     }
                                 }
                             }
@@ -592,6 +619,25 @@ impl SwarmCoordinator {
                     continue;
                 }
 
+                // eMule `AddSources` : les clients bannis (corruption,
+                // `IsBannedClient`) ne sont jamais re-dialés — la source est
+                // marquée `Rejected` pour ne pas revenir en candidat.
+                let source_banned = {
+                    let dl_guard = self.state.downloads.lock().await;
+                    dl_guard.is_source_banned(&src.address)
+                };
+                if source_banned {
+                    let mut dl_guard = self.state.downloads.lock().await;
+                    let _ = dl_guard.update_peer_source_status(
+                        &hash_hex,
+                        &src.address,
+                        PeerSourceStatus::Rejected,
+                        Some("banned client"),
+                        None,
+                    );
+                    continue;
+                }
+
                 // LowID source: unreachable directly — ask the connected
                 // server to relay a callback (eMule `OP_CALLBACKREQUEST`).
                 // The target then connects inbound; the inbound listener
@@ -605,6 +651,13 @@ impl SwarmCoordinator {
                     let Ok(lowid) = lowid_str.parse::<u32>() else {
                         continue;
                     };
+                    // eMule `CanAddSource` : notre propre LowID répercuté par
+                    // le serveur connecté ne doit pas être rappelé (les LowIDs
+                    // ne sont uniques que par serveur — limité aux sources
+                    // d'origine serveur comme chez eMule).
+                    if lowid == client_id && src.origin == PeerSourceOrigin::Server {
+                        continue;
+                    }
                     if self.state.peer_session.has_pending_callback(lowid) {
                         continue;
                     }
@@ -710,6 +763,20 @@ impl SwarmCoordinator {
                     Ok(a) => a,
                     Err(_) => continue,
                 };
+
+                // eMule `CanAddSource` : ne jamais dialer notre propre
+                // endpoint — quand le serveur nous a donné un HighID, notre
+                // client_id EST notre IP publique ; une source `ip:port`
+                // identique est notre propre annonce répercutée.
+                if server_is_high_id {
+                    if let std::net::IpAddr::V4(v4) = peer_addr.ip() {
+                        if u32::from_le_bytes(v4.octets()) == client_id
+                            && peer_addr.port() == self.state.ed2k_port()
+                        {
+                            continue;
+                        }
+                    }
+                }
 
                 let permit = match self.state.network_policy.request_tcp_connect(
                     peer_addr,

@@ -294,7 +294,7 @@ fn test_get_pending_verifications_does_not_trigger_on_sparse_file_length() {
 
     // Simulate writing only the last 1,000 bytes (offset 999_000 to 1_000_000).
     // On NTFS/filesystems, this extends the file length on disk to 1_000_000 bytes!
-    let _ = service.inject_range(&snap.id, 999_000, &tail).unwrap();
+    let _ = service.inject_range(&snap.id, 999_000, &tail, None).unwrap();
 
     // Verify that covered_len is only 1,000 bytes
     assert_eq!(service.get_covered_len(&snap.id), Some(1000));
@@ -308,7 +308,7 @@ fn test_get_pending_verifications_does_not_trigger_on_sparse_file_length() {
     );
 
     // Now inject the remaining 0..999_000 bytes
-    let _ = service.inject_range(&snap.id, 0, &head).unwrap();
+    let _ = service.inject_range(&snap.id, 0, &head, None).unwrap();
     assert_eq!(service.get_covered_len(&snap.id), Some(1_000_000));
 
     // Now that all 1,000,000 bytes are covered, it MUST trigger verification!
@@ -379,7 +379,7 @@ fn test_inject_range_after_completed_does_not_regress_status() {
         .unwrap();
 
     // 1. Inject all 50,000 bytes -> reaches 100% and Verifying
-    let snap_verif = service.inject_range(&snap.id, 0, &data).unwrap();
+    let snap_verif = service.inject_range(&snap.id, 0, &data, None).unwrap();
     assert_eq!(snap_verif.status.to_lowercase(), "verifying");
 
     // 2. Finalize download -> Completed
@@ -388,7 +388,7 @@ fn test_inject_range_after_completed_does_not_regress_status() {
 
     // 3. Late duplicate packet arrives from peer session
     let late_data = vec![0x42; 1000];
-    let snap_after_late = service.inject_range(&snap.id, 0, &late_data).unwrap();
+    let snap_after_late = service.inject_range(&snap.id, 0, &late_data, None).unwrap();
     assert_eq!(
         snap_after_late.status.to_lowercase(),
         "completed",
@@ -424,7 +424,7 @@ fn test_startup_self_heal_completed() {
 
         // Inject full data
         let data = vec![0x11; 2048];
-        let _ = service.inject_range(&snap.id, 0, &data).unwrap();
+        let _ = service.inject_range(&snap.id, 0, &data, None).unwrap();
         let _ = service.finalize_download(&snap.id).unwrap();
 
         // Force status back to verifying in DB to simulate old bug

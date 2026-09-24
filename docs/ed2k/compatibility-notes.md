@@ -166,3 +166,62 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
 - **Routage/lookup** : `K_BUCKET_SIZE = 10` (`Defines.h:42`, était 20),
   `ALPHA_QUERY = 3` (`:45`, était 5), graine de recherche 50 contacts
   (`Search.cpp:172` `GetClosestTo(3, …, 50, …)`, était 32).
+
+---
+
+## 7. PartFile — écarts assumés et corrections d'alignement (audit phase B, passe 3)
+
+### Écarts assumés
+
+- **Sélection de blocs** : `GetNextRequestedBlock`/`CreateBlockRequests`
+  eMule (`DownloadClient.cpp:1950+`) combine fréquence de part,
+  priorité preview, `sameChunk`, pourcentage de complétion, nombre de
+  clients en transfert et `bandwidthScore`. Le séquenceur Rust
+  (`ed2k/sequencer.rs`) applique un ordre « rareté / preview /
+  progression » simplifié — comportement proche mais non identique ;
+  pas de risque filaire (les pairs voient des requêtes licites).
+- **Bannissement corruption** portée session uniquement : eMule
+  `clientlist->AddBannedClient` est aussi borné à la session, mais
+  `AddTrackClient` (suivi de score inter-fichiers) n'a pas
+  d'équivalent — un pair banni reste `Rejected` par fichier et ne peut
+  plus être ingéré ni dialé, sans score persistant.
+- **`.part.met`** : les tags `FT_CORRUPTEDPARTS`, `FT_STATUS`,
+  `FT_LASTSEENCOMPLETE`, `FT_DL_ACTIVE_TIME`, `FT_PARTFILENAME` et le
+  blob `FT_AICHHASHSET` ne sont pas écrits — corruption et parts
+  vérifiées vivent en SQLite ; le hashset AICH est réobtenu via
+  recovery/votes si nécessaire après redémarrage.
+- **Pas de `UncompressFile`/`SetZoneIdentifier`** à la complétion
+  (attribut sparse NTFS + zone MOTW) — spécifique Windows, sans effet
+  protocolaire.
+- **Pas de buffering 30 s** (`m_BufferedData_list`/`FlushBuffer`) :
+  les écritures sont synchrones avec flush immédiat — plus sûr
+  (aucune donnée volatile), même sémantique observable.
+
+### Corrections d'alignement
+
+- **Collision de destination** : `CollisionStrategy::Overwrite`
+  remplacé par `Rename` — `CPartFile::PerformFileComplete` génère
+  `name(1).ext`, `name(2).ext`, … en incrémentant un suffixe `(N)`
+  existant ; le chemin résolu est persisté (`target_path`) et
+  enregistré dans `shared_files` sous son vrai nom.
+- **Écriture sur part complète rejetée** : eMule `WriteToBuffer`
+  ignore toute donnée touchant une part déjà hashée
+  (`IsComplete(start|end part)` → `return 0`). `inject_range` fait de
+  même pour toute part couverte par `ranges` — un bloc en vol arrivant
+  après complétion de la part n'écrase plus des données vérifiées.
+- **ICH** : la vérif MD4 de part est inconditionnelle (eMule
+  `HashSinglePart` sur chaque part complétée) ; `ich_enabled` ne gate
+  plus la vérif mais uniquement le choix entre file de récupération
+  AICH par blocs et éviction complète
+  (`IsCorruptedPart && IsICHEnabled`, `PartFile.cpp:4158`).
+- **`CorruptionBlackBox`** (`CorruptionBlackBox.cpp`) : provenance
+  `(plage, expéditeur)` par part, statuts
+  `Received/Verified/Corrupted` avec découpe des enregistrements sur
+  recouvrement ; `EvaluateData` condamne l'expéditeur quand
+  `corrompu/(corrompu+vérifié) > CBB_BANTHRESHOLD = 32 %` (chaque
+  enregistrement corrompu compté ≥ `EMBLOCKSIZE` = 180 Kio). Le ban
+  déconnecte la session et marque la source `Rejected`.
+- **`CanAddSource`** : une source égale à notre propre LowID (origine
+  serveur) ou à notre `HighID:port` public est ignorée ; les clients
+  bannis sont filtrés dès `upsert_peer_sources` et avant le dial
+  (`IsBannedClient`).

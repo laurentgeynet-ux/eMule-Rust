@@ -271,6 +271,53 @@ async fn fill_and_send_block_requests(
     Ok(sent_any)
 }
 
+/// Applique les bannissements demandés par le `CorruptionBlackBox` après
+/// un `inject_range` (eMule `Ban` + `clientlist->AddBannedClient`) : les
+/// sources fautives passent `Rejected` et leurs sessions sont avortées.
+/// Retourne `true` quand le pair de cette session est lui-même banni —
+/// l'appelant doit alors sortir de la boucle de transfert.
+async fn apply_corruption_bans(
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    downloads: &Arc<Mutex<DownloadService>>,
+    download_id: uuid::Uuid,
+    file_hash_str: &str,
+    self_addr: &str,
+) -> bool {
+    let banned = {
+        let mut dl_svc = downloads.lock().await;
+        dl_svc.drain_corruption_bans(&download_id)
+    };
+    if banned.is_empty() {
+        return false;
+    }
+    let mut self_banned = false;
+    for addr in banned {
+        tracing::warn!(
+            "[CORRUPTION_BLACKBOX] Banning {addr} for file {file_hash_str} (>32% corrupted data, eMule CBB_BANTHRESHOLD)"
+        );
+        {
+            let mut dl_svc = downloads.lock().await;
+            let _ = dl_svc.update_peer_source_status(
+                file_hash_str,
+                &addr,
+                mule_core::model::PeerSourceStatus::Rejected,
+                Some("corruption blackbox: exceeded ban threshold"),
+                None,
+            );
+        }
+        if addr == self_addr {
+            self_banned = true;
+            continue;
+        }
+        let mut g = inner.lock().await;
+        if let Some(session) = g.sessions.remove(&addr) {
+            session.abort_handle.abort();
+            g.in_flight_blocks.retain(|b| b.peer_id != addr);
+        }
+    }
+    self_banned
+}
+
 async fn sync_transfer_rates(
     inner: &Arc<Mutex<SwarmInnerState>>,
     downloads: &Arc<Mutex<DownloadService>>,
@@ -822,23 +869,43 @@ pub(crate) async fn run_transfer_loop(
                                     flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
                                 }
 
-                                let is_complete = {
+                                let (is_complete, injected_dl) = {
                                     let mut dl_svc = downloads.lock().await;
                                     if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
-                                        if let Ok(snap) = dl_svc.inject_range(
-                                            &dl.id,
+                                        let dl_id = dl.id;
+                                        let done = if let Ok(snap) = dl_svc.inject_range(
+                                            &dl_id,
                                             part_start,
                                             &part_data,
+                                            Some(address_str),
                                         ) {
                                             let s = snap.status.to_lowercase();
                                             s == "verifying" || s == "completed" || snap.progress >= 1.0
                                         } else {
                                             false
-                                        }
+                                        };
+                                        (done, Some(dl_id))
                                     } else {
-                                        false
+                                        (false, None)
                                     }
                                 };
+                                if let Some(dl_id) = injected_dl {
+                                    if apply_corruption_bans(
+                                        inner,
+                                        downloads,
+                                        dl_id,
+                                        file_hash_str,
+                                        address_str,
+                                    )
+                                    .await
+                                    {
+                                        tracing::warn!(
+                                            "[CORRUPTION_BLACKBOX] Peer {peer} banned for corrupted data — closing transfer",
+                                            peer = log_peer_addr(target_addr)
+                                        );
+                                        break 'transfer_loop;
+                                    }
+                                }
 
                                 let elapsed = last_rate_check.elapsed();
                                 if elapsed >= Duration::from_millis(500) || is_complete {
@@ -966,23 +1033,43 @@ pub(crate) async fn run_transfer_loop(
                                             flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
                                         }
                                         let write_at = pending[pi].recv_to;
-                                        let is_complete = {
+                                        let (is_complete, injected_dl) = {
                                             let mut dl_svc = downloads.lock().await;
                                             if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
-                                                if let Ok(snap) = dl_svc.inject_range(
-                                                    &dl.id,
+                                                let dl_id = dl.id;
+                                                let done = if let Ok(snap) = dl_svc.inject_range(
+                                                    &dl_id,
                                                     write_at,
                                                     &out[..produced],
+                                                    Some(address_str),
                                                 ) {
                                                     let s = snap.status.to_lowercase();
                                                     s == "verifying" || s == "completed" || snap.progress >= 1.0
                                                 } else {
                                                     false
-                                                }
+                                                };
+                                                (done, Some(dl_id))
                                             } else {
-                                                false
+                                                (false, None)
                                             }
                                         };
+                                        if let Some(dl_id) = injected_dl {
+                                            if apply_corruption_bans(
+                                                inner,
+                                                downloads,
+                                                dl_id,
+                                                file_hash_str,
+                                                address_str,
+                                            )
+                                            .await
+                                            {
+                                                tracing::warn!(
+                                                    "[CORRUPTION_BLACKBOX] Peer {peer} banned for corrupted data — closing transfer",
+                                                    peer = log_peer_addr(target_addr)
+                                                );
+                                                break 'transfer_loop;
+                                            }
+                                        }
                                         pending[pi].recv_to += produced as u64;
 
                                         let elapsed = last_rate_check.elapsed();

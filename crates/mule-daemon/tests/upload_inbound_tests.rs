@@ -1083,7 +1083,7 @@ async fn test_partial_download_is_shared_with_completed_parts_only() {
     {
         let mut dl = state.downloads.lock().await;
         let uuid = uuid::Uuid::parse_str(&id).unwrap();
-        dl.inject_range(&uuid, 0, &vec![0xABu8; 9_728_000]).unwrap();
+        dl.inject_range(&uuid, 0, &vec![0xABu8; 9_728_000], None).unwrap();
     }
 
     // Now the partial share must resolve with only part 0 completed.

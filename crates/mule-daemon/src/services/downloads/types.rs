@@ -173,6 +173,13 @@ pub struct ActiveDownload {
     /// Untrusted AICH master-hash votes: root hash -> masked source IPs
     /// (eMule `CAICHUntrustedHash`; IP masked with `0x00F0FFFF`).
     pub aich_votes: HashMap<[u8; 20], HashSet<u32>>,
+    /// Provenance des blocs reçus par part pour attribuer la corruption à
+    /// l'expéditeur (eMule `m_CorruptionBlackBox`).
+    pub corruption_blackbox: super::corruption_blackbox::CorruptionBlackBox,
+    /// Expéditeurs condamnés par `CorruptionBlackBox::evaluate` (>32 % de
+    /// données corrompues) — vidés par l'appelant qui déconnecte le pair et
+    /// marque ses sources `Rejected` (eMule `Ban`/`AddBannedClient`).
+    pub pending_corruption_bans: Vec<String>,
 }
 
 impl ActiveDownload {

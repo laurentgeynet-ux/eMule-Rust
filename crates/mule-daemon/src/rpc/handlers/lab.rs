@@ -31,7 +31,7 @@ pub async fn handle_inject_range(
         .downloads
         .lock()
         .await
-        .inject_range(&id, offset, &data)?;
+        .inject_range(&id, offset, &data, None)?;
     state.broadcast_download_update(snapshot.clone());
 
     Ok(crate::rpc::handlers::json_value(&snapshot))

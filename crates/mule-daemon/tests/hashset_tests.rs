@@ -53,7 +53,7 @@ fn completed_part_is_marked_verified_when_hash_matches() {
     svc.store_part_hashes_by_hash(&hex::encode(file_hash), &[file_hash])
         .unwrap();
 
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
 
     let verified = svc.db_ref().get_verified_parts(&snap.id).unwrap();
     assert_eq!(verified, vec![0]);
@@ -77,7 +77,7 @@ fn corrupted_part_is_evicted_for_redownload() {
     svc.store_part_hashes_by_hash(&hex::encode(file_hash), &[[0xEE; 16]])
         .unwrap();
 
-    svc.inject_range(&snap.id, 0, &content).unwrap();
+    svc.inject_range(&snap.id, 0, &content, None).unwrap();
 
     // Corrupted part must have been evicted: no covered bytes, nothing verified
     assert_eq!(svc.get_covered_len(&snap.id), Some(0));
@@ -104,9 +104,9 @@ fn evict_corrupted_parts_resets_to_downloading() {
         .unwrap();
 
     // Fill part 0 fully and part 1 partially
-    svc.inject_range(&snap.id, 0, &vec![0u8; 9_728_000])
+    svc.inject_range(&snap.id, 0, &vec![0u8; 9_728_000], None)
         .unwrap();
-    svc.inject_range(&snap.id, 9_728_000, &[0u8; 10]).unwrap();
+    svc.inject_range(&snap.id, 9_728_000, &[0u8; 10], None).unwrap();
     assert_eq!(svc.get_covered_len(&snap.id), Some(9_728_000 + 10));
 
     // Evict part 0
