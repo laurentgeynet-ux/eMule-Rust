@@ -51,7 +51,7 @@ class LabStepCard extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: isCompleted
-                    ? const Icon(Icons.check, size: 14, color: Colors.black)
+                    ? const Icon(Icons.check, size: 14, color: AppColors.onAccent)
                     : Text('$stepNumber',
                         style: const TextStyle(
                           fontSize: 12,

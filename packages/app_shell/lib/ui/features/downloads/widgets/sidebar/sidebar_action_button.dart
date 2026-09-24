@@ -27,7 +27,7 @@ class SidebarActionButton extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 12),
       child: Material(
-        color: Colors.transparent,
+        color: AppColors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),

@@ -43,11 +43,11 @@ class SearchResultRow extends StatelessWidget {
           bottom: BorderSide(color: AppTheme.darkBorder, width: 0.3),
         ),
         color: index.isEven
-            ? Colors.transparent
+            ? AppColors.transparent
             : AppColors.textPrimary.withAlpha(2),
       ),
       child: Material(
-        color: Colors.transparent,
+        color: AppColors.transparent,
         child: InkWell(
           hoverColor: AppTheme.primary.withAlpha(15),
           onTap: () {},

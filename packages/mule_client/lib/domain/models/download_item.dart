@@ -76,7 +76,10 @@ enum DownloadStatus {
 enum DownloadPriority {
   low,
   normal,
-  high;
+  high,
+  /// eMule `PR_AUTO` : la priorité effective est recalculée par le daemon
+  /// selon le nombre de sources (>100 → low, >20 → normal, sinon → high).
+  auto;
 
   String get label {
     switch (this) {
@@ -86,6 +89,8 @@ enum DownloadPriority {
         return 'Normal';
       case DownloadPriority.high:
         return 'High';
+      case DownloadPriority.auto:
+        return 'Auto';
     }
   }
 
@@ -95,6 +100,8 @@ enum DownloadPriority {
         return DownloadPriority.low;
       case 'high':
         return DownloadPriority.high;
+      case 'auto':
+        return DownloadPriority.auto;
       case 'normal':
       default:
         return DownloadPriority.normal;

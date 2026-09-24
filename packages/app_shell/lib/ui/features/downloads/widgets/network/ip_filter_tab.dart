@@ -100,7 +100,7 @@ class IpFilterTab extends StatelessWidget {
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.warningShade700,
-                  foregroundColor: Colors.black,
+                  foregroundColor: AppColors.onAccent,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 12,

@@ -156,6 +156,25 @@ class _SettingsTransfersSectionState
           contentPadding: EdgeInsets.zero,
           dense: true,
           title: Text(
+            l10n.settingsAutoUpPriorityTitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+          ),
+          subtitle: Text(
+            l10n.settingsAutoUpPrioritySub,
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+          ),
+          value:
+              ref.watch(settingsControllerProvider).settings['autoPriorityUploads']
+                  as bool? ??
+              true,
+          onChanged: (v) => ref
+              .read(settingsControllerProvider)
+              .updateSettings({'autoPriorityUploads': v}),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: Text(
             l10n.settingsSwarmHealingTitle,
             style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
           ),

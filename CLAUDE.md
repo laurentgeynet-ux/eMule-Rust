@@ -54,6 +54,8 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\verify_all.ps1
 3. **Sécurité non négociable** : ne jamais affaiblir le pipeline anti-SSRF, l'isolation loopback par défaut, le kill switch atomique ou la pseudonymisation des pairs (`mule-network-policy`). Ne jamais produire de release publique avec `-LabMode` / `--features lab-tools` — `test_packaged_bundle.ps1` vérifie que le flavor `standard` n'expose aucune méthode `lab.*`.
 4. **Windows-first** : instructions et scripts en PowerShell, pas de bash. Chemins avec `\` ou quoting approprié.
 5. **Dépendances** : vérifier `deny.toml` avant d'ajouter une crate ; préférer les dépendances du workspace (`[workspace.dependencies]`).
+6. **Aucune valeur en dur** : couleurs, dimensions et styles Flutter → design tokens (`packages/ui_kit/lib/src/tokens.dart` ou palette de feature `*_colors.dart` — vérifié par `apps/desktop/test/architecture/design_tokens_guard_test.dart`) ; réglages Rust (seuil, timeout, quota, taille, retry) → `DaemonConfig`, `ResourceBudgets`, `mule-protocol/src/limits.rs` ou `const` documentée en tête de fichier. Une valeur = une seule source de vérité.
+7. **Un composant par fichier** : toute fonction, widget ou bloc logique qui peut vivre dans son propre fichier doit l'avoir — pas de fichier monolithique ni de littéral perdu dans la logique. À la création d'un fichier, appliquer les sections « Design tokens et maintenabilité UI » et « Constantes et réglages » ci-dessous.
 
 ## Conventions de code
 
@@ -63,6 +65,75 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\verify_all.ps1
 - **Async** : Tokio ; pas de blocage synchrone dans les tâches async.
 - **Flutter** : Clean Architecture MVVM ; widgets dans `packages/ui_kit`, features dans `app_shell/lib/ui/features/`.
 - **Warnings** : le workspace compile avec `-D warnings` ; aucun warning toléré.
+
+## Design tokens et maintenabilité UI (Flutter)
+
+### Aucune valeur en dur
+
+Toute valeur visuelle (couleur, espacement, rayon, taille de texte, breakpoint, décoration) doit provenir des design tokens — jamais de littéral ad hoc dans une vue ou un widget.
+
+| Besoin | Source obligatoire |
+| :--- | :--- |
+| Espacements, paddings, gaps | `AppSpacing.*` (`packages/ui_kit/lib/src/tokens.dart`) |
+| Rayons de bordure | `AppRadius.*` |
+| Couleurs | `AppColors.*` (sémantique) ou `AppTheme.*` (`src/theme.dart`) |
+| Styles de texte | `AppTextStyles.*` |
+| Breakpoints layout | `AppBreakpoints.*` |
+| Décorations récurrentes | `AppDecorations.*` |
+
+Si le token manque : l'ajouter dans `tokens.dart` (ou `theme.dart` pour la palette de base) avec un nom sémantique, puis l'utiliser. Ne jamais introduire de `Colors.*`, `Color(0x…)`, `EdgeInsets`, `BorderRadius` ou `TextStyle` littéraux dans `app_shell`.
+
+```dart
+// Interdit
+Container(padding: const EdgeInsets.all(16), color: Colors.white12)
+
+// Correct
+Container(padding: AppSpacing.pagePadding, color: AppColors.fillLight)
+```
+
+Seuls fichiers autorisés à contenir des littéraux de couleur : `tokens.dart` et `theme.dart` (ui_kit), plus les palettes de feature nommées `*_colors.dart` (ex. `network_profile_colors.dart`). Cette règle est vérifiée par le test `apps/desktop/test/architecture/design_tokens_guard_test.dart` — ne pas le désactiver ; escape hatch ponctuel : `// design_tokens_guard: ignore` en fin de ligne.
+
+### Clean Architecture MVVM
+
+- Chaque feature vit dans `app_shell/lib/ui/features/<feature>/` avec :
+  - `views/` : composition d'écran, aucune logique métier ni état.
+  - `view_models/` : controllers/stores (état + logique de présentation).
+  - `widgets/` : composants privés de la feature, regroupés en sous-dossiers par usage.
+- Widget réutilisé par plusieurs features → le déplacer dans `packages/ui_kit`.
+- Une `view` n'appelle jamais le daemon directement : toujours via un controller/provider (`app/providers.dart`).
+
+### Anti-fichiers monolithiques
+
+- Un fichier doit rester lisible en entier : toute fonction, widget ou bloc logique qui peut vivre dans son propre fichier doit l'avoir — pas de fichier fourre-tout. Un composant par fichier, nommé d'après sa responsabilité (cf. `downloads/widgets/detail/`, `add_link/`).
+- Cible d'extraction selon le niveau : widget privé → `widgets/` (sous-dossier par usage), helper/formatage partagé → `ui_kit` (`formatters.dart`, `strings.dart`), utilitaire plateforme → `app_shell/lib/core/`.
+- En modifiant un fichier existant trop long ou dupliqué, extraire les parties indépendantes vers leurs fichiers dédiés — la migration fait partie du changement, pas un refactor « plus tard ».
+
+## Constantes et réglages (Rust)
+
+### Aucun magic number dans la logique
+
+Toute valeur de réglage — seuil, timeout, quota, taille, intervalle, nombre de retries — doit être une `const` nommée ou un champ de config, jamais un littéral dans le corps d'une fonction. Un réglage a **une seule source de vérité** : si plusieurs modules en ont besoin, il vit dans le fichier partagé, pas en double.
+
+| Type de valeur | Emplacement obligatoire |
+| :--- | :--- |
+| Réglage opérationnel du daemon (peers, ports, quotas, capacités, répertoires) | `DaemonConfig` (`crates/mule-daemon/src/config.rs`) ; si modifiable à chaud → clé dans `KNOWN_SETTINGS_KEYS` (`rpc/handlers/settings.rs`, ex. `minUploadKbs`) |
+| Budgets et timeouts réseau (connexions, rate limit, buffers) | `ResourceBudgets` (`crates/mule-network-policy/src/budgets.rs`) |
+| Bornes protocolaires / filaires (tailles de frame, tags, parts) | `mule-protocol/src/limits.rs` ou `ed2k/limits.rs` ; struct `*Limits` si la borne est injectable |
+| Constante interne à un seul module | `const` documentée en tête de fichier (ex. `INFLIGHT_BLOCK_TTL_MS`) |
+
+Tolérés : `0`, `1`, indices de boucle, littéraux évidents dans les tests et les formats d'affichage.
+
+```rust
+// Interdit — le « 10 » est introuvable sans lire tout le fichier
+if upload_kbs < 10 { ... }
+
+// Correct — le réglage vit à un seul endroit
+/// Débit d'upload minimal par pair (Ko/s).
+pub const MIN_UPLOAD_KBS: u32 = 10;
+if upload_kbs < MIN_UPLOAD_KBS { ... }
+```
+
+Modifier un réglage ne doit jamais demander de fouiller la logique : on ouvre le fichier de constantes/config, on change la valeur, point.
 
 ## Documentation associée
 

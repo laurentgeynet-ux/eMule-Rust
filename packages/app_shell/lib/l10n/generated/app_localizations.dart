@@ -3684,8 +3684,20 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAutoPrioritySub.
   ///
   /// In fr, this message translates to:
-  /// **'Les fichiers ≥ 1 part eD2K (9,28 Mio) démarrent en priorité « high »'**
+  /// **'DAPPref eMule : les nouveaux téléchargements utilisent la priorité automatique (le nombre de sources détermine basse/normale/haute)'**
   String get settingsAutoPrioritySub;
+
+  /// No description provided for @settingsAutoUpPriorityTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Priorité auto des uploads'**
+  String get settingsAutoUpPriorityTitle;
+
+  /// No description provided for @settingsAutoUpPrioritySub.
+  ///
+  /// In fr, this message translates to:
+  /// **'UAPPref eMule : les nouveaux fichiers partagés utilisent la priorité upload automatique (le nombre de clients en file détermine basse/normale/haute)'**
+  String get settingsAutoUpPrioritySub;
 
   /// No description provided for @settingsSwarmHealingTitle.
   ///

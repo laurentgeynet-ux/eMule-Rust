@@ -38,6 +38,8 @@ class RpcDto {
         return DownloadPriority.low;
       case 'high':
         return DownloadPriority.high;
+      case 'auto':
+        return DownloadPriority.auto;
       case 'normal':
       default:
         return DownloadPriority.normal;

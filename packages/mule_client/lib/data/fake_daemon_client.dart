@@ -938,6 +938,7 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     'serverAutoupdatePath': '',
     'safeConnect': false,
     'autoPriorityNewDownloads': false,
+    'autoPriorityUploads': true,
     'logLevel': 'info',
   };
 

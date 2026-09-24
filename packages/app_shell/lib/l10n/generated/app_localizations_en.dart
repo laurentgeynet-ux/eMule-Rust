@@ -2053,7 +2053,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsAutoPrioritySub =>
-      'Files ≥ 1 eD2K part (9.28 MiB) start at \"high\" priority';
+      'eMule DAPPref: new downloads use automatic priority (the source count picks low/normal/high)';
+
+  @override
+  String get settingsAutoUpPriorityTitle => 'Auto-priority for uploads';
+
+  @override
+  String get settingsAutoUpPrioritySub =>
+      'eMule UAPPref: new shared files use automatic upload priority (queued-client count picks low/normal/high)';
 
   @override
   String get settingsSwarmHealingTitle => 'Swarm healing';

@@ -131,7 +131,7 @@ class DownloadPartMapCard extends StatelessWidget {
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.textPrimary,
                                 shadows: const [
-                                  Shadow(color: Colors.black54, blurRadius: 2),
+                                  Shadow(color: AppColors.shadow, blurRadius: 2),
                                 ],
                               ),
                             ),

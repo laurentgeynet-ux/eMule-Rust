@@ -49,7 +49,7 @@ class _SparklinePainter extends CustomPainter {
       Offset(0, size.height - 0.5),
       Offset(size.width, size.height - 0.5),
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.08)
+        ..color = AppColors.gridLine
         ..strokeWidth = 0.5,
     );
 

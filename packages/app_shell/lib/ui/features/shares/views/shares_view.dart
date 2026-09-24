@@ -54,6 +54,7 @@ class _SharesViewState extends ConsumerState<SharesView> {
     'high',
     'veryhigh',
     'powershare',
+    'auto',
   ];
 
   static String _priorityLabelOf(BuildContext context, String id) =>
@@ -63,7 +64,8 @@ class _SharesViewState extends ConsumerState<SharesView> {
         'normal' => context.l10n.normal,
         'high' => context.l10n.high,
         'veryhigh' => context.l10n.sharePrioVeryHigh,
-        _ => 'PowerShare',
+        'powershare' => 'PowerShare',
+        _ => 'Auto',
       };
 
   static int _byUploadedDesc(SharedFileModel a, SharedFileModel b) =>

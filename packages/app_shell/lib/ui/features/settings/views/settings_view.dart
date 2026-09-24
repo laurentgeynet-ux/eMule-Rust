@@ -132,7 +132,7 @@ class _RailItem extends StatelessWidget {
       child: Material(
         color: selected
             ? AppTheme.primary.withValues(alpha: 0.12)
-            : Colors.transparent,
+            : AppColors.transparent,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
           borderRadius: BorderRadius.circular(6),

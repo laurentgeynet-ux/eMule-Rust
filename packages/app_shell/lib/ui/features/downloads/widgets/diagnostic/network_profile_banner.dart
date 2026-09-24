@@ -7,6 +7,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import '../../../../../l10n/enum_labels.dart';
 import '../../../../../l10n/l10n.dart';
+import 'network_profile_colors.dart';
 
 /// Top banner: strict loopback confinement vs public network profile.
 class NetworkProfileBanner extends StatelessWidget {
@@ -17,12 +18,15 @@ class NetworkProfileBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLoopbackOnly = profile == NetworkProfile.localLab;
-    final cardColor =
-        isLoopbackOnly ? const Color(0x2210B981) : const Color(0x223B82F6);
-    final borderColor =
-        isLoopbackOnly ? const Color(0x6610B981) : const Color(0x663B82F6);
-    final iconColor =
-        isLoopbackOnly ? const Color(0xFF10B981) : const Color(0xFF60A5FA);
+    final cardColor = isLoopbackOnly
+        ? NetworkProfileColors.loopbackFill
+        : NetworkProfileColors.exposedFill;
+    final borderColor = isLoopbackOnly
+        ? NetworkProfileColors.loopbackBorder
+        : NetworkProfileColors.exposedBorder;
+    final iconColor = isLoopbackOnly
+        ? NetworkProfileColors.loopbackAccent
+        : NetworkProfileColors.exposedAccent;
     final title = isLoopbackOnly
         ? context.l10n.diagLoopbackTitle
         : context.l10n.diagNetworkProfile(profile.labelL10n(context.l10n));
@@ -31,10 +35,10 @@ class NetworkProfileBanner extends StatelessWidget {
         : context.l10n.diagPublicSubtitle;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppRadius.mdAll,
         border: Border.all(color: borderColor, width: 0.5),
       ),
       child: Row(

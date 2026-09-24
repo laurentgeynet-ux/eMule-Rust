@@ -75,6 +75,21 @@ abstract final class AppColors {
   static const Color fillLight = Colors.white12;
   static const Color fillMedium = Colors.white24;
 
+  // Utility colors
+  static const Color transparent = Colors.transparent;
+
+  /// Foreground on bright accent fills (check marks, colored buttons).
+  static const Color onAccent = Colors.black;
+
+  /// Dark scrim/overlay fill (log containers, dimmed zones).
+  static const Color overlaySoft = Colors.black26;
+
+  /// Soft drop/text shadow.
+  static const Color shadow = Colors.black54;
+
+  /// Faint grid/chart line (white ≈8%).
+  static const Color gridLine = Color(0x14FFFFFF);
+
   // Brand & accents
   static const Color accent = AppTheme.primary;
   static const Color accentTeal = Colors.tealAccent;

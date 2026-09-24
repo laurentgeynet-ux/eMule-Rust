@@ -88,7 +88,7 @@ class _AuditLogRow extends StatelessWidget {
                 vertical: 2,
               ),
               decoration: BoxDecoration(
-                color: Colors.black26,
+                color: AppColors.overlaySoft,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(

@@ -206,7 +206,7 @@ class DownloadsTopBar extends ConsumerWidget {
     return Tooltip(
       message: killSwitch ? l10n.tooltipPolicyKill : l10n.tooltipSessionTotals,
       child: Material(
-        color: Colors.transparent,
+        color: AppColors.transparent,
         child: InkWell(
           borderRadius: AppRadius.lgAll,
           onTap: () {

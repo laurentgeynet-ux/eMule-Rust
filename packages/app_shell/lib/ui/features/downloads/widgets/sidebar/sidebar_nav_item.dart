@@ -35,7 +35,7 @@ class SidebarNavItem extends StatelessWidget {
       child: Material(
         color: isSelected
             ? AppTheme.primary.withValues(alpha: 0.15)
-            : Colors.transparent,
+            : AppColors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),

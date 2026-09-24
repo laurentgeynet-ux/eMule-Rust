@@ -102,16 +102,19 @@ class DownloadPriorityChip extends StatelessWidget {
   }
 
   /// 3 couleurs franches par priorité : ambre = haute (attention),
-  /// bleu ciel = normale (défaut), ardoise = basse (discrète).
+  /// bleu ciel = normale (défaut), ardoise = basse (discrète),
+  /// vert = auto (recalculée selon le nombre de sources).
   static Color _colorFor(DownloadPriority p) => switch (p) {
         DownloadPriority.high => AppTheme.statusPaused, // Amber 400
         DownloadPriority.normal => AppTheme.statusDownloading, // Sky 400
         DownloadPriority.low => AppTheme.statusQueued, // Slate 400
+        DownloadPriority.auto => AppTheme.statusCompleted, // Emerald 400
       };
 
   static IconData _iconFor(DownloadPriority p) => switch (p) {
         DownloadPriority.high => Icons.keyboard_double_arrow_up_rounded,
         DownloadPriority.normal => Icons.remove_rounded,
         DownloadPriority.low => Icons.keyboard_double_arrow_down_rounded,
+        DownloadPriority.auto => Icons.autorenew_rounded,
       };
 }

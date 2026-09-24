@@ -122,7 +122,7 @@ class RateLimitsTab extends StatelessWidget {
               onPressed: onSave,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.warningShade700,
-                foregroundColor: Colors.black,
+                foregroundColor: AppColors.onAccent,
               ),
               icon: const Icon(Icons.save, size: 16),
               label: Text(l10n.saveLimits,

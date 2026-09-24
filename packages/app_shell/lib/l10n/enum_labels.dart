@@ -93,6 +93,8 @@ extension DownloadPriorityL10n on DownloadPriority {
         return l10n.normal;
       case DownloadPriority.high:
         return l10n.high;
+      case DownloadPriority.auto:
+        return 'Auto';
     }
   }
 }
