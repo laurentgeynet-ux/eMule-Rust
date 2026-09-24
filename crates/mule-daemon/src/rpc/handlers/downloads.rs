@@ -478,6 +478,43 @@ pub async fn handle_import_part_met(
     Ok(crate::rpc::handlers::json_value(&result))
 }
 
+/// `downloads.importCancelledMet` — `CKnownFileList::LoadCancelled` :
+/// imports an eMule `cancelled.met` file. `0x0F` masked entries keep
+/// their seed; legacy `0x0E` real hashes are masked under ours.
+/// Params: `metPath` (required).
+pub async fn handle_import_cancelled_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let met_path = params
+        .as_ref()
+        .and_then(|p| p["metPath"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'metPath'"))?;
+    let report = state
+        .downloads
+        .lock()
+        .await
+        .import_cancelled_met(std::path::Path::new(met_path))?;
+    Ok(crate::rpc::handlers::json_value(&report))
+}
+
+/// `downloads.isCancelled` — `IsCancelledFileByID` : reports whether an
+/// eD2K hash belongs to the cancelled set (search-result marking; it is
+/// not a download block, like eMule).
+/// Params: `fileHash` (hex, required).
+pub async fn handle_is_cancelled(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let file_hash = params
+        .as_ref()
+        .and_then(|p| p["fileHash"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'fileHash'"))?;
+    let cancelled = state.downloads.lock().await.is_cancelled_file(file_hash)?;
+    let total = state.downloads.lock().await.cancelled_count()?;
+    Ok(json!({ "cancelled": cancelled, "cancelledCount": total }))
+}
+
 #[tracing::instrument(skip_all, fields(download_id = tracing::field::Empty))]
 pub async fn handle_retry_connection(
     state: &AppState,

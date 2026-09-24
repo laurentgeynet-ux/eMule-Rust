@@ -9,6 +9,16 @@ use uuid::Uuid;
 use super::{db_err, types::{now_ms, ActiveDownload}};
 use crate::error::DaemonError;
 
+/// eMule `IsRememberingCancelledFiles`/`IsRememberingDownloadedFiles`
+/// gate — `true` unless the setting is explicitly `0`/`false`/`off`.
+pub fn setting_enabled(db: &Database, key: &str) -> bool {
+    db.get_setting(key)
+        .ok()
+        .flatten()
+        .map(|v| !matches!(v.trim().to_lowercase().as_str(), "0" | "false" | "off"))
+        .unwrap_or(true)
+}
+
 pub fn record_history_event(
     db: &mut Database,
     download: &Download,
@@ -27,13 +37,7 @@ pub fn record_history_event(
         _ => None,
     };
     if let Some(key) = gate {
-        let enabled = db
-            .get_setting(key)
-            .ok()
-            .flatten()
-            .map(|v| !matches!(v.trim().to_lowercase().as_str(), "0" | "false" | "off"))
-            .unwrap_or(true);
-        if !enabled {
+        if !setting_enabled(db, key) {
             return;
         }
     }

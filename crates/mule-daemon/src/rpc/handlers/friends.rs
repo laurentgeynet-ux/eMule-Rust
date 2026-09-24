@@ -64,3 +64,28 @@ pub async fn handle_friends_remove(
         .set_friend(&format!("uh:{user_hash}"), false);
     Ok(json!({ "ok": true, "userHash": user_hash }))
 }
+
+/// `friends.importEmfriendsMet` — `CClientList::LoadFriendsList` :
+/// imports an `emfriends.met` file. Records without user hash are
+/// reported but skipped (our friend slot is hash-keyed, like eMule's
+/// `IsFriend` lookup).
+/// Params: `metPath` (required).
+pub async fn handle_friends_import_emfriends_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let met_path = params
+        .as_ref()
+        .and_then(|p| p["metPath"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'metPath'"))?;
+    let report = state
+        .downloads
+        .lock()
+        .await
+        .import_emfriends_met(std::path::Path::new(met_path))?;
+    let upload_manager = state.inbound_listener.upload_manager();
+    for user_hash in &report.user_hashes {
+        upload_manager.set_friend(&format!("uh:{user_hash}"), true);
+    }
+    Ok(crate::rpc::handlers::json_value(&report))
+}

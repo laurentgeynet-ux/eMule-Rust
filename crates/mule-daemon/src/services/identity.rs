@@ -68,6 +68,23 @@ pub struct IdentityStatus {
     pub quarantined_key: Option<String>,
 }
 
+/// `userhash.dat` — imported eMule `m_abyUserHash` (16 raw bytes), kept
+/// separate from `cryptkey.dat` like eMule keeps it in `preferences.dat`.
+const USERHASH_FILENAME: &str = "userhash.dat";
+
+/// Outcome of `import_emule_identity` — eMule `cryptkey.dat` +
+/// `preferences.dat` migration.
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdentityImportReport {
+    /// `cryptkey.dat` imported (RSA-384 private key, credit continuity).
+    pub key_imported: bool,
+    /// `preferences.dat` user hash imported and activated.
+    pub userhash_imported: bool,
+    /// Active user hash after import (hex).
+    pub userhash: Option<String>,
+}
+
 /// Service managing the daemon's legacy eMule SUI identity.
 ///
 /// The private key is a real RSA-384 key stored in `cryptkey.dat`
@@ -85,6 +102,9 @@ pub struct IdentityService {
     public_key: Vec<u8>,
     pubkey_hash: String,
     quarantined_key: Option<String>,
+    /// Imported eMule user hash (`preferences.dat`); when present it wins
+    /// over the derived `MD4(pubkey)` hash — eMule credits are keyed on it.
+    userhash_override: Option<[u8; 16]>,
 }
 
 // Debug intentionally omits private key material.
@@ -156,6 +176,7 @@ impl IdentityService {
 
         let public_key = legacy_key.as_ref().map(public_key_wire).unwrap_or_default();
         let pubkey_hash = hex::encode(Md4::digest(&public_key));
+        let userhash_override = Self::load_userhash_override(data_dir);
 
         tracing::info!(
             "[SUI] Identity ready (sui={}, pubkey md4={}...)",
@@ -169,14 +190,44 @@ impl IdentityService {
             public_key,
             pubkey_hash,
             quarantined_key,
+            userhash_override,
         }
     }
 
+    /// Reads `data_dir/userhash.dat` (16 raw bytes). A degenerate or
+    /// malformed file is ignored with a warning — never destroyed, the
+    /// user may still hold a copy of their eMule `preferences.dat`.
+    fn load_userhash_override(data_dir: &Path) -> Option<[u8; 16]> {
+        let path = data_dir.join(USERHASH_FILENAME);
+        let raw = std::fs::read(&path).ok()?;
+        let Ok(bytes) = <[u8; 16]>::try_from(raw.as_slice()) else {
+            tracing::warn!(
+                "[SUI] {:?} malformed ({} bytes, expected 16) — ignored",
+                path,
+                raw.len()
+            );
+            return None;
+        };
+        if mule_format::met::is_bad_hash(&bytes) {
+            tracing::warn!("[SUI] {:?} holds a degenerate user hash — ignored", path);
+            return None;
+        }
+        tracing::info!("[SUI] Imported eMule user hash loaded from {:?}", path);
+        Some(bytes)
+    }
+
     /// Generates a fresh `cryptkey.dat`, replacing the current key.
-    /// All credits tied to the previous identity become unclaimable.
+    /// All credits tied to the previous identity become unclaimable —
+    /// including an imported eMule user hash, removed with the old key.
     pub fn rotate_key(data_dir: &Path) -> std::io::Result<Self> {
         let key_path = data_dir.join(cryptkey::CRYPTKEY_FILENAME);
+        let userhash_path = data_dir.join(USERHASH_FILENAME);
         let key = cryptkey::generate_cryptkey(data_dir).map_err(std::io::Error::other)?;
+        // New identity ⇒ the imported `preferences.dat` hash no longer
+        // applies (it belongs to the eMule key we just replaced).
+        if userhash_path.exists() {
+            let _ = std::fs::remove_file(&userhash_path);
+        }
         let public_key = public_key_wire(&key);
         let pubkey_hash = hex::encode(Md4::digest(&public_key));
         tracing::warn!(
@@ -189,7 +240,69 @@ impl IdentityService {
             public_key,
             pubkey_hash,
             quarantined_key: None,
+            userhash_override: None,
         })
+    }
+
+    /// Imports an eMule identity: `cryptkey.dat` (RSA-384 private key)
+    /// and/or the `preferences.dat` user hash. Both files preserve the
+    /// credits peers granted to that identity — eMule keys credits on
+    /// `m_abyUserHash` and verifies them with the SUI pubkey.
+    ///
+    /// `replace` is required when the destination files already exist —
+    /// overwriting an identity discards the credits tied to it.
+    pub fn import_emule_identity(
+        data_dir: &Path,
+        cryptkey_src: Option<&Path>,
+        preferences_src: Option<&Path>,
+        replace: bool,
+    ) -> Result<IdentityImportReport, crate::error::DaemonError> {
+        use crate::error::DaemonError;
+        let key_path = data_dir.join(cryptkey::CRYPTKEY_FILENAME);
+        let userhash_path = data_dir.join(USERHASH_FILENAME);
+
+        let mut report = IdentityImportReport::default();
+
+        if let Some(src) = cryptkey_src {
+            if key_path.exists() && !replace {
+                return Err(DaemonError::Business(
+                    "cryptkey.dat already exists — pass replace:true to overwrite the current identity"
+                        .to_string(),
+                ));
+            }
+            // Validate before touching anything — eMule `cryptkey.dat` is
+            // `Base64(PKCS#1 DER)` RSA-384.
+            let raw = std::fs::read(src)?;
+            let key = cryptkey::parse_cryptkey_bytes(&raw)
+                .map_err(|e| DaemonError::Business(format!("cryptkey.dat: {e}")))?;
+            cryptkey::save_cryptkey(data_dir, &key)
+                .map_err(|e| DaemonError::Business(format!("writing cryptkey.dat: {e}")))?;
+            report.key_imported = true;
+        }
+
+        if let Some(src) = preferences_src {
+            if userhash_path.exists() && !replace {
+                return Err(DaemonError::Business(
+                    "userhash.dat already exists — pass replace:true to overwrite the imported user hash"
+                        .to_string(),
+                ));
+            }
+            let prefs = mule_format::met::PreferencesDat::open(src)
+                .map_err(|e| DaemonError::Business(format!("preferences.dat: {e}")))?;
+            std::fs::create_dir_all(data_dir)?;
+            let tmp = data_dir.join(format!("{USERHASH_FILENAME}.tmp"));
+            {
+                use std::io::Write;
+                let mut f = std::fs::File::create(&tmp)?;
+                f.write_all(&prefs.user_hash)?;
+                f.sync_all()?;
+            }
+            std::fs::rename(&tmp, &userhash_path)?;
+            report.userhash_imported = true;
+            report.userhash = Some(hex::encode(prefs.user_hash));
+        }
+
+        Ok(report)
     }
 
     /// Whether a usable legacy RSA private key is loaded.
@@ -224,10 +337,16 @@ impl IdentityService {
         mule_crypto::legacy_sui::sign_sui_payload(key, payload)
     }
 
-    /// Returns the 16-byte user hash, marked with eMule magic bytes.
-    /// Note: eMule derives the user hash randomly at first run (preferences.dat);
-    /// eMule-Rust derives it from the identity so a rotated key detaches credits.
+    /// Returns the 16-byte user hash.
+    /// Order (`Preferences.cpp:1484-1492`): the imported eMule
+    /// `preferences.dat` hash wins verbatim — it already carries the
+    /// marker bytes and it is the key peers store credits under.
+    /// Otherwise the derived `MD4(pubkey)` hash marked with eMule magic
+    /// bytes (a rotated key detaches credits).
     pub fn user_hash(&self) -> [u8; 16] {
+        if let Some(imported) = self.userhash_override {
+            return imported;
+        }
         let hash = Md4::digest(&self.public_key);
         let mut out = [0u8; 16];
         out.copy_from_slice(&hash[..16]);

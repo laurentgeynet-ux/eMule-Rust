@@ -393,6 +393,43 @@ pub async fn handle_identity_rotate(state: &AppState) -> Result<Value, JsonRpcEr
     Ok(crate::rpc::handlers::json_value(&status))
 }
 
+/// `identity.importEmuleIdentity` — imports an eMule identity so the
+/// credits peers granted to it carry over (`CPreferences::Init` +
+/// `CEncryption` cryptkey):
+/// - `cryptkeyPath` — eMule `cryptkey.dat` (Base64 RSA-384 private key).
+/// - `preferencesDatPath` — eMule `preferences.dat`; only the
+///   `Preferences_Ext_Struct` user hash prefix is read
+///   (`Preferences.h:78-86`).
+/// - `replace` — required when the destination files already exist;
+///   overwriting an identity discards the credits tied to it.
+///
+/// The new identity is propagated live (hello userhash, SUI key, KadID).
+pub async fn handle_identity_import_emule(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let params = params.as_ref();
+    let cryptkey = params
+        .and_then(|p| p["cryptkeyPath"].as_str())
+        .map(std::path::PathBuf::from);
+    let preferences = params
+        .and_then(|p| p["preferencesDatPath"].as_str())
+        .map(std::path::PathBuf::from);
+    if cryptkey.is_none() && preferences.is_none() {
+        return Err(JsonRpcError::invalid_params(
+            "Provide 'cryptkeyPath' and/or 'preferencesDatPath'",
+        ));
+    }
+    let replace = params
+        .and_then(|p| p["replace"].as_bool())
+        .unwrap_or(false);
+    let report = state
+        .import_emule_identity(cryptkey.as_deref(), preferences.as_deref(), replace)
+        .await
+        .map_err(JsonRpcError::business)?;
+    Ok(crate::rpc::handlers::json_value(&report))
+}
+
 pub async fn handle_credits_list(
     state: &AppState,
     params: Option<Value>,

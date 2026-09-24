@@ -681,3 +681,75 @@ de la source (`lowid:<id>` et/ou `ip:port`) via
 - **Backoff vs deadline sur mort en transfert** : une déconnexion en
   `DS_DOWNLOADING` repasse `DS_ONQUEUE` chez eMule (reask à deadline) ;
   nous gardons `Failed`+backoff (cadence comparable ≤ 20 min).
+
+## 16. Migration eMule — `emfriends.met`, `cancelled.met`, identité (passe 10)
+
+Trois formats de migration complètent `known.met` (§14) : amis, fichiers
+annulés, et identité (clé RSA + user hash) — la continuité des crédits.
+
+### `emfriends.met` → `friends`
+
+- Parseur `mule_format::met::emfriends` fidèle à `CFriend::LoadFromFile`
+  (`Friend.h:42-43`) : record `[userhash 16][lastUsedIP u32][lastUsedPort
+  u16][lastSeen u32][lastChatted u32][tagCount u32][tags]` ; `FF_NAME`
+  (0x01, première valeur retenue — `m_strName.IsEmpty()` eMule) et
+  `FF_KADID` (0x02) reconnus, autres tags ignorés.
+- `friends.importEmfriendsMet {metPath}` : records `!HasUserhash`
+  (amis IP-only) rapportés mais non importés — notre slot ami est
+  indexé par hash, comme la recherche `IsFriend` eMule. `add_friend`
+  est un upsert : réimport rafraîchit le nom (`updated`), hashes
+  enregistrés auprès de l'upload manager (`set_friend`).
+
+### `cancelled.met` → `cancelled_files`
+
+- Parseur `mule_format::met::cancelled_met` fidèle à `LoadCancelled`
+  (`KnownFileList.cpp:167-194`) : `0x0F` = `[seed u32][count u32]
+  {[hash 16][tagCount u8][tags]}`, `0x0E` déprécié = hashes réels.
+  `cancelled_mask(seed, hash)` = `MD5(seed_le || hash)` — eMule ne
+  stocke jamais le hash réel.
+- Table `cancelled_files(masked_hash, seed)` : le seed **suit chaque
+  entrée** car un fichier importé garde son `m_dwCancelledFilesSeed` ;
+  les entrées `0x0E` sont masquées sous **notre** seed à l'import —
+  conversion identique au chargement eMule.
+- `IsCancelledFileByID` → `is_cancelled_file` : recalcule le masque
+  sous chaque seed connu ; **toujours faux** si `remember_cancelled`
+  est off (`IsRememberingCancelledFiles` eMule — même gate que
+  l'historique).
+- `AddCancelledFileID` → `remove_download` enregistre le hash masqué
+  des téléchargements **non terminés** (`CPartFile::Delete` ne
+  s'applique pas aux PartFile finalisés chez eMule).
+- Sémantique eMule respectée : « cancelled » est un **marquage** des
+  résultats de recherche (`downloads.isCancelled`), pas un blocage.
+
+### Identité — `cryptkey.dat` + `preferences.dat`
+
+- eMule génère le user hash **aléatoirement** et le persiste dans
+  `preferences.dat` (`Preferences_Ext_Struct` : `[version u8][userhash
+  16][WINDOWPLACEMENT]`, `Preferences.h:78-86`) — indépendant de la clé
+  RSA. Notre user hash dérivé (`MD4(pubkey)` + magic bytes 0x0E/0x6F)
+  ne peut donc pas retrouver un hash eMule existant : l'import lit les
+  deux fichiers.
+- `mule_format::met::preferences_dat` : extraction bornée du user hash
+  (17 premiers octets) + `is_bad_hash` (`OtherFunctions.h:380-383`) —
+  un hash dégénéré stocké = fichier corrompu, rejeté.
+- `identity.importEmuleIdentity {cryptkeyPath?, preferencesDatPath?,
+  replace?}` : `cryptkey.dat` validé (`Base64(PKCS#1 DER)` RSA-384,
+  même format que le nôtre — copie atomique) ; user hash →
+  `userhash.dat` (16 octets bruts). `replace:true` requis si les
+  fichiers existent — écraser une identité perd ses crédits.
+- `IdentityService::user_hash()` : l'override importé gagne (verbatim —
+  les marqueurs eMule sont déjà dedans et c'est la clé des crédits) ;
+  sinon le hash dérivé. `rotate_key` **supprime** `userhash.dat` : le
+  hash importé appartient à la clé eMule remplacée.
+- Propagation à chaud identique à `rotate_identity` (`propagate_identity`
+  factorisé) : hellos, challenges SUI, firewall Kad, KadID — les
+  crédits eMule sont valides sans redémarrage.
+
+### Écarts assumés
+
+- `emfriends.met` : `lastUsedIP/Port`, `lastSeen`, `lastChatted`,
+  `kadId` lus mais non persistés — notre `Friend` ne les modélise pas.
+- `preferences.dat` : seul le user hash est importé — le reste du
+  struct (placement fenêtre) est sans valeur hors eMule.
+- `is_cancelled_file` non câblé au marquage des résultats de recherche
+  (GUI côté client — l'API `downloads.isCancelled` suffit).

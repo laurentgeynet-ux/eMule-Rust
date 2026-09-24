@@ -9,6 +9,7 @@ description = "Pure parser and format library for eD2K hashes, AICH Merkle trees
 [dependencies]
 thiserror.workspace = true
 md4.workspace = true
+md-5.workspace = true
 sha1.workspace = true
 data-encoding.workspace = true
 url.workspace = true
@@ -17,3 +18,4 @@ hex.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+md-5.workspace = true

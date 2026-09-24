@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+use super::cancelled_files;
 use super::db_err;
 use super::history_categories::record_history_event;
 use super::peers_servers;
@@ -337,6 +338,13 @@ pub fn remove_download(
     };
 
     if let Some((dl, transferred, attempts, resumes, verif)) = history_data {
+        // eMule `CPartFile::Delete` → `AddCancelledFileID` : l'annulation
+        // d'un téléchargement en cours enregistre son hash masqué dans
+        // `m_mapCancelledFiles`. Les téléchargements terminés sortent du
+        // scope (`Delete` ne s'applique pas aux PartFile finalisés).
+        if dl.status != DownloadStatus::Completed {
+            cancelled_files::record_cancelled_file(db, &dl.ed2k_hash.0)?;
+        }
         record_history_event(
             db,
             &dl,

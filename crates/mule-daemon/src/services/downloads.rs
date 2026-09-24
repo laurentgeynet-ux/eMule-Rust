@@ -12,7 +12,9 @@ use uuid::Uuid;
 use crate::error::DaemonError;
 use crate::services::DaemonEvent;
 
+pub mod cancelled_files;
 pub mod corruption_blackbox;
+pub mod emfriends_import;
 pub mod history_categories;
 pub mod operations;
 pub mod part_met;
@@ -1667,6 +1669,40 @@ impl DownloadService {
 
     pub fn list_friends(&self) -> Result<Vec<mule_core::model::Friend>, DaemonError> {
         self.db.list_friends().map_err(Into::into)
+    }
+
+    /// `CClientList::LoadFriendsList` — imports an `emfriends.met` file.
+    /// Returns the report; the caller registers each `user_hashes` entry
+    /// with the upload manager.
+    pub fn import_emfriends_met(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<emfriends_import::EmfriendsImportReport, DaemonError> {
+        emfriends_import::import_emfriends_met(&mut self.db, path)
+    }
+
+    /// `IsCancelledFileByID` — `true` when `ed2k_hash` (hex) is in the
+    /// cancelled set (`remember_cancelled` gate, like eMule).
+    pub fn is_cancelled_file(&self, ed2k_hash: &str) -> Result<bool, DaemonError> {
+        let Some(hash) = cancelled_files::parse_hash16(ed2k_hash) else {
+            return Ok(false);
+        };
+        cancelled_files::is_cancelled_file(&self.db, &hash)
+    }
+
+    /// `CKnownFileList::LoadCancelled` — imports a `cancelled.met` file.
+    pub fn import_cancelled_met(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<cancelled_files::CancelledImportReport, DaemonError> {
+        cancelled_files::import_cancelled_met(&mut self.db, path)
+    }
+
+    /// Number of masked hashes in the cancelled set (inspection).
+    pub fn cancelled_count(&self) -> Result<usize, DaemonError> {
+        self.db
+            .cancelled_count()
+            .map_err(db_err("counting cancelled"))
     }
 
     pub fn db_ref(&self) -> &Database {

@@ -933,21 +933,7 @@ impl AppState {
     ) -> Result<crate::services::identity::IdentityStatus, String> {
         let new_id = crate::services::IdentityService::rotate_key(&self.config.data_dir)
             .map_err(|e| format!("Failed to rotate identity key: {e}"))?;
-        let user_hash = new_id.user_hash();
-        let pubkey = new_id.has_key().then(|| new_id.public_key_bytes().to_vec());
-        {
-            let mut guard = self.identity.lock().await;
-            *guard = new_id;
-        }
-        self.inbound_listener
-            .set_identity_material(user_hash, pubkey);
-        self.kad.set_fw_check_identity(user_hash);
-        let new_kad_id = self.kad.rotate_local_id().await;
-        tracing::info!(
-            "[IDENTITY] Rotation effectuée — nouveau user_hash {} / KadID {}",
-            hex::encode(user_hash),
-            new_kad_id
-        );
+        self.propagate_identity(new_id, "Rotation").await;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -961,6 +947,55 @@ impl AppState {
             tracing::warn!("[IDENTITY] Échec persistance last_rotation: {e}");
         }
         Ok(self.identity.lock().await.status())
+    }
+
+    /// Installe `new_id` et la propage à chaud aux consommateurs
+    /// d'identité : listener entrant (hellos + challenges SUI), identité
+    /// firewall Kad, table de routage Kad (KadID dérivé du user_hash).
+    /// Les sessions déjà établies conservent leur identité d'origine.
+    async fn propagate_identity(
+        &self,
+        new_id: crate::services::IdentityService,
+        reason: &str,
+    ) {
+        let user_hash = new_id.user_hash();
+        let pubkey = new_id.has_key().then(|| new_id.public_key_bytes().to_vec());
+        {
+            let mut guard = self.identity.lock().await;
+            *guard = new_id;
+        }
+        self.inbound_listener
+            .set_identity_material(user_hash, pubkey);
+        self.kad.set_fw_check_identity(user_hash);
+        let new_kad_id = self.kad.rotate_local_id().await;
+        tracing::info!(
+            "[IDENTITY] {reason} effectuée — nouveau user_hash {} / KadID {}",
+            hex::encode(user_hash),
+            new_kad_id
+        );
+    }
+
+    /// Importe une identité eMule (`cryptkey.dat` + `preferences.dat`)
+    /// puis la propage à chaud comme `rotate_identity` — les crédits
+    /// associés à l'identité eMule deviennent immédiatement valides.
+    pub async fn import_emule_identity(
+        &self,
+        cryptkey_src: Option<&std::path::Path>,
+        preferences_src: Option<&std::path::Path>,
+        replace: bool,
+    ) -> Result<crate::services::identity::IdentityImportReport, String> {
+        let mut report = crate::services::IdentityService::import_emule_identity(
+            &self.config.data_dir,
+            cryptkey_src,
+            preferences_src,
+            replace,
+        )
+        .map_err(|e| e.to_string())?;
+        let new_id = crate::services::IdentityService::load_or_generate(&self.config.data_dir);
+        self.propagate_identity(new_id, "Import").await;
+        // Le hash actif après rechargement (importé ou dérivé de la clé).
+        report.userhash = Some(hex::encode(self.identity.lock().await.user_hash()));
+        Ok(report)
     }
 
     /// Rotation périodique de l'identité (`identityRotationHours`, défaut 0 =

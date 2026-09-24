@@ -16,6 +16,7 @@ use crate::persistence::traits::{
 };
 use crate::ranges::RangeSet;
 
+pub mod cancelled;
 pub mod categories;
 pub mod credits;
 pub mod downloads;
@@ -545,6 +546,45 @@ impl Database {
     /// Lists all friends.
     pub fn list_friends(&self) -> Result<Vec<Friend>, CoreError> {
         friends::list_friends(&self.conn)
+    }
+
+    // ── Cancelled files (eMule `m_mapCancelledFiles`) ───────────────────────
+
+    /// Local `m_dwCancelledFilesSeed` — lazily generated and persisted,
+    /// like eMule (`Preferences.cpp` writes it into `cancelled.met` only,
+    /// but persisting it in settings keeps every mask reproducible).
+    pub fn get_or_create_cancelled_seed(&mut self) -> Result<u32, CoreError> {
+        if let Some(raw) = self.get_setting(cancelled::CANCELLED_SEED_KEY)? {
+            if let Ok(seed) = raw.parse::<u32>() {
+                if seed != 0 {
+                    return Ok(seed);
+                }
+            }
+        }
+        // eMule: `theApp.GetRandomUInt32() % 0xFFFFFFFE + 1`.
+        let seed = (rand::random::<u32>() % 0xFFFF_FFFE) + 1;
+        self.set_setting(cancelled::CANCELLED_SEED_KEY, &seed.to_string())?;
+        Ok(seed)
+    }
+
+    /// Records a masked hash under `seed` (idempotent).
+    pub fn add_cancelled_hash(&mut self, seed: u32, masked_hash_hex: &str) -> Result<(), CoreError> {
+        cancelled::add_cancelled_hash(&mut self.conn, seed, masked_hash_hex)
+    }
+
+    /// `true` when `masked_hash_hex` exists under `seed`.
+    pub fn is_cancelled_masked(&self, seed: u32, masked_hash_hex: &str) -> Result<bool, CoreError> {
+        cancelled::is_cancelled_masked(&self.conn, seed, masked_hash_hex)
+    }
+
+    /// All distinct seeds present in the cancelled set.
+    pub fn cancelled_seeds(&self) -> Result<Vec<u32>, CoreError> {
+        cancelled::distinct_seeds(&self.conn)
+    }
+
+    /// Number of stored masked hashes.
+    pub fn cancelled_count(&self) -> Result<usize, CoreError> {
+        cancelled::cancelled_count(&self.conn)
     }
 
     // ── Kad Contacts & Routing ──────────────────────────────────────────────

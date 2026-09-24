@@ -29,8 +29,10 @@ pub use fixtures::{
     REPEATING_0_TO_255,
 };
 pub use met::{
-    read_tag, CountingReader, KnownFileRecord, KnownMetFile, MetError, PartMetFile, ServerEntry,
-    ServerMetFile, Tag, MetTagValue, MAX_KNOWN_RECORDS, MAX_PART_HASH_COUNT, MAX_SERVER_COUNT,
+    cancelled_mask, read_tag, CancelledEntry, CancelledMetFile, CountingReader, EmfriendsMetFile,
+    EmfriendsRecord, KnownFileRecord, KnownMetFile, MetError, PartMetFile, ServerEntry,
+    ServerMetFile, Tag, MetTagValue, CANCELLED_VERSION, MAX_KNOWN_RECORDS, MAX_PART_HASH_COUNT,
+    MAX_SERVER_COUNT,
     MET_HEADER, MET_HEADER_I64TAGS, PARTFILE_SPLITTEDVERSION, PARTFILE_VERSION,
     PARTFILE_VERSION_LARGEFILE, PR_AUTO, PR_HIGH, PR_LOW, PR_NORMAL, PR_VERYHIGH, PR_VERYLOW,
     SERVER_MET_VERSION, SN_DESCRIPTION, SN_DYNIP, SN_FAIL, SN_HARDFILES, SN_IP, SN_LASTPING,

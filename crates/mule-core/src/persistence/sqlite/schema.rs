@@ -207,6 +207,15 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
             name TEXT NOT NULL DEFAULT '',
             added_at_unix_ms INTEGER NOT NULL
         );
+
+        -- eMule `m_mapCancelledFiles` (`KnownFileList.cpp:384-411`) :
+        -- hash masqués `MD5(seed || file_hash)` — le hash réel n'est
+        -- jamais stocké (privacy), le seed suit chaque entrée car les
+        -- fichiers importés gardent leur propre `m_dwCancelledFilesSeed`.
+        CREATE TABLE IF NOT EXISTS cancelled_files (
+            masked_hash TEXT PRIMARY KEY,
+            seed INTEGER NOT NULL
+        );
         ",
     )?;
 

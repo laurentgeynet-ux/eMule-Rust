@@ -50,6 +50,8 @@ pub async fn handle_request(
         "downloads.setMaxSources" => handle_set_max_sources(state, req.params).await,
         "downloads.inspectPartMet" => handle_inspect_part_met(state, req.params).await,
         "downloads.importPartMet" => handle_import_part_met(state, req.params).await,
+        "downloads.importCancelledMet" => handle_import_cancelled_met(state, req.params).await,
+        "downloads.isCancelled" => handle_is_cancelled(state, req.params).await,
         "downloads.retryConnection" | "downloads.retry" => {
             handle_retry_connection(state, req.params).await
         }
@@ -117,11 +119,13 @@ pub async fn handle_request(
         "uploads.cancel" => handle_uploads_cancel(state, req.params).await,
         "identity.status" => handle_identity_status(state).await,
         "identity.rotate" => handle_identity_rotate(state).await,
+        "identity.importEmuleIdentity" => handle_identity_import_emule(state, req.params).await,
         "credits.list" => handle_credits_list(state, req.params).await,
         "credits.stats" => handle_credits_stats(state).await,
         "friends.list" => handle_friends_list(state).await,
         "friends.add" => handle_friends_add(state, req.params).await,
         "friends.remove" => handle_friends_remove(state, req.params).await,
+        "friends.importEmfriendsMet" => handle_friends_import_emfriends_met(state, req.params).await,
         "upnp.status" => handle_upnp_status(state).await,
         "upnp.mapPorts" => handle_upnp_map_ports(state, req.params).await,
         "upnp.unmapPorts" => handle_upnp_unmap_ports(state).await,
