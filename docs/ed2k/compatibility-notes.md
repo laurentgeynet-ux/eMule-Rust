@@ -279,3 +279,92 @@ fidélité (`AUD-Bxx` — référence `srchybrid`, eMule 0.72a) :
   firewall UDP Kad est `Firewalled` (`CKademlia::IsFirewalled()`) —
   alors `connect_back` compose le pair en sortant
   (`TryToConnect`) et sert la session comme un inbound.
+
+## 9. Bande passante / USS (`UploadBandwidthThrottler.cpp`, `UploadQueue.cpp`, `LastCommonRouteFinder.cpp`) — audit phase B, passe 4
+
+### Fidélité vérifiée (aucune correction nécessaire)
+
+- **Loi de contrôle USS** (`services/uss.rs`) : `soll_ping`, `hping`,
+  diviseurs, médiane glissante, baseline de 10 sondes, plancher 20 ms,
+  tolérance %/ms, clamps min/max, re-baselining après 60 échecs —
+  conforme à `LastCommonRouteFinder.cpp` (`Ping()` + thread de contrôle).
+- **Cadence de sondage** : ~1 % du débit upload, bornée 125–1000 ms
+  (identique à eMule).
+- **Découverte de cible** : traceroute ICMP à TTL croissants via
+  `IcmpSendEcho` (API non privilégiée Windows, comme eMule), dernier saut
+  commun aux routes — `uss_icmp::last_common_host`.
+- **`AcceptNewClient`** (`upload_queue.rs::can_open_slot`) : veto USS,
+  4 slots garantis, formule du débit cible par client
+  (`GetTargetClientDataRate`), garde débit mesuré vs débit minimal —
+  porté fidèlement.
+- **`MinUpload`** : `MIN_UPLOAD_BPS = 1024` = défaut eMule `MinUpload`
+  (1 Ko/s, clampé ≥ 1 dans `Preferences.cpp:1942`).
+- **Ratio UL/DL** (`emule_ud_ratio`) : coefficients 3/4/5 et seuil
+  20 Ko/s — miroir de `GetMaxDownloadInBytesPerSec`.
+- **USS désactivé → restauration de la limite manuelle** sur le bucket
+  upload ; bucket download réduit via le ratio à chaque tick USS.
+
+### Corrections d'alignement
+
+- **Pacing `ForceNewClient`** (`UploadQueue.cpp:417-421`) : 1 s minimum
+  entre deux ouvertures de slot tant que le débit mesuré < 100 Ko/s
+  (`m_nLastStartUpload` porté par `last_upload_start_ms`) — avant, une
+  file pleine ouvrait tous les slots permis en rafale au démarrage.
+  Jamais de temporisation sous `MIN_UP_CLIENTS_ALLOWED` (2) ni au-dessus
+  de 100 Ko/s mesurés. Appliqué aux deux chemins d'ouverture
+  (`AddClientToQueue` direct + promotion depuis la file).
+
+### Écarts assumés
+
+- **Pas de `GetSlotLimit` / round-robin par tick** : eMule ordonnance
+  l'envoi socket par socket dans une fenêtre temporelle de 100 ms
+  (jusqu'à `GetSlotLimit()` sockets standard par cycle, paquets
+  ≥ 536/1300 o). Notre modèle : writers par connexion drainant un
+  token bucket global partagé — saturation équivalente, équité par
+  connexion différente (pas de round-robin explicite entre sockets
+  standard et trickle).
+- **Branche dynamique de `GetMaxDownloadInBytesPerSec(bDynamic)`** :
+  eMule utilise le `GetDatarate()` **mesuré** quand DynUp est actif et
+  la file non vide ; nous utilisons la limite configurée/courante USS
+  (`ul_eff`). Écart faible : sous charge la valeur USS converge vers le
+  débit mesuré.
+- **Fallback de sonde USS = TCP-connect RTT** : eMule peut aussi pinger
+  en UDP (socket UDP brute) quand ICMP échoue ; nous retombons sur une
+  connexion TCP vers un pair Kad/serveur. Hors Windows, ICMP absent →
+  fallback TCP systématique.
+- **Comptabilisation du débit** : eMule distingue file-data et overhead
+  protocolaire dans `GetDatarate` ; notre `effective_rate_bps` compte
+  les octets socket (overhead inclus) — surestime légèrement le payload.
+
+## 10. Persistance `.met` (`mule-format`) — audit phase B, passe 4
+
+### Fidélité vérifiée
+
+- **`.part.met`** : versions `0xE0`/`0xE1`/`0xE2` (large file),
+  en-tête `mod_date + filehash + u16 part_count + part_hashes`,
+  tags gap nommés `\x09<idx>`/`\x0A<idx>` (`SavePartFile`),
+  `FT_FILESIZE_HI` fusionné en lecture, écriture atomique tmp+rename,
+  `FT_AICH_HASH` base32, `FT_DLPRIORITY`/`FT_MAXSOURCES` écrits et
+  relus à l'import (`PR_AUTO` restaure le mode auto). Import eMule →
+  Rust : gaps inversés en ranges complétés, parts rehashés, mismatch
+  évincé vers gaps — conforme à `LoadPartFile` + `UpdatePartsInfo`.
+- **`server.met`** et **`nodes.dat`** : formats couverts.
+
+### Écarts assumés (déjà documentés §7, rappel)
+
+- Tags `.part.met` non écrits : `FT_STATUS`, `FT_CORRUPTEDPARTS`
+  (corruption = gaps + blackbox SQLite), `FT_LASTSEENCOMPLETE`,
+  `FT_DL_ACTIVE_TIME`, `FT_PARTFILENAME` (chemin cible en SQLite),
+  `FT_AICHHASHSET` (hashset partiel reconstruit via récupération AICH).
+  eMule lit nos fichiers sans ces tags (gaps + hashset MD4 suffisent à
+  `UpdatePartsInfo`).
+- **`known.met` non implémenté** : la persistance des fichiers partagés
+  vit en SQLite (`shared_files`), pas de fichier eMule-compatible ni
+  d'outil d'import `known.met` → Rust. Conséquence : les statistiques
+  all-time (transferred/requested/accepted) et les timestamps de
+  dernière publication Kad d'un eMule existant ne migrent pas — les
+  fichiers sont repartagés frais (AICH root recalculé au premier hash
+  complet).
+- Pas de purge partielle `ShouldPartiallyPurgeFile` : sans `known.met`,
+  pas de métadonnées longue durée à élaguer — le pruning des entrées
+  SQLite suit la politique locale.

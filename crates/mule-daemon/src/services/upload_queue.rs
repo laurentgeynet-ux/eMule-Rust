@@ -48,6 +48,19 @@ const SESSION_MAX_TRANS_BYTES: u64 = 9_728_000 + 20 * 1024;
 /// 10 min compte comme « bad request » ; `BADCLIENTBAN` (4) cumulés → ban.
 const MIN_REQUEST_TIME_MS: i64 = 10 * 60 * 1000;
 const BAD_CLIENT_BAN: u8 = 4;
+/// eMule `MIN_UP_CLIENTS_ALLOWED` (`Opcodes.h`) : sous ce nombre de slots
+/// actifs, `ForceNewClient` retourne vrai sans autre condition — aucune
+/// temporisation ne s'applique.
+const MIN_UP_CLIENTS_ALLOWED: usize = 2;
+/// eMule `ForceNewClient` (`UploadQueue.cpp:420`) : entre deux ouvertures
+/// de slot, 1 s minimum tant que le débit mesuré reste sous ~100 Ko/s
+/// (`::GetTickCount() < m_nLastStartUpload + SEC2MS(1) && datarate < 102400`).
+/// Sans cette garde, une file pleine ouvrirait tous les slots permis en une
+/// rafale au démarrage, avant que le débit mesuré ne converge.
+const PROMOTION_MIN_INTERVAL_MS: i64 = 1000;
+/// Au-delà de ~100 Ko/s mesurés (`datarate < 102400` inversé), les
+/// promotions ne sont plus espacées.
+const PROMOTION_UNPACED_BPS: u64 = 102_400;
 /// eMule `AddClientToQueue` (`UploadQueue.cpp:586-596`) : au plus 3
 /// clients depuis la même IP en file d'attente — file + slots actifs
 /// combinés (la `TrackedClientsList` eMule couvre les deux côtés).
@@ -311,6 +324,10 @@ pub struct UploadManager {
     /// eMule `CKnownFile::UpdateAutoUpPriority` : plus de 20 uploaders
     /// → low (6), plus de 1 → normal (7), sinon → high (9).
     auto_up_prio: Arc<std::sync::RwLock<std::collections::HashMap<String, u32>>>,
+    /// Horodatage de la dernière ouverture de slot (eMule
+    /// `m_nLastStartUpload`, positionné dans `AddUpNextClient`) — alimente
+    /// la temporisation `PROMOTION_MIN_INTERVAL_MS` de `promotion_paced`.
+    last_upload_start_ms: Arc<AtomicI64>,
 }
 
 impl Default for UploadManager {
@@ -338,6 +355,7 @@ impl UploadManager {
             quota_gate: Arc::new(std::sync::RwLock::new(Arc::new(AtomicBool::new(true)))),
             total_uploaded_bytes: Arc::new(AtomicU64::new(0)),
             file_upload_totals: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            last_upload_start_ms: Arc::new(AtomicI64::new(0)),
             rotation_grace: Arc::new(Mutex::new(std::collections::HashMap::new())),
             shared_hashes: Arc::new(std::sync::RwLock::new(None)),
             auto_up_prio: Arc::new(std::sync::RwLock::new(
@@ -585,7 +603,9 @@ impl UploadManager {
         // Grant a slot immediately while capacity remains and USS accepts
         // new clients (acceptNewClient=false when latency is too high).
         // Trickle slots keep residual bandwidth but do not occupy a full slot.
-        if self.can_open_slot(&active, now) {
+        // eMule `AddClientToQueue` → `ForceNewClient(true)` : la garde
+        // d'espacement 1 s s'applique aussi à l'ajout direct.
+        if self.can_open_slot(&active, now) && !self.promotion_paced(&active, now) {
             let snap = UploadSessionSnapshot {
                 client_key: client_key.to_string(),
                 client_address: client_address.to_string(),
@@ -605,6 +625,8 @@ impl UploadManager {
                 auto_prio,
             };
             active.insert(client_key.to_string(), snap);
+            // `AddUpNextClient` → `m_nLastStartUpload = GetTickCount()`.
+            self.last_upload_start_ms.store(now, Ordering::Relaxed);
             // `AddUploadingClient` → `UpdateAutoUpPriority` : le nombre
             // d'uploaders du fichier vient de monter.
             self.update_auto_up_prio(&active, file_hash);
@@ -981,6 +1003,31 @@ impl UploadManager {
         true
     }
 
+    /// eMule `ForceNewClient` pacing (`UploadQueue.cpp:417-421`) : `true`
+    /// quand l'ouverture d'un slot supplémentaire doit attendre — moins de
+    /// `PROMOTION_MIN_INTERVAL_MS` depuis la dernière ouverture et débit
+    /// mesuré < `PROMOTION_UNPACED_BPS`. Sous `MIN_UP_CLIENTS_ALLOWED`
+    /// slots actifs, jamais de temporisation (`return true` précoce).
+    fn promotion_paced(
+        &self,
+        active: &std::collections::HashMap<String, UploadSessionSnapshot>,
+        now: i64,
+    ) -> bool {
+        if Self::uploading_count(active) < MIN_UP_CLIENTS_ALLOWED {
+            return false;
+        }
+        let last = self.last_upload_start_ms.load(Ordering::Relaxed);
+        if now.saturating_sub(last) >= PROMOTION_MIN_INTERVAL_MS {
+            return false;
+        }
+        let total_bps: u64 = active
+            .values()
+            .filter(|s| s.state == UploadSlotState::Uploading)
+            .map(|s| s.effective_rate_bps(now))
+            .sum();
+        total_bps < PROMOTION_UNPACED_BPS
+    }
+
     /// Promotes waiting clients while full slots remain. Caller must hold
     /// the `active_uploads` lock and pass it in.
     async fn promote_waiting(
@@ -1025,6 +1072,12 @@ impl UploadManager {
             if !self.can_open_slot(active, now) {
                 break;
             }
+            // eMule `ForceNewClient` : 1 s minimum entre deux ouvertures
+            // tant que le débit mesuré < 100 Ko/s — la file pleine ne
+            // vide pas en rafale au démarrage.
+            if self.promotion_paced(active, now) {
+                break;
+            }
             // Un client banni (score 0, re-asks abusifs ou SUI rejeté)
             // n'est jamais promu — eMule `GetScore` = 0 l'empêche de
             // gagner `FindBestClientInQueue`. La file est triée par score
@@ -1067,6 +1120,8 @@ impl UploadManager {
                 log_addr_str(&snap.client_address), snap.file_name, snap.file_hash
             );
             active.insert(next.client_key, snap);
+            // `AddUpNextClient` → `m_nLastStartUpload = GetTickCount()`.
+            self.last_upload_start_ms.store(now, Ordering::Relaxed);
             // `AddUploadingClient` → `UpdateAutoUpPriority`.
             self.update_auto_up_prio(active, &promoted_hash);
             // eMule `AddUpNextClient` pousse OP_ACCEPTUPLOADREQ sur le
@@ -1504,11 +1559,69 @@ impl UploadManager {
 mod tests {
     use super::*;
 
+    /// Rembobine `m_nLastStartUpload` entre deux ouvertures de slot — les
+    /// tests exercent les gardes d'admission sans subir le pacing 1 s de
+    /// `ForceNewClient` (comportement eMule testé séparément).
+    fn unpaced(mgr: &UploadManager) {
+        mgr.last_upload_start_ms.store(0, Ordering::Relaxed);
+    }
+
+    /// eMule `ForceNewClient` (`UploadQueue.cpp:417-421`) : sous
+    /// `MIN_UP_CLIENTS_ALLOWED` jamais d'attente ; au-delà, 1 s minimum
+    /// entre deux ouvertures tant que le débit mesuré < 100 Ko/s ;
+    /// au-dessus, plus d'espacement.
+    #[tokio::test]
+    async fn force_new_client_paces_slot_opens_below_100kbs() {
+        let mgr = UploadManager::new();
+        // Les deux premiers slots passent sans temporisation
+        // (`curUploadSlots < MIN_UP_CLIENTS_ALLOWED → true`).
+        for i in 0..2 {
+            let (state, _) = mgr
+                .request_upload_slot(&format!("c{i}"), &format!("c{i}"), "h", "f", 1.0, "normal", false, None)
+                .await
+                .unwrap();
+            assert_eq!(state, UploadSlotState::Uploading);
+        }
+        // 3e ouverture < 1 s après la dernière, débit 0 < 100 Ko/s → file.
+        let (state, _) = mgr
+            .request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        assert_eq!(state, UploadSlotState::Waiting);
+        // Débit mesuré ≥ 100 Ko/s → plus d'espacement : le client en file
+        // est promu immédiatement.
+        {
+            let mut active = mgr.active_uploads.lock().await;
+            for s in active.values_mut() {
+                s.upload_rate_bps = 60 * 1024;
+            }
+        }
+        let (state, _) = mgr
+            .request_upload_slot("c3", "c3", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        assert_eq!(state, UploadSlotState::Uploading);
+        // Intervalle écoulé (> 1 s simulé) → ouverture même sous 100 Ko/s.
+        mgr.last_upload_start_ms.store(0, Ordering::Relaxed);
+        {
+            let mut active = mgr.active_uploads.lock().await;
+            for s in active.values_mut() {
+                s.upload_rate_bps = 0;
+            }
+        }
+        let (state, _) = mgr
+            .request_upload_slot("c4", "c4", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        assert_eq!(state, UploadSlotState::Uploading);
+    }
+
     #[tokio::test]
     async fn multiple_active_slots_up_to_limit() {
         let mgr = UploadManager::new();
         mgr.set_max_active(3);
         for i in 0..3 {
+            unpaced(&mgr);
             let (state, _) = mgr
                 .request_upload_slot(
                     &format!("c{i}"),
@@ -1641,6 +1754,7 @@ mod tests {
         mgr.request_upload_slot("c2", "c2", "haa", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
+        unpaced(&mgr);
         mgr.request_upload_slot("c3", "c3", "hbb", "g", 1.0, "normal", false, None)
             .await
             .unwrap();
@@ -1821,6 +1935,7 @@ mod tests {
 
         // Les 4 slots garantis passent toujours (max(MIN_UP_CLIENTS,4)).
         for i in 0..4 {
+            unpaced(&mgr);
             let (state, _) = mgr
                 .request_upload_slot(&format!("c{i}"), &format!("c{i}"), "h", "f", 1.0, "normal", false, None)
                 .await
@@ -1850,6 +1965,7 @@ mod tests {
 
         // Limite relevée à 200 KiB/s → 200/4 = 50 > 4 → slot ouvert.
         speed.store(200 * 1024, Ordering::Relaxed);
+        unpaced(&mgr);
         let (state, _) = mgr
             .request_upload_slot("c7", "c7", "h", "f", 1.0, "normal", false, None)
             .await
