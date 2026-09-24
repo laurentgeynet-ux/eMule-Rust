@@ -122,6 +122,7 @@ pub async fn handle_request(
         "identity.importEmuleIdentity" => handle_identity_import_emule(state, req.params).await,
         "credits.list" => handle_credits_list(state, req.params).await,
         "credits.stats" => handle_credits_stats(state).await,
+        "credits.importClientsMet" => handle_credits_import_clients_met(state, req.params).await,
         "friends.list" => handle_friends_list(state).await,
         "friends.add" => handle_friends_add(state, req.params).await,
         "friends.remove" => handle_friends_remove(state, req.params).await,

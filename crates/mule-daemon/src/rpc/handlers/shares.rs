@@ -484,3 +484,26 @@ pub async fn handle_credits_stats(state: &AppState) -> Result<Value, JsonRpcErro
         "activeCreditedPeers": active_credited_peers,
     }))
 }
+
+/// `credits.importClientsMet` — `CClientCreditsList::LoadList` : imports
+/// an eMule `clients.met` credit file. Entries carry the peer's RSA
+/// pubkey (`abySecureIdent`) — credits are keyed by `MD4(pubkey)` in our
+/// model, claimable under secure identification; entries without a
+/// stored pubkey or older than 150 days are reported as skipped, like
+/// eMule (`ClientCredits.cpp:207-213`).
+/// Params: `metPath` (required).
+pub async fn handle_credits_import_clients_met(
+    state: &AppState,
+    params: Option<Value>,
+) -> Result<Value, JsonRpcError> {
+    let met_path = params
+        .as_ref()
+        .and_then(|p| p["metPath"].as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing 'metPath'"))?;
+    let report = state
+        .downloads
+        .lock()
+        .await
+        .import_clients_met(std::path::Path::new(met_path))?;
+    Ok(crate::rpc::handlers::json_value(&report))
+}

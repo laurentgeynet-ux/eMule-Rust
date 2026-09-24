@@ -753,3 +753,37 @@ annulés, et identité (clé RSA + user hash) — la continuité des crédits.
   struct (placement fenêtre) est sans valeur hors eMule.
 - `is_cancelled_file` non câblé au marquage des résultats de recherche
   (GUI côté client — l'API `downloads.isCancelled` suffit).
+
+### `clients.met` → `peer_credits`
+
+- Parseur `mule_format::met::clients_met` fidèle à `LoadList`
+  (`ClientCredits.cpp:156-233`) : `[version u8][count u32]` puis
+  `CreditStruct` packed — `0x12` : 119 B (`ClientCredits.h:41-52`),
+  `0x11` (29a) : 38 B sans pubkey. Autre version → refus du fichier,
+  comme eMule.
+- `credits.importClientsMet {metPath}` : nos crédits sont indexés par
+  `MD4(pubkey)` — `abySecureIdent[..nKeySize]` fournit exactement la
+  clé RSA nécessaire ; records `nKeySize == 0` rapportés comme
+  `skippedNoPubkey` (crédits faibles eMule, non réclamables sous SUI).
+  Entrées `tLastSeen < now - 150 j` supprimées à l'import — le drop
+  eMule au chargement (`ClientCredits.cpp:207-213`).
+- C'est le chaînon qui rend `identity.importEmuleIdentity` utile : le
+  user hash importé + la clé RSA importée permettent aux pairs de
+  vérifier SUI, et `clients.met` restaure ce qu'ils nous doivent.
+
+### Formats eMule couverts — bilan
+
+| Fichier | Statut |
+|---|---|
+| `known.met` | ✅ parseur + `shares.importKnownMet` (§14) |
+| `part.met` | ✅ parseur + `downloads.importPartMet` |
+| `server.met` | ✅ parseur + `servers.importMet` |
+| `nodes.dat` | ✅ parseur + `kad.importNodesDat` |
+| `emfriends.met` | ✅ parseur + `friends.importEmfriendsMet` |
+| `cancelled.met` | ✅ parseur + `downloads.importCancelledMet` |
+| `clients.met` | ✅ parseur + `credits.importClientsMet` |
+| `cryptkey.dat` | ✅ `identity.importEmuleIdentity` |
+| `preferences.dat` | ✅ user hash via `identity.importEmuleIdentity` |
+| `shareddir.dat` | ⚠️ non prévu — pas de feature « répertoires partagés » multiples |
+| `preferences.ini` | ⚠️ non prévu — réglages GUI eMule hors scope (grosse surface, faible valeur) |
+| `addresses.dat`, `webservices.dat`, `statistics.*`, `AC_*.dat` | ⚠️ non prévus — GUI/config eMule marginale |

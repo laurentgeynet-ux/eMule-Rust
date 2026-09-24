@@ -260,6 +260,73 @@ fn test_identity_import_rejects_degenerate_userhash() {
     assert!(!data_dir.path().join("userhash.dat").exists());
 }
 
+/// Packed `CreditStruct` (0x12, 119 B) — `ClientCredits.h:41-52`.
+fn credit_record(
+    key: &[u8; 16],
+    uploaded: u64,
+    downloaded: u64,
+    last_seen: u32,
+    pubkey: Option<&[u8]>,
+) -> Vec<u8> {
+    let mut rec = Vec::new();
+    rec.extend_from_slice(key);
+    rec.extend_from_slice(&(uploaded as u32).to_le_bytes()); // nUploadedLo
+    rec.extend_from_slice(&(downloaded as u32).to_le_bytes()); // nDownloadedLo
+    rec.extend_from_slice(&last_seen.to_le_bytes()); // tLastSeen
+    rec.extend_from_slice(&((uploaded >> 32) as u32).to_le_bytes()); // nUploadedHi
+    rec.extend_from_slice(&((downloaded >> 32) as u32).to_le_bytes()); // nDownloadedHi
+    rec.extend_from_slice(&0u16.to_le_bytes()); // nReserved3
+    let pubkey = pubkey.unwrap_or(&[]);
+    rec.push(pubkey.len() as u8); // nKeySize
+    rec.extend_from_slice(pubkey); // abySecureIdent[..nKeySize]
+    rec.extend(std::iter::repeat_n(0u8, 80 - pubkey.len()));
+    rec
+}
+
+fn clients_met(version: u8, records: &[Vec<u8>]) -> Vec<u8> {
+    let mut buf = vec![version];
+    buf.extend_from_slice(&(records.len() as u32).to_le_bytes());
+    for r in records {
+        buf.extend_from_slice(r);
+    }
+    buf
+}
+
+#[test]
+fn test_clients_met_import_keys_credits_on_pubkey() {
+    let tmp = tempdir().unwrap();
+    let mut svc = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
+
+    let pubkey = vec![0x30u8; 48]; // DER-ish bytes — MD4 keyed either way
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+    let met = clients_met(0x12, &[
+        credit_record(&[0x11; 16], 1_000_000_000, 500_000, now - 100, Some(&pubkey)),
+        credit_record(&[0x22; 16], 7, 9, now - 50, None), // no pubkey → skip
+        credit_record(&[0x33; 16], 4, 5, now - 200 * 86_400, Some(&pubkey)), // expired
+    ]);
+    let met_path = tmp.path().join("clients.met");
+    std::fs::write(&met_path, &met).unwrap();
+
+    let report = svc.import_clients_met(&met_path).unwrap();
+    assert_eq!(report.records, 3);
+    assert_eq!(report.imported, 1);
+    assert_eq!(report.skipped_no_pubkey, 1);
+    assert_eq!(report.expired, 1);
+    assert!(!report.legacy_format);
+
+    let credits = svc.list_peer_credits(10).unwrap();
+    assert_eq!(credits.len(), 1);
+    let c = &credits[0];
+    use md4::{Digest, Md4};
+    assert_eq!(c.pubkey_hash, hex::encode(Md4::digest(&pubkey)));
+    assert_eq!(c.pubkey_hex, hex::encode(&pubkey));
+    assert_eq!(c.uploaded_bytes, 1_000_000_000);
+    assert_eq!(c.downloaded_bytes, 500_000);
+}
+
 #[test]
 fn test_remember_cancelled_off_disables_set() {
     let tmp = tempdir().unwrap();

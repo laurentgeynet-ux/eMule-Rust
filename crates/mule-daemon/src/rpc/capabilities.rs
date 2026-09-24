@@ -14,6 +14,7 @@ pub fn daemon_capabilities() -> Vec<&'static str> {
         "import_known_met",
         "import_emfriends_met",
         "import_cancelled_met",
+        "import_clients_met",
         "import_emule_identity",
         "network-policy",
         "ip-filter",

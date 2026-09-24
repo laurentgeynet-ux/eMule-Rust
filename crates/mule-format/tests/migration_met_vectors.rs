@@ -200,3 +200,131 @@ fn cancelled_mask_matches_emule_semantics() {
     assert_eq!(cancelled_mask(seed, &hash), masked);
     assert_ne!(cancelled_mask(seed + 1, &hash), masked);
 }
+
+// ---------- clients.met ----------
+
+fn credit_record(
+    key: &[u8; 16],
+    uploaded: u64,
+    downloaded: u64,
+    last_seen: u32,
+    pubkey: Option<&[u8]>,
+) -> Vec<u8> {
+    let mut rec = Vec::new();
+    rec.extend_from_slice(key);
+    rec.extend_from_slice(&(uploaded as u32).to_le_bytes());
+    rec.extend_from_slice(&(downloaded as u32).to_le_bytes());
+    rec.extend_from_slice(&last_seen.to_le_bytes());
+    rec.extend_from_slice(&((uploaded >> 32) as u32).to_le_bytes());
+    rec.extend_from_slice(&((downloaded >> 32) as u32).to_le_bytes());
+    rec.extend_from_slice(&0u16.to_le_bytes());
+    let pubkey = pubkey.unwrap_or(&[]);
+    rec.push(pubkey.len() as u8);
+    rec.extend_from_slice(pubkey);
+    rec.extend(std::iter::repeat_n(0u8, 80 - pubkey.len()));
+    rec
+}
+
+fn clients_met(version: u8, records: &[Vec<u8>]) -> Vec<u8> {
+    let mut buf = vec![version];
+    buf.extend_from_slice(&(records.len() as u32).to_le_bytes());
+    for r in records {
+        buf.extend_from_slice(r);
+    }
+    buf
+}
+
+#[test]
+fn clients_met_parses_v12_records() {
+    use mule_format::met::ClientsMetFile;
+    let pubkey = vec![0x30u8; 48];
+    let buf = clients_met(0x12, &[
+        credit_record(&[0x11; 16], (1 << 33) | 7, 42, 1_700_000_000, Some(&pubkey)),
+        credit_record(&[0x22; 16], 5, 6, 1_600_000_000, None),
+    ]);
+    let parsed = ClientsMetFile::read_from(&mut Cursor::new(&buf)).unwrap();
+    assert_eq!(parsed.version, 0x12);
+    assert!(!parsed.legacy_format);
+    assert_eq!(parsed.records.len(), 2);
+    let r = &parsed.records[0];
+    assert_eq!(r.key, [0x11; 16]);
+    assert_eq!(r.uploaded, (1 << 33) | 7); // hi/lo recombination
+    assert_eq!(r.downloaded, 42);
+    assert_eq!(r.last_seen, 1_700_000_000);
+    assert_eq!(r.pubkey.as_deref(), Some(pubkey.as_slice()));
+    assert_eq!(parsed.records[1].pubkey, None);
+}
+
+#[test]
+fn clients_met_parses_legacy_29a_layout() {
+    use mule_format::met::ClientsMetFile;
+    // 0x11 records stop at nReserved3 — 38 bytes, no pubkey fields.
+    let mut rec = Vec::new();
+    rec.extend_from_slice(&[0x33; 16]);
+    rec.extend_from_slice(&10u32.to_le_bytes());
+    rec.extend_from_slice(&20u32.to_le_bytes());
+    rec.extend_from_slice(&1_500_000_000u32.to_le_bytes());
+    rec.extend_from_slice(&0u32.to_le_bytes());
+    rec.extend_from_slice(&0u32.to_le_bytes());
+    rec.extend_from_slice(&0u16.to_le_bytes());
+    assert_eq!(rec.len(), 38);
+    let buf = clients_met(0x11, &[rec]);
+    let parsed = ClientsMetFile::read_from(&mut Cursor::new(&buf)).unwrap();
+    assert!(parsed.legacy_format);
+    assert_eq!(parsed.records[0].key, [0x33; 16]);
+    assert_eq!(parsed.records[0].pubkey, None);
+    assert_eq!(parsed.records[0].uploaded, 10);
+}
+
+#[test]
+fn clients_met_rejects_unknown_version_and_truncation() {
+    use mule_format::met::ClientsMetFile;
+    let err = ClientsMetFile::read_from(&mut Cursor::new(&clients_met(0x99, &[]))).unwrap_err();
+    assert!(matches!(err, MetError::UnsupportedHeader { .. }));
+    // Declared record but missing bytes → EOF error, not a partial read.
+    let mut buf = vec![0x12];
+    buf.extend_from_slice(&1u32.to_le_bytes());
+    buf.extend_from_slice(&[0u8; 10]);
+    let err = ClientsMetFile::read_from(&mut Cursor::new(&buf)).unwrap_err();
+    assert!(matches!(err, MetError::UnexpectedEof { .. }));
+}
+
+#[test]
+fn clients_met_rejects_oversized_pubkey_field() {
+    use mule_format::met::ClientsMetFile;
+    // nKeySize > MAXPUBKEYSIZE(80) — eMule `MAXPUBKEYSIZE < nIdentLen`
+    // invalidates secure ident → record carries no usable key.
+    let mut rec = credit_record(&[0x44; 16], 1, 2, 1_700_000_000, None);
+    rec[38] = 0x51; // 81 > 80
+    let buf = clients_met(0x12, &[rec]);
+    let parsed = ClientsMetFile::read_from(&mut Cursor::new(&buf)).unwrap();
+    assert_eq!(parsed.records[0].pubkey, None);
+}
+
+// ---------- preferences.dat ----------
+
+#[test]
+fn preferences_dat_extracts_userhash_and_rejects_bad() {
+    use mule_format::met::{is_bad_hash, PreferencesDat, PREFFILE_VERSION};
+    let mut buf = vec![PREFFILE_VERSION];
+    let mut user_hash = [0x66u8; 16];
+    user_hash[5] = 14;
+    user_hash[14] = 111;
+    buf.extend_from_slice(&user_hash);
+    buf.extend_from_slice(&[0u8; 44]); // WINDOWPLACEMENT
+    let parsed = PreferencesDat::read_from(&mut Cursor::new(&buf)).unwrap();
+    assert_eq!(parsed.version, PREFFILE_VERSION);
+    assert_eq!(parsed.user_hash, user_hash);
+
+    // Degenerate hash (isbadhash) → corrupt file, rejected.
+    let mut bad = vec![PREFFILE_VERSION];
+    bad.extend_from_slice(&[0u8; 16]);
+    let err = PreferencesDat::read_from(&mut Cursor::new(&bad)).unwrap_err();
+    assert!(matches!(err, MetError::InconsistentMetadata { .. }));
+    assert!(is_bad_hash(&[0u8; 16]));
+    assert!(!is_bad_hash(&user_hash));
+
+    // Truncated file → EOF.
+    let err = PreferencesDat::read_from(&mut Cursor::new(&[0x14, 1, 2, 3])).unwrap_err();
+    assert!(matches!(err, MetError::UnexpectedEof { .. }));
+}

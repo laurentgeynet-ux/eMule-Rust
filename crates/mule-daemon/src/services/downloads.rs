@@ -13,6 +13,7 @@ use crate::error::DaemonError;
 use crate::services::DaemonEvent;
 
 pub mod cancelled_files;
+pub mod clients_met;
 pub mod corruption_blackbox;
 pub mod emfriends_import;
 pub mod history_categories;
@@ -1703,6 +1704,15 @@ impl DownloadService {
         self.db
             .cancelled_count()
             .map_err(db_err("counting cancelled"))
+    }
+
+    /// `CClientCreditsList::LoadList` — imports an eMule `clients.met`
+    /// into `peer_credits` (credits keyed on the stored RSA pubkey).
+    pub fn import_clients_met(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<clients_met::ClientsMetImportReport, DaemonError> {
+        clients_met::import_clients_met(&mut self.db, path)
     }
 
     pub fn db_ref(&self) -> &Database {

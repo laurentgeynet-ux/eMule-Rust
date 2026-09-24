@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 pub mod cancelled_met;
+pub mod clients_met;
 pub mod emfriends;
 pub mod error;
 pub mod known_met;
@@ -12,6 +13,9 @@ pub mod server_met;
 pub mod tags;
 
 pub use cancelled_met::{cancelled_mask, CancelledEntry, CancelledMetFile, CANCELLED_VERSION};
+pub use clients_met::{
+    ClientsMetFile, ClientsMetRecord, CREDITFILE_VERSION, CREDITFILE_VERSION_29, MAXPUBKEYSIZE,
+};
 pub use emfriends::{EmfriendsMetFile, EmfriendsRecord};
 pub use error::MetError;
 pub use known_met::{
