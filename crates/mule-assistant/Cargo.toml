@@ -1,0 +1,28 @@
+[package]
+name = "mule-assistant"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Assistant IA local pour eMule-Rust : boucle tool-calling LLM loopback → JSON-RPC du daemon"
+
+[dependencies]
+mule-mcp = { path = "../mule-mcp" }
+mule-daemon = { path = "../mule-daemon" }
+tokio.workspace = true
+futures-util.workspace = true
+reqwest = { workspace = true, features = ["json", "stream"] }
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+url.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+axum.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+mule-test-support = { path = "../mule-test-support" }
+tokio-tungstenite.workspace = true
+tempfile.workspace = true

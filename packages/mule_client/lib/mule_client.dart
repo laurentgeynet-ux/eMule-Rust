@@ -4,6 +4,7 @@
 library mule_client;
 
 // Domain models
+export 'domain/models/assistant_models.dart';
 export 'domain/models/category_item.dart';
 export 'domain/models/daemon_event.dart';
 export 'domain/models/daemon_info.dart';
@@ -20,6 +21,7 @@ export 'domain/models/server_models.dart';
 export 'domain/services/mule_daemon_client.dart';
 
 // Implementations + DTOs
+export 'data/assistant_client.dart';
 export 'data/rpc_daemon_client.dart';
 export 'data/fake_daemon_client.dart';
 export 'data/dto/rpc_dto.dart';

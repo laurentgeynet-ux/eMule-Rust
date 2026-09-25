@@ -55,6 +55,8 @@ Ce document constitue la table d'orientation générale et l'index chronologique
   👉 Consulter [walkthrough_Phase_14.md](walkthrough_Phase_14.md).
 * Pour la boîte à outils Agent IA Model Context Protocol (MCP) :  
   👉 Consulter [walkthrough_Phase_13.md](walkthrough_Phase_13.md).
+* Pour l'assistant IA local (LLM loopback → outils MCP) : installation, modes REPL/serve, profils de filtrage et panneau Flutter :  
+  👉 Consulter [../ASSISTANT.md](../ASSISTANT.md).
 * Pour l'inventaire cartographié de chaque fichier du code source :  
   👉 Consulter [../INDEX.md](../INDEX.md).
 

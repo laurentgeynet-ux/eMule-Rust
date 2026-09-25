@@ -226,6 +226,17 @@ class DownloadsSidebar extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   SidebarNavItem(
+                    title: context.l10n.navAssistant,
+                    icon: Icons.smart_toy_outlined,
+                    isSelected:
+                        ref.watch(shellControllerProvider).section ==
+                            AppNavSection.assistant,
+                    onTap: () => ref
+                        .read(shellControllerProvider)
+                        .setSection(AppNavSection.assistant),
+                    isCompact: isCompact,
+                  ),
+                  SidebarNavItem(
                     title: context.l10n.actionSettings,
                     icon: Icons.settings_outlined,
                     isSelected:

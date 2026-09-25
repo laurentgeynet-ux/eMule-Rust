@@ -10,9 +10,11 @@ import 'package:mule_client/mule_client.dart';
 import 'shell_controller.dart';
 
 export 'shell_controller.dart';
+import '../core/assistant_token.dart';
 import '../core/daemon_lifecycle.dart';
 import '../l10n/l10n_lookup.dart';
 
+import '../ui/features/assistant/view_models/assistant_controller.dart';
 import '../ui/features/history/view_models/history_controller.dart';
 import '../ui/features/kad/view_models/kad_controller.dart';
 import '../ui/features/search/view_models/search_controller.dart';
@@ -94,6 +96,10 @@ class AppController extends ChangeNotifier {
   /// Latest aggregate `event.statsTick` snapshot (app-level).
   late final StatsController stats;
 
+  /// Local-AI assistant sub-domain (extracted controller, see
+  /// `features/assistant/view_models/assistant_controller.dart`).
+  late final AssistantController assistant;
+
   StreamSubscription<DaemonConnectionState>? _connSub;
   StreamSubscription<SupervisorState>? _supervisorSub;
   StreamSubscription<void>? _instanceSub;
@@ -119,6 +125,8 @@ class AppController extends ChangeNotifier {
           uploads.fetch();
         } else if (section == AppNavSection.shares) {
           shares.fetch();
+        } else if (section == AppNavSection.assistant) {
+          assistant.connect();
         }
       },
     )..addListener(notifyListeners);
@@ -196,6 +204,23 @@ class AppController extends ChangeNotifier {
       onError: shellCtl.setError,
       onDownloadUpdated: downloadsCtl.upsert,
       onRefreshDownloads: refresh,
+    )..addListener(notifyListeners);
+    assistant = AssistantController(
+      // Le handshake `assistant.hello` réutilise le jeton de session du
+      // daemon (`<workdir>/auth.token`) — aucun secret parallèle. Sans
+      // superviseur local (web/daemon externe), la résolution renvoie
+      // null et le panneau affiche l'état indisponible.
+      tokenResolver: () async {
+        try {
+          return await readAssistantToken(
+            supervisor?.resolveWorkDirInfo().workDirPath,
+          );
+        } catch (_) {
+          return null;
+        }
+      },
+      onStatus: shellCtl.setStatus,
+      onError: shellCtl.setError,
     )..addListener(notifyListeners);
 
     _lifecycleSub = client.downloadLifecycleEvents.listen((e) {

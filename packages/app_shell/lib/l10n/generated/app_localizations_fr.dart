@@ -3753,4 +3753,71 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get diagPublicSubtitle =>
       'Connexions WAN autorisées — protection anti-SSRF active.';
+
+  @override
+  String get navAssistant => 'Assistant IA';
+
+  @override
+  String get assistantTitle => 'Assistant local';
+
+  @override
+  String get assistantEmpty =>
+      'Posez une question — le modèle local peut consulter et piloter le client via des outils validés.';
+
+  @override
+  String get assistantInputHint => 'Message pour l\'assistant…';
+
+  @override
+  String get assistantSend => 'Envoyer';
+
+  @override
+  String get assistantCancel => 'Annuler le tour';
+
+  @override
+  String get assistantConfirmTitle => 'L\'assistant demande confirmation';
+
+  @override
+  String get assistantConfirmAllow => 'Autoriser';
+
+  @override
+  String get assistantConfirmDeny => 'Refuser';
+
+  @override
+  String get assistantToolCall => 'Appel d\'outil';
+
+  @override
+  String get assistantToolResult => 'Résultat d\'outil';
+
+  @override
+  String assistantStatusConnected(Object tools) {
+    return 'Connecté · $tools outils';
+  }
+
+  @override
+  String get assistantStatusConnecting => 'Connexion…';
+
+  @override
+  String get assistantStatusDisconnected => 'Déconnecté';
+
+  @override
+  String get assistantStatusError => 'Erreur de connexion';
+
+  @override
+  String get assistantUnavailableTitle => 'Assistant indisponible';
+
+  @override
+  String get assistantUnavailableHint =>
+      'Lancez « mule-assistant serve » à côté du daemon pour activer le chat local (Ollama requis).';
+
+  @override
+  String get assistantTokenUnavailable =>
+      'Jeton de session introuvable — l\'assistant nécessite un daemon local supervisé.';
+
+  @override
+  String assistantConnectError(Object error) {
+    return 'Connexion à l\'assistant impossible : $error';
+  }
+
+  @override
+  String get assistantRetry => 'Réessayer';
 }

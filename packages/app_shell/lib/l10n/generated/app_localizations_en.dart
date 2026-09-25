@@ -3720,4 +3720,71 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get diagPublicSubtitle =>
       'WAN connections allowed — anti-SSRF protection active.';
+
+  @override
+  String get navAssistant => 'AI Assistant';
+
+  @override
+  String get assistantTitle => 'Local assistant';
+
+  @override
+  String get assistantEmpty =>
+      'Ask a question — the local model can inspect and drive the client through validated tools.';
+
+  @override
+  String get assistantInputHint => 'Message for the assistant…';
+
+  @override
+  String get assistantSend => 'Send';
+
+  @override
+  String get assistantCancel => 'Cancel turn';
+
+  @override
+  String get assistantConfirmTitle => 'The assistant requests confirmation';
+
+  @override
+  String get assistantConfirmAllow => 'Allow';
+
+  @override
+  String get assistantConfirmDeny => 'Deny';
+
+  @override
+  String get assistantToolCall => 'Tool call';
+
+  @override
+  String get assistantToolResult => 'Tool result';
+
+  @override
+  String assistantStatusConnected(Object tools) {
+    return 'Connected · $tools tools';
+  }
+
+  @override
+  String get assistantStatusConnecting => 'Connecting…';
+
+  @override
+  String get assistantStatusDisconnected => 'Disconnected';
+
+  @override
+  String get assistantStatusError => 'Connection error';
+
+  @override
+  String get assistantUnavailableTitle => 'Assistant unavailable';
+
+  @override
+  String get assistantUnavailableHint =>
+      'Start « mule-assistant serve » next to the daemon to enable local chat (Ollama required).';
+
+  @override
+  String get assistantTokenUnavailable =>
+      'Session token not found — the assistant requires a supervised local daemon.';
+
+  @override
+  String assistantConnectError(Object error) {
+    return 'Could not connect to the assistant: $error';
+  }
+
+  @override
+  String get assistantRetry => 'Retry';
 }

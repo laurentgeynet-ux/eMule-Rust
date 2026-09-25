@@ -6252,6 +6252,126 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Connexions WAN autorisées — protection anti-SSRF active.'**
   String get diagPublicSubtitle;
+
+  /// No description provided for @navAssistant.
+  ///
+  /// In fr, this message translates to:
+  /// **'Assistant IA'**
+  String get navAssistant;
+
+  /// No description provided for @assistantTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Assistant local'**
+  String get assistantTitle;
+
+  /// No description provided for @assistantEmpty.
+  ///
+  /// In fr, this message translates to:
+  /// **'Posez une question — le modèle local peut consulter et piloter le client via des outils validés.'**
+  String get assistantEmpty;
+
+  /// No description provided for @assistantInputHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Message pour l\'assistant…'**
+  String get assistantInputHint;
+
+  /// No description provided for @assistantSend.
+  ///
+  /// In fr, this message translates to:
+  /// **'Envoyer'**
+  String get assistantSend;
+
+  /// No description provided for @assistantCancel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Annuler le tour'**
+  String get assistantCancel;
+
+  /// No description provided for @assistantConfirmTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'L\'assistant demande confirmation'**
+  String get assistantConfirmTitle;
+
+  /// No description provided for @assistantConfirmAllow.
+  ///
+  /// In fr, this message translates to:
+  /// **'Autoriser'**
+  String get assistantConfirmAllow;
+
+  /// No description provided for @assistantConfirmDeny.
+  ///
+  /// In fr, this message translates to:
+  /// **'Refuser'**
+  String get assistantConfirmDeny;
+
+  /// No description provided for @assistantToolCall.
+  ///
+  /// In fr, this message translates to:
+  /// **'Appel d\'outil'**
+  String get assistantToolCall;
+
+  /// No description provided for @assistantToolResult.
+  ///
+  /// In fr, this message translates to:
+  /// **'Résultat d\'outil'**
+  String get assistantToolResult;
+
+  /// No description provided for @assistantStatusConnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connecté · {tools} outils'**
+  String assistantStatusConnected(Object tools);
+
+  /// No description provided for @assistantStatusConnecting.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion…'**
+  String get assistantStatusConnecting;
+
+  /// No description provided for @assistantStatusDisconnected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déconnecté'**
+  String get assistantStatusDisconnected;
+
+  /// No description provided for @assistantStatusError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Erreur de connexion'**
+  String get assistantStatusError;
+
+  /// No description provided for @assistantUnavailableTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Assistant indisponible'**
+  String get assistantUnavailableTitle;
+
+  /// No description provided for @assistantUnavailableHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lancez « mule-assistant serve » à côté du daemon pour activer le chat local (Ollama requis).'**
+  String get assistantUnavailableHint;
+
+  /// No description provided for @assistantTokenUnavailable.
+  ///
+  /// In fr, this message translates to:
+  /// **'Jeton de session introuvable — l\'assistant nécessite un daemon local supervisé.'**
+  String get assistantTokenUnavailable;
+
+  /// No description provided for @assistantConnectError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion à l\'assistant impossible : {error}'**
+  String assistantConnectError(Object error);
+
+  /// No description provided for @assistantRetry.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réessayer'**
+  String get assistantRetry;
 }
 
 class _AppLocalizationsDelegate

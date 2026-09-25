@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:go_router/go_router.dart';
 
+import '../ui/features/assistant/views/assistant_view.dart';
 import '../ui/features/downloads/views/downloads_screen.dart';
 import 'app_controller.dart';
 import '../ui/features/history/views/history_view.dart';
@@ -24,6 +25,7 @@ String sectionToPath(AppNavSection section) => switch (section) {
       AppNavSection.servers => '/servers',
       AppNavSection.search => '/search',
       AppNavSection.kad => '/kad',
+      AppNavSection.assistant => '/assistant',
       AppNavSection.settings => '/settings',
     };
 
@@ -44,6 +46,7 @@ AppNavSection? pathToSection(String path) {
     '/servers' => AppNavSection.servers,
     '/search' => AppNavSection.search,
     '/kad' => AppNavSection.kad,
+    '/assistant' => AppNavSection.assistant,
     '/settings' => AppNavSection.settings,
     _ => null,
   };
@@ -165,6 +168,12 @@ GoRouter createAppRouter(AppController viewModel) {
             path: '/kad',
             pageBuilder: (context, state) => NoTransitionPage(
               child: const KadView(),
+            ),
+          ),
+          GoRoute(
+            path: '/assistant',
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: const AssistantView(),
             ),
           ),
         ],

@@ -3,6 +3,57 @@
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [Unreleased]
+
+Couche d'IA locale : un modèle loopback (Ollama/llama.cpp via `/api/chat`)
+pilote le client à travers le registre d'outils MCP existant — aucun
+doublon de logique métier, `mule-daemon` reste l'autorité de sécurité.
+
+- **Profils de filtrage des outils MCP** (`mule-mcp`) :
+  - `ToolRisk { Read, Mutate, Destructive }` + `ToolProfile { read, safe,
+    full }` classifiant les ~87 outils `emule_*` par verbe (avec table
+    d'overrides pour les ambigus) ; `--tool-profile` en CLI, `full` par
+    défaut (rétrocompatible).
+  - Filtrage appliqué aux **deux** frontières : `tools/list` filtrée *et*
+    `tools/call` refuse les outils hors profil — un client externe ne peut
+    pas contourner une allowlist de présentation.
+  - Test d'exhaustivité : tout nouvel outil non classé casse le build.
+
+- **Nouveau crate `mule-assistant`** — orchestrateur LLM local :
+  - Boucle agentique bornée (`MAX_TOOL_ROUNDS`) : `chat → tool_calls →
+    policy → execute_tool → role:"tool" → repeat` ; le message assistant
+    complet (avec ses `tool_calls`) est conservé dans l'historique avant
+    les résultats, conformément au format natif Ollama (`tool_name`, ids
+    internes optionnels).
+  - **Policy** : outils visibles = `list_tools ∩ allowlist curée ∩
+    capacités daemon (table préfixe→catégorie) ∩ profil MCP` ; revérifiée
+    juste avant chaque exécution, confirmation utilisateur sur arguments
+    exacts pour les outils `Destructive`.
+  - **Backend Ollama** : POST `/api/chat` streamé, endpoint validé —
+    HTTP, adresse IP littérale **loopback uniquement** (`127.0.0.1`,
+    `::1`, refus des noms à résoudre), redirections désactivées
+    (`redirect::Policy::none()`), proxys d'environnement désactivés,
+    timeouts configurés ; `load_duration`/`eval_duration` logués.
+  - **Streaming** : `AssistantEvent` (`token`/`toolStart`/`toolResult`/
+    `final`/`notice`/`error`) — tokens affichés au fil de l'eau, appels
+    d'outils assemblés *puis* validés *puis* exécutés ; `thinking` jamais
+    exposé ; résultats d'outils tronqués pour le LLM, complets pour l'UI.
+  - **Transport WS loopback** (`--serve`) : JSON-RPC `assistant.hello`
+    (jeton de session daemon — pas d'auth parallèle), `assistant.chat`,
+    `assistant.confirm`, `assistant.cancel` ; événements en notifications,
+    drain des events en file à la fin de tour.
+  - REPL (`chat`, `--prompt`) et `MockBackend` pour tests 100 % hors-ligne.
+
+- **Panneau Flutter** (`app_shell`, MVVM) :
+  - `AssistantClient` (mule_client) : client JSON-RPC/WS du protocole
+    assistant ; modèles `AssistantEvent`/`AssistantConfirmRequest`/`ChatEntry`.
+  - `AssistantController` : état de conversation, tokens streamés,
+    confirmation, annulation ; jeton résolu depuis `<workdir>/auth.token`
+    via `assistant_token(_io|_stub)` — indisponible sur web.
+  - Section « Assistant IA » (route `/assistant`, sidebar) : bulles de
+    chat, tuiles d'outils, bannière de confirmation, état hors-ligne avec
+    retry ; design tokens uniquement.
+
 ## [0.2.0-RC2] - 2026-09-25
 
 Deuxième release candidate — campagne d'audit filaire et comportemental

@@ -15,7 +15,7 @@ use mule_mcp::{
         make_error, make_response, JsonRpcError, JsonRpcMessage, ToolCallResult,
         MCP_PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION,
     },
-    tools::{execute_tool, list_tools},
+    tools::{execute_tool_for, list_tools_for, ToolProfile},
 };
 
 #[derive(Parser, Debug, Clone)]
@@ -37,6 +37,11 @@ struct Cli {
     /// Path to eMuleRust.exe executable or application bundle root
     #[arg(long)]
     app: Option<PathBuf>,
+
+    /// Filtering profile applied to exposed tools: read (read-only),
+    /// safe (no destructive action), full (all tools — default)
+    #[arg(long, value_enum, default_value_t = ToolProfile::Full)]
+    tool_profile: ToolProfile,
 }
 
 struct McpState {
@@ -139,6 +144,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    let tool_profile = cli.tool_profile;
+    info!("Tool profile: {}", tool_profile.as_str());
+
     let state = Arc::new(Mutex::new(McpState {
         cli,
         client: initial_client,
@@ -205,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             "tools/list" => {
-                let tools = list_tools();
+                let tools = list_tools_for(tool_profile);
                 let res = json!({ "tools": tools });
                 let resp = make_response(req_id, res);
                 send_json(&mut stdout, &resp).await?;
@@ -222,7 +230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 let tool_result = match client_res {
-                    Ok(client) => execute_tool(&client, tool_name, args).await,
+                    Ok(client) => execute_tool_for(tool_profile, &client, tool_name, args).await,
                     Err(e) => ToolCallResult::error(format!(
                         "Could not connect to eMule-Rust daemon: {e}. Please ensure eMule-Rust is running."
                     )),

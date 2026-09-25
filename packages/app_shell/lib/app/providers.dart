@@ -14,6 +14,7 @@ import '../ui/features/downloads/view_models/categories_controller.dart';
 import '../ui/features/downloads/view_models/network_policy_controller.dart';
 import '../ui/features/downloads/view_models/downloads_store_controller.dart';
 import 'stats_controller.dart';
+import '../ui/features/assistant/view_models/assistant_controller.dart';
 import '../ui/features/downloads/view_models/lab_controller.dart';
 import '../ui/features/downloads/view_models/peer_sources_controller.dart';
 import '../ui/features/settings/view_models/settings_controller.dart';
@@ -135,6 +136,12 @@ final uploadsControllerProvider = ChangeNotifierProvider<UploadsController>(
 final sharesControllerProvider = ChangeNotifierProvider<SharesController>(
   (ref) => ref.read(appControllerProvider).shares,
 );
+
+/// Local-AI assistant sub-domain controller. Provider-owned disposal.
+final assistantControllerProvider =
+    ChangeNotifierProvider<AssistantController>(
+      (ref) => ref.read(appControllerProvider).assistant,
+    );
 
 /// App-shell UI state (section, filter, banners). Provider-owned disposal.
 final shellControllerProvider = ChangeNotifierProvider<ShellController>(

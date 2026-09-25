@@ -13,6 +13,7 @@ import '../widgets/downloads_list.dart';
 import '../widgets/downloads_sidebar.dart';
 import '../widgets/downloads_top_bar.dart';
 import '../widgets/incompatible_version_dialog.dart';
+import '../../assistant/views/assistant_view.dart';
 import '../../history/views/history_view.dart';
 import '../../servers/views/servers_screen.dart';
 import '../../shares/views/shares_view.dart';
@@ -93,6 +94,7 @@ class DownloadsScreen extends ConsumerWidget {
       AppNavSection.servers => const ServersView(),
       AppNavSection.search => const SearchView(),
       AppNavSection.kad => const KadView(),
+      AppNavSection.assistant => const AssistantView(),
       AppNavSection.uploads => const UploadsView(),
       AppNavSection.shares => const SharesView(),
       AppNavSection.settings => const SettingsView(),

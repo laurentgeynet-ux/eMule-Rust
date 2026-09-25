@@ -106,6 +106,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 
 | Fichier | Fonction |
 |---|---|
+| `lib/core/assistant_token.dart` (+`_io`, `_stub`) | Résolution du jeton de session pour `assistant.hello` (`<workdir>/auth.token`) — desktop seulement |
 | `lib/core/daemon_lifecycle.dart` | Cycle de vie de la connexion daemon |
 | `lib/core/folder_picker.dart` (+`_io`, `_stub`) | Sélecteur de dossier (abstraction + impl natif/stub) |
 | `lib/core/file_picker_helper.dart` (+`_io`, `_stub`) | Sélecteur de fichier natif (`pickFile`, `file_picker` 12.3) — ipfilter.dat, server.met, nodes.dat, .part.met |
@@ -148,10 +149,11 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `widgets/sidebar/` (9 fichiers) | Sidebar : header brand, items nav/catégorie/filtre, carte de statut daemon (`sidebar_status_card` — version, pastilles eD2K/Kad colorées, nom du serveur), suppression de catégorie |
 | `widgets/incompatible_version_dialog.dart` | Avertissement de version daemon incompatible |
 
-### Features `history`, `kad`, `search`, `servers`, `settings`, `shares`, `uploads`
+### Features `assistant`, `history`, `kad`, `search`, `servers`, `settings`, `shares`, `uploads`
 
 | Fichier | Fonction |
 |---|---|
+| `assistant/view_models/assistant_controller.dart` + `views/assistant_view.dart` + `widgets/` (6 fichiers) | Assistant IA local (`/assistant`) : chat streamé, tuiles d'outils, bannière de confirmation, état hors-ligne/retry, barre de saisie ; `AssistantController` gère connexion WS, entrées, confirmations et annulation |
 | `history/view_models/history_controller.dart` + `views/history_view.dart` + `widgets/` (9 fichiers) | Historique : vue, toolbar, filtre, stats dashboard, lignes d'entrée, dialogues détail/export/effacement |
 | `kad/view_models/kad_controller.dart` + `views/kad_screen.dart` + `widgets/` (12 fichiers) | Kad : table de contacts, bootstrap (dialogue + URL), import nodes.dat, badges/statuts, bannière sécurité |
 | `search/view_models/search_controller.dart` + `views/search_screen.dart` + `widgets/` (7 fichiers) | Recherche : formulaire, table de résultats, bannière connexion, états |
@@ -165,10 +167,12 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | Fichier | Fonction |
 |---|---|
 | `lib/mule_client.dart` | Barrel : export unique du package |
+| `lib/data/assistant_client.dart` | Client WS/JSON-RPC de `mule-assistant` (`assistant.hello/chat/confirm/cancel`, events streamés) |
 | `lib/data/rpc_daemon_client.dart` | Client RPC réel communiquant avec le daemon (WebSocket/JSON-RPC) |
 | `lib/data/fake_daemon_client.dart` | Client daemon simulé pour tests/dev sans daemon |
 | `lib/data/dto/rpc_dto.dart` | Objets de transfert de données pour le protocole RPC |
 | `lib/domain/services/mule_daemon_client.dart` | Interface abstraite du client daemon (contrat) |
+| `lib/domain/models/assistant_models.dart` | Modèles : `AssistantEvent`, `AssistantConfirmRequest`, `ChatEntry`, états de connexion assistant |
 | `lib/domain/models/category_item.dart` | Modèle : catégorie de téléchargement |
 | `lib/domain/models/daemon_event.dart` | Modèle : événement émis par le daemon |
 | `lib/domain/models/daemon_info.dart` | Modèle : informations d'état du daemon |
@@ -181,6 +185,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `lib/domain/models/part_met_models.dart` | Modèles : métadonnées de fichiers .part.met |
 | `lib/domain/models/server_models.dart` | Modèles : serveurs eD2k |
 | `pubspec.yaml` | Manifeste du package |
+| `test/assistant_client_test.dart` | Tests du client assistant (faux serveur WS loopback) |
 | `test/fake_daemon_client_test.dart` | Tests du client simulé |
 | `test/rpc_daemon_client_test.dart` | Tests du client RPC |
 | `README.md` | Usage, protocole et comportements transport du client |
@@ -199,6 +204,28 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `README.md` | Contenu et règles du design system |
 
 ## crates/ — Crates Rust
+
+### `mule-assistant` — Orchestrateur LLM local
+
+| Fichier | Fonction |
+|---|---|
+| `Cargo.toml` | Manifeste (deps : `mule-mcp`, `reqwest`, `axum`) |
+| `src/lib.rs` | Racine de la bibliothèque |
+| `src/main.rs` | Binaire : `chat` (REPL), `--prompt` (one-shot), `serve` (WS) |
+| `src/config.rs` | `AssistantConfig` + validation endpoint loopback |
+| `src/error.rs` | `AssistantError` (thiserror) |
+| `src/llm/mod.rs` | Trait `LlmBackend`, types messages/`ToolCall`/`AssistantTurn` |
+| `src/llm/ollama.rs` | Backend Ollama `/api/chat` (streamé, loopback-only) |
+| `src/llm/mock.rs` | `MockBackend` scripté pour tests hors-ligne |
+| `src/policy.rs` | Allowlist, table préfixe→capacité daemon, confirmation requise |
+| `src/tools_bridge.rs` | `ToolDefinition` MCP → schéma tool-calling ; troncation résultats |
+| `src/session.rs` | Boucle agentique, `AssistantEvent`, historique Ollama |
+| `src/repl.rs` | REPL console (events + confirmation `o/n`) |
+| `src/ws.rs` | Serveur WS loopback (`assistant.hello/chat/confirm/cancel`) |
+| `tests/policy_tests.rs` | Tests de la policy (capacités, confirmations, exhaustivité) |
+| `tests/session_tests.rs` | Tests e2e de la boucle (MockBackend + daemon de test) |
+| `tests/ollama_backend_tests.rs` | Tests du backend (faux serveur axum loopback) |
+| `tests/ws_tests.rs` | Tests du transport WS (chat, cancel, drain des events) |
 
 ### `mule-cli` — Interface en ligne de commande
 
@@ -473,7 +500,9 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `src/tools/shares/handlers.rs` | Handlers des outils shares |
 | `src/tools/shares/schemas.rs` | Schémas JSON des outils shares |
 | `src/tools/system.rs` | Outils MCP : système/statut |
+| `src/tools/policy.rs` | `ToolRisk`/`ToolProfile` : classification et filtrage des outils (`--tool-profile read|safe|full`) |
 | `tests/mcp_protocol_tests.rs` | Tests du protocole MCP |
+| `tests/tool_profile_tests.rs` | Tests des profils de filtrage (exhaustivité, refus d'exécution) |
 
 ### `mule-network-policy` — Politique réseau
 
@@ -642,6 +671,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 |---|---|
 | `docs/README.md` | Portail d'orientation de la documentation technique |
 | `docs/INDEX.md` | Index exhaustif des fichiers du dépôt |
+| `docs/ASSISTANT.md` | Guide d'utilisation de l'assistant IA local : installation, modes REPL/prompt/serve, profils d'outils, panneau Flutter, sécurité, protocole WS, dépannage |
 | `docs/CHANGELOG.md` | Journal des modifications (Keep a Changelog) |
 | `docs/SETTINGS.md` | Référence complète des paramètres (`settings.get`/`set`) : clés RPC/persistées, défauts, application à chaud, équivalents eMule |
 

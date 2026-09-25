@@ -3,6 +3,7 @@
 
 pub mod downloads;
 pub mod kad;
+pub mod policy;
 pub mod servers;
 pub mod shares;
 pub mod system;
@@ -13,6 +14,7 @@ use serde_json::Value;
 use tracing::info;
 
 pub use downloads::resolve_download_id;
+pub use policy::{classify, ToolProfile, ToolRisk};
 
 /// Propriété de schéma simple `{ "type": ty, "description": desc }`.
 ///
@@ -40,6 +42,39 @@ pub fn list_tools() -> Vec<ToolDefinition> {
     tools.extend(shares::list_tools());
     tools.extend(kad::list_tools());
     tools
+}
+
+/// Variante de [`list_tools`] filtrée par profil : les outils hors profil
+/// — ou non classés — sont masqués. Le profil `Full` reproduit `list_tools`.
+pub fn list_tools_for(profile: ToolProfile) -> Vec<ToolDefinition> {
+    list_tools()
+        .into_iter()
+        .filter(|t| {
+            classify(&t.name)
+                .map(|risk| profile.allows(risk))
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// Variante de [`execute_tool`] appliquant le profil avant tout appel RPC :
+/// un outil hors profil est refusé sans contact avec le daemon. Filtrer
+/// `tools/list` seul est cosmétique — un client peut invoquer par son nom
+/// un outil qui n'y figure pas.
+pub async fn execute_tool_for(
+    profile: ToolProfile,
+    client: &DaemonClient,
+    tool_name: &str,
+    args: Value,
+) -> ToolCallResult {
+    match classify(tool_name) {
+        Some(risk) if profile.allows(risk) => execute_tool(client, tool_name, args).await,
+        Some(_) => ToolCallResult::error(format!(
+            "Tool '{tool_name}' blocked by profile '{}'",
+            profile.as_str()
+        )),
+        None => ToolCallResult::error(format!("Unknown tool: {tool_name}")),
+    }
 }
 
 pub async fn execute_tool(client: &DaemonClient, tool_name: &str, args: Value) -> ToolCallResult {
