@@ -265,6 +265,14 @@ impl Ed2kPeerInfo {
         misc_bit(self.misc_options2, 13)
     }
 
+    /// eMule `m_fDirectUDPCallback` — CT_EMULE_MISCOPTIONS2 bit 12
+    /// (`BaseClient.cpp:511`). The peer is TCP-firewalled but UDP-open
+    /// (full-cone NAT) and accepts `OP_DIRECTCALLBACKREQ` datagrams asking
+    /// it to dial our TCP port (`BaseClient.cpp:1403`).
+    pub fn supports_direct_udp_callback(&self) -> bool {
+        misc_bit(self.misc_options2, 12)
+    }
+
     /// Returns true if this peer supports either SX1 (via OP_EMULEINFO) or SX2 (via misc_options2).
     pub fn supports_source_exchange(&self) -> bool {
         self.supports_source_exchange2() || self.has_source_exchange_capability()
@@ -348,5 +356,37 @@ mod tests {
         info.misc_options2 = Some(1 << 10);
         assert!(info.supports_source_exchange2());
         assert!(info.supports_source_exchange());
+    }
+
+    #[test]
+    fn test_direct_udp_callback_detected_from_misc_options2() {
+        // eMule `m_fDirectUDPCallback` = CT_EMULE_MISCOPTIONS2 bit 12
+        // (`BaseClient.cpp:511`) — advertised by TCP-firewalled/UDP-open
+        // (full-cone NAT) peers accepting `OP_DIRECTCALLBACKREQ`.
+        let mut info = Ed2kPeerInfo {
+            user_hash: [0u8; 16],
+            client_id: 123456789,
+            tcp_port: 4662,
+            name: None,
+            version: None,
+            emule_version: None,
+            misc_options1: None,
+            misc_options2: None,
+            emule_udp_port: None,
+            server_ip: 0,
+            server_port: 0,
+            tags: vec![],
+            unknown_tags: vec![],
+            emule_info: None,
+        };
+        assert!(!info.supports_direct_udp_callback());
+
+        info.misc_options2 = Some(1 << 12);
+        assert!(info.supports_direct_udp_callback());
+
+        // Neighbouring bits must not leak (bit 11 = captcha, bit 13 =
+        // FileIdent).
+        info.misc_options2 = Some((1 << 11) | (1 << 13));
+        assert!(!info.supports_direct_udp_callback());
     }
 }

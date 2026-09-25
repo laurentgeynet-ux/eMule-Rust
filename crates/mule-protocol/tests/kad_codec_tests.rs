@@ -337,13 +337,18 @@ fn test_kad_search_and_publish_source_roundtrip() {
         version: 2,
     };
 
-    let enc_pub_req = KadCodec::encode_publish_source_req(&file_hash, &contact, file_size);
+    // eMule writes `GetMyConnectOptions(true, true)` as `TAG_ENCRYPTION`
+    // (Search.cpp:692) — crypt bits 0-2, direct-UDP-callback bit 3.
+    let connect_options: u8 = 0x0B; // crypt supported+requested + direct callback
+    let enc_pub_req =
+        KadCodec::encode_publish_source_req(&file_hash, &contact, file_size, connect_options);
     let dec_pub_req = KadCodec::decode(&enc_pub_req).expect("decode publish source req");
     match dec_pub_req {
         KadMessage::PublishSourceReq(r) => {
             assert_eq!(r.target_file_hash, file_hash);
             assert_eq!(r.contact.kad_id, sender_id);
             assert_eq!(r.file_size, file_size);
+            assert_eq!(r.encryption, connect_options);
         }
         _ => panic!("expected PublishSourceReq"),
     }
@@ -945,7 +950,10 @@ fn test_search_keyword_res_fragmented() {
         .collect();
 
     let packets = KadCodec::encode_search_keyword_res_fragmented(&keyword_hash, &entries);
-    assert!(packets.len() >= 2, "20 fat entries must overflow one fragment");
+    assert!(
+        packets.len() >= 2,
+        "20 fat entries must overflow one fragment"
+    );
     let mut recovered = Vec::new();
     for pkt in &packets {
         assert!(pkt.len() <= UDP_KAD_MAXFRAGMENT);

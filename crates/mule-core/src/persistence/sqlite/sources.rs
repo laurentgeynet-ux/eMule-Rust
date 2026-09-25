@@ -18,8 +18,8 @@ pub fn upsert_peer_sources(
             "INSERT INTO peer_sources (
                 file_hash, address, ip, port, origin,
                 discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
-                user_hash, crypt_options, buddy_id, software, availability, server_ip, server_port
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+                user_hash, crypt_options, buddy_id, software, availability, server_ip, server_port, udp_port
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             ON CONFLICT(file_hash, address) DO UPDATE SET
                 last_seen_unix_ms = excluded.last_seen_unix_ms,
                 ip = excluded.ip,
@@ -30,7 +30,8 @@ pub fn upsert_peer_sources(
                 software = COALESCE(excluded.software, peer_sources.software),
                 availability = COALESCE(excluded.availability, peer_sources.availability),
                 server_ip = CASE WHEN excluded.server_ip != 0 THEN excluded.server_ip ELSE peer_sources.server_ip END,
-                server_port = CASE WHEN excluded.server_port != 0 THEN excluded.server_port ELSE peer_sources.server_port END"
+                server_port = CASE WHEN excluded.server_port != 0 THEN excluded.server_port ELSE peer_sources.server_port END,
+                udp_port = CASE WHEN excluded.udp_port != 0 THEN excluded.udp_port ELSE peer_sources.udp_port END"
         )?;
 
         for s in sources {
@@ -53,6 +54,7 @@ pub fn upsert_peer_sources(
                 s.availability,
                 s.server_ip as i64,
                 s.server_port as i32,
+                s.udp_port as i32,
             ])?;
             count += 1;
         }
@@ -65,7 +67,7 @@ pub fn list_peer_sources(conn: &Connection, file_hash: &str) -> Result<Vec<PeerS
     let mut stmt = conn.prepare(
         "SELECT file_hash, address, ip, port, origin,
                 discovered_at_unix_ms, last_seen_unix_ms, status, fail_count, last_error, cooldown_until_unix_ms,
-                user_hash, crypt_options, buddy_id, software, availability, server_ip, server_port
+                user_hash, crypt_options, buddy_id, software, availability, server_ip, server_port, udp_port
          FROM peer_sources
          WHERE file_hash = ?1
          ORDER BY status ASC, last_seen_unix_ms DESC"
@@ -82,6 +84,7 @@ pub fn list_peer_sources(conn: &Connection, file_hash: &str) -> Result<Vec<PeerS
         let crypt_options_i32: i32 = row.get(12).unwrap_or(0);
         let server_ip_i64: i64 = row.get(16).unwrap_or(0);
         let server_port_i32: i32 = row.get(17).unwrap_or(0);
+        let udp_port_i32: i32 = row.get(18).unwrap_or(0);
 
         Ok(PeerSource {
             file_hash: row.get(0)?,
@@ -102,6 +105,7 @@ pub fn list_peer_sources(conn: &Connection, file_hash: &str) -> Result<Vec<PeerS
             availability: row.get(15)?,
             server_ip: server_ip_i64 as u32,
             server_port: server_port_i32 as u16,
+            udp_port: udp_port_i32 as u16,
         })
     })?;
 

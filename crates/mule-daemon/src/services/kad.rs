@@ -917,16 +917,24 @@ impl KadService {
         // (0.0.0.0 or NATed) is unusable. Same for the UDP port: advertise the
         // extern port once the firewall check proved it reachable.
         let intern_udp = self.udp.local_udp_port().await.unwrap_or(0);
-        let (fw_observed_ip, advertised_udp_port) = {
+        let (fw_observed_ip, advertised_udp_port, udp_verified_open) = {
             let tracker = self.udp.firewall_tracker();
             let fw = tracker.lock().await;
-            (fw.observed_ip, fw.effective_port(intern_udp))
+            (
+                fw.observed_ip,
+                fw.effective_port(intern_udp),
+                fw.verified && fw.status == crate::services::kad_udp::UdpFirewallStatus::Open,
+            )
         };
         let bind_ip = self.udp.bind_addr().await.and_then(|a| match a.ip() {
             IpAddr::V4(v4) if !v4.is_unspecified() => Some(v4),
             _ => None,
         });
-        let Some(advertised_ip) = (*self.public_ipv4.read().unwrap())
+        let has_high_id = self.public_ipv4.read().unwrap().is_some();
+        let Some(advertised_ip) = self
+            .public_ipv4
+            .read()
+            .unwrap()
             .or(fw_observed_ip)
             .or(bind_ip)
         else {
@@ -936,6 +944,15 @@ impl KadService {
             );
             return Ok(0);
         };
+
+        // `GetMyConnectOptions(true, true)` (OtherFunctions.cpp:4037,
+        // Search.cpp:692) : bits 0-2 = crypt layer (byte déjà calculé au
+        // démarrage pour `FINDBUDDY_RES`), bit 3 = `DirectUDPCallback`
+        // annoncé quand TCP est inatteignable (pas de HighID eD2K) mais
+        // l'UDP Kad est testé ouvert — le pair peut alors nous envoyer
+        // `OP_DIRECTCALLBACKREQ` pour que nous composions vers lui.
+        let connect_options: u8 = (self.udp.buddy_connect_options() & 0x07)
+            | (((!has_high_id) && udp_verified_open) as u8) << 3;
 
         let total_queried = targets.len();
         let mut futs = Vec::with_capacity(total_queried);
@@ -951,6 +968,7 @@ impl KadService {
                     tcp_port,
                     advertised_ip,
                     advertised_udp_port,
+                    connect_options,
                 )
                 .await
             });

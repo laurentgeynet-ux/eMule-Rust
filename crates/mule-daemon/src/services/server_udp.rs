@@ -152,9 +152,7 @@ impl ServerUdpService {
                         match server_udp::decode_server_udp(&buf[..len]) {
                             Ok(ServerUdpMessage::GlobFoundSources(entries)) => {
                                 let responder_ip = match peer_addr.ip() {
-                                    std::net::IpAddr::V4(v4) => {
-                                        u32::from_le_bytes(v4.octets())
-                                    }
+                                    std::net::IpAddr::V4(v4) => u32::from_le_bytes(v4.octets()),
                                     _ => 0,
                                 };
                                 handle_glob_found_sources(&downloads_arc, entries, responder_ip)
@@ -450,6 +448,7 @@ async fn handle_glob_found_sources(
                 // canal UDP ; la localité se compare alors sur l'IP).
                 server_ip: responder_ip,
                 server_port: 0,
+                udp_port: 0,
             });
         }
 

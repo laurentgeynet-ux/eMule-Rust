@@ -81,7 +81,10 @@ pub(crate) async fn find_swap_target(
             {
                 continue;
             }
-            let cap = d.max_sources.map(|m| m as usize).unwrap_or(max_peers_per_file);
+            let cap = d
+                .max_sources
+                .map(|m| m as usize)
+                .unwrap_or(max_peers_per_file);
             if d.source_count as usize >= cap {
                 continue;
             }
@@ -184,13 +187,7 @@ pub(crate) async fn apply_swap(
     // The source is now actively served for `to_hash` on the live socket:
     // mark it connected and clear any leftover cooldown so the coordinator
     // counts it as a live source (eMule `SwapTo->srclist.AddTail(this)`).
-    let _ = dl.update_peer_source_status(
-        to_hash,
-        address,
-        PeerSourceStatus::Connected,
-        None,
-        None,
-    );
+    let _ = dl.update_peer_source_status(to_hash, address, PeerSourceStatus::Connected, None, None);
 }
 
 #[cfg(test)]
@@ -227,6 +224,7 @@ mod tests {
             availability: None,
             server_ip: 0,
             server_port: 0,
+            udp_port: 0,
         }
     }
 
@@ -234,11 +232,7 @@ mod tests {
         hex::encode([byte; 16])
     }
 
-    fn svc_with_two_files(
-        hash_a: &str,
-        hash_b: &str,
-        tmp: &tempfile::TempDir,
-    ) -> DownloadService {
+    fn svc_with_two_files(hash_a: &str, hash_b: &str, tmp: &tempfile::TempDir) -> DownloadService {
         let mut svc = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
         for (name, h) in [("file_a.bin", hash_a), ("file_b.bin", hash_b)] {
             let link = format!("ed2k://|file|{name}|10000000|{h}|/");
@@ -259,7 +253,8 @@ mod tests {
         let (ha, hb) = (hash_hex(0x11), hash_hex(0x22));
         let mut svc = svc_with_two_files(&ha, &hb, &tmp);
         let addr = "1.2.3.4:4662";
-        svc.upsert_peer_sources(&hb, &[peer_source(&hb, addr)]).unwrap();
+        svc.upsert_peer_sources(&hb, &[peer_source(&hb, addr)])
+            .unwrap();
         let svc = Arc::new(Mutex::new(svc));
 
         let got = find_swap_target(&svc, addr, &ha, 100, 0).await;
@@ -267,7 +262,9 @@ mod tests {
         // Not offered for the file it already serves.
         assert!(find_swap_target(&svc, addr, &hb, 100, 0).await.is_none());
         // Unknown address -> nothing.
-        assert!(find_swap_target(&svc, "9.9.9.9:1", &ha, 100, 0).await.is_none());
+        assert!(find_swap_target(&svc, "9.9.9.9:1", &ha, 100, 0)
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -296,7 +293,9 @@ mod tests {
         }
         assert!(find_swap_target(&svc, addr, &ha, 100, 500).await.is_none());
         assert_eq!(
-            find_swap_target(&svc, addr, &ha, 100, 2000).await.map(|(h, _)| h),
+            find_swap_target(&svc, addr, &ha, 100, 2000)
+                .await
+                .map(|(h, _)| h),
             Some(hb)
         );
     }
@@ -320,11 +319,14 @@ mod tests {
         nnp_src.status = PeerSourceStatus::Allowed;
         nnp_src.last_error = Some("no needed parts".to_string());
         svc.upsert_peer_sources(&hb, &[nnp_src]).unwrap();
-        svc.upsert_peer_sources(&hc, &[peer_source(&hc, addr)]).unwrap();
+        svc.upsert_peer_sources(&hc, &[peer_source(&hc, addr)])
+            .unwrap();
         let svc = Arc::new(Mutex::new(svc));
         // Clean candidate (hc) wins over the NNP-flagged one (hb).
         assert_eq!(
-            find_swap_target(&svc, addr, &ha, 100, 0).await.map(|(h, _)| h),
+            find_swap_target(&svc, addr, &ha, 100, 0)
+                .await
+                .map(|(h, _)| h),
             Some(hc)
         );
     }
@@ -335,8 +337,10 @@ mod tests {
         let (ha, hb) = (hash_hex(0x88), hash_hex(0x99));
         let mut svc = svc_with_two_files(&ha, &hb, &tmp);
         let addr = "7.7.7.7:4662";
-        svc.upsert_peer_sources(&ha, &[peer_source(&ha, addr)]).unwrap();
-        svc.upsert_peer_sources(&hb, &[peer_source(&hb, addr)]).unwrap();
+        svc.upsert_peer_sources(&ha, &[peer_source(&ha, addr)])
+            .unwrap();
+        svc.upsert_peer_sources(&hb, &[peer_source(&hb, addr)])
+            .unwrap();
         let svc = Arc::new(Mutex::new(svc));
 
         apply_swap(
@@ -366,8 +370,7 @@ mod tests {
         assert_eq!(b.status, PeerSourceStatus::Connected);
         drop(dl);
 
-        apply_swap(&svc, addr, &ha, &hb, &PeerFailureReason::FileNotFound, 2000)
-            .await;
+        apply_swap(&svc, addr, &ha, &hb, &PeerFailureReason::FileNotFound, 2000).await;
         let dl = svc.lock().await;
         let a = dl
             .list_peer_sources(&ha)

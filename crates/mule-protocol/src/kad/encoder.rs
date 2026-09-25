@@ -317,6 +317,7 @@ impl KadEncoder {
         target_file_hash: &KadIdBytes,
         contact: &KadContactWire,
         file_size: u64,
+        connect_options: u8,
     ) -> Bytes {
         let mut buf = kad_buf(KADEMLIA2_PUBLISH_SOURCE_REQ, 2 + 32 + 1 + 5 * 10);
         buf.put_slice(target_file_hash);
@@ -347,11 +348,13 @@ impl KadEncoder {
         buf.put_u8(0x02);
         buf.put_u64_le(file_size);
 
-        // 5. TAG_ENCRYPTION (0xF3) -> TAGTYPE_UINT8 (0x09)
+        // 5. TAG_ENCRYPTION (0xF3) -> TAGTYPE_UINT8 (0x09) — eMule
+        //    `GetMyConnectOptions(true, true)` : crypt bits + bit 3
+        //    (direct UDP callback) quand applicable.
         buf.put_u8(0x09);
         buf.put_u16_le(1);
         buf.put_u8(0xF3);
-        buf.put_u8(1);
+        buf.put_u8(connect_options);
 
         buf.freeze()
     }
@@ -503,7 +506,10 @@ fn write_source_entry(buf: &mut BytesMut, s: &KadSourceWire) {
 }
 
 /// Encodes a `KADEMLIA2_SEARCH_RES` source response over borrowed entries.
-fn encode_search_source_res_refs(target_file_hash: &KadIdBytes, sources: &[&KadSourceWire]) -> Bytes {
+fn encode_search_source_res_refs(
+    target_file_hash: &KadIdBytes,
+    sources: &[&KadSourceWire],
+) -> Bytes {
     let count = sources.len().min(MAX_KAD_SEARCH_SOURCES);
     let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
     buf.put_slice(&[0u8; 16]); // sender Kad ID

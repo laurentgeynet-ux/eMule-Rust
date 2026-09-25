@@ -521,6 +521,7 @@ pub fn spawn_connection_task(
                                                                                 availability: None,
                                                                                 server_ip: srv_ip,
                                                                                 server_port: srv_port,
+                                                                                udp_port: 0,
                                                                             });
                                                                         }
 
@@ -609,6 +610,7 @@ pub fn spawn_connection_task(
                                                                                 buddy_id: None,
                                                                                 server_ip: srv_ip,
                                                                                 server_port: srv_port,
+                                                                                udp_port: 0,
                                                                             });
                                                                         }
 
@@ -892,10 +894,7 @@ async fn publish_shared_files(
             // niveau max et envoyée sous `PR_EMULE_COMPRESSED (0xD4)` —
             // seulement si le résultat est plus petit.
             let (protocol, payload): (u8, Vec<u8>) = {
-                let compressed = if tcp_flags
-                    & mule_protocol::ed2k::SRV_TCPFLG_COMPRESSION
-                    != 0
-                {
+                let compressed = if tcp_flags & mule_protocol::ed2k::SRV_TCPFLG_COMPRESSION != 0 {
                     pack_packet_payload(&pkt.payload)
                 } else {
                     None
@@ -936,12 +935,14 @@ async fn publish_shared_files(
 /// strictement plus petit que l'original (sinon le paquet part non compressé).
 fn pack_packet_payload(payload: &[u8]) -> Option<Vec<u8>> {
     use std::io::Write;
-    let mut encoder =
-        flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
     if encoder.write_all(payload).is_err() {
         return None;
     }
-    encoder.finish().ok().filter(|buf| buf.len() < payload.len())
+    encoder
+        .finish()
+        .ok()
+        .filter(|buf| buf.len() < payload.len())
 }
 
 /// eMule `Packet::UnPackPacket` for server packets: zlib-inflate the packed

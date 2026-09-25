@@ -535,6 +535,7 @@ pub fn decode_publish_source_req(
         let mut udp_port = 0u16;
         let mut tcp_port = 0u16;
         let mut file_size = 0u64;
+        let mut encryption = 0u8;
         let limits = Ed2kLimits::default();
         let mut reader = TagReader::new(payload, 33, protocol, Some(opcode));
         let mut parse_ok = true;
@@ -564,6 +565,12 @@ pub fn decode_publish_source_req(
                             ip = ip_val.to_be_bytes();
                         }
                     }
+                    TagName::Id(0xF3) => match tag.value {
+                        TagValue::UInt8(e) => encryption = e,
+                        TagValue::UInt16(e) => encryption = e as u8,
+                        TagValue::UInt32(e) => encryption = e as u8,
+                        _ => {}
+                    },
                     TagName::Text(name) => {
                         let lower = name.to_lowercase();
                         if lower == "port" || lower == "sourceport" {
@@ -587,6 +594,13 @@ pub fn decode_publish_source_req(
                         } else if lower == "ip" || lower == "sourceip" {
                             if let TagValue::UInt32(ip_val) = tag.value {
                                 ip = ip_val.to_be_bytes();
+                            }
+                        } else if lower == "encryption" {
+                            match tag.value {
+                                TagValue::UInt8(e) => encryption = e,
+                                TagValue::UInt16(e) => encryption = e as u8,
+                                TagValue::UInt32(e) => encryption = e as u8,
+                                _ => {}
                             }
                         }
                     }
@@ -612,6 +626,7 @@ pub fn decode_publish_source_req(
                 target_file_hash,
                 contact,
                 file_size,
+                encryption,
             }));
         }
     }
@@ -654,6 +669,8 @@ pub fn decode_publish_source_req(
         target_file_hash,
         contact,
         file_size,
+        // Le format plat historique ne porte pas le byte d'options.
+        encryption: 0,
     }))
 }
 
@@ -843,43 +860,43 @@ pub fn decode_publish_keyword_req(
                     Ok((Some(tag), _)) => {
                         parsed_tags.push(tag.clone());
                         match &tag.name {
-                        TagName::Id(TAG_SPECIAL_NAME) => {
-                            if let TagValue::String(s) = tag.value {
-                                file_name = s.chars().filter(|c| !c.is_control()).collect();
-                            }
-                        }
-                        TagName::Id(TAG_SPECIAL_FILESIZE) => match tag.value {
-                            TagValue::UInt32(v) => file_size = v as u64,
-                            TagValue::UInt64(v) => file_size = v,
-                            TagValue::UInt16(v) => file_size = v as u64,
-                            TagValue::UInt8(v) => file_size = v as u64,
-                            _ => {}
-                        },
-                        TagName::Id(0x15) => match tag.value {
-                            TagValue::UInt32(v) => source_count = v,
-                            TagValue::UInt16(v) => source_count = v as u32,
-                            TagValue::UInt8(v) => source_count = v as u32,
-                            _ => {}
-                        },
-                        TagName::Text(name) => {
-                            let lower = name.to_lowercase();
-                            if lower == "name" || lower == "filename" {
+                            TagName::Id(TAG_SPECIAL_NAME) => {
                                 if let TagValue::String(s) = tag.value {
                                     file_name = s.chars().filter(|c| !c.is_control()).collect();
                                 }
-                            } else if lower == "size" || lower == "filesize" {
-                                match tag.value {
-                                    TagValue::UInt32(v) => file_size = v as u64,
-                                    TagValue::UInt64(v) => file_size = v,
-                                    _ => {}
-                                }
-                            } else if lower == "sources" {
-                                if let TagValue::UInt32(v) = tag.value {
-                                    source_count = v;
+                            }
+                            TagName::Id(TAG_SPECIAL_FILESIZE) => match tag.value {
+                                TagValue::UInt32(v) => file_size = v as u64,
+                                TagValue::UInt64(v) => file_size = v,
+                                TagValue::UInt16(v) => file_size = v as u64,
+                                TagValue::UInt8(v) => file_size = v as u64,
+                                _ => {}
+                            },
+                            TagName::Id(0x15) => match tag.value {
+                                TagValue::UInt32(v) => source_count = v,
+                                TagValue::UInt16(v) => source_count = v as u32,
+                                TagValue::UInt8(v) => source_count = v as u32,
+                                _ => {}
+                            },
+                            TagName::Text(name) => {
+                                let lower = name.to_lowercase();
+                                if lower == "name" || lower == "filename" {
+                                    if let TagValue::String(s) = tag.value {
+                                        file_name = s.chars().filter(|c| !c.is_control()).collect();
+                                    }
+                                } else if lower == "size" || lower == "filesize" {
+                                    match tag.value {
+                                        TagValue::UInt32(v) => file_size = v as u64,
+                                        TagValue::UInt64(v) => file_size = v,
+                                        _ => {}
+                                    }
+                                } else if lower == "sources" {
+                                    if let TagValue::UInt32(v) = tag.value {
+                                        source_count = v;
+                                    }
                                 }
                             }
-                        }
-                        _ => {}
+                            _ => {}
                         }
                     }
                     Ok((None, _)) => {}

@@ -218,14 +218,42 @@ impl InboundListenerService {
                     name: TagName::Id(TAG_SPECIAL_EMULE_MISCOPTIONS1),
                     value: TagValue::UInt32(misc1),
                 });
+                // Identité ed2k réelle — remontée avant MiscOptions2 pour
+                // le bit « DirectUDPCallback » (`IsFirewalled` ⇔ pas de
+                // HighID).
+                let ids = self.sx_local_ids(actual_listen_addr.port()).await;
+
                 // MiscOptions2 — same layout as the outbound HELLO:
-                // FileIdent<<13 | SrcExch2<<10 | CryptReq<<9 | CryptWants<<8 |
-                // CryptSup<<7 | ExtMultiPkt<<5 | LargeFiles<<4 | KadVersion<<0 (8).
+                // FileIdent<<13 | DirectUDPCallback<<12 | SrcExch2<<10 |
+                // CryptReq<<9 | CryptWants<<8 | CryptSup<<7 | ExtMultiPkt<<5
+                // | LargeFiles<<4 | KadVersion<<0.
                 let mut misc2: u32 = (1 << 13)
                     | (1 << 10)
                     | (1 << 5)
                     | (1 << 4)
                     | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
+                // eMule `BaseClient.cpp:1007` — bit 12 quand TCP est
+                // inatteignable (client_id < 0x01000000) mais l'UDP Kad est
+                // testé ouvert (full-cone NAT) : un pair peut alors nous
+                // demander un `OP_DIRECTCALLBACKREQ`.
+                if ids.client_id < 0x0100_0000 {
+                    let udp_open = {
+                        let svc = self.kad_udp.read().unwrap().clone();
+                        match svc {
+                            Some(kad_udp) => {
+                                let tracker = kad_udp.firewall_tracker();
+                                let fw = tracker.lock().await;
+                                fw.verified
+                                    && fw.status
+                                        == crate::services::kad_udp::UdpFirewallStatus::Open
+                            }
+                            None => false,
+                        }
+                    };
+                    if udp_open {
+                        misc2 |= 1 << 12;
+                    }
+                }
                 if self
                     .obfuscation_enabled
                     .load(std::sync::atomic::Ordering::Relaxed)
@@ -247,7 +275,6 @@ impl InboundListenerService {
                 // IP/port du serveur) — eMule `SendHelloTypePacket` écrit
                 // `GetUserIDHybrid()` et `GetCurrentServer()` ; 0 si non
                 // connecté.
-                let ids = self.sx_local_ids(actual_listen_addr.port()).await;
                 let ans = Ed2kHelloAnswer {
                     user_hash: *self.user_hash.read().unwrap(),
                     client_id: ids.client_id,

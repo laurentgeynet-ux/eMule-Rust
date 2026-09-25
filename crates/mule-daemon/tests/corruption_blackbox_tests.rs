@@ -35,6 +35,7 @@ fn make_source(file_hash: &str, addr: &str) -> PeerSource {
         availability: None,
         server_ip: 0,
         server_port: 0,
+        udp_port: 0,
     }
 }
 

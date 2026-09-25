@@ -133,6 +133,28 @@ pub fn encode_file_not_found() -> Vec<u8> {
     vec![PR_EMULE, OP_FILENOTFOUND]
 }
 
+/// Connect-options byte bit 3 (`GetMyConnectOptions`): the peer is
+/// TCP-firewalled but UDP-open and accepts `OP_DIRECTCALLBACKREQ`
+/// (`OtherFunctions.cpp:4049-4052`). Carried in MISCOPTIONS2 bit 12 of the
+/// eD2K hello and in `TAG_ENCRYPTION` of published Kad sources.
+pub const CONNECT_OPT_DIRECT_CALLBACK: u8 = 0x08;
+
+/// Encodes `OP_DIRECTCALLBACKREQ` (`0x95`) — eMule `BaseClient.cpp:1411-1415`
+/// (`TryToConnect` step 4): we ask a TCP-unreachable peer (announced via
+/// `SupportsDirectUDPCallback`, MISCOPTIONS2 bit 12) to dial back our TCP
+/// port. Payload: `<our TCP port u16><our userhash 16><connect options u8>`
+/// — the options byte is `GetMyConnectOptions(true, false)` (crypt flags
+/// only, direct-callback bit clear).
+pub fn encode_direct_callback_req(tcp_port: u16, user_hash: &[u8; 16], conn_opts: u8) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 + 19);
+    out.push(PR_EMULE);
+    out.push(OP_DIRECTCALLBACKREQ);
+    out.extend_from_slice(&tcp_port.to_le_bytes());
+    out.extend_from_slice(user_hash);
+    out.push(conn_opts);
+    out
+}
+
 /// Encodes `OP_QUEUEFULL` (empty payload).
 pub fn encode_queue_full() -> Vec<u8> {
     vec![PR_EMULE, OP_QUEUEFULL]
@@ -358,6 +380,23 @@ mod tests {
         }
         // Truncated (< 19-byte payload) is rejected.
         assert!(decode_client_udp(&raw[..18]).is_err());
+
+        // Outgoing encoder (`BaseClient.cpp:1411-1415`) must produce the
+        // exact same wire bytes — round-trip covers framing + field order.
+        let encoded = encode_direct_callback_req(4662, &[0xAB; 16], 0x07);
+        assert_eq!(encoded, raw);
+        match decode_client_udp(&encoded).unwrap() {
+            ClientUdpMessage::DirectCallbackReq {
+                tcp_port,
+                user_hash,
+                conn_opts,
+            } => {
+                assert_eq!(tcp_port, 4662);
+                assert_eq!(user_hash, [0xAB; 16]);
+                assert_eq!(conn_opts, 0x07);
+            }
+            m => panic!("unexpected {m:?}"),
+        }
     }
 
     #[test]

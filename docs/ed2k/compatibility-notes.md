@@ -790,3 +790,103 @@ annulés, et identité (clé RSA + user hash) — la continuité des crédits.
 | `shareddir.dat` | ⚠️ non prévu — pas de feature « répertoires partagés » multiples |
 | `preferences.ini` | ⚠️ non prévu — réglages GUI eMule hors scope (grosse surface, faible valeur) |
 | `addresses.dat`, `webservices.dat`, `statistics.*`, `AC_*.dat` | ⚠️ non prévus — GUI/config eMule marginale |
+
+## 17. Callback UDP direct (`OP_DIRECTCALLBACKREQ`) + `m_bReaskPending` — audit phase B, passe 11
+
+### Sens du mécanisme
+
+`OP_DIRECTCALLBACKREQ` (`0x95`, `Opcodes.h:296`) sert à joindre un pair
+**TCP-injoignable mais UDP-ouvert** (NAT full-cone) : l'émetteur — lui-même
+TCP-joignable — envoie un datagramme UDP sur le port Kad du destinataire,
+qui compose alors une connexion TCP de rappel (`TryToConnect` step 4,
+`BaseClient.cpp:1403-1415`).
+
+### Émission (rôle du demandeur)
+
+- Condition eMule : `SupportsDirectUDPCallback() && GetUDPPort() != 0 &&
+  GetConnectIP() != 0` — `SupportsDirectUDPCallback()` exige
+  `m_fDirectUDPCallback && HasValidHash() && GetKadPort()`
+  (`updownclient.h:211`). Chez nous : `PeerSource.crypt_options & 0x08`
+  (byte connect-options, bit 3) + `udp_port != 0` + user hash présent.
+- Payload filaire `[PR_EMULE][0x95][tcp_port u16 LE][userhash 16][conn_opts u8]`
+  (`CSafeMemFile` = little-endian) — encodeur
+  `client_udp::encode_direct_callback_req`, constante
+  `CONNECT_OPT_DIRECT_CALLBACK = 0x08`.
+- Ordre eMule `TryToConnect` : **direct callback → server callback →
+  buddy callback**. La stratégie tente le direct callback avant le relais
+  buddy (`kadcb:`) et retombe sur le buddy si la socket UDP locale est
+  absente (`send_direct_callback_req` → `false`).
+- Le byte `conn_opts` = `GetMyConnectOptions(true, false)` : bits 0-2 crypt
+  uniquement — le bit direct-callback reste à 0 (on demande à être appelé,
+  on n'est pas le receveur de rappel).
+- Chiffrement : eMule passe `bEncrypt = ShouldReceiveCryptUDPPackets()`
+  (capacité UDP-crypt du **destinataire**) — notre `client_udp` envoie en
+  clair comme le reste de ses datagrammes (réask ping inclus) : écart
+  assumé et documenté, l'obfuscation UDP client n'est pas implémentée.
+
+### Réception (rôle du pair firewalled)
+
+- Gate eMule : `AllowCalbackRequest(ip)` (fenêtre 180 s/IP,
+  `ClientList.cpp:913-928`) puis `CKademlia::IsRunning() &&
+  CKademlia::IsFirewalled()` (`ClientUDPSocket.cpp:373`).
+  `CKademlia::IsFirewalled()` = verdict **Kad-TCP** (`CPrefs::
+  GetFirewalled`, `Kademlia.cpp:324`) — PAS le testeur UDP : le receveur
+  type a le TCP mort et l'UDP ouvert, le statut UDP ne doit donc pas gater
+  la réception. eMule vaut `firewalled` par défaut tant que 2 contacts
+  n'ont pas confirmé le TCP ; notre proxy = `!is_high_id` (LowID
+  serveur-assigné) — `UdpFirewallStatus` n'intervient plus (correction
+  d'inversion : gate précédent exigeait `Firewalled` UDP, ce qui aurait
+  exclu justement les receveurs cibles).
+- Puis `FindClientByUserHash`/`AddClient` + `SetConnectOptions(opts,
+  true, false)` + `SetDirectUDPCallbackSupport(false)` + `TryToConnect()`
+  → chez nous : `InboundListenerService::connect_back` avec `our_id`
+  (l'ID réel de la session serveur, comme eMule envoie son vrai ID dans
+  `TryToConnect`).
+
+### Capacité annoncée
+
+- Sortante eMule (`BaseClient.cpp:1007`, `GetMyConnectOptions` bit 3 /
+  MISCOPTIONS2 bit 12) : `theApp.IsFirewalled() && KadRunning &&
+  !IsFirewalledUDP(true) && IsVerified()` — net : **pas de HighID eD2K**
+  + UDP Kad testé ouvert. Bits 12 des hellos (outbound + answer inbound)
+  et bit 3 du `TAG_ENCRYPTION` publié (`Search.cpp:692` —
+  `GetMyConnectOptions(true, true)`) suivent cette condition.
+- `PeerSource.udp_port` (colonne SQLite ajoutée, `ALTER TABLE` idempotent
+  + `CASE WHEN excluded.udp_port != 0` sticky) = eMule `GetKadPort()` :
+  alimenté par `KadSourceWire.udp_port` (recherche), le tag
+  `CT_EMULE_UDPPORTS` du hello (`peer_udp_port`), 0 sinon.
+- Ingest Kad : une source `tcp_port == 0` avec le bit direct-callback est
+  conservée **sans buddy** (type 6, `DownloadQueue.cpp:1596`) — avant on
+  exigeait `buddy_id`, ce qui dropait ces sources.
+
+### `m_bReaskPending` (`DownloadClient.cpp:185-206`)
+
+- Au re-ask d'un LowID **déjà sollicité** (`GetLastAskedTime() > 0` ↔
+  entrée `queued_peers`) **et présent dans notre file d'upload**
+  (`US_ONUPLOADQUEUE` ↔ `waiting_rank_by_ip`), eMule ne compose pas :
+  `DS_ONQUEUE` + `m_bReaskPending`, et laisse au pair un cycle pour venir
+  avec son propre re-ask d'upload. Le flag est consommé à la connexion
+  entrante (`ConnectionEstablished` → `SendFileRequest` immédiat,
+  `BaseClient.cpp:1552`) ; la branche `!CanDoCallback` (LowID↔LowID) est
+  déjà couverte par notre gate `can_do_callback` (passe 9).
+- Implémentation : `QueuedPeerState.reask_pending` +
+  `peer_session.defer_reask_for_queued_peer(ip, hash, next)` (une seule
+  pose, `!m_bReaskPending`) / `take_reask_pending(ip)` (consommé à la
+  connexion entrante dans `dispatch_requests` → `OP_DIRECTCALLBACKREQ`
+  immédiat + `register_pending_kad_callback`). La deadline
+  `next_tcp_reask_unix_ms` est poussée d'un cycle `FILE_REASK_INTERVAL`
+  pour garder la fenêtre UDP cohérente.
+- Limite : n'opère que pour les sources à IP réelle connue (`kadcb:`) —
+  les sources `lowid:` ne portent pas l'IP réelle du pair (le champ `ip`
+  contient l'ID LowID) et ne peuvent pas être matchées à une entrée de
+  file d'upload par IP, comme le `Compare` par userhash d'eMule le ferait
+  si le hash était connu (les sources serveur n'en portent pas).
+
+### Restes
+
+- Le byte `TAG_ENCRYPTION` 0xF3 des contacts publiés (**bit 3**) est
+  désormais honoré à l'ingest et à l'émission ; `KadPublishSourceReq.
+  encryption` exposé au decode (round-trip testé).
+- eMule partage le flag `m_bReaskPending` avec la socket sortante
+  (`ConnectionEstablished` → `SendFileRequest` sur la socket entrante) ;
+  notre split inbound/outbound fait l'équivalent par callback immédiat.

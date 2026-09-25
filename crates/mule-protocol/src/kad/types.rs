@@ -218,6 +218,10 @@ pub struct KadPublishSourceReq {
     pub contact: KadContactWire,
     /// File size in bytes.
     pub file_size: u64,
+    /// Publisher's connect-options byte (`TAG_ENCRYPTION` 0xF3, eMule
+    /// `GetMyConnectOptions`): crypt bits 0-2, direct-UDP-callback bit 3.
+    /// 0 when the publisher did not carry the tag.
+    pub encryption: u8,
 }
 
 /// Kad2 Publish Source Response (0x4B, unified publish response).

@@ -624,8 +624,7 @@ impl SwarmCoordinator {
                     our_server_ip: server_ip,
                     our_server_port: server_port,
                     kad_open: udp_snap.is_active
-                        && fw_status
-                            == crate::services::kad_udp::types::UdpFirewallStatus::Open,
+                        && fw_status == crate::services::kad_udp::types::UdpFirewallStatus::Open,
                 }
             };
 
@@ -635,9 +634,7 @@ impl SwarmCoordinator {
             // les canaux de découverte (serveur TCP/UDP, SX, inbound).
             {
                 let mut dl_guard = self.state.downloads.lock().await;
-                dl_guard.set_lowid_source_acceptance(
-                    cb_ctx.server_high_id || cb_ctx.kad_open,
-                );
+                dl_guard.set_lowid_source_acceptance(cb_ctx.server_high_id || cb_ctx.kad_open);
             }
 
             // eMule `CPartFile::Process`: near the per-file source cap
@@ -649,14 +646,8 @@ impl SwarmCoordinator {
                 .is_none_or(|t| t.elapsed() >= super::types::SOURCE_PURGE_INTERVAL)
             {
                 self.last_source_purge.insert(hash_hex.clone(), now);
-                self.purge_excess_sources(
-                    &hash_hex,
-                    &candidate_sources,
-                    file_max,
-                    &cb_ctx,
-                    now_ms,
-                )
-                .await;
+                self.purge_excess_sources(&hash_hex, &candidate_sources, file_max, &cb_ctx, now_ms)
+                    .await;
             }
 
             let swarm_snap = self
@@ -808,9 +799,6 @@ impl SwarmCoordinator {
                     let Ok(src_ip) = ip_str.parse::<std::net::IpAddr>() else {
                         continue;
                     };
-                    let Some(buddy_bytes) = src.buddy_id_bytes() else {
-                        continue;
-                    };
                     // Le pair va tenter de se connecter à notre port TCP :
                     // même condition `CanDoCallback` que les sources
                     // `lowid:` (HighID serveur ou Kad ouvert).
@@ -820,6 +808,100 @@ impl SwarmCoordinator {
                     if self.state.peer_session.has_pending_kad_callback(src_ip) {
                         continue;
                     }
+
+                    // eMule `AskForDownload` (`DownloadClient.cpp:185-206`) :
+                    // source LowID déjà sollicitée (entrée `queued_peers` =
+                    // `GetLastAskedTime() > 0`) et présente dans notre file
+                    // d'upload (`US_ONUPLOADQUEUE`) → `m_bReaskPending` : le
+                    // re-ask est différé d'un cycle pour laisser le pair
+                    // composer vers nous à son propre re-ask d'upload. Le
+                    // flag est consommé à sa connexion entrante.
+                    if self
+                        .state
+                        .inbound_listener
+                        .upload_manager()
+                        .waiting_rank_by_ip(&src_ip)
+                        .await
+                        .is_some()
+                    {
+                        let next_cycle = now_ms
+                            + crate::services::peer_session::status_query::FILE_REASK_INTERVAL
+                                .as_millis() as i64;
+                        if self
+                            .state
+                            .peer_session
+                            .defer_reask_for_queued_peer(src_ip, &hash_hex, next_cycle)
+                            .await
+                        {
+                            let mut dl_guard = self.state.downloads.lock().await;
+                            let _ = dl_guard.update_peer_source_status(
+                                &hash_hex,
+                                &src.address,
+                                PeerSourceStatus::Tried,
+                                Some("reask deferred — peer waits in our upload queue"),
+                                Some(next_cycle),
+                            );
+                            continue;
+                        }
+                    }
+
+                    // eMule `TryToConnect` step 4 (`BaseClient.cpp:1403`) —
+                    // le callback UDP direct précède le relais buddy : la
+                    // source est TCP-firewalled mais UDP-ouverte et a
+                    // annoncé le bit dans son byte d'options publié
+                    // (`connect-options & 0x08`, OtherFunctions.cpp:4049).
+                    if src.crypt_options
+                        & mule_protocol::ed2k::client_udp::CONNECT_OPT_DIRECT_CALLBACK
+                        != 0
+                        && src.udp_port != 0
+                    {
+                        let (obf_enabled, obf_required) = self.state.effective_obfuscation().await;
+                        // `GetMyConnectOptions(true, false)` : crypt flags
+                        // seuls, le bit direct-callback reste à 0.
+                        let conn_opts = (obf_enabled as u8)
+                            | ((obf_enabled as u8) << 1)
+                            | ((obf_required as u8) << 2);
+                        let our_hash = self.state.identity.lock().await.user_hash();
+                        let target = SocketAddr::new(src_ip, src.udp_port);
+                        if self
+                            .state
+                            .client_udp
+                            .send_direct_callback_req(
+                                target,
+                                self.state.ed2k_port(),
+                                &our_hash,
+                                conn_opts,
+                            )
+                            .await
+                        {
+                            tracing::info!(
+                                "Sent OP_DIRECTCALLBACKREQ to LowID source {peer}:{port} for {hash_hex}",
+                                peer = log_peer_ip(src_ip),
+                                port = src.udp_port,
+                            );
+                            self.state.peer_session.register_pending_kad_callback(
+                                src_ip,
+                                hash_hex.clone(),
+                                5 * 60 * 1000,
+                            );
+                            let mut dl_guard = self.state.downloads.lock().await;
+                            let _ = dl_guard.update_peer_source_status(
+                                &hash_hex,
+                                &src.address,
+                                PeerSourceStatus::Tried,
+                                None,
+                                Some(now_ms + 5 * 60 * 1000),
+                            );
+                            connected_this_tick += 1;
+                            continue;
+                        }
+                        // Pas de socket UDP → l'option n'existe pas,
+                        // on retombe sur le relais buddy.
+                    }
+
+                    let Some(buddy_bytes) = src.buddy_id_bytes() else {
+                        continue;
+                    };
                     let buddy_id = mule_core::kad::KadId(buddy_bytes);
                     let Some(buddy) = self.state.kad.find_contact(&buddy_id).await else {
                         tracing::debug!(
@@ -1321,7 +1403,11 @@ impl SwarmCoordinator {
         // session. Correspondance adresse exacte puis IP seule (les sources
         // `lowid:`/`kadcb:` ont un peer_address ip:port différent de leur
         // adresse source).
-        let rqfs = self.state.peer_session.swarm_snapshot(Some(file_hash)).await;
+        let rqfs = self
+            .state
+            .peer_session
+            .swarm_snapshot(Some(file_hash))
+            .await;
         let mut rqf_addrs: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut rqf_ips: std::collections::HashSet<std::net::IpAddr> =
             std::collections::HashSet::new();
@@ -1389,18 +1475,13 @@ impl SwarmCoordinator {
                     // source `lowid:`/`kadcb:`).
                     let session_addr = rqfs.peers.iter().find_map(|p| {
                         let pa = p.peer_address.as_ref()?;
-                        let src_ip =
-                            crate::services::downloads::source_addr_ip(&s.address)?;
+                        let src_ip = crate::services::downloads::source_addr_ip(&s.address)?;
                         let pa_ip = crate::services::downloads::source_addr_ip(pa)?;
                         (p.remote_queue_full && (pa == &s.address || pa_ip == src_ip))
                             .then(|| pa.clone())
                     });
                     if let Some(addr) = session_addr {
-                        let _ = self
-                            .state
-                            .peer_session
-                            .disconnect_peer(Some(&addr))
-                            .await;
+                        let _ = self.state.peer_session.disconnect_peer(Some(&addr)).await;
                     }
                 }
                 Ok(false) => {}
@@ -1546,6 +1627,7 @@ mod tests {
             availability: None,
             server_ip: 0,
             server_port: 0,
+            udp_port: 0,
         }
     }
 
@@ -1555,13 +1637,9 @@ mod tests {
     fn test_state(dir: &std::path::Path, hash_hex: &str) -> crate::state::AppState {
         let config = crate::config::DaemonConfig::new(dir.join("data"), "test-token")
             .with_workdir_mode(crate::workdir::WorkDirMode::Portable);
-        let mut downloads = crate::services::downloads::DownloadService::in_memory(
-            dir.join("temp"),
-        )
-        .unwrap();
-        let link = format!(
-            "ed2k://|file|f.bin|10000000|{hash_hex}|/"
-        );
+        let mut downloads =
+            crate::services::downloads::DownloadService::in_memory(dir.join("temp")).unwrap();
+        let link = format!("ed2k://|file|f.bin|10000000|{hash_hex}|/");
         downloads
             .add_ed2k_link(
                 &link,
@@ -1785,10 +1863,7 @@ mod tests {
         ));
         // Pas de deadline publiée (session à peine en file) → pas de ping.
         assert!(!super::should_send_udp_reask(
-            &udp_target(
-                Some(now_ms - super::UDP_REASK_MIN_CONNECT_AGE_MS),
-                None,
-            ),
+            &udp_target(Some(now_ms - super::UDP_REASK_MIN_CONNECT_AGE_MS), None,),
             now_ms,
             false,
         ));

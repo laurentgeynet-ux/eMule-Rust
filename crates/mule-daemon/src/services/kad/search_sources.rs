@@ -12,6 +12,7 @@ use mule_network_policy::{classify_ip, IpCategory, NetworkPolicyManager, Network
 
 use crate::services::downloads::DownloadService;
 use crate::services::kad_udp::KadUdpService;
+use mule_protocol::ed2k::client_udp;
 
 pub async fn search_sources_iterative(
     file_hash_hex: &str,
@@ -170,13 +171,18 @@ pub async fn search_sources_iterative(
                         continue;
                     }
 
-                    // LowID Kad source (tcp_port == 0): only reachable through a
-                    // buddy callback (KADEMLIA_CALLBACK_REQ). Keep it only if a
-                    // buddy ID was published; the peer's own IP is used to adopt
-                    // the incoming callback connection.
+                    // LowID Kad source (tcp_port == 0): reachable through a
+                    // buddy callback (KADEMLIA_CALLBACK_REQ) or directly via
+                    // OP_DIRECTCALLBACKREQ when its connect-options carry the
+                    // direct-callback bit (eMule source type 6,
+                    // `DownloadQueue.cpp:1596`). Keep it when either path
+                    // exists; the peer's own IP is used to adopt the incoming
+                    // callback connection.
                     let (peer_addr_str, buddy_hex) = if w.tcp_port == 0 {
+                        let direct_cb = w.encryption & client_udp::CONNECT_OPT_DIRECT_CALLBACK != 0;
                         match w.buddy_id {
                             Some(bid) => (format!("kadcb:{ip}"), Some(KadId(bid).to_hash_hex())),
+                            None if direct_cb => (format!("kadcb:{ip}"), None),
                             None => continue,
                         }
                     } else {
@@ -213,6 +219,10 @@ pub async fn search_sources_iterative(
                         // Kad results carry no server context (buddy path).
                         server_ip: 0,
                         server_port: 0,
+                        // eMule `SetKadPort` — needed to reach a
+                        // TCP-firewalled/UDP-open source via
+                        // `OP_DIRECTCALLBACKREQ`.
+                        udp_port: w.udp_port,
                     });
                 }
             }

@@ -51,13 +51,14 @@ pub(crate) async fn apply_change_client_id(
     // HighID case: the announced ID equals the peer's real IP on the
     // wire — eMule compares `nNewUserID` (little-endian read) to
     // `client->GetIP()` stored in network order.
-    let peer_ip_wire: Option<u32> = remote_str
-        .parse::<SocketAddr>()
-        .ok()
-        .and_then(|a| match a.ip() {
-            IpAddr::V4(v4) => Some(u32::from_be_bytes(v4.octets())),
-            IpAddr::V6(_) => None,
-        });
+    let peer_ip_wire: Option<u32> =
+        remote_str
+            .parse::<SocketAddr>()
+            .ok()
+            .and_then(|a| match a.ip() {
+                IpAddr::V4(v4) => Some(u32::from_be_bytes(v4.octets())),
+                IpAddr::V6(_) => None,
+            });
     let high_id_case = !is_lowid && peer_ip_wire == Some(new_user_id);
     if !is_lowid && !high_id_case {
         tracing::debug!(
@@ -76,11 +77,10 @@ pub(crate) async fn apply_change_client_id(
             .unwrap_or_default()
             .into_iter()
             .find_map(|s| {
-                let ip_u32 = s
-                    .ip
-                    .parse::<std::net::Ipv4Addr>()
-                    .ok()
-                    .map(|v4| u32::from_le_bytes(v4.octets()))?;
+                let ip_u32 =
+                    s.ip.parse::<std::net::Ipv4Addr>()
+                        .ok()
+                        .map(|v4| u32::from_le_bytes(v4.octets()))?;
                 (ip_u32 == new_server_ip).then_some(s.port)
             })
     };
@@ -94,12 +94,7 @@ pub(crate) async fn apply_change_client_id(
     // `IsLocalServer` can then match it for callback decisions).
     let mut dl_svc = downloads.lock().await;
     for file_hash in file_hashes {
-        let _ = dl_svc.update_peer_source_server(
-            file_hash,
-            remote_str,
-            new_server_ip,
-            server_port,
-        );
+        let _ = dl_svc.update_peer_source_server(file_hash, remote_str, new_server_ip, server_port);
         if is_lowid {
             let _ = dl_svc.update_peer_source_server(
                 file_hash,
@@ -119,7 +114,9 @@ pub(crate) async fn apply_change_client_id(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mule_core::model::{Ed2kServer, PeerSource, PeerSourceOrigin, PeerSourceStatus, ServerFilterStatus};
+    use mule_core::model::{
+        Ed2kServer, PeerSource, PeerSourceOrigin, PeerSourceStatus, ServerFilterStatus,
+    };
 
     fn test_service(dir: &tempfile::TempDir) -> DownloadService {
         DownloadService::new(&dir.path().join("mule.db"), dir.path().join("tmp"))
@@ -165,6 +162,7 @@ mod tests {
             availability: None,
             server_ip: 0,
             server_port: 0,
+            udp_port: 0,
         }
     }
 
@@ -284,8 +282,13 @@ mod tests {
         );
         apply_change_client_id(&p, "9.9.9.9:4662", std::slice::from_ref(&hash), &svc).await;
         // Payload tronqué → ignoré.
-        apply_change_client_id(&[1, 2, 3], "9.9.9.9:4662", std::slice::from_ref(&hash), &svc)
-            .await;
+        apply_change_client_id(
+            &[1, 2, 3],
+            "9.9.9.9:4662",
+            std::slice::from_ref(&hash),
+            &svc,
+        )
+        .await;
         let dl = svc.lock().await;
         assert_eq!(server_fields(&dl, &hash, "9.9.9.9:4662"), (0, 0));
     }

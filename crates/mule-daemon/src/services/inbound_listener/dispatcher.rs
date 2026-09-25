@@ -20,14 +20,13 @@ use mule_protocol::ed2k::{
     Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kMessage, Ed2kMultiPacketAnswer,
     Ed2kMultiPacketSubAnswer, Ed2kMultiPacketSubRequest, Ed2kPublicKey, Ed2kRequestSources,
     Ed2kSecIdentState, Ed2kSendingPart, Ed2kSignature, PartAvailabilityMask, OP_ACCEPTUPLOADREQ,
-    OP_AICHFILEHASHREQ, OP_AICH_REQUEST, OP_CANCELTRANSFER, OP_CHANGE_CLIENT_ID,
-    OP_COMPRESSEDPART, OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER,
-    OP_END_OF_DOWNLOAD, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST,
-    OP_MULTIPACKET, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_OUTOFPARTS, OP_PUBLICKEY,
-    OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
-    OP_REQUESTPARTS_I64,
-    OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
-    OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
+    OP_AICHFILEHASHREQ, OP_AICH_REQUEST, OP_CANCELTRANSFER, OP_CHANGE_CLIENT_ID, OP_COMPRESSEDPART,
+    OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_END_OF_DOWNLOAD,
+    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_MULTIPACKET,
+    OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING,
+    OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
+    OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE,
+    OP_SETREQFILEID_EMULE, OP_SIGNATURE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
 };
 use mule_protocol::framing::PacketCodec;
 
@@ -109,6 +108,48 @@ impl InboundListenerService {
         // client en attente garde ouvert ; sans lui le client ne serait
         // servi qu'à son prochain re-ask (~30 min).
         let mut promote_notify: Option<std::sync::Arc<tokio::sync::Notify>> = None;
+
+        // eMule `ConnectionEstablished` (BaseClient.cpp:1552) — si ce pair
+        // avait un re-ask différé (`m_bReaskPending` posé par la stratégie
+        // parce qu'il attend dans notre file d'upload), sa requête de
+        // fichier part immédiatement. Nos sockets entrantes/sortantes ne
+        // sont pas partagées : on émet le `OP_DIRECTCALLBACKREQ` tout de
+        // suite — le pair est en ligne — et sa connexion de rappel sera
+        // adoptée via `pending_kad_callbacks`.
+        if let Some(ip) = peer_ip {
+            let mgr = { self.peer_session.read().unwrap().clone() };
+            if let Some(mgr) = mgr {
+                if let Some(pending) = mgr.take_reask_pending(ip).await {
+                    if let Some(udp_port) = peer_udp_port {
+                        use std::sync::atomic::Ordering::Relaxed;
+                        let obf = self.obfuscation_enabled.load(Relaxed);
+                        let conn_opts = (obf as u8)
+                            | ((obf as u8) << 1)
+                            | ((self.obfuscation_required.load(Relaxed) as u8) << 2);
+                        let our_hash = *self.user_hash.read().unwrap();
+                        let our_tcp = self.listen_addr.lock().await.map(|a| a.port()).unwrap_or(0);
+                        let client_udp = { self.client_udp.read().unwrap().clone() };
+                        if let Some(client_udp) = client_udp {
+                            if client_udp
+                                .send_direct_callback_req(
+                                    SocketAddr::new(ip, udp_port),
+                                    our_tcp,
+                                    &our_hash,
+                                    conn_opts,
+                                )
+                                .await
+                            {
+                                mgr.register_pending_kad_callback(
+                                    ip,
+                                    pending.file_hash.clone(),
+                                    5 * 60 * 1000,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Environnement SX partagé (policy + journaux de throttle eMule).
         let sx_env = self.sx_env();
@@ -887,6 +928,7 @@ impl InboundListenerService {
                                                     availability: peer_masks.get(&file_hash).cloned(),
                                                     server_ip: 0,
                                                     server_port: 0,
+                                                    udp_port: 0,
                                                 };
                                                 let mut dl_svc = self.downloads.lock().await;
                                                 let _ = dl_svc.upsert_peer_sources(&hash_hex, &[src]);

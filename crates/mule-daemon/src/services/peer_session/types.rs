@@ -208,6 +208,12 @@ pub struct QueuedPeerState {
     /// Next re-ask deadline (`GetTimeUntilReask()` = FILEREASKTIME from
     /// last ask) — the UDP ping fires inside its final 2-minute window.
     pub next_tcp_reask_unix_ms: Option<i64>,
+    /// eMule `m_bReaskPending` (`DownloadClient.cpp:193`) : le re-ask TCP
+    /// de ce pair LowID a été différé d'un cycle parce qu'il attend dans
+    /// notre file d'upload — il nous joindra à son propre re-ask. Consommé
+    /// quand le pair nous contacte (`ConnectionEstablished`,
+    /// `BaseClient.cpp:1552`).
+    pub reask_pending: bool,
 }
 
 impl SwarmInnerState {

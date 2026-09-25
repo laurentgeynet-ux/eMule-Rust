@@ -158,6 +158,7 @@ impl KadUdpService {
         tcp_port: u16,
         advertised_ip: std::net::Ipv4Addr,
         advertised_udp_port: u16,
+        connect_options: u8,
     ) -> Result<u8, String> {
         let socket = {
             let inner = self.inner.read().await;
@@ -195,7 +196,12 @@ impl KadUdpService {
             version: crate::services::kad::firewall::OUR_KAD_VERSION,
         };
 
-        let pub_bytes = KadCodec::encode_publish_source_req(target_file_hash, &contact, file_size);
+        let pub_bytes = KadCodec::encode_publish_source_req(
+            target_file_hash,
+            &contact,
+            file_size,
+            connect_options,
+        );
 
         tracing::debug!(
             "Kad sending PublishSourceReq (0x23) to node {} for file {} (tx_id={})",

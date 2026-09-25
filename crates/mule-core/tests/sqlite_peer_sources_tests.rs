@@ -33,6 +33,7 @@ fn test_peer_sources_crud_and_deduplication() {
         availability: None,
         server_ip: 0,
         server_port: 0,
+        udp_port: 4673,
     };
 
     let s2 = PeerSource {
@@ -54,6 +55,7 @@ fn test_peer_sources_crud_and_deduplication() {
         availability: None,
         server_ip: 0,
         server_port: 0,
+        udp_port: 0,
     };
 
     let inserted = db
@@ -95,6 +97,24 @@ fn test_peer_sources_crud_and_deduplication() {
     assert!(found_s1.requests_crypt());
     assert!(found_s1.requires_crypt());
     assert!(found_s1.user_hash_bytes().is_some());
+    assert_eq!(found_s1.udp_port, 4673);
+
+    // 3b. A later upsert that does not know the UDP port (0 = unknown)
+    // keeps the stored value — `CASE WHEN excluded.udp_port != 0`.
+    let s1_no_udp = PeerSource {
+        udp_port: 0,
+        last_seen_unix_ms: 3000,
+        ..s1.clone()
+    };
+    db.upsert_peer_sources(hash, &[s1_no_udp])
+        .expect("upsert without udp_port");
+    let found_s1 = db
+        .list_peer_sources(hash)
+        .expect("list")
+        .into_iter()
+        .find(|s| s.address == "192.168.1.50:39735")
+        .expect("found s1");
+    assert_eq!(found_s1.udp_port, 4673);
 
     // 4. Update status and failure with cooldown
     let updated = db

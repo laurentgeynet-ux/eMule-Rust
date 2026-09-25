@@ -308,7 +308,11 @@ impl PeerSessionManager {
         // purged or re-dialed without re-queueing.
         g.queued_peers.retain(|_, q| {
             q.next_tcp_reask_unix_ms
-                .map(|d| d > now_ms - 2 * crate::services::peer_session::status_query::FILE_REASK_INTERVAL.as_millis() as i64)
+                .map(|d| {
+                    d > now_ms
+                        - 2 * crate::services::peer_session::status_query::FILE_REASK_INTERVAL
+                            .as_millis() as i64
+                })
                 .unwrap_or(true)
         });
         g.queued_peers
@@ -336,6 +340,61 @@ impl PeerSessionManager {
                 })
             })
             .collect()
+    }
+
+    /// eMule `m_bReaskPending` — `CUpDownClient::AskForDownload`
+    /// (`DownloadClient.cpp:185-206`): the TCP re-ask of a LowID peer that
+    /// is *also waiting in our upload queue* is deferred by one cycle so
+    /// the peer can reach us with its own upload re-ask. Marks the
+    /// `queued_peers` entry for `ip` (keyed `"ip:port"`) and pushes its
+    /// re-ask deadline to `next_reask_unix_ms`.
+    ///
+    /// Returns `false` when no queue entry exists for `ip`+`file_hash`
+    /// (eMule `GetLastAskedTime() > 0` — a never-contacted source is
+    /// dialed immediately) or when the flag is already set (the deferral
+    /// fires once, like `!m_bReaskPending`).
+    pub async fn defer_reask_for_queued_peer(
+        &self,
+        ip: std::net::IpAddr,
+        file_hash: &str,
+        next_reask_unix_ms: i64,
+    ) -> bool {
+        let prefix = format!("{ip}:");
+        let mut g = self.inner.lock().await;
+        let mut marked = false;
+        for (addr, q) in g.queued_peers.iter_mut() {
+            if !addr.starts_with(&prefix)
+                || !q.file_hash.eq_ignore_ascii_case(file_hash)
+                || q.reask_pending
+            {
+                continue;
+            }
+            q.reask_pending = true;
+            q.next_tcp_reask_unix_ms = Some(next_reask_unix_ms);
+            marked = true;
+        }
+        marked
+    }
+
+    /// Consomme le flag `m_bReaskPending` — eMule `ConnectionEstablished`
+    /// (`BaseClient.cpp:1552`): quand le pair différé ouvre une connexion
+    /// vers nous, sa requête de fichier part immédiatement. Retourne
+    /// l'état de file conservé (hash + deadline) pour que l'appelant
+    /// déclenche le callback.
+    pub async fn take_reask_pending(
+        &self,
+        ip: std::net::IpAddr,
+    ) -> Option<crate::services::peer_session::types::QueuedPeerState> {
+        let prefix = format!("{ip}:");
+        let mut g = self.inner.lock().await;
+        let mut found = None;
+        for (addr, q) in g.queued_peers.iter_mut() {
+            if addr.starts_with(&prefix) && q.reask_pending {
+                q.reask_pending = false;
+                found = Some(q.clone());
+            }
+        }
+        found
     }
 
     /// Applies a queue rank learned via `OP_REASKACK` to the queued
@@ -405,10 +464,8 @@ impl PeerSessionManager {
                 .unwrap_or(false);
             if matches && s.snapshot.status == PeerConnectionStatus::Queued {
                 s.snapshot.status = PeerConnectionStatus::Disconnected;
-                s.snapshot.failure_reason =
-                    Some(mule_core::model::PeerFailureReason::FileNotFound);
-                s.snapshot.last_error =
-                    Some("peer answered OP_FILENOTFOUND (UDP)".to_string());
+                s.snapshot.failure_reason = Some(mule_core::model::PeerFailureReason::FileNotFound);
+                s.snapshot.last_error = Some("peer answered OP_FILENOTFOUND (UDP)".to_string());
                 emit_event(&self.event_tx, &self.sequence, &s.snapshot);
                 tracing::info!(
                     "Peer {peer}: queued session dropped via OP_FILENOTFOUND (UDP)",
@@ -647,16 +704,13 @@ impl PeerSessionManager {
                         let terminal = matches!(
                             failure_reason,
                             Some(
-                                PeerFailureReason::FileNotFound
-                                    | PeerFailureReason::NoNeededParts
+                                PeerFailureReason::FileNotFound | PeerFailureReason::NoNeededParts
                             )
                         );
                         if terminal {
                             g.queued_peers.remove(&address_str);
                         }
-                        let deadline = if session.snapshot.status
-                            == PeerConnectionStatus::Queued
-                        {
+                        let deadline = if session.snapshot.status == PeerConnectionStatus::Queued {
                             session.snapshot.next_tcp_reask_unix_ms
                         } else {
                             None
@@ -1152,6 +1206,7 @@ mod tests {
             file_hash: file_hash.to_string(),
             connected_at_unix_ms: Some(1_000),
             next_tcp_reask_unix_ms: Some(i64::MAX / 2),
+            reask_pending: false,
         }
     }
 
@@ -1217,6 +1272,49 @@ mod tests {
         assert!(mgr.queued_udp_targets().await.is_empty());
     }
 
+    /// eMule `m_bReaskPending` (`DownloadClient.cpp:193`) : le différé se
+    /// pose une fois sur l'entrée `queued_peers` du pair (clé `ip:port`),
+    /// pousse la deadline, puis est consommé par `take_reask_pending`
+    /// (`ConnectionEstablished`, `BaseClient.cpp:1552`).
+    #[tokio::test]
+    async fn reask_pending_defer_and_consume() {
+        let mgr = manager();
+        let ip: IpAddr = "85.25.13.7".parse().unwrap();
+        let file_hash = "ee".repeat(16);
+        {
+            let mut g = mgr.inner.lock().await;
+            g.queued_peers
+                .insert(PEER.to_string(), queue_entry(&file_hash));
+        }
+
+        // Jamais sollicité ou mauvais hash → pas de différé
+        // (`GetLastAskedTime() > 0` exige un cycle de file déjà vécu).
+        assert!(
+            !mgr.defer_reask_for_queued_peer(ip, &"ff".repeat(16), 5_000)
+                .await
+        );
+
+        // Premier différé → flag posé, deadline poussée.
+        assert!(mgr.defer_reask_for_queued_peer(ip, &file_hash, 9_999).await);
+        {
+            let g = mgr.inner.lock().await;
+            let q = g.queued_peers.get(PEER).unwrap();
+            assert!(q.reask_pending);
+            assert_eq!(q.next_tcp_reask_unix_ms, Some(9_999));
+        }
+
+        // `!m_bReaskPending` — le différé ne se repose pas : le cycle
+        // suivant procède normalement.
+        assert!(!mgr.defer_reask_for_queued_peer(ip, &file_hash, 9_999).await);
+
+        // Consommation à la connexion entrante du pair.
+        let taken = mgr.take_reask_pending(ip).await.expect("pending entry");
+        assert_eq!(taken.file_hash, file_hash);
+        assert!(!mgr.inner.lock().await.queued_peers[PEER].reask_pending);
+        // Le flag est consumé — un second take ne renvoie rien.
+        assert!(mgr.take_reask_pending(ip).await.is_none());
+    }
+
     /// Entrée dont la deadline de re-ask est dépassée depuis plus de deux
     /// cycles → purgée à la lecture (source morte sans re-queue).
     #[tokio::test]
@@ -1226,8 +1324,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64
-            - 3 * crate::services::peer_session::status_query::FILE_REASK_INTERVAL
-                .as_millis() as i64;
+            - 3 * crate::services::peer_session::status_query::FILE_REASK_INTERVAL.as_millis()
+                as i64;
         {
             let mut g = mgr.inner.lock().await;
             g.queued_peers.insert(
@@ -1236,6 +1334,7 @@ mod tests {
                     file_hash: "dd".repeat(16),
                     connected_at_unix_ms: Some(1_000),
                     next_tcp_reask_unix_ms: Some(stale),
+                    reask_pending: false,
                 },
             );
             g.peer_udp.insert(PEER.to_string(), (4672, 4));
@@ -1244,4 +1343,3 @@ mod tests {
         assert!(mgr.inner.lock().await.queued_peers.is_empty());
     }
 }
-

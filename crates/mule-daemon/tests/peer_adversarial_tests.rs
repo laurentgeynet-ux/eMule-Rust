@@ -18,7 +18,13 @@ use mule_test_support::{download_state, make_req};
 
 #[tokio::test]
 async fn test_adversarial_socket_open_then_complete_silence_times_out() {
-    let (state, _dir, hash) = download_state("test_token_adversarial", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = download_state(
+        "test_token_adversarial",
+        "test_payload.iso",
+        9728001,
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Start a mock listener that accepts and never responds
@@ -68,7 +74,13 @@ async fn test_adversarial_socket_open_then_complete_silence_times_out() {
 
 #[tokio::test]
 async fn test_adversarial_cooldown_rejection_and_force_bypass() {
-    let (state, _dir, hash) = download_state("test_token_adversarial", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = download_state(
+        "test_token_adversarial",
+        "test_payload.iso",
+        9728001,
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -101,6 +113,7 @@ async fn test_adversarial_cooldown_rejection_and_force_bypass() {
             availability: None,
             server_ip: 0,
             server_port: 0,
+            udp_port: 0,
         };
         let _ = dl_svc.upsert_peer_sources(&hash, &[src]);
     }
@@ -137,7 +150,13 @@ async fn test_adversarial_cooldown_rejection_and_force_bypass() {
 
 #[tokio::test]
 async fn test_adversarial_malformed_hello_answer_fails_handshake() {
-    let (state, _dir, hash) = download_state("test_token_adversarial", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = download_state(
+        "test_token_adversarial",
+        "test_payload.iso",
+        9728001,
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -183,7 +202,13 @@ async fn test_adversarial_malformed_hello_answer_fails_handshake() {
 
 #[tokio::test]
 async fn test_adversarial_file_status_hash_mismatch() {
-    let (state, _dir, hash) = download_state("test_token_adversarial", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = download_state(
+        "test_token_adversarial",
+        "test_payload.iso",
+        9728001,
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -282,7 +307,13 @@ async fn test_adversarial_file_status_hash_mismatch() {
 
 #[tokio::test]
 async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
-    let (state, _dir, hash) = download_state("test_token_adversarial", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = download_state(
+        "test_token_adversarial",
+        "test_payload.iso",
+        9728001,
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -405,11 +436,8 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
         payload.extend_from_slice(&500_000u32.to_le_bytes()); // start
         payload.extend_from_slice(&502_048u32.to_le_bytes()); // declared end: 2048 bytes
         payload.extend_from_slice(&vec![0xABu8; 1024]); // actual payload: 1024 bytes
-        let send_pkt = mule_protocol::framing::RawPacket::new(
-            PR_ED2K,
-            OP_SENDINGPART,
-            Bytes::from(payload),
-        );
+        let send_pkt =
+            mule_protocol::framing::RawPacket::new(PR_ED2K, OP_SENDINGPART, Bytes::from(payload));
         out.clear();
         out.push(send_pkt.protocol);
         out.extend_from_slice(&(send_pkt.frame_len() as u32).to_le_bytes());
@@ -443,7 +471,13 @@ async fn test_adversarial_sending_part_out_of_bounds_range_rejected() {
 
 #[tokio::test]
 async fn test_adversarial_unexpected_disconnect_during_transfer() {
-    let (state, _dir, hash) = download_state("test_token_adversarial", "test_payload.iso", 9728001, "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = download_state(
+        "test_token_adversarial",
+        "test_payload.iso",
+        9728001,
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

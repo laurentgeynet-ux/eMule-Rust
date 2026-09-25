@@ -142,8 +142,9 @@ impl KadCodec {
         target_file_hash: &KadIdBytes,
         contact: &KadContactWire,
         file_size: u64,
+        connect_options: u8,
     ) -> Bytes {
-        KadEncoder::encode_publish_source_req(target_file_hash, contact, file_size)
+        KadEncoder::encode_publish_source_req(target_file_hash, contact, file_size, connect_options)
     }
 
     /// Encodes a Kad2 Publish Source response packet (0x4B, unified publish response).

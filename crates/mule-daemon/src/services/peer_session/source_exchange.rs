@@ -605,6 +605,7 @@ pub async fn handle_sx_answer(
             // n'est valable que si `IsLocalServer` matche notre serveur.
             server_ip: src.server_ip,
             server_port: src.server_port,
+            udp_port: 0,
         });
     }
 
@@ -1068,6 +1069,7 @@ mod tests {
             availability,
             server_ip: 0,
             server_port: 0,
+            udp_port: 0,
         }
     }
 
@@ -1321,10 +1323,7 @@ mod tests {
         };
         // HighID → `!IsFirewalled()` : les `lowid:` sont acceptées au
         // funnel d'ingestion comme au filtre SX.
-        downloads
-            .lock()
-            .await
-            .set_lowid_source_acceptance(true);
+        downloads.lock().await.set_lowid_source_acceptance(true);
 
         let sources = vec![
             // Valide : IP publique HighID.

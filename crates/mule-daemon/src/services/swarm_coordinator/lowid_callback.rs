@@ -113,6 +113,7 @@ mod tests {
             availability: None,
             server_ip,
             server_port,
+            udp_port: 0,
         }
     }
 
@@ -122,7 +123,10 @@ mod tests {
     fn local_server_matching() {
         let c = ctx(true, true, false);
         // Server-origin sources without explicit server fields are local.
-        assert!(is_local_server(&lowid_src(0, 0, PeerSourceOrigin::Server), &c));
+        assert!(is_local_server(
+            &lowid_src(0, 0, PeerSourceOrigin::Server),
+            &c
+        ));
         // SX sources: exact endpoint match or IP-only (port unknown).
         let sx = PeerSourceOrigin::SourceExchange;
         assert!(is_local_server(&lowid_src(OUR_IP, 4661, sx), &c));

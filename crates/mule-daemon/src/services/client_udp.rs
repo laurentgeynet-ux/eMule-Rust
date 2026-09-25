@@ -123,12 +123,8 @@ pub struct ClientUdpService {
     /// Inbound listener used for `connect_back` when a peer asks a
     /// Kad-firewalled us to dial out (`OP_DIRECTCALLBACKREQ` → eMule
     /// `TryToConnect`).
-    inbound: Arc<std::sync::RwLock<Option<crate::services::inbound_listener::InboundListenerService>>>,
-    /// Kad UDP firewall tracker — direct callbacks are only honoured
-    /// while `UdpFirewallStatus::Firewalled` (eMule `CKademlia::
-    /// IsRunning() && IsFirewalled()`).
-    firewall_tracker:
-        Arc<std::sync::RwLock<Option<Arc<Mutex<crate::services::kad_udp::FirewallTestTracker>>>>>,
+    inbound:
+        Arc<std::sync::RwLock<Option<crate::services::inbound_listener::InboundListenerService>>>,
     /// Server session — provides our eD2K `client_id` for the connect-back
     /// hello (eMule sends its real ID in `TryToConnect`).
     server_session: Arc<std::sync::RwLock<Option<crate::services::ServerSessionManager>>>,
@@ -171,14 +167,6 @@ impl ClientUdpService {
         svc: crate::services::inbound_listener::InboundListenerService,
     ) {
         *self.inbound.write().unwrap() = Some(svc);
-    }
-
-    /// Injects the Kad UDP firewall tracker (`OP_DIRECTCALLBACKREQ` gate).
-    pub fn set_firewall_tracker(
-        &self,
-        tracker: Arc<Mutex<crate::services::kad_udp::FirewallTestTracker>>,
-    ) {
-        *self.firewall_tracker.write().unwrap() = Some(tracker);
     }
 
     /// Injects the server session (eD2K `client_id` for connect-back).
@@ -271,6 +259,44 @@ impl ClientUdpService {
                     log_peer_addr(target.addr)
                 );
             }
+        }
+        true
+    }
+
+    /// eMule `TryToConnect` step 4 (`BaseClient.cpp:1403-1417`): sends
+    /// `OP_DIRECTCALLBACKREQ` to a TCP-firewalled/UDP-open source that
+    /// announced `SupportsDirectUDPCallback` (connect-options bit 3 in its
+    /// published Kad contact). The peer is expected to dial our TCP port
+    /// back; the inbound connection is adopted via the pending
+    /// `kadcb:`-callback registry.
+    ///
+    /// `conn_opts` is our `GetMyConnectOptions(true, false)` byte — crypt
+    /// flags only, the direct-callback bit stays clear.
+    ///
+    /// Returns `true` when the UDP socket is live and the datagram was
+    /// dispatched (fire-and-forget, like eMule `SendPacket` — the option
+    /// is then considered exercised for this connect attempt).
+    pub async fn send_direct_callback_req(
+        &self,
+        target: SocketAddr,
+        our_tcp_port: u16,
+        user_hash: &[u8; 16],
+        conn_opts: u8,
+    ) -> bool {
+        let socket = { self.inner.lock().await.socket.clone() };
+        let Some(socket) = socket else {
+            return false;
+        };
+        let pkt = client_udp::encode_direct_callback_req(our_tcp_port, user_hash, conn_opts);
+        tracing::info!(
+            "Client UDP: OP_DIRECTCALLBACKREQ -> {peer} (tcp={our_tcp_port})",
+            peer = log_peer_addr(target)
+        );
+        if let Err(e) = socket.send_to(&pkt, target).await {
+            tracing::debug!(
+                "Client UDP: OP_DIRECTCALLBACKREQ to {} failed: {e}",
+                log_peer_addr(target)
+            );
         }
         true
     }
@@ -530,18 +556,28 @@ impl ClientUdpService {
             }
         }
 
-        // Gate — eMule only accepts when Kad is running and firewalled.
-        let tracker = { self.firewall_tracker.read().unwrap().clone() };
-        let firewalled = match tracker {
-            Some(t) => {
-                t.lock().await.status
-                    == crate::services::kad_udp::UdpFirewallStatus::Firewalled
+        // Gate — eMule accepts only when `CKademlia::IsRunning() &&
+        // CKademlia::IsFirewalled()` (`ClientUDPSocket.cpp:373`).
+        // `CKademlia::IsFirewalled()` (Kademlia.cpp:324 →
+        // `CPrefs::GetFirewalled`) is the Kad-TCP verdict — contacts
+        // confirmed our TCP port unreachable — NOT the UDP firewall tester:
+        // the mechanism targets TCP-dead/UDP-alive (full-cone NAT) nodes,
+        // so the UDP state must not gate reception. eMule defaults to
+        // firewalled until two contacts report us open; we don't run the
+        // outbound Kad-TCP check, so `!is_high_id` (server-assigned LowID)
+        // is our TCP-side proxy.
+        let kad_running = { self.inner.lock().await.socket.is_some() };
+        let server_session = { self.server_session.read().unwrap().clone() };
+        let (our_id, is_high_id) = match server_session {
+            Some(s) => {
+                let snap = s.snapshot().await;
+                (snap.client_id.unwrap_or(0), snap.is_high_id)
             }
-            None => false,
+            None => (0, false),
         };
-        if !firewalled {
+        if !kad_running || is_high_id {
             tracing::debug!(
-                "Client UDP: DIRECTCALLBACKREQ from {peer} ignored — not Kad-firewalled",
+                "Client UDP: DIRECTCALLBACKREQ from {peer} ignored — not TCP-firewalled (kad_running={kad_running}, high_id={is_high_id})",
                 peer = log_peer_addr(peer_addr)
             );
             return;
@@ -549,11 +585,6 @@ impl ClientUdpService {
 
         let Some(inbound) = self.inbound.read().unwrap().clone() else {
             return;
-        };
-        let server_session = { self.server_session.read().unwrap().clone() };
-        let our_id = match server_session {
-            Some(s) => s.snapshot().await.client_id.unwrap_or(0),
-            None => 0,
         };
 
         // eMule `AddTrackCallbackRequests` — tracked only once accepted.
@@ -642,15 +673,13 @@ impl ClientUdpService {
             UdpReaskResult::Rank(rank) => {
                 // eMule `SetRemoteQueueFull(false)` + `UDPReaskACK(nRank)`.
                 if let Some(ps) = ps {
-                    ps.apply_udp_queue_rank(&peer_addr.ip(), rank as u32)
-                        .await;
+                    ps.apply_udp_queue_rank(&peer_addr.ip(), rank as u32).await;
                 }
                 // UDP ver > 3 : `ProcessFileStatus` — le bitfield décrit
                 // les parts que le pair possède du fichier requis ; il
                 // alimente la rareté (`m_SrcPartFrequency`).
                 if let (Some(status), Some(hash)) = (part_status, pending_hash) {
-                    self.apply_ack_part_status(peer_addr, hash, status)
-                        .await;
+                    self.apply_ack_part_status(peer_addr, hash, status).await;
                 }
             }
             UdpReaskResult::QueueFull => {
@@ -706,11 +735,7 @@ impl ClientUdpService {
         // de la connexion) : on retrouve sa `ActiveSource` par IP.
         if let Some(src_addr) = dl
             .get_sources(&dl_id)
-            .and_then(|srcs| {
-                srcs.keys()
-                    .find(|a| a.ip() == peer_addr.ip())
-                    .copied()
-            })
+            .and_then(|srcs| srcs.keys().find(|a| a.ip() == peer_addr.ip()).copied())
         {
             let _ = dl.record_source_availability(&dl_id, src_addr, mask);
         }
@@ -819,7 +844,14 @@ mod tests {
             assert!(svc.send_reask_file_ping(&t, 0).await);
             age_out(&svc).await;
         }
-        let stats = svc.inner.lock().await.udp_stats.get(&ip).cloned().unwrap_or_default();
+        let stats = svc
+            .inner
+            .lock()
+            .await
+            .udp_stats
+            .get(&ip)
+            .cloned()
+            .unwrap_or_default();
         assert_eq!(stats.total, 4);
         assert_eq!(stats.failed, 3); // le 4e échec est compté au send suivant
 
@@ -868,12 +900,8 @@ mod tests {
     async fn udp_unsolicited_ack_ignored() {
         let svc = bound_service().await;
         let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 4));
-        svc.handle_reask_ack(
-            SocketAddr::new(ip, 12345),
-            UdpReaskResult::Rank(3),
-            None,
-        )
-        .await;
+        svc.handle_reask_ack(SocketAddr::new(ip, 12345), UdpReaskResult::Rank(3), None)
+            .await;
         assert!(svc.last_result(ip).await.is_none());
     }
 }

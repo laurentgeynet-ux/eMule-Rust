@@ -14,18 +14,16 @@ use tracing::info;
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus,
-    Ed2kHashSetReq, OP_ACCEPTUPLOADREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER,
-    OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER,
-    OP_CHANGE_CLIENT_ID, OP_QUEUERANKING, OP_REQFILENAME_ANSWER, OP_REQUESTSOURCES,
-    OP_REQUESTSOURCES2, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
+    Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus, Ed2kHashSetReq, OP_ACCEPTUPLOADREQ,
+    OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CHANGE_CLIENT_ID,
+    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_QUEUERANKING, OP_REQFILENAME_ANSWER,
+    OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
+    PR_EMULE_COMPRESSED,
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
 use super::events::{emit_download_update, emit_event};
-use super::source_exchange::{
-    handle_sx_answer, handle_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
-};
+use super::source_exchange::{handle_sx_answer, handle_sx_request, PeerSxCaps, SxEnv, SxLocalIds};
 use super::types::{
     PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
 };
@@ -787,17 +785,24 @@ async fn publish_next_reask(
         .as_millis() as i64
         + remaining.as_millis() as i64;
     let mut g = inner.lock().await;
+    // `m_bReaskPending` survive au rafraîchissement de deadline : un refresh
+    // ne consomme pas le flag (seule une connexion entrante le fait,
+    // `BaseClient.cpp:1552`).
+    let reask_pending = g
+        .queued_peers
+        .get(address_str)
+        .map(|q| q.reask_pending)
+        .unwrap_or(false);
     if let Some(session) = g.sessions.get_mut(address_str) {
         session.snapshot.next_tcp_reask_unix_ms = Some(deadline_unix_ms);
-        let queued = session
-            .snapshot
-            .file_hash
-            .clone()
-            .map(|file_hash| crate::services::peer_session::types::QueuedPeerState {
+        let queued = session.snapshot.file_hash.clone().map(|file_hash| {
+            crate::services::peer_session::types::QueuedPeerState {
                 file_hash,
                 connected_at_unix_ms: session.snapshot.connected_at_unix_ms,
                 next_tcp_reask_unix_ms: Some(deadline_unix_ms),
-            });
+                reask_pending,
+            }
+        });
         if let Some(state) = queued {
             // eMule `DS_ONQUEUE` is a logical state that survives the socket —
             // register it so the UDP re-ask can still fire after `CheckTimeOut`

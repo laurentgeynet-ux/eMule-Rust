@@ -114,6 +114,7 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
             user_hash TEXT,
             crypt_options INTEGER DEFAULT 0,
             buddy_id TEXT,
+            udp_port INTEGER DEFAULT 0,
             PRIMARY KEY(file_hash, address)
         );
 
@@ -349,6 +350,22 @@ pub fn init_schema(conn: &Connection) -> Result<(), CoreError> {
     }
     if !has_server_port {
         conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN server_port INTEGER DEFAULT 0;")?;
+    }
+
+    let mut stmt_peer5 = conn.prepare("PRAGMA table_info(peer_sources)")?;
+    let mut rows_peer5 = stmt_peer5.query([])?;
+    let mut has_udp_port = false;
+    while let Some(row) = rows_peer5.next()? {
+        let col: String = row.get(1)?;
+        if col == "udp_port" {
+            has_udp_port = true;
+            break;
+        }
+    }
+    drop(rows_peer5);
+    drop(stmt_peer5);
+    if !has_udp_port {
+        conn.execute_batch("ALTER TABLE peer_sources ADD COLUMN udp_port INTEGER DEFAULT 0;")?;
     }
 
     let mut stmt_sf = conn.prepare("PRAGMA table_info(shared_files)")?;

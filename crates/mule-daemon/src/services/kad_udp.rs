@@ -155,6 +155,12 @@ impl KadUdpService {
             .store(connect_options, Ordering::Relaxed);
     }
 
+    /// Crypt-layer connect-option bits (0-2 of `GetMyConnectOptions`) as
+    /// wired at startup by `set_buddy_tcp_info`.
+    pub fn buddy_connect_options(&self) -> u8 {
+        self.buddy_connect_options.load(Ordering::Relaxed)
+    }
+
     /// Sends a `KADEMLIA_CALLBACK_REQ` (0x52) to a buddy node, asking it to
     /// relay a callback to its LowID buddy client so that client connects
     /// back to our `tcp_port` (eMule `TryToConnect` → `CCS_KADCALLBACK`).

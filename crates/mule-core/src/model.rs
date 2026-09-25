@@ -433,6 +433,12 @@ pub struct PeerSource {
     /// eD2K server port of the source — eMule `m_nServerPort`. 0 = unknown.
     #[serde(default)]
     pub server_port: u16,
+    /// Peer's Kad UDP port — eMule `GetKadPort()`. Carried by Kad search
+    /// source entries (`KadSourceWire.udp_port`); required to send an
+    /// `OP_DIRECTCALLBACKREQ` to a TCP-firewalled/UDP-open source
+    /// (`BaseClient.cpp:1414`). 0 = unknown.
+    #[serde(default)]
+    pub udp_port: u16,
 }
 
 impl PeerSource {
@@ -655,7 +661,10 @@ mod tests {
         credit.downloaded_bytes = 5 * 1_048_576;
         credit.uploaded_bytes = 0;
         let m = credit.credit_multiplier();
-        assert!((m - 2.1415).abs() < 0.01, "Expected ~2.14 for 5MiB/0, got {m}");
+        assert!(
+            (m - 2.1415).abs() < 0.01,
+            "Expected ~2.14 for 5MiB/0, got {m}"
+        );
 
         // Vector 3: Received < 1 MiB => 1.0 floor regardless of ratio.
         credit.downloaded_bytes = 1000;
@@ -673,7 +682,10 @@ mod tests {
         credit.downloaded_bytes = 10 * 1_048_576;
         credit.uploaded_bytes = 10 * 1_048_576;
         let m = credit.credit_multiplier();
-        assert!((m - 2.0).abs() < 0.01, "Expected ~2.0 for 10MiB/10MiB, got {m}");
+        assert!(
+            (m - 2.0).abs() < 0.01,
+            "Expected ~2.0 for 10MiB/10MiB, got {m}"
+        );
     }
 
     #[test]

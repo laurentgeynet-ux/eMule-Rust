@@ -93,6 +93,7 @@ pub async fn handle_sources_add_manual(
         availability: None,
         server_ip: 0,
         server_port: 0,
+        udp_port: 0,
     };
 
     state
@@ -165,6 +166,7 @@ pub async fn handle_sources_connect(
             buddy_id: None,
             server_ip: 0,
             server_port: 0,
+            udp_port: 0,
         };
         let mut dl_svc = state.downloads.lock().await;
         let _ = dl_svc.upsert_peer_sources(hash_str, &[filtered_src]);
@@ -223,6 +225,7 @@ pub async fn handle_sources_connect(
             buddy_id: None,
             server_ip: 0,
             server_port: 0,
+            udp_port: 0,
         };
         let _ = dl_svc.upsert_peer_sources(hash_str, &[init_src]);
     }
