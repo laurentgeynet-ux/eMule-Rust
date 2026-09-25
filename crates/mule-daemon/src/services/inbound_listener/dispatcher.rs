@@ -28,7 +28,10 @@ use mule_protocol::ed2k::{
     OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE,
     OP_SETREQFILEID_EMULE, OP_SIGNATURE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
 };
+use mule_protocol::ed2k::limits::Ed2kLimits;
 use mule_protocol::framing::PacketCodec;
+
+use super::share_browser;
 
 use super::types::{InboundListenerService, MAX_READ_BUFFER_SIZE};
 use crate::services::obfuscation_stream::ObfuscatedStream;
@@ -77,6 +80,7 @@ impl InboundListenerService {
         peer_ext_req: u8,
         peer_tcp_port: u16,
         peer_udp_port: Option<u16>,
+        peer_supports_large_files: bool,
     ) {
         let mut read_buf = BytesMut::with_capacity(65536);
         let mut raw_buf = [0u8; 8192];
@@ -936,6 +940,109 @@ impl InboundListenerService {
                                         }
                                     } else if shared_file.is_none() {
                                         failed_file_id_reqs = failed_file_id_reqs.saturating_add(1);
+                                    }
+                                }
+                            }
+                            mule_protocol::ed2k::OP_ASKSHAREDFILES
+                            | mule_protocol::ed2k::OP_ASKSHAREDDIRS
+                            | mule_protocol::ed2k::OP_ASKSHAREDFILESDIR => {
+                                // eMule `ListenSocket.cpp:651-825` — browsing
+                                // des partages (annonce `NoViewSharedFiles=0`
+                                // dans MISCOPTIONS1). Gate `CanSeeShares` :
+                                // everybody/friends/nobody. Réponses
+                                // PR_ED2K : liste complète 0x4B, liste de
+                                // répertoires 0x5F, fichiers d'un
+                                // pseudo-répertoire 0x60, refus 0x61.
+                                use mule_protocol::ed2k::shared_files as sfbrowse;
+
+                                let (can_see, shares) = {
+                                    let dl_svc = self.downloads.lock().await;
+                                    (
+                                        share_browser::peer_can_view_shares(
+                                            &dl_svc,
+                                            peer_user_hash,
+                                        ),
+                                        dl_svc.list_all_shared_files().unwrap_or_default(),
+                                    )
+                                };
+                                let listen_port =
+                                    self.listen_addr.lock().await.map(|a| a.port()).unwrap_or(0);
+                                let ids = self.sx_local_ids(listen_port).await;
+                                let limits = Ed2kLimits::default();
+                                let offer_ctx = sfbrowse::OfferPeerContext {
+                                    our_client_id: ids.client_id,
+                                    our_tcp_port: ids.tcp_port,
+                                    our_high_id: ids.is_high_id,
+                                    peer_large_files: peer_supports_large_files,
+                                };
+
+                                let frame = match pkt.opcode {
+                                    mule_protocol::ed2k::OP_ASKSHAREDFILES => {
+                                        // eMule répond toujours — refus = liste
+                                        // vide (pas de ASKSHAREDDENIEDANS ici).
+                                        let entries = if can_see {
+                                            share_browser::offered_entries(
+                                                shares.iter().filter(|f| f.enabled),
+                                                &offer_ctx,
+                                            )
+                                        } else {
+                                            Vec::new()
+                                        };
+                                        sfbrowse::encode_shared_files_answer(&entries, &limits)
+                                    }
+                                    mule_protocol::ed2k::OP_ASKSHAREDDIRS => {
+                                        if can_see {
+                                            sfbrowse::encode_shared_dirs_answer(
+                                                &share_browser::browse_dirs(&shares),
+                                                &limits,
+                                            )
+                                        } else {
+                                            Ok(sfbrowse::encode_shared_denied())
+                                        }
+                                    }
+                                    _ => {
+                                        // OP_ASKSHAREDFILESDIR (0x5E)
+                                        let dir =
+                                            sfbrowse::decode_ask_files_dir(&pkt.payload);
+                                        match (can_see, dir) {
+                                            (false, _) => Ok(sfbrowse::encode_shared_denied()),
+                                            (true, Some(dir)) => {
+                                                let files = share_browser::files_in_dir(
+                                                    &shares,
+                                                    &dir,
+                                                    peer_supports_large_files,
+                                                );
+                                                let entries = share_browser::offered_entries(
+                                                    files.into_iter(),
+                                                    &offer_ctx,
+                                                );
+                                                sfbrowse::encode_shared_files_dir_answer(
+                                                    &dir, &entries, &limits,
+                                                )
+                                            }
+                                            (true, None) => {
+                                                Ok(sfbrowse::encode_shared_denied())
+                                            }
+                                        }
+                                    }
+                                };
+                                match frame {
+                                    Ok(rp) => {
+                                        let mut out =
+                                            Vec::with_capacity(6 + rp.payload.len());
+                                        out.push(rp.protocol);
+                                        out.extend_from_slice(
+                                            &((rp.payload.len() as u32 + 1).to_le_bytes()),
+                                        );
+                                        out.push(rp.opcode);
+                                        out.extend_from_slice(&rp.payload);
+                                        let _ = stream.write_all(&out).await;
+                                    }
+                                    Err(e) => {
+                                        tracing::debug!(
+                                            "Shared-files answer encode failed for {peer}: {e}",
+                                            peer = log_addr_str(&remote_str)
+                                        );
                                     }
                                 }
                             }

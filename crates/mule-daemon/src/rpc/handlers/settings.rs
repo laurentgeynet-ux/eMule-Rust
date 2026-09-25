@@ -47,6 +47,7 @@ const KNOWN_SETTINGS_KEYS: &[&str] = &[
     "identityRotationHours",
     "dailyUploadQuotaGb",
     "paranoidMode",
+    "viewSharedFiles",
 ];
 
 pub async fn handle_status(state: &AppState) -> Result<Value, JsonRpcError> {
@@ -274,6 +275,14 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
         "maxPeersPerDownload": max_per_file,
         "minPeersPerDownload": min_per_file,
         "shareDownloadDir": share_dir,
+        "viewSharedFiles": state
+            .downloads
+            .lock()
+            .await
+            .get_setting(crate::services::inbound_listener::share_browser::SETTING_VIEW_SHARED_FILES)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "everybody".to_string()),
         "nickname": nickname,
         "obfuscationEnabled": obf_enabled,
         "obfuscationRequired": obf_required,
@@ -648,10 +657,27 @@ pub async fn handle_settings_set(
             keys.push(camel);
         }
     }
+    if let Some(val) = params.get("viewSharedFiles") {
+        // eMule `thePrefs.m_iSeeShares` — `vsfaEverybody`/`vsfaFriends`/`vsfaNobody`.
+        let v = val
+            .as_str()
+            .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'viewSharedFiles' parameter"))?;
+        if !matches!(v, "everybody" | "friends" | "nobody") {
+            return Err(JsonRpcError::invalid_params(
+                "'viewSharedFiles' must be \"everybody\", \"friends\" or \"nobody\"",
+            ));
+        }
+        state
+            .downloads
+            .lock()
+            .await
+            .set_setting(crate::services::inbound_listener::share_browser::SETTING_VIEW_SHARED_FILES, v)?;
+        keys.push("viewSharedFiles");
+    }
     if let Some(val) = params.get("serverAutoupdatePath") {
         let p = val
             .as_str()
-            .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'serverAutoupdatePath'"))?;
+            .ok_or_else(|| JsonRpcError::invalid_params("Invalid 'serverAutoupdatePath' parameter"))?;
         if p.len() > 512 {
             return Err(JsonRpcError::invalid_params(
                 "'serverAutoupdatePath' is too long",

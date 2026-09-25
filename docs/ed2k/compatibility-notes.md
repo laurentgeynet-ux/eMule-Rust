@@ -927,3 +927,69 @@ eMule réutilise le même `SendHelloPacket` pour cette connexion.
   et `4660` = le port RPC par défaut du daemon (hors protocole eMule).
 - Défaut production inchangé : `DaemonConfig` écoute déjà sur
   `39735`/`39737` (hors range eMule, dans la bande de randomisation).
+
+## 19. Browsing des fichiers partagés (`OP_ASKSHARED*`) — audit phase B, passe 13
+
+### Constat
+
+Notre `MISCOPTIONS1` annonçait `NoViewSharedFiles = 0` (partages visibles,
+défaut eMule `vsfaEverybody`) mais le dispatcher inbound droppait les trois
+requêtes de browsing — un pair eMule qui « browse » nos partages recevait
+un silence. Implémenté : `ListenSocket.cpp:651-825`.
+
+### Comportement (fidèle à eMule 0.72a)
+
+| Requête (PR_ED2K) | Réponse | Refus |
+| :--- | :--- | :--- |
+| `OP_ASKSHAREDFILES` `0x4A` (vide) | `0x4B` : `<u32 count><offered>*` | **jamais 0x61** — eMule répond la liste vide (`ListenSocket.cpp:659-683`) |
+| `OP_ASKSHAREDDIRS` `0x5D` (vide) | `0x5F` : `<u32 count>(<u16 len><dir>)*` | `0x61` vide (`ListenSocket.cpp:701`) |
+| `OP_ASKSHAREDFILESDIR` `0x5E` : `<u16 len><dir>` | `0x60` : `<u16 len><dir écho><u32 count><offered>*` | `0x61` vide |
+
+- **Gate `CanSeeShares()`** — réglage `viewSharedFiles` =
+  `everybody`/`friends`/`nobody` (persisté `view_shared_files`, défaut
+  `everybody` comme eMule). `friends` gate sur le user hash du pair
+  (`CFriend` est clé sur `m_abyUserHash`).
+- **Pseudo-répertoires** — jamais de vrai chemin sur le fil : basename du
+  répertoire contenant (`GetPseudoDirName`, dédupliqué), puis
+  `!Incomplete Files` si des parts sont partagées, puis `!Other` pour les
+  partages sans répertoire (`SendSharedDirectories`,
+  `BaseClient.cpp:2916`).
+- **`0x60` écho** — la chaîne demandée est renvoyée verbatim
+  (`strOrgReqDir`) même si le pseudo-dir est inconnu → `count = 0`
+  (`ListenSocket.cpp:738-787`).
+- **Entrées offertes** — variante client de `CreateOfferedFilePacket`
+  (`pServer == NULL`) : `client_id`/`port` réels **uniquement** en HighID,
+  `FT_FILESIZE` en `TAGTYPE_UINT64` seul si le pair annonce large-files
+  (misc2 bit 4), sinon l'entrée >4 GiB est sautée ; `FT_FILERATING`
+  optionnel (0..5 → 0..255, `SharedFileList.cpp:960`) — non émis, notre
+  modèle n'a pas de rating.
+- **Fichiers partiels** — les `.part` actifs apparaissent sous
+  `!Incomplete Files` (PS_READY + filtre large-files chez eMule ;
+  `is_partial` côté nôtre — le serving de blocs reste borné aux parts
+  vérifiées, déjà garanti par le chemin d'upload).
+
+### Collisions d'opcodes (documentées)
+
+`0x4B`/`0x60`/`0x61` partagent leur valeur avec `OP_REQUESTPARTS`,
+`OP_QUEUERANKING` et `OP_FILEDESC`. eMule les sépare par direction
+(réponses host→browser) et par byte protocole (`QUEUERANKING`/`FILEDESC`
+sont émis en `OP_EMULEPROT` — `UploadClient.cpp:565/591`). Toutes nos
+réponses partent en PR_ED2K (`Packet(tempfile)` → `OP_EDONKEYPROT`).
+
+### Écart assumé
+
+Payload `0x5E` tronqué (`<u16 len>` hors bornes) : eMule lève une
+exception `CFileException` et ne répond rien ; nous répondons `0x61`
+(denied) — borné, déterministe, et sans décodage partiel.
+
+### Tests
+
+- Codec (`mule-protocol::ed2k::shared_files`) : layout `0x4B`/`0x5F`/`0x60`,
+  `0x61` vide, décodage `0x5E` borné (troncature, trailing bytes tolérés),
+  règles HighID/large-file/rating.
+- Daemon (`share_browser`) : dédup des pseudo-dirs, `!Incomplete`/`!Other`,
+  gate large-files.
+- Intégration `test_inbound_shared_files_browse` (loopback) : hello →
+  `0x4A`→`0x4B` (hash du fichier présent), `0x5D`→`0x5F`, `0x5E` sur
+  `!Incomplete Files`→`0x60` écho + liste vide, puis
+  `viewSharedFiles=nobody`→`0x61`.

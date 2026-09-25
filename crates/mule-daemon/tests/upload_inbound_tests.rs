@@ -1268,3 +1268,179 @@ async fn test_completed_db_download_is_shared_after_restart() {
     assert!(!sf.is_partial);
     assert_eq!(sf.file_path, file_path.to_string_lossy());
 }
+
+/// eMule ListenSocket.cpp:651-825 -- browsing des partages : le pair
+/// envoie OP_ASKSHAREDFILES / OP_ASKSHAREDDIRS / OP_ASKSHAREDFILESDIR sur
+/// PR_ED2K et recoit les reponses 0x4B / 0x5F / 0x60 (0x61 si refus).
+#[tokio::test]
+async fn test_inbound_shared_files_browse() {
+    let (state, _dir, hash) = share_state(
+        "test_token_browse",
+        "browse_shared.bin",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
+    let mut authenticated = true;
+
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let mut read_buf = bytes::BytesMut::with_capacity(65536);
+    let mut raw_buf = [0u8; 8192];
+    let codec = PacketCodec::new();
+    let encoder = Ed2kEncoder::default();
+
+    // OP_HELLO puis OP_HELLO_ANSWER.
+    let hello = Ed2kHello {
+        user_hash: [0x55u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let hello_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(hello_pkt.protocol);
+    out.extend_from_slice(&(hello_pkt.frame_len() as u32).to_le_bytes());
+    out.push(hello_pkt.opcode);
+    out.extend_from_slice(&hello_pkt.payload);
+    client.write_all(&out).await.unwrap();
+    loop {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        assert!(n > 0);
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        let mut got = false;
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
+                got = true;
+            }
+        }
+        if got {
+            break;
+        }
+    }
+
+    // Envoi d'une trame PR_ED2K brute (opcode + payload).
+    async fn send_raw(client: &mut TcpStream, opcode: u8, payload: &[u8]) {
+        let mut out = Vec::with_capacity(6 + payload.len());
+        out.push(PR_ED2K);
+        out.extend_from_slice(&((payload.len() as u32 + 1).to_le_bytes()));
+        out.push(opcode);
+        out.extend_from_slice(payload);
+        client.write_all(&out).await.unwrap();
+    }
+    async fn recv_opcode(
+        client: &mut TcpStream,
+        read_buf: &mut bytes::BytesMut,
+        codec: &PacketCodec,
+        want: u8,
+    ) -> mule_protocol::framing::RawPacket {
+        let mut raw = [0u8; 16384];
+        loop {
+            let n = client.read(&mut raw).await.unwrap();
+            assert!(n > 0);
+            read_buf.extend_from_slice(&raw[..n]);
+            while let Ok(Some(pkt)) = codec.decode(read_buf) {
+                if pkt.protocol == PR_ED2K && pkt.opcode == want {
+                    return pkt;
+                }
+            }
+        }
+    }
+
+    // 1. OP_ASKSHAREDFILES (0x4A, vide) -> 0x4B avec notre fichier.
+    send_raw(&mut client, mule_protocol::ed2k::OP_ASKSHAREDFILES, &[]).await;
+    let pkt = recv_opcode(
+        &mut client,
+        &mut read_buf,
+        &codec,
+        mule_protocol::ed2k::OP_ASKSHAREDFILESANSWER,
+    )
+    .await;
+    let count = u32::from_le_bytes(pkt.payload[..4].try_into().unwrap());
+    assert_eq!(count, 1, "one shared file expected in answer");
+    assert_eq!(&pkt.payload[4..20], &hex::decode(&hash).unwrap()[..]);
+
+    // 2. OP_ASKSHAREDDIRS (0x5D) -> 0x5F avec le pseudo-repertoire parent.
+    send_raw(&mut client, mule_protocol::ed2k::OP_ASKSHAREDDIRS, &[]).await;
+    let pkt = recv_opcode(
+        &mut client,
+        &mut read_buf,
+        &codec,
+        mule_protocol::ed2k::OP_ASKSHAREDDIRSANS,
+    )
+    .await;
+    let dir_count = u32::from_le_bytes(pkt.payload[..4].try_into().unwrap());
+    assert!(dir_count >= 1, "at least one pseudo dir expected");
+
+    // 3. OP_ASKSHAREDFILESDIR (0x5E) sur '!Incomplete Files' -> 0x60
+    //    avec 0 fichier (aucun .part actif).
+    let pseudo = b"!Incomplete Files";
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&(pseudo.len() as u16).to_le_bytes());
+    payload.extend_from_slice(pseudo);
+    send_raw(&mut client, mule_protocol::ed2k::OP_ASKSHAREDFILESDIR, &payload).await;
+    let pkt = recv_opcode(
+        &mut client,
+        &mut read_buf,
+        &codec,
+        mule_protocol::ed2k::OP_ASKSHAREDFILESDIRANS,
+    )
+    .await;
+    let echoed_len = u16::from_le_bytes([pkt.payload[0], pkt.payload[1]]) as usize;
+    assert_eq!(&pkt.payload[2..2 + echoed_len], pseudo);
+    assert_eq!(
+        u32::from_le_bytes(
+            pkt.payload[2 + echoed_len..2 + echoed_len + 4]
+                .try_into()
+                .unwrap()
+        ),
+        0,
+        "no active part files -> empty list"
+    );
+
+    // 4. viewSharedFiles=nobody -> OP_ASKSHAREDDIRS refuse (0x61 vide).
+    let set_resp = handle_request(
+        &state,
+        make_req(
+            2,
+            "settings.set",
+            Some(json!({ "viewSharedFiles": "nobody" })),
+        ),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    assert!(set_resp.error.is_none());
+    send_raw(&mut client, mule_protocol::ed2k::OP_ASKSHAREDDIRS, &[]).await;
+    let pkt = recv_opcode(
+        &mut client,
+        &mut read_buf,
+        &codec,
+        mule_protocol::ed2k::OP_ASKSHAREDDENIEDANS,
+    )
+    .await;
+    assert!(pkt.payload.is_empty(), "denied answer is empty");
+
+    let _ = handle_request(
+        &state,
+        make_req(3, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await;
+}
+

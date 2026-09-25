@@ -527,6 +527,10 @@ impl InboundListenerService {
                 .unwrap_or(0),
             callback_hello.as_ref().map(|h| h.tcp_port).unwrap_or(0),
             peer_info.as_ref().and_then(|p| p.emule_udp_port),
+            peer_info
+                .as_ref()
+                .map(|p| p.supports_large_files())
+                .unwrap_or(false),
         )
         .await;
     }
@@ -708,6 +712,7 @@ impl InboundListenerService {
             peer_info.extended_requests_version(),
             answer.tcp_port,
             peer_info.emule_udp_port,
+            peer_info.supports_large_files(),
         )
         .await;
         Ok(())

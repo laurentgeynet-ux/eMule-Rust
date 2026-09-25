@@ -134,6 +134,35 @@ pub const OP_REQFILENAME_ANSWER: u8 = 0x59;
 /// Queue ranking response in upload queue (`0x60`).
 pub const OP_QUEUERANKING: u8 = 0x60;
 
+/// Peer shared-files browse request — full list (`0x4A`, empty payload,
+/// eMule `ListenSocket.cpp:651` `OP_ASKSHAREDFILES`). Always on PR_ED2K.
+pub const OP_ASKSHAREDFILES: u8 = 0x4A;
+
+/// Peer shared-files browse answer (`0x4B`): `<u32 count><offered entries>`.
+/// Shares the legacy eDonkey `OP_REQUESTPARTS` wire value — eMule separates
+/// them by direction: this answer only flows share-host → browser, while
+/// `OP_REQUESTPARTS` only flows downloader → uploader on PR_ED2K.
+pub const OP_ASKSHAREDFILESANSWER: u8 = 0x4B;
+
+/// Shared directories request (`0x5D`, empty payload).
+pub const OP_ASKSHAREDDIRS: u8 = 0x5D;
+
+/// Files-in-directory request (`0x5E`): `<u16 len><dir utf8>`; the dir is a
+/// pseudo name (eMule `GetPseudoDirName` — never the real path).
+pub const OP_ASKSHAREDFILESDIR: u8 = 0x5E;
+
+/// Shared directories answer (`0x5F`): `<u32 count>(<u16 len><dir utf8>)*`.
+pub const OP_ASKSHAREDDIRSANS: u8 = 0x5F;
+
+/// Files-in-directory answer (`0x60`):
+/// `<u16 len><dir utf8><u32 count><offered entries>` — always PR_ED2K.
+/// Shares the `OP_QUEUERANKING` wire value, which is only used on PR_EMULE.
+pub const OP_ASKSHAREDFILESDIRANS: u8 = 0x60;
+
+/// Access-denied answer (`0x61`, empty payload) — always PR_ED2K.
+/// Shares the `OP_FILEDESC` wire value, which is only used on PR_EMULE.
+pub const OP_ASKSHAREDDENIEDANS: u8 = 0x61;
+
 /// Server list pushed by the connected server (`0x32`).
 /// Payload: `u8 count` + `count` × (`u32 ip` + `u16 port`).
 pub const OP_SERVERLIST: u8 = 0x32;

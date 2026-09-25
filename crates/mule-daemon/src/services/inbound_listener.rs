@@ -5,6 +5,7 @@
 
 pub mod connection;
 pub mod dispatcher;
+pub mod share_browser;
 pub mod types;
 
 use std::collections::HashMap;
