@@ -44,6 +44,14 @@ struct ServerUdpInner {
     server_udp_flags: std::collections::HashMap<SocketAddr, u32>,
     /// Challenges sent in pending `OP_GLOBSERVSTATREQ` pings.
     pending_statreq: std::collections::HashMap<SocketAddr, u32>,
+    /// eMule `CServer::lastdescpingedcout` — incremented on each accepted
+    /// `GLOBSERVSTATRES`; an `OP_SERVER_DESC_REQ` is sent while `< 2` and
+    /// the counter resets at 2 (so roughly every other stat ping asks for
+    /// a description, `UDPSocket.cpp:420-437`).
+    desc_ping_counts: std::collections::HashMap<SocketAddr, u8>,
+    /// eMule `CServer::m_uDescReqChallenge` — challenge of the pending
+    /// `OP_SERVER_DESC_REQ`, validated on new-format `DESC_RES`.
+    desc_req_challenges: std::collections::HashMap<SocketAddr, u32>,
 }
 
 /// Canal d'événements broadcast + compteur de séquence partagé.
@@ -78,6 +86,8 @@ impl ServerUdpService {
                 listen_task: None,
                 server_udp_flags: std::collections::HashMap::new(),
                 pending_statreq: std::collections::HashMap::new(),
+                desc_ping_counts: std::collections::HashMap::new(),
+                desc_req_challenges: std::collections::HashMap::new(),
             })),
         }
     }
@@ -184,6 +194,17 @@ impl ServerUdpService {
                                     tracing::info!(
                                         "Server UDP: GlobServStatRes from {server} (users={users}, files={files}, udp_flags=0x{udp_flags:08X}, obf_tcp={tcp_obfuscation_port}, obf_udp={udp_obfuscation_port})"
                                     , server = log_server_addr(peer_addr));
+                                    // eMule UDPSocket.cpp:418-437 — after a
+                                    // stat answer, ask for the server
+                                    // description while count < 2 (the
+                                    // counter resets at 2, so the request
+                                    // goes out on ~every other ping).
+                                    maybe_send_desc_req(
+                                        &socket_for_task,
+                                        &inner_for_task,
+                                        peer_addr,
+                                    )
+                                    .await;
                                 } else {
                                     tracing::debug!(
                                         "Server UDP: ignoring unsolicited/mismatched GlobServStatRes from {server} (challenge={challenge})"
@@ -218,6 +239,25 @@ impl ServerUdpService {
                                         , server = log_server_addr(peer_addr));
                                     }
                                 }
+                            }
+                            Ok(ServerUdpMessage::ServerDescRes {
+                                challenge,
+                                name,
+                                description,
+                                dyn_ip,
+                                version,
+                            }) => {
+                                handle_server_desc_res(
+                                    &downloads_arc,
+                                    &inner_for_task,
+                                    peer_addr,
+                                    challenge,
+                                    name,
+                                    description,
+                                    dyn_ip,
+                                    version,
+                                )
+                                .await;
                             }
                             Ok(ServerUdpMessage::Unknown { opcode }) => {
                                 tracing::info!(
@@ -381,6 +421,118 @@ impl ServerUdpService {
             is_active: inner.socket.is_some(),
             bind_address: inner.bind_addr.map(|a| a.to_string()),
         }
+    }
+}
+
+/// Sends `OP_SERVER_DESC_REQ` to `server_udp_addr` following eMule's
+/// `LastDescPingedCount` cycle (`UDPSocket.cpp:418-437`): each accepted
+/// stat answer increments the counter; while it is `< 2` a challenged
+/// description request goes out, and the counter resets at 2. The
+/// challenge — `(rand16 << 16) | 0xF0FF` — is stored so the new-format
+/// answer can be validated (`CServer::m_uDescReqChallenge`).
+async fn maybe_send_desc_req(
+    socket: &UdpSocket,
+    inner: &RwLock<ServerUdpInner>,
+    server_udp_addr: SocketAddr,
+) {
+    let challenge = {
+        let mut inr = inner.write().await;
+        let count = inr.desc_ping_counts.entry(server_udp_addr).or_insert(0);
+        *count += 1;
+        if *count >= 2 {
+            *count = 0;
+            return;
+        }
+        let challenge = server_udp::make_desc_req_challenge(rand::random::<u16>());
+        inr.desc_req_challenges.insert(server_udp_addr, challenge);
+        challenge
+    };
+    let pkt = server_udp::encode_server_desc_req(challenge);
+    if let Err(e) = socket.send_to(&pkt, server_udp_addr).await {
+        tracing::debug!(
+            "Server UDP: send_server_desc_req to {server} failed: {e}",
+            server = log_server_addr(server_udp_addr)
+        );
+    }
+}
+
+/// Applies an `OP_SERVER_DESC_RES` to the matching `Ed2kServer` record
+/// (`UDPSocket.cpp:438-496` + `CServerList::GetServerByIPUDP` — the server
+/// is matched on `ip` with `udp_port == tcp_port + 4`).
+///
+/// New-format answers are only applied when their challenge echoes a
+/// pending request (unsolicited ones are dropped like eMule). Old-format
+/// answers carry no challenge and are applied directly. `dyn_ip` is kept
+/// only when it is a DNS name — eMule rejects bare dotted-quad strings
+/// via `inet_addr() == INADDR_NONE`.
+#[allow(clippy::too_many_arguments)]
+async fn handle_server_desc_res(
+    downloads: &Arc<std::sync::RwLock<Option<Arc<Mutex<DownloadService>>>>>,
+    inner: &RwLock<ServerUdpInner>,
+    peer_addr: SocketAddr,
+    challenge: Option<u32>,
+    name: Option<String>,
+    description: Option<String>,
+    dyn_ip: Option<String>,
+    version: Option<String>,
+) {
+    if let Some(challenge) = challenge {
+        let mut inr = inner.write().await;
+        match inr.desc_req_challenges.get(&peer_addr) {
+            Some(&c) if c == challenge => {
+                inr.desc_req_challenges.remove(&peer_addr);
+            }
+            _ => {
+                tracing::debug!(
+                    "Server UDP: ignoring unsolicited/mismatched ServerDescRes from {server} (challenge={challenge:#010X})",
+                    server = log_server_addr(peer_addr)
+                );
+                return;
+            }
+        }
+    }
+
+    let downloads = downloads.read().unwrap().clone();
+    let Some(dl_service) = downloads else {
+        return;
+    };
+    let mut dl_guard = dl_service.lock().await;
+    let Ok(servers) = dl_guard.list_servers() else {
+        return;
+    };
+    // GetServerByIPUDP: same IP and udp_port == tcp_port + 4 (the
+    // dedicated-obfuscation-port alternative is not modelled — we do not
+    // track per-server obfuscation ports).
+    let ip_str = peer_addr.ip().to_string();
+    let Some(mut server) = servers
+        .into_iter()
+        .find(|s| s.ip == ip_str && u32::from(s.port) + 4 == u32::from(peer_addr.port()))
+    else {
+        tracing::debug!(
+            "Server UDP: ServerDescRes from unknown server {server}",
+            server = log_server_addr(peer_addr)
+        );
+        return;
+    };
+
+    if let Some(name) = name {
+        server.name = name;
+    }
+    if let Some(description) = description {
+        server.description = description;
+    }
+    if let Some(dyn_ip) = dyn_ip.filter(|d| d.parse::<std::net::Ipv4Addr>().is_err()) {
+        server.dyn_ip = Some(dyn_ip);
+    }
+    if let Some(version) = version {
+        server.version = Some(version);
+    }
+    server.updated_at_unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    if let Err(e) = dl_guard.upsert_servers(&[server]) {
+        tracing::debug!("Server UDP: failed to persist server description: {e}");
     }
 }
 
@@ -553,5 +705,158 @@ mod tests {
         let form = svc.send_glob_search(server_addr, &[0xAA]).await;
         assert_eq!(form, Some("REQ1"));
         assert_eq!(next_opcode(&server).await, 0x98);
+    }
+
+    /// Receives a datagram and returns `(payload, sender)`.
+    async fn recv_pkt(recv: &UdpSocket) -> (Vec<u8>, SocketAddr) {
+        let mut buf = [0u8; 4096];
+        let (len, from) = tokio::time::timeout(Duration::from_secs(2), recv.recv_from(&mut buf))
+            .await
+            .expect("no datagram received")
+            .expect("recv failed");
+        (buf[..len].to_vec(), from)
+    }
+
+    /// Answers the pending `GLOBSERVSTATREQ` from `server` with a minimal
+    /// stat answer echoing its challenge.
+    async fn answer_statreq(server: &UdpSocket) -> SocketAddr {
+        let (pkt, daemon) = recv_pkt(server).await;
+        assert_eq!(pkt[0], mule_protocol::ed2k::protocol::PR_ED2K);
+        assert_eq!(pkt[1], mule_protocol::ed2k::opcodes::OP_GLOBSERVSTATREQ);
+        let mut res = vec![
+            mule_protocol::ed2k::protocol::PR_ED2K,
+            mule_protocol::ed2k::opcodes::OP_GLOBSERVSTATRES,
+        ];
+        res.extend_from_slice(&pkt[2..6]); // challenge echo
+        res.extend_from_slice(&42u32.to_le_bytes()); // users
+        res.extend_from_slice(&4242u32.to_le_bytes()); // files
+        server.send_to(&res, daemon).await.unwrap();
+        daemon
+    }
+
+    #[tokio::test]
+    async fn desc_req_after_accepted_statres_and_res_updates_record() {
+        let svc = service();
+        svc.start(Ipv4Addr::LOCALHOST.into()).await.unwrap();
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        // Wire a DownloadService holding the server record: the UDP peer
+        // resolves to tcp_port = udp_port - 4 (GetServerByIPUDP).
+        let tmp = tempfile::tempdir().unwrap();
+        let mut dl = DownloadService::in_memory(tmp.path().join("temp")).unwrap();
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let tcp_port = server_addr.port() - 4;
+        dl.upsert_servers(&[mule_core::model::Ed2kServer {
+            address: format!("127.0.0.1:{tcp_port}"),
+            ip: "127.0.0.1".into(),
+            port: tcp_port,
+            name: String::new(),
+            description: String::new(),
+            ping: 0,
+            preference: 0,
+            failed_count: 0,
+            dyn_ip: None,
+            version: None,
+            filter_status: mule_core::model::ServerFilterStatus::Allowed,
+            last_seen_unix_ms: None,
+            created_at_unix_ms: now_ms,
+            updated_at_unix_ms: now_ms,
+        }])
+        .unwrap();
+        svc.set_downloads(Arc::new(Mutex::new(dl)));
+
+        // 1st stat ping → DESC_REQ expected (count 1 < 2).
+        assert!(svc.send_servstat_req(server_addr).await);
+        answer_statreq(&server).await;
+        let (pkt, _) = recv_pkt(&server).await;
+        assert_eq!(pkt[1], server_udp::OP_SERVER_DESC_REQ);
+        let desc_challenge = u32::from_le_bytes(pkt[2..6].try_into().unwrap());
+        assert_eq!(
+            desc_challenge & 0xFFFF,
+            u32::from(server_udp::INV_SERV_DESC_LEN)
+        );
+        assert_eq!(
+            svc.inner
+                .read()
+                .await
+                .desc_req_challenges
+                .get(&server_addr)
+                .copied(),
+            Some(desc_challenge)
+        );
+
+        // Unsolicited new-format answer with a wrong challenge is dropped.
+        let mut wrong = vec![
+            mule_protocol::ed2k::protocol::PR_ED2K,
+            server_udp::OP_SERVER_DESC_RES,
+        ];
+        // Flip one high bit — keeps the INV_SERV_DESC_LEN marker so the
+        // packet is a valid new-format RES, but never equals the pending
+        // challenge.
+        wrong.extend_from_slice(&(desc_challenge ^ 0x0001_0000).to_le_bytes());
+        wrong.extend_from_slice(&1u32.to_le_bytes());
+        wrong.push(mule_protocol::ed2k::tags::TAGTYPE_STRING | 0x80);
+        wrong.push(server_udp::ST_SERVERNAME);
+        wrong.extend_from_slice(&4u16.to_le_bytes());
+        wrong.extend_from_slice(b"WRNG");
+        server
+            .send_to(&wrong, svc.inner.read().await.bind_addr.unwrap())
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Matching challenge → the record is updated.
+        let mut res = vec![
+            mule_protocol::ed2k::protocol::PR_ED2K,
+            server_udp::OP_SERVER_DESC_RES,
+        ];
+        res.extend_from_slice(&desc_challenge.to_le_bytes());
+        res.extend_from_slice(&2u32.to_le_bytes());
+        for (tag_id, val) in [
+            (server_udp::ST_SERVERNAME, "Loopback Lugdunum"),
+            (server_udp::ST_DYNIP, "loop.example.org"),
+        ] {
+            res.push(mule_protocol::ed2k::tags::TAGTYPE_STRING | 0x80);
+            res.push(tag_id);
+            res.extend_from_slice(&(val.len() as u16).to_le_bytes());
+            res.extend_from_slice(val.as_bytes());
+        }
+        server
+            .send_to(&res, svc.inner.read().await.bind_addr.unwrap())
+            .await
+            .unwrap();
+
+        // Wait for the update to land.
+        let downloads = svc.downloads.read().unwrap().clone().unwrap();
+        for _ in 0..50 {
+            let updated = {
+                let guard = downloads.lock().await;
+                guard.list_servers().unwrap()[0].name == "Loopback Lugdunum"
+            };
+            if updated {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let guard = downloads.lock().await;
+        let rec = &guard.list_servers().unwrap()[0];
+        assert_eq!(rec.name, "Loopback Lugdunum");
+        assert_eq!(rec.dyn_ip.as_deref(), Some("loop.example.org"));
+        drop(guard);
+
+        // 2nd stat ping → counter hits 2, resets: NO desc_req.
+        assert!(svc.send_servstat_req(server_addr).await);
+        answer_statreq(&server).await;
+        let mut buf = [0u8; 256];
+        let timed_out = tokio::time::timeout(
+            Duration::from_millis(300),
+            server.recv_from(&mut buf),
+        )
+        .await;
+        assert!(timed_out.is_err(), "unexpected datagram on reset cycle");
     }
 }

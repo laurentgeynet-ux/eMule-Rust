@@ -1056,3 +1056,51 @@ tourne ; on saute le renvoi si l'IP a déjà une demande < 180 s en cours —
   ouvert.
 - Intégration `test_inbound_kad_fw_tcpcheck_ack` (loopback TCP) : IP
   enregistrée → `0xA8` PR_EMULE → `tcp_acks` comptés, verdict bascule.
+
+## 21. Description serveur (`OP_SERVER_DESC_REQ/RES`) — audit phase B, passe 15
+
+Référence : `UDPSocket.cpp:410-508`, `Opcodes.h:204-208`,
+`CServerList::GetServerByIPUDP`, `CServer::SetLastDescPingedCount`.
+
+### Constat
+
+Le canal UDP serveur envoyait `GLOBSERVSTATREQ` et traitait la réponse,
+mais s'arrêtait là : eMule enchaîne avec `OP_SERVER_DESC_REQ` (0xA2) pour
+récupérer nom d'affichage, description, dynIP et version de l'eserver —
+les champs `name`/`description`/`dyn_ip`/`version` d'`Ed2kServer`
+restaient vides à vie.
+
+### Protocole implémenté
+
+- **Requête** : challenge u32 = `(rand16 << 16) | INV_SERV_DESC_LEN`
+  (`0xF0FF`) — les deux premiers octets filaires forment une longueur de
+  chaîne invalide, ce qui permet au serveur de distinguer le nouveau
+  format de l'ancien (eserver ≥ 16.45 répond `[challenge][u32
+  tag_count][tags]`).
+- **Cadence** : `desc_ping_counts` rejoue `LastDescPingedCount` — ++ à
+  chaque `GLOBSERVSTATRES` acceptée, `DESC_REQ` tant que < 2, reset à 2
+  (≈ un ping sur deux demande la description).
+- **Réponse nouveau format** : appliquée uniquement si le challenge
+  correspond à une requête en cours (`m_uDescReqChallenge`) — les réponses
+  spontanées sont ignorées (cas des serveurs multiples même IP, cf. note
+  eMule).
+- **Réponse ancien format** : `[u16 len][desc][u16 len][name]` — eMule
+  lit la **description en premier** (le commentaire `Opcodes.h:205`
+  documente l'ordre inverse ; le code fait foi, on reproduit le même
+  ordre — comportement « bug-compatible »).
+- **Tags** : `ST_SERVERNAME`/`ST_DESCRIPTION`/`ST_DYNIP` (str) et
+  `ST_VERSION` (str ou u32 → rendu `"maj.min"` avec mineur à 2 chiffres,
+  `"%u.%02u"`). `ST_AUXPORTSLIST` ignoré comme eMule.
+- **`dyn_ip`** : conservé seulement si ce n'est pas une adresse IPv4
+  numérique (`inet_addr() == INADDR_NONE` chez eMule) — sinon un serveur
+  pourrait s'annoncer sous l'IP d'un autre.
+- **Résolution du serveur** : `GetServerByIPUDP` — même IP et
+  `udp_port == tcp_port + 4` ; réponse d'un inconnu → drop.
+
+### Tests
+
+- Codec `mule-protocol` : layout du challenge, ancien format, nouveau
+  format avec tags (nom str + dynIP + version packed u32 `"17.15"`).
+- Loopback `server_udp.rs` : STATRES acceptée → `DESC_REQ` émis avec
+  challenge `*F0FF`, réponse à challenge erroné ignorée, réponse
+  concordante met à jour `Ed2kServer`, 2e cycle → pas de requête (reset).

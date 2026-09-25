@@ -20,6 +20,32 @@ pub const SRV_UDPFLG_EXT_GETFILES: u32 = 0x0000_0002;
 /// eMule `SRV_UDPFLG_LARGEFILES` — the server handles >4 GiB entries.
 pub const SRV_UDPFLG_LARGEFILES: u32 = 0x0000_0100;
 
+/// `OP_SERVER_DESC_REQ` (`0xA2`) on the server UDP channel — collides with
+/// `OP_SENDINGPART_I64` on the peer channel, disambiguated by channel.
+pub const OP_SERVER_DESC_REQ: u8 = 0xA2;
+/// `OP_SERVER_DESC_RES` (`0xA3`) — collides with `OP_REQUESTPARTS_I64`.
+pub const OP_SERVER_DESC_RES: u8 = 0xA3;
+/// eMule `INV_SERV_DESC_LEN` (`0xF0FF`) — the "invalid string length" low
+/// half of an `OP_SERVER_DESC_REQ` challenge. Its presence as the first
+/// u16 of an answer marks the new (challenge + tag list) format.
+pub const INV_SERV_DESC_LEN: u16 = 0xF0FF;
+
+/// eMule `ST_SERVERNAME` (`0x01`) — server list name.
+pub const ST_SERVERNAME: u8 = 0x01;
+/// eMule `ST_DESCRIPTION` (`0x0B`) — server description.
+pub const ST_DESCRIPTION: u8 = 0x0B;
+/// eMule `ST_DYNIP` (`0x85`) — dynamic DNS name of the server.
+pub const ST_DYNIP: u8 = 0x85;
+/// eMule `ST_VERSION` (`0x91`) — server software version (str or u32).
+pub const ST_VERSION: u8 = 0x91;
+
+/// Builds the `OP_SERVER_DESC_REQ` challenge exactly like eMule
+/// (`UDPSocket.cpp`): `(rand_u16 << 16) | INV_SERV_DESC_LEN` so the first
+/// two wire bytes are an invalid string length.
+pub fn make_desc_req_challenge(rand16: u16) -> u32 {
+    ((rand16 as u32) << 16) | INV_SERV_DESC_LEN as u32
+}
+
 /// eMule `CT_SERVER_UDPSEARCH_FLAGS` (`0x0E`) tag name id, sent as the single
 /// tag of `OP_GLOBSEARCHREQ3`.
 pub const CT_SERVER_UDPSEARCH_FLAGS: u8 = 0x0E;
@@ -77,11 +103,43 @@ pub enum ServerUdpMessage {
     /// `OP_GLOBSEARCHRES` — raw payload kept for the caller (same entry
     /// layout as `OP_SEARCHRESULT`).
     GlobSearchRes(Vec<u8>),
+    /// `OP_SERVER_DESC_RES` (`0xA3`) — server description answer.
+    ///
+    /// Two wire forms share the opcode (`UDPSocket.cpp:438-496`):
+    /// - old: `<u16 len><desc><u16 len><name>` — note eMule reads the
+    ///   **description first** then the list name (the `Opcodes.h`
+    ///   comment documents the opposite order; the code is truth here);
+    /// - new (eserver ≥16.45): `[u32 challenge][u32 tag_count][tags]`
+    ///   where the first u16 equals `INV_SERV_DESC_LEN`. `challenge`
+    ///   is `Some` only for this form.
+    ServerDescRes {
+        /// Challenge echo for the new format, `None` for the old one.
+        challenge: Option<u32>,
+        /// `ST_SERVERNAME` — display name of the server.
+        name: Option<String>,
+        /// `ST_DESCRIPTION` — free-form description.
+        description: Option<String>,
+        /// `ST_DYNIP` — dynamic DNS name, when advertised.
+        dyn_ip: Option<String>,
+        /// `ST_VERSION` — normalized `major.minor` string; an integer
+        /// tag is rendered `"{v >> 16}.{v & 0xffff:02}"` like eMule.
+        version: Option<String>,
+    },
     /// Any other opcode on the server UDP channel.
     Unknown {
         /// Raw opcode byte.
         opcode: u8,
     },
+}
+
+/// Encodes `OP_SERVER_DESC_REQ` — a bare u32 challenge produced by
+/// [`make_desc_req_challenge`] (eMule `UDPSocket.cpp:426-435`).
+pub fn encode_server_desc_req(challenge: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(6);
+    out.push(PR_ED2K);
+    out.push(OP_SERVER_DESC_REQ);
+    out.extend_from_slice(&challenge.to_le_bytes());
+    out
 }
 
 /// Encodes `OP_GLOBGETSOURCES2` (`hash16 + u32 filesize`,
@@ -286,7 +344,87 @@ pub fn decode_server_udp(data: &[u8]) -> Result<ServerUdpMessage, String> {
             })
         }
         OP_GLOBSEARCHRES => Ok(ServerUdpMessage::GlobSearchRes(payload.to_vec())),
+        OP_SERVER_DESC_RES => decode_server_desc_res(payload),
         _ => Ok(ServerUdpMessage::Unknown { opcode: data[1] }),
+    }
+}
+
+/// Decodes an `OP_SERVER_DESC_RES` payload (`UDPSocket.cpp:438-496`).
+///
+/// New format (eserver ≥16.45) is detected by the first u16 being
+/// `INV_SERV_DESC_LEN` — challenges are constructed so this cannot be a
+/// valid string length. Everything after the 4-byte challenge is a tag
+/// list. The old format is two length-prefixed strings; eMule assigns the
+/// first to the description and the second to the list name.
+fn decode_server_desc_res(payload: &[u8]) -> Result<ServerUdpMessage, String> {
+    use super::tags::{TagName, TagValue};
+
+    if payload.len() >= 8 && payload[0] == 0xFF && payload[1] == 0xF0 {
+        let mut challenge = [0u8; 4];
+        challenge.copy_from_slice(&payload[0..4]);
+        let challenge = u32::from_le_bytes(challenge);
+        let mut reader = TagReader::new(payload, 4, PR_ED2K, Some(OP_SERVER_DESC_RES));
+        let tag_count = reader
+            .read_u32_le("tag_count")
+            .map_err(|e| e.to_string())? as usize;
+        let limits = super::limits::Ed2kLimits::for_server();
+        if tag_count > limits.max_tags {
+            return Err(format!("OP_SERVER_DESC_RES: {tag_count} tags > limit"));
+        }
+        let mut res = ServerUdpMessage::ServerDescRes {
+            challenge: Some(challenge),
+            name: None,
+            description: None,
+            dyn_ip: None,
+            version: None,
+        };
+        let ServerUdpMessage::ServerDescRes {
+            name,
+            description,
+            dyn_ip,
+            version,
+            ..
+        } = &mut res
+        else {
+            unreachable!();
+        };
+        for _ in 0..tag_count {
+            let (typed, _raw) = reader.read_tag(&limits).map_err(|e| e.to_string())?;
+            let Some(tag) = typed else { continue };
+            let TagName::Id(id) = tag.name else { continue };
+            match (id, tag.value) {
+                (ST_SERVERNAME, TagValue::String(s)) => *name = Some(s),
+                (ST_DESCRIPTION, TagValue::String(s)) => *description = Some(s),
+                (ST_DYNIP, TagValue::String(s)) => *dyn_ip = Some(s),
+                (ST_VERSION, TagValue::String(s)) => *version = Some(s),
+                (ST_VERSION, TagValue::UInt32(v)) => {
+                    // eMule renders the packed version as "maj.min" with a
+                    // two-digit minor (`UDPSocket.cpp:473-477`).
+                    *version = Some(format!("{}.{:02}", v >> 16, v & 0xffff));
+                }
+                _ => {}
+            }
+        }
+        Ok(res)
+    } else {
+        // Old format: [u16 len][desc][u16 len][name] — eMule's code reads
+        // the description string first (see enum doc for the Opcodes.h
+        // comment discrepancy).
+        let mut reader = TagReader::new(payload, 0, PR_ED2K, Some(OP_SERVER_DESC_RES));
+        let limits = super::limits::Ed2kLimits::for_server();
+        let description = reader
+            .read_string(limits.max_string_bytes, "description")
+            .map_err(|e| e.to_string())?;
+        let name = reader
+            .read_string(limits.max_string_bytes, "name")
+            .map_err(|e| e.to_string())?;
+        Ok(ServerUdpMessage::ServerDescRes {
+            challenge: None,
+            name: Some(name),
+            description: Some(description),
+            dyn_ip: None,
+            version: None,
+        })
     }
 }
 
@@ -427,6 +565,87 @@ mod tests {
             f.name().as_deref(),
             Some("ubuntu-mate-16.04-desktop-armhf-raspberry-pi.img.xz.md5")
         );
+    }
+
+    #[test]
+    fn desc_req_challenge_wire_layout() {
+        // (rand << 16) | 0xF0FF — first wire u16 must be 0xF0FF so the
+        // server cannot mistake it for a valid string length.
+        let challenge = make_desc_req_challenge(0x1234);
+        assert_eq!(challenge, 0x1234_F0FF);
+        let pkt = encode_server_desc_req(challenge);
+        assert_eq!(&pkt[..2], &[PR_ED2K, OP_SERVER_DESC_REQ]);
+        assert_eq!(&pkt[2..6], &challenge.to_le_bytes());
+        assert_eq!(&pkt[2..4], &INV_SERV_DESC_LEN.to_le_bytes());
+    }
+
+    #[test]
+    fn descdres_old_format_two_strings() {
+        // Old eserver: [u16 len][description][u16 len][name] — eMule
+        // reads description first.
+        let desc = b"a fast lugdunum server";
+        let name = b"!! test server !!";
+        let mut raw = vec![PR_ED2K, OP_SERVER_DESC_RES];
+        raw.extend_from_slice(&(desc.len() as u16).to_le_bytes());
+        raw.extend_from_slice(desc);
+        raw.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        raw.extend_from_slice(name);
+        match decode_server_udp(&raw).unwrap() {
+            ServerUdpMessage::ServerDescRes {
+                challenge,
+                name,
+                description,
+                dyn_ip,
+                version,
+            } => {
+                assert_eq!(challenge, None);
+                assert_eq!(description.as_deref(), Some("a fast lugdunum server"));
+                assert_eq!(name.as_deref(), Some("!! test server !!"));
+                assert!(dyn_ip.is_none());
+                assert!(version.is_none());
+            }
+            m => panic!("unexpected {m:?}"),
+        }
+    }
+
+    #[test]
+    fn descdres_new_format_challenge_and_tags() {
+        // eserver ≥16.45: [challenge:u32][tag_count:u32][new-ed2k tags].
+        let challenge = make_desc_req_challenge(0xBEEF);
+        let mut raw = vec![PR_ED2K, OP_SERVER_DESC_RES];
+        raw.extend_from_slice(&challenge.to_le_bytes());
+        raw.extend_from_slice(&4u32.to_le_bytes()); // tag_count
+        // Helper to push a new-ed2k tag: [type|0x80][u8 name][value].
+        let push_str = |raw: &mut Vec<u8>, name: u8, s: &str| {
+            raw.push(crate::ed2k::tags::TAGTYPE_STRING | 0x80);
+            raw.push(name);
+            raw.extend_from_slice(&(s.len() as u16).to_le_bytes());
+            raw.extend_from_slice(s.as_bytes());
+        };
+        push_str(&mut raw, ST_SERVERNAME, "eMule Security No1");
+        push_str(&mut raw, ST_DESCRIPTION, "lugdunum test");
+        push_str(&mut raw, ST_DYNIP, "sec1.example.org");
+        // ST_VERSION as packed u32: 17.15 → 0x0011_000F.
+        raw.push(crate::ed2k::tags::TAGTYPE_UINT32 | 0x80);
+        raw.push(ST_VERSION);
+        raw.extend_from_slice(&0x0011_000Fu32.to_le_bytes());
+
+        match decode_server_udp(&raw).unwrap() {
+            ServerUdpMessage::ServerDescRes {
+                challenge: got,
+                name,
+                description,
+                dyn_ip,
+                version,
+            } => {
+                assert_eq!(got, Some(challenge));
+                assert_eq!(name.as_deref(), Some("eMule Security No1"));
+                assert_eq!(description.as_deref(), Some("lugdunum test"));
+                assert_eq!(dyn_ip.as_deref(), Some("sec1.example.org"));
+                assert_eq!(version.as_deref(), Some("17.15"));
+            }
+            m => panic!("unexpected {m:?}"),
+        }
     }
 
     fn hex_bytes(s: &str) -> Vec<u8> {
