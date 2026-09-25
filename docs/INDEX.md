@@ -710,6 +710,21 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `ed2k/decisions/0002-no-public-network.md` | ADR : pas de réseau public |
 | `ed2k/decisions/0003-wire-lab-separation.md` | ADR : séparation wire/lab |
 
+### docs/plans/ — Plans d'Implémentation
+
+| Fichier | Fonction |
+|---|---|
+| `docs/plans/kad/00_index.md` | Roadmap Kad DHT : diagnostic vérifié (eMule 0.72a), ordre des 9 étapes, exclusions protocolaires |
+| `docs/plans/kad/01_probing_lru.md` | Étape 1 : `ContactVerifier` — probing des candidats LRU retournés par `insert_or_update` |
+| `docs/plans/kad/02_hello_req.md` | Étape 2 : émission `HELLO_REQ` (vérification active contacts Kad2, ACK 3 voies) |
+| `docs/plans/kad/03_firewall_revalidation.md` | Étape 3 : revalidation firewall UDP sur changement d'IP/NAT/expiration |
+| `docs/plans/kad/04_bootstrap_health.md` | Étape 4 : `BootstrapHealth` multi-états (Empty/Fragile/Building/Healthy) pour le drain |
+| `docs/plans/kad/05_udp_robustesse.md` | Étape 5 : erreurs typées `KadTxError`, retry borné, fenêtre collecte glissante, matching durci |
+| `docs/plans/kad/06_contention_mutex.md` | Étape 6 : snapshot de la table sous verrou + tri hors verrou |
+| `docs/plans/kad/07_recherche.md` | Étape 7 : encodeur d'expression restrictive, multi-termes, pagination, coalescing partagé |
+| `docs/plans/kad/08_buddy_client.md` | Étape 8 : rôle client buddy LowID (`FINDBUDDY_REQ`, lien TCP, publication LowID) |
+| `docs/plans/kad/09_validation_interop.md` | Étape 9 : golden packets eMule/aMule, proptest, labo loopback (perte/dup/réordonnancement) |
+
 ## scripts/ — Scripts PowerShell
 
 | Fichier | Fonction |
