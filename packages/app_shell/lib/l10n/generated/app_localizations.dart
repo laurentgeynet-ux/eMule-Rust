@@ -3825,6 +3825,198 @@ abstract class AppLocalizations {
   /// **'Reprendre un téléchargement eMule existant'**
   String get settingsImportPartSub;
 
+  /// No description provided for @settingsMigrationTile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Migration depuis eMule'**
+  String get settingsMigrationTile;
+
+  /// No description provided for @settingsMigrationSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Importer les fichiers de config eMule (amis, crédits, identité…)'**
+  String get settingsMigrationSub;
+
+  /// No description provided for @migrationDialogTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Migration depuis eMule'**
+  String get migrationDialogTitle;
+
+  /// No description provided for @migrationConfigDirLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier de configuration eMule'**
+  String get migrationConfigDirLabel;
+
+  /// No description provided for @migrationConfigDirHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'ex. C:\\Users\\…\\AppData\\Local\\eMule'**
+  String get migrationConfigDirHint;
+
+  /// No description provided for @migrationIncomingLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dossier Incoming (pour known.met)'**
+  String get migrationIncomingLabel;
+
+  /// No description provided for @migrationIncomingHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Laisser vide pour le dossier de téléchargement actuel'**
+  String get migrationIncomingHint;
+
+  /// No description provided for @migrationNoneDetected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun fichier eMule détecté dans ce dossier'**
+  String get migrationNoneDetected;
+
+  /// No description provided for @migrationSelectAll.
+  ///
+  /// In fr, this message translates to:
+  /// **'Tout sélectionner'**
+  String get migrationSelectAll;
+
+  /// No description provided for @migrationRunSelected.
+  ///
+  /// In fr, this message translates to:
+  /// **'Importer la sélection'**
+  String get migrationRunSelected;
+
+  /// No description provided for @migrationRunning.
+  ///
+  /// In fr, this message translates to:
+  /// **'Import en cours…'**
+  String get migrationRunning;
+
+  /// No description provided for @migrationReplaceIdentity.
+  ///
+  /// In fr, this message translates to:
+  /// **'Remplacer l\'identité actuelle'**
+  String get migrationReplaceIdentity;
+
+  /// No description provided for @migrationReplaceIdentityWarn.
+  ///
+  /// In fr, this message translates to:
+  /// **'Remplace la clé RSA et le hash utilisateur actuels — les crédits accumulés sous l\'identité courante seront perdus.'**
+  String get migrationReplaceIdentityWarn;
+
+  /// No description provided for @migrationSourceKnownMet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichiers connus (partages)'**
+  String get migrationSourceKnownMet;
+
+  /// No description provided for @migrationSourceServerMet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Liste de serveurs'**
+  String get migrationSourceServerMet;
+
+  /// No description provided for @migrationSourceNodesDat.
+  ///
+  /// In fr, this message translates to:
+  /// **'Contacts Kad'**
+  String get migrationSourceNodesDat;
+
+  /// No description provided for @migrationSourceEmfriends.
+  ///
+  /// In fr, this message translates to:
+  /// **'Amis'**
+  String get migrationSourceEmfriends;
+
+  /// No description provided for @migrationSourceCancelled.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichiers annulés'**
+  String get migrationSourceCancelled;
+
+  /// No description provided for @migrationSourceClients.
+  ///
+  /// In fr, this message translates to:
+  /// **'Crédits des pairs'**
+  String get migrationSourceClients;
+
+  /// No description provided for @migrationSourceIdentity.
+  ///
+  /// In fr, this message translates to:
+  /// **'Identité (clé RSA + hash)'**
+  String get migrationSourceIdentity;
+
+  /// No description provided for @migrationSummaryImported.
+  ///
+  /// In fr, this message translates to:
+  /// **'{imported}/{total} importés'**
+  String migrationSummaryImported(Object imported, Object total);
+
+  /// No description provided for @migrationSummaryImportedOnly.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} importés'**
+  String migrationSummaryImportedOnly(Object n);
+
+  /// No description provided for @migrationSummaryRecords.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} entrées'**
+  String migrationSummaryRecords(Object n);
+
+  /// No description provided for @migrationSummaryEnriched.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} enrichis'**
+  String migrationSummaryEnriched(Object n);
+
+  /// No description provided for @migrationSummaryUnmatched.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} sans correspondance'**
+  String migrationSummaryUnmatched(Object n);
+
+  /// No description provided for @migrationSummaryUpdated.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} mis à jour'**
+  String migrationSummaryUpdated(Object n);
+
+  /// No description provided for @migrationSummarySkipped.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} ignorés'**
+  String migrationSummarySkipped(Object n);
+
+  /// No description provided for @migrationSummaryExpired.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} expirés'**
+  String migrationSummaryExpired(Object n);
+
+  /// No description provided for @migrationSummaryTotal.
+  ///
+  /// In fr, this message translates to:
+  /// **'{n} au total'**
+  String migrationSummaryTotal(Object n);
+
+  /// No description provided for @migrationSummaryIdentityKey.
+  ///
+  /// In fr, this message translates to:
+  /// **'clé RSA'**
+  String get migrationSummaryIdentityKey;
+
+  /// No description provided for @migrationSummaryIdentityHash.
+  ///
+  /// In fr, this message translates to:
+  /// **'hash utilisateur'**
+  String get migrationSummaryIdentityHash;
+
+  /// No description provided for @migrationSummaryEmpty.
+  ///
+  /// In fr, this message translates to:
+  /// **'Importé'**
+  String get migrationSummaryEmpty;
+
   /// No description provided for @settingsLabGuideTile.
   ///
   /// In fr, this message translates to:

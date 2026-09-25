@@ -398,6 +398,34 @@ class PeerSourcesMockClient implements MuleDaemonClient {
       );
 
   @override
+  Future<Map<String, dynamic>> importKnownMet(
+    String metPath, {
+    String? directory,
+    bool verify = false,
+  }) async =>
+      const {};
+
+  @override
+  Future<Map<String, dynamic>> importEmfriendsMet(String metPath) async =>
+      const {};
+
+  @override
+  Future<Map<String, dynamic>> importCancelledMet(String metPath) async =>
+      const {};
+
+  @override
+  Future<Map<String, dynamic>> importClientsMet(String metPath) async =>
+      const {};
+
+  @override
+  Future<Map<String, dynamic>> importEmuleIdentity({
+    String? cryptkeyPath,
+    String? preferencesDatPath,
+    bool replace = false,
+  }) async =>
+      const {};
+
+  @override
   Future<List<Ed2kServerModel>> listServers() async => const [];
 
   @override

@@ -2169,6 +2169,125 @@ class AppLocalizationsFr extends AppLocalizations {
       'Reprendre un téléchargement eMule existant';
 
   @override
+  String get settingsMigrationTile => 'Migration depuis eMule';
+
+  @override
+  String get settingsMigrationSub =>
+      'Importer les fichiers de config eMule (amis, crédits, identité…)';
+
+  @override
+  String get migrationDialogTitle => 'Migration depuis eMule';
+
+  @override
+  String get migrationConfigDirLabel => 'Dossier de configuration eMule';
+
+  @override
+  String get migrationConfigDirHint =>
+      'ex. C:\\Users\\…\\AppData\\Local\\eMule';
+
+  @override
+  String get migrationIncomingLabel => 'Dossier Incoming (pour known.met)';
+
+  @override
+  String get migrationIncomingHint =>
+      'Laisser vide pour le dossier de téléchargement actuel';
+
+  @override
+  String get migrationNoneDetected =>
+      'Aucun fichier eMule détecté dans ce dossier';
+
+  @override
+  String get migrationSelectAll => 'Tout sélectionner';
+
+  @override
+  String get migrationRunSelected => 'Importer la sélection';
+
+  @override
+  String get migrationRunning => 'Import en cours…';
+
+  @override
+  String get migrationReplaceIdentity => 'Remplacer l\'identité actuelle';
+
+  @override
+  String get migrationReplaceIdentityWarn =>
+      'Remplace la clé RSA et le hash utilisateur actuels — les crédits accumulés sous l\'identité courante seront perdus.';
+
+  @override
+  String get migrationSourceKnownMet => 'Fichiers connus (partages)';
+
+  @override
+  String get migrationSourceServerMet => 'Liste de serveurs';
+
+  @override
+  String get migrationSourceNodesDat => 'Contacts Kad';
+
+  @override
+  String get migrationSourceEmfriends => 'Amis';
+
+  @override
+  String get migrationSourceCancelled => 'Fichiers annulés';
+
+  @override
+  String get migrationSourceClients => 'Crédits des pairs';
+
+  @override
+  String get migrationSourceIdentity => 'Identité (clé RSA + hash)';
+
+  @override
+  String migrationSummaryImported(Object imported, Object total) {
+    return '$imported/$total importés';
+  }
+
+  @override
+  String migrationSummaryImportedOnly(Object n) {
+    return '$n importés';
+  }
+
+  @override
+  String migrationSummaryRecords(Object n) {
+    return '$n entrées';
+  }
+
+  @override
+  String migrationSummaryEnriched(Object n) {
+    return '$n enrichis';
+  }
+
+  @override
+  String migrationSummaryUnmatched(Object n) {
+    return '$n sans correspondance';
+  }
+
+  @override
+  String migrationSummaryUpdated(Object n) {
+    return '$n mis à jour';
+  }
+
+  @override
+  String migrationSummarySkipped(Object n) {
+    return '$n ignorés';
+  }
+
+  @override
+  String migrationSummaryExpired(Object n) {
+    return '$n expirés';
+  }
+
+  @override
+  String migrationSummaryTotal(Object n) {
+    return '$n au total';
+  }
+
+  @override
+  String get migrationSummaryIdentityKey => 'clé RSA';
+
+  @override
+  String get migrationSummaryIdentityHash => 'hash utilisateur';
+
+  @override
+  String get migrationSummaryEmpty => 'Importé';
+
+  @override
   String get settingsLabGuideTile => 'Guide du mode laboratoire';
 
   @override

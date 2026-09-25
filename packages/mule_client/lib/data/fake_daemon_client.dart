@@ -1451,6 +1451,63 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     );
   }
 
+  /// Rapports factices pour les tests de l'assistant de migration —
+  /// permettent de vérifier l'affichage sans daemon.
+  bool failNextMigrationImport = false;
+
+  @override
+  Future<Map<String, dynamic>> importKnownMet(
+    String metPath, {
+    String? directory,
+    bool verify = false,
+  }) async {
+    if (failNextMigrationImport) {
+      failNextMigrationImport = false;
+      throw Exception('fake known.met failure');
+    }
+    return const {
+      'records': 3,
+      'imported': 2,
+      'enriched': 1,
+      'unmatched_records': 1,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> importEmfriendsMet(String metPath) async {
+    if (failNextMigrationImport) {
+      failNextMigrationImport = false;
+      throw Exception('fake emfriends.met failure');
+    }
+    return const {'records': 2, 'imported': 1, 'updated': 1};
+  }
+
+  @override
+  Future<Map<String, dynamic>> importCancelledMet(String metPath) async {
+    return const {'records': 5, 'total': 12};
+  }
+
+  @override
+  Future<Map<String, dynamic>> importClientsMet(String metPath) async {
+    return const {'records': 4, 'imported': 3, 'skippedNoPubkey': 1};
+  }
+
+  @override
+  Future<Map<String, dynamic>> importEmuleIdentity({
+    String? cryptkeyPath,
+    String? preferencesDatPath,
+    bool replace = false,
+  }) async {
+    if ((cryptkeyPath != null || preferencesDatPath != null) && !replace) {
+      throw Exception('identity exists — replace required');
+    }
+    return const {
+      'keyImported': true,
+      'userhashImported': true,
+      'userhash': 'AA11BB22',
+    };
+  }
+
   @override
   Future<ServerImportResult> importServerMet(String filePath) async {
     final report = await inspectServerMet(filePath);

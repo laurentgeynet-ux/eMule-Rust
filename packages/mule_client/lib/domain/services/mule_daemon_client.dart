@@ -194,6 +194,35 @@ abstract class MuleDaemonClient {
     String? categoryId,
   });
 
+  /// Import an eMule `known.met` — registers matching files under
+  /// `directory` as shares carrying eMule's hash/AICH/stats without
+  /// re-hashing (unless `verify` is set).
+  Future<Map<String, dynamic>> importKnownMet(
+    String metPath, {
+    String? directory,
+    bool verify = false,
+  });
+
+  /// Import an eMule `emfriends.met` into the friends list.
+  Future<Map<String, dynamic>> importEmfriendsMet(String metPath);
+
+  /// Import an eMule `cancelled.met` into the cancelled-files set
+  /// (search-result marking only — not a download block).
+  Future<Map<String, dynamic>> importCancelledMet(String metPath);
+
+  /// Import an eMule `clients.met` into the peer-credit store.
+  Future<Map<String, dynamic>> importClientsMet(String metPath);
+
+  /// Import an eMule identity: `cryptkey.dat` (RSA-384 key) and/or the
+  /// `preferences.dat` user hash — preserves the credits peers granted
+  /// to that identity. `replace` is required to overwrite an existing
+  /// identity.
+  Future<Map<String, dynamic>> importEmuleIdentity({
+    String? cryptkeyPath,
+    String? preferencesDatPath,
+    bool replace = false,
+  });
+
   /// Get current network policy snapshot (profile, state, budgets, active conns).
   Future<NetworkPolicySnapshot> getNetworkPolicy();
 

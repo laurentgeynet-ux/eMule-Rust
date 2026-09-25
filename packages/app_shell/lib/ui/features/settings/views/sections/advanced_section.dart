@@ -11,6 +11,7 @@ import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/diagnostic_dialog.dart';
 import '../../../downloads/widgets/import_part_met_dialog.dart';
 import '../../../downloads/widgets/lab_guide_dialog.dart';
+import '../../widgets/migration/emule_migration_dialog.dart';
 import 'settings_section_scaffold.dart';
 
 /// « Avancé » : diagnostic daemon, outils de lab, barre de debug et
@@ -45,6 +46,15 @@ class SettingsAdvancedSection extends ConsumerWidget {
           onTap: () => showDialog(
             context: context,
             builder: (_) => const ImportPartMetDialog(),
+          ),
+        ),
+        _AdvancedTile(
+          icon: Icons.input_rounded,
+          title: l10n.settingsMigrationTile,
+          subtitle: l10n.settingsMigrationSub,
+          onTap: () => showDialog(
+            context: context,
+            builder: (_) => const EmuleMigrationDialog(),
           ),
         ),
         // Guide lab : uniquement quand les outils lab sont réellement

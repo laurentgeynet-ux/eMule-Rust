@@ -893,6 +893,56 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
+  Future<Map<String, dynamic>> importKnownMet(
+    String metPath, {
+    String? directory,
+    bool verify = false,
+  }) async {
+    final params = <String, dynamic>{'metPath': metPath, 'verify': verify};
+    if (directory != null && directory.isNotEmpty) {
+      params['directory'] = directory;
+    }
+    final resp = await _call('shares.importKnownMet', params);
+    return resp as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> importEmfriendsMet(String metPath) async {
+    final resp = await _call('friends.importEmfriendsMet', {'metPath': metPath});
+    return resp as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> importCancelledMet(String metPath) async {
+    final resp = await _call('downloads.importCancelledMet', {
+      'metPath': metPath,
+    });
+    return resp as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> importClientsMet(String metPath) async {
+    final resp = await _call('credits.importClientsMet', {'metPath': metPath});
+    return resp as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> importEmuleIdentity({
+    String? cryptkeyPath,
+    String? preferencesDatPath,
+    bool replace = false,
+  }) async {
+    final resp = await _call('identity.importEmuleIdentity', {
+      if (cryptkeyPath != null && cryptkeyPath.isNotEmpty)
+        'cryptkeyPath': cryptkeyPath,
+      if (preferencesDatPath != null && preferencesDatPath.isNotEmpty)
+        'preferencesDatPath': preferencesDatPath,
+      'replace': replace,
+    });
+    return resp as Map<String, dynamic>;
+  }
+
+  @override
   Future<NetworkPolicySnapshot> getNetworkPolicy() async {
     final resp = await _call('network.getPolicy');
     return NetworkPolicySnapshot.fromJson(resp as Map<String, dynamic>);
