@@ -33,9 +33,13 @@ Licence : GPL-2.0-or-later. Plateforme cible : Windows 10/11 x64.
 Exécuter avant de considérer un changement terminé :
 
 ```powershell
-# Rust — lint et tests (100% hors-ligne)
+# Rust — lint (toujours, tout le workspace : détecte les cassures cross-crates)
 cargo check --workspace --all-targets --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Rust — tests (100% hors-ligne) : le(s) crate(s) modifié(s)
+cargo test -p <crate> --all-features
+# élargir au workspace si le changement touche plusieurs crates ou des API publiques :
 cargo test --workspace --all-features
 
 # Flutter — analyse et tests
