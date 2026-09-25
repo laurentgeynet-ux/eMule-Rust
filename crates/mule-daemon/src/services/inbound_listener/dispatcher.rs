@@ -721,6 +721,36 @@ impl InboundListenerService {
                                         }
                                     }
                                 }
+                                mule_protocol::ed2k::OP_KAD_FWTCPCHECK_ACK => {
+                                    // eMule `ListenSocket.cpp:1623` — verdict
+                                    // du test pare-feu TCP Kad : le contact
+                                    // qu'on a sollicité (`FIREWALLED{2}_REQ`)
+                                    // s'est connecté à notre port et accuse
+                                    // réception. Gate `IsKadFirewallCheckIP`
+                                    // — un ACK non sollicité est ignoré.
+                                    let tracker = self
+                                        .kad_udp
+                                        .read()
+                                        .unwrap()
+                                        .as_ref()
+                                        .map(|u| u.firewall_tracker());
+                                    if let (Some(tracker), Some(ip)) = (tracker, peer_ip) {
+                                        let mut fw = tracker.lock().await;
+                                        if fw.is_tcp_check_ip(ip) {
+                                            fw.inc_tcp_acks();
+                                            tracing::debug!(
+                                                "Inbound peer {} sent OP_KAD_FWTCPCHECK_ACK (ack {} in TCP fw round)",
+                                                log_addr_str(&remote_str),
+                                                fw.tcp_acks
+                                            );
+                                        } else {
+                                            tracing::debug!(
+                                                "Unrequested OP_KAD_FWTCPCHECK_ACK from {}",
+                                                log_addr_str(&remote_str)
+                                            );
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
                             continue;

@@ -549,3 +549,100 @@ async fn test_kad_notes_publish_and_search_roundtrip() {
         "size-mismatched notes query must get no reply"
     );
 }
+
+/// eMule `CKademliaUDPListener::FirewalledCheck` + `Prefs` verdict —
+/// requester side of the Kad TCP firewall check: while `m_uRecheckip < 4`,
+/// an inbound HELLO_REQ triggers a `FIREWALLED2_REQ` back; `FIREWALLED_RES`
+/// ticks the round, `FIREWALLED_ACK_RES` counts a connect-back success.
+#[tokio::test]
+async fn test_kad_tcp_firewall_check_round() {
+    let tmp = tempdir().expect("create tempdir");
+    let state = kad_state(&tmp);
+    state
+        .network_policy
+        .set_profile(mule_network_policy::NetworkProfile::LocalLab);
+
+    // `FIREWALLED2_REQ` carries our eD2K TCP port + user hash — both must be
+    // wired before `start()` (the listener snapshots them).
+    state.kad.udp().set_buddy_tcp_info(49662, 0x03);
+    state.kad.udp().set_fw_user_hash([0x42; 16]);
+
+    let bound_addr = state
+        .kad
+        .udp()
+        .start("127.0.0.1:0".parse().unwrap())
+        .await
+        .expect("start kad udp");
+
+    // A fresh tracker starts mid-round (eMule `m_uRecheckip = 0`).
+    {
+        let tracker = state.kad.udp().firewall_tracker();
+        let fw = tracker.lock().await;
+        assert!(fw.tcp_recheck_active());
+        assert!(fw.tcp_is_firewalled());
+    }
+
+    let mock = UdpSocket::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock peer");
+    let mock_kad_id: [u8; 16] = [0xAB; 16];
+
+    // HELLO_REQ v8 → we answer HELLO_RES *and* FIREWALLED2_REQ.
+    let hello = KadCodec::encode_hello_req(
+        &mock_kad_id,
+        mock.local_addr().unwrap().port(),
+        8,
+        49662,
+        None,
+    );
+    mock.send_to(&hello, bound_addr).await.unwrap();
+
+    let mut buf = vec![0u8; 2048];
+    let mut saw_hello_res = false;
+    let mut saw_fw_req2 = false;
+    for _ in 0..4 {
+        let (len, _) = tokio::time::timeout(std::time::Duration::from_secs(5), mock.recv_from(&mut buf))
+            .await
+            .expect("timed out waiting for HELLO_RES + FIREWALLED2_REQ")
+            .unwrap();
+        match KadCodec::decode(&buf[..len]).unwrap() {
+            KadMessage::HelloRes(_) => saw_hello_res = true,
+            KadMessage::FirewalledReq2(req) => {
+                saw_fw_req2 = true;
+                // eMule payload: our eD2K TCP port + user hash + options.
+                assert_eq!(req.tcp_port, 49662);
+                assert_eq!(req.user_hash, [0x42; 16]);
+                assert_eq!(req.connect_options, 0x03);
+            }
+            other => panic!("unexpected datagram: {other:?}"),
+        }
+        if saw_hello_res && saw_fw_req2 {
+            break;
+        }
+    }
+    assert!(saw_hello_res && saw_fw_req2, "expected HELLO_RES + FIREWALLED2_REQ, got res={saw_hello_res} req={saw_fw_req2}");
+
+    // The asking IP is now registered (`AddKadFirewallRequest`) — its RES
+    // ticks the round and records the observed IP (any u32 works here).
+    let res = KadCodec::encode_firewalled_res(0x7F00_0001u32.to_le());
+    mock.send_to(&res, bound_addr).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    {
+        let tracker = state.kad.udp().firewall_tracker();
+        let fw = tracker.lock().await;
+        assert_eq!(fw.tcp_answers, 1);
+        assert!(fw.observed_ip.is_some());
+    }
+
+    // Legacy UDP ack (< Kad7 equivalent) counts one connect-back success.
+    let ack = [mule_protocol::kad::PR_KADEMLIA, mule_protocol::kad::KADEMLIA_FIREWALLED_ACK_RES];
+    mock.send_to(&ack, bound_addr).await.unwrap();
+    mock.send_to(&ack, bound_addr).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    {
+        let tracker = state.kad.udp().firewall_tracker();
+        let fw = tracker.lock().await;
+        assert_eq!(fw.tcp_acks, 2);
+        assert!(!fw.tcp_is_firewalled(), "2 ACKs → TCP open verdict");
+    }
+}

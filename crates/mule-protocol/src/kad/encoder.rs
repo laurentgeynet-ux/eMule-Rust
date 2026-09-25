@@ -167,6 +167,16 @@ impl KadEncoder {
         buf.freeze()
     }
 
+    /// Encodes a `KADEMLIA_FIREWALLED_REQ` (0x50): `[tcp_port u16]` — the
+    /// legacy form sent to contacts older than `KADEMLIA_VERSION7_49a`
+    /// (eMule `CKademliaUDPListener::FirewalledCheck`, `byKadVersion <=
+    /// KADEMLIA_VERSION6_49aBETA`).
+    pub fn encode_firewalled_req(tcp_port: u16) -> Bytes {
+        let mut buf = kad_buf(KADEMLIA_FIREWALLED_REQ, 4);
+        buf.put_u16_le(tcp_port);
+        buf.freeze()
+    }
+
     /// Encodes a `KADEMLIA_FIREWALLED2_REQ` (0x53):
     /// `[tcp_port u16][user_hash 16][connect_options u8]` — 19 bytes.
     pub fn encode_firewalled2_req(

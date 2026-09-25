@@ -704,6 +704,29 @@ impl KadService {
                             });
                         }
 
+                        // eMule `CKademlia::Process` → `RecheckFirewalled`
+                        // (`m_tNextFirewallCheck`, hourly) : ré-arme le round
+                        // TCP (`SetRecheckIP` — les HELLO entrants repartent
+                        // à émettre FIREWALLED{2}_REQ) et relance aussi le
+                        // test UDP (`ReCheckFirewallUDP`).
+                        let tcp_recheck_due = {
+                            let tracker = kad.udp.firewall_tracker();
+                            let mut fw = tracker.lock().await;
+                            if std::time::Instant::now() >= fw.next_tcp_recheck {
+                                fw.start_tcp_recheck();
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if tcp_recheck_due && total_contacts > 0 {
+                            tracing::info!("Kad: hourly firewall recheck — re-arming TCP + UDP rounds");
+                            let kad_fw = Arc::clone(&kad);
+                            tokio::spawn(async move {
+                                kad_fw.run_udp_firewall_check().await;
+                            });
+                        }
+
                         // Periodic republication of shared files — eMule runs
                         // independent source (5 h) and keyword (24 h) timers
                         // (`Kademlia.cpp` `m_tNextSrcPublishTime` /

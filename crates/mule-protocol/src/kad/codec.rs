@@ -67,6 +67,24 @@ impl KadCodec {
         KadEncoder::encode_hello_res_ack(kad_id)
     }
 
+    /// Encodes a `KADEMLIA_FIREWALLED_REQ` (0x50) — `[tcp_port u16 LE]`
+    /// (legacy form for contacts older than Kad version 7).
+    #[inline]
+    pub fn encode_firewalled_req(tcp_port: u16) -> Bytes {
+        KadEncoder::encode_firewalled_req(tcp_port)
+    }
+
+    /// Encodes a `KADEMLIA_FIREWALLED2_REQ` (0x53) —
+    /// `[tcp_port u16][user_hash 16][connect_options u8]` (Kad ≥ 7).
+    #[inline]
+    pub fn encode_firewalled2_req(
+        tcp_port: u16,
+        user_hash: &[u8; 16],
+        connect_options: u8,
+    ) -> Bytes {
+        KadEncoder::encode_firewalled2_req(tcp_port, user_hash, connect_options)
+    }
+
     /// Encodes a `KADEMLIA_FIREWALLED_RES` (0x58) — `[ip u32 LE]`.
     #[inline]
     pub fn encode_firewalled_res(ip: u32) -> Bytes {

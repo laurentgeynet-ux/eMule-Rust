@@ -94,6 +94,10 @@ pub struct KadUdpService {
     firewall: Arc<Mutex<FirewallTestTracker>>,
     /// Buddy relay state (FINDBUDDY_REQ acceptances + active buddy link).
     buddy: Arc<Mutex<BuddyRegistry>>,
+    /// Our eD2K user hash — sent as `clientHash` in `KADEMLIA_FIREWALLED2_REQ`
+    /// (eMule `GetPrefs()->GetClientHash()` = `CUInt128(thePrefs.GetUserHash())`,
+    /// distinct from the random Kad node ID `local_id`).
+    fw_user_hash: Arc<std::sync::RwLock<[u8; 16]>>,
     /// Local eD2K TCP port advertised in `KADEMLIA_FINDBUDDY_RES` — the buddy
     /// client connects to it for its relay link.
     buddy_tcp_port: Arc<std::sync::atomic::AtomicU16>,
@@ -128,6 +132,7 @@ impl KadUdpService {
             downloads: Arc::new(RwLock::new(None)),
             firewall: Arc::new(Mutex::new(FirewallTestTracker::default())),
             buddy: Arc::new(Mutex::new(BuddyRegistry::default())),
+            fw_user_hash: Arc::new(std::sync::RwLock::new([0u8; 16])),
             buddy_tcp_port: Arc::new(std::sync::atomic::AtomicU16::new(0)),
             buddy_connect_options: Arc::new(std::sync::atomic::AtomicU8::new(0)),
             routing_table: Arc::new(std::sync::RwLock::new(None)),
@@ -153,6 +158,14 @@ impl KadUdpService {
         self.buddy_tcp_port.store(tcp_port, Ordering::Relaxed);
         self.buddy_connect_options
             .store(connect_options, Ordering::Relaxed);
+    }
+
+    /// Sets the eD2K user hash sent in `KADEMLIA_FIREWALLED2_REQ` (called at
+    /// startup and on identity rotation, alongside `set_fw_check_identity`).
+    pub fn set_fw_user_hash(&self, user_hash: [u8; 16]) {
+        if let Ok(mut h) = self.fw_user_hash.write() {
+            *h = user_hash;
+        }
     }
 
     /// Crypt-layer connect-option bits (0-2 of `GetMyConnectOptions`) as
@@ -283,6 +296,7 @@ impl KadUdpService {
         let downloads_arc = Arc::clone(&self.downloads);
         let firewall_arc = Arc::clone(&self.firewall);
         let buddy_arc = Arc::clone(&self.buddy);
+        let user_hash_arc = Arc::clone(&self.fw_user_hash);
         let buddy_tcp_port = self.buddy_tcp_port.load(Ordering::Relaxed);
         let buddy_connect_options = self.buddy_connect_options.load(Ordering::Relaxed);
         if let Some(svc) = self.client_udp.read().await.as_ref() {
@@ -408,6 +422,8 @@ impl KadUdpService {
                                                         );
                                                         let local_kad_id_bytes =
                                                             local_id_arc.read().unwrap().0;
+                                                        let user_hash_bytes =
+                                                            *user_hash_arc.read().unwrap();
                                                         let routing_table = routing_arc
                                                             .read()
                                                             .ok()
@@ -418,6 +434,7 @@ impl KadUdpService {
                                                             msg,
                                                             &in_flight_arc,
                                                             &local_kad_id_bytes,
+                                                            &user_hash_bytes,
                                                             local_addr.port(),
                                                             &storage_arc,
                                                             &downloads_arc,
@@ -528,6 +545,8 @@ impl KadUdpService {
                                     Ok(msg) => {
                                         let local_kad_id_bytes =
                                             local_id_arc.read().unwrap().0;
+                                        let user_hash_bytes =
+                                            *user_hash_arc.read().unwrap();
                                         let routing_table = routing_arc
                                             .read()
                                             .ok()
@@ -538,6 +557,7 @@ impl KadUdpService {
                                             msg,
                                             &in_flight_arc,
                                             &local_kad_id_bytes,
+                                            &user_hash_bytes,
                                             local_addr.port(),
                                             &storage_arc,
                                             &downloads_arc,

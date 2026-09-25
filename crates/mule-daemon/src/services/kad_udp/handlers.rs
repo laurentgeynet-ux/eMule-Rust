@@ -18,6 +18,11 @@ use super::types::{
 use crate::services::downloads::DownloadService;
 use crate::services::kad::firewall::OUR_KAD_VERSION;
 
+/// eMule `KADEMLIA_VERSION7_49a` (`Opcodes.h:29`) — contacts strictly above
+/// `KADEMLIA_VERSION6_49aBETA` (6) get the extended `FIREWALLED2_REQ` and
+/// answer with `OP_KAD_FWTCPCHECK_ACK` over TCP.
+const KADEMLIA_VERSION7_49A: u8 = 7;
+
 type DownloadsSlot = Arc<tokio::sync::RwLock<Option<Arc<tokio::sync::Mutex<DownloadService>>>>>;
 
 /// Internal dispatcher for incoming messages.
@@ -28,6 +33,9 @@ pub async fn handle_incoming_message(
     msg: KadMessage,
     in_flight: &InFlightMap,
     local_kad_id: &[u8; 16],
+    // Our eD2K user hash — `clientHash` field of `KADEMLIA_FIREWALLED2_REQ`
+    // (eMule `CPrefs::GetClientHash()` = the user hash, not the Kad ID).
+    our_user_hash: &[u8; 16],
     local_port: u16,
     storage: &Arc<tokio::sync::Mutex<KadStorage>>,
     downloads: &DownloadsSlot,
@@ -100,13 +108,18 @@ pub async fn handle_incoming_message(
                 )
                 .await;
             }
-            // eMule KADMISCOPTIONS: bit0 = UDP firewalled, bit2 = ask the
-            // receiver to complete the handshake with HELLO_RES_ACK.
+            // eMule KADMISCOPTIONS (KademliaUDPListener.cpp:131-137):
+            // bit0 = UDP firewalled, bit1 = TCP firewalled (CPrefs
+            // GetFirewalled), bit2 = ask the receiver to complete the
+            // handshake with HELLO_RES_ACK.
             let mut misc = 0x04u8;
             {
                 let fw = firewall.lock().await;
                 if fw.verified && fw.status == UdpFirewallStatus::Firewalled {
                     misc |= 0x01;
+                }
+                if fw.tcp_is_firewalled() {
+                    misc |= 0x02;
                 }
             }
             let hello_res = KadCodec::encode_hello_res(
@@ -117,11 +130,26 @@ pub async fn handle_incoming_message(
                 Some(misc),
             );
             let _ = socket.send_to(&hello_res, peer_addr).await;
+            // eMule tail of Process_KADEMLIA2_HELLO_REQ — a recheck round in
+            // progress turns each inbound HELLO into a TCP probe request.
+            maybe_tcp_firewall_check(
+                socket,
+                peer_addr,
+                hello.version,
+                firewall,
+                buddy_tcp_port,
+                buddy_connect_options,
+                our_user_hash,
+            )
+            .await;
         }
         KadMessage::HelloRes(hello_res) => {
             // Kad >= 8: the responder may ask us to prove our IP with a
             // HELLO_RES_ACK (KADMISCOPTIONS bit 2).
             let wants_ack = hello_res.requests_ack();
+            // Captured before `hello_res` is moved into the transaction
+            // sender below — needed by the TCP recheck hook.
+            let peer_kad_version = hello_res.version;
             let peer_udp_port = if hello_res.udp_port != 0 {
                 hello_res.udp_port
             } else {
@@ -175,6 +203,17 @@ pub async fn handle_incoming_message(
                 let ack = KadCodec::encode_hello_res_ack(local_kad_id);
                 let _ = socket.send_to(&ack, peer_addr).await;
             }
+            // eMule tail of Process_KADEMLIA2_HELLO_RES — same recheck hook.
+            maybe_tcp_firewall_check(
+                socket,
+                peer_addr,
+                peer_kad_version,
+                firewall,
+                buddy_tcp_port,
+                buddy_connect_options,
+                our_user_hash,
+            )
+            .await;
         }
         KadMessage::HelloResAck(ack) => {
             // Completes the three-way hello (eMule
@@ -203,16 +242,29 @@ pub async fn handle_incoming_message(
         }
         KadMessage::FirewalledRes(res) => {
             // Answer to a FIREWALLED_REQ we sent — carries our public IP as
-            // seen by the responder. Recorded as our observed external IP
-            // (used as the advertised address when publishing sources).
+            // seen by the responder. eMule `Process_KADEMLIA_FIREWALLED_RES`
+            // drops unrequested answers (`IsKadFirewallCheckIP`), records the
+            // observed IP (`SetIPAddress`) and ticks the round (`IncRecheckIP`).
             let ip = std::net::Ipv4Addr::from(res.ip.to_le_bytes());
-            firewall.lock().await.observed_ip = Some(ip);
-            tracing::debug!(
-                "Kad UDP: received FirewalledRes from {peer} (observed ip={ip})",
-                peer = log_peer_addr(peer_addr)
-            );
+            let mut fw = firewall.lock().await;
+            if !fw.is_tcp_check_ip(peer_addr.ip()) {
+                tracing::debug!(
+                    "Kad UDP: unrequested FirewalledRes from {peer} — ignored",
+                    peer = log_peer_addr(peer_addr)
+                );
+            } else {
+                fw.note_firewalled_res(ip);
+                tracing::debug!(
+                    "Kad UDP: received FirewalledRes from {peer} (observed ip={ip}, round {} done)",
+                    fw.tcp_answers,
+                    peer = log_peer_addr(peer_addr)
+                );
+            }
         }
         KadMessage::FirewalledAckRes => {
+            // Legacy (Kad < 7) connect-back verdict over UDP — eMule
+            // `Process_KADEMLIA_FIREWALLED_ACK_RES` → `IncFirewalled`.
+            firewall.lock().await.inc_tcp_acks();
             tracing::debug!(
                 "Kad UDP: received FirewalledAckRes from {peer} (TCP port reachable)",
                 peer = log_peer_addr(peer_addr)
@@ -1123,4 +1175,54 @@ async fn persist_keyword_entries(
     if let Err(e) = dl_guard.db_mut().insert_kad_keyword_entries(&rows) {
         tracing::warn!("Kad storage: failed to persist keyword entries: {e}");
     }
+}
+
+/// eMule `CKademliaUDPListener::FirewalledCheck` (KademliaUDPListener.cpp:159):
+/// while a TCP recheck round is active, each inbound HELLO_REQ/HELLO_RES
+/// triggers a `KADEMLIA_FIREWALLED{2}_REQ` back to the sender, asking it to
+/// TCP-connect to our advertised eD2K port. The contact version picks the
+/// packet shape — `FIREWALLED2_REQ` (≥ `KADEMLIA_VERSION7_49A`) carries our
+/// user hash + connect-options so the responder can complete a full Kad
+/// handshake on the connect-back.
+#[allow(clippy::too_many_arguments)]
+async fn maybe_tcp_firewall_check(
+    socket: &Arc<UdpSocket>,
+    peer_addr: SocketAddr,
+    peer_kad_version: u8,
+    firewall: &Arc<tokio::sync::Mutex<FirewallTestTracker>>,
+    our_tcp_port: u16,
+    connect_options: u8,
+    our_user_hash: &[u8; 16],
+) {
+    {
+        let mut fw = firewall.lock().await;
+        if !fw.tcp_recheck_active() || fw.is_tcp_check_ip(peer_addr.ip()) {
+            return;
+        }
+        // Registered before send (`AddKadFirewallRequest`) so a fast
+        // FIREWALLED_RES or TCP connect-back is never dropped as unrequested.
+        fw.add_tcp_check_ip(peer_addr.ip());
+    }
+    if our_tcp_port == 0 {
+        tracing::debug!("Kad UDP: TCP firewall check skipped — eD2K TCP port unknown");
+        return;
+    }
+    let pkt = if peer_kad_version >= KADEMLIA_VERSION7_49A {
+        KadCodec::encode_firewalled2_req(our_tcp_port, our_user_hash, connect_options)
+    } else {
+        KadCodec::encode_firewalled_req(our_tcp_port)
+    };
+    if let Err(e) = socket.send_to(&pkt, peer_addr).await {
+        tracing::debug!(
+            "Kad UDP: failed to send FIREWALLED{suffix}_REQ to {peer}: {e}",
+            suffix = if peer_kad_version >= KADEMLIA_VERSION7_49A { "2" } else { "" },
+            peer = log_peer_addr(peer_addr)
+        );
+        return;
+    }
+    tracing::debug!(
+        "Kad UDP: sent FIREWALLED{suffix}_REQ to {peer} (tcp_port={our_tcp_port}, kad_v{peer_kad_version})",
+        suffix = if peer_kad_version >= KADEMLIA_VERSION7_49A { "2" } else { "" },
+        peer = log_peer_addr(peer_addr)
+    );
 }

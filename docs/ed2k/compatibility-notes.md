@@ -993,3 +993,66 @@ exception `CFileException` et ne répond rien ; nous répondons `0x61`
   `0x4A`→`0x4B` (hash du fichier présent), `0x5D`→`0x5F`, `0x5E` sur
   `!Incomplete Files`→`0x60` écho + liste vide, puis
   `viewSharedFiles=nobody`→`0x61`.
+
+## 20. Verdict pare-feu TCP Kad (`FIREWALLED{2}_REQ` sortant + `0xA8` entrant) — audit phase B, passe 14
+
+### Constat
+
+On répondait aux tests des autres (`FIREWALLED_REQ`/`REQ2` → `FIREWALLED_RES`
++ connect-back + `OP_KAD_FWTCPCHECK_ACK`/`FIREWALLED_ACK_RES`), mais on ne
+**demandait** jamais de test nous-même et on ignorait les verdicts reçus —
+`GetFirewalled()` restait indéterminé, le bit 1 de `KADMISCOPTIONS` jamais
+posé.
+
+### Machine d'état implémentée (`CPrefs` + `CClientList`)
+
+État dans `FirewallTestTracker` (`kad_udp/types.rs`) :
+
+| Champ | eMule | Rôle |
+| :--- | :--- | :--- |
+| `tcp_acks` | `m_uFirewalled` | ACKs de connect-back vus dans le round |
+| `tcp_answers` | `m_uRecheckip` | `FIREWALLED_RES` reçus (round actif tant que < 4, `KADEMLIAFIREWALLCHECKS`) |
+| `tcp_last_state` | `m_bLastFirewallState` | snapshot du verdict à l'ouverture du round (init `true`) |
+| `pending_tcp_ips` | `listFirewallCheckRequests` | IPs sollicitées, TTL 180 s |
+| `next_tcp_recheck` | `m_tNextFirewallCheck` | recheck horaire |
+
+- `tcp_is_firewalled()` = `GetFirewalled()` : `< 2 ACKs` → dernier état tant
+  que le round tourne, `firewalled` une fois les 4 réponses revenues.
+- Le boot démarre en round actif (`tcp_answers = 0`) — le premier check
+  « done on connect » d'eMule est gratuit pour nous : chaque `HELLO_REQ`/
+  `HELLO_RES` entrant déclenche `FirewalledCheck` vers l'expéditeur.
+- `FIREWALLED2_REQ` (Kad ≥ 7) : `<u16 tcp><u128 user_hash><u8 opts>` —
+  **user hash eD2K** (`GetClientHash`), pas le KadID aléatoire ; legacy
+  `FIREWALLED_REQ` (`[u16 tcp]`, 0x50) pour les contacts v6−. Nouvel
+  encodeur `encode_firewalled_req` ajouté (la v2 existait déjà).
+- `FIREWALLED_RES` reçu : ignoré si l'IP n'est pas dans `pending_tcp_ips`
+  (eMule jette « unrequested firewall response »), sinon `observed_ip`
+  + tick de round.
+- `KADEMLIA_FIREWALLED_ACK_RES` (UDP, < v7) : `inc_tcp_acks()` direct,
+  comme eMule.
+- `OP_KAD_FWTCPCHECK_ACK` (0xA8, PR_EMULE, entrant TCP) : nouvelle branche
+  du dispatcher inbound, gate `is_tcp_check_ip(ip)` → `inc_tcp_acks()`,
+  sinon ignoré (`Unrequested` debug log, comme eMule).
+- `HELLO_RES` annonce désormais bit 1 de `KADMISCOPTIONS` quand
+  `tcp_is_firewalled()` — la surface filaire visible du verdict.
+- Boucle de maintenance 30 s : `next_tcp_recheck` échue →
+  `start_tcp_recheck()` + relance du test UDP (eMule `RecheckFirewalled`
+  ré-arme les deux à `HR2S(1)`).
+
+### Écart assumé
+
+eMule réémet un REQ à chaque HELLO d'un même contact tant que le round
+tourne ; on saute le renvoi si l'IP a déjà une demande < 180 s en cours —
+`AddKadFirewallRequest` reste idempotent, mais sans spam de REQ.
+
+### Tests
+
+- Unitaires (`types.rs`) : lifecycle du round (actif au boot, verdict
+  dernier-état pendant la course, firewalled après 4 réponses sans ACK),
+  bascule à 2 ACKs, snapshot `start_tcp_recheck`, TTL des IPs.
+- Intégration `test_kad_tcp_firewall_check_round` (loopback UDP) :
+  HELLO_REQ → HELLO_RES **+ FIREWALLED2_REQ** (payload port/hash/opts
+  vérifiés), `FIREWALLED_RES` tick + `observed_ip`, 2× `ACK_RES` → verdict
+  ouvert.
+- Intégration `test_inbound_kad_fw_tcpcheck_ack` (loopback TCP) : IP
+  enregistrée → `0xA8` PR_EMULE → `tcp_acks` comptés, verdict bascule.

@@ -412,6 +412,9 @@ impl AppState {
         ));
         kad.set_ed2k_tcp_port(ed2k_port_eff);
         kad.set_fw_check_identity(user_hash);
+        // KADEMLIA_FIREWALLED2_REQ embarque le user hash eD2K (eMule
+        // `GetClientHash`), distinct du KadID aléatoire.
+        kad.udp().set_fw_user_hash(user_hash);
         // Nudges `kad.statusChanged` quand la table de routage évolue en
         // tâche de fond — le badge UI se met à jour sans ouvrir la section.
         kad.set_event_channel(event_tx.clone(), Arc::clone(&sequence));
@@ -963,6 +966,7 @@ impl AppState {
         self.inbound_listener
             .set_identity_material(user_hash, pubkey);
         self.kad.set_fw_check_identity(user_hash);
+        self.kad.udp().set_fw_user_hash(user_hash);
         let new_kad_id = self.kad.rotate_local_id().await;
         tracing::info!(
             "[IDENTITY] {reason} effectuée — nouveau user_hash {} / KadID {}",
