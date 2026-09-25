@@ -845,11 +845,21 @@ class SecureIdentityStatusModel {
   final String? pubkeyHash;
   final int? keyBits;
 
+  /// Path of the quarantined `cryptkey.dat` when the stored key was
+  /// unreadable/corrupt — the daemon then runs without a usable SUI key.
+  final String? quarantinedKey;
+
+  /// SUI handshake counters (challenges issued, signatures verified/
+  /// rejected, malformed packets) carried by `identity.status`.
+  final SuiStatsModel? sui;
+
   const SecureIdentityStatusModel({
     required this.enabled,
     required this.hasKey,
     this.pubkeyHash,
     this.keyBits,
+    this.quarantinedKey,
+    this.sui,
   });
 
   factory SecureIdentityStatusModel.fromJson(Map<String, dynamic> json) {
@@ -861,6 +871,12 @@ class SecureIdentityStatusModel {
       keyBits:
           (json['keyBits'] as num?)?.toInt() ??
           (json['key_bits'] as num?)?.toInt(),
+      quarantinedKey:
+          json['quarantinedKey'] as String? ??
+          json['quarantined_key'] as String?,
+      sui: json['sui'] is Map<String, dynamic>
+          ? SuiStatsModel.fromJson(json['sui'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -868,6 +884,41 @@ class SecureIdentityStatusModel {
     enabled: false,
     hasKey: false,
   );
+}
+
+/// SUI (Secure User Identification) handshake counters returned under
+/// `sui` in `identity.status`.
+class SuiStatsModel {
+  final int challengesIssuedIn;
+  final int challengesIssuedOut;
+  final int signaturesSent;
+  final int signaturesVerified;
+  final int signaturesRejected;
+  final int signaturesRejectedFlood;
+  final int malformedPackets;
+
+  const SuiStatsModel({
+    this.challengesIssuedIn = 0,
+    this.challengesIssuedOut = 0,
+    this.signaturesSent = 0,
+    this.signaturesVerified = 0,
+    this.signaturesRejected = 0,
+    this.signaturesRejectedFlood = 0,
+    this.malformedPackets = 0,
+  });
+
+  factory SuiStatsModel.fromJson(Map<String, dynamic> json) {
+    int toInt(String k) => (json[k] as num?)?.toInt() ?? 0;
+    return SuiStatsModel(
+      challengesIssuedIn: toInt('challengesIssuedIn'),
+      challengesIssuedOut: toInt('challengesIssuedOut'),
+      signaturesSent: toInt('signaturesSent'),
+      signaturesVerified: toInt('signaturesVerified'),
+      signaturesRejected: toInt('signaturesRejected'),
+      signaturesRejectedFlood: toInt('signaturesRejectedFlood'),
+      malformedPackets: toInt('malformedPackets'),
+    );
+  }
 }
 
 class PeerCreditModel {
@@ -1257,6 +1308,42 @@ class DaemonStatsModel {
       sessionUploadedBytes: toInt('sessionUploadedBytes'),
       lifetimeDownloadedBytes: toInt('lifetimeDownloadedBytes'),
       lifetimeUploadedBytes: toInt('lifetimeUploadedBytes'),
+    );
+  }
+}
+
+/// A Kad file note (comment + optional rating) returned by
+/// `kad.searchNotes` — the DHT equivalent of eMule's file comments.
+class KadNoteModel {
+  /// Publisher Kad ID (hex) — deduplicated per publisher by the daemon.
+  final String sourceId;
+  final String fileName;
+  final int fileSize;
+  final String comment;
+
+  /// eMule file rating 0-5 (`TAG_NOTE_FILERATING`); 0 = not rated.
+  final int rating;
+
+  const KadNoteModel({
+    required this.sourceId,
+    required this.fileName,
+    required this.fileSize,
+    required this.comment,
+    required this.rating,
+  });
+
+  factory KadNoteModel.fromJson(Map<String, dynamic> json) {
+    return KadNoteModel(
+      sourceId:
+          json['sourceId'] as String? ?? json['source_id'] as String? ?? '',
+      fileName:
+          json['fileName'] as String? ?? json['file_name'] as String? ?? '',
+      fileSize:
+          (json['fileSize'] as num?)?.toInt() ??
+          (json['file_size'] as num?)?.toInt() ??
+          0,
+      comment: json['comment'] as String? ?? '',
+      rating: (json['rating'] as num?)?.toInt() ?? 0,
     );
   }
 }

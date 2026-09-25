@@ -7,6 +7,7 @@ import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 import '../../../../l10n/enum_labels.dart';
 import '../../../../l10n/l10n.dart';
+import '../../kad/widgets/kad_notes_dialog.dart';
 
 /// One search result row: file name, size, source count badge, copyable
 /// eD2K hash, and actions (download / existing-download status, query
@@ -195,7 +196,7 @@ class SearchResultRow extends StatelessWidget {
 
                 // Actions
                 SizedBox(
-                  width: 280,
+                  width: 330,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -275,6 +276,24 @@ class SearchResultRow extends StatelessWidget {
                           minHeight: 28,
                         ),
                         onPressed: () => onQuerySources(file),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.rate_review_outlined,
+                          size: 16,
+                        ),
+                        tooltip: context.l10n.kadNotesTooltip,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        onPressed: () => showKadNotesDialog(
+                          context,
+                          fileHash: file.fileHash,
+                          fileName: file.fileName,
+                          fileSize: file.fileSize,
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.copy_rounded, size: 16),

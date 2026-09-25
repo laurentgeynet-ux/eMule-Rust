@@ -11,6 +11,7 @@ import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/network/ip_filter_tab.dart';
 import '../../../downloads/widgets/network/rate_limits_tab.dart';
 import '../../widgets/anti_ssrf_notice.dart';
+import '../../widgets/identity_status_card.dart';
 import 'settings_section_scaffold.dart';
 
 /// « Sécurité » : filtre IP défensif (ipfilter.dat), limites de débit et
@@ -41,6 +42,11 @@ class _SettingsSecuritySectionState
   /// Action RPC en cours (toggle filtre, import, limites) — barre fine,
   /// le contenu reste affiché au lieu d'être remplacé par un spinner.
   bool _busy = false;
+
+  /// Identité sécurisée (`identity.status`) — null tant que la première
+  /// réponse n'est pas arrivée.
+  SecureIdentityStatusModel? _identity;
+  bool _identityBusy = false;
 
   @override
   void initState() {
@@ -93,9 +99,65 @@ class _SettingsSecuritySectionState
       _syncFromLimits(ref.read(networkPolicyControllerProvider).rateLimits);
     }
     await ref.read(settingsControllerProvider).fetch();
+    await _loadIdentity();
     if (mounted) {
       _syncFromSettings();
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadIdentity() async {
+    try {
+      final id = await ref.read(muleDaemonClientProvider).getIdentityStatus();
+      if (mounted) setState(() => _identity = id);
+    } catch (_) {
+      // Identité indisponible — carte en état vide.
+    }
+  }
+
+  /// `identity.rotate` — régénère la paire de clés SUI. Destructif pour
+  /// les crédits liés à l'ancienne clé : confirmation explicite.
+  Future<void> _confirmRotateIdentity() async {
+    final l10n = context.l10n;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.darkSurface,
+        title: Text(l10n.identityRotateTitle),
+        content: Text(l10n.identityRotateBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.btnCancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accentAmber,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.identityRotateAction),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => _identityBusy = true);
+    try {
+      final id = await ref.read(muleDaemonClientProvider).rotateIdentity();
+      if (mounted) {
+        setState(() => _identity = id);
+        ref
+            .read(shellControllerProvider)
+            .setStatus(l10n.msgIdentityRotated);
+      }
+    } catch (e) {
+      if (mounted) {
+        ref
+            .read(shellControllerProvider)
+            .setError(l10n.msgErrIdentityRotate('$e'));
+      }
+    } finally {
+      if (mounted) setState(() => _identityBusy = false);
     }
   }
 
@@ -206,8 +268,66 @@ class _SettingsSecuritySectionState
             onChanged: (_) => _dirty.add(_identityRotationController),
             onSubmitted: (_) => _saveIdentityRotation(),
           ),
+          const SizedBox(height: 8),
+          _buildViewSharedFilesTile(context),
+          const SizedBox(height: 20),
+          IdentityStatusCard(
+            status: _identity,
+            isLoading: _identityBusy,
+            onRotate: _confirmRotateIdentity,
+            onRefresh: _loadIdentity,
+          ),
         ],
       ],
+    );
+  }
+
+  /// `viewSharedFiles` — qui peut parcourir nos fichiers partagés via la
+  /// requête eD2K « View Shared Files » (everybody / friends / nobody).
+  Widget _buildViewSharedFilesTile(BuildContext context) {
+    final l10n = context.l10n;
+    const options = ['everybody', 'friends', 'nobody'];
+    String labelOf(String id) => switch (id) {
+          'everybody' => l10n.settingsViewSharedEverybody,
+          'friends' => l10n.settingsViewSharedFriends,
+          _ => l10n.settingsViewSharedNobody,
+        };
+    final current = ref
+            .watch(settingsControllerProvider)
+            .settings['viewSharedFiles'] as String? ??
+        'everybody';
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      title: Text(
+        l10n.settingsViewSharedTitle,
+        style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+      ),
+      subtitle: Text(
+        l10n.settingsViewSharedSub,
+        style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+      ),
+      trailing: DropdownButton<String>(
+        value: options.contains(current) ? current : 'everybody',
+        isDense: true,
+        underline: const SizedBox.shrink(),
+        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        dropdownColor: AppTheme.darkSurface,
+        items: options
+            .map(
+              (o) => DropdownMenuItem(
+                value: o,
+                child: Text(labelOf(o)),
+              ),
+            )
+            .toList(),
+        onChanged: (v) {
+          if (v == null) return;
+          ref
+              .read(settingsControllerProvider)
+              .updateSettings({'viewSharedFiles': v});
+        },
+      ),
     );
   }
 

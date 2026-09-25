@@ -15,6 +15,7 @@ class KadToolbar extends StatelessWidget {
   final VoidCallback onBootstrap;
   final VoidCallback onImportNodesDat;
   final VoidCallback onBootstrapFromUrl;
+  final VoidCallback onFindNode;
 
   const KadToolbar({
     super.key,
@@ -22,6 +23,7 @@ class KadToolbar extends StatelessWidget {
     required this.onBootstrap,
     required this.onImportNodesDat,
     required this.onBootstrapFromUrl,
+    required this.onFindNode,
   });
 
   @override
@@ -59,6 +61,15 @@ class KadToolbar extends StatelessWidget {
                   onPressed: _refresh,
                 ),
                 IconButton(
+                  tooltip: context.l10n.kadFindNodeTooltip,
+                  icon: const Icon(
+                    Icons.travel_explore_rounded,
+                    size: 18,
+                    color: AppColors.accentTeal,
+                  ),
+                  onPressed: onFindNode,
+                ),
+                IconButton(
                   tooltip: context.l10n.amorcerBootstrap,
                   icon: const Icon(
                     Icons.rocket_launch_outlined,
@@ -90,6 +101,19 @@ class KadToolbar extends StatelessWidget {
                   icon: const Icon(Icons.refresh_rounded, size: 16),
                   label: Text(context.l10n.actualiser),
                   onPressed: _refresh,
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  icon: const Icon(
+                    Icons.travel_explore_rounded,
+                    size: 16,
+                    color: AppColors.accentTeal,
+                  ),
+                  label: Text(
+                    context.l10n.kadFindNodeTooltip,
+                    style: const TextStyle(color: AppColors.accentTeal),
+                  ),
+                  onPressed: onFindNode,
                 ),
                 const SizedBox(width: 10),
                 OutlinedButton.icon(

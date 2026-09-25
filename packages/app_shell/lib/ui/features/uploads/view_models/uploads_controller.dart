@@ -19,12 +19,21 @@ class UploadsController extends ChangeNotifier {
   UploadsController({required this.client});
 
   UploadsSnapshotModel _snapshot = const UploadsSnapshotModel();
+  List<PeerCreditModel> _credits = const [];
+  PeerCreditStatsModel? _creditStats;
   StreamSubscription<UploadsSnapshotModel>? _sub;
 
   UploadsSnapshotModel get snapshot => _snapshot;
   List<UploadSessionModel> get active => _snapshot.active;
   List<UploadSessionModel> get queue => _snapshot.queue;
   int get totalUploadRateBps => _snapshot.uploadRateBps;
+
+  /// Persistent per-peer credit entries (`credits.list`), most relevant
+  /// first — peers that uploaded to us get a queue multiplier.
+  List<PeerCreditModel> get credits => _credits;
+
+  /// Aggregated credit totals (`credits.stats`); null until loaded.
+  PeerCreditStatsModel? get creditStats => _creditStats;
 
   /// Subscribes to daemon upload events. Idempotent.
   void attach() {
@@ -55,6 +64,20 @@ class UploadsController extends ChangeNotifier {
     } catch (e) {
       // Non-fatal: the next event will refresh the snapshot.
       AppLogger.debug('uploads', 'Uploads fetch failed', error: e);
+    }
+  }
+
+  /// Fetches the persistent peer-credit store (`credits.list` +
+  /// `credits.stats`) — eMule `CClientCreditsList`: peers that uploaded
+  /// to us earn a queue score multiplier.
+  Future<void> fetchCredits({int limit = 100}) async {
+    try {
+      _credits = await client.listPeerCredits(limit: limit);
+      _creditStats = await client.getPeerCreditStats();
+      notifyListeners();
+    } catch (e) {
+      // Non-fatal: the credits card shows its empty state.
+      AppLogger.debug('uploads', 'Credits fetch failed', error: e);
     }
   }
 

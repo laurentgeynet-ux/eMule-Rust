@@ -3820,4 +3820,278 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get assistantRetry => 'Réessayer';
+
+  @override
+  String get kadNotesTitle => 'Commentaires Kad';
+
+  @override
+  String get kadNotesTooltip => 'Commentaires Kad (notes et avis)';
+
+  @override
+  String get kadNotesLoading => 'Recherche des commentaires sur Kad…';
+
+  @override
+  String get kadNotesEmpty =>
+      'Aucun commentaire trouvé sur Kad pour ce fichier.';
+
+  @override
+  String kadNotesLoadError(Object error) {
+    return 'Échec de la recherche de commentaires : $error';
+  }
+
+  @override
+  String kadNotesPublisher(Object id) {
+    return 'Éditeur $id…';
+  }
+
+  @override
+  String get kadNotesYourComment => 'Votre commentaire';
+
+  @override
+  String get kadNotesCommentHint =>
+      'Commentaire visible par les pairs Kad (512 octets max)…';
+
+  @override
+  String get kadNotesCommentRequired => 'Un commentaire est requis';
+
+  @override
+  String get kadNotesRating => 'Note';
+
+  @override
+  String get kadNotesNoRating => 'Sans note';
+
+  @override
+  String get kadNotesPublish => 'Publier';
+
+  @override
+  String kadNotesPublished(Object count) {
+    return 'Commentaire publié sur $count nœud(s)';
+  }
+
+  @override
+  String kadNotesPublishError(Object error) {
+    return 'Échec de la publication du commentaire : $error';
+  }
+
+  @override
+  String get sharePublishKadTooltip => 'Publier sur Kad (source + mots-clés)';
+
+  @override
+  String get shareNotesTooltip => 'Commentaires Kad';
+
+  @override
+  String msgKadFilePublished(Object keywords, Object sources) {
+    return 'Kad : fichier publié ($sources source(s), $keywords mot(s)-clé(s))';
+  }
+
+  @override
+  String get msgErrKadPublishFile => 'Échec de la publication Kad du fichier';
+
+  @override
+  String get sharesAddTooltip => 'Ajouter un partage manuel';
+
+  @override
+  String get sharesAddTitle => 'Ajouter un fichier partagé';
+
+  @override
+  String get sharesAddHashLabel => 'Hash eD2K (hexadécimal, 32 caractères)';
+
+  @override
+  String get sharesAddNameLabel => 'Nom du fichier';
+
+  @override
+  String get sharesAddSizeLabel => 'Taille (octets)';
+
+  @override
+  String get sharesAddPathLabel => 'Chemin du fichier';
+
+  @override
+  String get sharesAddInvalid =>
+      'Champs invalides : hash hex de 32 caractères, nom et taille > 0 requis';
+
+  @override
+  String get sharesAddAction => 'Ajouter';
+
+  @override
+  String get msgShareAdded => 'Fichier ajouté aux partages';
+
+  @override
+  String msgErrShareAdd(Object error) {
+    return 'Échec de l\'ajout du partage : $error';
+  }
+
+  @override
+  String get listenerTitle => 'Écoute entrante eD2K';
+
+  @override
+  String get listenerSubtitle =>
+      'Socket TCP qui accepte les connexions pairs entrantes (uploads, échanges de sources).';
+
+  @override
+  String listenerListening(Object addr) {
+    return 'En écoute sur $addr';
+  }
+
+  @override
+  String get listenerStopped => 'Arrêté';
+
+  @override
+  String get listenerActiveUploads => 'Uploads actifs';
+
+  @override
+  String get listenerQueued => 'En file';
+
+  @override
+  String get listenerRate => 'Débit';
+
+  @override
+  String get listenerStart => 'Démarrer';
+
+  @override
+  String get listenerStop => 'Arrêter';
+
+  @override
+  String listenerError(Object error) {
+    return 'Échec de l\'opération sur le listener : $error';
+  }
+
+  @override
+  String get identityTitle => 'Identité sécurisée (SUI)';
+
+  @override
+  String get identitySubtitle =>
+      'Clé RSA signant nos échanges eD2K — les crédits pairs sont liés à cette identité.';
+
+  @override
+  String get identityNoKey =>
+      'Aucune clé utilisable — les pairs ne peuvent pas vérifier notre identité.';
+
+  @override
+  String identityKeyBits(Object bits) {
+    return 'Clé RSA-$bits';
+  }
+
+  @override
+  String get identityPubkeyHash => 'Hash de la clé publique';
+
+  @override
+  String identityQuarantined(Object path) {
+    return 'Clé corrompue mise en quarantaine : $path';
+  }
+
+  @override
+  String get identityRotate => 'Rotation';
+
+  @override
+  String get identityRotateTitle => 'Rotation de l\'identité ?';
+
+  @override
+  String get identityRotateBody =>
+      'Une nouvelle paire de clés sera générée : les crédits accordés par les pairs à l\'ancienne identité seront perdus.';
+
+  @override
+  String get identityRotateAction => 'Rotation';
+
+  @override
+  String identitySuiStats(Object malformed, Object rejected, Object verified) {
+    return '$verified vérifiée(s) · $rejected rejetée(s) · $malformed malformée(s)';
+  }
+
+  @override
+  String get identityRefresh => 'Actualiser';
+
+  @override
+  String get msgIdentityRotated =>
+      'Identité régénérée (nouvelle paire de clés)';
+
+  @override
+  String msgErrIdentityRotate(Object error) {
+    return 'Échec de la rotation de l\'identité : $error';
+  }
+
+  @override
+  String get settingsViewSharedTitle => 'Visibilité de mes fichiers partagés';
+
+  @override
+  String get settingsViewSharedSub =>
+      'Pairs autorisés à lister nos partages (requête eD2K « View Shared Files »).';
+
+  @override
+  String get settingsViewSharedEverybody => 'Tout le monde';
+
+  @override
+  String get settingsViewSharedFriends => 'Amis uniquement';
+
+  @override
+  String get settingsViewSharedNobody => 'Personne';
+
+  @override
+  String get creditsTitle => 'Crédits pairs';
+
+  @override
+  String get creditsSubtitle =>
+      'Ratio upload/download par pair identifié — réduit le temps d\'attente des bons uploadeurs.';
+
+  @override
+  String get creditsEmpty =>
+      'Aucun crédit enregistré — importez un clients.met ou uploadez pour accumuler des crédits.';
+
+  @override
+  String creditsPeersCount(Object count) {
+    return '$count pair(s)';
+  }
+
+  @override
+  String creditsActiveCount(Object count) {
+    return '$count actif(s)';
+  }
+
+  @override
+  String get creditsColPeer => 'Pair (hash pubkey)';
+
+  @override
+  String get creditsColUploaded => 'Uploadé';
+
+  @override
+  String get creditsColDownloaded => 'Téléchargé';
+
+  @override
+  String get creditsColMultiplier => 'Multiplicateur';
+
+  @override
+  String get creditsColLastSeen => 'Dernière activité';
+
+  @override
+  String get creditsTotalUploaded => 'Total uploadé';
+
+  @override
+  String get creditsTotalDownloaded => 'Total téléchargé';
+
+  @override
+  String creditsRefreshError(Object error) {
+    return 'Échec du chargement des crédits : $error';
+  }
+
+  @override
+  String get kadFindNodeTooltip => 'Rechercher un nœud Kad';
+
+  @override
+  String get kadFindNodeTitle => 'Recherche de nœud Kad';
+
+  @override
+  String get kadFindNodeIdLabel => 'KadID cible (hexadécimal)';
+
+  @override
+  String get kadFindNodeAction => 'Rechercher';
+
+  @override
+  String get kadFindNodeEmpty => 'Aucun contact trouvé pour cette cible.';
+
+  @override
+  String get kadFindNodeInvalid => 'KadID hexadécimal de 32 caractères requis';
+
+  @override
+  String kadFindNodeResults(Object count) {
+    return '$count contact(s) le(s) plus proche(s)';
+  }
 }

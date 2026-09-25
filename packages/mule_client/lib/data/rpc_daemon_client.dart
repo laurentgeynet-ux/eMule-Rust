@@ -1286,8 +1286,14 @@ class RpcDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<InboundListenerStatusModel> startListener({int port = 0}) async {
-    final resp = await _call('listener.start', {'port': port});
+  Future<InboundListenerStatusModel> startListener({
+    int port = 0,
+    String? bindIp,
+  }) async {
+    final resp = await _call('listener.start', {
+      if (port != 0) 'port': port,
+      'bindIp': ?bindIp,
+    });
     return InboundListenerStatusModel.fromJson(resp as Map<String, dynamic>);
   }
 
@@ -1498,6 +1504,47 @@ class RpcDaemonClient implements MuleDaemonClient {
       'fileSize': fileSize,
     });
     return (resp as Map<String, dynamic>?)?['publishedCount'] as int? ?? 0;
+  }
+
+  @override
+  Future<List<KadNoteModel>> searchKadNotes({
+    required String fileHash,
+    required int fileSize,
+  }) async {
+    final resp = await _call('kad.searchNotes', {
+      'fileHash': fileHash,
+      'fileSize': fileSize,
+    });
+    final list =
+        (resp as Map<String, dynamic>?)?['notes'] as List<dynamic>? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(KadNoteModel.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<int> publishKadNote({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String comment,
+    int? rating,
+  }) async {
+    final resp = await _call('kad.publishNote', {
+      'fileHash': fileHash,
+      'fileName': fileName,
+      'fileSize': fileSize,
+      'comment': comment,
+      'rating': ?rating,
+    });
+    return (resp as Map<String, dynamic>?)?['publishedCount'] as int? ?? 0;
+  }
+
+  @override
+  Future<bool> isDownloadCancelled(String fileHash) async {
+    final resp = await _call('downloads.isCancelled', {'fileHash': fileHash});
+    return (resp as Map<String, dynamic>?)?['cancelled'] == true;
   }
 
   @override

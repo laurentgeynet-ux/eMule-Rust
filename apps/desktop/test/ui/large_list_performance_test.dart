@@ -595,7 +595,10 @@ class LargeListMockClient implements MuleDaemonClient {
   Future<void> removeFriend(String userHash) async {}
 
   @override
-  Future<InboundListenerStatusModel> startListener({int port = 0}) async =>
+  Future<InboundListenerStatusModel> startListener({
+    int port = 0,
+    String? bindIp,
+  }) async =>
       InboundListenerStatusModel.idle;
 
   @override
@@ -724,6 +727,24 @@ class LargeListMockClient implements MuleDaemonClient {
     required String fileName,
     required int fileSize,
   }) async => 0;
+
+  @override
+  Future<List<KadNoteModel>> searchKadNotes({
+    required String fileHash,
+    required int fileSize,
+  }) async => const [];
+
+  @override
+  Future<int> publishKadNote({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String comment,
+    int? rating,
+  }) async => 0;
+
+  @override
+  Future<bool> isDownloadCancelled(String fileHash) async => false;
 
   @override
   Future<UpnpStatusModel> getUpnpStatus() async => const UpnpStatusModel(

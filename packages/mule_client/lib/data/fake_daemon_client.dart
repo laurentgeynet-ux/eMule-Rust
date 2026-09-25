@@ -1932,10 +1932,13 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
   }
 
   @override
-  Future<InboundListenerStatusModel> startListener({int port = 0}) async {
+  Future<InboundListenerStatusModel> startListener({
+    int port = 0,
+    String? bindIp,
+  }) async {
     _fakeListenerStatus = InboundListenerStatusModel(
       isListening: true,
-      listenAddress: '127.0.0.1:${port == 0 ? 39735 : port}',
+      listenAddress: '${bindIp ?? '127.0.0.1'}:${port == 0 ? 39735 : port}',
       activeUploads: _fakeActiveUpload != null ? 1 : 0,
       queuedUploads: 0,
       uploadRateBps: 51200,
@@ -2222,6 +2225,38 @@ class FakeMuleDaemonClient implements MuleDaemonClient {
     required int fileSize,
   }) async {
     return 1;
+  }
+
+  @override
+  Future<List<KadNoteModel>> searchKadNotes({
+    required String fileHash,
+    required int fileSize,
+  }) async {
+    return [
+      KadNoteModel(
+        sourceId: '0123456789abcdef0123456789abcdef',
+        fileName: 'shared-$fileHash.bin',
+        fileSize: fileSize,
+        comment: 'Fake Kad note (loopback simulation)',
+        rating: 4,
+      ),
+    ];
+  }
+
+  @override
+  Future<int> publishKadNote({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String comment,
+    int? rating,
+  }) async {
+    return 1;
+  }
+
+  @override
+  Future<bool> isDownloadCancelled(String fileHash) async {
+    return false;
   }
 
   UpnpStatusModel _upnpStatus = const UpnpStatusModel(

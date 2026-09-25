@@ -8,6 +8,7 @@ import 'package:ui_kit/ui_kit.dart';
 import '../../../../l10n/l10n.dart';
 
 import '../../../../app/providers.dart';
+import '../widgets/credits_card.dart';
 import '../widgets/uploads_table.dart';
 
 /// Uploads view: active upload sessions + waiting queue, fed live by
@@ -23,9 +24,11 @@ class _UploadsViewState extends ConsumerState<UploadsView> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => ref.read(uploadsControllerProvider).fetch(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctl = ref.read(uploadsControllerProvider);
+      ctl.fetch();
+      ctl.fetchCredits();
+    });
   }
 
   @override
@@ -87,6 +90,17 @@ class _UploadsViewState extends ConsumerState<UploadsView> {
                 child: ctl.queue.isEmpty
                     ? _EmptyState(label: l10n.uploadsQueueEmpty)
                     : UploadsTable(sessions: ctl.queue, isQueue: true),
+              ),
+              const SizedBox(height: 16),
+              _SectionLabel(
+                label: l10n.creditsTitle,
+                count: ctl.credits.length,
+              ),
+              CreditsCard(
+                credits: ctl.credits,
+                stats: ctl.creditStats,
+                onRefresh: () =>
+                    ref.read(uploadsControllerProvider).fetchCredits(),
               ),
             ],
           ),

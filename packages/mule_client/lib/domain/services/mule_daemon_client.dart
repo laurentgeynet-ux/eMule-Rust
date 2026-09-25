@@ -377,8 +377,13 @@ abstract class MuleDaemonClient {
   /// Revoke a friend slot.
   Future<void> removeFriend(String userHash);
 
-  /// Start inbound eD2K TCP listener.
-  Future<InboundListenerStatusModel> startListener({int port = 0});
+  /// Start inbound eD2K TCP listener. [bindIp] selects the bind address
+  /// (`127.0.0.1` in lab profile, `0.0.0.0` for public reachability);
+  /// the daemon defaults to loopback when omitted.
+  Future<InboundListenerStatusModel> startListener({
+    int port = 0,
+    String? bindIp,
+  });
 
   /// Stop inbound eD2K TCP listener.
   Future<InboundListenerStatusModel> stopListener();
@@ -507,6 +512,30 @@ abstract class MuleDaemonClient {
     required String fileName,
     required int fileSize,
   });
+
+  /// Search Kad DHT for file notes (comments/ratings) — the DHT
+  /// equivalent of eMule's file comments (`KADEMLIA2_SEARCH_NOTES_REQ`).
+  Future<List<KadNoteModel>> searchKadNotes({
+    required String fileHash,
+    required int fileSize,
+  });
+
+  /// Publish a file note (comment + optional 0-5 rating) to the Kad
+  /// contacts closest to [fileHash] (`KADEMLIA2_PUBLISH_NOTES_REQ`).
+  /// [comment] is capped at 512 bytes and [fileName] at 255 bytes by the
+  /// daemon. Returns the number of indexers that accepted.
+  Future<int> publishKadNote({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String comment,
+    int? rating,
+  });
+
+  /// `downloads.isCancelled` — whether [fileHash] belongs to the
+  /// cancelled-files set imported from an eMule `cancelled.met`
+  /// (search-result marking only, not a download block).
+  Future<bool> isDownloadCancelled(String fileHash);
 
   /// Stream of search result events.
   Stream<List<SearchResultFileModel>> get searchResultEvents;

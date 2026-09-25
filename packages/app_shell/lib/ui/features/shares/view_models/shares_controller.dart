@@ -123,6 +123,23 @@ class SharesController extends ChangeNotifier {
     await fetch();
   }
 
+  /// `shares.add` — registers an already-hashed file as a share. The
+  /// eD2K hash must be provided (no re-hashing is done daemon-side).
+  Future<void> addSharedFile({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String filePath,
+  }) async {
+    await client.addSharedFile(
+      fileHash: fileHash,
+      fileName: fileName,
+      fileSize: fileSize,
+      filePath: filePath,
+    );
+    await fetch();
+  }
+
   @override
   void dispose() {
     _disposed = true;

@@ -3787,4 +3787,276 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get assistantRetry => 'Retry';
+
+  @override
+  String get kadNotesTitle => 'Kad comments';
+
+  @override
+  String get kadNotesTooltip => 'Kad comments (notes and ratings)';
+
+  @override
+  String get kadNotesLoading => 'Searching Kad for notes…';
+
+  @override
+  String get kadNotesEmpty => 'No Kad notes found for this file.';
+
+  @override
+  String kadNotesLoadError(Object error) {
+    return 'Failed to search notes: $error';
+  }
+
+  @override
+  String kadNotesPublisher(Object id) {
+    return 'Publisher $id…';
+  }
+
+  @override
+  String get kadNotesYourComment => 'Your comment';
+
+  @override
+  String get kadNotesCommentHint =>
+      'Comment visible to Kad peers (512 bytes max)…';
+
+  @override
+  String get kadNotesCommentRequired => 'A comment is required';
+
+  @override
+  String get kadNotesRating => 'Rating';
+
+  @override
+  String get kadNotesNoRating => 'No rating';
+
+  @override
+  String get kadNotesPublish => 'Publish';
+
+  @override
+  String kadNotesPublished(Object count) {
+    return 'Note published to $count node(s)';
+  }
+
+  @override
+  String kadNotesPublishError(Object error) {
+    return 'Failed to publish note: $error';
+  }
+
+  @override
+  String get sharePublishKadTooltip => 'Publish to Kad (source + keywords)';
+
+  @override
+  String get shareNotesTooltip => 'Kad comments';
+
+  @override
+  String msgKadFilePublished(Object keywords, Object sources) {
+    return 'Kad: file published ($sources source(s), $keywords keyword(s))';
+  }
+
+  @override
+  String get msgErrKadPublishFile => 'Failed to publish file to Kad';
+
+  @override
+  String get sharesAddTooltip => 'Add a manual share';
+
+  @override
+  String get sharesAddTitle => 'Add shared file';
+
+  @override
+  String get sharesAddHashLabel => 'eD2K hash (hex, 32 chars)';
+
+  @override
+  String get sharesAddNameLabel => 'File name';
+
+  @override
+  String get sharesAddSizeLabel => 'Size (bytes)';
+
+  @override
+  String get sharesAddPathLabel => 'File path';
+
+  @override
+  String get sharesAddInvalid =>
+      'Invalid fields: a 32-char hex hash, name and size > 0 are required';
+
+  @override
+  String get sharesAddAction => 'Add';
+
+  @override
+  String get msgShareAdded => 'File added to shares';
+
+  @override
+  String msgErrShareAdd(Object error) {
+    return 'Failed to add share: $error';
+  }
+
+  @override
+  String get listenerTitle => 'Inbound eD2K listener';
+
+  @override
+  String get listenerSubtitle =>
+      'TCP socket accepting inbound peer connections (uploads, source exchange).';
+
+  @override
+  String listenerListening(Object addr) {
+    return 'Listening on $addr';
+  }
+
+  @override
+  String get listenerStopped => 'Stopped';
+
+  @override
+  String get listenerActiveUploads => 'Active uploads';
+
+  @override
+  String get listenerQueued => 'Queued';
+
+  @override
+  String get listenerRate => 'Rate';
+
+  @override
+  String get listenerStart => 'Start';
+
+  @override
+  String get listenerStop => 'Stop';
+
+  @override
+  String listenerError(Object error) {
+    return 'Listener operation failed: $error';
+  }
+
+  @override
+  String get identityTitle => 'Secure identity (SUI)';
+
+  @override
+  String get identitySubtitle =>
+      'RSA key signing our eD2K handshakes — peer credits are bound to this identity.';
+
+  @override
+  String get identityNoKey =>
+      'No usable key — peers cannot verify our identity.';
+
+  @override
+  String identityKeyBits(Object bits) {
+    return 'RSA-$bits key';
+  }
+
+  @override
+  String get identityPubkeyHash => 'Public key hash';
+
+  @override
+  String identityQuarantined(Object path) {
+    return 'Corrupt key quarantined: $path';
+  }
+
+  @override
+  String get identityRotate => 'Rotate';
+
+  @override
+  String get identityRotateTitle => 'Rotate identity?';
+
+  @override
+  String get identityRotateBody =>
+      'A new keypair will be generated: credits peers granted to the old identity will be lost.';
+
+  @override
+  String get identityRotateAction => 'Rotate';
+
+  @override
+  String identitySuiStats(Object malformed, Object rejected, Object verified) {
+    return '$verified verified · $rejected rejected · $malformed malformed';
+  }
+
+  @override
+  String get identityRefresh => 'Refresh';
+
+  @override
+  String get msgIdentityRotated => 'Identity rotated (new keypair)';
+
+  @override
+  String msgErrIdentityRotate(Object error) {
+    return 'Identity rotation failed: $error';
+  }
+
+  @override
+  String get settingsViewSharedTitle => 'Who can see my shared files';
+
+  @override
+  String get settingsViewSharedSub =>
+      'Peers allowed to list our shares (eD2K \"View Shared Files\" request).';
+
+  @override
+  String get settingsViewSharedEverybody => 'Everybody';
+
+  @override
+  String get settingsViewSharedFriends => 'Friends only';
+
+  @override
+  String get settingsViewSharedNobody => 'Nobody';
+
+  @override
+  String get creditsTitle => 'Peer credits';
+
+  @override
+  String get creditsSubtitle =>
+      'Upload/download ratio per identified peer — lowers queue time for good uploaders.';
+
+  @override
+  String get creditsEmpty =>
+      'No credits recorded — import a clients.met or upload to earn credits.';
+
+  @override
+  String creditsPeersCount(Object count) {
+    return '$count peer(s)';
+  }
+
+  @override
+  String creditsActiveCount(Object count) {
+    return '$count active';
+  }
+
+  @override
+  String get creditsColPeer => 'Peer (pubkey hash)';
+
+  @override
+  String get creditsColUploaded => 'Uploaded';
+
+  @override
+  String get creditsColDownloaded => 'Downloaded';
+
+  @override
+  String get creditsColMultiplier => 'Multiplier';
+
+  @override
+  String get creditsColLastSeen => 'Last seen';
+
+  @override
+  String get creditsTotalUploaded => 'Total uploaded';
+
+  @override
+  String get creditsTotalDownloaded => 'Total downloaded';
+
+  @override
+  String creditsRefreshError(Object error) {
+    return 'Failed to load credits: $error';
+  }
+
+  @override
+  String get kadFindNodeTooltip => 'Find Kad node';
+
+  @override
+  String get kadFindNodeTitle => 'Kad node lookup';
+
+  @override
+  String get kadFindNodeIdLabel => 'Target KadID (hex)';
+
+  @override
+  String get kadFindNodeAction => 'Search';
+
+  @override
+  String get kadFindNodeEmpty => 'No contact found for this target.';
+
+  @override
+  String get kadFindNodeInvalid => 'A 32-char hex KadID is required';
+
+  @override
+  String kadFindNodeResults(Object count) {
+    return '$count closest contact(s)';
+  }
 }

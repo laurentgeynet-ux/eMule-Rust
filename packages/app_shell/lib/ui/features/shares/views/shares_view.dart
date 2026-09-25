@@ -9,6 +9,8 @@ import 'package:ui_kit/ui_kit.dart';
 import '../../../../app/providers.dart';
 import '../../../../l10n/l10n.dart';
 import '../../downloads/widgets/row/rename_file_dialog.dart';
+import '../../kad/widgets/kad_notes_dialog.dart';
+import '../widgets/share_add_dialog.dart';
 
 /// Shared files view (`/shares`): every file served to remote peers with
 /// its eMule upload priority (powershare) selector and enable switch.
@@ -223,6 +225,11 @@ class _SharesViewState extends ConsumerState<SharesView> {
                     : const Icon(Icons.refresh, size: 18),
                 tooltip: context.l10n.sharesRescanTooltip,
                 onPressed: _rescanning ? null : _rescan,
+              ),
+              IconButton(
+                icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                tooltip: context.l10n.sharesAddTooltip,
+                onPressed: () => showShareAddDialog(context),
               ),
             ],
           ),
@@ -489,6 +496,46 @@ class _ShareRow extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 4),
+          Tooltip(
+            message: context.l10n.shareNotesTooltip,
+            child: IconButton(
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.rate_review_outlined,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+              onPressed: () => showKadNotesDialog(
+                context,
+                fileHash: file.fileHash,
+                fileName: file.fileName,
+                fileSize: file.fileSize,
+              ),
+            ),
+          ),
+          Tooltip(
+            message: context.l10n.sharePublishKadTooltip,
+            child: IconButton(
+              key: Key('publish_kad_${file.fileHash}'),
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.cloud_upload_outlined,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+              onPressed: () => ref
+                  .read(kadControllerProvider)
+                  .publishFileToKad(
+                    file.fileHash,
+                    file.fileName,
+                    file.fileSize,
+                  ),
+            ),
+          ),
           Tooltip(
             message: file.isPartial
                 ? context.l10n.sharesRenameDisabledTooltip

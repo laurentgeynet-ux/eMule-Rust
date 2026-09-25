@@ -6372,6 +6372,468 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Réessayer'**
   String get assistantRetry;
+
+  /// No description provided for @kadNotesTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Commentaires Kad'**
+  String get kadNotesTitle;
+
+  /// No description provided for @kadNotesTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Commentaires Kad (notes et avis)'**
+  String get kadNotesTooltip;
+
+  /// No description provided for @kadNotesLoading.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche des commentaires sur Kad…'**
+  String get kadNotesLoading;
+
+  /// No description provided for @kadNotesEmpty.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun commentaire trouvé sur Kad pour ce fichier.'**
+  String get kadNotesEmpty;
+
+  /// No description provided for @kadNotesLoadError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la recherche de commentaires : {error}'**
+  String kadNotesLoadError(Object error);
+
+  /// No description provided for @kadNotesPublisher.
+  ///
+  /// In fr, this message translates to:
+  /// **'Éditeur {id}…'**
+  String kadNotesPublisher(Object id);
+
+  /// No description provided for @kadNotesYourComment.
+  ///
+  /// In fr, this message translates to:
+  /// **'Votre commentaire'**
+  String get kadNotesYourComment;
+
+  /// No description provided for @kadNotesCommentHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Commentaire visible par les pairs Kad (512 octets max)…'**
+  String get kadNotesCommentHint;
+
+  /// No description provided for @kadNotesCommentRequired.
+  ///
+  /// In fr, this message translates to:
+  /// **'Un commentaire est requis'**
+  String get kadNotesCommentRequired;
+
+  /// No description provided for @kadNotesRating.
+  ///
+  /// In fr, this message translates to:
+  /// **'Note'**
+  String get kadNotesRating;
+
+  /// No description provided for @kadNotesNoRating.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sans note'**
+  String get kadNotesNoRating;
+
+  /// No description provided for @kadNotesPublish.
+  ///
+  /// In fr, this message translates to:
+  /// **'Publier'**
+  String get kadNotesPublish;
+
+  /// No description provided for @kadNotesPublished.
+  ///
+  /// In fr, this message translates to:
+  /// **'Commentaire publié sur {count} nœud(s)'**
+  String kadNotesPublished(Object count);
+
+  /// No description provided for @kadNotesPublishError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la publication du commentaire : {error}'**
+  String kadNotesPublishError(Object error);
+
+  /// No description provided for @sharePublishKadTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Publier sur Kad (source + mots-clés)'**
+  String get sharePublishKadTooltip;
+
+  /// No description provided for @shareNotesTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Commentaires Kad'**
+  String get shareNotesTooltip;
+
+  /// No description provided for @msgKadFilePublished.
+  ///
+  /// In fr, this message translates to:
+  /// **'Kad : fichier publié ({sources} source(s), {keywords} mot(s)-clé(s))'**
+  String msgKadFilePublished(Object keywords, Object sources);
+
+  /// No description provided for @msgErrKadPublishFile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la publication Kad du fichier'**
+  String get msgErrKadPublishFile;
+
+  /// No description provided for @sharesAddTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter un partage manuel'**
+  String get sharesAddTooltip;
+
+  /// No description provided for @sharesAddTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter un fichier partagé'**
+  String get sharesAddTitle;
+
+  /// No description provided for @sharesAddHashLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Hash eD2K (hexadécimal, 32 caractères)'**
+  String get sharesAddHashLabel;
+
+  /// No description provided for @sharesAddNameLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nom du fichier'**
+  String get sharesAddNameLabel;
+
+  /// No description provided for @sharesAddSizeLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Taille (octets)'**
+  String get sharesAddSizeLabel;
+
+  /// No description provided for @sharesAddPathLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chemin du fichier'**
+  String get sharesAddPathLabel;
+
+  /// No description provided for @sharesAddInvalid.
+  ///
+  /// In fr, this message translates to:
+  /// **'Champs invalides : hash hex de 32 caractères, nom et taille > 0 requis'**
+  String get sharesAddInvalid;
+
+  /// No description provided for @sharesAddAction.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter'**
+  String get sharesAddAction;
+
+  /// No description provided for @msgShareAdded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fichier ajouté aux partages'**
+  String get msgShareAdded;
+
+  /// No description provided for @msgErrShareAdd.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'ajout du partage : {error}'**
+  String msgErrShareAdd(Object error);
+
+  /// No description provided for @listenerTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Écoute entrante eD2K'**
+  String get listenerTitle;
+
+  /// No description provided for @listenerSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Socket TCP qui accepte les connexions pairs entrantes (uploads, échanges de sources).'**
+  String get listenerSubtitle;
+
+  /// No description provided for @listenerListening.
+  ///
+  /// In fr, this message translates to:
+  /// **'En écoute sur {addr}'**
+  String listenerListening(Object addr);
+
+  /// No description provided for @listenerStopped.
+  ///
+  /// In fr, this message translates to:
+  /// **'Arrêté'**
+  String get listenerStopped;
+
+  /// No description provided for @listenerActiveUploads.
+  ///
+  /// In fr, this message translates to:
+  /// **'Uploads actifs'**
+  String get listenerActiveUploads;
+
+  /// No description provided for @listenerQueued.
+  ///
+  /// In fr, this message translates to:
+  /// **'En file'**
+  String get listenerQueued;
+
+  /// No description provided for @listenerRate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Débit'**
+  String get listenerRate;
+
+  /// No description provided for @listenerStart.
+  ///
+  /// In fr, this message translates to:
+  /// **'Démarrer'**
+  String get listenerStart;
+
+  /// No description provided for @listenerStop.
+  ///
+  /// In fr, this message translates to:
+  /// **'Arrêter'**
+  String get listenerStop;
+
+  /// No description provided for @listenerError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de l\'opération sur le listener : {error}'**
+  String listenerError(Object error);
+
+  /// No description provided for @identityTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Identité sécurisée (SUI)'**
+  String get identityTitle;
+
+  /// No description provided for @identitySubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Clé RSA signant nos échanges eD2K — les crédits pairs sont liés à cette identité.'**
+  String get identitySubtitle;
+
+  /// No description provided for @identityNoKey.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucune clé utilisable — les pairs ne peuvent pas vérifier notre identité.'**
+  String get identityNoKey;
+
+  /// No description provided for @identityKeyBits.
+  ///
+  /// In fr, this message translates to:
+  /// **'Clé RSA-{bits}'**
+  String identityKeyBits(Object bits);
+
+  /// No description provided for @identityPubkeyHash.
+  ///
+  /// In fr, this message translates to:
+  /// **'Hash de la clé publique'**
+  String get identityPubkeyHash;
+
+  /// No description provided for @identityQuarantined.
+  ///
+  /// In fr, this message translates to:
+  /// **'Clé corrompue mise en quarantaine : {path}'**
+  String identityQuarantined(Object path);
+
+  /// No description provided for @identityRotate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rotation'**
+  String get identityRotate;
+
+  /// No description provided for @identityRotateTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rotation de l\'identité ?'**
+  String get identityRotateTitle;
+
+  /// No description provided for @identityRotateBody.
+  ///
+  /// In fr, this message translates to:
+  /// **'Une nouvelle paire de clés sera générée : les crédits accordés par les pairs à l\'ancienne identité seront perdus.'**
+  String get identityRotateBody;
+
+  /// No description provided for @identityRotateAction.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rotation'**
+  String get identityRotateAction;
+
+  /// No description provided for @identitySuiStats.
+  ///
+  /// In fr, this message translates to:
+  /// **'{verified} vérifiée(s) · {rejected} rejetée(s) · {malformed} malformée(s)'**
+  String identitySuiStats(Object malformed, Object rejected, Object verified);
+
+  /// No description provided for @identityRefresh.
+  ///
+  /// In fr, this message translates to:
+  /// **'Actualiser'**
+  String get identityRefresh;
+
+  /// No description provided for @msgIdentityRotated.
+  ///
+  /// In fr, this message translates to:
+  /// **'Identité régénérée (nouvelle paire de clés)'**
+  String get msgIdentityRotated;
+
+  /// No description provided for @msgErrIdentityRotate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec de la rotation de l\'identité : {error}'**
+  String msgErrIdentityRotate(Object error);
+
+  /// No description provided for @settingsViewSharedTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Visibilité de mes fichiers partagés'**
+  String get settingsViewSharedTitle;
+
+  /// No description provided for @settingsViewSharedSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pairs autorisés à lister nos partages (requête eD2K « View Shared Files »).'**
+  String get settingsViewSharedSub;
+
+  /// No description provided for @settingsViewSharedEverybody.
+  ///
+  /// In fr, this message translates to:
+  /// **'Tout le monde'**
+  String get settingsViewSharedEverybody;
+
+  /// No description provided for @settingsViewSharedFriends.
+  ///
+  /// In fr, this message translates to:
+  /// **'Amis uniquement'**
+  String get settingsViewSharedFriends;
+
+  /// No description provided for @settingsViewSharedNobody.
+  ///
+  /// In fr, this message translates to:
+  /// **'Personne'**
+  String get settingsViewSharedNobody;
+
+  /// No description provided for @creditsTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Crédits pairs'**
+  String get creditsTitle;
+
+  /// No description provided for @creditsSubtitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ratio upload/download par pair identifié — réduit le temps d\'attente des bons uploadeurs.'**
+  String get creditsSubtitle;
+
+  /// No description provided for @creditsEmpty.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun crédit enregistré — importez un clients.met ou uploadez pour accumuler des crédits.'**
+  String get creditsEmpty;
+
+  /// No description provided for @creditsPeersCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} pair(s)'**
+  String creditsPeersCount(Object count);
+
+  /// No description provided for @creditsActiveCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} actif(s)'**
+  String creditsActiveCount(Object count);
+
+  /// No description provided for @creditsColPeer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pair (hash pubkey)'**
+  String get creditsColPeer;
+
+  /// No description provided for @creditsColUploaded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Uploadé'**
+  String get creditsColUploaded;
+
+  /// No description provided for @creditsColDownloaded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargé'**
+  String get creditsColDownloaded;
+
+  /// No description provided for @creditsColMultiplier.
+  ///
+  /// In fr, this message translates to:
+  /// **'Multiplicateur'**
+  String get creditsColMultiplier;
+
+  /// No description provided for @creditsColLastSeen.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dernière activité'**
+  String get creditsColLastSeen;
+
+  /// No description provided for @creditsTotalUploaded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Total uploadé'**
+  String get creditsTotalUploaded;
+
+  /// No description provided for @creditsTotalDownloaded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Total téléchargé'**
+  String get creditsTotalDownloaded;
+
+  /// No description provided for @creditsRefreshError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Échec du chargement des crédits : {error}'**
+  String creditsRefreshError(Object error);
+
+  /// No description provided for @kadFindNodeTooltip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rechercher un nœud Kad'**
+  String get kadFindNodeTooltip;
+
+  /// No description provided for @kadFindNodeTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche de nœud Kad'**
+  String get kadFindNodeTitle;
+
+  /// No description provided for @kadFindNodeIdLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'KadID cible (hexadécimal)'**
+  String get kadFindNodeIdLabel;
+
+  /// No description provided for @kadFindNodeAction.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rechercher'**
+  String get kadFindNodeAction;
+
+  /// No description provided for @kadFindNodeEmpty.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucun contact trouvé pour cette cible.'**
+  String get kadFindNodeEmpty;
+
+  /// No description provided for @kadFindNodeInvalid.
+  ///
+  /// In fr, this message translates to:
+  /// **'KadID hexadécimal de 32 caractères requis'**
+  String get kadFindNodeInvalid;
+
+  /// No description provided for @kadFindNodeResults.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count} contact(s) le(s) plus proche(s)'**
+  String kadFindNodeResults(Object count);
 }
 
 class _AppLocalizationsDelegate

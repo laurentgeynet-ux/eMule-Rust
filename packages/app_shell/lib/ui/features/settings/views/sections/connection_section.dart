@@ -13,6 +13,7 @@ import '../../../../../l10n/l10n.dart';
 import '../../../downloads/widgets/network/network_quotas_card.dart';
 import '../../../downloads/widgets/network/network_state_banner.dart';
 import '../../widgets/anti_ssrf_notice.dart';
+import '../../widgets/listener_status_card.dart';
 import '../../widgets/network_toggles_card.dart';
 import '../../widgets/upnp_status_card.dart';
 import 'settings_section_scaffold.dart';
@@ -34,6 +35,8 @@ class _SettingsConnectionSectionState
   String? _upnpMessage;
   bool _upnpIsError = false;
   StreamSubscription<UpnpStatusModel>? _upnpSub;
+  InboundListenerStatusModel? _listenerStatus;
+  bool _listenerBusy = false;
   final _maxConnCtrl = TextEditingController();
   final _connPerMinCtrl = TextEditingController();
   final _tcpPortCtrl = TextEditingController();
@@ -98,6 +101,7 @@ class _SettingsConnectionSectionState
   Future<void> _loadData() async {
     await ref.read(networkPolicyControllerProvider).fetchPolicy();
     await _loadUpnp();
+    await _loadListener();
   }
 
   Future<void> _loadUpnp() async {
@@ -106,6 +110,59 @@ class _SettingsConnectionSectionState
       if (mounted) setState(() => _upnpStatus = upnp);
     } catch (_) {
       // UPnP indisponible (daemon ancien ou profil lab) — carte masquée.
+    }
+  }
+
+  Future<void> _loadListener() async {
+    try {
+      final s = await ref.read(muleDaemonClientProvider).getListenerStatus();
+      if (mounted) setState(() => _listenerStatus = s);
+    } catch (_) {
+      // Listener indisponible (daemon ancien) — carte masquée.
+    }
+  }
+
+  /// `listener.start` sur le port eD2K configuré : bind loopback en
+  /// profil lab, `0.0.0.0` en profil public (le listener auto-démarré
+  /// suit la même règle côté daemon).
+  Future<void> _startListener() async {
+    setState(() => _listenerBusy = true);
+    try {
+      final port = ref
+              .read(settingsControllerProvider)
+              .settings['ed2kPort'] as num? ??
+          0;
+      final isLab = ref.read(networkPolicyControllerProvider).currentProfile ==
+          NetworkProfile.localLab;
+      final s = await ref.read(muleDaemonClientProvider).startListener(
+            port: port.toInt(),
+            bindIp: isLab ? '127.0.0.1' : '0.0.0.0',
+          );
+      if (mounted) setState(() => _listenerStatus = s);
+    } catch (e) {
+      if (mounted) {
+        ref
+            .read(shellControllerProvider)
+            .setError(context.l10n.listenerError('$e'));
+      }
+    } finally {
+      if (mounted) setState(() => _listenerBusy = false);
+    }
+  }
+
+  Future<void> _stopListener() async {
+    setState(() => _listenerBusy = true);
+    try {
+      final s = await ref.read(muleDaemonClientProvider).stopListener();
+      if (mounted) setState(() => _listenerStatus = s);
+    } catch (e) {
+      if (mounted) {
+        ref
+            .read(shellControllerProvider)
+            .setError(context.l10n.listenerError('$e'));
+      }
+    } finally {
+      if (mounted) setState(() => _listenerBusy = false);
     }
   }
 
@@ -215,6 +272,15 @@ class _SettingsConnectionSectionState
         const SizedBox(height: 16),
         _buildPortsCard(context),
         const SizedBox(height: 16),
+        if (_listenerStatus != null)
+          ListenerStatusCard(
+            status: _listenerStatus!,
+            isLoading: _listenerBusy,
+            onStart: _startListener,
+            onStop: _stopListener,
+            onRefresh: _loadListener,
+          ),
+        if (_listenerStatus != null) const SizedBox(height: 16),
         _buildProtocolCard(context),
         const SizedBox(height: 16),
         _buildServersCard(context),

@@ -220,6 +220,79 @@ class KadController extends ChangeNotifier {
         fallback: const []);
   }
 
+  /// Publishes a file's keywords to Kad DHT (makes a share findable by
+  /// keyword search — eMule `CKademlia::Publish` keyword entries).
+  Future<int> publishKeywords(
+    String fileHash,
+    String fileName,
+    int fileSize,
+  ) {
+    return _runLoading(() async {
+      final count = await client.publishKadKeywords(
+        fileHash: fileHash,
+        fileName: fileName,
+        fileSize: fileSize,
+      );
+      return count;
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadPublish,
+        fallback: 0);
+  }
+
+  /// Full eMule-style Kad publication for a file: source publish +
+  /// keyword publish. Reports a combined status message and returns the
+  /// total of accepted entries.
+  Future<int> publishFileToKad(
+    String fileHash,
+    String fileName,
+    int fileSize,
+  ) {
+    return _runLoading(() async {
+      final sources = await client.publishKadSource(
+        fileHash: fileHash,
+        fileSize: fileSize,
+      );
+      final keywords = await client.publishKadKeywords(
+        fileHash: fileHash,
+        fileName: fileName,
+        fileSize: fileSize,
+      );
+      onStatus?.call(
+        L10nLookup.current.msgKadFilePublished(sources, keywords),
+      );
+      return sources + keywords;
+    },
+        onErrorMessage: L10nLookup.current.msgErrKadPublishFile,
+        fallback: 0);
+  }
+
+  /// Fetches Kad file notes (comments/ratings) for [fileHash] — throws
+  /// on RPC error so the dialog can display the failure inline.
+  Future<List<KadNoteModel>> searchNotes(
+    String fileHash,
+    int fileSize,
+  ) {
+    return client.searchKadNotes(fileHash: fileHash, fileSize: fileSize);
+  }
+
+  /// Publishes a file note (comment + optional rating) for [fileHash].
+  /// Returns the number of indexers that accepted; throws on RPC error.
+  Future<int> publishNote({
+    required String fileHash,
+    required String fileName,
+    required int fileSize,
+    required String comment,
+    int? rating,
+  }) {
+    return client.publishKadNote(
+      fileHash: fileHash,
+      fileName: fileName,
+      fileSize: fileSize,
+      comment: comment,
+      rating: rating,
+    );
+  }
+
   /// Publishes this node as a source for a file hash to Kad DHT.
   Future<int> publishSource(
     String fileHash,

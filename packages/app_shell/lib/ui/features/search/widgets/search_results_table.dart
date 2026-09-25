@@ -140,7 +140,7 @@ class _TableHeader extends StatelessWidget {
           _headerCell(
             label: context.l10n.actions,
             columnIndex: 4,
-            width: 280,
+            width: 330,
             sortable: false,
           ),
         ],

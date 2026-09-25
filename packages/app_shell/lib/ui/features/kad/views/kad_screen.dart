@@ -12,6 +12,7 @@ import '../widgets/kad_clear_contacts_dialog.dart';
 import '../widgets/kad_contacts_table.dart';
 import '../widgets/kad_empty_state.dart';
 import '../widgets/kad_filter_bar.dart';
+import '../widgets/kad_find_node_dialog.dart';
 import '../widgets/kad_import_nodes_dat_dialog.dart';
 import '../widgets/kad_safety_banner.dart';
 import '../widgets/kad_status_card.dart';
@@ -64,6 +65,7 @@ class _KadViewState extends ConsumerState<KadView> {
           onBootstrap: () => showKadBootstrapDialog(context, ctl),
           onImportNodesDat: () => showKadImportNodesDatDialog(context, ctl),
           onBootstrapFromUrl: () => showKadBootstrapFromUrlDialog(context, ctl),
+          onFindNode: () => showKadFindNodeDialog(context, ctl),
         ),
         KadSafetyBanner(status: status),
         KadStatusCard(controller: ctl, status: status),
