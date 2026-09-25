@@ -4,7 +4,7 @@
 //! Controlled loopback transport and test peer for closed eD2K handshake verification.
 //! Strictly confined to the local loopback interface (127.0.0.1 / ::1).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -122,9 +122,28 @@ pub enum TestPeerMode {
     SendingPartHangTimeout,
     /// Responds to OP_REQUESTPARTS with unsupported compressed 0xD4 frame.
     SendingPartCompressed0xD4,
+    /// Responds like eMule 0.72a when the peer advertises compression:
+    /// `OP_COMPRESSEDPART` (`0x40`) under `PR_EMULE`, zlib stream split
+    /// into ≤10240-byte slices (`UploadDiskIOThread.cpp:449-456`).
+    SendingPartCompressed,
     /// Immediately closes connection upon receiving OP_REQUESTPARTS.
     SendingPartImmediateClose,
 }
+
+/// Accumulateur zlib pour un bloc compressé découpé en plusieurs paquets
+/// `OP_COMPRESSEDPART{,_I64}` — eMule tranche le flux en ≤10240 octets,
+/// `compressed_size` (taille totale) répétée sur chaque tranche
+/// (`UploadDiskIOThread.cpp:449-456`).
+struct CompressedBlockStream {
+    decomp: flate2::Decompress,
+    /// Octets décompressés produits depuis `block_start`.
+    recv_to: u64,
+    /// Octets compressés consommés jusqu'ici.
+    consumed: u64,
+}
+
+/// Clef de corrélation d'un flux compressé : `(file_hash, block_start)`.
+type ZlibStreamKey = ([u8; 16], u64);
 
 /// Active loopback client establishing and driving eD2K sessions.
 pub struct Ed2kLoopbackClient {
@@ -133,6 +152,10 @@ pub struct Ed2kLoopbackClient {
     codec: PacketCodec,
     encoder: Ed2kEncoder,
     read_buf: BytesMut,
+    /// Flux zlib en cours, un par bloc compressé en réception.
+    zstreams: HashMap<ZlibStreamKey, CompressedBlockStream>,
+    /// Parts décompressées en attente de retour par `receive_sending_part`.
+    ready_parts: VecDeque<Ed2kSendingPart>,
 }
 
 impl Ed2kLoopbackClient {
@@ -175,6 +198,8 @@ impl Ed2kLoopbackClient {
             codec: PacketCodec::new(),
             encoder,
             read_buf: BytesMut::with_capacity(2048),
+            zstreams: HashMap::new(),
+            ready_parts: VecDeque::new(),
         };
 
         // Transmit Hello frame
@@ -486,29 +511,159 @@ impl Ed2kLoopbackClient {
         }
     }
 
+    /// Alimente le flux zlib d'un bloc compressé (`OP_COMPRESSEDPART` /
+    /// `OP_COMPRESSEDPART_I64`) et empile les tranches décompressées dans
+    /// `ready_parts`, chacune validée contre les requêtes de blocs en vol.
+    ///
+    /// Comme eMule (`DownloadClient.cpp`), plusieurs paquets `0x40`/`0xA1`
+    /// portant le même `block_start` forment un seul flux zlib ;
+    /// `compressed_size` répète la taille compressée **totale**.
+    fn feed_compressed(
+        &mut self,
+        file_hash: [u8; 16],
+        block_start: u64,
+        compressed_size: u32,
+        data: &[u8],
+    ) -> Result<(), Ed2kSessionError> {
+        let key: ZlibStreamKey = (file_hash, block_start);
+        let entry = self
+            .zstreams
+            .entry(key)
+            .or_insert_with(|| CompressedBlockStream {
+                decomp: flate2::Decompress::new(true),
+                recv_to: 0,
+                consumed: 0,
+            });
+
+        if (compressed_size as u64) < entry.consumed + data.len() as u64 {
+            return Err(Ed2kSessionError::Malformed(format!(
+                "compressed stream for {key:?} exceeds declared size {compressed_size}"
+            )));
+        }
+
+        // Un bloc compressé couvre au plus une requête ≤ ED2K_BLOCK_SIZE ;
+        // on borne la production à la fenêtre restante de cette requête.
+        let produced_cap = crate::limits::ED2K_BLOCK_SIZE;
+        let mut out = vec![0u8; produced_cap.min(crate::limits::ED2K_BLOCK_SIZE)];
+        let mut offset = 0usize;
+        loop {
+            let before_in = entry.decomp.total_in();
+            let before_out = entry.decomp.total_out();
+            let status = entry
+                .decomp
+                .decompress(&data[offset..], &mut out, flate2::FlushDecompress::Sync)
+                .map_err(|e| Ed2kSessionError::Malformed(format!("zlib inflate failed: {e}")))?;
+            let consumed_now = (entry.decomp.total_in() - before_in) as usize;
+            let produced = (entry.decomp.total_out() - before_out) as usize;
+            entry.consumed += consumed_now as u64;
+            offset += consumed_now;
+
+            if produced > 0 {
+                let part = Ed2kSendingPart {
+                    file_hash,
+                    start_offset: u32::try_from(block_start + entry.recv_to).map_err(|_| {
+                        Ed2kSessionError::Malformed("compressed block beyond u32 range".into())
+                    })?,
+                    end_offset: u32::try_from(block_start + entry.recv_to + produced as u64)
+                        .map_err(|_| {
+                            Ed2kSessionError::Malformed("compressed block beyond u32 range".into())
+                        })?,
+                    data: bytes::Bytes::copy_from_slice(&out[..produced]),
+                };
+                // Accumule la sous-plage dans le tracker (valide aussi
+                // qu'elle reste à l'intérieur d'une requête en vol).
+                self.session.on_sending_part_received(&part)?;
+                entry.recv_to += produced as u64;
+                self.ready_parts.push_back(part);
+            }
+
+            let stream_done = status == flate2::Status::StreamEnd
+                || entry.consumed >= compressed_size as u64;
+            if stream_done {
+                self.zstreams.remove(&key);
+                break;
+            }
+            if offset >= data.len() {
+                break;
+            }
+            if consumed_now == 0 && produced == 0 {
+                return Err(Ed2kSessionError::Malformed(
+                    "zlib stream stalled with unread input".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Waits for an incoming `OP_SENDINGPART` response within timeout.
+    ///
+    /// `OP_SENDINGPART_I64` (`0xA2`) est rabattu vers `Ed2kSendingPart`
+    /// quand les offsets tiennent sur 32 bits ; `OP_COMPRESSEDPART` /
+    /// `OP_COMPRESSEDPART_I64` (`0x40`/`0xA1`, proto `PR_EMULE`) sont
+    /// décompressés tranche par tranche — eMule 0.72a répond compressé dès
+    /// que notre hello annonce le flag compression.
     pub async fn receive_sending_part(
         &mut self,
         timeout_duration: Duration,
     ) -> Result<Ed2kSendingPart, Ed2kSessionError> {
         let deadline = tokio::time::Instant::now() + timeout_duration;
         loop {
+            if let Some(part) = self.ready_parts.pop_front() {
+                return Ok(part);
+            }
             if let Some(raw_packet) = self
                 .codec
                 .decode(&mut self.read_buf)
                 .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?
             {
                 let msg_opt = self.session.on_packet_received(&raw_packet)?;
-                if let Some(Ed2kMessage::SendingPart(part)) = msg_opt {
-                    return Ok(part);
-                } else if raw_packet.protocol == PR_EMULE || raw_packet.opcode == OP_QUEUERANKING {
-                    continue;
-                } else {
-                    return Err(Ed2kSessionError::UnexpectedMessageInState {
-                        state: self.session.state.name(),
-                        opcode: raw_packet.opcode,
-                    });
+                match msg_opt {
+                    Some(Ed2kMessage::SendingPart(part)) => return Ok(part),
+                    Some(Ed2kMessage::SendingPartI64(part)) => {
+                        let start = u32::try_from(part.start_offset).map_err(|_| {
+                            Ed2kSessionError::Malformed("i64 sending part beyond u32".into())
+                        })?;
+                        let end = u32::try_from(part.end_offset).map_err(|_| {
+                            Ed2kSessionError::Malformed("i64 sending part beyond u32".into())
+                        })?;
+                        let legacy = Ed2kSendingPart {
+                            file_hash: part.file_hash,
+                            start_offset: start,
+                            end_offset: end,
+                            data: part.data,
+                        };
+                        self.session.on_sending_part_received(&legacy)?;
+                        return Ok(legacy);
+                    }
+                    Some(Ed2kMessage::CompressedPart(part)) => {
+                        self.feed_compressed(
+                            part.file_hash,
+                            part.start_offset as u64,
+                            part.compressed_size,
+                            &part.data,
+                        )?;
+                    }
+                    Some(Ed2kMessage::CompressedPartI64(part)) => {
+                        self.feed_compressed(
+                            part.file_hash,
+                            part.start_offset,
+                            part.compressed_size,
+                            &part.data,
+                        )?;
+                    }
+                    _ if raw_packet.protocol != PR_EMULE
+                        && raw_packet.opcode != OP_QUEUERANKING =>
+                    {
+                        return Err(Ed2kSessionError::UnexpectedMessageInState {
+                            state: self.session.state.name(),
+                            opcode: raw_packet.opcode,
+                        });
+                    }
+                    _ => {}
                 }
+                // Re-boucle : drainer les parts décompressées et les trames
+                // déjà présentes dans `read_buf` avant de bloquer en lecture.
+                continue;
             }
 
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -1016,7 +1171,7 @@ impl Ed2kTestPeer {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                     Ok(())
                 }
-                TestPeerMode::Nominal => {
+                TestPeerMode::Nominal | TestPeerMode::SendingPartCompressed => {
                     let mut codec = PacketCodec::new();
                     let mut buf = BytesMut::with_capacity(1024);
                     do_peer_handshake(
@@ -1099,20 +1254,35 @@ impl Ed2kTestPeer {
                                     bytes::Bytes::from(v)
                                 };
 
-                                let sending_part = Ed2kSendingPart {
-                                    file_hash: req.file_hash,
-                                    start_offset: range.start,
-                                    end_offset: range.end,
-                                    data: chunk_data,
+                                let resp_bytes = if self.mode
+                                    == TestPeerMode::SendingPartCompressed
+                                {
+                                    encode_compressed_block(
+                                        &encoder,
+                                        req.file_hash,
+                                        range.start,
+                                        &chunk_data,
+                                    )?
+                                } else {
+                                    let sending_part = Ed2kSendingPart {
+                                        file_hash: req.file_hash,
+                                        start_offset: range.start,
+                                        end_offset: range.end,
+                                        data: chunk_data,
+                                    };
+                                    vec![encoder
+                                        .encode_to_bytes(&Ed2kMessage::SendingPart(sending_part))
+                                        .map_err(|e| {
+                                            Ed2kSessionError::Malformed(e.to_string())
+                                        })?]
                                 };
-                                let resp_bytes = encoder
-                                    .encode_to_bytes(&Ed2kMessage::SendingPart(sending_part))
-                                    .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))?;
-                                stream.write_all(&resp_bytes).await.map_err(|e| {
-                                    Ed2kSessionError::Io(format!(
-                                        "Failed to write sending part: {e}"
-                                    ))
-                                })?;
+                                for frame in resp_bytes {
+                                    stream.write_all(&frame).await.map_err(|e| {
+                                        Ed2kSessionError::Io(format!(
+                                            "Failed to write sending part: {e}"
+                                        ))
+                                    })?;
+                                }
                             }
                         }
                     }
@@ -1734,6 +1904,46 @@ impl Ed2kTestPeer {
             }
         })
     }
+}
+
+/// Taille de tranche d'un flux zlib compressé émis par eMule 0.72a pour
+/// `OP_COMPRESSEDPART` (`UploadDiskIOThread.cpp` — `CHUNKSIZE` 10240).
+pub const COMPRESSED_PART_CHUNK_SIZE: usize = 10_240;
+
+/// Construit les trames `OP_COMPRESSEDPART` (`0x40`, `PR_EMULE`) pour un
+/// bloc : compression zlib du contenu, puis découpe du flux en tranches
+/// ≤ [`COMPRESSED_PART_CHUNK_SIZE`], `compressed_size` répétant la taille
+/// totale sur chaque trame — comportement exact d'eMule 0.72a.
+fn encode_compressed_block(
+    encoder: &Ed2kEncoder,
+    file_hash: [u8; 16],
+    block_start: u32,
+    data: &[u8],
+) -> Result<Vec<bytes::Bytes>, Ed2kSessionError> {
+    use std::io::Write as _;
+    let mut enc = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(1));
+    enc.write_all(data)
+        .map_err(|e| Ed2kSessionError::Malformed(format!("zlib deflate failed: {e}")))?;
+    let compressed = enc
+        .finish()
+        .map_err(|e| Ed2kSessionError::Malformed(format!("zlib deflate finish failed: {e}")))?;
+
+    let total = compressed.len() as u32;
+    compressed
+        .chunks(COMPRESSED_PART_CHUNK_SIZE)
+        .map(|chunk| {
+            encoder
+                .encode_to_bytes(&Ed2kMessage::CompressedPart(
+                    super::packet::Ed2kCompressedPart {
+                        file_hash,
+                        start_offset: block_start,
+                        compressed_size: total,
+                        data: bytes::Bytes::copy_from_slice(chunk),
+                    },
+                ))
+                .map_err(|e| Ed2kSessionError::Malformed(e.to_string()))
+        })
+        .collect()
 }
 
 /// Helper performing standard responder handshake.

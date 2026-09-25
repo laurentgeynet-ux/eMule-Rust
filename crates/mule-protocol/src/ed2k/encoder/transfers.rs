@@ -8,11 +8,13 @@ use bytes::Bytes;
 use super::super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::super::limits::Ed2kLimits;
 use super::super::opcodes::{
-    OP_COMPRESSEDPART_I64, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_HASHSETREQUEST,
+    OP_COMPRESSEDPART, OP_COMPRESSEDPART_I64, OP_FILEREQANSNOFILE, OP_FILESTATUS,
+    OP_HASHSETANSWER, OP_HASHSETREQUEST,
     OP_REQFILENAME, OP_REQUESTPARTS_I64, OP_SENDINGPART, OP_SENDINGPART_I64,
 };
 use super::super::packet::{
-    expected_mask_bytes, Ed2kCompressedPartI64, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
+    expected_mask_bytes, Ed2kCompressedPart, Ed2kCompressedPartI64, Ed2kFileReqAnsNoFile,
+    Ed2kFileStatus,
     Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq, Ed2kRequestParts, Ed2kRequestPartsI64,
     Ed2kSendingPart, Ed2kSendingPartI64, PartAvailabilityMask,
 };
@@ -503,9 +505,60 @@ pub fn encode_compressed_part_i64(
         ));
     }
 
-    // eMule sends compressed parts under the compressed protocol marker.
+    // eMule sends compressed parts under the eMule extension protocol
+    // (`UploadDiskIOThread.cpp:449` — `OP_EMULEPROT`), not PR_EMULE_COMPRESSED.
     Ok(RawPacket::new(
-        super::super::protocol::PR_EMULE_COMPRESSED,
+        super::super::protocol::PR_EMULE,
+        opcode,
+        Bytes::from(payload),
+    ))
+}
+
+/// Encodes an `Ed2kCompressedPart` message (`OP_COMPRESSEDPART`, `0x40`).
+///
+/// Wire layout: `<file_hash 16><start u32 LE><compressed_size u32 LE><zlib data>`.
+/// `compressed_size` is the total zlib stream size; for multi-packet blocks
+/// callers emit one `Ed2kCompressedPart` per slice with the same total, so
+/// `compressed_size >= data.len()` (equality for single-chunk blocks).
+pub fn encode_compressed_part(
+    limits: &Ed2kLimits,
+    part: &Ed2kCompressedPart,
+) -> Result<RawPacket, Ed2kEncodeError> {
+    let opcode = OP_COMPRESSEDPART;
+    if (part.compressed_size as usize) < part.data.len() {
+        return Err(Ed2kEncodeError::new(
+            opcode,
+            "compressed_part_payload",
+            Ed2kErrorKind::BlockPayloadMismatch {
+                expected: part.compressed_size as usize,
+                actual: part.data.len(),
+            },
+        ));
+    }
+
+    let mut payload = Vec::with_capacity(24 + part.data.len());
+    payload.extend_from_slice(&part.file_hash);
+    payload.extend_from_slice(&part.start_offset.to_le_bytes());
+    payload.extend_from_slice(&part.compressed_size.to_le_bytes());
+    payload.extend_from_slice(&part.data);
+
+    let frame_len = 1 + payload.len();
+    let max_frame = limits.max_frame_for_opcode(opcode);
+    if frame_len > max_frame {
+        return Err(Ed2kEncodeError::new(
+            opcode,
+            "frame_len",
+            Ed2kErrorKind::FrameTooLarge {
+                size: frame_len,
+                limit: max_frame,
+            },
+        ));
+    }
+
+    // eMule sends compressed parts under the eMule extension protocol
+    // (`UploadDiskIOThread.cpp:456` — `OP_EMULEPROT`).
+    Ok(RawPacket::new(
+        super::super::protocol::PR_EMULE,
         opcode,
         Bytes::from(payload),
     ))

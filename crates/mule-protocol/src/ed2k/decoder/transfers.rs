@@ -8,7 +8,7 @@ use bytes::Bytes;
 use crate::ed2k::error::{Ed2kErrorKind, Ed2kParseError};
 use crate::ed2k::opcodes::{OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE};
 use crate::ed2k::packet::{
-    Ed2kBlockRange, Ed2kBlockRange64, Ed2kCompressedPartI64, Ed2kHashSetAnswer, Ed2kHashSetReq,
+    Ed2kBlockRange, Ed2kBlockRange64, Ed2kCompressedPart, Ed2kCompressedPartI64, Ed2kHashSetAnswer, Ed2kHashSetReq,
     Ed2kRequestParts, Ed2kRequestPartsI64, Ed2kSendingPart, Ed2kSendingPartI64,
 };
 use crate::ed2k::profile::Ed2kCompatibilityProfile;
@@ -520,6 +520,67 @@ pub fn decode_compressed_part_i64(
         start_offset,
         compressed_size,
         data: Bytes::copy_from_slice(&payload[28..]),
+    })
+}
+
+/// Decodes a legacy `OP_COMPRESSEDPART` (`0x40`) payload:
+/// `<file_hash 16><start u32 LE><compressed_size u32 LE><zlib data>`
+/// (eMule `UploadDiskIOThread.cpp:449-456`, proto `PR_EMULE`).
+///
+/// `compressed_size` is the **total** size of the zlib stream, repeated on
+/// each packet of a multi-packet block — equality with the local `data`
+/// length only holds for single-chunk transfers.
+pub fn decode_compressed_part(
+    protocol: u8,
+    opcode: u8,
+    payload: &[u8],
+    base_offset: usize,
+) -> Result<Ed2kCompressedPart, Ed2kParseError> {
+    if payload.len() < 24 {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + payload.len(),
+            "compressed_part_header",
+            Ed2kErrorKind::UnexpectedEof {
+                needed: 24,
+                available: payload.len(),
+            },
+        ));
+    }
+
+    let mut file_hash = [0u8; 16];
+    file_hash.copy_from_slice(&payload[0..16]);
+
+    let mut start_bytes = [0u8; 4];
+    start_bytes.copy_from_slice(&payload[16..20]);
+    let mut size_bytes = [0u8; 4];
+    size_bytes.copy_from_slice(&payload[20..24]);
+    let start_offset = u32::from_le_bytes(start_bytes);
+    let compressed_size = u32::from_le_bytes(size_bytes);
+
+    let actual_len = payload.len() - 24;
+    // eMule splits one zlib stream into <=10240-byte packets sharing the
+    // same `compressed_size` total — `actual_len <= compressed_size`, never
+    // the reverse (a trailing larger slice would exceed the stream).
+    if (compressed_size as usize) < actual_len {
+        return Err(Ed2kParseError::new(
+            protocol,
+            Some(opcode),
+            base_offset + 24,
+            "compressed_part_payload",
+            Ed2kErrorKind::BlockPayloadMismatch {
+                expected: compressed_size as usize,
+                actual: actual_len,
+            },
+        ));
+    }
+
+    Ok(Ed2kCompressedPart {
+        file_hash,
+        start_offset,
+        compressed_size,
+        data: Bytes::copy_from_slice(&payload[24..]),
     })
 }
 

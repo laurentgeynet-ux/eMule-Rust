@@ -1375,3 +1375,37 @@ défaut `SESSIONMAXTRANS` (octets). La rotation sur score au-delà de
 Références : `BaseClient.cpp:1167-1174` (`bDelete`), `UploadQueue.cpp:105-152`
 (`FindBestClientInQueue`), `UploadQueue.cpp:534-549` (reconnexion +
 `AddUpNextClient`), `UploadQueue.cpp:769-815` (`CheckForTimeOver`).
+
+## 28. OP_COMPRESSEDPART (0x40) — réception de blocs compressés 32-bit
+
+Constat live (binaire eMule 0.72a épinglé, SHA-256
+`b7dd6276…4efd6`) : dès que notre hello annonce le flag compression, eMule
+répond à `OP_REQUESTPARTS` par `OP_COMPRESSEDPART` (`0x40`) sous
+`PR_EMULE` (`0xC5`) pour les offsets < 4 Gio — **jamais** `OP_SENDINGPART`
+ni `PR_EMULE_COMPRESSED`. Le flux zlib d'un bloc est tranché en paquets
+≤ 10 240 octets, chacun répétant la **taille totale** du flux dans
+`compressed_size` (`UploadDiskIOThread.cpp:449-456`).
+
+Trame : `<file_hash 16><start u32 LE><compressed_size u32 LE><zlib…>`
+(en-tête 24 octets ; 28 octets avec `start u64` pour `0xA1`).
+
+Corrections apportées :
+
+- `Ed2kCompressedPart` (u32) + `decode_compressed_part` (rejet en-tête
+  < 24 o, rejet `compressed_size < data.len()` — la taille déclarée est
+  le total du flux, jamais inférieure à la tranche portée).
+- `encode_compressed_part` sous `PR_EMULE` — l'encodeur `I64` émettait
+  `PR_EMULE_COMPRESSED` (0xD4) par erreur ; eMule envoie `OP_EMULEPROT`.
+- `Ed2kLoopbackClient` : accumulateur zlib par `(file_hash, block_start)`
+  (`flate2::Decompress`, `FlushDecompress::Sync`), production bornée à
+  `ED2K_BLOCK_SIZE`, corrélation des sous-plages via
+  `block_tracker.validate_and_remove` — même mécanique que le dispatcher
+  daemon (qui gérait déjà ces opcodes à l'entrée).
+- `receive_sending_part` : reboucle après chaque trame décodée avant le
+  `read()` bloquant — sinon les trames déjà bufférisées et les parts
+  décompressées restaient en attente pendant que le pair attend la
+  requête suivante (deadlock du transfert compressé multi-paquets).
+
+Validation : 7/7 tests live `--ignored` verts contre le vrai binaire
+0.72a, dont les 3 transferts de blocs qui expiraient avant ce correctif
+(single block, part0+resume, file boundary).

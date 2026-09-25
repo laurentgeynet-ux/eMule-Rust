@@ -394,6 +394,7 @@ impl Ed2kSession {
             Ed2kMessage::RequestPartsI64(req) => Ok(Some(Ed2kMessage::RequestPartsI64(req))),
             Ed2kMessage::SendingPartI64(part) => Ok(Some(Ed2kMessage::SendingPartI64(part))),
             Ed2kMessage::CompressedPartI64(part) => Ok(Some(Ed2kMessage::CompressedPartI64(part))),
+            Ed2kMessage::CompressedPart(part) => Ok(Some(Ed2kMessage::CompressedPart(part))),
             // eMule 0.72a extended messages (hashset2, multipacket, queue, chat,
             // CAPTCHA…): decoded but not yet wired into the session state
             // machine — counted as unhandled like `Raw` packets.

@@ -72,7 +72,7 @@ pub use packet::{
     expected_mask_bytes, Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes,
     Ed2kAichPartHashSet, Ed2kAichRecovery, Ed2kAichRequest, Ed2kBlockRange, Ed2kBlockRange64,
     Ed2kCaptchaRequest, Ed2kCaptchaResponse, Ed2kChangeSlot, Ed2kChatMessage,
-    Ed2kCompressedPartI64, Ed2kEmuleInfo, Ed2kFileDesc, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
+    Ed2kCompressedPart, Ed2kCompressedPartI64, Ed2kEmuleInfo, Ed2kFileDesc, Ed2kFileReqAnsNoFile, Ed2kFileStatus,
     Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetAnswer2, Ed2kHashSetReq, Ed2kHashSetReq2,
     Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kMultiPacketAnswer, Ed2kMultiPacketFileRef,
     Ed2kMultiPacketRequest, Ed2kMultiPacketSubAnswer, Ed2kMultiPacketSubRequest, Ed2kPortTest,

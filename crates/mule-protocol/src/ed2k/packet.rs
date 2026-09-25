@@ -429,6 +429,24 @@ pub struct Ed2kCompressedPartI64 {
     pub data: bytes::Bytes,
 }
 
+/// Legacy 32-bit zlib-compressed block delivery (`OP_COMPRESSEDPART`,
+/// `0x40`) — eMule `UploadDiskIOThread.cpp:456`, always `PR_EMULE`.
+///
+/// The `compressed_size` field carries the **total** size of the zlib
+/// stream on every chunk; a single compressed block may span several
+/// packets whose `data` fields are consecutive slices of one stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed2kCompressedPart {
+    /// 16-byte MD4 File Hash.
+    pub file_hash: [u8; 16],
+    /// Uncompressed stream start offset.
+    pub start_offset: u32,
+    /// Total compressed stream size (repeated on each chunk).
+    pub compressed_size: u32,
+    /// Zlib-compressed stream slice.
+    pub data: bytes::Bytes,
+}
+
 /// Request for file part blocks (`0x4B`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ed2kRequestParts {
@@ -848,6 +866,8 @@ pub enum Ed2kMessage {
     SendingPartI64(Ed2kSendingPartI64),
     /// Delivery of zlib-compressed block data with 64-bit offset (`OP_COMPRESSEDPART_I64`).
     CompressedPartI64(Ed2kCompressedPartI64),
+    /// Delivery of zlib-compressed block data with 32-bit offset (`OP_COMPRESSEDPART`).
+    CompressedPart(Ed2kCompressedPart),
     /// Request for the per-part hashset.
     HashSetReq(Ed2kHashSetReq),
     /// Per-part hashset answer.

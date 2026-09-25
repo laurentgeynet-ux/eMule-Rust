@@ -115,11 +115,12 @@ impl Tier3Environment {
     fn write_emule_preferences_ini(&self) -> io::Result<()> {
         let ini_content = format!(
             "[eMule]\r\n\
+AppVersion=0.72a\r\n\
 UsePublicUserDirectories=0\r\n\
 FirstRuntime=0\r\n\
 ShowSplashScreen=0\r\n\
 StartMinimized=1\r\n\
-Nick=RefPeer050a\r\n\
+Nick=RefPeer\r\n\
 Port={tcp_port}\r\n\
 UDPPort={udp_port}\r\n\
 FilterLANIPs=0\r\n\

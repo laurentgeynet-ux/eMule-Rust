@@ -33,6 +33,29 @@ fn allocate_ephemeral_loopback_port() -> u16 {
     listener.local_addr().expect("retrieve local addr").port()
 }
 
+/// Explicit compatibility profile of the pinned reference binary
+/// (`EMULE_REFERENCE_PROFILE` env, default `Emule050a`). The profile is
+/// declared in every trace record so overloaded opcodes stay unambiguous.
+fn reference_profile() -> String {
+    std::env::var("EMULE_REFERENCE_PROFILE")
+        .ok()
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or_else(|| "Emule050a".to_string())
+}
+
+/// Expected `OP_EMULEINFO` `client_version` for the pinned profile:
+/// `Emule<VV>a` parses `<VV>` as hex (eMule 0.50a → 0x50 = 80, 0.72a →
+/// 0x72 = 114). Unknown profiles fail fast — a wrong expectation is worse
+/// than no check.
+fn expected_emule_client_version() -> u8 {
+    let profile = reference_profile();
+    let digits = profile
+        .strip_prefix("Emule")
+        .and_then(|s| s.strip_suffix('a'))
+        .expect("profile must look like Emule<VV>a");
+    u8::from_str_radix(digits, 16).expect("profile version digits must be hex")
+}
+
 #[test]
 fn test_tier3_environment_initialization_and_neutralized_configs() {
     let test_port = allocate_ephemeral_loopback_port();
@@ -251,7 +274,7 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
     let mut report = Tier3DivergenceReport::new(
         "live_reference",
         &harness.binary_sha256_redacted(),
-        "Emule050a",
+        &reference_profile(),
     );
 
     match connect_res {
@@ -272,7 +295,7 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
                 peer_info
             );
 
-            assert_eq!(peer_info.name.as_deref(), Some("RefPeer050a"));
+            assert_eq!(peer_info.name.as_deref(), Some("RefPeer"));
             assert_eq!(peer_info.version, Some(60));
             assert!(
                 peer_info.misc_options1.is_some(),
@@ -293,8 +316,9 @@ async fn test_tier3_live_external_reference_loopback_handshake() {
             );
             let emule_info = peer_info.emule_info.as_ref().unwrap();
             assert_eq!(
-                emule_info.client_version, 80,
-                "emule_info client_version must be 0x50 = 80 for eMule 0.50a"
+                emule_info.client_version,
+                expected_emule_client_version(),
+                "emule_info client_version must match EMULE_REFERENCE_PROFILE"
             );
             assert_eq!(
                 emule_info.protocol_version, 1,
@@ -448,7 +472,7 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
         let (client, peer_info) = connect_res.expect("connected");
 
         // 1. Assert peer identity
-        assert_eq!(peer_info.name.as_deref(), Some("RefPeer050a"));
+        assert_eq!(peer_info.name.as_deref(), Some("RefPeer"));
         assert_eq!(peer_info.version, Some(60));
         assert_eq!(peer_info.emule_udp_port, Some(test_udp_port));
         assert!(peer_info.misc_options1.is_some());
@@ -461,8 +485,9 @@ async fn test_tier3_live_passive_post_handshake_multi_port_and_teardown() {
         );
         let emule_info = peer_info.emule_info.as_ref().unwrap();
         assert_eq!(
-            emule_info.client_version, 80,
-            "eMule 0.50a version must be 0x50 = 80 in OP_EMULEINFO"
+            emule_info.client_version,
+            expected_emule_client_version(),
+            "emule_info client_version must match EMULE_REFERENCE_PROFILE"
         );
         assert_eq!(
             emule_info.protocol_version, 1,

@@ -9,7 +9,7 @@ use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
     OP_AICHFILEHASHREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_AICH_REQUEST, OP_CHANGE_SLOT,
-    OP_CHATCAPTCHAREQ, OP_CHATCAPTCHARES, OP_COMPRESSEDPART_I64, OP_EMULE_INFO,
+    OP_CHATCAPTCHAREQ, OP_CHATCAPTCHARES, OP_COMPRESSEDPART, OP_COMPRESSEDPART_I64, OP_EMULE_INFO,
     OP_EMULE_INFO_ANSWER, OP_FILEDESC, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ,
     OP_HASHSETANSWER, OP_HASHSETANSWER2, OP_HASHSETREQUEST, OP_HASHSETREQUEST2, OP_HELLO,
     OP_HELLO_ANSWER, OP_MESSAGE, OP_MULTIPACKET, OP_MULTIPACKETANSWER, OP_MULTIPACKETANSWER_EXT2,
@@ -50,7 +50,7 @@ pub use status::{
     decode_file_req_ans_no_file, decode_file_status, decode_file_status_req_with_profile,
 };
 pub use transfers::{
-    decode_compressed_part_i64, decode_hashset_answer, decode_hashset_request,
+    decode_compressed_part, decode_compressed_part_i64, decode_hashset_answer, decode_hashset_request,
     decode_request_parts_i64, decode_request_parts_with_profile, decode_sending_part,
     decode_sending_part_i64,
 };
@@ -339,6 +339,10 @@ impl Ed2kDecoder {
                 let part =
                     decode_compressed_part_i64(protocol, opcode, payload, HEADER_SIZE + 1)?;
                 Ok(Ed2kMessage::CompressedPartI64(part))
+            }
+            (_, OP_COMPRESSEDPART) => {
+                let part = decode_compressed_part(protocol, opcode, payload, HEADER_SIZE + 1)?;
+                Ok(Ed2kMessage::CompressedPart(part))
             }
             (PR_ED2K, OP_HASHSETREQUEST) => {
                 let req = self.decode_hashset_request(protocol, opcode, payload, HEADER_SIZE + 1)?;
@@ -647,6 +651,15 @@ impl Ed2kDecoder {
                     0,
                 )?;
                 Ok(Ed2kMessage::CompressedPartI64(part))
+            }
+            (_, OP_COMPRESSEDPART) => {
+                let part = decode_compressed_part(
+                    packet.protocol,
+                    packet.opcode,
+                    &packet.payload,
+                    0,
+                )?;
+                Ok(Ed2kMessage::CompressedPart(part))
             }
             (PR_ED2K, OP_HASHSETREQUEST) => {
                 let req = self.decode_hashset_request(

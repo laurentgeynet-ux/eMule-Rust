@@ -669,3 +669,155 @@ fn test_disconnect_cancels_all_in_flight_requests() {
     assert_eq!(cancelled.len(), 2);
     assert_eq!(session.pending_block_request_count(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// 6. OP_COMPRESSEDPART (0x40, PR_EMULE) — eMule 0.72a compressed blocks
+//    Wire layout: <file_hash 16><start u32 LE><compressed_size u32 LE><zlib>
+//    (UploadDiskIOThread.cpp:449-456). The stream may span several packets,
+//    each repeating the TOTAL compressed_size.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_compressed_part_wire_layout_and_roundtrip() {
+    use mule_protocol::ed2k::opcodes::OP_COMPRESSEDPART;
+    use mule_protocol::ed2k::protocol::PR_EMULE;
+    use mule_protocol::framing::RawPacket;
+
+    let file_hash = [0x42; 16];
+    // zlib stream for b"hello hello hello" (deterministic vector).
+    let zlib = {
+        use std::io::Write;
+        let mut e =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(1));
+        e.write_all(b"hello hello hello").unwrap();
+        e.finish().unwrap()
+    };
+
+    // Build the wire vector byte by byte: <hash16><start u32><csize u32><zlib>
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&file_hash);
+    payload.extend_from_slice(&1024u32.to_le_bytes());
+    payload.extend_from_slice(&(zlib.len() as u32).to_le_bytes());
+    payload.extend_from_slice(&zlib);
+
+    let decoder = Ed2kDecoder::new();
+    let msg = decoder
+        .decode_raw_packet(&RawPacket::new(
+            PR_EMULE,
+            OP_COMPRESSEDPART,
+            Bytes::from(payload.clone()),
+        ))
+        .expect("decode OP_COMPRESSEDPART");
+
+    let Ed2kMessage::CompressedPart(part) = msg else {
+        panic!("expected CompressedPart, got {msg:?}");
+    };
+    assert_eq!(part.file_hash, file_hash);
+    assert_eq!(part.start_offset, 1024);
+    assert_eq!(part.compressed_size as usize, zlib.len());
+    assert_eq!(part.data.as_ref(), zlib.as_slice());
+
+    // Round-trip: encoder must reproduce the exact wire bytes, PR_EMULE proto.
+    let encoder = Ed2kEncoder::new();
+    let encoded = encoder
+        .encode_to_bytes(&Ed2kMessage::CompressedPart(part))
+        .expect("encode CompressedPart");
+    // frame = [0xC5][len u32][0x40][payload]
+    assert_eq!(encoded[0], PR_EMULE);
+    assert_eq!(encoded[5], OP_COMPRESSEDPART);
+    assert_eq!(&encoded[6..], payload.as_slice());
+}
+
+#[test]
+fn test_compressed_part_rejects_short_header_and_oversized_slice() {
+    use mule_protocol::ed2k::opcodes::OP_COMPRESSEDPART;
+    use mule_protocol::ed2k::protocol::PR_EMULE;
+    use mule_protocol::framing::RawPacket;
+
+    let decoder = Ed2kDecoder::new();
+
+    // 23-byte payload: one short of the 24-byte header.
+    let short = vec![0u8; 23];
+    let err = decoder
+        .decode_raw_packet(&RawPacket::new(
+            PR_EMULE,
+            OP_COMPRESSEDPART,
+            Bytes::from(short),
+        ))
+        .expect_err("short header must fail");
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::UnexpectedEof { .. }
+    ));
+
+    // compressed_size smaller than the carried slice — impossible per eMule
+    // (the field repeats the TOTAL stream size).
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&[0x42; 16]);
+    payload.extend_from_slice(&0u32.to_le_bytes());
+    payload.extend_from_slice(&4u32.to_le_bytes()); // claims 4 total
+    payload.extend_from_slice(&[0u8; 8]); // but carries 8
+    let err = decoder
+        .decode_raw_packet(&RawPacket::new(
+            PR_EMULE,
+            OP_COMPRESSEDPART,
+            Bytes::from(payload),
+        ))
+        .expect_err("oversized slice must fail");
+    assert!(matches!(
+        err.kind,
+        Ed2kErrorKind::BlockPayloadMismatch { .. }
+    ));
+}
+
+#[tokio::test]
+async fn test_nominal_compressed_block_transfer_multi_packet() {
+    // eMule 0.72a answers REQUESTPARTS with OP_COMPRESSEDPART (0x40) under
+    // PR_EMULE when compression is advertised; streams >10240 bytes arrive
+    // split across several packets.
+    let file_hash = [0x5A; 16];
+    let block_len = 184_320usize;
+
+    // LCG pseudo-random payload — mostly incompressible so the zlib stream
+    // exceeds COMPRESSED_PART_CHUNK_SIZE (10240) and spans many packets.
+    let mut source_bytes = Vec::with_capacity(block_len);
+    let mut state: u32 = 0x1234_5678;
+    for _ in 0..block_len {
+        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        source_bytes.push((state >> 24) as u8);
+    }
+
+    let test_peer = Ed2kTestPeer::bind(TestPeerMode::SendingPartCompressed)
+        .await
+        .expect("bind test peer");
+    let peer_addr = test_peer.local_addr();
+    test_peer
+        .add_shared_file_data(file_hash, Bytes::from(source_bytes.clone()))
+        .await;
+    let peer_handle = test_peer.spawn();
+
+    let mut client = nominal_client(peer_addr, "BlockTestInitiator").await;
+
+    client
+        .send_block_request(file_hash, 0, block_len as u64, block_len as u64)
+        .await
+        .expect("send_block_request failed");
+
+    // Accumulate decompressed chunks until the full range is received,
+    // exactly like the Tier-3 loopback tests do against real eMule.
+    let mut received = Vec::new();
+    while received.len() < block_len {
+        let part = client
+            .receive_sending_part(Duration::from_secs(10))
+            .await
+            .expect("must receive decompressed OP_SENDINGPART chunks");
+        assert_eq!(part.file_hash, file_hash);
+        assert_eq!(part.start_offset as usize, received.len());
+        received.extend_from_slice(&part.data);
+    }
+    assert_eq!(received, source_bytes);
+    assert_eq!(client.session().pending_block_request_count(), 0);
+
+    client.close().await;
+    let _ = peer_handle.await;
+}

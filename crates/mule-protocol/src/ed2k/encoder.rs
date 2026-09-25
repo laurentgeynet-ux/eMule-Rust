@@ -46,7 +46,8 @@ pub use handshake::{
 pub use security::{encode_public_key, encode_secident_state, encode_signature};
 pub use tags::{encode_raw_tag, encode_tag, encode_tag_name};
 pub use transfers::{
-    encode_compressed_part_i64, encode_file_req_ans_no_file, encode_file_status,
+    encode_compressed_part, encode_compressed_part_i64, encode_file_req_ans_no_file,
+    encode_file_status,
     encode_file_status_req, encode_file_status_req_with_opcode, encode_hashset_answer,
     encode_hashset_request, encode_req_filename, encode_request_parts, encode_request_parts_i64,
     encode_request_parts_with_opcode, encode_sending_part, encode_sending_part_i64,
@@ -310,6 +311,7 @@ impl Ed2kEncoder {
             Ed2kMessage::SendingPart(part) => self.encode_sending_part(part),
             Ed2kMessage::SendingPartI64(part) => encode_sending_part_i64(&self.limits, part),
             Ed2kMessage::CompressedPartI64(part) => encode_compressed_part_i64(&self.limits, part),
+            Ed2kMessage::CompressedPart(part) => encode_compressed_part(&self.limits, part),
             Ed2kMessage::HashSetReq(req) => self.encode_hashset_request(req),
             Ed2kMessage::HashSetAnswer(ans) => self.encode_hashset_answer(ans),
             Ed2kMessage::AichFileHashReq(req) => self.encode_aich_file_hash_req(req),
