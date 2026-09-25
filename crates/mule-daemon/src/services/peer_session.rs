@@ -1199,7 +1199,7 @@ mod tests {
         PeerSessionManager::new(tx, Arc::new(AtomicU64::new(0)))
     }
 
-    const PEER: &str = "85.25.13.7:4662";
+    const PEER: &str = "85.25.13.7:49662";
 
     fn queue_entry(file_hash: &str) -> QueuedPeerState {
         QueuedPeerState {
@@ -1220,13 +1220,13 @@ mod tests {
             let mut g = mgr.inner.lock().await;
             g.queued_peers
                 .insert(PEER.to_string(), queue_entry(&file_hash));
-            g.peer_udp.insert(PEER.to_string(), (4672, 4));
+            g.peer_udp.insert(PEER.to_string(), (49672, 4));
         }
         let targets = mgr.queued_udp_targets().await;
         assert_eq!(targets.len(), 1);
         assert_eq!(
             targets[0].addr,
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(85, 25, 13, 7)), 4672)
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(85, 25, 13, 7)), 49672)
         );
         assert_eq!(hex::encode(targets[0].file_hash), file_hash);
         assert_eq!(targets[0].connected_at_unix_ms, Some(1_000));
@@ -1242,7 +1242,7 @@ mod tests {
             let mut g = mgr.inner.lock().await;
             g.queued_peers
                 .insert(PEER.to_string(), queue_entry(&file_hash));
-            g.peer_udp.insert(PEER.to_string(), (4672, 4));
+            g.peer_udp.insert(PEER.to_string(), (49672, 4));
             let task = tokio::spawn(async { std::future::pending::<()>().await });
             g.sessions.insert(
                 PEER.to_string(),
@@ -1267,7 +1267,7 @@ mod tests {
             let mut g = mgr.inner.lock().await;
             g.queued_peers
                 .insert(PEER.to_string(), queue_entry(&"cc".repeat(16)));
-            g.peer_udp.insert(PEER.to_string(), (4672, 0));
+            g.peer_udp.insert(PEER.to_string(), (49672, 0));
         }
         assert!(mgr.queued_udp_targets().await.is_empty());
     }
@@ -1337,7 +1337,7 @@ mod tests {
                     reask_pending: false,
                 },
             );
-            g.peer_udp.insert(PEER.to_string(), (4672, 4));
+            g.peer_udp.insert(PEER.to_string(), (49672, 4));
         }
         assert!(mgr.queued_udp_targets().await.is_empty());
         assert!(mgr.inner.lock().await.queued_peers.is_empty());

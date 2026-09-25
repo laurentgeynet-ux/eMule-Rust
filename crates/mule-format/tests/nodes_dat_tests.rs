@@ -8,7 +8,7 @@ use std::net::Ipv4Addr;
 #[test]
 fn test_nodes_dat_v0_roundtrip() {
     let contacts = vec![
-        KadContactEntry::new([1u8; 16], Ipv4Addr::new(192, 168, 1, 10), 4672, 4662, 0),
+        KadContactEntry::new([1u8; 16], Ipv4Addr::new(192, 168, 1, 10), 49672, 49662, 0),
         KadContactEntry::new([2u8; 16], Ipv4Addr::new(80, 80, 80, 80), 1234, 5678, 0),
     ];
     let file = NodesDatFile::new(0, contacts.clone());
@@ -21,8 +21,8 @@ fn test_nodes_dat_v0_roundtrip() {
     assert_eq!(parsed.contacts.len(), 2);
     assert_eq!(parsed.contacts[0].client_id, [1u8; 16]);
     assert_eq!(parsed.contacts[0].ip, Ipv4Addr::new(192, 168, 1, 10));
-    assert_eq!(parsed.contacts[0].udp_port, 4672);
-    assert_eq!(parsed.contacts[0].tcp_port, 4662);
+    assert_eq!(parsed.contacts[0].udp_port, 49672);
+    assert_eq!(parsed.contacts[0].tcp_port, 49662);
     assert_eq!(parsed.contacts[1].client_id, [2u8; 16]);
     assert_eq!(parsed.contacts[1].ip, Ipv4Addr::new(80, 80, 80, 80));
 }

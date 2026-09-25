@@ -274,7 +274,7 @@ async fn test_adversarial_sending_part_before_ready() {
         39735,
         sample_client_tags("BlockTestInitiator"),
         0x7F000001,
-        4661,
+        49661,
         Duration::from_millis(500),
     )
     .await;

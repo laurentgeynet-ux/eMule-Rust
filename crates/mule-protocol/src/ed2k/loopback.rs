@@ -884,7 +884,7 @@ impl Ed2kTestPeer {
                         }],
                         unknown_tags: vec![],
                         server_ip: 0x7F000001,
-                        server_port: 4661,
+                        server_port: 49661,
                     };
                     let encoder = Ed2kEncoder::new();
                     let bytes = encoder
@@ -999,7 +999,7 @@ impl Ed2kTestPeer {
                         ],
                         unknown_tags: vec![],
                         server_ip: 0x7F000001,
-                        server_port: 4661,
+                        server_port: 49661,
                     };
                     let encoder = Ed2kEncoder::new();
                     let bytes = encoder
@@ -1774,7 +1774,7 @@ pub async fn do_peer_handshake(
         ],
         unknown_tags: vec![],
         server_ip: 0x7F000001,
-        server_port: 4661,
+        server_port: 49661,
     };
     let encoder = Ed2kEncoder::new();
     let bytes = encoder

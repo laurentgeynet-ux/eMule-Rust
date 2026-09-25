@@ -1691,7 +1691,7 @@ mod tests {
         let file_max = 10usize;
         // 8 sources sur un cap de 10 → 80 %, seuil eMule atteint.
         let sources: Vec<PeerSource> = (0..8)
-            .map(|i| make_source(&hash, &format!("10.0.0.{i}:4662")))
+            .map(|i| make_source(&hash, &format!("10.0.0.{i}:49662")))
             .collect();
         {
             let mut dl = state.downloads.lock().await;
@@ -1704,7 +1704,7 @@ mod tests {
             .insert_test_session(PeerSessionSnapshot {
                 status: PeerConnectionStatus::Queued,
                 file_hash: Some(hash.clone()),
-                peer_address: Some("10.0.0.3:4662".to_string()),
+                peer_address: Some("10.0.0.3:49662".to_string()),
                 remote_queue_full: true,
                 ..Default::default()
             })
@@ -1727,7 +1727,7 @@ mod tests {
             .list_peer_sources(&hash)
             .unwrap();
         assert_eq!(remaining.len(), 7);
-        assert!(!remaining.iter().any(|s| s.address == "10.0.0.3:4662"));
+        assert!(!remaining.iter().any(|s| s.address == "10.0.0.3:49662"));
         // Sa session live est terminée (eMule `RemoveSource` détruit le
         // download client).
         let snap = state.peer_session.swarm_snapshot(Some(&hash)).await;
@@ -1742,7 +1742,7 @@ mod tests {
         let hash = "0123456789abcdef0123456789abcdef".to_string();
         let state = test_state(dir.path(), &hash);
         let sources: Vec<PeerSource> = (0..5)
-            .map(|i| make_source(&hash, &format!("10.0.1.{i}:4662")))
+            .map(|i| make_source(&hash, &format!("10.0.1.{i}:49662")))
             .collect();
         {
             let mut dl = state.downloads.lock().await;
@@ -1753,7 +1753,7 @@ mod tests {
             .insert_test_session(PeerSessionSnapshot {
                 status: PeerConnectionStatus::Queued,
                 file_hash: Some(hash.clone()),
-                peer_address: Some("10.0.1.3:4662".to_string()),
+                peer_address: Some("10.0.1.3:49662".to_string()),
                 remote_queue_full: true,
                 ..Default::default()
             })
@@ -1784,7 +1784,7 @@ mod tests {
         next_tcp_reask_unix_ms: Option<i64>,
     ) -> crate::services::client_udp::UdpReaskTarget {
         crate::services::client_udp::UdpReaskTarget {
-            addr: "10.0.0.9:4672".parse().unwrap(),
+            addr: "10.0.0.9:49672".parse().unwrap(),
             file_hash: [7u8; 16],
             connected_at_unix_ms,
             next_tcp_reask_unix_ms,

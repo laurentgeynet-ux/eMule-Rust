@@ -88,7 +88,7 @@ mod tests {
             server_connected,
             server_high_id: high,
             our_server_ip: u32::from_le_bytes([1, 2, 3, 4]),
-            our_server_port: 4661,
+            our_server_port: 49661,
             kad_open,
         }
     }
@@ -129,9 +129,9 @@ mod tests {
         ));
         // SX sources: exact endpoint match or IP-only (port unknown).
         let sx = PeerSourceOrigin::SourceExchange;
-        assert!(is_local_server(&lowid_src(OUR_IP, 4661, sx), &c));
+        assert!(is_local_server(&lowid_src(OUR_IP, 49661, sx), &c));
         assert!(is_local_server(&lowid_src(OUR_IP, 0, sx), &c));
-        assert!(!is_local_server(&lowid_src(OUR_IP, 4662, sx), &c));
+        assert!(!is_local_server(&lowid_src(OUR_IP, 49662, sx), &c));
         assert!(!is_local_server(&lowid_src(0x0A0B0C0D, 0, sx), &c));
         // Not connected → nothing is local.
         assert!(!is_local_server(
@@ -145,8 +145,8 @@ mod tests {
     #[test]
     fn can_do_callback_matrix() {
         let sx = PeerSourceOrigin::SourceExchange;
-        let local = lowid_src(OUR_IP, 4661, sx);
-        let foreign = lowid_src(0x0A0B0C0D, 4661, sx);
+        let local = lowid_src(OUR_IP, 49661, sx);
+        let foreign = lowid_src(0x0A0B0C0D, 49661, sx);
 
         // HighID → callback possible for any LowID.
         let high = ctx(true, true, false);

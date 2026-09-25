@@ -890,3 +890,40 @@ qui compose alors une connexion TCP de rappel (`TryToConnect` step 4,
 - eMule partage le flag `m_bReaskPending` avec la socket sortante
   (`ConnectionEstablished` → `SendFileRequest` sur la socket entrante) ;
   notre split inbound/outbound fait l'équivalent par callback immédiat.
+
+## 18. Parité `CT_EMULE_MISCOPTIONS2` sur tous les hellos — audit phase B, passe 12
+
+### Divergence corrigée
+
+Le hello du **connect-back** (`inbound_listener/connection.rs`, après un
+`OP_CALLBACKREQUESTED`/`OP_DIRECTCALLBACKREQ`) ne posait que les bits
+crypt (7-9) et omettait le tag entier sans obfuscation — le pair distant
+voyait `dwEmuleTags` sans le bit misc2 → client classé « vieux eMule ».
+eMule réutilise le même `SendHelloPacket` pour cette connexion.
+
+- `services/hello_caps.rs::misc_options2()` — source unique du mot
+  misc2 : `FileIdent<<13 | DirectUDPCallback<<12 | SrcExch2<<10 |
+  Requires<<9 | Requests<<8 | Supports<<7 | ExtMultiPkt<<5 |
+  LargeFiles<<4 | KadVersion<<0`. Bit 11 (chat CAPTCHA) toujours 0.
+- Appliqué aux 3 hellos : outbound (`peer_session/handshake.rs`),
+  réponse inbound et connect-back (`inbound_listener/connection.rs`).
+- Bit 12 = `tcp_low_id && udp_verified_open` (verified && Open),
+  sémantique `GetMyConnectOptions(true,true)` + `!IsFirewalledUDP &&
+  IsVerified` de `BaseClient.cpp:1007`.
+- Le hello minimal du test pare-feu UDP (`kad/firewall.rs`) reste
+  allégé par design (socket de diagnostic, pas une session pair).
+
+### Hygiène des fixtures de test
+
+- Les littéraux de ports en range eMule (`4661`-`4665`, `4672`, `4673`)
+  des fixtures **synthétiques** sont déplacés vers la plage éphémère
+  `49661`-`49675` (≥ 49152) : ces ports sont historiquement filtrés par
+  certains FAI et eMule lui-même tire un port aléatoire
+  (`Preferences.cpp:1969`, `GetRandomTCPPort` = `4096+rand%61000`) au
+  premier démarrage — jamais 4662 par défaut.
+- Conservés volontairement : les vecteurs **capturés d'eMule réel**
+  (`ed2k_corpus_tests.rs`, `manifest.json`, `server_codec_tests.rs`,
+  `server_met_vectors.rs`) où le port fait partie de la fidélité filaire,
+  et `4660` = le port RPC par défaut du daemon (hors protocole eMule).
+- Défaut production inchangé : `DaemonConfig` écoute déjà sur
+  `39735`/`39737` (hors range eMule, dans la bande de randomisation).

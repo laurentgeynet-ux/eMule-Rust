@@ -473,7 +473,7 @@ async fn test_credit_weighted_queue_priority() {
     let hello1 = Ed2kHello {
         user_hash: [0x11u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4663,
+        tcp_port: 49663,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -534,7 +534,7 @@ async fn test_credit_weighted_queue_priority() {
     let hello2 = Ed2kHello {
         user_hash: [0x22u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4664,
+        tcp_port: 49664,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,
@@ -1677,8 +1677,8 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
     };
 
     let peer_b = QueuedUpload {
-        client_key: "127.0.0.1:4663".to_string(),
-        client_address: "127.0.0.1:4663".to_string(),
+        client_key: "127.0.0.1:49663".to_string(),
+        client_address: "127.0.0.1:49663".to_string(),
         file_hash: "hash_a".to_string(),
         file_name: "file.bin".to_string(),
         enqueued_at_unix_ms: now_ms - (10 * 1000), // 10s ago

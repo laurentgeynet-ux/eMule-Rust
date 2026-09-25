@@ -67,8 +67,8 @@ mod tests {
     #[test]
     fn test_answer_sources_roundtrip_uncompressed() {
         let hash = [0x77u8; 16];
-        let src1 = SxSource::new([192, 168, 1, 100], 4662, Some([0xAA; 16]), 0x01);
-        let src2 = SxSource::new([10, 0, 0, 50], 4672, Some([0xBB; 16]), 0x07);
+        let src1 = SxSource::new([192, 168, 1, 100], 49662, Some([0xAA; 16]), 0x01);
+        let src2 = SxSource::new([10, 0, 0, 50], 49672, Some([0xBB; 16]), 0x07);
 
         let ans = Ed2kAnswerSources::new(hash, vec![src1.clone(), src2.clone()]);
         let packet = encode_answer_sources(&ans, true, false).expect("encode answer");
@@ -82,7 +82,7 @@ mod tests {
         assert_eq!(decoded.version, 4);
         assert_eq!(decoded.sources.len(), 2);
         assert_eq!(decoded.sources[0].ip_bytes, [192, 168, 1, 100]);
-        assert_eq!(decoded.sources[0].port, 4662);
+        assert_eq!(decoded.sources[0].port, 49662);
         assert_eq!(decoded.sources[0].user_hash, Some([0xAA; 16]));
         assert_eq!(decoded.sources[0].crypt_options, 0x01);
         assert_eq!(decoded.sources[1].ip_bytes, [10, 0, 0, 50]);
@@ -95,7 +95,7 @@ mod tests {
         // version byte on the wire; v3+ entries use hybrid (little-endian)
         // IPs, v<3 entries use `htonl` (`PartFile.cpp:3670-3691`).
         let hash = [0x33u8; 16];
-        let src = SxSource::new([80, 10, 20, 30], 4662, Some([0xCC; 16]), 0x03);
+        let src = SxSource::new([80, 10, 20, 30], 49662, Some([0xCC; 16]), 0x03);
 
         // SX1 v3 (negotiated `ET_SOURCEEXCHANGE = 3`): 28-byte entries.
         let ans = Ed2kAnswerSources::new_v(3, hash, vec![src.clone()]);
@@ -108,7 +108,7 @@ mod tests {
             .expect("decode sx1 v3");
         assert_eq!(decoded.version, 3);
         assert_eq!(decoded.sources[0].ip_bytes, [80, 10, 20, 30]);
-        assert_eq!(decoded.sources[0].port, 4662);
+        assert_eq!(decoded.sources[0].port, 49662);
         assert_eq!(decoded.sources[0].user_hash, Some([0xCC; 16]));
         assert_eq!(decoded.sources[0].crypt_options, 0);
 

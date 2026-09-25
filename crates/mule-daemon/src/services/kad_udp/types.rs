@@ -361,12 +361,12 @@ mod tests {
             ip,
             FirewallUdpResult {
                 error_code: 0,
-                port_tested: 4672
+                port_tested: 49672
             }
         ));
         let res = rx.try_recv().expect("result delivered");
         assert_eq!(res.error_code, 0);
-        assert_eq!(res.port_tested, 4672);
+        assert_eq!(res.port_tested, 49672);
         assert!(!t.has_pending());
     }
 
@@ -378,7 +378,7 @@ mod tests {
             stranger,
             FirewallUdpResult {
                 error_code: 0,
-                port_tested: 4672
+                port_tested: 49672
             }
         ));
     }
@@ -393,7 +393,7 @@ mod tests {
             other,
             FirewallUdpResult {
                 error_code: 0,
-                port_tested: 4672
+                port_tested: 49672
             }
         ));
         assert!(rx.try_recv().is_err());
@@ -406,10 +406,10 @@ mod tests {
     fn buddy_pending_lifecycle() {
         let mut r = BuddyRegistry::default();
         let ip = IpAddr::V4(Ipv4Addr::new(9, 8, 7, 6));
-        r.register_pending(ip, [1u8; 16], [2u8; 16], 4662);
+        r.register_pending(ip, [1u8; 16], [2u8; 16], 49662);
         let p = r.take_pending(&ip).expect("pending registered");
         assert_eq!(p.buddy_id, [1u8; 16]);
-        assert_eq!(p.tcp_port, 4662);
+        assert_eq!(p.tcp_port, 49662);
         assert!(r.take_pending(&ip).is_none());
     }
 
@@ -421,13 +421,13 @@ mod tests {
         let a1 = ActiveBuddy {
             buddy_id: [1u8; 16],
             user_id: [2u8; 16],
-            remote_addr: "1.2.3.4:4662".parse().unwrap(),
+            remote_addr: "1.2.3.4:49662".parse().unwrap(),
             tx: tx1,
         };
         let a2 = ActiveBuddy {
             buddy_id: [3u8; 16],
             user_id: [4u8; 16],
-            remote_addr: "5.6.7.8:4662".parse().unwrap(),
+            remote_addr: "5.6.7.8:49662".parse().unwrap(),
             tx: tx2,
         };
         assert!(r.set_active(a1));
@@ -435,17 +435,17 @@ mod tests {
         assert!(r.send_to_buddy(vec![0xC5]));
         r.clear_active(&"9.9.9.9:1".parse().unwrap());
         assert!(r.send_to_buddy(vec![0xC5]));
-        r.clear_active(&"1.2.3.4:4662".parse().unwrap());
+        r.clear_active(&"1.2.3.4:49662".parse().unwrap());
         assert!(!r.send_to_buddy(vec![0xC5]));
     }
 
     #[test]
     fn effective_port_prefers_intern_unless_extern_verified() {
         let mut t = FirewallTestTracker::default();
-        assert_eq!(t.effective_port(4672), 4672);
+        assert_eq!(t.effective_port(49672), 49672);
         t.extern_port = Some(13370);
-        assert_eq!(t.effective_port(4672), 4672);
+        assert_eq!(t.effective_port(49672), 49672);
         t.use_extern = true;
-        assert_eq!(t.effective_port(4672), 13370);
+        assert_eq!(t.effective_port(49672), 13370);
     }
 }

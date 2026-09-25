@@ -57,12 +57,12 @@ fn inject_into_completed_part_is_ignored() {
         .add_ed2k_link(&link, tmp.path(), AllocationPolicy::None, None)
         .unwrap();
 
-    svc.inject_range(&snap.id, 0, &vec![0x11u8; 9_728_000], Some("9.9.9.9:4662"))
+    svc.inject_range(&snap.id, 0, &vec![0x11u8; 9_728_000], Some("9.9.9.9:49662"))
         .unwrap();
     assert_eq!(svc.get_covered_len(&snap.id), Some(9_728_000));
 
     // Réinjection (données différentes) dans la part couverte → ignorée.
-    svc.inject_range(&snap.id, 100, &vec![0xEEu8; 500], Some("8.8.8.8:4662"))
+    svc.inject_range(&snap.id, 100, &vec![0xEEu8; 500], Some("8.8.8.8:49662"))
         .unwrap();
     assert_eq!(
         svc.get_covered_len(&snap.id),
@@ -71,7 +71,7 @@ fn inject_into_completed_part_is_ignored() {
     );
 
     // La part 1 reste injectable normalement.
-    svc.inject_range(&snap.id, 9_728_000, &[0x22u8; 10], Some("8.8.8.8:4662"))
+    svc.inject_range(&snap.id, 9_728_000, &[0x22u8; 10], Some("8.8.8.8:49662"))
         .unwrap();
     assert_eq!(svc.get_covered_len(&snap.id), Some(9_728_000 + 10));
 }
@@ -95,13 +95,13 @@ fn corrupt_sender_is_banned_and_filtered() {
     svc.store_part_hashes_by_hash(&hex::encode(file_hash), &[[0xEE; 16]])
         .unwrap();
 
-    svc.inject_range(&snap.id, 0, &content, Some("1.2.3.4:4662"))
+    svc.inject_range(&snap.id, 0, &content, Some("1.2.3.4:49662"))
         .unwrap();
 
     // L'expéditeur unique est condamné (>32 % corrompu) et banni de session.
     let bans = svc.drain_corruption_bans(&snap.id);
-    assert_eq!(bans, vec!["1.2.3.4:4662".to_string()]);
-    assert!(svc.is_source_banned("1.2.3.4:4662"));
+    assert_eq!(bans, vec!["1.2.3.4:49662".to_string()]);
+    assert!(svc.is_source_banned("1.2.3.4:49662"));
     assert!(svc.drain_corruption_bans(&snap.id).is_empty());
 
     // eMule `AddSources` : les sources d'un client banni sont ignorées.
@@ -109,8 +109,8 @@ fn corrupt_sender_is_banned_and_filtered() {
         .upsert_peer_sources(
             &hex::encode(file_hash),
             &[
-                make_source(&hex::encode(file_hash), "1.2.3.4:4662"),
-                make_source(&hex::encode(file_hash), "5.6.7.8:4662"),
+                make_source(&hex::encode(file_hash), "1.2.3.4:49662"),
+                make_source(&hex::encode(file_hash), "5.6.7.8:49662"),
             ],
         )
         .unwrap();
@@ -150,7 +150,7 @@ fn verified_history_dilutes_corruption_blame() {
             &snap.id,
             (i * part) as u64,
             &whole[i * part..(i + 1) * part],
-            Some("1.2.3.4:4662"),
+            Some("1.2.3.4:49662"),
         )
         .unwrap();
     }
@@ -184,7 +184,7 @@ fn ich_disabled_evicts_whole_part_without_aich() {
     svc.store_part_hashes_by_hash(&hex::encode([0xAAu8; 16]), &[[0xEE; 16]])
         .unwrap();
 
-    svc.inject_range(&snap.id, 0, &[0x42u8; 100], Some("1.2.3.4:4662"))
+    svc.inject_range(&snap.id, 0, &[0x42u8; 100], Some("1.2.3.4:49662"))
         .unwrap();
 
     // Part évincée en entier → plus aucune couverture, pas de file AICH.

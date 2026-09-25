@@ -81,7 +81,7 @@ pub async fn connect_nominal_client(
         39735,
         sample_client_tags(nick),
         0x7F000001,
-        4661,
+        49661,
         Duration::from_millis(500),
     )
     .await

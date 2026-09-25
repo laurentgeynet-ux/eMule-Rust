@@ -291,7 +291,7 @@ fn test_upnp_mapping_ownership_inspection() {
             PortMappingProtocol::TCP,
             39735,
             "192.168.1.31",
-            4662,
+            49662,
             "eMule-Rust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,

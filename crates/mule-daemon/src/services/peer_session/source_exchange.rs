@@ -1161,13 +1161,13 @@ mod tests {
         let env = test_env();
         let good = peer_source(
             [85, 25, 13, 7],
-            4662,
+            49662,
             PeerSourceStatus::Connected,
             Some(vec![0x01]),
         );
         let allowed = peer_source(
             [85, 25, 13, 12],
-            4662,
+            49662,
             PeerSourceStatus::Allowed,
             Some(vec![0x01]),
         );
@@ -1184,26 +1184,26 @@ mod tests {
         };
         let candidate = peer_source(
             [85, 25, 13, 8],
-            4662,
+            49662,
             PeerSourceStatus::Candidate,
             Some(vec![0x01]),
         );
-        let nomask = peer_source([85, 25, 13, 9], 4662, PeerSourceStatus::Connected, None);
+        let nomask = peer_source([85, 25, 13, 9], 49662, PeerSourceStatus::Connected, None);
         let lan = peer_source(
             [10, 0, 0, 5],
-            4662,
+            49662,
             PeerSourceStatus::Connected,
             Some(vec![0x01]),
         );
         let wrong_mask = peer_source(
             [85, 25, 13, 10],
-            4662,
+            49662,
             PeerSourceStatus::Connected,
             Some(vec![0xFF, 0xFF]),
         );
         let no_part = peer_source(
             [85, 25, 13, 11],
-            4662,
+            49662,
             PeerSourceStatus::Connected,
             Some(vec![0x00]),
         );
@@ -1224,7 +1224,7 @@ mod tests {
         let env = test_env();
         let good = peer_source(
             [85, 25, 13, 7],
-            4662,
+            49662,
             PeerSourceStatus::Connected,
             Some(vec![0x01]),
         );
@@ -1248,7 +1248,7 @@ mod tests {
             let oct = [85, 25, (i / 250) as u8 + 10, (i % 250) as u8 + 1];
             sources.push(peer_source(
                 oct,
-                4662,
+                49662,
                 PeerSourceStatus::Connected,
                 Some(vec![0x01]),
             ));
@@ -1316,8 +1316,8 @@ mod tests {
         let local = SxLocalIds {
             client_id: u32::from_be_bytes([85, 25, 13, 50]),
             server_ip: 0x0102_0304,
-            server_port: 4661,
-            tcp_port: 4662,
+            server_port: 49661,
+            tcp_port: 49662,
             is_high_id: true,
             kad_open: false,
         };
@@ -1327,27 +1327,27 @@ mod tests {
 
         let sources = vec![
             // Valide : IP publique HighID.
-            sx_src([85, 25, 13, 7], 4662, Some([0x01; 16])),
+            sx_src([85, 25, 13, 7], 49662, Some([0x01; 16])),
             // Notre user hash → drop.
-            sx_src([85, 25, 13, 8], 4662, Some(env.own_user_hash)),
+            sx_src([85, 25, 13, 8], 49662, Some(env.own_user_hash)),
             // Port 0 → drop.
             sx_src([85, 25, 13, 9], 0, Some([0x02; 16])),
             // LAN → drop (policy réseau).
-            sx_src([10, 0, 0, 7], 4662, Some([0x03; 16])),
+            sx_src([10, 0, 0, 7], 49662, Some([0x03; 16])),
             // LowID → conservé `lowid:` quand on est HighID.
             SxSource {
                 server_ip: 0x0506_0708,
-                server_port: 4661,
+                server_port: 49661,
                 ..sx_src([88, 0, 0, 0], 0, Some([0x04; 16]))
             },
             // LowID == notre client_id sur notre serveur → drop.
             SxSource {
                 server_ip: 0x0102_0304,
-                server_port: 4661,
+                server_port: 49661,
                 ..sx_src(local.client_id.to_le_bytes(), 0, Some([0x05; 16]))
             },
             // HighID == notre client_id + notre port → drop.
-            sx_src([85, 25, 13, 50], 4662, Some([0x06; 16])),
+            sx_src([85, 25, 13, 50], 49662, Some([0x06; 16])),
         ];
         let ans = Ed2kAnswerSources::new_v(4, file_hash, sources);
         let encoder = Ed2kEncoder::default();
@@ -1374,7 +1374,7 @@ mod tests {
         addrs.sort();
         assert_eq!(
             addrs,
-            vec!["85.25.13.7:4662".to_string(), "lowid:88".to_string()]
+            vec!["85.25.13.7:49662".to_string(), "lowid:88".to_string()]
         );
         assert!(kept.iter().all(|s| s.status == PeerSourceStatus::Candidate));
     }
@@ -1395,10 +1395,10 @@ mod tests {
         let sources = vec![
             SxSource {
                 server_ip: 1,
-                server_port: 4661,
+                server_port: 49661,
                 ..sx_src([77, 0, 0, 0], 0, None)
             },
-            sx_src([85, 25, 13, 7], 4662, None),
+            sx_src([85, 25, 13, 7], 49662, None),
         ];
         let ans = Ed2kAnswerSources::new_v(4, file_hash, sources);
         let pkt = Ed2kEncoder::default()
@@ -1422,7 +1422,7 @@ mod tests {
             .list_peer_sources(&file_hash_str)
             .unwrap();
         assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].address, "85.25.13.7:4662");
+        assert_eq!(kept[0].address, "85.25.13.7:49662");
     }
 
     #[tokio::test]
@@ -1432,7 +1432,7 @@ mod tests {
         let file_hash = [0x33; 16];
         let other = [0x44; 16];
         let file_hash_str = hex::encode(file_hash);
-        let ans = Ed2kAnswerSources::new_v(4, other, vec![sx_src([85, 25, 13, 7], 4662, None)]);
+        let ans = Ed2kAnswerSources::new_v(4, other, vec![sx_src([85, 25, 13, 7], 49662, None)]);
         let pkt = Ed2kEncoder::default()
             .encode_answer_sources(&ans, true, false)
             .unwrap();
@@ -1508,13 +1508,13 @@ mod tests {
             .unwrap();
             let useful = peer_source(
                 [85, 25, 13, 7],
-                4662,
+                49662,
                 PeerSourceStatus::Connected,
                 Some(vec![0x01]),
             );
             let useless = peer_source(
                 [85, 25, 13, 8],
-                4662,
+                49662,
                 PeerSourceStatus::Connected,
                 Some(vec![0x00]),
             );
@@ -1536,7 +1536,7 @@ mod tests {
             multipacket: MultiPacketLevel::None,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
-        let peer_addr: SocketAddr = "85.25.13.99:4662".parse().unwrap();
+        let peer_addr: SocketAddr = "85.25.13.99:49662".parse().unwrap();
         let req = Ed2kRequestSources::new_v2(file_hash);
         respond_to_sx_request(
             &req,
@@ -1581,7 +1581,7 @@ mod tests {
             &req,
             false,
             None,
-            "85.25.13.99:4662".parse().unwrap(),
+            "85.25.13.99:49662".parse().unwrap(),
             &Ed2kEncoder::default(),
             &downloads,
             &mut our_end,
@@ -1612,7 +1612,7 @@ mod tests {
             multipacket: MultiPacketLevel::None,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
-        let peer_addr: SocketAddr = "85.25.13.99:4662".parse().unwrap();
+        let peer_addr: SocketAddr = "85.25.13.99:49662".parse().unwrap();
         let req = Ed2kRequestSources::new_v2(file_hash);
         let enc = Ed2kEncoder::default();
         for _ in 0..2 {
@@ -1658,7 +1658,7 @@ mod tests {
             &req,
             true,
             None,
-            "85.25.13.99:4662".parse().unwrap(),
+            "85.25.13.99:49662".parse().unwrap(),
             &Ed2kEncoder::default(),
             &downloads,
             &mut our_end,
@@ -1702,7 +1702,7 @@ mod tests {
             &req,
             true,
             None,
-            "85.25.13.99:4662".parse().unwrap(),
+            "85.25.13.99:49662".parse().unwrap(),
             &Ed2kEncoder::default(),
             &downloads,
             &mut our_end,

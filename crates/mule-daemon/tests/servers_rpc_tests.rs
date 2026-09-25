@@ -54,11 +54,11 @@ async fn test_servers_rpc_workflow() {
     assert!(resp.error.is_none());
 
     // 3. Create a test server.met with 2 servers:
-    // Server 1: 192.168.1.50:4661 (Allowed)
+    // Server 1: 192.168.1.50:49661 (Allowed)
     // Server 2: 10.1.2.3:4242 (Blocked by filter)
     let s1 = ServerEntry {
         ip: Ipv4Addr::new(192, 168, 1, 50),
-        port: 4661,
+        port: 49661,
         name: "Allowed Donkey".to_string(),
         description: "Fast server".to_string(),
         ping: 20,
@@ -152,7 +152,7 @@ async fn test_servers_rpc_workflow() {
 
     let s_allowed = servers
         .iter()
-        .find(|s| s["address"] == "192.168.1.50:4661")
+        .find(|s| s["address"] == "192.168.1.50:49661")
         .unwrap();
     assert_eq!(s_allowed["filterStatus"], "allowed");
     let s_blocked = servers
@@ -166,7 +166,7 @@ async fn test_servers_rpc_workflow() {
         7,
         "servers.setEnabled",
         Some(json!({
-            "address": "192.168.1.50:4661",
+            "address": "192.168.1.50:49661",
             "enabled": false,
         })),
     );
@@ -183,7 +183,7 @@ async fn test_servers_rpc_workflow() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s["address"] == "192.168.1.50:4661")
+        .find(|s| s["address"] == "192.168.1.50:49661")
         .unwrap()
         .clone();
     assert_eq!(s_disabled["filterStatus"], "disabled");

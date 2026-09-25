@@ -387,7 +387,7 @@ mod tests {
     fn src(mask: PartAvailabilityMask, age_ms: i64) -> ActiveSource {
         ActiveSource {
             source_id: "src_test".to_string(),
-            _addr: "127.0.0.1:4662".parse().unwrap(),
+            _addr: "127.0.0.1:49662".parse().unwrap(),
             mask,
             last_seen_unix_ms: now_ms() - age_ms,
         }

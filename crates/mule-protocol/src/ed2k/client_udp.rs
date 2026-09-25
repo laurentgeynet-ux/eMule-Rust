@@ -363,7 +363,7 @@ mod tests {
     fn direct_callback_req_wire_format() {
         // eMule Opcodes.h: <TCPPort 2><Userhash 16><ConnectionOptions 1>
         let mut raw = vec![PR_EMULE, OP_DIRECTCALLBACKREQ];
-        raw.extend_from_slice(&4662u16.to_le_bytes());
+        raw.extend_from_slice(&49662u16.to_le_bytes());
         raw.extend_from_slice(&[0xAB; 16]);
         raw.push(0x07);
         match decode_client_udp(&raw).unwrap() {
@@ -372,7 +372,7 @@ mod tests {
                 user_hash,
                 conn_opts,
             } => {
-                assert_eq!(tcp_port, 4662);
+                assert_eq!(tcp_port, 49662);
                 assert_eq!(user_hash, [0xAB; 16]);
                 assert_eq!(conn_opts, 0x07);
             }
@@ -383,7 +383,7 @@ mod tests {
 
         // Outgoing encoder (`BaseClient.cpp:1411-1415`) must produce the
         // exact same wire bytes — round-trip covers framing + field order.
-        let encoded = encode_direct_callback_req(4662, &[0xAB; 16], 0x07);
+        let encoded = encode_direct_callback_req(49662, &[0xAB; 16], 0x07);
         assert_eq!(encoded, raw);
         match decode_client_udp(&encoded).unwrap() {
             ClientUdpMessage::DirectCallbackReq {
@@ -391,7 +391,7 @@ mod tests {
                 user_hash,
                 conn_opts,
             } => {
-                assert_eq!(tcp_port, 4662);
+                assert_eq!(tcp_port, 49662);
                 assert_eq!(user_hash, [0xAB; 16]);
                 assert_eq!(conn_opts, 0x07);
             }

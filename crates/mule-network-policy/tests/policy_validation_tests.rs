@@ -185,8 +185,8 @@ fn test_resource_budgets_exhaustion_and_drop() {
 
     let manager = NetworkPolicyManager::new(NetworkProfile::LocalLab, budgets);
     let target1: SocketAddr = "127.0.0.1:39735".parse().unwrap();
-    let target2: SocketAddr = "127.0.0.1:4663".parse().unwrap();
-    let target3: SocketAddr = "127.0.0.1:4664".parse().unwrap();
+    let target2: SocketAddr = "127.0.0.1:49663".parse().unwrap();
+    let target3: SocketAddr = "127.0.0.1:49664".parse().unwrap();
 
     // Acquire 2 peer permits
     let permit1 = manager
@@ -334,7 +334,7 @@ fn test_listener_policy_and_budget() {
     assert_eq!(manager.active_listeners_count(), 1);
 
     // Exceeding listener budget
-    let loopback_bind2: SocketAddr = "127.0.0.1:4663".parse().unwrap();
+    let loopback_bind2: SocketAddr = "127.0.0.1:49663".parse().unwrap();
     let err = manager
         .request_tcp_listen(loopback_bind2, ConnectionPurpose::Listener)
         .unwrap_err();

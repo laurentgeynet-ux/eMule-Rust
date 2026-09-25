@@ -19,7 +19,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             name: "emule_add_manual_source".to_string(),
             description: "Add a manual peer source by address 'ip:port' for a file hash.".to_string(),
             input_schema: obj_schema(json!({"file_hash": prop("string", "32-character hex eD2K hash"),
-                    "address": prop("string", "Peer address as 'ip:port' (e.g. '192.168.1.50:4662')"),
+                    "address": prop("string", "Peer address as 'ip:port' (e.g. '192.168.1.50:49662')"),
                     "user_hash": prop("string", "Optional 32-character hex user hash"),
                     "crypt_options": prop("integer", "Optional encryption options flags")}), &["file_hash", "address"]),
         },

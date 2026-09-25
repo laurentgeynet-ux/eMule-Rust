@@ -38,7 +38,7 @@ fn friend_record(user_hash: &[u8; 16], name: Option<&str>) -> Vec<u8> {
     let mut rec = Vec::new();
     rec.extend_from_slice(user_hash);
     rec.extend_from_slice(&0x0102_0304u32.to_le_bytes()); // last used ip
-    rec.extend_from_slice(&4662u16.to_le_bytes()); // last used port
+    rec.extend_from_slice(&49662u16.to_le_bytes()); // last used port
     rec.extend_from_slice(&1_700_000_000u32.to_le_bytes()); // last seen
     rec.extend_from_slice(&0u32.to_le_bytes()); // last chatted
     let mut tags = Vec::new();

@@ -161,7 +161,7 @@ fn test_synthetic_roundtrip_hello_all_tag_types() {
         ],
         unknown_tags: vec![],
         server_ip: 0x7F000001,
-        server_port: 4661,
+        server_port: 49661,
     };
 
     let original_msg = Ed2kMessage::Hello(hello);
@@ -223,7 +223,7 @@ fn test_synthetic_roundtrip_hello_answer() {
         }],
         unknown_tags: vec![],
         server_ip: 0xC0A80001,
-        server_port: 4661,
+        server_port: 49661,
     };
 
     let original_msg = Ed2kMessage::HelloAnswer(answer);

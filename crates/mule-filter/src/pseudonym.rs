@@ -52,7 +52,7 @@ impl SessionPseudonymizer {
     }
 
     /// Returns a deterministic identifier for a server address, preserving the port.
-    /// Example: `server-01:4661`.
+    /// Example: `server-01:49661`.
     pub fn pseudonymize_server(&self, addr: SocketAddr) -> String {
         let ip_str = addr.ip().to_string();
         let mut map = self.server_map.write().unwrap();

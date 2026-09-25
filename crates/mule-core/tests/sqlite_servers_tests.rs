@@ -14,9 +14,9 @@ fn test_ed2k_servers_crud_operations() {
 
     // Upsert two servers
     let s1 = Ed2kServer {
-        address: "192.168.1.10:4661".to_string(),
+        address: "192.168.1.10:49661".to_string(),
         ip: "192.168.1.10".to_string(),
-        port: 4661,
+        port: 49661,
         name: "Test Server 1".to_string(),
         description: "Primary testing server".to_string(),
         ping: 25,
@@ -55,14 +55,14 @@ fn test_ed2k_servers_crud_operations() {
     let list = db.list_servers().expect("list servers");
     assert_eq!(list.len(), 2);
     // Ordered by preference DESC: s1 (preference 10) comes first
-    assert_eq!(list[0].address, "192.168.1.10:4661");
+    assert_eq!(list[0].address, "192.168.1.10:49661");
     assert_eq!(list[0].filter_status, ServerFilterStatus::Allowed);
     assert_eq!(list[1].address, "10.0.0.5:4242");
     assert_eq!(list[1].filter_status, ServerFilterStatus::BlockedByFilter);
 
     // Toggle enabled -> disabled on s1
     let updated = db
-        .set_server_enabled("192.168.1.10:4661", false)
+        .set_server_enabled("192.168.1.10:49661", false)
         .expect("disable server");
     assert!(updated);
 
@@ -86,7 +86,7 @@ fn test_ed2k_servers_crud_operations() {
     );
 
     // Toggle back to enabled
-    db.set_server_enabled("192.168.1.10:4661", true)
+    db.set_server_enabled("192.168.1.10:49661", true)
         .expect("enable server");
     let list = db.list_servers().expect("list servers");
     assert_eq!(list[0].filter_status, ServerFilterStatus::Allowed);

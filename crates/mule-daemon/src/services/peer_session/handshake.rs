@@ -254,34 +254,26 @@ pub(crate) async fn perform_peer_handshake(
     // (KADEMLIA_VERSION, eMule 0.72a): adds the v9 AICH keyword-storage
     // feature (TAG_KADAICHHASHPUB / TAG_KADAICHHASHRESULT). Bit 11
     // (Captcha) stays 0 — CAPTCHA answers are not implemented.
-    let u_supports_crypt = obfuscation_enabled as u32;
-    let u_requests_crypt = obfuscation_enabled as u32;
-    let u_requires_crypt = obfuscation_required as u32;
     // eMule `BaseClient.cpp:1007` — bit 12 « DirectUDPCallback » annoncé
     // quand TCP est inatteignable (pas de HighID eD2K) mais l'UDP Kad est
     // testé ouvert (full-cone NAT) : les pairs peuvent alors nous envoyer
     // `OP_DIRECTCALLBACKREQ` pour que nous composions vers eux.
-    let u_direct_udp_cb = match kad_service {
+    let udp_verified_open = match kad_service {
         Some(kad) => {
             let tracker = kad.udp().firewall_tracker();
             let fw = tracker.lock().await;
-            let udp_verified_open =
-                fw.verified && fw.status == crate::services::kad_udp::UdpFirewallStatus::Open;
-            (udp_verified_open && client_id < 0x0100_0000) as u32
+            fw.verified && fw.status == crate::services::kad_udp::UdpFirewallStatus::Open
         }
-        None => 0,
+        None => false,
     };
     // FileIdent<<13 = 1 : les codecs FileIdentifier (OP_MULTIPACKET_EXT2,
     // OP_HASHSET*2) sont implémentés — eMule 0.72a l'annonce aussi.
-    let misc2: u32 = (1 << 13)
-        | (u_direct_udp_cb << 12)
-        | (1 << 10)
-        | (u_requires_crypt << 9)
-        | (u_requests_crypt << 8)
-        | (u_supports_crypt << 7)
-        | (1 << 5)
-        | (1 << 4)
-        | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
+    let misc2: u32 = crate::services::hello_caps::misc_options2(
+        client_id < 0x0100_0000,
+        udp_verified_open,
+        obfuscation_enabled,
+        obfuscation_required,
+    );
     tags.push(mule_protocol::ed2k::tags::Ed2kTag {
         name: mule_protocol::ed2k::tags::TagName::Id(
             mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS2,

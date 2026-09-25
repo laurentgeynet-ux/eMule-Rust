@@ -71,14 +71,14 @@ fn emfriends_parses_full_records() {
     buf.extend(emfriends_record(
         &uh1,
         u32::from_le_bytes([85, 25, 13, 7]),
-        4662,
+        49662,
         1_700_000_000,
         1_699_999_000,
         Some("Ami eMule"),
         Some(kad),
     ));
     // IP-only friend (zero userhash), no tags.
-    buf.extend(emfriends_record(&[0; 16], u32::from_le_bytes([1, 2, 3, 4]), 4661, 0, 0, None, None));
+    buf.extend(emfriends_record(&[0; 16], u32::from_le_bytes([1, 2, 3, 4]), 49661, 0, 0, None, None));
     // Named friend without KadID.
     buf.extend(emfriends_record(&uh2, 0, 0, 42, 7, Some("Second"), None));
 
@@ -90,7 +90,7 @@ fn emfriends_parses_full_records() {
     assert_eq!(r0.user_hash, uh1);
     assert_eq!(r0.name.as_deref(), Some("Ami eMule"));
     assert_eq!(r0.kad_id, Some(kad));
-    assert_eq!(r0.last_used_port, 4662);
+    assert_eq!(r0.last_used_port, 49662);
 
     assert!(!parsed.records[1].has_userhash());
     assert_eq!(parsed.records[1].last_used_ip, u32::from_le_bytes([1, 2, 3, 4]));

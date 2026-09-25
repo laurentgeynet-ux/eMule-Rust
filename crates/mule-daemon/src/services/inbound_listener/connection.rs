@@ -227,45 +227,30 @@ impl InboundListenerService {
                 // FileIdent<<13 | DirectUDPCallback<<12 | SrcExch2<<10 |
                 // CryptReq<<9 | CryptWants<<8 | CryptSup<<7 | ExtMultiPkt<<5
                 // | LargeFiles<<4 | KadVersion<<0.
-                let mut misc2: u32 = (1 << 13)
-                    | (1 << 10)
-                    | (1 << 5)
-                    | (1 << 4)
-                    | (crate::services::kad::firewall::OUR_KAD_VERSION as u32);
                 // eMule `BaseClient.cpp:1007` — bit 12 quand TCP est
                 // inatteignable (client_id < 0x01000000) mais l'UDP Kad est
                 // testé ouvert (full-cone NAT) : un pair peut alors nous
                 // demander un `OP_DIRECTCALLBACKREQ`.
-                if ids.client_id < 0x0100_0000 {
-                    let udp_open = {
-                        let svc = self.kad_udp.read().unwrap().clone();
-                        match svc {
-                            Some(kad_udp) => {
-                                let tracker = kad_udp.firewall_tracker();
-                                let fw = tracker.lock().await;
-                                fw.verified
-                                    && fw.status
-                                        == crate::services::kad_udp::UdpFirewallStatus::Open
-                            }
-                            None => false,
+                let udp_verified_open = {
+                    let svc = self.kad_udp.read().unwrap().clone();
+                    match svc {
+                        Some(kad_udp) => {
+                            let tracker = kad_udp.firewall_tracker();
+                            let fw = tracker.lock().await;
+                            fw.verified
+                                && fw.status == crate::services::kad_udp::UdpFirewallStatus::Open
                         }
-                    };
-                    if udp_open {
-                        misc2 |= 1 << 12;
+                        None => false,
                     }
-                }
-                if self
-                    .obfuscation_enabled
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                {
-                    misc2 |= (1 << 7) | (1 << 8); // CryptLayerSupported | CryptLayerRequested
-                }
-                if self
-                    .obfuscation_required
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                {
-                    misc2 |= 1 << 9; // CryptLayerRequires
-                }
+                };
+                let misc2: u32 = crate::services::hello_caps::misc_options2(
+                    ids.client_id < 0x0100_0000,
+                    udp_verified_open,
+                    self.obfuscation_enabled
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                    self.obfuscation_required
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                );
                 tags.push(Ed2kTag {
                     name: TagName::Id(TAG_SPECIAL_EMULE_MISCOPTIONS2),
                     value: TagValue::UInt32(misc2),
@@ -621,27 +606,33 @@ impl InboundListenerService {
             ),
             value: mule_protocol::ed2k::tags::TagValue::UInt32(misc1),
         }];
-        let mut misc2: u32 = 0;
-        if self
-            .obfuscation_enabled
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            misc2 |= (1 << 7) | (1 << 8);
-        }
-        if self
-            .obfuscation_required
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            misc2 |= 1 << 9;
-        }
-        if misc2 > 0 {
-            tags.push(mule_protocol::ed2k::tags::Ed2kTag {
-                name: mule_protocol::ed2k::tags::TagName::Id(
-                    mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS2,
-                ),
-                value: mule_protocol::ed2k::tags::TagValue::UInt32(misc2),
-            });
-        }
+        // Même MiscOptions2 que les hellos normaux — eMule utilise le même
+        // `SendHelloPacket` pour le connect-back callback.
+        let udp_verified_open = {
+            let svc = self.kad_udp.read().unwrap().clone();
+            match svc {
+                Some(kad_udp) => {
+                    let tracker = kad_udp.firewall_tracker();
+                    let fw = tracker.lock().await;
+                    fw.verified && fw.status == crate::services::kad_udp::UdpFirewallStatus::Open
+                }
+                None => false,
+            }
+        };
+        let misc2: u32 = crate::services::hello_caps::misc_options2(
+            our_client_id < 0x0100_0000,
+            udp_verified_open,
+            self.obfuscation_enabled
+                .load(std::sync::atomic::Ordering::Relaxed),
+            self.obfuscation_required
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        tags.push(mule_protocol::ed2k::tags::Ed2kTag {
+            name: mule_protocol::ed2k::tags::TagName::Id(
+                mule_protocol::ed2k::tags::TAG_SPECIAL_EMULE_MISCOPTIONS2,
+            ),
+            value: mule_protocol::ed2k::tags::TagValue::UInt32(misc2),
+        });
         let local_user_hash = *self.user_hash.read().unwrap();
         let hello = mule_protocol::ed2k::Ed2kHello {
             user_hash: local_user_hash,

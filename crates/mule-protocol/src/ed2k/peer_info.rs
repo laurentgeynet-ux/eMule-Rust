@@ -334,7 +334,7 @@ mod tests {
         let mut info = Ed2kPeerInfo {
             user_hash: [0u8; 16],
             client_id: 123456789,
-            tcp_port: 4662,
+            tcp_port: 49662,
             name: None,
             version: None,
             emule_version: None,
@@ -366,7 +366,7 @@ mod tests {
         let mut info = Ed2kPeerInfo {
             user_hash: [0u8; 16],
             client_id: 123456789,
-            tcp_port: 4662,
+            tcp_port: 49662,
             name: None,
             version: None,
             emule_version: None,

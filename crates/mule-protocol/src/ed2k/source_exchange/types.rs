@@ -96,7 +96,7 @@ impl SxSource {
         )
     }
 
-    /// Returns the socket address string (e.g. "192.168.1.1:4662").
+    /// Returns the socket address string (e.g. "192.168.1.1:49662").
     pub fn address_string(&self) -> String {
         format!("{}:{}", self.ip_string(), self.port)
     }

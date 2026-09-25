@@ -311,9 +311,9 @@ mod tests {
         raw.extend_from_slice(&[1u8; 16]);
         raw.push(2);
         raw.extend_from_slice(&0x7F00_0001u32.to_le_bytes());
-        raw.extend_from_slice(&4662u16.to_le_bytes());
+        raw.extend_from_slice(&49662u16.to_le_bytes());
         raw.extend_from_slice(&0x7F00_0002u32.to_le_bytes());
-        raw.extend_from_slice(&4663u16.to_le_bytes());
+        raw.extend_from_slice(&49663u16.to_le_bytes());
         raw.extend_from_slice(&[2u8; 16]);
         raw.push(0); // second file, zero sources
 
@@ -321,7 +321,7 @@ mod tests {
             ServerUdpMessage::GlobFoundSources(entries) => {
                 assert_eq!(entries.len(), 2);
                 assert_eq!(entries[0].sources.len(), 2);
-                assert_eq!(entries[0].sources[0], (0x7F00_0001, 4662));
+                assert_eq!(entries[0].sources[0], (0x7F00_0001, 49662));
                 assert!(entries[1].sources.is_empty());
             }
             m => panic!("unexpected {m:?}"),

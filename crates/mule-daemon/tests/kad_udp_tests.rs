@@ -347,7 +347,7 @@ async fn test_kad_buddy_findbuddy_accept_and_callback_drop() {
         fw.status = mule_daemon::services::UdpFirewallStatus::Open;
         fw.verified = true;
     }
-    state.kad.udp().set_buddy_tcp_info(4662, 0);
+    state.kad.udp().set_buddy_tcp_info(49662, 0);
 
     let mock = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock");
     let mock_addr = mock.local_addr().unwrap();
@@ -394,7 +394,7 @@ async fn test_kad_buddy_findbuddy_accept_and_callback_drop() {
     assert_eq!(pb.tcp_port, 5555);
 
     // 2. CALLBACK_REQ without an active buddy TCP link → dropped, no reply.
-    let cb = KadCodec::encode_callback_req(&buddy_id, &[0x99u8; 16], 4662);
+    let cb = KadCodec::encode_callback_req(&buddy_id, &[0x99u8; 16], 49662);
     mock.send_to(&cb, bound_addr)
         .await
         .expect("send callback req");
@@ -425,7 +425,7 @@ async fn test_kad_buddy_findbuddy_rejected_when_unverified() {
         .start("127.0.0.1:0".parse().unwrap())
         .await
         .expect("start kad udp");
-    state.kad.udp().set_buddy_tcp_info(4662, 0);
+    state.kad.udp().set_buddy_tcp_info(49662, 0);
 
     let mock = UdpSocket::bind("127.0.0.1:0").await.expect("bind mock");
 

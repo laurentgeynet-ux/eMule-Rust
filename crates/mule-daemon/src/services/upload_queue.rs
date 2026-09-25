@@ -1684,16 +1684,16 @@ mod tests {
         let mgr = UploadManager::new();
         mgr.set_max_active(1);
         // Same userhash reconnecting from a different IP is the same client.
-        mgr.request_upload_slot("uh:AA", "1.1.1.1:4662", "h", "f", 1.0, "normal", false, None)
+        mgr.request_upload_slot("uh:AA", "1.1.1.1:49662", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         let (state, _) = mgr
-            .request_upload_slot("uh:AA", "2.2.2.2:4662", "h", "f", 1.0, "normal", false, None)
+            .request_upload_slot("uh:AA", "2.2.2.2:49662", "h", "f", 1.0, "normal", false, None)
             .await
             .unwrap();
         assert_eq!(state, UploadSlotState::Uploading);
         // release_slot by bare ip:port resolves via client_address.
-        mgr.release_slot("1.1.1.1:4662").await;
+        mgr.release_slot("1.1.1.1:49662").await;
         assert_eq!(mgr.active_len(), 0);
     }
 
@@ -2342,7 +2342,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Un client en file pour "haa" avec port UDP annoncé 4672.
+        // Un client en file pour "haa" avec port UDP annoncé 49672.
         mgr.request_upload_slot(
             "uh:AAAA",
             "10.0.0.5:5000",
@@ -2351,14 +2351,14 @@ mod tests {
             1.0,
             "normal",
             false,
-            Some(4672),
+            Some(49672),
         )
         .await
         .unwrap();
 
         // Hash conforme + port conforme → rang 1.
         assert_eq!(
-            mgr.waiting_rank_for_udp(&ip, 4672, "haa").await,
+            mgr.waiting_rank_for_udp(&ip, 49672, "haa").await,
             UdpRankLookup::Rank(1)
         );
         // Port inconnu mais IP unique → tolérance `bIgnorePortOnUniqueIP`.
@@ -2368,12 +2368,12 @@ mod tests {
         );
         // Hash différent → silence eMule (`reqfile does not match`).
         assert_eq!(
-            mgr.waiting_rank_for_udp(&ip, 4672, "hbb").await,
+            mgr.waiting_rank_for_udp(&ip, 49672, "hbb").await,
             UdpRankLookup::FileMismatch
         );
         // IP inconnue → NoSender (→ QUEUEFULL seulement si quasi-pleine).
         assert_eq!(
-            mgr.waiting_rank_for_udp(&IpAddr::V4(Ipv4Addr::new(10, 0, 0, 6)), 4672, "haa")
+            mgr.waiting_rank_for_udp(&IpAddr::V4(Ipv4Addr::new(10, 0, 0, 6)), 49672, "haa")
                 .await,
             UdpRankLookup::NoSender
         );
@@ -2399,7 +2399,7 @@ mod tests {
             1.0,
             "normal",
             false,
-            Some(4672),
+            Some(49672),
         )
         .await
         .unwrap();
@@ -2411,14 +2411,14 @@ mod tests {
             1.0,
             "normal",
             false,
-            Some(4673),
+            Some(49673),
         )
         .await
         .unwrap();
 
         // Le port UDP désambiguïse → le bon client et le bon fichier.
         assert_eq!(
-            mgr.waiting_rank_for_udp(&ip, 4673, "hbb").await,
+            mgr.waiting_rank_for_udp(&ip, 49673, "hbb").await,
             UdpRankLookup::Rank(2)
         );
         // Sans correspondance de port → Ambiguous (eMule force le TCP).
@@ -2428,7 +2428,7 @@ mod tests {
         );
         // Port exact mais fichier différent → FileMismatch (silence).
         assert_eq!(
-            mgr.waiting_rank_for_udp(&ip, 4672, "hcc").await,
+            mgr.waiting_rank_for_udp(&ip, 49672, "hcc").await,
             UdpRankLookup::FileMismatch
         );
     }

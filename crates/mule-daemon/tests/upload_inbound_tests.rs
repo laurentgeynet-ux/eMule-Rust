@@ -369,7 +369,7 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
     let hello2 = Ed2kHello {
         user_hash: [0x22u8; 16],
         client_id: 0x0100007F,
-        tcp_port: 4663,
+        tcp_port: 49663,
         tags: vec![],
         unknown_tags: vec![],
         server_ip: 0,

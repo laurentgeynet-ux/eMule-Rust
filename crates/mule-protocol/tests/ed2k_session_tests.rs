@@ -36,7 +36,7 @@ async fn test_nominal_ed2k_handshake_on_loopback() {
         39735,
         sample_client_tags("LoopbackInitiator"),
         0x7F000001,
-        4661,
+        49661,
         Duration::from_millis(500),
     )
     .await
@@ -45,7 +45,7 @@ async fn test_nominal_ed2k_handshake_on_loopback() {
     assert!(client.session().is_ready());
     assert_eq!(peer_info.name, Some("NominalPeer".to_string()));
     assert_eq!(peer_info.version, Some(60));
-    assert_eq!(peer_info.server_port, 4661);
+    assert_eq!(peer_info.server_port, 49661);
 
     client.close().await;
     peer_handle
@@ -99,7 +99,7 @@ async fn test_hello_encoded_byte_by_byte_received_faithfully() {
         39735,
         sample_client_tags("LoopbackInitiator"),
         0x7F000001,
-        4661,
+        49661,
         Duration::from_millis(500),
     )
     .await
@@ -114,7 +114,7 @@ async fn test_hello_encoded_byte_by_byte_received_faithfully() {
     assert_eq!(hello.tcp_port, 39735);
     assert_eq!(hello.tags.len(), 2);
     assert_eq!(hello.server_ip, 0x7F000001);
-    assert_eq!(hello.server_port, 4661);
+    assert_eq!(hello.server_port, 49661);
 
     client.close().await;
     peer_handle
@@ -138,7 +138,7 @@ async fn test_hello_answer_fragmented_byte_by_byte_reassembled() {
         39735,
         sample_client_tags("LoopbackInitiator"),
         0x7F000001,
-        4661,
+        49661,
         Duration::from_millis(1500),
     )
     .await
@@ -183,7 +183,7 @@ fn test_peer_info_extraction_and_unknown_tag_preservation() {
             raw_bytes: vec![1, 2, 3, 4],
         }],
         server_ip: 0x7F000001,
-        server_port: 4661,
+        server_port: 49661,
     };
 
     let info = Ed2kPeerInfo::from_hello(&hello);

@@ -4,6 +4,7 @@
 pub mod client_udp;
 pub mod downloads;
 pub mod events;
+pub(crate) mod hello_caps;
 pub mod identity;
 pub mod inbound_listener;
 pub mod incoming_share;

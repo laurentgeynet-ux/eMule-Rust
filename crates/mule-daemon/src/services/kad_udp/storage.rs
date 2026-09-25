@@ -807,8 +807,8 @@ mod tests {
         KadSourceWire {
             kad_id,
             ip,
-            udp_port: 4672,
-            tcp_port: 4662,
+            udp_port: 49672,
+            tcp_port: 49662,
             encryption: 0,
             buddy_id: None,
         }
@@ -942,8 +942,8 @@ mod tests {
             file_hash: [9u8; 16],
             source_kad_id: KadId([5u8; 16]),
             ip: std::net::Ipv4Addr::new(1, 2, 3, 4),
-            udp_port: 4672,
-            tcp_port: 4662,
+            udp_port: 49672,
+            tcp_port: 49662,
             file_size: 42,
             encryption: 0,
             expires_at_unix_ms: now_ms + 60_000,
@@ -1178,8 +1178,8 @@ mod tests {
     fn note_store_lookup_upsert_and_size_filter() {
         let mut st = KadStorage::default();
         let target = [8u8; 16];
-        assert!(st.store_note(target, note(1, 1000), [1, 2, 3, 4], 4672));
-        assert!(st.store_note(target, note(2, 1000), [5, 6, 7, 8], 4672));
+        assert!(st.store_note(target, note(1, 1000), [1, 2, 3, 4], 49672));
+        assert!(st.store_note(target, note(2, 1000), [5, 6, 7, 8], 49672));
         // Same publisher re-publishes → upsert, not duplicate.
         assert!(st.store_note(target, note(1, 1000), [9, 9, 9, 9], 1234));
         assert_eq!(st.get_notes(&target, 1000, 50).len(), 2);

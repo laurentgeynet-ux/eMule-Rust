@@ -192,12 +192,12 @@ mod tests {
         {
             let mut dl = svc.lock().await;
             dl.set_lowid_source_acceptance(true);
-            // Serveur connu : 1.2.3.4:4661 (server_ip wire = LE octets).
-            dl.upsert_servers(&[server("1.2.3.4", 4661)]).unwrap();
+            // Serveur connu : 1.2.3.4:49661 (server_ip wire = LE octets).
+            dl.upsert_servers(&[server("1.2.3.4", 49661)]).unwrap();
             let hash = "aa".repeat(16);
             dl.upsert_peer_sources(
                 &hash,
-                &[source(&hash, "lowid:42"), source(&hash, "9.9.9.9:4662")],
+                &[source(&hash, "lowid:42"), source(&hash, "9.9.9.9:49662")],
             )
             .unwrap();
         }
@@ -205,12 +205,12 @@ mod tests {
 
         // newUserID=42 (LowID), newServerIP=1.2.3.4 en u32 LE wire.
         let p = payload(42, u32::from_le_bytes([1, 2, 3, 4]));
-        apply_change_client_id(&p, "9.9.9.9:4662", std::slice::from_ref(&hash), &svc).await;
+        apply_change_client_id(&p, "9.9.9.9:49662", std::slice::from_ref(&hash), &svc).await;
 
         let dl = svc.lock().await;
         let wire_ip = u32::from_le_bytes([1, 2, 3, 4]);
-        assert_eq!(server_fields(&dl, &hash, "lowid:42"), (wire_ip, 4661));
-        assert_eq!(server_fields(&dl, &hash, "9.9.9.9:4662"), (wire_ip, 4661));
+        assert_eq!(server_fields(&dl, &hash, "lowid:42"), (wire_ip, 49661));
+        assert_eq!(server_fields(&dl, &hash, "9.9.9.9:49662"), (wire_ip, 49661));
     }
 
     /// LowID annoncé sur un serveur INCONNU de la serverlist → eMule ne
@@ -228,7 +228,7 @@ mod tests {
         }
         let hash = "bb".repeat(16);
         let p = payload(42, u32::from_le_bytes([8, 8, 8, 8]));
-        apply_change_client_id(&p, "9.9.9.9:4662", std::slice::from_ref(&hash), &svc).await;
+        apply_change_client_id(&p, "9.9.9.9:49662", std::slice::from_ref(&hash), &svc).await;
         let dl = svc.lock().await;
         assert_eq!(server_fields(&dl, &hash, "lowid:42"), (0, 0));
     }
@@ -242,9 +242,9 @@ mod tests {
         let svc = Arc::new(Mutex::new(test_service(&dir)));
         {
             let mut dl = svc.lock().await;
-            dl.upsert_servers(&[server("1.2.3.4", 4661)]).unwrap();
+            dl.upsert_servers(&[server("1.2.3.4", 49661)]).unwrap();
             let hash = "cc".repeat(16);
-            dl.upsert_peer_sources(&hash, &[source(&hash, "9.9.9.9:4662")])
+            dl.upsert_peer_sources(&hash, &[source(&hash, "9.9.9.9:49662")])
                 .unwrap();
         }
         let hash = "cc".repeat(16);
@@ -253,11 +253,11 @@ mod tests {
             u32::from_be_bytes([9, 9, 9, 9]),
             u32::from_le_bytes([1, 2, 3, 4]),
         );
-        apply_change_client_id(&p, "9.9.9.9:4662", std::slice::from_ref(&hash), &svc).await;
+        apply_change_client_id(&p, "9.9.9.9:49662", std::slice::from_ref(&hash), &svc).await;
         let dl = svc.lock().await;
         assert_eq!(
-            server_fields(&dl, &hash, "9.9.9.9:4662"),
-            (u32::from_le_bytes([1, 2, 3, 4]), 4661)
+            server_fields(&dl, &hash, "9.9.9.9:49662"),
+            (u32::from_le_bytes([1, 2, 3, 4]), 49661)
         );
     }
 
@@ -269,9 +269,9 @@ mod tests {
         let svc = Arc::new(Mutex::new(test_service(&dir)));
         {
             let mut dl = svc.lock().await;
-            dl.upsert_servers(&[server("1.2.3.4", 4661)]).unwrap();
+            dl.upsert_servers(&[server("1.2.3.4", 49661)]).unwrap();
             let hash = "dd".repeat(16);
-            dl.upsert_peer_sources(&hash, &[source(&hash, "9.9.9.9:4662")])
+            dl.upsert_peer_sources(&hash, &[source(&hash, "9.9.9.9:49662")])
                 .unwrap();
         }
         let hash = "dd".repeat(16);
@@ -280,16 +280,16 @@ mod tests {
             u32::from_be_bytes([7, 7, 7, 7]),
             u32::from_le_bytes([1, 2, 3, 4]),
         );
-        apply_change_client_id(&p, "9.9.9.9:4662", std::slice::from_ref(&hash), &svc).await;
+        apply_change_client_id(&p, "9.9.9.9:49662", std::slice::from_ref(&hash), &svc).await;
         // Payload tronqué → ignoré.
         apply_change_client_id(
             &[1, 2, 3],
-            "9.9.9.9:4662",
+            "9.9.9.9:49662",
             std::slice::from_ref(&hash),
             &svc,
         )
         .await;
         let dl = svc.lock().await;
-        assert_eq!(server_fields(&dl, &hash, "9.9.9.9:4662"), (0, 0));
+        assert_eq!(server_fields(&dl, &hash, "9.9.9.9:49662"), (0, 0));
     }
 }

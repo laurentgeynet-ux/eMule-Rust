@@ -406,7 +406,7 @@ async fn test_download_blocks_pipelined_with_resume_and_interruption() {
             39735,
             vec![],
             0x7F000001,
-            4661,
+            49661,
             Duration::from_millis(500),
         )
         .await
@@ -482,7 +482,7 @@ async fn test_download_blocks_pipelined_with_resume_and_interruption() {
             39735,
             vec![],
             0x7F000001,
-            4661,
+            49661,
             Duration::from_millis(500),
         )
         .await

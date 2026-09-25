@@ -95,20 +95,20 @@ fn test_emule072a_hello_res_decode() {
     ];
     let mut raw = vec![PR_KADEMLIA, KADEMLIA2_HELLO_RES];
     raw.extend_from_slice(&kad_id);
-    raw.extend_from_slice(&4662u16.to_le_bytes()); // tcp_port
+    raw.extend_from_slice(&49662u16.to_le_bytes()); // tcp_port
     raw.push(10); // KADEMLIA_VERSION8_49b+ -> 0.72a announces 0x0A
     raw.push(2); // tag count
                  // TAG_SOURCEUPORT (old format, uint16)
     raw.extend_from_slice(&[0x08, 0x01, 0x00, TAG_SOURCEUPORT]);
-    raw.extend_from_slice(&4672u16.to_le_bytes());
+    raw.extend_from_slice(&49672u16.to_le_bytes());
     // TAG_KADMISCOPTIONS (uint8): bit2 = request HELLO_RES_ACK
     raw.extend_from_slice(&[0x09, 0x01, 0x00, TAG_KADMISCOPTIONS, 0x04]);
 
     match KadCodec::decode(&raw).expect("decode eMule hello res") {
         KadMessage::HelloRes(h) => {
             assert_eq!(h.kad_id, kad_id);
-            assert_eq!(h.tcp_port, 4662);
-            assert_eq!(h.udp_port, 4672);
+            assert_eq!(h.tcp_port, 49662);
+            assert_eq!(h.udp_port, 49672);
             assert_eq!(h.version, 10);
             assert_eq!(h.misc_options, Some(0x04));
             assert!(h.requests_ack());
@@ -147,13 +147,13 @@ fn test_kad_firewalled2_req_decode() {
     // eMule KADEMLIA_FIREWALLED2_REQ: [tcp_port u16][user_hash 16][options u8]
     let user_hash = [0xABu8; 16];
     let mut raw = vec![PR_KADEMLIA, KADEMLIA_FIREWALLED2_REQ];
-    raw.extend_from_slice(&4662u16.to_le_bytes());
+    raw.extend_from_slice(&49662u16.to_le_bytes());
     raw.extend_from_slice(&user_hash);
     raw.push(0x09); // connect options
 
     match KadCodec::decode(&raw).expect("decode firewalled2 req") {
         KadMessage::FirewalledReq2(r) => {
-            assert_eq!(r.tcp_port, 4662);
+            assert_eq!(r.tcp_port, 49662);
             assert_eq!(r.user_hash, user_hash);
             assert_eq!(r.connect_options, 0x09);
         }
@@ -209,7 +209,7 @@ fn test_kad_bootstrap_and_find_node_roundtrip() {
         KadContactWire {
             kad_id: [0x33u8; 16],
             ip: [127, 0, 0, 2],
-            udp_port: 4673,
+            udp_port: 49673,
             tcp_port: 0,
             version: 2,
         },
@@ -249,7 +249,7 @@ fn test_kad_bootstrap_and_find_node_roundtrip() {
             assert_eq!(b.contacts[0].ip, [127, 0, 0, 1]);
             assert_eq!(b.contacts[1].kad_id, [0x33u8; 16]);
             assert_eq!(b.contacts[1].ip, [127, 0, 0, 2]);
-            assert_eq!(b.contacts[1].udp_port, 4673);
+            assert_eq!(b.contacts[1].udp_port, 49673);
         }
         _ => panic!("expected BootstrapRes message for FindNode response"),
     }
@@ -309,8 +309,8 @@ fn test_kad_search_and_publish_source_roundtrip() {
         KadSourceWire {
             kad_id: [0x22u8; 16],
             ip: [127, 0, 0, 2],
-            udp_port: 4673,
-            tcp_port: 4663,
+            udp_port: 49673,
+            tcp_port: 49663,
             encryption: 1,
             buddy_id: None,
         },
@@ -323,7 +323,7 @@ fn test_kad_search_and_publish_source_roundtrip() {
             assert_eq!(r.target_file_hash, file_hash);
             assert_eq!(r.sources.len(), 2);
             assert_eq!(r.sources[0].kad_id, [0x11u8; 16]);
-            assert_eq!(r.sources[1].tcp_port, 4663);
+            assert_eq!(r.sources[1].tcp_port, 49663);
             assert_eq!(r.sources[1].encryption, 1);
         }
         _ => panic!("expected SearchSourceRes"),
@@ -536,7 +536,7 @@ fn test_emule_keyword_response_with_publishinfo_roundtrip() {
 #[test]
 fn test_kad_firewall_udp_roundtrip() {
     // eMule KADEMLIA2_FIREWALLUDP: [u8 error_code][u16 tested_port]
-    let encoded = KadCodec::encode_firewall_udp(0, 4672);
+    let encoded = KadCodec::encode_firewall_udp(0, 49672);
     assert_eq!(encoded.len(), 5);
     assert_eq!(encoded[0], PR_KADEMLIA);
     assert_eq!(encoded[1], KADEMLIA2_FIREWALLUDP);
@@ -545,7 +545,7 @@ fn test_kad_firewall_udp_roundtrip() {
     match decoded {
         KadMessage::FirewallUdp(fw) => {
             assert_eq!(fw.error_code, 0);
-            assert_eq!(fw.udp_port, 4672);
+            assert_eq!(fw.udp_port, 49672);
         }
         _ => panic!("expected FirewallUdp message"),
     }
@@ -578,13 +578,13 @@ fn test_kad_findbuddy_req_decode() {
     raw.push(KADEMLIA_FINDBUDDY_REQ);
     raw.extend_from_slice(&buddy_id);
     raw.extend_from_slice(&user_id);
-    raw.extend_from_slice(&4662u16.to_le_bytes());
+    raw.extend_from_slice(&49662u16.to_le_bytes());
 
     match KadCodec::decode(&raw).expect("decode findbuddy req") {
         KadMessage::FindBuddyReq(r) => {
             assert_eq!(r.buddy_id, buddy_id);
             assert_eq!(r.user_id, user_id);
-            assert_eq!(r.tcp_port, 4662);
+            assert_eq!(r.tcp_port, 49662);
         }
         _ => panic!("expected FindBuddyReq"),
     }
@@ -597,7 +597,7 @@ fn test_kad_findbuddy_req_decode() {
 fn test_kad_findbuddy_res_roundtrip() {
     let buddy_id = [0x33u8; 16];
     let client_id = [0x44u8; 16];
-    let encoded = KadCodec::encode_findbuddy_res(&buddy_id, &client_id, 4662, 0x01);
+    let encoded = KadCodec::encode_findbuddy_res(&buddy_id, &client_id, 49662, 0x01);
     assert_eq!(encoded[0], PR_KADEMLIA);
     assert_eq!(encoded[1], KADEMLIA_FINDBUDDY_RES);
 
@@ -605,7 +605,7 @@ fn test_kad_findbuddy_res_roundtrip() {
         KadMessage::FindBuddyRes(r) => {
             assert_eq!(r.buddy_id, buddy_id);
             assert_eq!(r.client_id, client_id);
-            assert_eq!(r.tcp_port, 4662);
+            assert_eq!(r.tcp_port, 49662);
             assert_eq!(r.connect_options, 0x01);
         }
         _ => panic!("expected FindBuddyRes"),
@@ -616,7 +616,7 @@ fn test_kad_findbuddy_res_roundtrip() {
 fn test_kad_callback_req_roundtrip() {
     let buddy_id = [0x55u8; 16];
     let file_id = [0x66u8; 16];
-    let encoded = KadCodec::encode_callback_req(&buddy_id, &file_id, 4672);
+    let encoded = KadCodec::encode_callback_req(&buddy_id, &file_id, 49672);
     assert_eq!(encoded.len(), 36);
     assert_eq!(encoded[0], PR_KADEMLIA);
     assert_eq!(encoded[1], KADEMLIA_CALLBACK_REQ);
@@ -625,7 +625,7 @@ fn test_kad_callback_req_roundtrip() {
         KadMessage::CallbackReq(r) => {
             assert_eq!(r.buddy_id, buddy_id);
             assert_eq!(r.file_id, file_id);
-            assert_eq!(r.tcp_port, 4672);
+            assert_eq!(r.tcp_port, 49672);
         }
         _ => panic!("expected CallbackReq"),
     }

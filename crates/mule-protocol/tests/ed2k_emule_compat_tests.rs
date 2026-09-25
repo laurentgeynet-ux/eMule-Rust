@@ -90,11 +90,11 @@ const EMULE072A_VERSION: u32 = 72 << 10;
 fn emule072a_hello_answer() -> Vec<u8> {
     hello_answer_payload(
         0x4D7F_0001, // HighID-ish client id
-        4662,
+        49662,
         &[
             t_str(0x01, "eMule peer"),        // CT_NAME
             t_u32(0x11, 0x3C),                // CT_VERSION = 0x3C
-            t_u32(0xF9, (4672 << 16) | 4662), // CT_EMULE_UDPPORTS
+            t_u32(0xF9, (49672 << 16) | 49662), // CT_EMULE_UDPPORTS
             t_u32(0xFB, EMULE072A_VERSION),   // CT_EMULE_VERSION
             t_u32(0xFA, EMULE072A_MISC1),     // CT_EMULE_MISCOPTIONS1
             t_u32(0xFE, EMULE072A_MISC2),     // CT_EMULE_MISCOPTIONS2
@@ -114,11 +114,11 @@ const AMULE301_MISC2: u32 = 0x3FB8;
 fn amule301_hello_answer() -> Vec<u8> {
     hello_answer_payload(
         0x4D7F_0002,
-        4665,
+        49665,
         &[
             t_str(0x01, "aMule 3.0.1"),       // CT_NAME
             t_u32(0x11, 0x3C),                // CT_VERSION
-            t_u32(0xF9, (4675 << 16) | 4665), // CT_EMULE_UDPPORTS
+            t_u32(0xF9, (49675 << 16) | 49665), // CT_EMULE_UDPPORTS
             t_u32(0xFB, AMULE301_VERSION),    // CT_EMULE_VERSION (SO_AMULE)
             t_u32(0xFA, AMULE301_MISC1),      // CT_EMULE_MISCOPTIONS1
             t_u32(0xFE, AMULE301_MISC2),      // CT_EMULE_MISCOPTIONS2
@@ -204,7 +204,7 @@ fn emule072a_emuleinfo_packet_decodes() {
         &[
             t_u8(0x20, 1),    // ET_COMPRESSION
             t_u8(0x22, 4),    // ET_UDPVER
-            t_u8(0x21, 0xC4), // ET_UDPPORT (4662 low byte; u8 tag on wire)
+            t_u8(0x21, 0xC4), // ET_UDPPORT (49662 low byte; u8 tag on wire)
             t_u8(0x23, 4),    // ET_SOURCEEXCHANGE
             t_u8(0x24, 1),    // ET_COMMENTS
             t_u8(0x25, 2),    // ET_EXTENDEDREQUEST

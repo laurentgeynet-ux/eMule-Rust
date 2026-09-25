@@ -62,7 +62,7 @@ pub async fn run_ed2k_download(
         39735,
         tags,
         0x7F000001,
-        4661,
+        49661,
         Duration::from_millis(1500),
     )
     .await

@@ -252,7 +252,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (ha, hb) = (hash_hex(0x11), hash_hex(0x22));
         let mut svc = svc_with_two_files(&ha, &hb, &tmp);
-        let addr = "1.2.3.4:4662";
+        let addr = "1.2.3.4:49662";
         svc.upsert_peer_sources(&hb, &[peer_source(&hb, addr)])
             .unwrap();
         let svc = Arc::new(Mutex::new(svc));
@@ -272,7 +272,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (ha, hb) = (hash_hex(0x33), hash_hex(0x44));
         let mut svc = svc_with_two_files(&ha, &hb, &tmp);
-        let addr = "5.6.7.8:4662";
+        let addr = "5.6.7.8:49662";
         let mut src = peer_source(&hb, addr);
         src.status = PeerSourceStatus::Rejected;
         svc.upsert_peer_sources(&hb, &[src]).unwrap();
@@ -314,7 +314,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let addr = "8.8.8.8:4662";
+        let addr = "8.8.8.8:49662";
         let mut nnp_src = peer_source(&hb, addr);
         nnp_src.status = PeerSourceStatus::Allowed;
         nnp_src.last_error = Some("no needed parts".to_string());
@@ -336,7 +336,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (ha, hb) = (hash_hex(0x88), hash_hex(0x99));
         let mut svc = svc_with_two_files(&ha, &hb, &tmp);
-        let addr = "7.7.7.7:4662";
+        let addr = "7.7.7.7:49662";
         svc.upsert_peer_sources(&ha, &[peer_source(&ha, addr)])
             .unwrap();
         svc.upsert_peer_sources(&hb, &[peer_source(&hb, addr)])
