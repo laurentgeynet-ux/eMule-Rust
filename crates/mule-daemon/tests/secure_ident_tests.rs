@@ -1675,6 +1675,8 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
         client_udp_port: None,
         auto_prio: false,
+        connected: true,
+        add_next_connect: false,
     };
 
     let peer_b = QueuedUpload {
@@ -1691,6 +1693,8 @@ async fn test_anti_starvation_uncredited_peer_advancement() {
         promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
         client_udp_port: None,
         auto_prio: false,
+        connected: true,
+        add_next_connect: false,
     };
 
     let score_a = peer_a.effective_score(now_ms);

@@ -1900,7 +1900,10 @@ impl InboundListenerService {
             }
         }
 
-        self.upload_manager.release_slot(&client_key).await;
+        // Socket mort : eMule conserve le client en file
+        // (`US_ONUPLOADQUEUE` survit à `Disconnected`) — le slot actif est
+        // libéré mais l'entrée attend `MAX_PURGEQUEUETIME` / une reconnexion.
+        self.upload_manager.mark_disconnected(&client_key).await;
     }
 
     /// Dispatches the sub-requests of an inbound `OP_MULTIPACKET*` — eMule

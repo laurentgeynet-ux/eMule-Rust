@@ -1336,3 +1336,42 @@ Références : `ListenSocket.cpp:482` (`OP_QUEUERANK` → `ProcessEdonkeyQueueRa
   téléchargement — eMule accepte le rank en tout état).
 - `CheckQueueRankFlood` (anti-flood de rangs non sollicités) : non porté —
   nos boucles ne lisent QUEUERANK que pendant/ après une file réelle.
+
+## §27 — Persistance de la file d'upload à travers les déconnexions
+
+Comportement eMule vérifié (`BaseClient.cpp:1169`, `UploadQueue.cpp`) : un
+client en `US_ONUPLOADQUEUE` **n'est pas détruit** quand son socket meurt —
+`Disconnected` retourne `bDelete = false` pour cet état. L'entrée
+`waitinglist` survit jusqu'à `MAX_PURGEQUEUETIME` (1 h) avec son
+`WaitStartTime` intact : le score continue de croître pendant l'absence.
+Dans `FindBestClientInQueue`, un attenteur sans socket ne peut pas être
+promu (le `ACCEPTUPLOADREQ` s'écrit sur la connexion), mais s'il devance
+le meilleur client connecté eMule pose `m_bAddNextConnect` — à la
+reconnexion (`AddClientToQueue`, `UploadQueue.cpp:537`), le client est
+sorti de la file et promu **immédiatement** (`AddUpNextClient`), sans
+attendre un slot libre.
+
+Notre implémentation précédente supprimait l'entrée de file à la mort du
+socket (`release_slot` dans le cleanup de connexion) — le score d'attente
+était perdu à chaque micro-déconnexion. Corrigé :
+
+- `QueuedUpload.connected` / `add_next_connect` reflètent les deux états
+  eMule ; `mark_disconnected` libère le slot actif éventuel mais conserve
+  l'entrée (`connected = false`), alors que `release_slot` reste réservé
+  aux fins explicites (`OP_CANCELTRANSFER`, `OP_END_OF_DOWNLOAD`, RPC).
+- `promote_locked` ne promeut que les entrées connectées et pose
+  `add_next_connect` sur le meilleur injoignable qui domine le meilleur
+  connecté — même évaluation hors dispo de slot que `FindBestClientInQueue`.
+- Le dedup de `request_upload_slot` repasse `connected = true` et, si
+  `add_next_connect` était posé, accorde un slot immédiat même file pleine
+  (comme `AddUpNextClient` inconditionnel).
+
+Divergence assumée documentée : eMule `CheckForTimeOver` a une branche
+temps/score quand `FullChunkTransfers` est désactivé (pref non-défaut,
+`Preferences.cpp:2164` défaut `true`) ; nous implémentons la branche par
+défaut `SESSIONMAXTRANS` (octets). La rotation sur score au-delà de
+`SESSIONMAXTIME` (1 h) n'est pas portée.
+
+Références : `BaseClient.cpp:1167-1174` (`bDelete`), `UploadQueue.cpp:105-152`
+(`FindBestClientInQueue`), `UploadQueue.cpp:534-549` (reconnexion +
+`AddUpNextClient`), `UploadQueue.cpp:769-815` (`CheckForTimeOver`).

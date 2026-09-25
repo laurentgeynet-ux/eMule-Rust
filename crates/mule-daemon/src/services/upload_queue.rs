@@ -221,6 +221,24 @@ pub struct QueuedUpload {
     /// `GetFilePrioAsNumber()` en direct dans `GetScore`.
     #[serde(default)]
     pub auto_prio: bool,
+    /// Le client a une connexion TCP vivante — eMule ne détruit pas un
+    /// client en file quand son socket meurt (`bDelete =
+    /// m_eUploadState != US_ONUPLOADQUEUE`, `BaseClient.cpp:1169`) : son
+    /// entrée survit jusqu'à `MAX_PURGEQUEUETIME`. Sans socket on ne peut
+    /// pas le promouvoir (`GetScore(false)` l'exclut implicitement — un
+    /// `ACCEPTUPLOADREQ` ne peut être écrit nulle part), mais son score
+    /// continue de monter. Une entrée désérialisée n'a par définition pas
+    /// de socket → `false`.
+    #[serde(default)]
+    pub connected: bool,
+    /// eMule `m_bAddNextConnect` (`UploadQueue.cpp:151`) : un client non
+    /// connecté dont le score dépasse le meilleur client connecté est
+    /// marqué — à sa reconnexion/re-ask il reçoit un slot **immédiatement**
+    /// (`AddClientToQueue:537` → `AddUpNextClient`), sans attendre un slot
+    /// libre (compense le temps perdu sans socket, surtout pour les LowID
+    /// dont la reconnexion passe par callback serveur).
+    #[serde(default)]
+    pub add_next_connect: bool,
 }
 
 fn default_file_prio_num() -> u32 {
@@ -702,6 +720,45 @@ impl UploadManager {
         // et nourrit le compteur anti-abus (`MIN_REQUESTTIME`/`BADCLIENTBAN`).
         if let Some(pos) = q.iter().position(|entry| entry.client_key == client_key) {
             let entry = &mut q[pos];
+            // Reconnexion d'un client dont l'entrée a survécu à la mort du
+            // socket (`mark_disconnected`). `AddClientToQueue` eMule : si
+            // `m_bAddNextConnect` était posé (score ≥ meilleur connecté
+            // alors qu'il était injoignable), il reçoit un slot immédiat.
+            entry.connected = true;
+            if entry.add_next_connect {
+                entry.add_next_connect = false;
+                let next = q.remove(pos).expect("queue entry at pos");
+                let snap = UploadSessionSnapshot {
+                    client_key: next.client_key.clone(),
+                    client_address: next.client_address.clone(),
+                    file_hash: next.file_hash.clone(),
+                    file_name: next.file_name.clone(),
+                    transferred_bytes: 0,
+                    upload_rate_bps: 0,
+                    state: UploadSlotState::Uploading,
+                    queue_rank: None,
+                    started_at_unix_ms: now,
+                    rate_window_start_ms: 0,
+                    rate_window_bytes: 0,
+                    rate_sampled: false,
+                    credit_multiplier_bps: next.credit_multiplier_bps,
+                    file_prio_num: self.resolve_file_prio_num(&active, file_hash, file_prio),
+                    queued_since_ms: next.enqueued_at_unix_ms,
+                    auto_prio: next.auto_prio,
+                };
+                active.insert(next.client_key.clone(), snap);
+                self.update_auto_up_prio(&active, file_hash);
+                self.active_count
+                    .store(Self::uploading_count(&active), Ordering::SeqCst);
+                tracing::info!(
+                    "[UPLOAD_ADD_NEXT_CONNECT] Client {} promoted on reconnect for file '{}' — outscored connected peers while unreachable (eMule m_bAddNextConnect)",
+                    log_addr_str(client_address), file_name
+                );
+                drop(q);
+                drop(active);
+                self.emit_uploads_updated().await;
+                return Ok((UploadSlotState::Uploading, None));
+            }
             if entry.file_hash == file_hash
                 && now.saturating_sub(entry.last_request_unix_ms) < MIN_REQUEST_TIME_MS
             {
@@ -790,6 +847,8 @@ impl UploadManager {
             promote_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
             client_udp_port,
             auto_prio,
+            connected: true,
+            add_next_connect: false,
         });
 
         // Sort queue by effective score descending (eMule ranks clients by
@@ -1072,6 +1131,34 @@ impl UploadManager {
         active: &mut std::collections::HashMap<String, UploadSessionSnapshot>,
         now: i64,
     ) -> bool {
+        // eMule `FindBestClientInQueue` marque le meilleur client
+        // injoignable quand son score dépasse le meilleur connecté —
+        // indépendamment de la disponibilité d'un slot (`m_bAddNextConnect`
+        // → slot immédiat à la reconnexion). La file est triée par score
+        // décroissant : le premier connecté non banni est le meilleur
+        // candidat, le premier déconnecté non banni/non déjà marqué est
+        // le meilleur injoignable.
+        let mut best_conn_score = 0u64;
+        let mut best_disc: Option<(usize, u64)> = None;
+        for (i, e) in q.iter().enumerate() {
+            if e.banned {
+                continue;
+            }
+            let s = e.effective_score(now);
+            if e.connected {
+                if s > best_conn_score {
+                    best_conn_score = s;
+                }
+            } else if !e.add_next_connect && best_disc.is_none_or(|(_, bs)| s > bs) {
+                best_disc = Some((i, s));
+            }
+        }
+        if let Some((di, ds)) = best_disc {
+            if ds > best_conn_score {
+                q[di].add_next_connect = true;
+            }
+        }
+
         let mut promoted = false;
         loop {
             // Même éligibilité qu'`AcceptNewClient` : débit cible par
@@ -1086,20 +1173,15 @@ impl UploadManager {
             if self.promotion_paced(active, now) {
                 break;
             }
-            // Un client banni (score 0, re-asks abusifs ou SUI rejeté)
-            // n'est jamais promu — eMule `GetScore` = 0 l'empêche de
-            // gagner `FindBestClientInQueue`. La file est triée par score
-            // décroissant : un banni en tête signifie qu'il ne reste que
-            // des bannis.
-            if q.front().is_some_and(|e| e.banned) {
-                break;
-            }
-            let Some(next) = q.pop_front() else {
+            // Premier client connecté, non banni, pas déjà actif — la
+            // file étant triée par score, c'est le meilleur candidat.
+            // Les déconnectés ne peuvent pas recevoir `ACCEPTUPLOADREQ`.
+            let Some(idx) = q.iter().position(|e| {
+                e.connected && !e.banned && !active.contains_key(&e.client_key)
+            }) else {
                 break;
             };
-            if active.contains_key(&next.client_key) {
-                continue;
-            }
+            let next = q.remove(idx).expect("queue index in bounds");
 
             let snap = UploadSessionSnapshot {
                 client_key: next.client_key.clone(),
@@ -1217,6 +1299,37 @@ impl UploadManager {
     /// latter resolves through the stored `client_address` so RPC callers
     /// that only know the address keep working.
     pub async fn release_slot(&self, client_key: &str) {
+        self.release_active(client_key, true).await;
+        self.promote_after_release().await;
+    }
+
+    /// Le socket TCP du client vient de mourir — eMule `Disconnected` ne
+    /// détruit **pas** un client en file (`bDelete = m_eUploadState !=
+    /// US_ONUPLOADQUEUE`, `BaseClient.cpp:1169`) : l'entrée `waitinglist`
+    /// survit jusqu'à `MAX_PURGEQUEUETIME` avec son `WaitStartTime` intact,
+    /// et `FindBestClientInQueue` la marque `m_bAddNextConnect` si son
+    /// score dépasse le meilleur connecté. Un slot actif est en revanche
+    /// toujours libéré (`US_UPLOADING → RemoveFromUploadQueue`).
+    pub async fn mark_disconnected(&self, client_key: &str) {
+        let resolved_key = self.release_active(client_key, false).await;
+        {
+            let mut q = self.queue.lock().await;
+            for entry in q.iter_mut() {
+                if entry.client_key == resolved_key || entry.client_address == client_key {
+                    entry.connected = false;
+                }
+            }
+        }
+        // Un slot actif libéré peut promouvoir un attenteur connecté.
+        self.promote_after_release().await;
+    }
+
+    /// Libère le slot actif éventuel et résout la clé canonique
+    /// (`uh:<hash>` quand l'actif est enregistré sous `ip:port`).
+    /// `drop_queue` retire aussi l'entrée de file (fin explicite) ;
+    /// `!drop_queue` la conserve avec `connected = false` est appliqué
+    /// par l'appelant (`mark_disconnected`). Retourne la clé résolue.
+    async fn release_active(&self, client_key: &str, drop_queue: bool) -> String {
         let mut active = self.active_uploads.lock().await;
         let resolved_key = if active.contains_key(client_key) {
             client_key.to_string()
@@ -1236,9 +1349,9 @@ impl UploadManager {
             // vient de perdre un uploader.
             self.update_auto_up_prio(&active, &cur.file_hash);
         }
+        drop(active);
 
-        // Also remove from waiting queue if queued
-        {
+        if drop_queue {
             let mut q = self.queue.lock().await;
             q.retain(|entry| {
                 entry.client_key != resolved_key && entry.client_address != client_key
@@ -1248,8 +1361,13 @@ impl UploadManager {
         // pas le réclamer.
         self.rotation_grace.lock().await.remove(&resolved_key);
         self.rotation_notifies.lock().await.remove(&resolved_key);
+        resolved_key
+    }
 
-        // Promote from queue while free slots remain
+    /// Promote from queue while free slots remain — relit le verrou
+    /// `active_uploads` après `release_active`.
+    async fn promote_after_release(&self) {
+        let mut active = self.active_uploads.lock().await;
         self.promote_waiting(&mut active).await;
         drop(active);
         self.emit_uploads_updated().await;
@@ -2509,5 +2627,114 @@ mod tests {
             mgr.waiting_rank_for_udp(&ip, 49672, "hcc").await,
             UdpRankLookup::FileMismatch
         );
+    }
+    /// eMule `Disconnected` (`BaseClient.cpp:1169`) : `bDelete =
+    /// m_eUploadState != US_ONUPLOADQUEUE` — un client en file survit à la
+    /// mort de son socket avec son score intact ; `release_slot` (fin
+    /// explicite) le retire toujours.
+    #[tokio::test]
+    async fn disconnect_keeps_queue_entry_and_wait_score() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        mgr.request_upload_slot("q", "q", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        let enqueued_at = mgr.queue.lock().await[0].enqueued_at_unix_ms;
+
+        mgr.mark_disconnected("q").await;
+        {
+            let q = mgr.queue.lock().await;
+            assert_eq!(q.len(), 1);
+            assert!(!q[0].connected);
+            assert_eq!(q[0].enqueued_at_unix_ms, enqueued_at);
+        }
+
+        // Fin explicite (CANCELTRANSFER/fin de fichier) : suppression nette.
+        mgr.release_slot("q").await;
+        assert!(mgr.queue.lock().await.is_empty());
+    }
+
+    /// eMule `FindBestClientInQueue` : un attenteur sans socket ne peut
+    /// pas etre promu (`ACCEPTUPLOADREQ` s'ecrit sur la connexion) — le
+    /// prochain connecte gagne le slot libere.
+    #[tokio::test]
+    async fn disconnected_waiter_is_skipped_for_promotion() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        // Deux attenteurs : "q1" entre en premier (score le plus fort),
+        // "q2" ensuite.
+        mgr.request_upload_slot("q1", "q1", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        mgr.request_upload_slot("q2", "q2", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        mgr.mark_disconnected("q1").await;
+
+        mgr.release_slot("a").await;
+        let actives = mgr.active_snapshots().await;
+        assert_eq!(actives.len(), 1);
+        assert_eq!(actives[0].client_address, "q2");
+        // q1 reste en file, toujours marque deconnecte.
+        let q = mgr.queue.lock().await;
+        assert_eq!(q.len(), 1);
+        assert_eq!(q[0].client_key, "q1");
+        assert!(!q[0].connected);
+    }
+
+    /// eMule `m_bAddNextConnect` (`UploadQueue.cpp:134-151, 537-549`) : le
+    /// meilleur attenteur injoignable qui depasse le meilleur connecte est
+    /// marque — a sa reconnexion il recoit un slot immediatement, meme
+    /// file pleine de connectes en dessous.
+    #[tokio::test]
+    async fn add_next_connect_promotes_on_reconnect() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        mgr.request_upload_slot("a", "a", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        // Ancien attenteur (wait long -> gros score) puis un recent.
+        mgr.request_upload_slot("old", "old", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        {
+            let mut q = mgr.queue.lock().await;
+            q[0].enqueued_at_unix_ms -= 3_600_000;
+            q[0].last_request_unix_ms = i64::MAX / 2; // evite la purge
+        }
+        mgr.request_upload_slot("new", "new", "h", "f", 1.0, "low", false, None)
+            .await
+            .unwrap();
+        mgr.mark_disconnected("old").await;
+
+        // "old" (deconnecte, gros score) depasse "new" (connecte, low prio)
+        // -> add_next_connect pose par promote_locked (declenche par le
+        // tick de release).
+        mgr.release_slot("a").await;
+        {
+            let q = mgr.queue.lock().await;
+            let old = q.iter().find(|e| e.client_key == "old").unwrap();
+            assert!(old.add_next_connect);
+            // "new" a ete promu dans le slot libere.
+            assert!(mgr.active_snapshots().await.iter().any(|s| s.client_address == "new"));
+        }
+
+        // Reconnexion de "old" : slot immediat malgre la file pleine.
+        let (state, _) = mgr
+            .request_upload_slot("old", "old", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        assert_eq!(state, UploadSlotState::Uploading);
+        assert!(mgr
+            .active_snapshots()
+            .await
+            .iter()
+            .any(|s| s.client_address == "old"));
     }
 }
