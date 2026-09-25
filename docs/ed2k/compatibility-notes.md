@@ -1313,3 +1313,26 @@ Références : `UploadClient.cpp:510-552` (`SendHashsetPacket`),
 - Unitaire `part_hashes_return_part_subtree_roots` (mule-format) : les
   hashsets par part sont les racines des sous-arbres couvrant chaque part
   ; fichier <= 1 part → set vide (eMule `GetTheoreticalAICHPartHashCount`).
+
+## 26. Rang de file — `OP_QUEUERANK`/`OP_QUEUERANKING`
+
+Références : `ListenSocket.cpp:482` (`OP_QUEUERANK` → `ProcessEdonkeyQueueRank`),
+`ListenSocket.cpp:1157` (`OP_QUEUERANKING` → `ProcessEmuleQueueRank`),
+`DownloadClient.cpp:1978-2000`, `UploadClient.cpp:558` (`SendRankingInfo`).
+
+### Formats filaires (correction fidélité)
+
+- `OP_QUEUERANK` (0x5C, PR_ED2K) : `<rank u32>` — legacy eDonkey, jamais
+  émis par eMule 0.72a, traité inbound comme `QUEUERANKING`.
+- `OP_QUEUERANKING` (0x60, PR_EMULE) : **exactement 12 octets**
+  `<rank u16><10 zéros>`. Notre émission était `PR_ED2K` + `u32` (5 octets)
+  — un pair eMule lisait `PeekUInt16` correctement mais le proto/cadrage
+  divergeait ; corrigé en `PR_EMULE` + 12 octets sur les deux sites de
+  `SendRankingInfo`.
+- Réception : `handle_queue_rank_packet` mutualise les deux opcodes via
+  les décodeurs bornés (rejet `QUEUERANKING != 12 octets` comme eMule),
+  met à jour `queue_rank` de la session et émet l'événement pair. Câblé
+  dans `status_query` (queue d'attente) et `transfer` (pendant le
+  téléchargement — eMule accepte le rank en tout état).
+- `CheckQueueRankFlood` (anti-flood de rangs non sollicités) : non porté —
+  nos boucles ne lisent QUEUERANK que pendant/ après une file réelle.

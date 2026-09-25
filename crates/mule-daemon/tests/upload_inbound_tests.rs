@@ -445,8 +445,8 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
         let n = client2.read(&mut raw_buf).await.unwrap();
         read_buf2.extend_from_slice(&raw_buf[..n]);
         while let Ok(Some(pkt)) = codec.decode(&mut read_buf2) {
-            if pkt.protocol == PR_ED2K && pkt.opcode == mule_protocol::ed2k::OP_QUEUERANKING {
-                let rank = u32::from_le_bytes(pkt.payload[0..4].try_into().unwrap());
+            if pkt.protocol == mule_protocol::ed2k::PR_EMULE && pkt.opcode == mule_protocol::ed2k::OP_QUEUERANKING {
+                let rank = u16::from_le_bytes(pkt.payload[0..2].try_into().unwrap()) as u32;
                 assert_eq!(rank, 1, "Client 2 should have queue rank 1");
                 received_queue_ranking = true;
                 break;

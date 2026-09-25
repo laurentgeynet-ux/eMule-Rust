@@ -17,8 +17,8 @@ use mule_protocol::ed2k::{
     Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus, Ed2kHashSetReq, Ed2kHashSetReq2,
     OP_ACCEPTUPLOADREQ,
     OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CHANGE_CLIENT_ID,
-    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_HASHSETANSWER2, OP_QUEUERANKING,
-    OP_REQFILENAME_ANSWER,
+    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_HASHSETANSWER2, OP_QUEUERANK,
+    OP_QUEUERANKING, OP_REQFILENAME_ANSWER,
     OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
@@ -101,6 +101,64 @@ pub(crate) async fn handle_hashset_answer(
             true
         }
     }
+}
+
+/// Handles `OP_QUEUERANK` (`0x5C`, PR_ED2K, `<rank u32>`) and
+/// `OP_QUEUERANKING` (`0x60`, PR_EMULE, `<rank u16><10 reserved>`) — eMule
+/// routes both to `SetRemoteQueueRank` (`ProcessEdonkeyQueueRank` /
+/// `ProcessEmuleQueueRank`, `DownloadClient.cpp:1978-2000`). Updates the
+/// session snapshot and emits the peer event; returns true when consumed.
+pub(crate) async fn handle_queue_rank_packet(
+    packet: &RawPacket,
+    address_str: &str,
+    target_addr: SocketAddr,
+    decoder: &Ed2kDecoder,
+    inner: &Arc<Mutex<SwarmInnerState>>,
+    event_tx: &broadcast::Sender<String>,
+    sequence: &Arc<AtomicU64>,
+) -> bool {
+    let rank = if packet.protocol == PR_ED2K && packet.opcode == OP_QUEUERANK {
+        match decoder.decode_queue_rank(packet.protocol, packet.opcode, &packet.payload, 0) {
+            Ok(qr) => qr.rank,
+            Err(e) => {
+                tracing::warn!(
+                    "Malformed OP_QUEUERANK from {peer}: {e}",
+                    peer = log_peer_addr(target_addr)
+                );
+                return true;
+            }
+        }
+    } else if (packet.protocol == PR_ED2K || packet.protocol == PR_EMULE)
+        && packet.opcode == OP_QUEUERANKING
+    {
+        match decoder.decode_queue_ranking(packet.protocol, packet.opcode, &packet.payload, 0) {
+            Ok(qr) => qr.rank as u32,
+            Err(e) => {
+                tracing::warn!(
+                    "Malformed OP_QUEUERANKING from {peer}: {e}",
+                    peer = log_peer_addr(target_addr)
+                );
+                return true;
+            }
+        }
+    } else {
+        return false;
+    };
+
+    tracing::debug!("Queue rank from peer {}: {}", log_peer_addr(target_addr), rank);
+    let queue_update = {
+        let mut g = inner.lock().await;
+        if let Some(session) = g.sessions.get_mut(address_str) {
+            session.snapshot.queue_rank = Some(rank);
+            Some(session.snapshot.clone())
+        } else {
+            None
+        }
+    };
+    if let Some(snap) = queue_update {
+        emit_event(event_tx, sequence, &snap);
+    }
+    true
 }
 
 /// Validates and persists a decoded MD4 part hashset — shared tail of
@@ -655,27 +713,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                         break;
                                     }
                                     tracing::debug!("Peer {peer} sent OP_REQFILENAME_ANSWER (len={})", packet.payload.len(), peer = log_peer_addr(target_addr));
-                                } else if packet.opcode == OP_QUEUERANKING {
-                                    let rank = if packet.payload.len() >= 4 {
-                                        u32::from_le_bytes(packet.payload[..4].try_into().unwrap_or([0, 0, 0, 0]))
-                                    } else if packet.payload.len() >= 2 {
-                                        u16::from_le_bytes(packet.payload[..2].try_into().unwrap_or([0, 0])) as u32
-                                    } else {
-                                        0
-                                    };
-                                    tracing::debug!("Peer {peer} responded with queue ranking {rank} during status query", peer = log_peer_addr(target_addr));
-                                    let queue_update = {
-                                        let mut g = inner.lock().await;
-                                        if let Some(session) = g.sessions.get_mut(address_str) {
-                                            session.snapshot.queue_rank = Some(rank);
-                                            Some(session.snapshot.clone())
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    if let Some(snap) = queue_update {
-                                        emit_event(event_tx, sequence, &snap);
-                                    }
+                                } else if handle_queue_rank_packet(&packet, address_str, target_addr, &decoder, inner, event_tx, sequence).await {
                                     file_status_opt = Some(mule_protocol::ed2k::Ed2kFileStatus {
                                         file_hash: dl_hash_bytes,
                                         part_count: 0,
@@ -1074,27 +1112,7 @@ pub(crate) async fn wait_in_queue(
                             if packet.protocol == PR_ED2K && packet.opcode == OP_ACCEPTUPLOADREQ {
                                 info!("Upload slot accepted (OP_ACCEPTUPLOADREQ) by peer {}", log_peer_addr(target_addr));
                                 break 'queue_loop;
-                            } else if (packet.protocol == PR_ED2K || packet.protocol == PR_EMULE) && packet.opcode == OP_QUEUERANKING {
-                                let rank = if packet.payload.len() >= 4 {
-                                    u32::from_le_bytes(packet.payload[..4].try_into().unwrap_or([0, 0, 0, 0]))
-                                } else if packet.payload.len() >= 2 {
-                                    u16::from_le_bytes(packet.payload[..2].try_into().unwrap_or([0, 0])) as u32
-                                } else {
-                                    0
-                                };
-                                tracing::debug!("Queue rank from peer {}: {}", log_peer_addr(target_addr), rank);
-                                let queue_update = {
-                                    let mut g = inner.lock().await;
-                                    if let Some(session) = g.sessions.get_mut(address_str) {
-                                        session.snapshot.queue_rank = Some(rank);
-                                        Some(session.snapshot.clone())
-                                    } else {
-                                        None
-                                    }
-                                };
-                                if let Some(snap) = queue_update {
-                                    emit_event(event_tx, sequence, &snap);
-                                }
+                            } else if handle_queue_rank_packet(&packet, address_str, target_addr, &decoder, inner, event_tx, sequence).await {
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_FILESTATUS {
                                 // Keep-alive part-status : rafraîchit le bitmap
                                 // du pair (et `last_seen`) — la barre de parts

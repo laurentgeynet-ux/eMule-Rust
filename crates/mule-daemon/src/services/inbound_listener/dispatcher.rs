@@ -1576,11 +1576,16 @@ impl InboundListenerService {
                                                 .await;
                                         }
                                         Ok((UploadSlotState::Waiting, Some(rank))) => {
+                                            // eMule `SendRankingInfo`
+                                            // (`UploadClient.cpp:558`) :
+                                            // PR_EMULE + payload 12 octets
+                                            // `[u16 rank][10 zéros]`.
                                             let mut out = Vec::new();
-                                            out.push(PR_ED2K);
-                                            out.extend_from_slice(&5u32.to_le_bytes());
+                                            out.push(PR_EMULE);
+                                            out.extend_from_slice(&13u32.to_le_bytes());
                                             out.push(OP_QUEUERANKING);
-                                            out.extend_from_slice(&rank.to_le_bytes());
+                                            out.extend_from_slice(&(rank as u16).to_le_bytes());
+                                            out.extend_from_slice(&[0u8; 10]);
                                             let _ = stream.write_all(&out).await;
                                             promote_notify = self
                                                 .upload_manager
@@ -1858,10 +1863,11 @@ impl InboundListenerService {
                                         }
                                         Ok((UploadSlotState::Waiting, Some(rank))) => {
                                             let mut out = Vec::new();
-                                            out.push(PR_ED2K);
-                                            out.extend_from_slice(&5u32.to_le_bytes());
+                                            out.push(PR_EMULE);
+                                            out.extend_from_slice(&13u32.to_le_bytes());
                                             out.push(OP_QUEUERANKING);
-                                            out.extend_from_slice(&rank.to_le_bytes());
+                                            out.extend_from_slice(&(rank as u16).to_le_bytes());
+                                            out.extend_from_slice(&[0u8; 10]);
                                             let _ = stream.write_all(&out).await;
                                             promote_notify = self
                                                 .upload_manager

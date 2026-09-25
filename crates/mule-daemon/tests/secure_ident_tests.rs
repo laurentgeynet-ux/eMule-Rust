@@ -521,8 +521,9 @@ async fn test_credit_weighted_queue_priority() {
         let n = client1.read(&mut raw_buf).await.unwrap();
         read_buf1.extend_from_slice(&raw_buf[..n]);
         while let Ok(Some(pkt)) = codec.decode(&mut read_buf1) {
-            if pkt.protocol == PR_ED2K && pkt.opcode == OP_QUEUERANKING {
-                c1_rank = u32::from_le_bytes(pkt.payload[0..4].try_into().unwrap());
+            if pkt.protocol == mule_protocol::ed2k::PR_EMULE && pkt.opcode == OP_QUEUERANKING {
+                // eMule SendRankingInfo : [u16 rank][10 zeros], PR_EMULE.
+                c1_rank = u16::from_le_bytes(pkt.payload[0..2].try_into().unwrap()) as u32;
                 break;
             }
         }
@@ -618,8 +619,8 @@ async fn test_credit_weighted_queue_priority() {
         let n = client2.read(&mut raw_buf).await.unwrap();
         read_buf2.extend_from_slice(&raw_buf[..n]);
         while let Ok(Some(pkt)) = codec.decode(&mut read_buf2) {
-            if pkt.protocol == PR_ED2K && pkt.opcode == OP_QUEUERANKING {
-                c2_rank = u32::from_le_bytes(pkt.payload[0..4].try_into().unwrap());
+            if pkt.protocol == mule_protocol::ed2k::PR_EMULE && pkt.opcode == OP_QUEUERANKING {
+                c2_rank = u16::from_le_bytes(pkt.payload[0..2].try_into().unwrap()) as u32;
                 break;
             }
         }

@@ -1214,6 +1214,7 @@ pub(crate) async fn run_transfer_loop(
                                 // gracefully so the swarm can rotate sources.
                                 info!("Peer {peer} sent OP_OUTOFPARTS, ending transfer session", peer = log_peer_addr(target_addr));
                                 break 'transfer_loop;
+                            } else if super::status_query::handle_queue_rank_packet(&packet, address_str, target_addr, &decoder, inner, event_tx, sequence).await {
                             } else if packet.protocol == PR_ED2K && packet.opcode == OP_CANCELTRANSFER {
                                 info!("Peer {peer} cancelled the transfer (OP_CANCELTRANSFER)", peer = log_peer_addr(target_addr));
                                 break 'transfer_loop;

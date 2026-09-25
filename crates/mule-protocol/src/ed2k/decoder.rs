@@ -20,7 +20,7 @@ use super::opcodes::{
 use super::packet::{
     Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
     Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer,
-    Ed2kHashSetAnswer2, Ed2kHashSetReq, Ed2kHashSetReq2,
+    Ed2kHashSetAnswer2, Ed2kHashSetReq, Ed2kHashSetReq2, Ed2kQueueRank, Ed2kQueueRanking,
     Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
     Ed2kSendingPart, Ed2kSignature,
 };
@@ -983,6 +983,29 @@ impl Ed2kDecoder {
         base_offset: usize,
     ) -> Result<Ed2kHashSetAnswer2, Ed2kParseError> {
         decode_hashset_answer2(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_QUEUERANK` (`0x5C`) payload: `<rank u32>`.
+    pub fn decode_queue_rank(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kQueueRank, Ed2kParseError> {
+        decode_queue_rank(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_QUEUERANKING` (`0x60`) payload: exactly 12 bytes,
+    /// `<rank u16><10 reserved>` (`ProcessEmuleQueueRank`, eMule 0.72a).
+    pub fn decode_queue_ranking(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kQueueRanking, Ed2kParseError> {
+        decode_queue_ranking(protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_AICHFILEHASHREQ` (eMule `0x9E`) payload.
