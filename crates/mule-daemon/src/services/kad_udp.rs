@@ -407,7 +407,10 @@ impl KadUdpService {
                                             .ip_filter()
                                             .check_ip(peer_addr.ip())
                                         {
-                                            tracing::info!(
+                                            // eMule `GetLogFilteredIPs`
+                                            // (verbose, OFF par défaut) —
+                                            // par datagramme : debug.
+                                            tracing::debug!(
                                                 "Client UDP: dropped datagram from {} (ipfilter '{}')",
                                                 log_peer_addr(peer_addr),
                                                 rule.description
@@ -481,7 +484,11 @@ impl KadUdpService {
                                             }
                                         }
                                         if !decrypted {
-                                            tracing::warn!(
+                                            // Bruit UDP internet (scans,
+                                            // autres protocoles P2P) — un
+                                            // warn par datagramme noierait
+                                            // le journal ; debug only.
+                                            tracing::debug!(
                                                 "Kad UDP: dropped invalid protocol byte 0x{:02X} from {}",
                                                 proto_byte,
                                                 log_peer_addr(peer_addr)
@@ -500,7 +507,9 @@ impl KadUdpService {
                                     }
                                 };
                                 if !policy_allowed {
-                                    tracing::warn!("Kad UDP: dropped packet from non-conforming IP {} ({:?})", log_peer_ip(peer_addr.ip()), cat);
+                                    // Politique interne par datagramme —
+                                    // pas un signal de sécurité (debug).
+                                    tracing::debug!("Kad UDP: dropped packet from non-conforming IP {} ({:?})", log_peer_ip(peer_addr.ip()), cat);
                                     continue;
                                 }
 

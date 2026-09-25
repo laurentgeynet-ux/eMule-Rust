@@ -1228,7 +1228,7 @@ impl SwarmCoordinator {
         };
 
         // 3. Downloads info
-        let (active_dl_count, other_dl_count, total_dl_rate, total_sources) = {
+        let (active_dl_count, other_dl_count, total_dl_rate, total_sources, dl_session_bytes, banned_count) = {
             let dl_guard = self.state.downloads.lock().await;
             let dls = dl_guard.list_downloads();
             let mut active = 0;
@@ -1244,25 +1244,40 @@ impl SwarmCoordinator {
                 rate = rate.saturating_add(d.download_rate_bps);
                 sources += d.source_count;
             }
-            (active, other, rate, sources)
+            (
+                active,
+                other,
+                rate,
+                sources,
+                dl_guard.session_downloaded_bytes(),
+                dl_guard.banned_source_count(),
+            )
         };
         let swarm_snap = self.state.peer_session.swarm_snapshot(None).await;
         let dl_str = format!(
-            "{} active, {} other ({:.1} KB/s, {} peers connected, {} known sources)",
+            "{} active, {} other ({:.1} KB/s, {} peers connected, {} known sources, session {:.1} MB)",
             active_dl_count,
             other_dl_count,
             total_dl_rate as f64 / 1024.0,
             swarm_snap.active_peer_count,
-            total_sources
+            total_sources,
+            dl_session_bytes as f64 / (1024.0 * 1024.0),
         );
 
         // 4. Upload info
         let listener_snap = self.state.inbound_listener.snapshot().await;
+        let ul_session_bytes = self
+            .state
+            .inbound_listener
+            .upload_manager()
+            .total_uploaded_bytes();
         let ul_str = format!(
-            "{} active ({:.1} KB/s, {} queued)",
+            "{} active ({:.1} KB/s, {} queued, session {:.1} MB, {} banned)",
             listener_snap.active_uploads,
             listener_snap.upload_rate_bps as f64 / 1024.0,
-            listener_snap.queued_uploads
+            listener_snap.queued_uploads,
+            ul_session_bytes as f64 / (1024.0 * 1024.0),
+            banned_count,
         );
 
         tracing::info!(

@@ -531,6 +531,15 @@ impl DownloadService {
             .is_some_and(|since| since.elapsed() < CLIENT_BAN_DURATION)
     }
 
+    /// Nombre d'IP actuellement sous ban (non expirées — pour le
+    /// heartbeat consolidé).
+    pub fn banned_source_count(&self) -> usize {
+        self.banned_source_ips
+            .values()
+            .filter(|since| since.elapsed() < CLIENT_BAN_DURATION)
+            .count()
+    }
+
     /// Bannit explicitement une IP pour `CLIENTBANTIME` (2 h).
     pub fn ban_source(&mut self, addr: &str) {
         if let Some(ip) = source_addr_ip(addr) {
