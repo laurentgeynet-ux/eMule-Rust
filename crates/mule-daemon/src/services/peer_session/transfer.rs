@@ -19,9 +19,8 @@ use mule_protocol::ed2k::{
     Ed2kBlockRange, Ed2kBlockRange64, Ed2kDecoder, Ed2kDownloadSequencer, Ed2kEncoder,
     Ed2kFileStatus, Ed2kRequestParts, Ed2kRequestPartsI64, InFlightBlock,
     MAX_REQUEST_RANGES_PER_PACKET, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CANCELTRANSFER,
-    OP_CHANGE_CLIENT_ID,
-    OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
-    OP_SENDINGPART, PR_ED2K, PR_EMULE, PR_EMULE_COMPRESSED,
+    OP_CHANGE_CLIENT_ID, OP_COMPRESSEDPART, OP_END_OF_DOWNLOAD, OP_OUTOFPARTS, OP_REQUESTSOURCES,
+    OP_REQUESTSOURCES2, OP_SENDINGPART, PR_ED2K, PR_EMULE,
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
@@ -748,7 +747,18 @@ pub(crate) async fn run_transfer_loop(
                                 p
                             } else {
                                 match codec.decode(&mut read_buf) {
-                                    Ok(Some(p)) => p,
+                                    // OP_PACKEDPROT (0xD4) — eMule unpacks
+                                    // inline and re-tags OP_EMULEPROT
+                                    // (ListenSocket.cpp:1742 →
+                                    // ProcessExtPacket); corrupt packed
+                                    // payloads are dropped.
+                                    Ok(Some(p)) => match mule_protocol::ed2k::packed::unpack_owned(
+                                        p,
+                                        mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                                    ) {
+                                        Some(u) => u,
+                                        None => continue,
+                                    },
                                     _ => break,
                                 }
                             };
@@ -966,7 +976,7 @@ pub(crate) async fn run_transfer_loop(
                                         );
                                     }
                                 }
-                            } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED || packet.protocol == PR_ED2K)
+                            } else if (packet.protocol == PR_EMULE || packet.protocol == PR_ED2K)
                                 && (packet.opcode == OP_COMPRESSEDPART || packet.opcode == OP_COMPRESSEDPART_I64)
                             {
                                 let is_i64 = packet.opcode == OP_COMPRESSEDPART_I64;
@@ -1217,7 +1227,7 @@ pub(crate) async fn run_transfer_loop(
                                     downloads,
                                 )
                                 .await;
-                            } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
+                            } else if (packet.protocol == PR_EMULE)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {
                                 handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;

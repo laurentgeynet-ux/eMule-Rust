@@ -17,6 +17,7 @@ use super::types::{
 };
 use crate::services::downloads::DownloadService;
 use crate::services::kad::firewall::OUR_KAD_VERSION;
+use mule_protocol::ed2k::packed::pack_kad_datagram;
 
 /// eMule `KADEMLIA_VERSION7_49a` (`Opcodes.h:29`) — contacts strictly above
 /// `KADEMLIA_VERSION6_49aBETA` (6) get the extended `FIREWALLED2_REQ` and
@@ -55,7 +56,9 @@ pub async fn handle_incoming_message(
                 peer = log_peer_addr(peer_addr)
             );
             let pong_bytes = KadCodec::encode_pong(peer_addr.port());
-            let _ = socket.send_to(&pong_bytes, peer_addr).await;
+            let _ = socket
+                .send_to(&pack_kad_datagram(&pong_bytes), peer_addr)
+                .await;
         }
         KadMessage::Pong(pong) => {
             let mut inf = in_flight.lock().await;
@@ -129,7 +132,9 @@ pub async fn handle_incoming_message(
                 buddy_tcp_port,
                 Some(misc),
             );
-            let _ = socket.send_to(&hello_res, peer_addr).await;
+            let _ = socket
+                .send_to(&pack_kad_datagram(&hello_res), peer_addr)
+                .await;
             // eMule tail of Process_KADEMLIA2_HELLO_REQ — a recheck round in
             // progress turns each inbound HELLO into a TCP probe request.
             maybe_tcp_firewall_check(
@@ -201,7 +206,7 @@ pub async fn handle_incoming_message(
             }
             if wants_ack {
                 let ack = KadCodec::encode_hello_res_ack(local_kad_id);
-                let _ = socket.send_to(&ack, peer_addr).await;
+                let _ = socket.send_to(&pack_kad_datagram(&ack), peer_addr).await;
             }
             // eMule tail of Process_KADEMLIA2_HELLO_RES — same recheck hook.
             maybe_tcp_firewall_check(
@@ -295,7 +300,7 @@ pub async fn handle_incoming_message(
                 OUR_KAD_VERSION,
                 &contacts,
             );
-            let _ = socket.send_to(&res, peer_addr).await;
+            let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
         }
         KadMessage::Req(req) => {
             // eMule Process_KADEMLIA2_REQ: [type][target][uCheck] — uCheck is
@@ -334,7 +339,7 @@ pub async fn handle_incoming_message(
                 contacts.len()
             , peer = log_peer_addr(peer_addr));
             let res = KadCodec::encode_find_node_res(&req.target_id, &contacts);
-            let _ = socket.send_to(&res, peer_addr).await;
+            let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
         }
         KadMessage::BootstrapRes(boot_res) => {
             // Release in_flight before learn_contact awaits routing_table —
@@ -397,7 +402,7 @@ pub async fn handle_incoming_message(
                 packets.len()
             , peer = log_peer_addr(peer_addr));
             for res in packets {
-                let _ = socket.send_to(&res, peer_addr).await;
+                let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
             }
         }
         KadMessage::SearchSourceRes(search_res) => {
@@ -497,7 +502,7 @@ pub async fn handle_incoming_message(
                 peer = log_peer_addr(peer_addr)
             );
             let res = KadCodec::encode_publish_source_res(&req.target_file_hash, status);
-            let _ = socket.send_to(&res, peer_addr).await;
+            let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
         }
         KadMessage::PublishSourceRes(pub_res) => {
             // eMule `Process_KADEMLIA2_PUBLISH_RES` ("for future use"): a
@@ -505,7 +510,7 @@ pub async fn handle_incoming_message(
             // `KADEMLIA2_PUBLISH_RES_ACK` (0x4C) datagram back.
             if pub_res.request_ack {
                 let ack = [PR_KADEMLIA, KADEMLIA2_PUBLISH_RES_ACK];
-                let _ = socket.send_to(&ack, peer_addr).await;
+                let _ = socket.send_to(&pack_kad_datagram(&ack), peer_addr).await;
             }
             // Opcode 0x4B is the unified publish response for both source and keyword publish.
             // Match in-flight transactions expecting either PublishSourceRes or PublishKeywordRes.
@@ -584,9 +589,8 @@ pub async fn handle_incoming_message(
             let entries = {
                 let mut store = storage.lock().await;
                 store.get_keyword_entries_filtered(&req.keyword_hash, req.start_pos, |entry| {
-                    expr.as_ref().is_none_or(|e| {
-                        e.matches(&KadKeywordSearchView::new(entry))
-                    })
+                    expr.as_ref()
+                        .is_none_or(|e| e.matches(&KadKeywordSearchView::new(entry)))
                 })
             };
             let packets =
@@ -599,7 +603,7 @@ pub async fn handle_incoming_message(
                 packets.len()
             , peer = log_peer_addr(peer_addr));
             for res in packets {
-                let _ = socket.send_to(&res, peer_addr).await;
+                let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
             }
         }
         KadMessage::SearchKeywordRes(search_res) => {
@@ -677,7 +681,7 @@ pub async fn handle_incoming_message(
                 peer = log_peer_addr(peer_addr)
             );
             let res = KadCodec::encode_publish_keyword_res(&req.keyword_hash, status);
-            let _ = socket.send_to(&res, peer_addr).await;
+            let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
         }
         KadMessage::PublishKeywordRes(pub_res) => {
             let mut inf = in_flight.lock().await;
@@ -758,7 +762,7 @@ pub async fn handle_incoming_message(
                 buddy_tcp_port,
                 hex::encode(req.buddy_id)
             , peer = log_peer_addr(peer_addr));
-            let _ = socket.send_to(&res, peer_addr).await;
+            let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
         }
         KadMessage::FindBuddyRes(res) => {
             // We never send FINDBUDDY_REQ (the LowID-self buddy client is
@@ -835,7 +839,7 @@ pub async fn handle_incoming_message(
             if let Some(res) =
                 KadCodec::encode_search_notes_res(local_kad_id, &req.target_file_hash, &notes)
             {
-                let _ = socket.send_to(&res, peer_addr).await;
+                let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
             }
         }
         KadMessage::SearchNotesRes(res) => {
@@ -931,7 +935,7 @@ pub async fn handle_incoming_message(
                 peer = log_peer_addr(peer_addr)
             );
             let res = KadCodec::encode_publish_notes_res(&req.target_file_hash, load);
-            let _ = socket.send_to(&res, peer_addr).await;
+            let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
         }
         KadMessage::PublishNotesRes(_) => {
             // Shares opcode 0x4B with PublishSourceRes/PublishKeywordRes; the
@@ -971,7 +975,7 @@ async fn handle_firewalled_check(
     // FIREWALLED_RES echoes the requester's observed IP (eMule sends it once
     // RequestTCP is accepted — before the probe outcome is known).
     let res = KadCodec::encode_firewalled_res(u32::from_le_bytes(v4.octets()));
-    let _ = socket.send_to(&res, peer_addr).await;
+    let _ = socket.send_to(&pack_kad_datagram(&res), peer_addr).await;
 
     let socket2 = Arc::clone(socket);
     tokio::spawn(async move {
@@ -999,7 +1003,7 @@ async fn handle_firewalled_check(
                 } else {
                     // Legacy (<7): empty UDP KADEMLIA_FIREWALLED_ACK_RES.
                     let ack = [PR_KADEMLIA, KADEMLIA_FIREWALLED_ACK_RES];
-                    let _ = socket2.send_to(&ack, peer_addr).await;
+                    let _ = socket2.send_to(&pack_kad_datagram(&ack), peer_addr).await;
                     tracing::info!(
                         "Kad UDP: TCP firewall probe to {target} succeeded, sent FIREWALLED_ACK_RES"
                     );
@@ -1212,10 +1216,14 @@ async fn maybe_tcp_firewall_check(
     } else {
         KadCodec::encode_firewalled_req(our_tcp_port)
     };
-    if let Err(e) = socket.send_to(&pkt, peer_addr).await {
+    if let Err(e) = socket.send_to(&pack_kad_datagram(&pkt), peer_addr).await {
         tracing::debug!(
             "Kad UDP: failed to send FIREWALLED{suffix}_REQ to {peer}: {e}",
-            suffix = if peer_kad_version >= KADEMLIA_VERSION7_49A { "2" } else { "" },
+            suffix = if peer_kad_version >= KADEMLIA_VERSION7_49A {
+                "2"
+            } else {
+                ""
+            },
             peer = log_peer_addr(peer_addr)
         );
         return;

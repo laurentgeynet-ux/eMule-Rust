@@ -1145,3 +1145,62 @@ Référence : `ListenSocket.cpp:583` (`OUTOFPARTREQS` entrant) et
   pour un client non-actif, signalé à l'éviction, consommé ensuite.
 - Loopback `test_inbound_publicip_req_echoes_requester_ip` : HELLO +
   `PUBLICIP_REQ` → `PUBLICIP_ANSWER` `[7F 00 00 01]`.
+
+## 23. `OP_PACKEDPROT` pair (0xD4) + Kad UDP packé (0xE5) — audit phase B, passe 17
+
+Référence : `Packets.cpp:200-244` (`PackPacket`/`UnPackPacket`),
+`EMSocket.cpp` + `ListenSocket.cpp:1742-1750` (unpack socket-level avant
+dispatch), `KademliaUDPListener.cpp:1875/1891/1904` (pack `>200` en sortie
+UDP), `ClientUDPSocket.cpp:93-120` (unpack 0xE5 entrant, cap 250000),
+`KnownFile.cpp:1149` / `PartFile.cpp:3708` (`ANSWERSOURCES >354` packé),
+`SharedFileList.cpp:858` (`OFFERFILES` serveur, gate `SRV_TCPFLG_COMPRESSION`).
+
+### Canal pair TCP — unpack entrant (gap corrigé)
+
+- `PacketCodec` laissait passer les frames `0xD4` comme proto inconnu et
+  les boucles de lecture les ignoraient → toute réponse compressée d'un
+  pair eMule (typiquement les grosses `OP_ANSWERSOURCES`) était droppée.
+- `mule_protocol::ed2k::packed::unpack_owned` = normalisation socket-level
+  fidèle : proto `0xD4` → inflate zlib borné à **50000** octets
+  (`uMaxDecompressedSize` par défaut d'`UnPackPacket`), re-tag
+  `PR_EMULE`, opcode conservé. Payload corrompu/tronqué/oversize → paquet
+  droppé (session conservée — eMule ferme le socket ; divergence
+  défensive assumée).
+- Appliqué à **toutes** les boucles de lecture pair : inbound dispatcher,
+  hello entrant/sortant, connect-back, lien buddy, test pare-feu Kad,
+  `status_query` (×2), `transfer`. Les anciennes conditions
+  `protocol == 0xD4` dans les bras de dispatch (qui acceptaient le proto
+  sans inflater le payload — jamais atteintes) ont été retirées.
+- Payload zlib valide s'inflatant à 0 octet : accepté (eMule dispatche un
+  paquet vide) — pas de rejet `is_empty`.
+
+### Canal pair TCP — pack sortant `OP_ANSWERSOURCES{,2}` (gap corrigé)
+
+- `maybe_pack` applique le gate `size > 354` (opcode inclus) +
+  conservation seulement si strictement plus petit, identique à
+  `PackPacket`. La réponse SX part en `[0xD4][len][opcode][zlib]`.
+- `OFFERFILES` vers serveur : déjà couvert ailleurs (codec serveur
+  existant, gate flag `SRV_TCPFLG_COMPRESSION`).
+
+### Canal Kad UDP (gap corrigé)
+
+- **Entrant** : `0xE5` déjà accepté par `is_valid_kad_protocol`, mais
+  l'inflate du décodeur était **non borné** (bombe de décompression UDP)
+  — remplacé par `unpack_payload` cap 250000, échec → datagramme droppé
+  (eMule fait pareil).
+- **Sortant** : `pack_kad_datagram` = `KademliaUDPListener::SendPacket` —
+  tout datagramme `[0xE4][opcode][payload]` dont le payload dépasse 200
+  octets est packé en `[0xE5][opcode][zlib]` si la compression gagne ;
+  appliqué aux ~27 sites `send_to` (handlers, routing, search, callback).
+  La relève buddy TCP (`OP_CALLBACK`) n'est pas un datagramme Kad —
+  non packée, fidèle.
+
+### Tests
+
+- Unitaires `packed.rs` : round-trip, rejet incompressible, cap de
+  décompression, zlib corrompu/tronqué, re-tag `0xD4→PR_EMULE`,
+  `maybe_pack` (gates taille + gain), `pack_kad_datagram` (re-tag 0xE5,
+  petit datagramme inchangé, non-Kad ignoré).
+- Loopback `test_inbound_packed_packet_is_unpacked_and_dispatched` :
+  `PUBLICIP_REQ` packé → `PUBLICIP_ANSWER`; junk packed droppé sans
+  casser la session.

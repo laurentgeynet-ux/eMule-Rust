@@ -115,6 +115,12 @@ impl InboundListenerService {
                 }
 
                 while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                    let Some(pkt) = mule_protocol::ed2k::packed::unpack_owned(
+                        pkt,
+                        mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                    ) else {
+                        continue;
+                    };
                     if pkt.protocol == PR_ED2K && pkt.opcode == OP_HELLO {
                         let hello = decoder
                             .decode_hello(pkt.protocol, pkt.opcode, &pkt.payload, 0)
@@ -675,6 +681,12 @@ impl InboundListenerService {
                     return Err("Read buffer limit exceeded during handshake".to_string());
                 }
                 while let Ok(Some(p)) = codec.decode(&mut read_buf) {
+                    let Some(p) = mule_protocol::ed2k::packed::unpack_owned(
+                        p,
+                        mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                    ) else {
+                        continue;
+                    };
                     if p.protocol == PR_ED2K && p.opcode == OP_HELLO_ANSWER {
                         return decoder
                             .decode_hello_answer(p.protocol, p.opcode, &p.payload, 0)
@@ -775,6 +787,12 @@ impl InboundListenerService {
                                 break;
                             }
                             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                                let Some(pkt) = mule_protocol::ed2k::packed::unpack_owned(
+                                    pkt,
+                                    mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                                ) else {
+                                    continue;
+                                };
                                 if pkt.protocol == PR_EMULE
                                     && pkt.opcode == mule_protocol::ed2k::OP_BUDDYPING
                                 {

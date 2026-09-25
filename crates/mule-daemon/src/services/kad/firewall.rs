@@ -269,6 +269,12 @@ impl KadService {
             }
             read_buf.extend_from_slice(&raw_buf[..read_res]);
             while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                let Some(pkt) = mule_protocol::ed2k::packed::unpack_owned(
+                    pkt,
+                    mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                ) else {
+                    continue;
+                };
                 if pkt.protocol == PR_ED2K
                     && (pkt.opcode == OP_HELLO_ANSWER || pkt.opcode == OP_HELLO)
                 {

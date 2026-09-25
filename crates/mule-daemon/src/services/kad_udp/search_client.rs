@@ -13,6 +13,7 @@ use mule_protocol::kad::*;
 
 use super::types::{InFlightTransaction, KadExpectedResponse, KAD_TRANSACTION_TIMEOUT_SECS};
 use super::KadUdpService;
+use mule_protocol::ed2k::packed::pack_kad_datagram;
 
 /// Idle window after the first search-response packet while more batches are
 /// still accepted (eMule streams up to ~300 results in ~50-entry packets).
@@ -94,7 +95,7 @@ impl KadUdpService {
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&search_bytes, target)
+            .send_to(&pack_kad_datagram(&search_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 
@@ -212,7 +213,7 @@ impl KadUdpService {
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&pub_bytes, target)
+            .send_to(&pack_kad_datagram(&pub_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 
@@ -312,7 +313,7 @@ impl KadUdpService {
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&search_bytes, target)
+            .send_to(&pack_kad_datagram(&search_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 
@@ -402,7 +403,7 @@ impl KadUdpService {
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&pub_bytes, target)
+            .send_to(&pack_kad_datagram(&pub_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 
@@ -503,7 +504,7 @@ impl KadUdpService {
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&req_bytes, target)
+            .send_to(&pack_kad_datagram(&req_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 
@@ -597,7 +598,7 @@ impl KadUdpService {
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&req_bytes, target)
+            .send_to(&pack_kad_datagram(&req_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 

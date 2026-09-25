@@ -14,6 +14,7 @@ use mule_protocol::kad::*;
 
 use super::types::{InFlightTransaction, KadExpectedResponse, KAD_TRANSACTION_TIMEOUT_SECS};
 use super::KadUdpService;
+use mule_protocol::ed2k::packed::pack_kad_datagram;
 
 impl KadUdpService {
     /// Sends a Kad Ping to target address and awaits Pong response within timeout.
@@ -56,7 +57,7 @@ impl KadUdpService {
         );
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&ping_bytes, target)
+            .send_to(&pack_kad_datagram(&ping_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 
@@ -128,7 +129,7 @@ impl KadUdpService {
         );
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&boot_bytes, target)
+            .send_to(&pack_kad_datagram(&boot_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 
@@ -243,7 +244,7 @@ impl KadUdpService {
 
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         socket
-            .send_to(&find_bytes, target)
+            .send_to(&pack_kad_datagram(&find_bytes), target)
             .await
             .map_err(|e| format!("Failed to send UDP datagram: {e}"))?;
 

@@ -21,7 +21,14 @@ fn shared_bytes() -> Vec<u8> {
 
 #[tokio::test]
 async fn test_inbound_listener_rejected_under_disabled_network() {
-    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, _hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Disconnect network via kill switch
@@ -48,7 +55,14 @@ async fn test_inbound_listener_rejected_under_disabled_network() {
 
 #[tokio::test]
 async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
-    let (state, _dir, hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Start listener on ephemeral loopback port
@@ -183,7 +197,14 @@ async fn test_inbound_handshake_and_request_shared_file_upload_streamed() {
 
 #[tokio::test]
 async fn test_inbound_request_unshared_file_does_not_upload() {
-    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, _hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     let start_resp = handle_request(
@@ -277,7 +298,14 @@ async fn test_inbound_request_unshared_file_does_not_upload() {
 
 #[tokio::test]
 async fn test_upload_queue_ranking_and_single_slot_concurrency() {
-    let (state, _dir, hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Restrict to a single active upload slot so queueing behavior is
@@ -475,7 +503,14 @@ async fn test_upload_queue_ranking_and_single_slot_concurrency() {
 
 #[tokio::test]
 async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
-    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, _hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Start listener
@@ -556,7 +591,14 @@ async fn test_kill_switch_aborts_inbound_listener_and_active_uploads() {
 
 #[tokio::test]
 async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
-    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, _hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Start listener
@@ -632,7 +674,14 @@ async fn test_inbound_handshake_returns_real_identity_and_listen_port() {
 
 #[tokio::test]
 async fn test_inbound_connection_per_ip_limit() {
-    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, _hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Start listener
@@ -703,7 +752,14 @@ async fn test_inbound_connection_per_ip_limit() {
 
 #[tokio::test]
 async fn test_inbound_secident_signature_without_challenge_rejected() {
-    let (state, _dir, _hash) = share_state("test_token_upload", "test_shared_archive.iso", 18874368, &shared_bytes(), "31d6cfe0d16ae931b73c59d7e0c089c0").await;
+    let (state, _dir, _hash) = share_state(
+        "test_token_upload",
+        "test_shared_archive.iso",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
     let mut authenticated = true;
 
     // Start listener
@@ -1083,7 +1139,8 @@ async fn test_partial_download_is_shared_with_completed_parts_only() {
     {
         let mut dl = state.downloads.lock().await;
         let uuid = uuid::Uuid::parse_str(&id).unwrap();
-        dl.inject_range(&uuid, 0, &vec![0xABu8; 9_728_000], None).unwrap();
+        dl.inject_range(&uuid, 0, &vec![0xABu8; 9_728_000], None)
+            .unwrap();
     }
 
     // Now the partial share must resolve with only part 0 completed.
@@ -1393,7 +1450,12 @@ async fn test_inbound_shared_files_browse() {
     let mut payload = Vec::new();
     payload.extend_from_slice(&(pseudo.len() as u16).to_le_bytes());
     payload.extend_from_slice(pseudo);
-    send_raw(&mut client, mule_protocol::ed2k::OP_ASKSHAREDFILESDIR, &payload).await;
+    send_raw(
+        &mut client,
+        mule_protocol::ed2k::OP_ASKSHAREDFILESDIR,
+        &payload,
+    )
+    .await;
     let pkt = recv_opcode(
         &mut client,
         &mut read_buf,
@@ -1443,7 +1505,6 @@ async fn test_inbound_shared_files_browse() {
     )
     .await;
 }
-
 
 /// eMule `ListenSocket.cpp:1623` — `OP_KAD_FWTCPCHECK_ACK` (0xA8, PR_EMULE,
 /// vide) arrivant sur une connexion entrante : c'est le connect-back d'un
@@ -1640,6 +1701,142 @@ async fn test_inbound_publicip_req_echoes_requester_ip() {
     .expect("PUBLICIP_ANSWER attendu");
     assert_eq!(answer.len(), 4);
     assert_eq!(&answer[..], &[127, 0, 0, 1], "requester IP echoed verbatim");
+
+    let _ = handle_request(
+        &state,
+        make_req(2, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await;
+}
+
+/// `OP_PACKEDPROT` (0xD4) — `ListenSocket.cpp:1744` + `Packet::UnPackPacket` :
+/// un paquet pair zlib-compressé doit être inflaté puis dispatché comme un
+/// `PR_EMULE` normal. On pack un `OP_PUBLICIP_REQ` (payload ignoré par le
+/// bras) et on attend `OP_PUBLICIP_ANSWER`.
+#[tokio::test]
+async fn test_inbound_packed_packet_is_unpacked_and_dispatched() {
+    let (state, _dir, _hash) = share_state(
+        "test_token_packed",
+        "packed_shared.bin",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
+    let mut authenticated = true;
+
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let mut read_buf = bytes::BytesMut::with_capacity(65536);
+    let mut raw_buf = [0u8; 8192];
+    let codec = PacketCodec::new();
+    let encoder = Ed2kEncoder::default();
+
+    let hello = Ed2kHello {
+        user_hash: [0x88u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let hello_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(hello_pkt.protocol);
+    out.extend_from_slice(&(hello_pkt.frame_len() as u32).to_le_bytes());
+    out.push(hello_pkt.opcode);
+    out.extend_from_slice(&hello_pkt.payload);
+    client.write_all(&out).await.unwrap();
+    loop {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        assert!(n > 0);
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        let mut got = false;
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
+                got = true;
+            }
+        }
+        if got {
+            break;
+        }
+    }
+
+    // Frame packed : [0xD4][u32 len = 1 + compressed][0x97][zlib].
+    let compressed = {
+        use std::io::Write;
+        let mut enc = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        enc.write_all(&[0u8; 128]).unwrap();
+        enc.finish().unwrap()
+    };
+    let mut frame = Vec::with_capacity(6 + compressed.len());
+    frame.push(mule_protocol::ed2k::PR_EMULE_COMPRESSED);
+    frame.extend_from_slice(&((compressed.len() + 1) as u32).to_le_bytes());
+    frame.push(mule_protocol::ed2k::OP_PUBLICIP_REQ);
+    frame.extend_from_slice(&compressed);
+    client.write_all(&frame).await.unwrap();
+
+    let answer = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let n = client.read(&mut raw_buf).await.unwrap();
+            assert!(n > 0);
+            read_buf.extend_from_slice(&raw_buf[..n]);
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.protocol == mule_protocol::ed2k::PR_EMULE
+                    && pkt.opcode == mule_protocol::ed2k::OP_PUBLICIP_ANSWER
+                {
+                    return pkt.payload;
+                }
+            }
+        }
+    })
+    .await
+    .expect("PUBLICIP_ANSWER attendu pour le paquet packé");
+    assert_eq!(&answer[..], &[127, 0, 0, 1]);
+
+    // Un flux zlib corrompu est droppé sans casser la session : un REQ
+    // clair envoyé ensuite doit toujours répondre.
+    let mut bad = Vec::with_capacity(10);
+    bad.push(mule_protocol::ed2k::PR_EMULE_COMPRESSED);
+    bad.extend_from_slice(&5u32.to_le_bytes());
+    bad.push(mule_protocol::ed2k::OP_PUBLICIP_REQ);
+    bad.extend_from_slice(b"junk");
+    client.write_all(&bad).await.unwrap();
+
+    let mut frame = Vec::with_capacity(6);
+    frame.push(mule_protocol::ed2k::PR_EMULE);
+    frame.extend_from_slice(&1u32.to_le_bytes());
+    frame.push(mule_protocol::ed2k::OP_PUBLICIP_REQ);
+    client.write_all(&frame).await.unwrap();
+
+    let answer2 = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let n = client.read(&mut raw_buf).await.unwrap();
+            assert!(n > 0);
+            read_buf.extend_from_slice(&raw_buf[..n]);
+            while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                if pkt.opcode == mule_protocol::ed2k::OP_PUBLICIP_ANSWER {
+                    return pkt.payload;
+                }
+            }
+        }
+    })
+    .await
+    .expect("session saine après paquet packé corrompu");
+    assert_eq!(&answer2[..], &[127, 0, 0, 1]);
 
     let _ = handle_request(
         &state,

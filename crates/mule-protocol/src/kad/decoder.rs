@@ -77,15 +77,29 @@ impl KadDecoder {
                     || raw_payload[1] == 0x01
                     || raw_payload[1] == 0x5E))
         {
-            use flate2::read::ZlibDecoder;
-            use std::io::Read;
-            let mut decoder = ZlibDecoder::new(raw_payload);
-            let mut decomp = Vec::new();
-            if decoder.read_to_end(&mut decomp).is_ok() && !decomp.is_empty() {
-                decompressed_holder = decomp;
-                &decompressed_holder[..]
-            } else {
-                raw_payload
+            // eMule ClientUDPSocket: inflate bounded at 250000, drop the
+            // datagram on failure. The zlib-magic sniffing keeps decoding
+            // lenient clients that compress without the 0xE5 proto byte.
+            match crate::ed2k::packed::unpack_payload(
+                raw_payload,
+                crate::ed2k::packed::PACKED_KAD_UDP_MAX_DECOMPRESSED,
+            ) {
+                Some(decomp) => {
+                    decompressed_holder = decomp;
+                    &decompressed_holder[..]
+                }
+                None if protocol == PR_KADEMLIA_PACKED => {
+                    return Err(Ed2kParseError::new(
+                        protocol,
+                        Some(opcode),
+                        0,
+                        "KadUdpPacket::payload",
+                        Ed2kErrorKind::MalformedField {
+                            message: "uncompressible or oversized packed Kad datagram".into(),
+                        },
+                    ));
+                }
+                None => raw_payload,
             }
         } else {
             raw_payload

@@ -18,7 +18,6 @@ use mule_protocol::ed2k::{
     OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CHANGE_CLIENT_ID,
     OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_QUEUERANKING, OP_REQFILENAME_ANSWER,
     OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
-    PR_EMULE_COMPRESSED,
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
 
@@ -489,7 +488,17 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                 p
                             } else {
                                 match codec.decode(&mut read_buf) {
-                                    Ok(Some(p)) => p,
+                                    // OP_PACKEDPROT (0xD4) — eMule unpacks
+                                    // inline; the unpacked packet is
+                                    // dispatched as EMULEPROT. Corrupt
+                                    // packed payloads are dropped.
+                                    Ok(Some(p)) => match mule_protocol::ed2k::packed::unpack_owned(
+                                        p,
+                                        mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                                    ) {
+                                        Some(u) => u,
+                                        None => continue,
+                                    },
                                     _ => break,
                                 }
                             };
@@ -511,7 +520,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                             if handle_aich_answer(stream, &packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, &encoder, peer_supports_aich, downloads).await {
                                 continue;
                             }
-                            if packet.protocol == PR_ED2K || packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED {
+                            if packet.protocol == PR_ED2K || packet.protocol == PR_EMULE {
                                 if packet.opcode == OP_FILESTATUS {
                                     let status_res = decoder.decode_file_status(packet.protocol, packet.opcode, &packet.payload, 0);
                                     match status_res {
@@ -619,7 +628,7 @@ pub(crate) async fn query_file_status_and_enter_queue(
                                         downloads,
                                     )
                                     .await;
-                                } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
+                                } else if (packet.protocol == PR_EMULE)
                                     && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                                 {
                                     handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;
@@ -955,7 +964,17 @@ pub(crate) async fn wait_in_queue(
                                 p
                             } else {
                                 match codec.decode(&mut read_buf) {
-                                    Ok(Some(p)) => p,
+                                    // OP_PACKEDPROT (0xD4) — cf. la boucle
+                                    // de transfert : unpack + re-tag
+                                    // EMULEPROT ; payloads corrompus
+                                    // droppés.
+                                    Ok(Some(p)) => match mule_protocol::ed2k::packed::unpack_owned(
+                                        p,
+                                        mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                                    ) {
+                                        Some(u) => u,
+                                        None => continue,
+                                    },
                                     _ => break,
                                 }
                             };
@@ -1041,7 +1060,7 @@ pub(crate) async fn wait_in_queue(
                                     downloads,
                                 )
                                 .await;
-                            } else if (packet.protocol == PR_EMULE || packet.protocol == PR_EMULE_COMPRESSED)
+                            } else if (packet.protocol == PR_EMULE)
                                 && (packet.opcode == OP_ANSWERSOURCES || packet.opcode == OP_ANSWERSOURCES2)
                             {
                                 handle_sx_answer(&packet, dl_hash_bytes, file_hash_str, target_addr, &decoder, downloads, sx_env, sx_local).await;

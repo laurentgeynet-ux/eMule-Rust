@@ -877,11 +877,19 @@ pub(crate) async fn respond_to_sx_request(
     let ans = Ed2kAnswerSources::new_v(version, req.file_hash, resp_sources);
     match encoder.encode_answer_sources(&ans, is_sx2_packet, false) {
         Ok(ans_pkt) => {
-            let mut resp_wire = Vec::with_capacity(6 + ans_pkt.payload.len());
-            resp_wire.push(ans_pkt.protocol);
-            resp_wire.extend_from_slice(&(ans_pkt.frame_len() as u32).to_le_bytes());
-            resp_wire.push(ans_pkt.opcode);
-            resp_wire.extend_from_slice(&ans_pkt.payload);
+            // eMule `CreateSrcInfoPacket` (KnownFile.cpp:1149 /
+            // PartFile.cpp:3708) : un paquet > 354 octets est zlib-packé
+            // en OP_PACKEDPROT (0xD4) quand la compression réduit
+            // réellement la taille.
+            let wire_pkt = mule_protocol::ed2k::packed::maybe_pack(
+                &ans_pkt,
+                mule_protocol::ed2k::packed::PACK_SRCINFO_MIN_SIZE,
+            );
+            let mut resp_wire = Vec::with_capacity(6 + wire_pkt.payload.len());
+            resp_wire.push(wire_pkt.protocol);
+            resp_wire.extend_from_slice(&(wire_pkt.frame_len() as u32).to_le_bytes());
+            resp_wire.push(wire_pkt.opcode);
+            resp_wire.extend_from_slice(&wire_pkt.payload);
             use tokio::io::AsyncWriteExt;
             if let Err(e) = stream.write_all(&resp_wire).await {
                 tracing::warn!(

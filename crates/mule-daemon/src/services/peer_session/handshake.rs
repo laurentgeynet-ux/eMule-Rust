@@ -395,6 +395,14 @@ pub(crate) async fn perform_peer_handshake(
                             return Err(PeerError::new(PeerFailureReason::InvalidHandshake, "Peer read buffer exceeded limit during handshake"));
                         }
                         while let Ok(Some(packet)) = codec.decode(&mut read_buf) {
+                            // OP_PACKEDPROT (0xD4) — socket-level unpack,
+                            // cf. Packets.cpp::UnPackPacket.
+                            let Some(packet) = mule_protocol::ed2k::packed::unpack_owned(
+                                packet,
+                                mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                            ) else {
+                                continue;
+                            };
                             tracing::debug!(
                                 "Peer {peer}: decoded packet proto=0x{:02X} opcode=0x{:02X} payload_len={}",
                                 packet.protocol,

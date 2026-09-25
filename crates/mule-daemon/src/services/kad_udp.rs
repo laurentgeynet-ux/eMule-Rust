@@ -26,6 +26,7 @@ use mule_network_policy::{
 use mule_protocol::kad::*;
 
 use crate::services::client_udp::ClientUdpService;
+use mule_protocol::ed2k::packed::pack_kad_datagram;
 
 pub use types::{
     ActiveBuddy, BuddyRegistry, FirewallTestTracker, FirewallUdpResult, InFlightTransaction,
@@ -188,12 +189,15 @@ impl KadUdpService {
         let socket = { self.inner.read().await.socket.clone() };
         let socket = socket.ok_or_else(|| "Kad UDP socket not bound".to_string())?;
         let pkt = KadCodec::encode_callback_req(buddy_id, file_id, tcp_port);
-        socket.send_to(&pkt, buddy_addr).await.map_err(|e| {
-            format!(
-                "Failed to send CALLBACK_REQ to {}: {e}",
-                log_peer_addr(buddy_addr)
-            )
-        })?;
+        socket
+            .send_to(&pack_kad_datagram(&pkt), buddy_addr)
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to send CALLBACK_REQ to {}: {e}",
+                    log_peer_addr(buddy_addr)
+                )
+            })?;
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
         tracing::info!(
             "Kad UDP: CALLBACK_REQ sent to buddy {} (buddy_id={}, file={})",
@@ -221,7 +225,7 @@ impl KadUdpService {
         let socket = socket.ok_or_else(|| "Kad UDP socket not bound".to_string())?;
         let pkt = KadCodec::encode_firewall_udp(error_code, tested_port);
         socket
-            .send_to(&pkt, target)
+            .send_to(&pack_kad_datagram(&pkt), target)
             .await
             .map_err(|e| format!("Failed to send FIREWALLUDP to {target}: {e}"))?;
         self.packets_sent.fetch_add(1, Ordering::Relaxed);

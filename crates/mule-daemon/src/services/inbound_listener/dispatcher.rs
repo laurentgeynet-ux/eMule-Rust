@@ -15,6 +15,7 @@ use mule_crypto::legacy_sui::{
     build_sui_signing_payload, parse_peer_public_key, verify_sui_signature, SecureIdentVersion,
 };
 
+use mule_protocol::ed2k::limits::Ed2kLimits;
 use mule_protocol::ed2k::{
     Ed2kAichAnswer, Ed2kAichFileHashRes, Ed2kAichRecovery, Ed2kDecoder, Ed2kEncoder,
     Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kMessage, Ed2kMultiPacketAnswer,
@@ -24,12 +25,10 @@ use mule_protocol::ed2k::{
     OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_END_OF_DOWNLOAD,
     OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_MULTIPACKET,
     OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_OUTOFPARTS, OP_PUBLICIP_ANSWER, OP_PUBLICIP_REQ,
-    OP_PUBLICKEY, OP_QUEUERANKING,
-    OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
-    OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE,
-    OP_SETREQFILEID_EMULE, OP_SIGNATURE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
+    OP_PUBLICKEY, OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTPARTS,
+    OP_REQUESTPARTS_EMULE, OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
+    OP_SECIDENTSTATE, OP_SETREQFILEID_EMULE, OP_SIGNATURE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
 };
-use mule_protocol::ed2k::limits::Ed2kLimits;
 use mule_protocol::framing::PacketCodec;
 
 use super::share_browser;
@@ -228,6 +227,16 @@ impl InboundListenerService {
                     }
 
                     while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+                        // OP_PACKEDPROT (0xD4) — eMule unpacks inline and
+                        // re-tags the packet OP_EMULEPROT
+                        // (ListenSocket.cpp:1742 + fallthrough); corrupt
+                        // packed payloads are dropped.
+                        let Some(pkt) = mule_protocol::ed2k::packed::unpack_owned(
+                            pkt,
+                            mule_protocol::ed2k::packed::PACKED_PEER_MAX_DECOMPRESSED,
+                        ) else {
+                            continue;
+                        };
                         if pkt.protocol == PR_EMULE {
                             match pkt.opcode {
                                 OP_PUBLICKEY => {
