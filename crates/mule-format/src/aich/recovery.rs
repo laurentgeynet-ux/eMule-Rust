@@ -94,17 +94,8 @@ pub fn build_aich_tree_from_reader<R: Read>(
 
 /// Depth of the part subtree below the root (eMule `FindHash(..., &nLevel)`).
 /// The part subtree is the node covering `[part_start, part_start + part_size)`.
-fn find_part_node(
-    root: &AichNode,
-    part_start: u64,
-    part_size: u64,
-) -> Option<(&AichNode, u8)> {
-    fn walk(
-        node: &AichNode,
-        start: u64,
-        size: u64,
-        level: u8,
-    ) -> Option<(&AichNode, u8)> {
+fn find_part_node(root: &AichNode, part_start: u64, part_size: u64) -> Option<(&AichNode, u8)> {
+    fn walk(node: &AichNode, start: u64, size: u64, level: u8) -> Option<(&AichNode, u8)> {
         if start == 0 && size == node.data_size {
             return Some((node, level));
         }
@@ -175,6 +166,41 @@ pub fn create_part_recovery_data(
             "recovery data has {} entries, expected {expected}",
             out.len()
         )));
+    }
+    Ok(out)
+}
+
+/// Returns the per-part AICH subtree root hashes in part order — the
+/// `m_aAICHPartHashSet` serialized by `CFileIdentifier::WriteAICHHashsetToFile`
+/// (`FileIdentifier.cpp` 0.72a) inside `OP_HASHSETANSWER2`.
+///
+/// `root` must be a fully hashed tree covering exactly `file_size` bytes.
+/// eMule's `GetTheoreticalAICHPartHashCount` yields no AICH part set for
+/// files of at most one eD2K part, so an empty `Vec` is returned in that
+/// case (callers then omit the `0x02` option bit on the wire).
+pub fn aich_part_hashes(
+    root: &AichNode,
+    file_size: u64,
+) -> Result<Vec<AichHash>, FormatError> {
+    if file_size <= ED2K_PART_SIZE as u64 {
+        return Ok(Vec::new());
+    }
+    if root.data_size != file_size {
+        return Err(FormatError::AichVerificationFailed(
+            "tree root does not cover the requested file size".to_string(),
+        ));
+    }
+    let part_count = file_size.div_ceil(ED2K_PART_SIZE as u64);
+    let mut out = Vec::with_capacity(part_count as usize);
+    for part in 0..part_count {
+        let part_start = part * ED2K_PART_SIZE as u64;
+        let part_size = (ED2K_PART_SIZE as u64).min(file_size - part_start);
+        let (node, _) = find_part_node(root, part_start, part_size).ok_or_else(|| {
+            FormatError::AichVerificationFailed("part node not found".to_string())
+        })?;
+        out.push(node.hash.ok_or_else(|| {
+            FormatError::AichVerificationFailed("part node hash missing".to_string())
+        })?);
     }
     Ok(out)
 }
@@ -528,5 +554,37 @@ mod tests {
         let mut cursor = std::io::Cursor::new(&data);
         let t2 = build_aich_tree_from_reader(&mut cursor, data.len() as u64).unwrap();
         assert_eq!(t1.root_hash(), t2.root_hash());
+    }
+
+    #[test]
+    fn part_hashes_return_part_subtree_roots() {
+        // Synthetic tree for a 2-part + tail file: `aich_part_hashes` must
+        // return each part subtree's root hash in part order (eMule
+        // `m_aAICHPartHashSet`, `WriteAICHHashsetToFile`).
+        let file_size = 2 * ED2K_PART_SIZE as u64 + 1234;
+        let mut tree = AichNode::new_tree(file_size).unwrap();
+        let mut i = 0u8;
+        AichNode::for_each_block_range(file_size, |start, len| {
+            i = i.wrapping_add(1);
+            assert!(tree.set_leaf_hash(start, len, AichHash([i; 20])));
+        });
+        tree.recalculate_hash().unwrap();
+
+        let parts = aich_part_hashes(&tree, file_size).unwrap();
+        assert_eq!(parts.len(), 3, "ceil(size/PARTSIZE) part hashes");
+        // Each entry must be the actual subtree root covering that part.
+        for (idx, h) in parts.iter().enumerate() {
+            let start = idx as u64 * ED2K_PART_SIZE as u64;
+            let size = (ED2K_PART_SIZE as u64).min(file_size - start);
+            let (node, _) = find_part_node(&tree, start, size).unwrap();
+            assert_eq!(node.hash.as_ref().unwrap(), h);
+        }
+
+        // Single-part file: eMule `GetTheoreticalAICHPartHashCount` == 0.
+        let small = sample_data(2);
+        let small_tree = build_aich_tree(&small).unwrap();
+        assert!(aich_part_hashes(&small_tree, small.len() as u64)
+            .unwrap()
+            .is_empty());
     }
 }

@@ -301,6 +301,19 @@ impl ClientUdpService {
         true
     }
 
+    /// Sends an already-framed client-UDP datagram to `target`.
+    /// Used by the `OP_REASKCALLBACKTCP` relay (`ListenSocket.cpp:1391`) :
+    /// the re-ask answer (`REASKACK`/`FILENOTFOUND`/`QUEUEFULL`) goes back
+    /// to the *original requester* address carried in the packet, not to
+    /// the buddy that relayed it. Fire-and-forget like eMule `SendPacket`.
+    pub async fn send_raw(&self, target: SocketAddr, datagram: &[u8]) -> bool {
+        let socket = { self.inner.lock().await.socket.clone() };
+        let Some(socket) = socket else {
+            return false;
+        };
+        socket.send_to(datagram, target).await.is_ok()
+    }
+
     /// Last recorded UDP reask result for a peer IP.
     pub async fn last_result(&self, ip: IpAddr) -> Option<UdpReaskResult> {
         let inner = self.inner.lock().await;

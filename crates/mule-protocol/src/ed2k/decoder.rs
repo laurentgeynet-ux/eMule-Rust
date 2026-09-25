@@ -8,19 +8,19 @@ use bytes::Bytes;
 use super::error::{Ed2kErrorKind, Ed2kParseError};
 use super::limits::Ed2kLimits;
 use super::opcodes::{
-    OP_AICHFILEHASHREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_AICH_REQUEST, OP_COMPRESSEDPART_I64,
-    OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ,
-    OP_HASHSETANSWER, OP_HASHSETREQUEST, OP_HELLO, OP_HELLO_ANSWER, OP_PUBLICKEY, OP_REQUESTPARTS,
-    OP_REQUESTPARTS_EMULE, OP_REQUESTPARTS_I64, OP_SECIDENTSTATE, OP_SENDINGPART,
-    OP_SENDINGPART_I64, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
-    OP_CHANGE_SLOT, OP_CHATCAPTCHAREQ, OP_CHATCAPTCHARES, OP_FILEDESC, OP_HASHSETANSWER2,
-    OP_HASHSETREQUEST2, OP_MESSAGE, OP_MULTIPACKET, OP_MULTIPACKETANSWER,
-    OP_MULTIPACKETANSWER_EXT2, OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_PORTTEST,
-    OP_QUEUERANK, OP_QUEUERANKING,
+    OP_AICHFILEHASHREQ, OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_AICH_REQUEST, OP_CHANGE_SLOT,
+    OP_CHATCAPTCHAREQ, OP_CHATCAPTCHARES, OP_COMPRESSEDPART_I64, OP_EMULE_INFO,
+    OP_EMULE_INFO_ANSWER, OP_FILEDESC, OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FILESTATUSREQ,
+    OP_HASHSETANSWER, OP_HASHSETANSWER2, OP_HASHSETREQUEST, OP_HASHSETREQUEST2, OP_HELLO,
+    OP_HELLO_ANSWER, OP_MESSAGE, OP_MULTIPACKET, OP_MULTIPACKETANSWER, OP_MULTIPACKETANSWER_EXT2,
+    OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_PORTTEST, OP_PUBLICKEY, OP_QUEUERANK,
+    OP_QUEUERANKING, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE, OP_REQUESTPARTS_I64, OP_SECIDENTSTATE,
+    OP_SENDINGPART, OP_SENDINGPART_I64, OP_SETREQFILEID_EMULE, OP_SIGNATURE,
 };
 use super::packet::{
     Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
-    Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq,
+    Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer,
+    Ed2kHashSetAnswer2, Ed2kHashSetReq, Ed2kHashSetReq2,
     Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kSecIdentState,
     Ed2kSendingPart, Ed2kSignature,
 };
@@ -959,6 +959,30 @@ impl Ed2kDecoder {
         base_offset: usize,
     ) -> Result<Ed2kHashSetAnswer, Ed2kParseError> {
         decode_hashset_answer(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_HASHSETREQUEST2` (`0xB1`, eMule protocol) payload:
+    /// `<FileIdentifier><options u8>`.
+    pub fn decode_hashset_request2(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kHashSetReq2, Ed2kParseError> {
+        decode_hashset_request2(protocol, opcode, payload, base_offset)
+    }
+
+    /// Decodes an `OP_HASHSETANSWER2` (`0xB2`, eMule protocol) payload:
+    /// `<FileIdentifier><options u8>[<md4 set>][<aich set>]`.
+    pub fn decode_hashset_answer2(
+        &self,
+        protocol: u8,
+        opcode: u8,
+        payload: &[u8],
+        base_offset: usize,
+    ) -> Result<Ed2kHashSetAnswer2, Ed2kParseError> {
+        decode_hashset_answer2(protocol, opcode, payload, base_offset)
     }
 
     /// Decodes an `OP_AICHFILEHASHREQ` (eMule `0x9E`) payload.

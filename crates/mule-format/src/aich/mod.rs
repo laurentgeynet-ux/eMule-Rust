@@ -14,6 +14,6 @@ pub use proof::{
     SiblingPosition,
 };
 pub use recovery::{
-    aich_block_hash, build_aich_tree, build_aich_tree_from_reader, create_part_recovery_data,
-    read_recovery_data, set_hash_by_ident, AichRecoveryEntry,
+    aich_block_hash, aich_part_hashes, build_aich_tree, build_aich_tree_from_reader,
+    create_part_recovery_data, read_recovery_data, set_hash_by_ident, AichRecoveryEntry,
 };

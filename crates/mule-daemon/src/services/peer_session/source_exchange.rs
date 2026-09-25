@@ -129,6 +129,10 @@ pub struct PeerSxCaps {
     /// Enveloppe multipacket négociée (`SendFileRequest`,
     /// `DownloadClient.cpp:266-280`).
     pub multipacket: MultiPacketLevel,
+    /// `SupportsFileIdentifiers()` (MISCOPTIONS2 bit 13) — pilote le choix
+    /// entre `OP_HASHSETREQUEST` et `OP_HASHSETREQUEST2`
+    /// (`SendHashSetRequest`, `DownloadClient.cpp:2200`).
+    pub file_identifiers: bool,
 }
 
 /// Niveau d'enveloppe multipacket annoncé par le pair — eMule
@@ -293,6 +297,7 @@ pub fn peer_sx_caps(
         sx2: info.supports_source_exchange2(),
         complete_source: false,
         multipacket: multipacket_level(info),
+        file_identifiers: info.supports_file_identifiers(),
     }
 }
 
@@ -1110,6 +1115,7 @@ mod tests {
             sx2: true,
             complete_source: false,
             multipacket: MultiPacketLevel::None,
+        file_identifiers: false,
         };
         // Fichier rare, jamais interrogé → autorisé.
         assert!(is_source_request_allowed(&env, ip, &fh, 3, 1, 360, &caps));
@@ -1136,6 +1142,7 @@ mod tests {
             sx2: true,
             complete_source: false,
             multipacket: MultiPacketLevel::None,
+        file_identifiers: false,
         };
         // `GetMaxSourcePerFileSoft` atteint → pas de requête.
         assert!(!is_source_request_allowed(
@@ -1542,6 +1549,7 @@ mod tests {
             sx2: true,
             complete_source: false,
             multipacket: MultiPacketLevel::None,
+        file_identifiers: false,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let peer_addr: SocketAddr = "85.25.13.99:49662".parse().unwrap();
@@ -1582,6 +1590,7 @@ mod tests {
             sx2: true,
             complete_source: false,
             multipacket: MultiPacketLevel::None,
+        file_identifiers: false,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let req = Ed2kRequestSources::new_v1(file_hash);
@@ -1618,6 +1627,7 @@ mod tests {
             sx2: true,
             complete_source: false,
             multipacket: MultiPacketLevel::None,
+        file_identifiers: false,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let peer_addr: SocketAddr = "85.25.13.99:49662".parse().unwrap();
@@ -1658,6 +1668,7 @@ mod tests {
             sx2: true,
             complete_source: false,
             multipacket: MultiPacketLevel::None,
+        file_identifiers: false,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         // Hash inconnu : eMule ne répond pas (`ListenSocket.cpp:1192-1199`).
@@ -1703,6 +1714,7 @@ mod tests {
             sx2: true,
             complete_source: false,
             multipacket: MultiPacketLevel::None,
+        file_identifiers: false,
         };
         let (mut our_end, mut peer_end) = socket_pair().await;
         let req = Ed2kRequestSources::new_v2(file_hash);

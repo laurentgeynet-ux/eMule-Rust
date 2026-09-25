@@ -1845,3 +1845,377 @@ async fn test_inbound_packed_packet_is_unpacked_and_dispatched() {
     )
     .await;
 }
+
+/// `OP_REASKCALLBACKTCP` (0x9A, PR_EMULE) — eMule `ListenSocket.cpp:1391` :
+/// un re-ask LowID relayé par le lien buddy. La réponse part en UDP chez le
+/// demandeur (`FILENOTFOUND` si le hash n'est pas partagé). Gate : le pair
+/// TCP doit être notre buddy actif.
+#[tokio::test]
+async fn test_inbound_reaskcallbacktcp_from_buddy_relays_udp_reply() {
+    let (state, _dir, _hash) = share_state(
+        "test_token_reaskcb",
+        "reaskcb_shared.bin",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
+    let mut authenticated = true;
+
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let client_local = client.local_addr().unwrap();
+    let mut read_buf = bytes::BytesMut::with_capacity(65536);
+    let mut raw_buf = [0u8; 8192];
+    let codec = PacketCodec::new();
+    let encoder = Ed2kEncoder::default();
+
+    let hello = Ed2kHello {
+        user_hash: [0x55u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let hello_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(hello_pkt.protocol);
+    out.extend_from_slice(&(hello_pkt.frame_len() as u32).to_le_bytes());
+    out.push(hello_pkt.opcode);
+    out.extend_from_slice(&hello_pkt.payload);
+    client.write_all(&out).await.unwrap();
+    loop {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        assert!(n > 0);
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        let mut got = false;
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
+                got = true;
+            }
+        }
+        if got {
+            break;
+        }
+    }
+
+    // Socket UDP factice = « demandeur » LowID : on attend son datagramme.
+    let udp_dest = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let dest_port = udp_dest.local_addr().unwrap().port();
+
+    let mk_frame = |payload: &[u8]| {
+        let mut f = Vec::with_capacity(6 + payload.len());
+        f.push(mule_protocol::ed2k::PR_EMULE);
+        f.extend_from_slice(&((payload.len() as u32 + 1).to_le_bytes()));
+        f.push(mule_protocol::ed2k::OP_REASKCALLBACKTCP);
+        f.extend_from_slice(payload);
+        f
+    };
+    // [destip 4][destport 2][reqhash 16] — hash inconnu → FILENOTFOUND.
+    let mut payload = Vec::with_capacity(22);
+    payload.extend_from_slice(&[127, 0, 0, 1]);
+    payload.extend_from_slice(&dest_port.to_le_bytes());
+    payload.extend_from_slice(&[0xAB; 16]);
+
+    // 1) Sans buddy enregistré → ignoré (pas de datagramme).
+    client.write_all(&mk_frame(&payload)).await.unwrap();
+    let early =
+        tokio::time::timeout(Duration::from_millis(300), udp_dest.recv_from(&mut raw_buf)).await;
+    assert!(early.is_err(), "non-buddy REASKCALLBACKTCP must be ignored");
+
+    // 2) Buddy actif dont remote_addr = notre socket → relais. Le canal
+    // UDP client a besoin d'un socket réel pour émettre la réponse.
+    let client_udp_sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    state
+        .client_udp
+        .set_socket(std::sync::Arc::new(client_udp_sock))
+        .await;
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    {
+        let reg = state.kad.udp().buddy_registry();
+        let mut reg = reg.lock().await;
+        assert!(
+            reg.set_active(mule_daemon::services::kad_udp::types::ActiveBuddy {
+                buddy_id: [0x66; 16],
+                user_id: [0x77; 16],
+                remote_addr: client_local,
+                tx,
+            })
+        );
+    }
+    client.write_all(&mk_frame(&payload)).await.unwrap();
+    let mut udp_buf = [0u8; 64];
+    let (n, _from) = tokio::time::timeout(Duration::from_secs(3), udp_dest.recv_from(&mut udp_buf))
+        .await
+        .expect("FILENOTFOUND attendu via relais buddy")
+        .unwrap();
+    assert_eq!(&udp_buf[..n], &[mule_protocol::ed2k::PR_EMULE, 0x92]);
+
+    let _ = handle_request(
+        &state,
+        make_req(2, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await;
+}
+
+/// `OP_CALLBACK` (0x99, PR_EMULE) — eMule `ListenSocket.cpp:1326` : relais
+/// buddy du `KADEMLIA_CALLBACK_REQ` quand nous sommes LowID.
+/// `[~kad_id][fileid][ip][tcp]` → le demandeur devient source Kad du
+/// fichier (équivalent `TryToConnect`).
+#[tokio::test]
+async fn test_inbound_callback_registers_requester_as_source() {
+    let file_hash = [0x42u8; 16];
+    let hex_hash = hex::encode(file_hash);
+    let (state, _dir, _hash) = share_state(
+        "test_token_callback",
+        "callback_shared.bin",
+        18874368,
+        &shared_bytes(),
+        &hex_hash,
+    )
+    .await;
+    let mut authenticated = true;
+
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let mut read_buf = bytes::BytesMut::with_capacity(65536);
+    let mut raw_buf = [0x0u8; 8192];
+    let codec = PacketCodec::new();
+    let encoder = Ed2kEncoder::default();
+
+    let hello = Ed2kHello {
+        user_hash: [0x44u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let hello_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(hello_pkt.protocol);
+    out.extend_from_slice(&(hello_pkt.frame_len() as u32).to_le_bytes());
+    out.push(hello_pkt.opcode);
+    out.extend_from_slice(&hello_pkt.payload);
+    client.write_all(&out).await.unwrap();
+    loop {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        assert!(n > 0);
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        let mut got = false;
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
+                got = true;
+            }
+        }
+        if got {
+            break;
+        }
+    }
+
+    // Mauvais check d'abord → ignoré (IP parasite ne doit pas apparaître).
+    let mut bad_payload = Vec::with_capacity(38);
+    bad_payload.extend_from_slice(&[0u8; 16]);
+    bad_payload.extend_from_slice(&file_hash);
+    bad_payload.extend_from_slice(&[127, 0, 0, 9]);
+    bad_payload.extend_from_slice(&49779u16.to_le_bytes());
+    let mut bad = Vec::with_capacity(6 + bad_payload.len());
+    bad.push(mule_protocol::ed2k::PR_EMULE);
+    bad.extend_from_slice(&((bad_payload.len() as u32 + 1).to_le_bytes()));
+    bad.push(mule_protocol::ed2k::OP_CALLBACK);
+    bad.extend_from_slice(&bad_payload);
+    client.write_all(&bad).await.unwrap();
+
+    // check = ~notre_kad_id (le buddyID publié chez eMule est déjà inversé).
+    let our_kad = state.kad.local_id().0;
+    let check: Vec<u8> = our_kad.iter().map(|b| !b).collect();
+    let mut payload = Vec::with_capacity(38);
+    payload.extend_from_slice(&check);
+    payload.extend_from_slice(&file_hash);
+    payload.extend_from_slice(&[127, 0, 0, 1]);
+    payload.extend_from_slice(&49777u16.to_le_bytes());
+    let mut frame = Vec::with_capacity(6 + payload.len());
+    frame.push(mule_protocol::ed2k::PR_EMULE);
+    frame.extend_from_slice(&((payload.len() as u32 + 1).to_le_bytes()));
+    frame.push(mule_protocol::ed2k::OP_CALLBACK);
+    frame.extend_from_slice(&payload);
+    client.write_all(&frame).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let sources = {
+        let dl = state.downloads.lock().await;
+        dl.list_peer_sources(&hex_hash).unwrap_or_default()
+    };
+    assert!(
+        sources.iter().any(|s| s.address == "127.0.0.1:49777"),
+        "requester inscrit comme source Kad du fichier"
+    );
+    assert!(
+        !sources.iter().any(|s| s.address == "127.0.0.9:49779"),
+        "mauvais check doit être ignoré"
+    );
+
+    let _ = handle_request(
+        &state,
+        make_req(2, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await;
+}
+
+/// eMule `SendHashsetPacket(bFileIdentifiers=true)` (`UploadClient.cpp:510`) :
+/// `OP_HASHSETREQUEST2` (0xB1, PR_EMULE) `<FileIdentifier><opts u8>` recu ->
+/// `OP_HASHSETANSWER2` (0xB2) repletant l'identifiant puis le hashset MD4
+/// (`WriteHashSetsToPacket`, `FileIdentifier.cpp:249`). Le bit AICH est omis
+/// quand le set par part n'est pas calculable (ici le .part enregistre est
+/// tronque vs la taille declaree).
+#[tokio::test]
+async fn test_inbound_hashsetrequest2_serves_md4_set() {
+    let (state, _dir, hash) = share_state(
+        "test_token_hs2",
+        "hs2_shared.bin",
+        18874368,
+        &shared_bytes(),
+        "31d6cfe0d16ae931b73c59d7e0c089c0",
+    )
+    .await;
+    let mut authenticated = true;
+    let file_hash = hex::decode(&hash).unwrap();
+    let mut fh = [0u8; 16];
+    fh.copy_from_slice(&file_hash);
+
+    // Hashset MD4 en cache -> servi sans rehash disque.
+    let part_hashes: Vec<[u8; 16]> = vec![[0x11; 16], [0x22; 16]];
+    {
+        let mut dl = state.downloads.lock().await;
+        dl.store_part_hashes_by_hash(&hash, &part_hashes).unwrap();
+    }
+
+    let start_resp = handle_request(
+        &state,
+        make_req(1, "listener.start", Some(json!({ "port": 0 }))),
+        &mut authenticated,
+    )
+    .await
+    .unwrap();
+    let listen_addr_str = start_resp.result.unwrap()["listenAddress"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut client = TcpStream::connect(&listen_addr_str).await.unwrap();
+    let mut read_buf = bytes::BytesMut::with_capacity(65536);
+    let mut raw_buf = [0u8; 8192];
+    let codec = PacketCodec::new();
+    let encoder = Ed2kEncoder::default();
+    let decoder = Ed2kDecoder::default();
+
+    let hello = Ed2kHello {
+        user_hash: [0x66u8; 16],
+        client_id: 0x0100007F,
+        tcp_port: 39735,
+        tags: vec![],
+        unknown_tags: vec![],
+        server_ip: 0,
+        server_port: 0,
+    };
+    let hello_pkt = encoder.encode_hello(&hello).unwrap();
+    let mut out = Vec::new();
+    out.push(hello_pkt.protocol);
+    out.extend_from_slice(&(hello_pkt.frame_len() as u32).to_le_bytes());
+    out.push(hello_pkt.opcode);
+    out.extend_from_slice(&hello_pkt.payload);
+    client.write_all(&out).await.unwrap();
+    loop {
+        let n = client.read(&mut raw_buf).await.unwrap();
+        assert!(n > 0);
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        let mut got = false;
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.opcode == mule_protocol::ed2k::OP_HELLO_ANSWER {
+                got = true;
+            }
+        }
+        if got {
+            break;
+        }
+    }
+
+    // OP_HASHSETREQUEST2 : FileIdentifier {md4, taille} + opts MD4|AICH.
+    let req = mule_protocol::ed2k::Ed2kHashSetReq2 {
+        identifier: mule_protocol::ed2k::Ed2kFileIdentifier::new(fh, 18874368),
+        want_md4: true,
+        want_aich: true,
+    };
+    let req_pkt = encoder.encode_hashset_request2(&req).unwrap();
+    assert_eq!(req_pkt.protocol, mule_protocol::ed2k::PR_EMULE);
+    let mut out = Vec::new();
+    out.push(req_pkt.protocol);
+    out.extend_from_slice(&(req_pkt.frame_len() as u32).to_le_bytes());
+    out.push(req_pkt.opcode);
+    out.extend_from_slice(&req_pkt.payload);
+    client.write_all(&out).await.unwrap();
+
+    // Attendre OP_HASHSETANSWER2 (0xB2, PR_EMULE).
+    let mut answer = None;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while answer.is_none() && tokio::time::Instant::now() < deadline {
+        let n = tokio::time::timeout(Duration::from_secs(5), client.read(&mut raw_buf))
+            .await
+            .expect("timeout waiting for OP_HASHSETANSWER2")
+            .unwrap();
+        assert!(n > 0);
+        read_buf.extend_from_slice(&raw_buf[..n]);
+        while let Ok(Some(pkt)) = codec.decode(&mut read_buf) {
+            if pkt.protocol == mule_protocol::ed2k::PR_EMULE
+                && pkt.opcode == mule_protocol::ed2k::OP_HASHSETANSWER2
+            {
+                answer = Some(pkt);
+            }
+        }
+    }
+    let answer = answer.expect("OP_HASHSETANSWER2 attendu");
+    let ans = decoder
+        .decode_hashset_answer2(answer.protocol, answer.opcode, &answer.payload, 0)
+        .unwrap();
+    assert_eq!(ans.identifier.md4_hash, Some(fh));
+    assert_eq!(ans.identifier.file_size, Some(18874368));
+    let md4_set = ans.md4_set.expect("md4 hashset attendu");
+    assert_eq!(md4_set.file_hash, fh);
+    assert_eq!(md4_set.part_hashes, part_hashes);
+    // L'arbre AICH n'est pas calculable ici -> bit omis comme eMule.
+    assert!(ans.aich_set.is_none());
+
+    let _ = handle_request(
+        &state,
+        make_req(2, "listener.stop", None),
+        &mut authenticated,
+    )
+    .await;
+}

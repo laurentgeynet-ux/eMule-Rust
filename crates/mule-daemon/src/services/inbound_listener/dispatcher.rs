@@ -17,13 +17,16 @@ use mule_crypto::legacy_sui::{
 
 use mule_protocol::ed2k::limits::Ed2kLimits;
 use mule_protocol::ed2k::{
-    Ed2kAichAnswer, Ed2kAichFileHashRes, Ed2kAichRecovery, Ed2kDecoder, Ed2kEncoder,
-    Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kMessage, Ed2kMultiPacketAnswer,
-    Ed2kMultiPacketSubAnswer, Ed2kMultiPacketSubRequest, Ed2kPublicKey, Ed2kRequestSources,
+    Ed2kAichAnswer, Ed2kAichFileHashRes, Ed2kAichPartHashSet, Ed2kAichRecovery, Ed2kDecoder,
+    Ed2kEncoder,
+    Ed2kFileIdentifier, Ed2kFileStatus, Ed2kHashSetAnswer, Ed2kHashSetAnswer2, Ed2kMessage,
+    Ed2kMultiPacketAnswer, Ed2kMultiPacketSubAnswer, Ed2kMultiPacketSubRequest, Ed2kPublicKey,
+    Ed2kRequestSources,
     Ed2kSecIdentState, Ed2kSendingPart, Ed2kSignature, PartAvailabilityMask, OP_ACCEPTUPLOADREQ,
     OP_AICHFILEHASHREQ, OP_AICH_REQUEST, OP_CANCELTRANSFER, OP_CHANGE_CLIENT_ID, OP_COMPRESSEDPART,
     OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_END_OF_DOWNLOAD,
-    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_MULTIPACKET,
+    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_HASHSETREQUEST2,
+    OP_MULTIPACKET,
     OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_OUTOFPARTS, OP_PUBLICIP_ANSWER, OP_PUBLICIP_REQ,
     OP_PUBLICKEY, OP_QUEUERANKING, OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTPARTS,
     OP_REQUESTPARTS_EMULE, OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2,
@@ -611,6 +614,188 @@ impl InboundListenerService {
                                         }
                                     }
                                 }
+                                mule_protocol::ed2k::OP_CALLBACK => {
+                                    // eMule ListenSocket.cpp:1326 — le buddy
+                                    // nous relaie un KADEMLIA_CALLBACK_REQ
+                                    // (nous sommes LowID) :
+                                    // [check u128][fileid u128][ip u32][tcp u16]
+                                    // avec check = ~notre_kad_id sur le fil
+                                    // (le buddyID de la requête = GetBuddyID
+                                    // du destinataire, déjà inversé chez
+                                    // eMule). Pas de check « c'est notre
+                                    // buddy » : l'inversion sert
+                                    // d'authentification.
+                                    let our_kad = {
+                                        let kad =
+                                            self.kad.read().unwrap().as_ref().cloned();
+                                        kad.map(|k| k.local_id().0)
+                                    };
+                                    // eMule: `if (!CKademlia::IsRunning())
+                                    // return;` — Kad éteint → ignorer.
+                                    let Some(our_kad) = our_kad else {
+                                        continue;
+                                    };
+                                    if pkt.payload.len() < 38 {
+                                        continue;
+                                    }
+                                    let check_ok = pkt.payload[..16]
+                                        .iter()
+                                        .zip(our_kad.iter())
+                                        .all(|(c, k)| *c == !*k);
+                                    if !check_ok {
+                                        continue;
+                                    }
+                                    let fileid_hex =
+                                        hex::encode(&pkt.payload[16..32]);
+                                    let known = {
+                                        let dl = self.downloads.lock().await;
+                                        dl.get_shared_file(&fileid_hex)
+                                            .unwrap_or(None)
+                                            .is_some()
+                                            || dl.find_by_ed2k_hash(&fileid_hex).is_some()
+                                    };
+                                    if !known {
+                                        continue;
+                                    }
+                                    let req_ip = std::net::Ipv4Addr::new(
+                                        pkt.payload[32],
+                                        pkt.payload[33],
+                                        pkt.payload[34],
+                                        pkt.payload[35],
+                                    );
+                                    let req_port = u16::from_le_bytes(
+                                        [pkt.payload[36], pkt.payload[37]],
+                                    );
+                                    // TryToConnect(true) eMule : injecter le
+                                    // demandeur comme source Kad — le
+                                    // coordinateur compose la connexion.
+                                    let now_ms = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis()
+                                        as i64;
+                                    let src = mule_core::model::PeerSource {
+                                        file_hash: fileid_hex.clone(),
+                                        address: format!("{req_ip}:{req_port}"),
+                                        ip: u32::from_le_bytes(req_ip.octets()),
+                                        port: req_port,
+                                        origin: mule_core::model::PeerSourceOrigin::Kad,
+                                        discovered_at_unix_ms: now_ms,
+                                        last_seen_unix_ms: now_ms,
+                                        status: mule_core::model::PeerSourceStatus::Candidate,
+                                        fail_count: 0,
+                                        last_error: None,
+                                        cooldown_until_unix_ms: None,
+                                        user_hash: None,
+                                        crypt_options: 0,
+                                        buddy_id: None,
+                                        software: None,
+                                        availability: None,
+                                        server_ip: 0,
+                                        server_port: 0,
+                                        udp_port: 0,
+                                    };
+                                    let mut dl = self.downloads.lock().await;
+                                    let _ = dl.upsert_peer_sources(&fileid_hex, &[src]);
+                                    tracing::info!(
+                                        "OP_CALLBACK from buddy {}: requester {}:{} registered for file {}",
+                                        log_addr_str(&remote_str),
+                                        req_ip,
+                                        req_port,
+                                        fileid_hex
+                                    );
+                                }
+                                mule_protocol::ed2k::OP_REASKCALLBACKTCP => {
+                                    // eMule ListenSocket.cpp:1391-1479 — re-ask
+                                    // LowID relayé par le lien TCP du buddy :
+                                    // [destip u32][destport u16][reqhash 16]
+                                    // [extinfo…]. Seul notre buddy actif peut
+                                    // relayer (`GetBuddy() != client → ignore`),
+                                    // et la réponse part en UDP chez le
+                                    // demandeur originel, pas chez le buddy.
+                                    let is_buddy = {
+                                        let svc =
+                                            self.kad_udp.read().unwrap().as_ref().cloned();
+                                        match svc {
+                                            Some(s) => s
+                                                .buddy_registry()
+                                                .lock()
+                                                .await
+                                                .active
+                                                .as_ref()
+                                                .is_some_and(|b| {
+                                                    Some(b.remote_addr.ip()) == peer_ip
+                                                }),
+                                            None => false,
+                                        }
+                                    };
+                                    if !is_buddy {
+                                        tracing::debug!(
+                                            "Inbound peer {} sent OP_REASKCALLBACKTCP but is not our buddy — ignored",
+                                            log_addr_str(&remote_str)
+                                        );
+                                        continue;
+                                    }
+                                    if pkt.payload.len() < 22 {
+                                        continue;
+                                    }
+                                    let dest_ip = std::net::Ipv4Addr::new(
+                                        pkt.payload[0],
+                                        pkt.payload[1],
+                                        pkt.payload[2],
+                                        pkt.payload[3],
+                                    );
+                                    let dest_port = u16::from_le_bytes(
+                                        [pkt.payload[4], pkt.payload[5]],
+                                    );
+                                    let req_hash = hex::encode(&pkt.payload[6..22]);
+                                    let dest = SocketAddr::new(
+                                        std::net::IpAddr::V4(dest_ip),
+                                        dest_port,
+                                    );
+                                    let client_udp =
+                                        self.client_udp.read().unwrap().clone();
+                                    let Some(client_udp) = client_udp else {
+                                        continue;
+                                    };
+                                    let shared = {
+                                        let dl = self.downloads.lock().await;
+                                        dl.get_shared_file(&req_hash)
+                                            .unwrap_or(None)
+                                            .is_some()
+                                    };
+                                    let reply = if !shared {
+                                        Some(mule_protocol::ed2k::client_udp::encode_file_not_found())
+                                    } else {
+                                        match self
+                                            .upload_manager
+                                            .waiting_rank_for_udp(
+                                                &dest.ip(),
+                                                dest_port,
+                                                &req_hash,
+                                            )
+                                            .await
+                                        {
+                                            crate::services::upload_queue::UdpRankLookup::Rank(rank) => Some(
+                                                mule_protocol::ed2k::client_udp::encode_reask_ack(
+                                                    rank as u16, false,
+                                                ),
+                                            ),
+                                            crate::services::upload_queue::UdpRankLookup::NoSender
+                                                if self.upload_manager.is_nearly_full().await =>
+                                            {
+                                                Some(mule_protocol::ed2k::client_udp::encode_queue_full())
+                                            }
+                                            // FileMismatch / Ambiguous /
+                                            // NoSender non saturé → silence
+                                            // (eMule force une connexion TCP).
+                                            _ => None,
+                                        }
+                                    };
+                                    if let Some(reply) = reply {
+                                        let _ = client_udp.send_raw(dest, &reply).await;
+                                    }
+                                }
                                 OP_PUBLICIP_REQ => {
                                     // eMule ListenSocket.cpp:1297 — répondre
                                     // OP_PUBLICIP_ANSWER (PR_EMULE) avec l'IP
@@ -797,6 +982,147 @@ impl InboundListenerService {
                                         }
                                     }
                                 }
+                                OP_HASHSETREQUEST2 => {
+                                    // eMule `SendHashsetPacket(bFileIdentifiers=true)`
+                                    // (`UploadClient.cpp:510`) : `<FileIdentifier><opts u8>`
+                                    // — bit0 demande le hashset MD4, bit1 le hashset
+                                    // AICH par part. La réponse `OP_HASHSETANSWER2`
+                                    // répète l'identifiant puis sérialise chaque set
+                                    // demandé disponible (`WriteHashSetsToPacket`,
+                                    // `FileIdentifier.cpp:249`).
+                                    match decoder.decode_hashset_request2(
+                                        pkt.protocol,
+                                        pkt.opcode,
+                                        &pkt.payload,
+                                        0,
+                                    ) {
+                                        Ok(req) => {
+                                            let md4 = match req.identifier.md4_hash {
+                                                Some(h) => h,
+                                                // `read_from(.., false)` exige le MD4 ;
+                                                // garde-fou défensif.
+                                                None => continue,
+                                            };
+                                            let hash_hex = hex::encode(md4);
+                                            let shared_file = {
+                                                let dl_svc = self.downloads.lock().await;
+                                                dl_svc.get_shared_file(&hash_hex).unwrap_or(None)
+                                            };
+
+                                            // `GetFileByIdentifier` (non strict) =
+                                            // `CompareRelaxed` (`FileIdentifier.cpp:76`) :
+                                            // MD4 égal + taille égale quand les deux
+                                            // sont connues + racine AICH égale idem.
+                                            let matches = shared_file.as_ref().is_some_and(|sf| {
+                                                req.identifier
+                                                    .file_size
+                                                    .is_none_or(|s| s == sf.file_size)
+                                                    && req.identifier.aich_hash.is_none_or(|a| {
+                                                        sf.aich_root.is_none_or(|r| r == a)
+                                                    })
+                                            });
+                                            if !matches {
+                                                tracing::debug!(
+                                                    "[HASHSET2] {} requests hashset for unknown/mismatching file {}",
+                                                    log_addr_str(&remote_str),
+                                                    hash_hex
+                                                );
+                                                continue;
+                                            }
+
+                                            let md4_set = if req.want_md4 {
+                                                self.resolve_part_hashes(&hash_hex, &md4)
+                                                    .await
+                                                    .map(|part_hashes| Ed2kHashSetAnswer {
+                                                        file_hash: md4,
+                                                        part_hashes,
+                                                    })
+                                            } else {
+                                                None
+                                            };
+
+                                            // AICH : set complet par part uniquement
+                                            // calculable sur un fichier partagé entier
+                                            // (`shared_aich_tree`) ; un `.part` ne sert
+                                            // que sa racine — le bit 0x02 est alors omis
+                                            // comme eMule quand le set est indisponible.
+                                            let mut aich_root_known = shared_file
+                                                .as_ref()
+                                                .and_then(|sf| sf.aich_root);
+                                            let aich_set = if req.want_aich {
+                                                match &shared_file {
+                                                    Some(sf) if sf.enabled => {
+                                                        match self.shared_aich_tree(sf, &hash_hex).await
+                                                        {
+                                                            Some((tree, root)) => {
+                                                                aich_root_known = Some(root);
+                                                                match mule_format::aich_part_hashes(
+                                                                    &tree,
+                                                                    sf.file_size,
+                                                                ) {
+                                                                    Ok(part_hashes)
+                                                                        if !part_hashes.is_empty() =>
+                                                                    {
+                                                                        Some(Ed2kAichPartHashSet {
+                                                                            master_hash: root,
+                                                                            part_hashes: part_hashes
+                                                                                .iter()
+                                                                                .map(|h| h.0)
+                                                                                .collect(),
+                                                                        })
+                                                                    }
+                                                                    _ => None,
+                                                                }
+                                                            }
+                                                            None => None,
+                                                        }
+                                                    }
+                                                    _ => None,
+                                                }
+                                            } else {
+                                                None
+                                            };
+
+                                            let mut identifier =
+                                                Ed2kFileIdentifier::new(md4, shared_file.as_ref().map_or(0, |sf| sf.file_size));
+                                            identifier.aich_hash = aich_root_known;
+                                            let answer = Ed2kHashSetAnswer2 {
+                                                identifier,
+                                                md4_set,
+                                                aich_set,
+                                            };
+                                            match encoder.encode_hashset_answer2(&answer) {
+                                                Ok(ans_pkt) => {
+                                                    let mut out = Vec::with_capacity(6 + ans_pkt.payload.len());
+                                                    out.push(ans_pkt.protocol);
+                                                    out.extend_from_slice(&(ans_pkt.frame_len() as u32).to_le_bytes());
+                                                    out.push(ans_pkt.opcode);
+                                                    out.extend_from_slice(&ans_pkt.payload);
+                                                    let _ = stream.write_all(&out).await;
+                                                    tracing::debug!(
+                                                        "[HASHSET2] Served hashset2 (md4={} aich={}) to {} for {}",
+                                                        answer.md4_set.is_some(),
+                                                        answer.aich_set.is_some(),
+                                                        log_addr_str(&remote_str),
+                                                        hash_hex
+                                                    );
+                                                }
+                                                Err(e) => {
+                                                    tracing::warn!(
+                                                        "[HASHSET2] Failed to encode answer for {}: {e}",
+                                                        log_addr_str(&remote_str)
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::debug!(
+                                                "[HASHSET2] Malformed OP_HASHSETREQUEST2 from {}: {e}",
+                                                log_addr_str(&remote_str)
+                                            );
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
                             continue;
@@ -807,6 +1133,20 @@ impl InboundListenerService {
                         }
 
                         match pkt.opcode {
+                            mule_protocol::ed2k::OP_PORTTEST => {
+                                // eMule ListenSocket.cpp:1311 — ack « TCP
+                                // reachable » immédiat : OP_PORTTEST +
+                                // payload 0x12. Le relais du verdict UDP
+                                // (SendPortTestReply vers le socket marqué
+                                // m_bPortTestCon) reste non implémenté —
+                                // outil externe, cf. compat-notes §24.
+                                let mut out = Vec::with_capacity(7);
+                                out.push(PR_ED2K);
+                                out.extend_from_slice(&2u32.to_le_bytes());
+                                out.push(mule_protocol::ed2k::OP_PORTTEST);
+                                out.push(0x12);
+                                let _ = stream.write_all(&out).await;
+                            }
                             OP_SETREQFILEID_EMULE => {
                                 if let Ok(req) = decoder.decode_file_status_req(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
                                     let hash_hex = hex::encode(req.file_hash);
@@ -1146,52 +1486,9 @@ impl InboundListenerService {
                             OP_HASHSETREQUEST => {
                                 if let Ok(req) = decoder.decode_hashset_request(pkt.protocol, pkt.opcode, &pkt.payload, 0) {
                                     let hash_hex = hex::encode(req.file_hash);
-
-                                    // Serve the per-part hashset if known (learned during
-                                    // download or already computed), else compute it from
-                                    // the shared file on disk (cached in DB afterwards).
-                                    let cached = {
-                                        let dl_svc = self.downloads.lock().await;
-                                        dl_svc.get_part_hashes_by_hash(&hash_hex)
-                                    };
-
-                                    let part_hashes = if !cached.is_empty() {
-                                        Some(cached)
-                                    } else {
-                                        let shared_file = {
-                                            let dl_svc = self.downloads.lock().await;
-                                            dl_svc.get_shared_file(&hash_hex).unwrap_or(None)
-                                        };
-                                        match shared_file {
-                                            Some(sf) if sf.enabled && !sf.is_partial && !sf.file_path.is_empty() => {
-                                                let path = sf.file_path.clone();
-                                                let res = tokio::task::spawn_blocking(move || {
-                                                    let mut f = std::fs::File::open(&path)?;
-                                                    mule_format::ed2k::hash_reader(&mut f)
-                                                })
-                                                .await;
-                                                match res {
-                                                    Ok(Ok(hashed)) => {
-                                                        if hashed.root_hash.0 == req.file_hash {
-                                                            let mut dl_svc = self.downloads.lock().await;
-                                                            let _ = dl_svc.store_part_hashes_by_hash(&hash_hex, &hashed.part_hashes);
-                                                            Some(hashed.part_hashes)
-                                                        } else {
-                                                            warn!(
-                                                                "[HASHSET] Shared file {} on disk does not match its ed2k hash {}, refusing to serve hashset",
-                                                                sf.file_name, hash_hex
-                                                            );
-                                                            None
-                                                        }
-                                                    }
-                                                    _ => None,
-                                                }
-                                            }
-                                            _ => None,
-                                        }
-                                    };
-
-                                    if let Some(part_hashes) = part_hashes {
+                                    if let Some(part_hashes) =
+                                        self.resolve_part_hashes(&hash_hex, &req.file_hash).await
+                                    {
                                         let answer = Ed2kHashSetAnswer {
                                             file_hash: req.file_hash,
                                             part_hashes,
@@ -1751,6 +2048,56 @@ impl InboundListenerService {
 
     /// Returns the trusted AICH root of a shared file, computing (and caching)
     /// the hash tree from disk when absent.
+    /// Resolves the per-part MD4 hashset for `hash_hex`: DB cache first
+    /// (learned during download or already computed), else computed from the
+    /// shared file on disk and cached (`hash_reader` verifies the root hash
+    /// against `expected_hash` before anything is served).
+    async fn resolve_part_hashes(
+        &self,
+        hash_hex: &str,
+        expected_hash: &[u8; 16],
+    ) -> Option<Vec<[u8; 16]>> {
+        let cached = {
+            let dl_svc = self.downloads.lock().await;
+            dl_svc.get_part_hashes_by_hash(hash_hex)
+        };
+        if !cached.is_empty() {
+            return Some(cached);
+        }
+        let shared_file = {
+            let dl_svc = self.downloads.lock().await;
+            dl_svc.get_shared_file(hash_hex).unwrap_or(None)
+        };
+        match shared_file {
+            Some(sf) if sf.enabled && !sf.is_partial && !sf.file_path.is_empty() => {
+                let path = sf.file_path.clone();
+                let res = tokio::task::spawn_blocking(move || {
+                    let mut f = std::fs::File::open(&path)?;
+                    mule_format::ed2k::hash_reader(&mut f)
+                })
+                .await;
+                match res {
+                    Ok(Ok(hashed)) => {
+                        if hashed.root_hash.0 == *expected_hash {
+                            let mut dl_svc = self.downloads.lock().await;
+                            let _ = dl_svc
+                                .store_part_hashes_by_hash(hash_hex, &hashed.part_hashes);
+                            Some(hashed.part_hashes)
+                        } else {
+                            warn!(
+                                "[HASHSET] Shared file {} on disk does not match its ed2k hash {}, refusing to serve hashset",
+                                sf.file_name, hash_hex
+                            );
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
     async fn shared_aich_root(
         &self,
         sf: &mule_core::model::SharedFile,

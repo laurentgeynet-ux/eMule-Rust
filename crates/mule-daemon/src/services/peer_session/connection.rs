@@ -109,6 +109,7 @@ pub(crate) async fn run_peer_connection(
         sx2: handshake_res.peer_supports_sx2,
         complete_source: false,
         multipacket: handshake_res.peer_multipacket,
+        file_identifiers: handshake_res.peer_file_identifiers,
     };
     let kad_open = match &kad_service {
         Some(kad) => {
@@ -304,15 +305,18 @@ async fn try_a4af_swap(
         .unwrap_or_default()
         .as_millis() as i64;
     let max_per_file = inner.lock().await.max_peers_per_download;
-    let (to_hash, to_hash_bytes) = super::a4af::find_swap_target(
+    let (to_hash, to_hash_bytes) =
+        super::a4af::find_swap_target(downloads, address_str, from_hash, max_per_file, now_ms)
+            .await?;
+    super::a4af::apply_swap(
         downloads,
         address_str,
         from_hash,
-        max_per_file,
+        &to_hash,
+        &err.reason,
         now_ms,
     )
-    .await?;
-    super::a4af::apply_swap(downloads, address_str, from_hash, &to_hash, &err.reason, now_ms).await;
+    .await;
     *swaps += 1;
     tracing::info!(
         "[A4AF] Socket swap: {} re-requested for {to_hash} (was {from_hash}, reason: {})",

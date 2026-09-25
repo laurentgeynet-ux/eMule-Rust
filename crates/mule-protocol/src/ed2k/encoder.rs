@@ -9,7 +9,8 @@ use super::error::{Ed2kEncodeError, Ed2kErrorKind};
 use super::limits::Ed2kLimits;
 use super::packet::{
     Ed2kAichAnswer, Ed2kAichFileHashReq, Ed2kAichFileHashRes, Ed2kAichRequest, Ed2kEmuleInfo,
-    Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer, Ed2kHashSetReq,
+    Ed2kFileReqAnsNoFile, Ed2kFileStatus, Ed2kFileStatusReq, Ed2kHashSetAnswer,
+    Ed2kHashSetAnswer2, Ed2kHashSetReq, Ed2kHashSetReq2,
     Ed2kHello, Ed2kHelloAnswer, Ed2kMessage, Ed2kPublicKey, Ed2kRequestParts, Ed2kRequestPartsI64,
     Ed2kSecIdentState, Ed2kSendingPart, Ed2kSendingPartI64, Ed2kSignature,
 };
@@ -220,6 +221,24 @@ impl Ed2kEncoder {
         encode_hashset_answer(&self.limits, ans)
     }
 
+    /// Encodes an `Ed2kHashSetReq2` message (`0xB1`, eMule protocol):
+    /// `<FileIdentifier><options u8>`.
+    pub fn encode_hashset_request2(
+        &self,
+        req: &Ed2kHashSetReq2,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_hashset_request2(&self.limits, req)
+    }
+
+    /// Encodes an `Ed2kHashSetAnswer2` message (`0xB2`, eMule protocol):
+    /// `<FileIdentifier><options u8>[<md4 set>][<aich set>]`.
+    pub fn encode_hashset_answer2(
+        &self,
+        ans: &Ed2kHashSetAnswer2,
+    ) -> Result<RawPacket, Ed2kEncodeError> {
+        encode_hashset_answer2(&self.limits, ans)
+    }
+
     /// Encodes an `OP_AICHFILEHASHREQ` (eMule `0x14`) message.
     pub fn encode_aich_file_hash_req(
         &self,
@@ -310,9 +329,7 @@ impl Ed2kEncoder {
             Ed2kMessage::CaptchaResponse(res) => encode_captcha_response(&self.limits, res),
             Ed2kMessage::HashSetReq2(req) => encode_hashset_request2(&self.limits, req),
             Ed2kMessage::HashSetAnswer2(ans) => encode_hashset_answer2(&self.limits, ans),
-            Ed2kMessage::MultiPacketRequest(req) => {
-                encode_multipacket_request(&self.limits, req)
-            }
+            Ed2kMessage::MultiPacketRequest(req) => encode_multipacket_request(&self.limits, req),
             Ed2kMessage::MultiPacketAnswer(ans) => encode_multipacket_answer(&self.limits, ans),
             Ed2kMessage::Raw(raw) => {
                 let frame_len = raw.frame_len();

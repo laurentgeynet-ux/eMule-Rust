@@ -57,6 +57,10 @@ pub struct HandshakeResult {
     /// (`SupportMultiPacket`/`SupportExtMultiPacket`/`SupportsFileIdentifiers`)
     /// — shapes `SendFileRequest` bundles (`file_request`).
     pub peer_multipacket: super::source_exchange::MultiPacketLevel,
+    /// `SupportsFileIdentifiers()` — MISCOPTIONS2 bit 13. Gates
+    /// `OP_HASHSETREQUEST2` in place of `OP_HASHSETREQUEST`
+    /// (`SendHashSetRequest`, `DownloadClient.cpp:2200`).
+    pub peer_file_identifiers: bool,
     pub connected_ms: i64,
 }
 
@@ -361,6 +365,7 @@ pub(crate) async fn perform_peer_handshake(
     let mut peer_kad_version: u8 = 0;
     let mut peer_supports_compression = false;
     let mut peer_multipacket = super::source_exchange::MultiPacketLevel::None;
+    let mut peer_file_identifiers = false;
 
     let handshake_deadline = tokio::time::Instant::now() + timeouts.handshake_timeout;
     while !received_hello_answer {
@@ -511,6 +516,8 @@ pub(crate) async fn perform_peer_handshake(
                                         peer_multipacket = super::source_exchange::multipacket_level(
                                             &peer_info,
                                         );
+                                        peer_file_identifiers =
+                                            peer_info.supports_file_identifiers();
 
                                         let unknown_tag_ids: Vec<String> = peer_info
                                             .unknown_tags
@@ -639,6 +646,7 @@ pub(crate) async fn perform_peer_handshake(
         peer_ext_req,
         peer_kad_version,
         peer_multipacket,
+        peer_file_identifiers,
         connected_ms,
     })
 }

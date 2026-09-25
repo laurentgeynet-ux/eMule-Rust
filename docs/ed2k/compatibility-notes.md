@@ -1204,3 +1204,112 @@ UDP), `ClientUDPSocket.cpp:93-120` (unpack 0xE5 entrant, cap 250000),
 - Loopback `test_inbound_packed_packet_is_unpacked_and_dispatched` :
   `PUBLICIP_REQ` packé → `PUBLICIP_ANSWER`; junk packed droppé sans
   casser la session.
+
+## 24. `OP_PORTTEST` TCP + relais buddy `OP_REASKCALLBACKTCP`/`OP_CALLBACK` — audit phase B, passe 18
+
+Référence : `ListenSocket.cpp:623` (`CHANGE_SLOT`), `:1285-1325`
+(`PEERCACHE_*`, `PUBLICIP_ANSWER`, `PORTTEST`), `:1326-1360`
+(`OP_CALLBACK`), `:1391-1479` (`OP_REASKCALLBACKTCP`),
+`ClientUDPSocket.cpp:199-225` (`REASKCALLBACKUDP` → relais),
+`KademliaUDPListener.cpp:1757-1790` (`CALLBACK_REQ` → `OP_CALLBACK`).
+
+### `OP_PORTTEST` (0xFE, PR_ED2K) — gap corrigé
+
+- Entrant TCP : réponse immédiate `0xFE + payload 0x12` (« TCP
+  reachable »). eMule marque ensuite le socket `m_bPortTestCon` et un
+  résultat UDP externe peut être relayé via `SendPortTestReply` — ce
+  relais UDP→TCP n'est **pas** implémenté : outil de test externe, hors
+  périmètre pair-à-pair (divergence assumée, l'ack suffit pour les
+  testeurs usuels).
+- UDP `0xFE` : inchangé (log only — c'est le même outil).
+
+### No-op fidèles vérifiés
+
+- `OP_CHANGE_SLOT` : « sometimes sent by Hybrid », bras eMule vide —
+  ignorer est fidèle.
+- `OP_PEERCACHE_{QUERY,ANSWER,ACK}` : *DEFUNCT* dans 0.72a
+  (compteurs stats uniquement) — ignorer est fidèle.
+- `OP_MESSAGE` et opcodes chat IRC : non implémentés par design.
+
+### `OP_REASKCALLBACKTCP` (0x9A, PR_EMULE) — gap corrigé (uploader)
+
+- Reçu **uniquement** du lien TCP du buddy actif (`GetBuddy() != client`
+  → ignoré ; comparaison par `ActiveBuddy.remote_addr.ip()`).
+- Payload `[destip u32][destport u16][reqhash 16][extinfo…]` → la réponse
+  part en **UDP chez le demandeur originel** (`destip:destport`), pas au
+  buddy : `OP_REASKACK` (rang, sans part-status — version UDP du pair
+  inconnue via le relais), `OP_FILENOTFOUND` si hash non partagé,
+  `OP_QUEUEFULL` si file quasi pleine (`+50 > max`), silence sur
+  `FileMismatch`/`Ambiguous` (eMule force alors une connexion TCP).
+- Le sens inverse (nous = buddy relaie `REASKCALLBACKUDP` UDP → TCP)
+  était déjà implémenté.
+
+### `OP_CALLBACK` (0x99, PR_EMULE) — gap corrigé (LowID receveur)
+
+- Payload `[check u128][fileid u128][ip u32][tcp u16]` ; `check` sur le
+  fil = `~kad_id` du destinataire (le buddyID publié chez eMule est déjà
+  l'inversion — `check XOR 0xFF…FF == GetKadID()`). Pas de vérification
+  « c'est notre buddy » — l'inversion sert d'authentification, comme
+  eMule.
+- Gates fidèles : Kad running requis ; `fileid` connu (partagé ou en
+  download) sinon `CheckFailedFileIdReqs`-like ignore.
+- Action : le demandeur `ip:tcp` est inséré comme source `origin=kad`
+  du fichier — le coordinateur compose la connexion (`TryToConnect`
+  eMule).
+
+### Tests
+
+- Loopback `test_inbound_reaskcallbacktcp_from_buddy_relays_udp_reply` :
+  sans buddy → silence ; buddy actif + socket UDP bindé → datagramme
+  `FILENOTFOUND` (`[0xC5][0x92]`) reçu chez l'adresse du demandeur.
+- Loopback `test_inbound_callback_registers_requester_as_source` :
+  mauvais check ignoré, bon check → source `127.0.0.1:49777` inscrite.
+
+## 25. Hashsets `FileIdentifier` — `OP_HASHSETREQUEST2`/`ANSWER2`
+
+Références : `UploadClient.cpp:510-552` (`SendHashsetPacket`),
+`DownloadClient.cpp:2200-2244` (`SendHashSetRequest`),
+`DownloadClient.cpp:708` (`ProcessHashSet`), `FileIdentifier.cpp:76`
+(`CompareRelaxed`), `FileIdentifier.cpp:239-283` (`WriteMD4HashsetToFile`,
+`WriteHashSetsToPacket`, `WriteAICHHashsetToFile`).
+
+### `OP_HASHSETREQUEST2` (0xB1, PR_EMULE) — gap corrigé
+
+- Annoncer `SupportsFileIdentifiers` (MISCOPTIONS2 bit 13) dans nos hellos
+  rendait ce opcode atteignable par les pairs modernes : eMule le préfère
+  systématiquement à `OP_HASHSETREQUEST` (`if (SupportsFileIdentifiers())`).
+- Payload : `<FileIdentifier><opts u8>` — bit0 demande le hashset MD4, bit1
+  le hashset AICH par part. Aucune option connue → rejet (eMule :
+  warning + pas de réponse).
+- Lookup `GetFileByIdentifier(.., bStrict=false)` = `CompareRelaxed` :
+  MD4 égal, taille égale quand les deux camps la connaissent, racine AICH
+  égale idem. Mismatch → silence (eMule lève `FNF` via
+  `CheckFailedFileIdReqs` ; notre bras v1 reste silencieux — conservé).
+
+### `OP_HASHSETANSWER2` (0xB2, PR_EMULE)
+
+- Format : `<FileIdentifier><opts u8>[<md4 set>][<aich set>]` ; le set MD4
+  = `[md4 16][count u16][16B]*n` (`WriteMD4HashsetToFile`), le set AICH =
+  `[root 20][count u16][20B]*n` avec un hash par part eD2K de 9 728 000
+  octets (`GetTheoreticalAICHPartHashCount` = 0 pour `size <= PARTSIZE`).
+- Serving : MD4 via le cache DB ou calcul `hash_reader` + persistance
+  (chemin mutualisé avec le bras v1) ; AICH via `shared_aich_tree` +
+  `aich_part_hashes` (nouvel extracteur mule-format des racines de
+  sous-arbres de part). Bit omis quand le set est indisponible — identique
+  à eMule (`byOptions` ne reflète que ce qui est réellement écrit).
+- Côté downloader : on émet `OP_HASHSETREQUEST2` quand le pair annonce
+  `supports_file_identifiers` (champ `PeerSxCaps.file_identifiers` issu du
+  HELLO) ; l'identifiant porte MD4 + taille + racine AICH de confiance.
+  `want_aich` reste faux : le set AICH par part n'est pas persisté — la
+  recovery passe par `OP_AICHREQUEST` (déjà implémenté).
+- Réception `0xB2` : `handle_hashset_answer` décode puis applique le set
+  MD4 par le chemin v1 ; un set AICH non demandé est loggé et ignoré.
+
+### Tests
+
+- Loopback `test_inbound_hashsetrequest2_serves_md4_set` : REQ2 avec
+  FileIdentifier {md4+size} → ANSWER2 décodée, set MD4 servi depuis le
+  cache, bit AICH omis.
+- Unitaire `part_hashes_return_part_subtree_roots` (mule-format) : les
+  hashsets par part sont les racines des sous-arbres couvrant chaque part
+  ; fichier <= 1 part → set vide (eMule `GetTheoreticalAICHPartHashCount`).

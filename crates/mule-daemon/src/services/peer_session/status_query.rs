@@ -14,9 +14,11 @@ use tracing::info;
 
 use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::{
-    Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus, Ed2kHashSetReq, OP_ACCEPTUPLOADREQ,
+    Ed2kAichRequest, Ed2kDecoder, Ed2kEncoder, Ed2kFileStatus, Ed2kHashSetReq, Ed2kHashSetReq2,
+    OP_ACCEPTUPLOADREQ,
     OP_AICHFILEHASHRES, OP_AICH_ANSWER, OP_ANSWERSOURCES, OP_ANSWERSOURCES2, OP_CHANGE_CLIENT_ID,
-    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_QUEUERANKING, OP_REQFILENAME_ANSWER,
+    OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_HASHSETANSWER, OP_HASHSETANSWER2, OP_QUEUERANKING,
+    OP_REQFILENAME_ANSWER,
     OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
 };
 use mule_protocol::framing::{PacketCodec, RawPacket};
@@ -29,8 +31,10 @@ use super::types::{
 use crate::services::downloads::DownloadService;
 use crate::services::obfuscation_stream::ObfuscatedStream;
 
-/// Handles an `OP_HASHSETANSWER` packet arriving in any peer session loop:
-/// validates the file hash and persists the per-part MD4 hashset.
+/// Handles an `OP_HASHSETANSWER` (`PR_ED2K` `0x52`) or `OP_HASHSETANSWER2`
+/// (`PR_EMULE` `0xB2`, eMule `ProcessHashSet(bFileIdentifiers=true)`) packet
+/// arriving in any peer session loop: validates the file hash and persists
+/// the per-part MD4 hashset.
 /// Returns true if the packet was a hashset answer and has been consumed.
 pub(crate) async fn handle_hashset_answer(
     packet: &RawPacket,
@@ -40,34 +44,54 @@ pub(crate) async fn handle_hashset_answer(
     decoder: &Ed2kDecoder,
     downloads: &Arc<Mutex<DownloadService>>,
 ) -> bool {
+    // `OP_HASHSETANSWER2` is the FileIdentifiers variant (`UploadClient.cpp`
+    // `SendHashsetPacket`) — `PR_EMULE` wire, composite identifier + per-set
+    // option bits. eMule routes both to `ProcessHashSet`.
+    if packet.protocol == PR_EMULE && packet.opcode == OP_HASHSETANSWER2 {
+        return match decoder.decode_hashset_answer2(
+            packet.protocol,
+            packet.opcode,
+            &packet.payload,
+            0,
+        ) {
+            Ok(ans2) => {
+                // `CompareRelaxed` — MD4 must match; size/AICH cross-checked
+                // when present on both sides.
+                if ans2.identifier.md4_hash != Some(dl_hash_bytes) {
+                    tracing::warn!(
+                        "Peer {peer} sent OP_HASHSETANSWER2 for a different file hash, ignoring",
+                        peer = log_peer_addr(target_addr)
+                    );
+                    return true;
+                }
+                if let Some(aich) = &ans2.aich_set {
+                    tracing::debug!(
+                        "Peer {peer} sent AICH part hashset ({} hashes) for {file_hash_str} — not persisted",
+                        aich.part_hashes.len(),
+                        peer = log_peer_addr(target_addr)
+                    );
+                }
+                match ans2.md4_set {
+                    Some(ans) => store_part_hashes(ans, dl_hash_bytes, file_hash_str, target_addr, downloads).await,
+                    None => true,
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Malformed OP_HASHSETANSWER2 from {peer}: {e}",
+                    peer = log_peer_addr(target_addr)
+                );
+                true
+            }
+        };
+    }
     if packet.protocol != PR_ED2K || packet.opcode != OP_HASHSETANSWER {
         return false;
     }
 
     match decoder.decode_hashset_answer(packet.protocol, packet.opcode, &packet.payload, 0) {
         Ok(ans) => {
-            if ans.file_hash != dl_hash_bytes {
-                tracing::warn!(
-                    "Peer {peer} sent OP_HASHSETANSWER for a different file hash, ignoring",
-                    peer = log_peer_addr(target_addr)
-                );
-                return true;
-            }
-            let mut dl_svc = downloads.lock().await;
-            if let Err(e) = dl_svc.store_part_hashes_by_hash(file_hash_str, &ans.part_hashes) {
-                tracing::warn!(
-                    "Failed to persist hashset from {peer} for {file_hash_str}: {e}",
-                    peer = log_peer_addr(target_addr)
-                );
-            } else {
-                info!(
-                    "Stored hashset ({} part hashes) for {} from peer {}",
-                    ans.part_hashes.len(),
-                    file_hash_str,
-                    log_peer_addr(target_addr)
-                );
-            }
-            true
+            store_part_hashes(ans, dl_hash_bytes, file_hash_str, target_addr, downloads).await
         }
         Err(e) => {
             tracing::warn!(
@@ -77,6 +101,39 @@ pub(crate) async fn handle_hashset_answer(
             true
         }
     }
+}
+
+/// Validates and persists a decoded MD4 part hashset — shared tail of
+/// `OP_HASHSETANSWER` and `OP_HASHSETANSWER2` (`md4_set` portion).
+async fn store_part_hashes(
+    ans: mule_protocol::ed2k::Ed2kHashSetAnswer,
+    dl_hash_bytes: [u8; 16],
+    file_hash_str: &str,
+    target_addr: SocketAddr,
+    downloads: &Arc<Mutex<DownloadService>>,
+) -> bool {
+    if ans.file_hash != dl_hash_bytes {
+        tracing::warn!(
+            "Peer {peer} sent OP_HASHSETANSWER for a different file hash, ignoring",
+            peer = log_peer_addr(target_addr)
+        );
+        return true;
+    }
+    let mut dl_svc = downloads.lock().await;
+    if let Err(e) = dl_svc.store_part_hashes_by_hash(file_hash_str, &ans.part_hashes) {
+        tracing::warn!(
+            "Failed to persist hashset from {peer} for {file_hash_str}: {e}",
+            peer = log_peer_addr(target_addr)
+        );
+    } else {
+        info!(
+            "Stored hashset ({} part hashes) for {} from peer {}",
+            ans.part_hashes.len(),
+            file_hash_str,
+            log_peer_addr(target_addr)
+        );
+    }
+    true
 }
 
 /// Masks a peer IP like eMule `CAICHUntrustedHash` (`dwIP &= 0x00F0FFFF`),
@@ -391,17 +448,34 @@ pub(crate) async fn query_file_status_and_enter_queue(
     )
     .await?;
 
-    // 4b'. Request the per-part MD4 hashset (OP_HASHSETREQUEST) when unknown,
-    // so completed parts can be verified incrementally (eMule PartFile hashset).
+    // 4b'. Request the per-part MD4 hashset when unknown, so completed parts
+    // can be verified incrementally. eMule `SendHashSetRequest`
+    // (`DownloadClient.cpp:2200-2244`) sends `OP_HASHSETREQUEST2`
+    // (`PR_EMULE`, `<FileIdentifier><opts>`) when the peer announces
+    // `SupportsFileIdentifiers()`, else the legacy `OP_HASHSETREQUEST`.
+    // Option bits: we request the MD4 set; the AICH part set goes through
+    // `OP_AICHREQUEST` recovery instead (we never persist a full AICH part
+    // hashset), so bit1 stays clear.
     let hashset_known = {
         let dl_svc = downloads.lock().await;
         !dl_svc.get_part_hashes_by_hash(file_hash_str).is_empty()
     };
     if !hashset_known {
-        let hs_req = Ed2kHashSetReq {
-            file_hash: dl_hash_bytes,
+        let hs_pkt = if sx_caps.file_identifiers {
+            let mut identifier =
+                mule_protocol::ed2k::Ed2kFileIdentifier::new(dl_hash_bytes, req_inputs.file_size);
+            identifier.aich_hash = req_inputs.aich_root;
+            encoder.encode_hashset_request2(&Ed2kHashSetReq2 {
+                identifier,
+                want_md4: true,
+                want_aich: false,
+            })
+        } else {
+            encoder.encode_hashset_request(&Ed2kHashSetReq {
+                file_hash: dl_hash_bytes,
+            })
         };
-        match encoder.encode_hashset_request(&hs_req) {
+        match hs_pkt {
             Ok(hs_pkt) => {
                 out_wire.clear();
                 out_wire.push(hs_pkt.protocol);
@@ -415,7 +489,8 @@ pub(crate) async fn query_file_status_and_enter_queue(
                     );
                 } else {
                     tracing::info!(
-                        "Sent OP_HASHSETREQUEST to peer {peer} for {file_hash_str}",
+                        "Sent OP_HASHSETREQUEST (v2={}) to peer {peer} for {file_hash_str}",
+                        sx_caps.file_identifiers,
                         peer = log_peer_addr(target_addr)
                     );
                 }
