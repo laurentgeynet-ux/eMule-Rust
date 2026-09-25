@@ -681,6 +681,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | `docs/releases/RELEASE_NOTES_0.1.8.md` | Notes de version 0.1.8 |
 | `docs/releases/RELEASE_NOTES_0.2.0-RC1.md` | Notes de version 0.2.0-RC1 |
 | `docs/releases/RELEASE_NOTES_0.2.0.md` | Notes de version 0.2.0 |
+| `docs/releases/RELEASE_NOTES_0.2.0-RC2.md` | Notes de version 0.2.0-RC2 |
 
 ### docs/qa/ — Assurance Qualité & Conformité
 | Fichier | Fonction |

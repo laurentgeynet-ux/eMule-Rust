@@ -33,7 +33,7 @@ L'ensemble de la documentation technique, des guides d'exécution par phase et d
 | 🏗️ **[Rapport d'Architecture](docs/architecture/rapport_architecture_et_avancement.md)** | État d'avancement technique et architecture modulaire détaillée. |
 | 🗺️ **[Cartographie des Fichiers](docs/INDEX.md)** | Inventaire exhaustif et rôle de chaque fichier du dépôt. |
 | 📝 **[Journal des Modifications](docs/CHANGELOG.md)** | Historique chronologique des versions et correctifs. |
-| 📦 **[Notes de Version](docs/releases/)** | Notes détaillées de chaque version (`v0.1.0-lab` à `v0.2.0-RC1`). |
+| 📦 **[Notes de Version](docs/releases/)** | Notes détaillées de chaque version (`v0.1.0-lab` à `v0.2.0-RC2`). |
 | 🧪 **[Assurance Qualité & Tests](docs/qa/)** | Protocole de réception QA, matrice de compatibilité et vecteurs de test. |
 | 🔌 **[Spécifications eD2K & ADRs](docs/ed2k/)** | Cadrage filaire, catalogue d'opcodes et décisions de conception. |
 

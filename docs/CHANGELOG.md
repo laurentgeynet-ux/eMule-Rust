@@ -3,7 +3,116 @@
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Unreleased]
+## [0.2.0-RC2] - 2026-09-25
+
+Deuxième release candidate — campagne d'audit filaire et comportemental
+complète contre les sources officielles d'eMule 0.72a, validée par des
+tests d'interopérabilité live contre le binaire réel.
+
+- **Interopérabilité live eMule 0.72a validée — 7/7 tests** (`mule-protocol`) :
+  le harnais Tier-3 (`EMULE_REFERENCE_BIN` + `EMULE_REFERENCE_PROFILE`)
+  lance le vrai `emule.exe` 0.72a (SHA-256 épinglé) en profil isolé
+  loopback et exécute handshake, file-status, transferts de blocs,
+  reprise et finalisation — tous verts contre le binaire officiel.
+  - **`OP_COMPRESSEDPART` (0x40) 32-bit** : décodeur borné
+    (`<hash16><start u32><compressed_size u32><zlib>`) + encodeur
+    symétrique sous `PR_EMULE` (`OP_EMULEPROT`, fidèle à
+    `UploadDiskIOThread.cpp`). Correction d'un bug latent : l'encodeur
+    I64 émettait `PR_EMULE_COMPRESSED` (0xD4) au lieu de `PR_EMULE`.
+  - **Réassemblage zlib incrémental** côté client loopback :
+    accumulateur par `(hash, début de bloc)` — eMule découpe le flux
+    compressé en tranches de ≤ 10 240 octets portées par plusieurs
+    paquets ; sous-plages validées dans le tracker de blocs.
+  - **Bug de flux corrigé** dans `receive_sending_part` : après un
+    paquet compressé, le code tombait dans le `read()` bloquant au lieu
+    de drainer les parts déjà produites — deadlock sur tout transfert
+    compressé multi-paquets.
+  - Profil de référence paramétrable : `EMULE_REFERENCE_PROFILE`
+    (`Emule<VV>a` → `client_version` attendu dérivé), `AppVersion`
+    injectée dans le `preferences.ini` généré pour court-circuiter
+    l'assistant de premier démarrage modal.
+
+- **Anti-abuse aligné sur eMule 0.72a** (`mule-daemon`) :
+  - **`CLIENTBANTIME` = 2 h** : les bans de sources IP expirent comme
+    `IsBannedClient` (`ClientList.cpp`) au lieu d'être permanents.
+  - **`BADCLIENTBAN`** : `AddRequestCount` (re-ask du même fichier <
+    `MIN_REQUESTTIME` = 10 min, 4 strikes) produit désormais un vrai ban
+    IP 2 h + coupure de la connexion (eMule `Ban()` →
+    `AddBannedClient`), pas seulement un score à 0 — exemption
+    `GetFriendSlot` respectée.
+  - **`ComparePriorUserhash`** : les couples `(IP, port)` sont suivis 2 h
+    (`KEEPTRACK_TIME`, enregistrés à la vérification SUI) — une IP:port
+    revue avec un userhash différent est bannie et déconnectée.
+  - **Filtrage UDP pair** : `ipfilter` + port 0 appliqués à chaque
+    datagramme pair (`ClientUDPSocket.cpp:76`) et bannis rejetés ;
+    le listener TCP vérifie l'IP bannie à l'accept et après le hello.
+
+- **Couverture opcodes exhaustive** (`mule-protocol`, `mule-daemon`) —
+  diff mécanique des ~95 `case OP_*` d'eMule (`ListenSocket`,
+  `ClientUDPSocket`, `UDPSocket`, `ServerSocket`) : tout est couvert à
+  l'exception d'`OP_PREVIEWANSWER` (nous annonçons preview=0 et
+  n'émettons jamais `OP_REQUESTPREVIEW`, drop silencieux fidèle) :
+  - **Browsing des partages** : `OP_ASKSHAREDFILES{,ANSWER}`,
+    `OP_ASKSHAREDDIRS{,ANSWER}`, `OP_ASKSHAREDFILESDIR{,ANSWER}`.
+  - **Verdict pare-feu Kad TCP** : `OP_FIREWALLED{2}_REQ` sortant +
+    verdict `0xA8` entrant.
+  - **Description serveur** : `OP_SERVER_DESC_REQ/RES` (Lugdunum).
+  - **`OP_PUBLICIP_REQ`** entrant + **`OP_OUTOFPARTREQS`** sortant sur
+    rotation de slot.
+  - **`OP_PACKEDPROT` pair (0xD4)** : unpack entrant + réponses de
+    sources packées ; Kad UDP packé (0xE5).
+  - **Callbacks LowID** : `OP_PORTTEST` TCP, relais buddy
+    `OP_REASKCALLBACKTCP`/`OP_CALLBACK` (check `~kad_id`), et
+    `OP_DIRECTCALLBACKREQ` sortant avec re-ask différé
+    (`m_bReaskPending`).
+  - **Hashsets `FileIdentifier`** : `OP_HASHSETREQUEST2`/`ANSWER2`
+    (identifiant composite + options MD4/AICH, dispatch sous PR_EMULE).
+  - **Rang de file** : `OP_QUEUERANK` legacy (0x5C) entrant +
+    correction `OP_QUEUERANKING` émis en `PR_EMULE` avec le payload
+    eMule de 12 octets (`[rank u16][10 zéros]`) au lieu de `PR_ED2K`/u32.
+  - **Hello connect-back** : `misc_options2` complet + ports de test
+    hors range eMule.
+  - **Opcodes 0x49/0x4D** (phase B) : handshake, requêtes standalone et
+    reasks alignés sur `ListenSocket.cpp`/`ClientUDPSocket.cpp`.
+
+- **File d'upload persistante aux déconnexions** (`mule-daemon`) :
+  eMule `Disconnected` (`BaseClient.cpp:1169`) conserve un client en
+  file (`US_ONUPLOADQUEUE` → pas de suppression) jusqu'à
+  `MAX_PURGEQUEUETIME`. Désormais une fin de socket conserve l'entrée
+  (`mark_disconnected`, score et wait intacts) alors que les fins
+  explicites (CANCELTRANSFER, END_OF_DOWNLOAD, RPC) la retirent ;
+  le meilleur injoignable dominant le meilleur connecté est marqué
+  `add_next_connect` (`FindBestClientInQueue`) et sa reconnexion ouvre
+  un slot immédiat (`AddClientToQueue`).
+
+- **Comportement download** (`mule-daemon`) :
+  - **Purge `RemoteQueueFull`** des sources à 80 % de `maxSources`
+    (`PartFile.cpp`).
+  - **A4AF au niveau socket** : `SwapToAnotherFile`/`DoSwap` sur la
+    socket live.
+  - **Cycle re-ask de file distante fidèle** : gestion de la socket et
+    fenêtre UDP `(1 s, 2 min)` pré-reask TCP.
+
+- **Kad aligné sur eMule 0.72a** (`mule-protocol`, `mule-core`) :
+  expressions de recherche restrictives (`StartSearchTermsMatch`),
+  publication de mots-clés AICH, modèle `CKeyEntry`, identité eMule
+  0.72a, filaire et constantes réalignés.
+
+- **Migration eMule complète** (`mule-format`, `mule-daemon`,
+  `app_shell`) :
+  - **`known.met`** : parser + import.
+  - **`clients.met`** : import des crédits pairs vers `peer_credits`.
+  - **`emfriends.met` + `cancelled.met`** + identité eMule
+    (`cryptkey` + `userhash`).
+  - **Assistant de migration** dans Paramètres → Avancé.
+  - **Recherche annulée** : marquage `IsCancelledFileByID` + badge
+    « Annulé » sur les résultats.
+
+- **Refactor — mutualisation des tests** (`mule-test-support`,
+  `mule-protocol`) : helpers d'intégration cross-crates dans
+  `mule-test-support`, fixtures protocolaires communes
+  (`tests/common/`), garde-fou anti-doublons
+  (`scripts/test_duplicates.ps1`).
 
 - **Priorités download/upload alignées sur eMule 0.72a** (`mule-daemon`,
   `app_shell`) :
