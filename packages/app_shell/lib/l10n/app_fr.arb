@@ -1400,6 +1400,7 @@
   "searchHintServer": "Nom de fichier ou mots-clés...",
   "searchButtonSearching": "Recherche...",
   "searchButton": "Rechercher",
+  "searchCancelledBadge": "Annulé",
   "searchTargetServer": "Serveur eD2K",
   "searchTargetKad": "Réseau Kad DHT",
   "searchTargetLabelKad": "le réseau Kad DHT",

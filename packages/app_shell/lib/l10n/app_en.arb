@@ -1400,6 +1400,7 @@
   "searchHintServer": "File name or keywords...",
   "searchButtonSearching": "Searching...",
   "searchButton": "Search",
+  "searchCancelledBadge": "Cancelled",
   "searchTargetServer": "eD2K Server",
   "searchTargetKad": "Kad DHT Network",
   "searchTargetLabelKad": "the Kad DHT network",

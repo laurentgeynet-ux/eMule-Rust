@@ -228,11 +228,16 @@ class SearchResultFileModel {
   final int fileSize;
   final int sourceCount;
 
+  /// eMule `IsCancelledFileByID` — the hash belongs to a download the
+  /// user cancelled; shown dimmed in search results like eMule.
+  final bool cancelled;
+
   const SearchResultFileModel({
     required this.fileHash,
     required this.fileName,
     required this.fileSize,
     this.sourceCount = 1,
+    this.cancelled = false,
   });
 
   factory SearchResultFileModel.fromJson(Map<String, dynamic> json) {
@@ -241,6 +246,7 @@ class SearchResultFileModel {
       fileName: json['fileName'] as String? ?? 'Unknown',
       fileSize: (json['fileSize'] as num?)?.toInt() ?? 0,
       sourceCount: (json['sourceCount'] as num?)?.toInt() ?? 1,
+      cancelled: json['cancelled'] as bool? ?? false,
     );
   }
 

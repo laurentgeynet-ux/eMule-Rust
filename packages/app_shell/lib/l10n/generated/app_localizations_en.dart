@@ -2720,6 +2720,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchButton => 'Search';
 
   @override
+  String get searchCancelledBadge => 'Cancelled';
+
+  @override
   String get searchTargetServer => 'eD2K Server';
 
   @override

@@ -72,16 +72,42 @@ class SearchResultRow extends StatelessWidget {
                           waitDuration: const Duration(milliseconds: 500),
                           child: Text(
                             file.fileName,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
+                            style: TextStyle(
+                              color: file.cancelled
+                                  ? AppColors.textMuted
+                                  : AppColors.textPrimary,
                               fontWeight: FontWeight.w500,
                               fontSize: 13,
+                              decoration: file.cancelled
+                                  ? TextDecoration.lineThrough
+                                  : null,
                             ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
                         ),
                       ),
+                      if (file.cancelled) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.tintGrey.withAlpha(40),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            context.l10n.searchCancelledBadge,
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -4833,6 +4833,12 @@ abstract class AppLocalizations {
   /// **'Rechercher'**
   String get searchButton;
 
+  /// No description provided for @searchCancelledBadge.
+  ///
+  /// In fr, this message translates to:
+  /// **'Annulé'**
+  String get searchCancelledBadge;
+
   /// No description provided for @searchTargetServer.
   ///
   /// In fr, this message translates to:
