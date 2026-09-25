@@ -180,6 +180,8 @@ impl DownloadService {
                     aich_votes: Default::default(),
                     corruption_blackbox: Default::default(),
                     pending_corruption_bans: Vec::new(),
+                    persist_dirty: false,
+                    last_persist_flush: Instant::now(),
                 },
             );
         }
@@ -425,16 +427,28 @@ impl DownloadService {
     /// Persists `.part.met` companions for every non-terminal download —
     /// eMule `SavePartFile` cadence, invoked periodically by the swarm
     /// coordinator heartbeat and once on graceful shutdown so a crash never
-    /// leaves gap state staler than the last flush.
-    pub fn save_active_part_mets(&self) {
-        for act in self.active.values() {
-            if matches!(
-                act.download.status,
-                DownloadStatus::Completed | DownloadStatus::Removed
-            ) {
-                continue;
+    /// leaves gap state staler than the last flush. Flush aussi les données
+    /// `.part` sales (fsync différé par `PART_PERSIST_INTERVAL`) : ce point
+    /// est le dernier garanti avant l'arrêt du processus.
+    pub fn save_active_part_mets(&mut self) {
+        let ids: Vec<Uuid> = self
+            .active
+            .values()
+            .filter(|act| {
+                !matches!(
+                    act.download.status,
+                    DownloadStatus::Completed | DownloadStatus::Removed
+                )
+            })
+            .map(|act| act.download.id)
+            .collect();
+        for id in ids {
+            if let Some(act) = self.active.get_mut(&id) {
+                if let Err(e) = operations::persist_pending_ranges(&mut self.db, act, &id) {
+                    tracing::warn!("save_active_part_mets flush {id}: {e}");
+                }
+                let _ = part_met::save_part_met(&self.db, act);
             }
-            let _ = part_met::save_part_met(&self.db, act);
         }
     }
 
@@ -499,6 +513,52 @@ impl DownloadService {
         sender: Option<&str>,
     ) -> Result<DownloadSnapshot, DaemonError> {
         operations::inject_range(&mut self.db, &mut self.active, id, offset, data, sender)
+    }
+
+    /// Variante de [`Self::inject_range`] pour le hot path de transfert :
+    /// le snapshot retourné n'inclut pas `parts` (résumé O(parts × ranges)
+    /// trop coûteux par bloc de 180 Ko). Ne pas émettre le retour vers les
+    /// clients RPC/WS — il ne sert qu'à lire `status`/`progress`.
+    pub fn inject_range_brief(
+        &mut self,
+        id: &Uuid,
+        offset: u64,
+        data: &[u8],
+        sender: Option<&str>,
+    ) -> Result<DownloadSnapshot, DaemonError> {
+        operations::inject_range_brief(&mut self.db, &mut self.active, id, offset, data, sender)
+    }
+
+    /// Lookup léger hash → id : évite `find_by_ed2k_hash` (snapshot complet)
+    /// dans le hot path de transfert qui n'a besoin que de l'identifiant.
+    pub fn id_by_ed2k_hash(&self, hex_hash: &str) -> Option<Uuid> {
+        let clean_hex = hex_hash.trim().to_lowercase();
+        self.active
+            .values()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex)
+            .map(|a| a.download.id)
+    }
+
+    /// Flush périodique des `.part` sales (fsync différé) — backstop quand
+    /// le flux de blocs s'interrompt entre deux `inject_range` (la cadence
+    /// principale vit dans le chemin de réception). Appelé au tick du
+    /// swarm coordinator ; no-op quand rien n'est sale.
+    pub fn flush_dirty_downloads(&mut self) {
+        let ids: Vec<Uuid> = self
+            .active
+            .values()
+            .filter(|a| {
+                a.persist_dirty && a.last_persist_flush.elapsed() >= types::PART_PERSIST_INTERVAL
+            })
+            .map(|a| a.download.id)
+            .collect();
+        for id in ids {
+            if let Some(act) = self.active.get_mut(&id) {
+                if let Err(e) = operations::persist_pending_ranges(&mut self.db, act, &id) {
+                    tracing::warn!("flush_dirty_downloads {id}: {e}");
+                }
+            }
+        }
     }
 
     /// Vide les bannissements demandés par le `CorruptionBlackBox` pour ce
@@ -961,24 +1021,43 @@ impl DownloadService {
         }
     }
 
+    /// Lookup mutable hash → download actif, partagé par les setters de débit.
+    fn active_mut_by_hash(&mut self, hex_hash: &str) -> Option<&mut ActiveDownload> {
+        let clean_hex = hex_hash.trim().to_lowercase();
+        self.active
+            .values_mut()
+            .find(|a| a.download.ed2k_hash.to_hex().to_lowercase() == clean_hex)
+    }
+
+    fn apply_rate(active: &mut ActiveDownload, rate_bps: u64) {
+        active.current_rate_bps = rate_bps;
+        active.last_rate_update = if rate_bps > 0 {
+            Some(Instant::now())
+        } else {
+            None
+        };
+    }
+
     pub fn set_download_rate_by_hash(
         &mut self,
         hex_hash: &str,
         rate_bps: u64,
     ) -> Option<DownloadSnapshot> {
-        let clean_hex = hex_hash.trim().to_lowercase();
-        for active in self.active.values_mut() {
-            if active.download.ed2k_hash.to_hex().to_lowercase() == clean_hex {
-                active.current_rate_bps = rate_bps;
-                active.last_rate_update = if rate_bps > 0 {
-                    Some(Instant::now())
-                } else {
-                    None
-                };
-                return Some(active.snapshot());
-            }
-        }
-        None
+        let active = self.active_mut_by_hash(hex_hash)?;
+        Self::apply_rate(active, rate_bps);
+        Some(active.snapshot())
+    }
+
+    /// Variante sans snapshot de [`Self::set_download_rate_by_hash`] pour le
+    /// hot path : le débit est rafraîchi (y compris pour `decay_stale_rates`)
+    /// sans construire de `DownloadSnapshot` — l'émission d'événements est
+    /// coalescée par l'appelant (`sync_transfer_rates`).
+    pub fn update_download_rate_by_hash(&mut self, hex_hash: &str, rate_bps: u64) -> bool {
+        let Some(active) = self.active_mut_by_hash(hex_hash) else {
+            return false;
+        };
+        Self::apply_rate(active, rate_bps);
+        true
     }
 
     pub fn decay_stale_rates(&mut self) -> Vec<DownloadSnapshot> {

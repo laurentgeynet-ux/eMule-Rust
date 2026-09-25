@@ -3,6 +3,7 @@
 
 use mule_core::{AllocationPolicy, Database, Download, DownloadStatus, PartFile, RangeSet};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use uuid::Uuid;
 
 use super::db_err;
@@ -392,6 +393,8 @@ pub fn import_part_met(
         aich_votes: Default::default(),
         corruption_blackbox: Default::default(),
         pending_corruption_bans: Vec::new(),
+        persist_dirty: false,
+        last_persist_flush: Instant::now(),
     };
 
     let met_version_str = match met.version {

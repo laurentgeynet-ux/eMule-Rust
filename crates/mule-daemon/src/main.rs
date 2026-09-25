@@ -483,7 +483,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // eMule saves every .part.met on exit so crash-resume state is
             // never stale (CPartFile::~CPartFile → SavePartFile).
             {
-                let dl = downloads_cleanup.lock().await;
+                let mut dl = downloads_cleanup.lock().await;
                 dl.save_active_part_mets();
             }
             let _ = tokio::time::timeout(

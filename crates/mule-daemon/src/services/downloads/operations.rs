@@ -15,7 +15,7 @@ use super::history_categories::record_history_event;
 use super::peers_servers;
 use super::types::{
     compute_part_summaries, make_snapshot, now_ms, ActiveDownload, ActiveSource, DownloadDetail,
-    DownloadSnapshot,
+    DownloadSnapshot, PART_PERSIST_INTERVAL,
 };
 use crate::error::DaemonError;
 use std::time::{Duration, Instant};
@@ -126,6 +126,8 @@ pub fn add_ed2k_link(
             aich_votes: Default::default(),
             corruption_blackbox: Default::default(),
             pending_corruption_bans: Vec::new(),
+            persist_dirty: false,
+            last_persist_flush: Instant::now(),
         },
     );
 
@@ -232,6 +234,11 @@ pub fn pause_download(
     act.last_status_change_unix_ms = now;
     db.update_status(id, DownloadStatus::Paused)
         .map_err(db_err("persisting state"))?;
+
+    // Flush des données reçues en attente avant la transition : le
+    // bookkeeping des ranges ne doit pas survivre seulement en mémoire
+    // pendant une pause (eMule `SavePartFile` sur changement d'état).
+    persist_pending_ranges(db, act, id)?;
 
     // Persist .part.met on pause (eMule saves met on status transitions).
     let _ = super::part_met::save_part_met(db, act);
@@ -409,6 +416,41 @@ pub fn inject_range(
     data: &[u8],
     sender: Option<&str>,
 ) -> Result<DownloadSnapshot, DaemonError> {
+    inject_range_impl(db, active, id, offset, data, sender, true)
+}
+
+/// Variante hot-path de [`inject_range`] : même ingestion mais le snapshot
+/// retourné n'inclut pas le résumé par part (`parts` vide —
+/// `compute_part_summaries` est O(parts × ranges), coûteux par bloc de
+/// 180 Ko sur les gros fichiers). Ne pas émettre le retour vers les
+/// clients RPC/WS — l'appelant ne lit que `status`/`progress`.
+pub(crate) fn inject_range_brief(
+    db: &mut Database,
+    active: &mut HashMap<Uuid, ActiveDownload>,
+    id: &Uuid,
+    offset: u64,
+    data: &[u8],
+    sender: Option<&str>,
+) -> Result<DownloadSnapshot, DaemonError> {
+    inject_range_impl(db, active, id, offset, data, sender, false)
+}
+
+fn inject_range_impl(
+    db: &mut Database,
+    active: &mut HashMap<Uuid, ActiveDownload>,
+    id: &Uuid,
+    offset: u64,
+    data: &[u8],
+    sender: Option<&str>,
+    full_snapshot: bool,
+) -> Result<DownloadSnapshot, DaemonError> {
+    let snap_of = |act: &ActiveDownload| {
+        if full_snapshot {
+            act.snapshot()
+        } else {
+            act.snapshot_brief()
+        }
+    };
     let act = active
         .get_mut(id)
         .ok_or_else(|| DaemonError::NotFound(format!("Download {id} not found")))?;
@@ -418,24 +460,24 @@ pub fn inject_range(
             "Download {id} is already completed; ignoring incoming range {offset}..{}",
             offset + data.len() as u64
         );
-        return Ok(act.snapshot());
+        return Ok(snap_of(act));
     }
     if act.download.status == DownloadStatus::Verifying {
         tracing::debug!(
             "Download {id} is currently verifying; ignoring incoming range {offset}..{}",
             offset + data.len() as u64
         );
-        return Ok(act.snapshot());
+        return Ok(snap_of(act));
     }
     if act.download.status == DownloadStatus::Removed {
         tracing::debug!(
             "Download {id} is removed; ignoring incoming range {offset}..{}",
             offset + data.len() as u64
         );
-        return Ok(act.snapshot());
+        return Ok(snap_of(act));
     }
     if data.is_empty() {
-        return Ok(act.snapshot());
+        return Ok(snap_of(act));
     }
 
     let end = offset + data.len() as u64;
@@ -454,7 +496,7 @@ pub fn inject_range(
             tracing::warn!(
                 "Download {id}: received data {offset}..{end} touches already complete part {p} — ignored (sender: {sender:?})"
             );
-            return Ok(act.snapshot());
+            return Ok(snap_of(act));
         }
     }
 
@@ -486,9 +528,12 @@ pub fn inject_range(
     if let Some(pf) = &mut act.part_file {
         pf.write_segment(offset, data)
             .map_err(|e| DaemonError::Business(format!("Write error: {e}")))?;
-        pf.flush()
-            .map_err(|e| DaemonError::Business(format!("Flush error: {e}")))?;
     }
+    // Fsync différé : `sync_data` est batché par `persist_pending_ranges`
+    // (cadence `PART_PERSIST_INTERVAL` + points critiques) — pas d'fsync
+    // par bloc de 180 Ko. La sync SQLite des ranges plus bas reste par
+    // bloc (contrat crash-resume).
+    act.persist_dirty = true;
 
     let was_complete =
         act.download.total_size > 0 && act.ranges.covered_len() == act.download.total_size;
@@ -602,11 +647,24 @@ pub fn inject_range(
         }
     }
 
+    // Bookkeeping des ranges synchronisé à chaque bloc : transaction WAL
+    // sans fsync (`synchronous=NORMAL`), peu coûteuse — et exigée pour le
+    // crash-resume (les ranges doivent survivre à un kill brutal).
     db.sync_received_ranges(id, &act.ranges)
         .map_err(|e| DaemonError::Business(format!("DB sync error: {e}")))?;
 
     let is_now_complete =
         act.download.total_size > 0 && act.ranges.covered_len() == act.download.total_size;
+
+    // Fsync batché du chemin de réception (eMule `FlushBuffer`
+    // périodique) : `sync_data` du `.part` à cadence `PART_PERSIST_INTERVAL`,
+    // forcé à la complétion d'une part et à la fin du fichier — les
+    // évictions de parts corrompues passent par `met_dirty`, donc toujours
+    // flushées immédiatement. Doit précéder `part_file.take()` : à la
+    // complétion le handle est fermé et le fsync deviendrait impossible.
+    if met_dirty || is_now_complete || act.last_persist_flush.elapsed() >= PART_PERSIST_INTERVAL {
+        persist_pending_ranges(db, act, id)?;
+    }
 
     if is_now_complete && !was_complete {
         let _ = act.part_file.take();
@@ -632,7 +690,34 @@ pub fn inject_range(
         let _ = super::part_met::save_part_met(db, act);
     }
 
-    Ok(act.snapshot())
+    Ok(snap_of(act))
+}
+
+/// Point unique de flush batché du chemin de réception : `sync_data` du
+/// `.part` quand `persist_dirty`, suivi d'un rafraîchissement idempotent
+/// de `sync_received_ranges` (filet de sécurité — la sync par bloc reste
+/// la source de vérité). Appelé par `inject_range_impl` (cadence
+/// [`PART_PERSIST_INTERVAL`], complétion de part, fin de fichier), par les
+/// transitions de statut (`pause`, `update_status`), par le backstop
+/// `flush_dirty_downloads` et par `save_active_part_mets` au shutdown —
+/// évite un fsync par bloc de 180 Ko.
+pub(crate) fn persist_pending_ranges(
+    db: &mut Database,
+    act: &mut ActiveDownload,
+    id: &Uuid,
+) -> Result<(), DaemonError> {
+    if !act.persist_dirty {
+        return Ok(());
+    }
+    if let Some(pf) = &mut act.part_file {
+        pf.flush()
+            .map_err(|e| DaemonError::Business(format!("Flush error: {e}")))?;
+    }
+    db.sync_received_ranges(id, &act.ranges)
+        .map_err(|e| DaemonError::Business(format!("DB sync error: {e}")))?;
+    act.persist_dirty = false;
+    act.last_persist_flush = Instant::now();
+    Ok(())
 }
 
 /// Marque les enregistrements de la part comme corrompus puis évalue la
@@ -1059,6 +1144,7 @@ pub fn update_status(
         if status != DownloadStatus::Verifying {
             act.verification_in_progress = false;
         }
+        persist_pending_ranges(db, act, id)?;
         (
             old,
             act.download.clone(),

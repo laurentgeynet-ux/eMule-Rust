@@ -92,13 +92,18 @@ impl SwarmCoordinator {
             // eMule SavePartFile cadence: persist .part.met companions for
             // in-progress downloads so a crash never loses more than ~60 s
             // of gap state.
-            let dl_guard = self.state.downloads.lock().await;
+            let mut dl_guard = self.state.downloads.lock().await;
             dl_guard.save_active_part_mets();
         }
 
         // 0. Decay stale download rates (reset frozen speed to 0 if inactive > 2s)
         let decayed_snapshots = {
             let mut dl_guard = self.state.downloads.lock().await;
+            // Backstop de persistance : fsync des `.part` sales quand le
+            // flux de blocs s'est interrompu entre deux `inject_range`
+            // (la cadence principale vit dans le chemin de réception —
+            // `PART_PERSIST_INTERVAL`).
+            dl_guard.flush_dirty_downloads();
             dl_guard.decay_stale_rates()
         };
         for mut snap in decayed_snapshots {

@@ -5,7 +5,7 @@ use mule_core::model::PeerFailureReason;
 use mule_protocol::ed2k::InFlightBlock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use mule_network_policy::SocketPermit;
 
@@ -17,6 +17,13 @@ pub const MAX_GLOBAL_PEERS: usize = 500;
 
 /// Maximum read buffer capacity for incoming peer data (256 KiB) to prevent OOM.
 pub const MAX_PEER_READ_BUFFER_SIZE: usize = 256 * 1024;
+
+/// Intervalle minimal entre deux `DownloadUpdated`/`PeerSessionUpdated`
+/// émis pour un même fichier par le hot path de transfert : les sessions
+/// multiples d'un download partagent un budget d'émission (la
+/// sérialisation JSON du snapshot — `parts` + `pending_ranges` — est le
+/// coût dominant par événement, payé à chaque session sinon).
+pub(crate) const DOWNLOAD_EVENT_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Configurable granular timeouts for eD2K peer connections.
 #[derive(Debug, Clone, Copy)]
@@ -194,6 +201,9 @@ pub(crate) struct SwarmInnerState {
     /// session ends, so `OP_REASKFILEPING` can fire in the eMule window.
     /// `"ip:tcp_port"` → `QueuedPeerState`.
     pub queued_peers: HashMap<String, QueuedPeerState>,
+    /// Dernier événement de transfert émis par fichier — `sync_transfer_rates`
+    /// coalesce les updates à [`DOWNLOAD_EVENT_INTERVAL`] par fichier.
+    pub last_download_event: HashMap<String, Instant>,
 }
 
 /// Logical queue state surviving the TCP session — eMule `DS_ONQUEUE`

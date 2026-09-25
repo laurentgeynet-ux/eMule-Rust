@@ -196,8 +196,18 @@ async fn test_lab_cleanup_refused_in_installed_default_mode() {
         .await
         .unwrap();
 
-    let msg = read.next().await.unwrap().unwrap();
-    let resp: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+    // Read until the RPC response — event notifications can interleave on
+    // the same WebSocket stream.
+    let mut resp: Option<Value> = None;
+    for _ in 0..16 {
+        let msg = read.next().await.unwrap().unwrap();
+        let val: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        if val["id"] == 2 {
+            resp = Some(val);
+            break;
+        }
+    }
+    let resp = resp.expect("cleanup response not received");
     assert!(resp["error"].is_object());
     assert_eq!(resp["error"]["code"], -32002);
     assert!(resp["error"]["message"]

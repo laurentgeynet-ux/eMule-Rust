@@ -10,6 +10,13 @@ import 'package:flutter/foundation.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
+/// Fenêtre de coalescence des notifications `event.downloadUpdated` : le
+/// daemon émet des updates à haute fréquence pendant les transferts actifs
+/// (coalescés à ~1 s/fichier côté daemon, mais N fichiers × N événements
+/// restent possibles) — les notify fusionnent en un seul rebuild par
+/// fenêtre au lieu d'un rebuild complet de la liste par événement.
+const _kDownloadEventCoalesceWindow = Duration(milliseconds: 200);
+
 /// Ordre d'affichage de la liste des téléchargements : les éléments
 /// terminés en bas ; les autres triés par avancement décroissant (les plus
 /// complets en haut). À égalité, les ajouts les plus récents d'abord.
@@ -46,7 +53,7 @@ class DownloadsStoreController extends ChangeNotifier {
   }) {
     _eventSub = client.downloadEvents.listen((event) {
       _downloads[event.download.id] = event.download;
-      notifyListeners();
+      _scheduleCoalescedNotify();
     });
   }
 
@@ -54,6 +61,22 @@ class DownloadsStoreController extends ChangeNotifier {
   bool _isLoading = false;
   String? _selectedId;
   StreamSubscription<DownloadUpdatedEvent>? _eventSub;
+  Timer? _eventNotifyTimer;
+  bool _eventNotifyPending = false;
+
+  /// Diffère le `notifyListeners` des événements haute fréquence : les
+  /// updates reçus dans la même fenêtre fusionnent en un seul rebuild.
+  /// Les actions utilisateur (pause, resume…) gardent un notify immédiat.
+  void _scheduleCoalescedNotify() {
+    _eventNotifyPending = true;
+    _eventNotifyTimer ??= Timer(_kDownloadEventCoalesceWindow, () {
+      _eventNotifyTimer = null;
+      if (_eventNotifyPending) {
+        _eventNotifyPending = false;
+        notifyListeners();
+      }
+    });
+  }
 
   bool get isLoading => _isLoading;
   String? get selectedId => _selectedId;
@@ -418,6 +441,7 @@ class DownloadsStoreController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _eventNotifyTimer?.cancel();
     _eventSub?.cancel();
     super.dispose();
   }

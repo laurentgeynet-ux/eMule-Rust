@@ -29,7 +29,8 @@ use super::source_exchange::{
     handle_sx_answer, handle_sx_request, maybe_send_sx_request, PeerSxCaps, SxEnv, SxLocalIds,
 };
 use super::types::{
-    PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, MAX_PEER_READ_BUFFER_SIZE,
+    PeerConnectionStatus, PeerError, PeerTimeouts, SwarmInnerState, DOWNLOAD_EVENT_INTERVAL,
+    MAX_PEER_READ_BUFFER_SIZE,
 };
 use super::PeerSessionManager;
 use crate::services::downloads::DownloadService;
@@ -328,23 +329,43 @@ async fn sync_transfer_rates(
     peer_bps: u64,
     total_received: u64,
 ) {
-    let (progress_snapshot, total_file_rate_bps, pending_ranges) = {
+    // Coalescing par fichier : les N sessions d'un même download partagent
+    // un budget d'émission `DOWNLOAD_EVENT_INTERVAL` — la sérialisation
+    // JSON du snapshot (`parts` + `pending_ranges`) et son parsing côté UI
+    // sont le coût dominant, payé sinon par session à chaque cadence.
+    let (progress_snapshot, total_file_rate_bps, pending_ranges, emit_due) = {
         let mut g = inner.lock().await;
+        let emit_due = g
+            .last_download_event
+            .get(file_hash_str)
+            .is_none_or(|t| t.elapsed() >= DOWNLOAD_EVENT_INTERVAL);
         let snap = if let Some(session) = g.sessions.get_mut(address_str) {
             session.snapshot.transferred_bytes = total_received;
             session.snapshot.transfer_rate_bps = peer_bps;
-            Some(session.snapshot.clone())
+            if emit_due {
+                Some(session.snapshot.clone())
+            } else {
+                None
+            }
         } else {
             None
         };
+        if emit_due {
+            g.last_download_event
+                .insert(file_hash_str.to_string(), std::time::Instant::now());
+        }
         let total_rate: u64 = g
             .sessions
             .values()
             .filter(|s| s.snapshot.file_hash.as_deref() == Some(file_hash_str))
             .map(|s| s.snapshot.transfer_rate_bps)
             .sum();
-        let pending = PeerSessionManager::pending_ranges_locked(&g, file_hash_str);
-        (snap, total_rate, pending)
+        let pending = if emit_due {
+            PeerSessionManager::pending_ranges_locked(&g, file_hash_str)
+        } else {
+            Vec::new()
+        };
+        (snap, total_rate, pending, emit_due)
     };
 
     if let Some(snap) = progress_snapshot {
@@ -352,9 +373,15 @@ async fn sync_transfer_rates(
     }
 
     let mut dl_svc = downloads.lock().await;
-    if let Some(mut snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_file_rate_bps) {
-        snap.pending_ranges = pending_ranges;
-        emit_download_update(event_tx, sequence, &snap);
+    if emit_due {
+        if let Some(mut snap) = dl_svc.set_download_rate_by_hash(file_hash_str, total_file_rate_bps) {
+            snap.pending_ranges = pending_ranges;
+            emit_download_update(event_tx, sequence, &snap);
+        }
+    } else {
+        // Débit rafraîchi sans snapshot ni événement (la prochaine fenêtre
+        // émet la valeur courante ; `decay_stale_rates` reste informé).
+        dl_svc.update_download_rate_by_hash(file_hash_str, total_file_rate_bps);
     }
 }
 
@@ -900,9 +927,8 @@ pub(crate) async fn run_transfer_loop(
 
                                 let (is_complete, injected_dl) = {
                                     let mut dl_svc = downloads.lock().await;
-                                    if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
-                                        let dl_id = dl.id;
-                                        let done = if let Ok(snap) = dl_svc.inject_range(
+                                    if let Some(dl_id) = dl_svc.id_by_ed2k_hash(file_hash_str) {
+                                        let done = if let Ok(snap) = dl_svc.inject_range_brief(
                                             &dl_id,
                                             part_start,
                                             &part_data,
@@ -1064,9 +1090,8 @@ pub(crate) async fn run_transfer_loop(
                                         let write_at = pending[pi].recv_to;
                                         let (is_complete, injected_dl) = {
                                             let mut dl_svc = downloads.lock().await;
-                                            if let Some(dl) = dl_svc.find_by_ed2k_hash(file_hash_str) {
-                                                let dl_id = dl.id;
-                                                let done = if let Ok(snap) = dl_svc.inject_range(
+                                            if let Some(dl_id) = dl_svc.id_by_ed2k_hash(file_hash_str) {
+                                                let done = if let Ok(snap) = dl_svc.inject_range_brief(
                                                     &dl_id,
                                                     write_at,
                                                     &out[..produced],

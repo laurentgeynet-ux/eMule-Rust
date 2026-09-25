@@ -136,6 +136,7 @@ impl PeerSessionManager {
                 max_global_peers: MAX_GLOBAL_PEERS,
                 peer_udp: HashMap::new(),
                 queued_peers: HashMap::new(),
+                last_download_event: HashMap::new(),
             })),
             event_tx,
             sequence,
@@ -266,6 +267,7 @@ impl PeerSessionManager {
             max_global_peers,
             peer_udp: HashMap::new(),
             queued_peers: HashMap::new(),
+            last_download_event: HashMap::new(),
         }));
         self
     }

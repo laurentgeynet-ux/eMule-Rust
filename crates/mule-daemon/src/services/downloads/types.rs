@@ -180,10 +180,40 @@ pub struct ActiveDownload {
     /// données corrompues) — vidés par l'appelant qui déconnecte le pair et
     /// marque ses sources `Rejected` (eMule `Ban`/`AddBannedClient`).
     pub pending_corruption_bans: Vec<String>,
+    /// Données reçues non encore fsync'd : le `sync_data` du `.part` est
+    /// batché selon [`PART_PERSIST_INTERVAL`] au lieu d'être payé par bloc
+    /// de 180 Ko. Le bookkeeping SQLite `received_ranges` reste synchronisé
+    /// à chaque bloc (transaction WAL cheap, `synchronous=NORMAL`) pour le
+    /// crash-resume ; le fsync différé ne risque qu'une perte disque dur —
+    /// les données seraient alors incohérentes mais la part sera
+    /// re-vérifiée (hash MD4/AICH) et re-téléchargée si invalide.
+    pub persist_dirty: bool,
+    /// Dernier flush disque réel (fsync + sync ranges) des données reçues.
+    pub last_persist_flush: Instant,
 }
+
+/// Cadence maximale de flush disque du chemin de réception : `sync_data`
+/// du `.part`. eMule flush son buffer de part (`CPartFile::FlushBuffer`)
+/// périodiquement plutôt qu'à chaque bloc ; même approche ici — les points
+/// critiques (complétion de part, fin de fichier, pause, transition de
+/// statut, shutdown) forcent un flush immédiat. Le `sync_received_ranges`
+/// SQLite n'est PAS batché (exigé par le crash-resume).
+pub(crate) const PART_PERSIST_INTERVAL: Duration = Duration::from_secs(30);
 
 impl ActiveDownload {
     pub fn snapshot(&self) -> DownloadSnapshot {
+        self.snapshot_impl(true)
+    }
+
+    /// Snapshot sans le résumé par part (`compute_part_summaries` est
+    /// O(parts × ranges)) — pour le hot path de réception qui ne consulte
+    /// que `status`/`progress`. `parts` reste vide : ne jamais l'émettre
+    /// vers les clients RPC/WS.
+    pub fn snapshot_brief(&self) -> DownloadSnapshot {
+        self.snapshot_impl(false)
+    }
+
+    fn snapshot_impl(&self, with_parts: bool) -> DownloadSnapshot {
         let effective_rate = if let Some(last_update) = self.last_rate_update {
             if last_update.elapsed() > Duration::from_secs(2) {
                 0
@@ -200,25 +230,27 @@ impl ActiveDownload {
             self.source_count.max(self.sources.len() as u32),
             effective_rate,
         );
-        // Verified part flags live in SQLite; the list snapshot only knows
-        // "all verified" for completed downloads. `downloads.get` re-reads
-        // the authoritative set for the detail view.
-        let verified_parts: HashSet<u32> = if self.download.status == DownloadStatus::Completed {
-            let pc = self
-                .download
-                .total_size
-                .div_ceil(ED2K_PART_SIZE as u64)
-                .max(1) as u32;
-            (0..pc).collect()
-        } else {
-            HashSet::new()
-        };
-        snap.parts = compute_part_summaries(
-            self.download.total_size,
-            &self.ranges,
-            self.sources.values(),
-            &verified_parts,
-        );
+        if with_parts {
+            // Verified part flags live in SQLite; the list snapshot only knows
+            // "all verified" for completed downloads. `downloads.get` re-reads
+            // the authoritative set for the detail view.
+            let verified_parts: HashSet<u32> = if self.download.status == DownloadStatus::Completed {
+                let pc = self
+                    .download
+                    .total_size
+                    .div_ceil(ED2K_PART_SIZE as u64)
+                    .max(1) as u32;
+                (0..pc).collect()
+            } else {
+                HashSet::new()
+            };
+            snap.parts = compute_part_summaries(
+                self.download.total_size,
+                &self.ranges,
+                self.sources.values(),
+                &verified_parts,
+            );
+        }
         snap
     }
 }
