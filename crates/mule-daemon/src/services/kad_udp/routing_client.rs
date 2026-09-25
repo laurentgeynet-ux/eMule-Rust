@@ -69,7 +69,9 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!("Kad Ping to node {} timed out after {}s (tx_id={})", log_peer_addr(target), KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
+                // Timeout de sondage Kad = churn routinier (nœuds morts),
+                // pas une anomalie — eMule ne le montre qu'en verbose.
+                tracing::debug!("Kad Ping to node {} timed out after {}s (tx_id={})", log_peer_addr(target), KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad ping to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx.recv() => {
@@ -140,7 +142,7 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!("Kad Bootstrap to node {} timed out after {}s (tx_id={})", log_peer_addr(target), KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
+                tracing::debug!("Kad Bootstrap to node {} timed out after {}s (tx_id={})", log_peer_addr(target), KAD_TRANSACTION_TIMEOUT_SECS, tx_id);
                 Err(format!("Kad bootstrap to {target} timed out after {KAD_TRANSACTION_TIMEOUT_SECS}s"))
             }
             res = rx.recv() => {
@@ -255,7 +257,7 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!(
+                tracing::debug!(
                     "Kad FindNode to node {} timed out after {}s (target={}, tx_id={})",
                     log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,

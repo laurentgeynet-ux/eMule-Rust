@@ -413,7 +413,10 @@ pub(crate) async fn maybe_send_sx_request(
             match stream.write_all(&out).await {
                 Ok(()) => {
                     mark_sx_request_sent(env, target_addr.ip(), dl_hash_bytes);
-                    tracing::info!(
+                    // eMule `DebugSourceExchange` (verbose opt-in) — la
+                    // réponse porte le bilan utile (yield), la requête
+                    // seule est du bruit (~1/source/40 min par fichier).
+                    tracing::debug!(
                         "[SOURCE_EXCHANGE] Sent {} (version {}) to peer {peer} for file {file_hash_str}",
                         if caps.sx2 { "OP_REQUESTSOURCES2" } else { "OP_REQUESTSOURCES" },
                         sx_req.version

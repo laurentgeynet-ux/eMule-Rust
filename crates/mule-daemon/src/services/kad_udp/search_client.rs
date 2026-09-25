@@ -324,7 +324,7 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!(
+                tracing::debug!(
                     "Kad SearchKeyword to node {} timed out after {}s (keyword={}, tx_id={})",
                     log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
@@ -515,7 +515,7 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!(
+                tracing::debug!(
                     "Kad SearchNotes to node {} timed out after {}s (file={}, tx_id={})",
                     log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
@@ -609,7 +609,7 @@ impl KadUdpService {
                 let inner = self.inner.read().await;
                 let mut inf = inner.in_flight.lock().await;
                 inf.remove(&tx_id);
-                tracing::warn!(
+                tracing::debug!(
                     "Kad PublishNotes to node {} timed out after {}s (file={}, tx_id={})",
                     log_peer_addr(target),
                     KAD_TRANSACTION_TIMEOUT_SECS,
