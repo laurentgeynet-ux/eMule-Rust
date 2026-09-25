@@ -427,6 +427,22 @@ impl InboundListenerService {
                                         // and grant the credit multiplier now.
                                         if let Some(ref ph) = remote_pubkey_hash {
                                             let mut dl_svc = self.downloads.lock().await;
+                                            // eMule `AddTrackClient`
+                                            // (`ProcessPublicKeyPacket`,
+                                            // BaseClient.cpp:1899) : la
+                                            // paire (IP, port annoncé) →
+                                            // userhash est mémorisée 2 h —
+                                            // base du `ComparePriorUserhash`
+                                            // anti-usurpation.
+                                            if let (Some(ip), Some(uh)) =
+                                                (peer_ip, peer_user_hash)
+                                            {
+                                                dl_svc.track_client(
+                                                    ip,
+                                                    peer_tcp_port,
+                                                    uh,
+                                                );
+                                            }
                                             let pub_hex = remote_pubkey_der
                                                 .as_ref()
                                                 .map(hex::encode)
@@ -1563,7 +1579,11 @@ impl InboundListenerService {
                                         continue;
                                     }
 
-                                    match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected, peer_udp_port).await {
+                                    let slot_res = self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected, peer_udp_port).await;
+                                    if self.drain_upload_bans(peer_ip, &remote_str).await {
+                                        break;
+                                    }
+                                    match slot_res {
                                         Ok((UploadSlotState::Uploading, _)) => {
                                             let mut out = Vec::new();
                                             out.push(PR_ED2K);
@@ -1644,7 +1664,11 @@ impl InboundListenerService {
                                          continue;
                                      }
 
-                                     match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected, peer_udp_port).await {
+                                     let slot_res = self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected, peer_udp_port).await;
+                                     if self.drain_upload_bans(peer_ip, &remote_str).await {
+                                         break;
+                                     }
+                                     match slot_res {
                                          Ok((UploadSlotState::Uploading, _)) => {
                                              rotated_notify = self
                                                  .upload_manager
@@ -1904,6 +1928,43 @@ impl InboundListenerService {
         // (`US_ONUPLOADQUEUE` survit à `Disconnected`) — le slot actif est
         // libéré mais l'entrée attend `MAX_PURGEQUEUETIME` / une reconnexion.
         self.upload_manager.mark_disconnected(&client_key).await;
+    }
+
+    /// Traduit les bannissements `BAD_CLIENT_BAN` de la file d'upload en
+    /// bans IP (`DownloadService::ban_source`, 2 h — eMule
+    /// `Ban()`/`AddBannedClient`). Retourne `true` quand le pair courant
+    /// vient d'être banni — l'appelant doit `break` pour couper le socket
+    /// (eMule `Disconnected` dans `Ban`).
+    async fn drain_upload_bans(
+        &self,
+        peer_ip: Option<std::net::IpAddr>,
+        remote_str: &str,
+    ) -> bool {
+        let bans = self.upload_manager.drain_pending_bans().await;
+        if bans.is_empty() {
+            return false;
+        }
+        let mut drop_peer = false;
+        {
+            let mut dl = self.downloads.lock().await;
+            for ip in &bans {
+                dl.ban_source(ip);
+                tracing::warn!(
+                    "[BAN] Client IP {} banned (upload request flood — eMule BADCLIENTBAN)",
+                    ip
+                );
+                if peer_ip.is_some_and(|p| &p.to_string() == ip) {
+                    drop_peer = true;
+                }
+            }
+        }
+        if drop_peer {
+            tracing::warn!(
+                "[BAN] Inbound peer {} dropped — request flood ban",
+                log_addr_str(remote_str)
+            );
+        }
+        drop_peer
     }
 
     /// Dispatches the sub-requests of an inbound `OP_MULTIPACKET*` — eMule

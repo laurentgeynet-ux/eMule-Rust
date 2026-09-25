@@ -331,8 +331,27 @@ impl ClientUdpService {
     }
 
     /// Handles one inbound client UDP datagram (already policy-filtered by
-    /// the shared socket loop).
+    /// the shared socket loop — ipfilter + port at `kad_udp.rs`).
+    ///
+    /// eMule `ClientUDPSocket.cpp:76` drops packets from banned clients
+    /// (`clientlist->IsBannedClient`) — our corruption-ban list plays that
+    /// role: a banned source cannot reask-ping us either.
     pub async fn handle_datagram(&self, peer_addr: SocketAddr, data: &[u8]) {
+        let banned = {
+            let downloads = self.downloads.read().unwrap().clone();
+            match downloads.as_ref() {
+                Some(d) => d.lock().await.is_source_banned(&peer_addr.to_string()),
+                None => false,
+            }
+        };
+        if banned {
+            tracing::debug!(
+                "Client UDP: dropped datagram from banned peer {}",
+                log_peer_addr(peer_addr)
+            );
+            return;
+        }
+
         let msg = match client_udp::decode_client_udp(data) {
             Ok(m) => m,
             Err(e) => {

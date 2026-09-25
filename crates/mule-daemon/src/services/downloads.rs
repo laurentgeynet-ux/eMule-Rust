@@ -29,6 +29,14 @@ pub use types::{
     MAX_IMPORT_PART_COUNT, MAX_IMPORT_TOTAL_SIZE,
 };
 
+/// Durée de bannissement d'une IP cliente — eMule `CLIENTBANTIME`
+/// (`Opcodes.h:123` — 2 heures).
+pub const CLIENT_BAN_DURATION: Duration = Duration::from_secs(2 * 3600);
+
+/// Durée de conservation d'un client dans la liste de suivi
+/// `(IP,port)→userhash` — eMule `KEEPTRACK_TIME` (`Opcodes.h:125` — 2 h).
+pub const KEEP_TRACK_DURATION: Duration = CLIENT_BAN_DURATION;
+
 /// Fabrique une closure `map_err` enveloppant une erreur de persistance en
 /// `DaemonError::Business` avec un contexte lisible : `"DB error {context}: {e}"`.
 pub(crate) fn db_err<E: std::fmt::Display>(
@@ -55,9 +63,17 @@ pub struct DownloadService {
     /// (`event.downloadAdded/Removed/Completed/Failed`).
     event_tx: Option<tokio::sync::broadcast::Sender<String>>,
     sequence: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
-    /// IPs bannies pour la session par le `CorruptionBlackBox` (eMule
-    /// `clientlist->AddBannedClient` — portée session, tous fichiers).
-    banned_source_ips: std::collections::HashSet<std::net::IpAddr>,
+    /// IPs bannies par le `CorruptionBlackBox`, le flood de requêtes ou un
+    /// changement de userhash (eMule `clientlist->AddBannedClient` —
+    /// `CLIENTBANTIME` = 2 h, `Opcodes.h:123`).
+    banned_source_ips: std::collections::HashMap<std::net::IpAddr, std::time::Instant>,
+    /// `(IP, port TCP annoncé) → (userhash, instant)` — eMule
+    /// `m_trackedClientsMap` (`KEEPTRACK_TIME` = 2 h, `Opcodes.h:125`),
+    /// rempli quand le pair fournit sa clé publique SUI.
+    tracked_clients: std::collections::HashMap<
+        (std::net::IpAddr, u16),
+        ([u8; 16], std::time::Instant),
+    >,
     /// `!theApp.IsFirewalled()` — le daemon accepte les sources `lowid:`
     /// uniquement tant qu'il est joignable pour un connect-back (HighID
     /// eD2K ou Kad UDP ouvert vérifié) ; sinon aucun `OP_CALLBACKREQUEST`
@@ -183,6 +199,7 @@ impl DownloadService {
             active,
             session_start_ms,
             banned_source_ips: Default::default(),
+            tracked_clients: Default::default(),
             accept_lowid_sources: false,
             event_tx: None,
             sequence: None,
@@ -199,6 +216,7 @@ impl DownloadService {
             active: HashMap::new(),
             session_start_ms: now_ms(),
             banned_source_ips: Default::default(),
+            tracked_clients: Default::default(),
             accept_lowid_sources: false,
             event_tx: None,
             sequence: None,
@@ -494,22 +512,66 @@ impl DownloadService {
         let bans = std::mem::take(&mut act.pending_corruption_bans);
         for addr in &bans {
             if let Some(ip) = source_addr_ip(addr) {
-                self.banned_source_ips.insert(ip);
+                self.banned_source_ips
+                    .insert(ip, std::time::Instant::now());
             }
         }
         bans
     }
 
-    /// eMule `clientlist->IsBannedClient` : l'IP a-t-elle été bannie cette
-    /// session (corruption ou motif explicite) ?
+    /// eMule `clientlist->IsBannedClient` : l'IP est-elle bannie depuis
+    /// moins de `CLIENTBANTIME` (2 h) ? (`ClientList.cpp:347` — le ban
+    /// expire, il n'est pas permanent.)
     pub fn is_source_banned(&self, addr: &str) -> bool {
-        source_addr_ip(addr).is_some_and(|ip| self.banned_source_ips.contains(&ip))
+        let Some(ip) = source_addr_ip(addr) else {
+            return false;
+        };
+        self.banned_source_ips
+            .get(&ip)
+            .is_some_and(|since| since.elapsed() < CLIENT_BAN_DURATION)
     }
 
-    /// Bannit explicitement une IP source pour la session.
+    /// Bannit explicitement une IP pour `CLIENTBANTIME` (2 h).
     pub fn ban_source(&mut self, addr: &str) {
         if let Some(ip) = source_addr_ip(addr) {
-            self.banned_source_ips.insert(ip);
+            self.banned_source_ips
+                .insert(ip, std::time::Instant::now());
+        }
+    }
+
+    /// eMule `AddTrackClient` (`ClientList.cpp:367`) : mémorise le
+    /// `(IP, port TCP annoncé) → userhash` d'un pair qui a présenté sa clé
+    /// publique SUI, conservé `KEEPTRACK_TIME` (2 h).
+    pub fn track_client(
+        &mut self,
+        ip: std::net::IpAddr,
+        announced_tcp_port: u16,
+        user_hash: [u8; 16],
+    ) {
+        // Purge paresseuse des entrées expirées (eMule purge dans
+        // `Process` toutes les 30 s — ici à chaque insertion, le volume
+        // reste faible).
+        self.tracked_clients
+            .retain(|_, (_, seen)| seen.elapsed() < KEEP_TRACK_DURATION);
+        self.tracked_clients.insert(
+            (ip, announced_tcp_port),
+            (user_hash, std::time::Instant::now()),
+        );
+    }
+
+    /// eMule `ComparePriorUserhash` (`ClientList.cpp:386`) : `false` si ce
+    /// `(IP, port)` a déjà été suivi sous un **autre** userhash — indice
+    /// fort d'usurpation d'identité (eMule bannit l'IP dans ce cas).
+    /// `true` si inconnu ou hash identique.
+    pub fn check_prior_userhash(
+        &self,
+        ip: std::net::IpAddr,
+        announced_tcp_port: u16,
+        user_hash: &[u8; 16],
+    ) -> bool {
+        match self.tracked_clients.get(&(ip, announced_tcp_port)) {
+            Some((prior, seen)) if seen.elapsed() < KEEP_TRACK_DURATION => prior == user_hash,
+            _ => true,
         }
     }
 
@@ -1721,5 +1783,57 @@ impl DownloadService {
 
     pub fn db_mut(&mut self) -> &mut Database {
         &mut self.db
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `CLIENTBANTIME` (2 h) : un ban expire comme `IsBannedClient` eMule
+    /// (`ClientList.cpp:347` — `curTick < dwBantime + CLIENTBANTIME`).
+    #[test]
+    fn ban_expires_after_client_ban_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut svc = DownloadService::in_memory(tmp.path().join("t")).unwrap();
+
+        svc.ban_source("1.2.3.4:4662");
+        assert!(svc.is_source_banned("1.2.3.4:4662"));
+
+        // Ban appliqué il y a plus de 2 h → expiré.
+        let ip: std::net::IpAddr = "1.2.3.4".parse().unwrap();
+        svc.banned_source_ips.insert(
+            ip,
+            Instant::now() - CLIENT_BAN_DURATION - Duration::from_secs(1),
+        );
+        assert!(!svc.is_source_banned("1.2.3.4:4662"));
+    }
+
+    /// `ComparePriorUserhash` (`ClientList.cpp:386`) : même (IP, port) suivi
+    /// sous un autre userhash → `false` ; userhash identique ou inconnu →
+    /// `true`. Les entrées expirent après `KEEPTRACK_TIME` (2 h).
+    #[test]
+    fn prior_userhash_detection_and_expiry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut svc = DownloadService::in_memory(tmp.path().join("t")).unwrap();
+        let ip: std::net::IpAddr = "9.9.9.9".parse().unwrap();
+
+        // Inconnu → OK.
+        assert!(svc.check_prior_userhash(ip, 4662, &[0xAA; 16]));
+
+        svc.track_client(ip, 4662, [0xAA; 16]);
+        // Même hash → OK ; hash différent → usurpation.
+        assert!(svc.check_prior_userhash(ip, 4662, &[0xAA; 16]));
+        assert!(!svc.check_prior_userhash(ip, 4662, &[0xBB; 16]));
+        // Autre port → identité distincte (eMule matche sur (ip, port)).
+        assert!(svc.check_prior_userhash(ip, 4663, &[0xBB; 16]));
+
+        // Entrée expirée → OK de nouveau.
+        svc.tracked_clients.insert(
+            (ip, 4662),
+            ([0xAA; 16], Instant::now() - KEEP_TRACK_DURATION - Duration::from_secs(1)),
+        );
+        assert!(svc.check_prior_userhash(ip, 4662, &[0xBB; 16]));
     }
 }

@@ -1409,3 +1409,34 @@ Corrections apportées :
 Validation : 7/7 tests live `--ignored` verts contre le vrai binaire
 0.72a, dont les 3 transferts de blocs qui expiraient avant ce correctif
 (single block, part0+resume, file boundary).
+
+## 29. Anti-abus : bans IP 2 h, flood de requêtes, userhash suivi
+
+Alignement sur la surface de ban eMule 0.72a (`ClientList::Ban` /
+`AddBannedClient` — `CLIENTBANTIME` = 2 h, `Opcodes.h:123`) :
+
+- **Expiry** : nos bans IP expirent après 2 h au lieu d'être permanents
+  — `is_source_banned` vérifie l'horodatage (purge paresseuse). Fidèle à
+  `ClientList.cpp:350` (`curTick < dwBantime + CLIENTBANTIME`).
+- **Ingress** : le TCP entrant vérifie désormais `IsBannedClient` à
+  l'accept (`connection.rs`, eMule `ListenSocket.cpp:1987`/`2102`) ; l'UDP
+  pair droppe port 0 + ipfilter au dispatch et bannis dans
+  `handle_datagram` (`ClientUDPSocket.cpp:76`). Le filtrage IP TCP était
+  déjà appliqué avant lecture de la première trame.
+- **`AddRequestCount`** (`UploadClient.cpp:596`, appelé dans
+  `AddClientToQueue`) : existait déjà — re-ask du même fichier < 10 min
+  (`MIN_REQUESTTIME`) incrémente `bad_requests`, `>= BADCLIENTBAN` (4) →
+  `banned`. Complété : l'entrée bannie pousse maintenant l'IP dans
+  `pending_bans`, vidé par le dispatcher vers `DownloadService::ban_source`
+  **et** la connexion est coupée (`break` → `mark_disconnected`), comme
+  `Ban()` → `Disconnected`. Exemption ami (`!GetFriendSlot()`) ajoutée.
+- **`ComparePriorUserhash`** (`ClientList.cpp:386`, appelé
+  `BaseClient.cpp:614`) : suivi `(IP, port TCP annoncé) → userhash` 2 h
+  (`KEEPTRACK_TIME`), rempli à la présentation de la clé publique SUI
+  (`ProcessPublicKeyPacket` = `AddTrackClient`, `BaseClient.cpp:1899`).
+  Une reconnexion depuis le même (IP, port) sous un autre userhash → ban +
+  drop à la réception du hello (`connection.rs`).
+
+Non porté : `IsLeecher`/mod-string heuristics n'existent plus en 0.72a ;
+le ban de flood Kad (`PacketTracking.cpp:192`, dette de jetons < −3 min)
+n'a pas d'équivalent — notre `in_flight` tracker borne déjà par requête.

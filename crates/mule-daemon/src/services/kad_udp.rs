@@ -394,6 +394,26 @@ impl KadUdpService {
                                 //    one UDP socket for both).
                                 if !is_valid_kad_protocol(proto_byte) {
                                     if ClientUdpService::is_client_udp_protocol(proto_byte) {
+                                        // eMule `ClientUDPSocket.cpp:76` :
+                                        // drop avant traitement sur port
+                                        // nul ou IP filtrée (ipfilter).
+                                        // (Le banned-check vit dans
+                                        // `handle_datagram`, qui détient
+                                        // le DownloadService.)
+                                        if peer_addr.port() == 0 {
+                                            continue;
+                                        }
+                                        if let Some(rule) = policy_mgr_clone
+                                            .ip_filter()
+                                            .check_ip(peer_addr.ip())
+                                        {
+                                            tracing::info!(
+                                                "Client UDP: dropped datagram from {} (ipfilter '{}')",
+                                                log_peer_addr(peer_addr),
+                                                rule.description
+                                            );
+                                            continue;
+                                        }
                                         let cat = classify_ip(peer_addr.ip());
                                         let policy_allowed = match policy_mgr_clone.profile() {
                                             NetworkProfile::LocalLab => cat == IpCategory::Loopback,

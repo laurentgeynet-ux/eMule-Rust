@@ -353,6 +353,11 @@ pub struct UploadManager {
     /// `m_nLastStartUpload`, positionné dans `AddUpNextClient`) — alimente
     /// la temporisation `PROMOTION_MIN_INTERVAL_MS` de `promotion_paced`.
     last_upload_start_ms: Arc<AtomicI64>,
+    /// IPs dont `bad_requests` vient d'atteindre `BAD_CLIENT_BAN` —
+    /// eMule `Ban()` → `AddBannedClient` bannit l'IP 2 h au lieu de
+    /// seulement marquer l'entrée. Le dispatcher les vide après
+    /// `request_upload_slot` et alimente `DownloadService::ban_source`.
+    pending_bans: Arc<Mutex<Vec<String>>>,
 }
 
 impl Default for UploadManager {
@@ -382,6 +387,7 @@ impl UploadManager {
             total_uploaded_bytes: Arc::new(AtomicU64::new(0)),
             file_upload_totals: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             last_upload_start_ms: Arc::new(AtomicI64::new(0)),
+            pending_bans: Arc::new(Mutex::new(Vec::new())),
             rotation_grace: Arc::new(Mutex::new(std::collections::HashMap::new())),
             shared_hashes: Arc::new(std::sync::RwLock::new(None)),
             auto_up_prio: Arc::new(std::sync::RwLock::new(
@@ -485,6 +491,13 @@ impl UploadManager {
     /// True when `client_key` belongs to a configured friend.
     fn is_friend(&self, client_key: &str) -> bool {
         self.friends.read().unwrap().contains(client_key)
+    }
+
+    /// IPs fraîchement tombées sous `BAD_CLIENT_BAN` — le dispatcher les
+    /// traduit en `DownloadService::ban_source` (ban IP 2 h, eMule
+    /// `AddBannedClient`) et coupe la connexion du pair.
+    pub async fn drain_pending_bans(&self) -> Vec<String> {
+        std::mem::take(&mut *self.pending_bans.lock().await)
     }
 
     /// Installs the broadcast channel used to emit `upload.uploadsUpdated`.
@@ -759,12 +772,22 @@ impl UploadManager {
                 self.emit_uploads_updated().await;
                 return Ok((UploadSlotState::Uploading, None));
             }
-            if entry.file_hash == file_hash
+            // `!GetFriendSlot()` dans `AddRequestCount` eMule : les amis
+            // sont exemptés du compteur anti-flood.
+            if !self.is_friend(client_key)
+                && entry.file_hash == file_hash
                 && now.saturating_sub(entry.last_request_unix_ms) < MIN_REQUEST_TIME_MS
             {
                 entry.bad_requests = entry.bad_requests.saturating_add(1);
-                if entry.bad_requests >= BAD_CLIENT_BAN {
+                if entry.bad_requests >= BAD_CLIENT_BAN && !entry.banned {
                     entry.banned = true;
+                    // eMule `Ban()` → `AddBannedClient(IP)` : le pair est
+                    // banni 2 h au niveau IP, pas seulement déscoré.
+                    let ip = client_address
+                        .parse::<std::net::SocketAddr>()
+                        .map(|a| a.ip().to_string())
+                        .unwrap_or_else(|_| client_address.to_string());
+                    self.pending_bans.lock().await.push(ip);
                 }
             } else {
                 entry.bad_requests = entry.bad_requests.saturating_sub(1);
@@ -2737,4 +2760,56 @@ mod tests {
             .iter()
             .any(|s| s.client_address == "old"));
     }
+
+    /// eMule `Ban()` → `AddBannedClient` : quand `bad_requests` atteint
+    /// `BAD_CLIENT_BAN`, l'IP est poussée dans `pending_bans` pour un ban
+    /// IP de 2 h côté `DownloadService` — pas seulement déscorée.
+    #[tokio::test]
+    async fn bad_client_ban_pushes_ip_for_two_hour_ban() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        mgr.request_upload_slot("a", "1.1.1.1:4662", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        mgr.request_upload_slot("f", "9.9.9.9:4662", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        // 4 re-asks rapprochés du même fichier par le pair en file.
+        for _ in 0..4 {
+            mgr.request_upload_slot("f", "9.9.9.9:4662", "h", "f", 1.0, "normal", false, None)
+                .await
+                .unwrap();
+        }
+        assert!(mgr.queue.lock().await[0].banned);
+        let bans = mgr.drain_pending_bans().await;
+        assert_eq!(bans, vec!["9.9.9.9".to_string()]);
+        assert!(mgr.drain_pending_bans().await.is_empty());
+    }
+
+    /// `!GetFriendSlot()` dans `AddRequestCount` : un ami n'est jamais
+    /// comptabilisé dans l'anti-flood de requêtes.
+    #[tokio::test]
+    async fn friend_is_exempt_from_bad_request_count() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        mgr.set_friend("f", true);
+        mgr.request_upload_slot("a", "1.1.1.1:4662", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        // L'ami entre en file puis re-demande 5 fois de suite.
+        for _ in 0..6 {
+            let r = mgr
+                .request_upload_slot("f", "9.9.9.9:4662", "h", "f", 1.0, "normal", false, None)
+                .await;
+            assert!(r.is_ok());
+        }
+        let q = mgr.queue.lock().await;
+        if let Some(e) = q.iter().find(|e| e.client_key == "f") {
+            assert!(!e.banned);
+            assert_eq!(e.bad_requests, 0);
+        }
+        drop(q);
+        assert!(mgr.drain_pending_bans().await.is_empty());
+    }
+
 }

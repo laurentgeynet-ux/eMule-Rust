@@ -41,6 +41,22 @@ impl InboundListenerService {
             return;
         }
 
+        // 1b. eMule `IsBannedClient` (`ListenSocket.cpp:1987`) : une IP
+        // bannie (corruption, flood de requêtes, userhash changé) est
+        // refusée avant tout traitement protocolaire, comme l'ipfilter.
+        if self
+            .downloads
+            .lock()
+            .await
+            .is_source_banned(&remote_str)
+        {
+            tracing::info!(
+                "[BAN] Dropped inbound TCP connection from banned IP {}",
+                log_addr_str(&remote_str)
+            );
+            return;
+        }
+
         // Protocol Obfuscation detection on first byte
         let mut first_byte = [0u8; 1];
         let read_res = tokio::select! {
@@ -161,6 +177,25 @@ impl InboundListenerService {
                     peer_info.has_compression_capability(),
                     peer_info.unknown_tags.len()
                 , peer = log_addr_str(&remote_str));
+                // eMule `ComparePriorUserhash` (`BaseClient.cpp:614` /
+                // `ClientList.cpp:386`) : ce (IP, port TCP annoncé) a déjà
+                // été suivi sous un userhash différent → indice fort
+                // d'usurpation → `Ban()` (IP 2 h) + déconnexion.
+                {
+                    let mut dl = self.downloads.lock().await;
+                    if !dl.check_prior_userhash(
+                        remote_addr.ip(),
+                        hello.tcp_port,
+                        &hello.user_hash,
+                    ) {
+                        dl.ban_source(&remote_str);
+                        tracing::warn!(
+                            "[BAN] Inbound peer {} userhash changed vs tracked (ip,port) — banned 2h and dropped",
+                            log_addr_str(&remote_str)
+                        );
+                        return;
+                    }
+                }
                 callback_hello = Some(hello);
                 let mut tags = Vec::new();
 
