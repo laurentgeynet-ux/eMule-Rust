@@ -23,7 +23,8 @@ use mule_protocol::ed2k::{
     OP_AICHFILEHASHREQ, OP_AICH_REQUEST, OP_CANCELTRANSFER, OP_CHANGE_CLIENT_ID, OP_COMPRESSEDPART,
     OP_COMPRESSEDPART_I64, OP_EMULE_INFO, OP_EMULE_INFO_ANSWER, OP_END_OF_DOWNLOAD,
     OP_FILEREQANSNOFILE, OP_FILESTATUS, OP_FWCHECKUDPREQ, OP_HASHSETREQUEST, OP_MULTIPACKET,
-    OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_OUTOFPARTS, OP_PUBLICKEY, OP_QUEUERANKING,
+    OP_MULTIPACKET_EXT, OP_MULTIPACKET_EXT2, OP_OUTOFPARTS, OP_PUBLICIP_ANSWER, OP_PUBLICIP_REQ,
+    OP_PUBLICKEY, OP_QUEUERANKING,
     OP_REQFILENAME, OP_REQFILENAME_ANSWER, OP_REQUESTPARTS, OP_REQUESTPARTS_EMULE,
     OP_REQUESTPARTS_I64, OP_REQUESTSOURCES, OP_REQUESTSOURCES2, OP_SECIDENTSTATE,
     OP_SETREQFILEID_EMULE, OP_SIGNATURE, OP_STARTUPLOADREQ, PR_ED2K, PR_EMULE,
@@ -112,6 +113,11 @@ impl InboundListenerService {
         // client en attente garde ouvert ; sans lui le client ne serait
         // servi qu'à son prochain re-ask (~30 min).
         let mut promote_notify: Option<std::sync::Arc<tokio::sync::Notify>> = None;
+        // Signal de rotation de slot — `process_tick` (`CheckForTimeOver`)
+        // le déclenche quand la session active de ce pair est rendue à la
+        // file ; on pousse alors OP_OUTOFPARTREQS (eMule
+        // `SendOutOfPartReqsAndAddToWaitingQueue`, UploadQueue.cpp:312).
+        let mut rotated_notify: Option<std::sync::Arc<tokio::sync::Notify>> = None;
 
         // eMule `ConnectionEstablished` (BaseClient.cpp:1552) — si ce pair
         // avait un re-ask différé (`m_bReaskPending` posé par la stratégie
@@ -192,6 +198,22 @@ impl InboundListenerService {
                     out.push(PR_ED2K);
                     out.extend_from_slice(&1u32.to_le_bytes());
                     out.push(OP_ACCEPTUPLOADREQ);
+                    let _ = stream.write_all(&out).await;
+                }
+                _ = async {
+                    match &rotated_notify {
+                        Some(n) => n.notified().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    // Notre slot d'upload vient d'être roté
+                    // (`CheckForTimeOver`) — le downloader repasse
+                    // OnQueue chez lui au lieu d'attendre ses blocs.
+                    rotated_notify = None;
+                    let mut out = Vec::new();
+                    out.push(PR_ED2K);
+                    out.extend_from_slice(&1u32.to_le_bytes());
+                    out.push(OP_OUTOFPARTS);
                     let _ = stream.write_all(&out).await;
                 }
                 read_res = stream.read(&mut raw_buf) => {
@@ -578,6 +600,21 @@ impl InboundListenerService {
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                                OP_PUBLICIP_REQ => {
+                                    // eMule ListenSocket.cpp:1297 — répondre
+                                    // OP_PUBLICIP_ANSWER (PR_EMULE) avec l'IP
+                                    // du demandeur telle qu'on la voit
+                                    // (PokeUInt32(client->GetIP()) — octets
+                                    // réseau bruts).
+                                    if let Some(std::net::IpAddr::V4(v4)) = peer_ip {
+                                        let mut out = Vec::with_capacity(10);
+                                        out.push(PR_EMULE);
+                                        out.extend_from_slice(&5u32.to_le_bytes());
+                                        out.push(OP_PUBLICIP_ANSWER);
+                                        out.extend_from_slice(&v4.octets());
+                                        let _ = stream.write_all(&out).await;
                                     }
                                 }
                                 OP_EMULE_INFO | OP_EMULE_INFO_ANSWER => {
@@ -1227,6 +1264,10 @@ impl InboundListenerService {
                                             out.extend_from_slice(&1u32.to_le_bytes());
                                             out.push(OP_ACCEPTUPLOADREQ);
                                             let _ = stream.write_all(&out).await;
+                                            rotated_notify = self
+                                                .upload_manager
+                                                .rotation_notify(&client_key)
+                                                .await;
                                         }
                                         Ok((UploadSlotState::Waiting, Some(rank))) => {
                                             let mut out = Vec::new();
@@ -1294,6 +1335,10 @@ impl InboundListenerService {
 
                                      match self.upload_manager.request_upload_slot(&client_key, &remote_str, &hash_hex, &shared_file.file_name, credit_multiplier, &shared_file.up_priority, sui_rejected, peer_udp_port).await {
                                          Ok((UploadSlotState::Uploading, _)) => {
+                                             rotated_notify = self
+                                                 .upload_manager
+                                                 .rotation_notify(&client_key)
+                                                 .await;
                                              if let Some(target_range) = req_ranges.first() {
                                                  let (start, end) = *target_range;
                                                  // Partial share (in-progress download): only

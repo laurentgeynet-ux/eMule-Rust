@@ -274,6 +274,13 @@ impl QueuedUpload {
 pub struct UploadManager {
     queue: Arc<Mutex<VecDeque<QueuedUpload>>>,
     active_uploads: Arc<Mutex<std::collections::HashMap<String, UploadSessionSnapshot>>>,
+    /// Signal vers la connexion d'une session **active** rotée par
+    /// `process_tick` (`CheckForTimeOver`) — le dispatcher pousse alors
+    /// `OP_OUTOFPARTREQS` (0x57) pour que le downloader repasse OnQueue
+    /// au lieu d'attendre des blocs qui n'arriveront pas (eMule
+    /// `SendOutOfPartReqsAndAddToWaitingQueue`, `UploadQueue.cpp:312`).
+    rotation_notifies:
+        Arc<Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Notify>>>>,
     active_count: Arc<AtomicUsize>,
     max_active: Arc<AtomicUsize>,
     /// USS `AcceptNewClient` gate — when false, new clients stay queued
@@ -342,6 +349,7 @@ impl UploadManager {
         Self {
             queue: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_UPLOAD_QUEUE))),
             active_uploads: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            rotation_notifies: Arc::new(Mutex::new(std::collections::HashMap::new())),
             active_count: Arc::new(AtomicUsize::new(0)),
             max_active: Arc::new(AtomicUsize::new(MAX_ACTIVE_UPLOADS)),
             uss_gate: Arc::new(std::sync::RwLock::new(Arc::new(AtomicBool::new(true)))),
@@ -1239,6 +1247,7 @@ impl UploadManager {
         // Et le wait start préservé par la rotation — le client ne reviendra
         // pas le réclamer.
         self.rotation_grace.lock().await.remove(&resolved_key);
+        self.rotation_notifies.lock().await.remove(&resolved_key);
 
         // Promote from queue while free slots remain
         self.promote_waiting(&mut active).await;
@@ -1286,6 +1295,32 @@ impl UploadManager {
             .iter()
             .find(|e| e.client_key == client_key)
             .map(|e| std::sync::Arc::clone(&e.promote_notify))
+    }
+
+    /// Handle de rotation pour une session **active** de `client_key` —
+    /// `None` si le client n'est pas en train d'uploader. Le dispatcher
+    /// s'y abonne pour pousser `OP_OUTOFPARTREQS` quand `process_tick`
+    /// libère le slot (`SendOutOfPartReqsAndAddToWaitingQueue` eMule).
+    pub async fn rotation_notify(
+        &self,
+        client_key: &str,
+    ) -> Option<std::sync::Arc<tokio::sync::Notify>> {
+        if !self
+            .active_uploads
+            .lock()
+            .await
+            .contains_key(client_key)
+        {
+            return None;
+        }
+        Some(
+            self.rotation_notifies
+                .lock()
+                .await
+                .entry(client_key.to_string())
+                .or_insert_with(|| std::sync::Arc::new(tokio::sync::Notify::new()))
+                .clone(),
+        )
     }
 
     /// Tick périodique — équivalent de `CUploadQueue::Process()` appelé par
@@ -1341,6 +1376,15 @@ impl UploadManager {
                         "[UPLOAD_ROTATED] Client {} upload slot released after {} bytes session ('{}') — re-queues on next request",
                         log_addr_str(&cur.client_address), cur.transferred_bytes, cur.file_name
                     );
+                    // eMule `SendOutOfPartReqsAndAddToWaitingQueue` — le
+                    // dispatcher abonné pousse OP_OUTOFPARTREQS (0x57) sur
+                    // le socket encore ouvert pour que le downloader
+                    // repasse OnQueue au lieu d'attendre ses blocs.
+                    if let Some(n) =
+                        self.rotation_notifies.lock().await.remove(&victim)
+                    {
+                        n.notify_one();
+                    }
                     // eMule : le client n'est PAS re-enfilé ici — il revient
                     // en file à son prochain re-ask.
                     self.update_auto_up_prio(&active, &cur.file_hash);
@@ -2062,6 +2106,40 @@ mod tests {
             now - 60_000,
             "wait start d'origine restauré après rotation"
         );
+    }
+
+    /// `SendOutOfPartReqsAndAddToWaitingQueue` eMule — à l'éviction
+    /// `CheckForTimeOver`, le dispatcher abonné via `rotation_notify` est
+    /// signalé pour pousser `OP_OUTOFPARTREQS` (0x57) sur le socket.
+    #[tokio::test]
+    async fn rotation_notify_fires_on_timeover_eviction() {
+        let mgr = UploadManager::new();
+        mgr.set_max_active(1);
+        mgr.request_upload_slot("c1", "c1", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        mgr.request_upload_slot("c2", "c2", "h", "f", 1.0, "normal", false, None)
+            .await
+            .unwrap();
+        // Pas de handle pour un client qui n'upload pas / inconnu.
+        assert!(mgr.rotation_notify("c2").await.is_none());
+        assert!(mgr.rotation_notify("nobody").await.is_none());
+        let notify = mgr.rotation_notify("c1").await.unwrap();
+        {
+            let mut active = mgr.active_uploads.lock().await;
+            active.get_mut("c1").unwrap().transferred_bytes = SESSION_MAX_TRANS_BYTES;
+        }
+        mgr.process_tick().await;
+        tokio::time::timeout(std::time::Duration::from_millis(200), notify.notified())
+            .await
+            .expect("la rotation doit signaler le dispatcher");
+        // Le handle est consommé — plus de notify pour cette session.
+        assert!(mgr
+            .rotation_notifies
+            .lock()
+            .await
+            .get("c1")
+            .is_none());
     }
 
     /// La promotion signale le dispatcher (`notify`) qui pousse

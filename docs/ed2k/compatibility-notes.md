@@ -1104,3 +1104,44 @@ restaient vides à vie.
 - Loopback `server_udp.rs` : STATRES acceptée → `DESC_REQ` émis avec
   challenge `*F0FF`, réponse à challenge erroné ignorée, réponse
   concordante met à jour `Ed2kServer`, 2e cycle → pas de requête (reset).
+
+## 22. `OP_OUTOFPARTREQS` sortant + `OP_PUBLICIP_REQ` entrant — audit phase B, passe 16
+
+Référence : `ListenSocket.cpp:583` (`OUTOFPARTREQS` entrant) et
+`:1290-1310` (`PUBLICIP_*`), `UploadClient.cpp:484-496`,
+`UploadQueue.cpp:309-313`, `BaseClient.cpp:2526-2543`.
+
+### `OP_OUTOFPARTREQS` (0x57, PR_ED2K, vide)
+
+- **Réception** : déjà couverte (alias `OP_OUTOFPARTS`) — la session de
+  download se termine proprement et la source retourne au pool, ce qui
+  recouvre le `DS_DOWNLOADING → DS_ONQUEUE` d'eMule.
+- **Émission** (gap corrigé) : quand `process_tick` rotait un slot
+  (`CheckForTimeOver`, session > `SESSIONMAXTRANS` et file disputée), le
+  pair restait branché en attendant des blocs jamais envoyés — le
+  desync exact que le commentaire eMule décrit. Désormais
+  `rotation_notify(client_key)` donne au dispatcher un `Notify` créé pour
+  les sessions actives ; à l'éviction `process_tick` le déclenche et la
+  connexion pousse `0x57` (PR_ED2K, vide) sur le socket encore ouvert.
+  `release_slot` purge l'entrée sans notifier (fin normale ≠ rotation).
+- Le pair n'est **pas** re-enfilé automatiquement — il revient à son
+  re-ask, comme avant (écart assumé vs `AddClientToQueue(this, true)` :
+  notre file distingue clients par `client_key`, re-ask quasi gratuit).
+
+### `OP_PUBLICIP_REQ` / `OP_PUBLICIP_ANSWER` (0x97/0x98, PR_EMULE)
+
+- Entrant : `PUBLICIP_REQ` vide → `PUBLICIP_ANSWER [u32]` avec les octets
+  réseau bruts de l'IP du demandeur (`PokeUInt32(client->GetIP())`).
+- Sortant : **volontairement absent** — eMule 0.72a n'émet plus la
+  requête (l'appel `SendPublicIPRequest` dans `ConnectionEstablished`
+  est commenté depuis longtemps ; notre IP publique vient du serveur
+  `IdChange`, d'UPnP et de Kad comme chez eMule).
+- Collisions assumées : 0x97/0x98 sont aussi `GLOBSERVSTATRES`/
+  `GLOBSEARCHREQ` sur le canal UDP serveur — disambiguation par canal.
+
+### Tests
+
+- Unitaire `rotation_notify_fires_on_timeover_eviction` : handle absent
+  pour un client non-actif, signalé à l'éviction, consommé ensuite.
+- Loopback `test_inbound_publicip_req_echoes_requester_ip` : HELLO +
+  `PUBLICIP_REQ` → `PUBLICIP_ANSWER` `[7F 00 00 01]`.

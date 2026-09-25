@@ -288,6 +288,16 @@ pub const OP_FWCHECKUDPREQ: u8 = 0xA7;
 /// Kad firewall TCP-check acknowledgement (`0xA8`, eMule `OP_KAD_FWTCPCHECK_ACK`).
 pub const OP_KAD_FWTCPCHECK_ACK: u8 = 0xA8;
 
+/// Public-IP query (`0x97`, PR_EMULE): empty payload — the peer asks us
+/// which IP we see it at (eMule `OP_PUBLICIP_REQ`). Shares its wire value
+/// with `OP_GLOBSERVSTATRES` on the server UDP channel.
+pub const OP_PUBLICIP_REQ: u8 = 0x97;
+
+/// Public-IP answer (`0x98`, PR_EMULE): `<u32 ip>` — the requester's IP
+/// as seen from our socket (eMule `OP_PUBLICIP_ANSWER`). Shares its wire
+/// value with `OP_GLOBSEARCHREQ` on the server UDP channel.
+pub const OP_PUBLICIP_ANSWER: u8 = 0x98;
+
 // eMule 0.72a extended opcodes (PR_EMULE `0xC5`, TCP)
 
 /// Peer chat message (`0x4E`): `<len u16><message bytes>` (eMule `OP_MESSAGE`).
