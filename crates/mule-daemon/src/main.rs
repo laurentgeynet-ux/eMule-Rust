@@ -486,11 +486,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut dl = downloads_cleanup.lock().await;
                 dl.save_active_part_mets();
             }
-            let _ = tokio::time::timeout(
-                tokio::time::Duration::from_millis(500),
-                upnp_cleanup.unmap_ports(),
-            )
-            .await;
+            // Best-effort borné à 500 ms : les appels SOAP vers la gateway
+            // tournent sur un thread détaché — un routeur lent ou absent ne
+            // doit jamais retarder l'arrêt du process (spawn_blocking serait
+            // attendu par le runtime Tokio à la sortie).
+            upnp_cleanup.unmap_ports_for_shutdown().await;
         })
         .await?;
 

@@ -278,71 +278,7 @@ impl UpnpService {
 
         if let Some(gateway) = gw_opt {
             tokio::task::spawn_blocking(move || {
-                let local_ip_opt = detect_local_ipv4_for_gateway(gateway.addr);
-
-                if tcp_mapped {
-                    let should_remove = match local_ip_opt {
-                        Some(lip) => match check_existing_mapping(
-                            &gateway,
-                            PortMappingProtocol::TCP,
-                            tcp_port,
-                            SocketAddrV4::new(lip, tcp_port),
-                            "eMuleRust",
-                        ) {
-                            MappingOwnership::ExactMatch => true,
-                            MappingOwnership::StaleLease => {
-                                warn!("Skipped unmapping TCP port {tcp_port}: entry is an old/stale lease from another IP or port; letting it expire naturally");
-                                false
-                            }
-                            MappingOwnership::ForeignConflict => {
-                                warn!("Skipped unmapping TCP port {tcp_port}: entry belongs to another application/host");
-                                false
-                            }
-                            MappingOwnership::NotFound => false,
-                        },
-                        None => {
-                            warn!("Skipped unmapping TCP port {tcp_port}: unable to determine local endpoint for ownership verification");
-                            false
-                        }
-                    };
-
-                    if should_remove {
-                        let _ = gateway.remove_port(PortMappingProtocol::TCP, tcp_port);
-                        info!("UPnP unmapped TCP port {tcp_port}");
-                    }
-                }
-
-                if udp_mapped {
-                    let should_remove = match local_ip_opt {
-                        Some(lip) => match check_existing_mapping(
-                            &gateway,
-                            PortMappingProtocol::UDP,
-                            udp_port,
-                            SocketAddrV4::new(lip, udp_port),
-                            "eMuleRust",
-                        ) {
-                            MappingOwnership::ExactMatch => true,
-                            MappingOwnership::StaleLease => {
-                                warn!("Skipped unmapping UDP port {udp_port}: entry is an old/stale lease from another IP or port; letting it expire naturally");
-                                false
-                            }
-                            MappingOwnership::ForeignConflict => {
-                                warn!("Skipped unmapping UDP port {udp_port}: entry belongs to another application/host");
-                                false
-                            }
-                            MappingOwnership::NotFound => false,
-                        },
-                        None => {
-                            warn!("Skipped unmapping UDP port {udp_port}: unable to determine local endpoint for ownership verification");
-                            false
-                        }
-                    };
-
-                    if should_remove {
-                        let _ = gateway.remove_port(PortMappingProtocol::UDP, udp_port);
-                        info!("UPnP unmapped UDP port {udp_port}");
-                    }
-                }
+                unmap_gateway_blocking(&gateway, tcp_port, udp_port, tcp_mapped, udp_mapped)
             })
             .await
             .map_err(|e| format!("UPnP unmap task join error: {e}"))?;
@@ -353,5 +289,95 @@ impl UpnpService {
         snap.udp_mapped = false;
         snap.updated_at_unix_ms = current_unix_ms();
         Ok(())
+    }
+
+    /// Best-effort unmap for process shutdown, hard-bounded at 500 ms.
+    ///
+    /// The gateway SOAP calls run on a detached `std::thread` — never on
+    /// `spawn_blocking`: the Tokio runtime waits for all blocking-pool
+    /// threads at shutdown, so a `spawn_blocking` still executing a slow
+    /// gateway call would keep the process alive past exit (making the old
+    /// outer `timeout()` ineffective). A detached thread is dropped with
+    /// the process, and the oneshot channel lets us await its completion
+    /// without occupying a blocking-pool slot.
+    pub async fn unmap_ports_for_shutdown(&self) {
+        const SHUTDOWN_UNMAP_BUDGET: Duration = Duration::from_millis(500);
+
+        let (gw_opt, tcp_port, udp_port, tcp_mapped, udp_mapped) = {
+            let snap = self.snapshot.read().await;
+            let gw = self.cached_gateway.read().await.clone();
+            (
+                gw,
+                snap.tcp_port,
+                snap.udp_port,
+                snap.tcp_mapped,
+                snap.udp_mapped,
+            )
+        };
+
+        if !tcp_mapped && !udp_mapped {
+            return;
+        }
+
+        if let Some(gateway) = gw_opt {
+            let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+            std::thread::spawn(move || {
+                unmap_gateway_blocking(&gateway, tcp_port, udp_port, tcp_mapped, udp_mapped);
+                let _ = done_tx.send(());
+            });
+            let _ = tokio::time::timeout(SHUTDOWN_UNMAP_BUDGET, done_rx).await;
+        }
+    }
+}
+
+/// Blocking SOAP ownership-check + removal for both unmap paths.
+/// Runs on a blocking thread (`spawn_blocking` or detached `std::thread`) —
+/// never on an async executor thread.
+fn unmap_gateway_blocking(
+    gateway: &Gateway,
+    tcp_port: u16,
+    udp_port: u16,
+    tcp_mapped: bool,
+    udp_mapped: bool,
+) {
+    let local_ip_opt = detect_local_ipv4_for_gateway(gateway.addr);
+
+    for (proto, port, mapped) in [
+        (PortMappingProtocol::TCP, tcp_port, tcp_mapped),
+        (PortMappingProtocol::UDP, udp_port, udp_mapped),
+    ] {
+        if !mapped {
+            continue;
+        }
+
+        let should_remove = match local_ip_opt {
+            Some(lip) => match check_existing_mapping(
+                gateway,
+                proto,
+                port,
+                SocketAddrV4::new(lip, port),
+                "eMuleRust",
+            ) {
+                MappingOwnership::ExactMatch => true,
+                MappingOwnership::StaleLease => {
+                    warn!("Skipped unmapping {proto:?} port {port}: entry is an old/stale lease from another IP or port; letting it expire naturally");
+                    false
+                }
+                MappingOwnership::ForeignConflict => {
+                    warn!("Skipped unmapping {proto:?} port {port}: entry belongs to another application/host");
+                    false
+                }
+                MappingOwnership::NotFound => false,
+            },
+            None => {
+                warn!("Skipped unmapping {proto:?} port {port}: unable to determine local endpoint for ownership verification");
+                false
+            }
+        };
+
+        if should_remove {
+            let _ = gateway.remove_port(proto, port);
+            info!("UPnP unmapped {proto:?} port {port}");
+        }
     }
 }
