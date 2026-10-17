@@ -1,102 +1,103 @@
-# Notes de Version — eMuleRust v0.2.0-RC3
+# Release Notes — eMuleRust v0.2.0-RC3
 
-**Date de publication :** Octobre 2026
-**Statut :** Release Candidate — rebrand complet **eMuleRust**, campagne
-de validation pré-publication A–D entièrement verte, durcissement
-anti-SSRF, premier dépôt public GitHub.
+**Release date:** October 2026
+**Status:** Release Candidate — full **eMuleRust** rebrand, A–D
+validation campaign fully green, anti-SSRF hardening, first public
+GitHub repository.
+
+> 🇫🇷 Version française : [RELEASE_NOTES_0.2.0-RC3.fr.md](RELEASE_NOTES_0.2.0-RC3.fr.md)
 
 ---
 
-## 1. Synthèse de la Version
+## 1. Release Summary
 
-La version **v0.2.0-RC3** est la première release publiée sous le nom
-définitif **eMuleRust** sur GitHub
-(`laurentgeynet-ux/eMule-Rust`). Elle capitalise RC2 (audit filaire
-eMule 0.72a exhaustif + interop live) et ajoute une campagne de
-validation complète en 4 gates — tout est vert.
+**v0.2.0-RC3** is the first release published under the final name
+**eMuleRust** on GitHub (`laurentgeynet-ux/eMule-Rust`). It builds on
+RC2 (exhaustive eMule 0.72a wire audit + live interoperability) and
+adds a complete 4-gate validation campaign — all green.
 
-1. **Rebrand eMuleRust** — nom affiché, exécutables (`eMuleRust.exe`),
-   bundles, variables d'environnement `EMULERUST_*` (alias dépréciés
-   `EMULE_SION_*` conservés), identifiants Dart/Rust, docs bilingues
-   (README anglais + `README.fr.md`).
+1. **eMuleRust rebrand** — display name, executables
+   (`eMuleRust.exe`), bundles, `EMULERUST_*` environment variables
+   (deprecated `EMULE_SION_*` aliases kept), Dart/Rust identifiers,
+   bilingual docs (English README + `README.fr.md`).
 
-2. **Campagne de validation A–D** :
-   - **Phase A** : `verify_all.ps1` 100 % vert, bundle standard
-     rebuildé et smoke-testé (aucune méthode `lab.*` exposée).
-   - **Phase B** : banc fonctionnel RPC **134 PASS / 0 FAIL** —
-     couverture de toute la surface publique (identité, downloads,
-     formats `.met`/`.dat`, shares, sources, serveurs, Kad, filtres,
-     settings, historique) + chemins d'erreur.
-   - **Phase C** : interop live **7/7 × 3 références** — eMule 0.50a,
-     eMule 0.72a et aMule 3.1.0 (binaires épinglés par SHA-256,
-     sandbox hermétique, loopback strict).
-   - **Phase D** : réseau réel supervisé **21/21** — import
-     `server.met` réel (16 serveurs), session eD2K établie,
-     95 contacts Kad, recherches eD2K + Kad réelles, kill switch,
-     UPnP mappé puis unmap propre (< 500 ms).
+2. **A–D validation campaign**:
+   - **Phase A**: `verify_all.ps1` 100% green, standard bundle
+     rebuilt and smoke-tested (no `lab.*` method exposed).
+   - **Phase B**: functional RPC bench **134 PASS / 0 FAIL** —
+     full public surface coverage (identity, downloads,
+     `.met`/`.dat` formats, shares, sources, servers, Kad, filters,
+     settings, history) + error paths.
+   - **Phase C**: live interop **7/7 × 3 references** — eMule 0.50a,
+     eMule 0.72a and aMule 3.1.0 (SHA-256-pinned binaries,
+     hermetic sandbox, strict loopback).
+   - **Phase D**: supervised real-network bench **21/21** — real
+     `server.met` import (16 servers), eD2K session established,
+     95 Kad contacts, real eD2K + Kad searches, kill switch,
+     UPnP mapped then cleanly unmapped (< 500 ms).
 
-3. **Durcissement anti-SSRF** : `servers.updateFromUrl` et
-   `kad.bootstrapFromUrl` valident désormais schéma (http/https
-   uniquement) et adresses résolues — rejet link-local, LAN privé,
-   cibles interdites par la policy réseau.
+3. **Anti-SSRF hardening**: `servers.updateFromUrl` and
+   `kad.bootstrapFromUrl` now validate scheme (http/https only) and
+   resolved addresses — link-local, private LAN and policy-forbidden
+   targets rejected.
 
-4. **Correctifs de robustesse** :
-   - Shutdown daemon borné : unmap UPnP détaché (`std::thread` +
-     oneshot 500 ms) — plus de blocage > 5 s sur gateway lente.
-   - Smoke test packagé : drainage continu des pipes du daemon.
-   - E2E loopback : crash/reprise déterministe via `downloads.pause`.
-   - Mutualisation des fixtures de test dans `mule-test-support`.
+4. **Robustness fixes**:
+   - Bounded daemon shutdown: detached UPnP unmap (`std::thread` +
+     500 ms oneshot) — no more > 5 s stalls on slow gateways.
+   - Packaged smoke test: continuous daemon pipe draining.
+   - Loopback E2E: deterministic crash/resume via `downloads.pause`.
+   - Test fixtures consolidated into `mule-test-support`.
 
-5. **CI/CD GitHub** : workflow `CI` (Rust check/clippy/test + Flutter
-   analyze/test, daemon compilé pour les tests superviseur/E2E),
-   workflow `Packages` (bundles Windows + Linux en artifacts),
-   `release.yml` (build + smoke + publication GitHub Release sur tag
-   `v*`), Dependabot actif.
+5. **GitHub CI/CD**: `CI` workflow (Rust check/clippy/test +
+   Flutter analyze/test, daemon compiled for supervisor/E2E tests),
+   `Packages` workflow (Windows + Linux bundles as artifacts),
+   `release.yml` (build + smoke + GitHub Release on `v*` tags),
+   Dependabot enabled.
 
-## 2. Commandes de Validation
+## 2. Validation Commands
 
 ```powershell
-# Vérification complète
+# Full verification
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\verify_all.ps1
 
-# Banc fonctionnel RPC (loopback, offline)
+# Functional RPC bench (loopback, offline)
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_phase_b_functional_bench.ps1
 
-# Banc réseau réel (supervisé — émet du trafic eD2K/Kad public)
+# Real-network bench (supervised — emits public eD2K/Kad traffic)
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_phase_d_public_network.ps1
 
-# Interop live vs références réelles (binaires épinglés)
+# Live interop vs pinned reference binaries
 cargo test -p mule-protocol --test tier3_loopback --all-features -- --include-ignored
 ```
 
 ## 3. Migrations
 
-- **Variables d'environnement** : `EMULERUST_WORKDIR`,
-  `EMULERUST_DOWNLOADS_DIR`, `EMULERUST_DEPLOY_DIR` sont prioritaires ;
-  les anciennes `EMULE_SION_*` / `EMULE_DEPLOY_DIR` restent lues en
-  fallback déprécié (aucune action requise).
-- **UPnP** : les baux créés sous l'ancien préfixe `eMule-Rust` /
-  `EMule-Rust` restent reconnus et unmapped à l'arrêt.
-- **Workdir** : `%LOCALAPPDATA%\eMuleRust` est utilisé ; aucune
-  migration automatique depuis `eMule-Sion` — réimporter via
-  l'assistant de migration eMule si besoin.
+- **Environment variables**: `EMULERUST_WORKDIR`,
+  `EMULERUST_DOWNLOADS_DIR`, `EMULERUST_DEPLOY_DIR` take precedence;
+  legacy `EMULE_SION_*` / `EMULE_DEPLOY_DIR` are still read as
+  deprecated fallbacks (no action needed).
+- **UPnP**: leases created under the legacy `eMule-Sion` prefix are
+  still recognized and unmapped on shutdown.
+- **Workdir**: `%LOCALAPPDATA%\eMuleRust` is used; no automatic
+  migration from `eMule-Sion` — re-import via the eMule migration
+  wizard if needed.
 
-## 4. Notes de Sécurité
+## 4. Security Notes
 
-- Anti-SSRF appliqué aux fetches d'URL (server.met / nodes.dat) —
-  schéma + résolution DNS vérifiés contre la policy réseau.
-- Aucune méthode `lab.*` dans le flavor `standard` — vérifié par
-  `test_packaged_bundle.ps1` en CI.
-- Branche `master` protégée : force-push et suppression bloqués.
-- Builds non signés (Authenticode optionnel via secrets
-  `WINDOWS_CERT_BASE64` / `WINDOWS_CERT_PASSWORD`).
+- Anti-SSRF applied to URL fetches (server.met / nodes.dat) —
+  scheme + DNS resolution checked against the network policy.
+- No `lab.*` method in the `standard` flavor — verified by
+  `test_packaged_bundle.ps1` in CI.
+- `master` branch protected: force-push and deletion blocked.
+- Unsigned builds (optional Authenticode via
+  `WINDOWS_CERT_BASE64` / `WINDOWS_CERT_PASSWORD` secrets).
 
-## 5. Limites connues
+## 5. Known Limitations
 
-- **Windows x64 uniquement** pour l'UI packagée (le bundle CI Linux
-  est expérimental — premier build automatisé ajouté par cette RC).
-- Session eD2K observée en **LowID** dans le banc Phase D malgré un
-  mapping UPnP confirmé — comportement acceptable (dégradé), sous
+- **Windows x64 only** for the packaged UI (the Linux CI bundle is
+  experimental — first automated build added in this RC).
+- eD2K session observed as **LowID** in the Phase D bench despite a
+  confirmed UPnP mapping — acceptable (degraded) behavior, under
   investigation.
-- Pas de téléchargement en tâche de fond sur Android (contrainte OS) —
-  la cible Android n'est pas maintenue.
+- No background downloads on Android (OS constraint) — the Android
+  target is not maintained.
