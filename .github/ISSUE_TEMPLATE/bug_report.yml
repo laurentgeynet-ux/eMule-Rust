@@ -1,5 +1,5 @@
 name: 🐛 Rapport de bug
-description: Signaler un comportement inattendu d'eMule-Rust
+description: Signaler un comportement inattendu d'eMuleRust
 title: "[Bug] "
 labels: [bug]
 body:

@@ -1,8 +1,8 @@
-# Notes de Release — eMule-Rust 0.1.0-lab
+# Notes de Release — eMuleRust 0.1.0-lab
 
 ## 1. Vue d'Ensemble
 
-La release **0.1.0-lab** constitue le premier jalon stable et figé du projet **eMule-Rust**. Elle formalise et verrouille l'ensemble des travaux de décodage filaire eD2K, le moteur de stockage éparse, la supervision locale et les mécanismes de validation d'interopérabilité sans dépendre d'aucun réseau externe.
+La release **0.1.0-lab** constitue le premier jalon stable et figé du projet **eMuleRust**. Elle formalise et verrouille l'ensemble des travaux de décodage filaire eD2K, le moteur de stockage éparse, la supervision locale et les mécanismes de validation d'interopérabilité sans dépendre d'aucun réseau externe.
 
 ---
 
@@ -80,7 +80,7 @@ flutter test
 ## 6. Scoreboard Final des Validations
 
 ```
-=== SCOREBOARD eMule-Rust 0.1.0-LAB ===
+=== SCOREBOARD eMuleRust 0.1.0-LAB ===
 
 Rust Crates :
   - mule-core     :  12 tests réussis

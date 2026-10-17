@@ -20,9 +20,9 @@ use mule_mcp::{
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "mule-mcp")]
-#[command(about = "Model Context Protocol (MCP) server for eMule-Rust")]
+#[command(about = "Model Context Protocol (MCP) server for eMuleRust")]
 struct Cli {
-    /// Explicit WebSocket RPC URL of the eMule-Rust daemon (e.g. ws://127.0.0.1:4660/rpc)
+    /// Explicit WebSocket RPC URL of the eMuleRust daemon (e.g. ws://127.0.0.1:4660/rpc)
     #[arg(long)]
     url: Option<String>,
 
@@ -30,7 +30,7 @@ struct Cli {
     #[arg(long)]
     token: Option<String>,
 
-    /// Path to eMule-Rust workdir where session.json and auth.token reside
+    /// Path to eMuleRust workdir where session.json and auth.token reside
     #[arg(long)]
     workdir: Option<PathBuf>,
 
@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(file_layer)
         .init();
 
-    info!("Starting eMule-Rust MCP Server v{SERVER_VERSION}...");
+    info!("Starting eMuleRust MCP Server v{SERVER_VERSION}...");
 
     // Attempt non-fatal initial connection to daemon
     let initial_client = match DaemonClient::connect(
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(c)
         }
         Err(e) => {
-            warn!("eMule-Rust daemon not currently reachable ({e}). MCP server will connect on demand.");
+            warn!("eMuleRust daemon not currently reachable ({e}). MCP server will connect on demand.");
             None
         }
     };
@@ -232,7 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let tool_result = match client_res {
                     Ok(client) => execute_tool_for(tool_profile, &client, tool_name, args).await,
                     Err(e) => ToolCallResult::error(format!(
-                        "Could not connect to eMule-Rust daemon: {e}. Please ensure eMule-Rust is running."
+                        "Could not connect to eMuleRust daemon: {e}. Please ensure eMuleRust is running."
                     )),
                 };
 

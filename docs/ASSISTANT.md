@@ -1,7 +1,7 @@
 # Guide d'utilisation — Assistant IA local (mule-assistant)
 
 `mule-assistant` permet à un **modèle de langage local** (Ollama, ou tout
-backend compatible `/api/chat`) de piloter eMule-Rust à travers les outils
+backend compatible `/api/chat`) de piloter eMuleRust à travers les outils
 MCP existants. Le daemon reste l'autorité unique : aucune logique métier
 n'est dupliquée, et le modèle ne voit qu'un sous-ensemble curé et validé
 des 87 outils.

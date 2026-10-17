@@ -91,20 +91,38 @@ impl SwarmCoordinator {
             self.emit_heartbeat().await;
             // eMule SavePartFile cadence: persist .part.met companions for
             // in-progress downloads so a crash never loses more than ~60 s
-            // of gap state.
-            let mut dl_guard = self.state.downloads.lock().await;
-            dl_guard.save_active_part_mets();
+            // of gap state. I/O synchrones (fsync + écriture .met) déportées
+            // sur le pool bloquant Tokio.
+            let downloads = Arc::clone(&self.state.downloads);
+            if let Err(e) = tokio::task::spawn_blocking(move || {
+                downloads.blocking_lock().save_active_part_mets();
+            })
+            .await
+            {
+                tracing::error!("save_active_part_mets spawn_blocking failed: {e}");
+            }
         }
 
         // 0. Decay stale download rates (reset frozen speed to 0 if inactive > 2s)
         let decayed_snapshots = {
-            let mut dl_guard = self.state.downloads.lock().await;
             // Backstop de persistance : fsync des `.part` sales quand le
             // flux de blocs s'est interrompu entre deux `inject_range`
             // (la cadence principale vit dans le chemin de réception —
-            // `PART_PERSIST_INTERVAL`).
-            dl_guard.flush_dirty_downloads();
-            dl_guard.decay_stale_rates()
+            // `PART_PERSIST_INTERVAL`). I/O hors executor Tokio.
+            let downloads = Arc::clone(&self.state.downloads);
+            match tokio::task::spawn_blocking(move || {
+                let mut dl_guard = downloads.blocking_lock();
+                dl_guard.flush_dirty_downloads();
+                dl_guard.decay_stale_rates()
+            })
+            .await
+            {
+                Ok(snapshots) => snapshots,
+                Err(e) => {
+                    tracing::error!("flush_dirty_downloads spawn_blocking failed: {e}");
+                    Vec::new()
+                }
+            }
         };
         for mut snap in decayed_snapshots {
             snap.pending_ranges = self.state.peer_session.try_pending_ranges(&snap.ed2k_hash);
@@ -124,16 +142,40 @@ impl SwarmCoordinator {
         for (id, temp_path, target_path, expected_hash, total_size) in pending_verifications {
             let state_clone = self.state.clone();
             tokio::spawn(async move {
-                tracing::info!(
-                    "Starting eD2K hash verification for download {id} ({total_size} bytes, temp_path={})...",
-                    temp_path.display()
-                );
-                let temp_path_for_hashing = temp_path.clone();
-                let hash_res = tokio::task::spawn_blocking(move || {
-                    let mut file = std::fs::File::open(&temp_path_for_hashing)?;
-                    mule_format::ed2k::hash_reader(&mut file)
-                })
-                .await;
+                // Chemin rapide (eMule `PerformFileComplete` /
+                // `CalculateIdentifier`) : la racine eD2K est dérivée du
+                // hashset de parts déjà vérifiées à la réception — aucune
+                // relecture du fichier complet (~total_size de `pread`
+                // évitée). Repli sur `hash_reader` quand le hashset est
+                // inconnu/incomplet ou contredit le hash attendu.
+                let derived_ok = {
+                    let dl_guard = state_clone.downloads.lock().await;
+                    dl_guard
+                        .try_verified_root(&id)
+                        .map(|root| root == expected_hash)
+                        .unwrap_or(false)
+                };
+                let hash_res = if derived_ok {
+                    tracing::info!(
+                        "Download {id}: eD2K root derived from verified part hashset — skipping full file re-read ({total_size} bytes)"
+                    );
+                    Ok(Ok(mule_format::ed2k::Ed2kHashResult {
+                        root_hash: mule_format::Ed2kHash(expected_hash),
+                        part_hashes: Vec::new(),
+                        total_bytes: total_size,
+                    }))
+                } else {
+                    tracing::info!(
+                        "Starting eD2K hash verification for download {id} ({total_size} bytes, temp_path={})...",
+                        temp_path.display()
+                    );
+                    let temp_path_for_hashing = temp_path.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let mut file = std::fs::File::open(&temp_path_for_hashing)?;
+                        mule_format::ed2k::hash_reader(&mut file)
+                    })
+                    .await
+                };
 
                 match hash_res {
                     Ok(Ok(computed)) => {

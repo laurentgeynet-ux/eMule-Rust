@@ -44,7 +44,13 @@ scratch/
 
 # Config locale des agents IA (chemins machine) — voir *.example.json
 .agents/mcp_config.json
-.agents/plugins/emule-rust/mcp_config.json
+.agents/plugins/emulerust/mcp_config.json
 
 # Cible de déploiement locale du build release (chemins machine)
 .deploy-dir
+
+# Configuration cargo locale par machine (jobs linker, profil dev) — non commitée
+/.cargo/
+
+# Config Devin locale (machine) — config.json partagée reste versionnée
+/.devin/config.local.json

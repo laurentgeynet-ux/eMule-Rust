@@ -1,6 +1,6 @@
 # Guide d'Exécution & Validation — Phase 15 : Téléchargement Multi-Pairs, Queue Ranking eMule & Logs Stratégiques
 
-Ce document constitue le guide technique de référence pour la **Phase 15** (version `v0.1.8`) du projet **eMule-Rust**, dédiée à la stabilisation des transferts en essaim réel, au respect du protocole de file d'attente distant d'eMule et à l'observabilité stratégique du système :
+Ce document constitue le guide technique de référence pour la **Phase 15** (version `v0.1.8`) du projet **eMuleRust**, dédiée à la stabilisation des transferts en essaim réel, au respect du protocole de file d'attente distant d'eMule et à l'observabilité stratégique du système :
 * **Agrégation Multi-Pairs du Débit** : Calcul cumulé en direct de la vitesse de téléchargement globale par fichier (`sync_transfer_rates`) et protection `RateResetGuard` contre les artefacts d'affichage à 0 B/s.
 * **Gestion Conforme des Files d'Attente Distantes (Queue Ranking)** : Détection de l'état `Disconnected in queue` préservant le rang de notre client chez les pairs eMule avec délai de réinterrogation conforme (10 à 15 minutes).
 * **Stabilité des Quotas du Swarm** : Intégration des pairs en file d'attente dans l'allocateur Water-filling pour maintenir les plafonds de connexion.
@@ -37,7 +37,7 @@ flowchart TD
 
 ### 1.1 Problème Résolu : L'Écrasement du Débit Global
 * **Anomalie antérieure** : Chaque session de pair appelait directement `set_download_rate_by_hash(rate)`. Si le Pair A téléchargeait à 150 Ko/s et que le Pair B transmettait un petit paquet de contrôle à 1 Ko/s, la vitesse affichée pour le fichier chutait instantanément à 1 Ko/s, provoquant des oscillations désagréables.
-* **Correctif appliqué ([transfer.rs](file:///d:/Projet/eMule-Rust/crates/mule-daemon/src/services/peer_session/transfer.rs))** :
+* **Correctif appliqué ([transfer.rs](file:///d:/Projet/eMuleRust/crates/mule-daemon/src/services/peer_session/transfer.rs))** :
   * `sync_transfer_rates` parcourt l'ensemble des sessions actives rattachées au hash du fichier et additionne leurs débits réels instantanés.
   * `RateResetGuard` est appelé lors de la fermeture d'une session (normale, timeout ou erreur) : il recalcule immédiatement le débit des sessions subsistantes au lieu de forcer brutalement la vitesse à zéro.
 
@@ -50,12 +50,12 @@ Dans le réseau eDonkey2000, un pair eMule officiel dont tous les slots d'upload
 ### 2.1 Déconnexion Normale en File d'Attente (`Disconnected in queue`)
 * **Comportement officiel d'eMule** : Pour économiser les descripteurs de sockets TCP, un client eMule ferme couramment la connexion TCP une fois le rang attribué. Il attend que notre client revienne aux nouvelles plus tard.
 * **Anomalie antérieure** : Cette fermeture était interprétée à tort comme une panne réseau critique, bannissant la source ou la réinterrogeant agressivement toutes les 60 secondes (ce qui provoquait un bannissement pour flood chez le pair distant).
-* **Résolution conforme ([peer_session.rs](file:///d:/Projet/eMule-Rust/crates/mule-daemon/src/services/peer_session.rs))** :
+* **Résolution conforme ([peer_session.rs](file:///d:/Projet/eMuleRust/crates/mule-daemon/src/services/peer_session.rs))** :
   * La fermeture de socket suite à un `OP_QUEUERANKING` est classifiée comme `Disconnected in queue`.
   * La source conserve son statut valide `Allowed`.
   * Le délai de reconnexion est réglé sur la plage canonique eMule de **10 à 15 minutes**, préservant notre priorité sans pénalité.
 
-### 2.2 Préservation du Plafond Water-Filling ([strategy.rs](file:///d:/Projet/eMule-Rust/crates/mule-daemon/src/services/swarm_coordinator/strategy.rs))
+### 2.2 Préservation du Plafond Water-Filling ([strategy.rs](file:///d:/Projet/eMuleRust/crates/mule-daemon/src/services/swarm_coordinator/strategy.rs))
 * Les sources dans l'état `Allowed` ou `Tried` (en attente dans une file distante) sont incluses dans le décompte des sources viables.
 * Le plafond d'allocation de slots calculé par l'algorithme Water-filling ne s'effondre plus, évitant les à-coups dans la gestion de l'essaim.
 
@@ -63,7 +63,7 @@ Dans le réseau eDonkey2000, un pair eMule officiel dont tous les slots d'upload
 
 ## 3. Gestionnaire de Téléversement & Dispatcher Entrant
 
-Le service [`crates/mule-daemon/src/services/upload_queue.rs`](file:///d:/Projet/eMule-Rust/crates/mule-daemon/src/services/upload_queue.rs) implémente la réciprocité de partage :
+Le service [`crates/mule-daemon/src/services/upload_queue.rs`](file:///d:/Projet/eMuleRust/crates/mule-daemon/src/services/upload_queue.rs) implémente la réciprocité de partage :
 * Réception de `OP_STARTUPLOADREQ` (`0x54`) via le dispatcher d'écoute entrante.
 * Si des slots d'upload sont disponibles : émission immédiate de `OP_ACCEPTUPLOADREQ` (`0x55`).
 * Sinon : placement du pair dans la file d'attente pondérée par ses crédits eMule accumulés (`[UPLOAD_QUEUED]`), calcul de son rang et émission de `OP_QUEUERANKING`.
@@ -87,7 +87,7 @@ Afin d'offrir une visibilité immédiate sans saturer la console de milliers de 
 
 ## 5. Cartographie Globale du Dépôt (`INDEX.md`)
 
-Le fichier racine [`INDEX.md`](file:///d:/Projet/eMule-Rust/INDEX.md) a été créé pour offrir un répertoire complet et documenté de l'ensemble des composants du projet :
+Le fichier racine [`INDEX.md`](file:///d:/Projet/eMuleRust/INDEX.md) a été créé pour offrir un répertoire complet et documenté de l'ensemble des composants du projet :
 * Documentation des crates Rust (`mule-core`, `mule-protocol`, `mule-daemon`, `mule-mcp`, `mule-format`, `mule-filter`, `mule-network-policy`).
 * Organisation de l'application Flutter Desktop (`apps/desktop/lib/`).
 * Emplacement et rôle des scripts d'automatisation, des tests d'intégration et des spécifications formelles.

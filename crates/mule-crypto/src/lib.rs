@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-//! Cryptographic primitives for eMule-Rust.
+//! Cryptographic primitives for eMuleRust.
 //!
 //! Boundary rules:
 //! - This crate owns all key generation, signing and verification logic.

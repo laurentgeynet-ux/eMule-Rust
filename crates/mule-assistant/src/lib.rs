@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
-//! Assistant IA local pour eMule-Rust.
+//! Assistant IA local pour eMuleRust.
 //!
 //! Pont fin entre un LLM local (Ollama en loopback) et le JSON-RPC du
 //! daemon : le modèle propose des appels d'outils, [`session::Session`]

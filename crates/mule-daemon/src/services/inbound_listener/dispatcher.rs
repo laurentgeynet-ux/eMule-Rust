@@ -1566,7 +1566,7 @@ impl InboundListenerService {
                                         log_addr_str(&remote_str), shared_file.file_name, hash_hex
                                     );
 
-                                    // Mode paranoid (eMule-Rust) : ne servir
+                                    // Mode paranoid (eMuleRust) : ne servir
                                     // que les pairs obfusqués et dont la
                                     // signature SUI a été vérifiée.
                                     if self.paranoid_mode.load(std::sync::atomic::Ordering::Relaxed)

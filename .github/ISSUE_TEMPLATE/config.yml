@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: 🔐 Vulnérabilité de sécurité
-    url: https://github.com/OWNER/REPO/security/advisories/new
+    url: https://github.com/laurentgeynet-ux/eMule-Rust/security/advisories/new
     about: Ne pas ouvrir d'issue publique — utiliser Security Advisories (voir SECURITY.md)
   - name: 📖 Documentation
-    url: https://github.com/OWNER/REPO/tree/master/docs
+    url: https://github.com/laurentgeynet-ux/eMule-Rust/tree/master/docs
     about: Portail de documentation technique (docs/INDEX.md)

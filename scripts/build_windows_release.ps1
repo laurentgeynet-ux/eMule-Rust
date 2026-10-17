@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Builds, signs, and packages the complete standalone eMule-Rust Windows distribution.
+    Builds, signs, and packages the complete standalone eMuleRust Windows distribution.
 .DESCRIPTION
     Phase 7 — Industrialisation Locale & Release Candidate:
     1. Verifies clean Git repository state (rejects dirty state unless -AllowDirty is set).
@@ -16,7 +16,8 @@
     7. Computes SHA-256 hashes of all artifacts post-signing and writes SHA256SUMS.txt and version.json.
     8. Packages distribution into ZIP archive and calculates its SHA-256 hash.
     9. Deploys the bundle to the configured install directory. Target resolution order:
-       -DeployDir parameter > EMULE_DEPLOY_DIR env var > .deploy-dir file at repo root
+       -DeployDir parameter > EMULERUST_DEPLOY_DIR env var (deprecated alias:
+       EMULE_DEPLOY_DIR) > .deploy-dir file at repo root
        (machine-local, gitignored). Running instances inside the target are stopped first.
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
@@ -42,10 +43,13 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-# Deploy target resolution: -DeployDir > EMULE_DEPLOY_DIR env var > .deploy-dir file
+# Deploy target resolution: -DeployDir > EMULERUST_DEPLOY_DIR env var
+# (deprecated alias: EMULE_DEPLOY_DIR) > .deploy-dir file
 # (machine-local path, gitignored — one line containing the install directory).
 if ([string]::IsNullOrWhiteSpace($DeployDir)) {
-    if (![string]::IsNullOrWhiteSpace($env:EMULE_DEPLOY_DIR)) {
+    if (![string]::IsNullOrWhiteSpace($env:EMULERUST_DEPLOY_DIR)) {
+        $DeployDir = $env:EMULERUST_DEPLOY_DIR
+    } elseif (![string]::IsNullOrWhiteSpace($env:EMULE_DEPLOY_DIR)) {
         $DeployDir = $env:EMULE_DEPLOY_DIR
     } elseif (Test-Path "$Root\.deploy-dir") {
         $DeployDir = (Get-Content "$Root\.deploy-dir" -Raw).Trim()
@@ -69,7 +73,7 @@ if ($LabMode -or $Flavor -eq "qa-loopback") {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  eMule-Rust Windows Release Candidate Pipeline   " -ForegroundColor Cyan
+Write-Host "  eMuleRust Windows Release Candidate Pipeline   " -ForegroundColor Cyan
 Write-Host "  Flavor: $DistributionFlavor (LabTools: $LabToolsEnabled)" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
@@ -342,7 +346,7 @@ Write-Host " -> Generated: $SumsPath ($($SumsLines.Count) file entries)" -Foregr
 # Write version.json manifest
 $VersionInfo = [ordered]@{
     schemaVersion = 1
-    product = "eMule-Rust"
+    product = "eMuleRust"
     version = $AppVersion
     distributionFlavor = $DistributionFlavor
     labToolsEnabled = $LabToolsEnabled

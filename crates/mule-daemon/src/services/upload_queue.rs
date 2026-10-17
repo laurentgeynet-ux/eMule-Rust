@@ -322,7 +322,7 @@ pub struct UploadManager {
     /// (`rate_limit_upload_bps`) comme la valeur dynamique pilotée par USS
     /// (`IsDynUpEnabled → lastCommonRouteFinder->GetUpload()`). 0 = illimité.
     upload_speed_probe: Arc<std::sync::RwLock<UploadSpeedProbe>>,
-    /// Quota journalier d'upload (eMule-Rust `dailyUploadQuotaGb`) — quand
+    /// Quota journalier d'upload (eMuleRust `dailyUploadQuotaGb`) — quand
     /// `false`, aucune nouvelle demande de slot n'est acceptée.
     quota_gate: Arc<std::sync::RwLock<Arc<AtomicBool>>>,
     /// Total cumulatif des octets uploadés depuis le démarrage du daemon

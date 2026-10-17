@@ -262,7 +262,7 @@ class _SettingsGeneralSectionState
     var nick = _nickController.text.trim();
     // eMule resets to the default nick when the field is cleared.
     if (nick.isEmpty) {
-      nick = 'eMule-Rust';
+      nick = 'eMuleRust';
       _nickController.text = nick;
     }
     final ok = await ref

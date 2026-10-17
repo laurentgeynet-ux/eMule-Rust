@@ -395,6 +395,7 @@ pub fn import_part_met(
         pending_corruption_bans: Vec::new(),
         persist_dirty: false,
         last_persist_flush: Instant::now(),
+        staged_parts: std::collections::HashMap::new(),
     };
 
     let met_version_str = match met.version {
@@ -405,7 +406,7 @@ pub fn import_part_met(
     };
 
     let report = format!(
-        "=== eMule-Rust .part.met Import Audit Report ===\n\
+        "=== eMuleRust .part.met Import Audit Report ===\n\
          Format Version: {met_version_str}\n\
          File Name: {}\n\
          Declared Total Size: {total_size} bytes\n\

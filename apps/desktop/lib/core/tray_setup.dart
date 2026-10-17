@@ -28,7 +28,7 @@ class TraySetup {
     try {
       final iconPath = _assetPath();
       await trayManager.setIcon(iconPath);
-      await trayManager.setToolTip('eMule-Rust');
+      await trayManager.setToolTip('eMuleRust');
       await trayManager.setContextMenu(
         Menu(items: [
           MenuItem(key: 'show', label: _Labels.showItem),
@@ -62,10 +62,10 @@ class TraySetup {
 class _Labels {
   static bool get _fr => Platform.localeName.toLowerCase().startsWith('fr');
 
-  static String get showItem => _fr ? 'Afficher eMule-Rust' : 'Show eMule-Rust';
+  static String get showItem => _fr ? 'Afficher eMuleRust' : 'Show eMuleRust';
   static String get quitItem => _fr ? 'Quitter' : 'Quit';
   static String get toastTitle =>
-      _fr ? 'eMule-Rust continue en arrière-plan' : 'eMule-Rust keeps running';
+      _fr ? 'eMuleRust continue en arrière-plan' : 'eMuleRust keeps running';
   static String get toastBody => _fr
       ? 'L\'application est réduite dans la zone de notification. '
           'Clic gauche pour l\'afficher, clic droit pour quitter.'

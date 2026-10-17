@@ -1,6 +1,6 @@
 {
-    "name": "emule_sion_web",
-    "short_name": "emule_sion_web",
+    "name": "emulerust_web",
+    "short_name": "emulerust_web",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -180,7 +180,7 @@ impl UpnpService {
                         tcp_port,
                         local_tcp_addr,
                         3600,
-                        "eMule-Rust eD2K TCP",
+                        "eMuleRust eD2K TCP",
                     );
 
                     let udp_ok = add_port_safe(
@@ -189,7 +189,7 @@ impl UpnpService {
                         udp_port,
                         local_udp_addr,
                         3600,
-                        "eMule-Rust Kad UDP",
+                        "eMuleRust Kad UDP",
                     );
 
                     if !tcp_ok && !udp_ok {
@@ -258,7 +258,7 @@ impl UpnpService {
         Err(last_err)
     }
 
-    /// Removes previously mapped ports from the gateway if verified to still belong to eMule-Rust.
+    /// Removes previously mapped ports from the gateway if verified to still belong to eMuleRust.
     pub async fn unmap_ports(&self) -> Result<(), String> {
         let (gw_opt, tcp_port, udp_port, tcp_mapped, udp_mapped) = {
             let snap = self.snapshot.read().await;
@@ -287,7 +287,7 @@ impl UpnpService {
                             PortMappingProtocol::TCP,
                             tcp_port,
                             SocketAddrV4::new(lip, tcp_port),
-                            "eMule-Rust",
+                            "eMuleRust",
                         ) {
                             MappingOwnership::ExactMatch => true,
                             MappingOwnership::StaleLease => {
@@ -319,7 +319,7 @@ impl UpnpService {
                             PortMappingProtocol::UDP,
                             udp_port,
                             SocketAddrV4::new(lip, udp_port),
-                            "eMule-Rust",
+                            "eMuleRust",
                         ) {
                             MappingOwnership::ExactMatch => true,
                             MappingOwnership::StaleLease => {

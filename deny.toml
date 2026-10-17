@@ -1,4 +1,4 @@
-# Configuration for cargo-deny — eMule-Rust Dependency & Security Policy
+# Configuration for cargo-deny — eMuleRust Dependency & Security Policy
 
 [graph]
 targets = [

@@ -153,7 +153,7 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
         let nickname = dls
             .get_setting("nickname")?
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "eMule-Rust".to_string());
+            .unwrap_or_else(|| "eMuleRust".to_string());
         let bool_setting = |key: &str, default: bool| {
             dls.get_setting(key)
                 .ok()
@@ -240,7 +240,7 @@ pub async fn handle_settings_get(state: &AppState) -> Result<Value, JsonRpcError
             // eMule `DAPPref`/`UAPPref` — défauts `true` dans les deux cas.
             "autoPriorityNewDownloads": read("auto_priority_new_downloads", true),
             "autoPriorityUploads": read("auto_priority_uploads", true),
-            // Options propres à eMule-Rust (pas d'équivalent eMule).
+            // Options propres à eMuleRust (pas d'équivalent eMule).
             "identityRotationHours": u64_setting("identity_rotation_hours"),
             "dailyUploadQuotaGb": u64_setting("daily_upload_quota_gb"),
             "uploadQuotaUsedBytes": u64_setting("upload_quota_used_bytes"),
@@ -718,7 +718,7 @@ pub async fn handle_settings_set(
             .set_setting("temp_dir", dir_str)?;
         keys.push("tempDir");
     }
-    // --- Options propres à eMule-Rust ---
+    // --- Options propres à eMuleRust ---
     if let Some(val) = params.get("identityRotationHours") {
         let v = val
             .as_u64()

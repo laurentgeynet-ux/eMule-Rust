@@ -29,15 +29,20 @@ typedef ResolvedWorkDir = ResolvedDirectories;
 
 class WorkDirectoryResolver {
   static const String portableFlagFilename = 'portable.flag';
-  static const String envWorkdir = 'EMULE_SION_WORKDIR';
+  static const String envWorkdir = 'EMULERUST_WORKDIR';
+  /// Alias déprécié (avant le renommage eMuleRust), honoré avant [envLegacyWorkdir].
+  static const String envSionWorkdir = 'EMULE_SION_WORKDIR';
   static const String envLegacyWorkdir = 'MULE_DATA_DIR';
-  static const String envDownloadsDir = 'EMULE_SION_DOWNLOADS_DIR';
+  static const String envDownloadsDir = 'EMULERUST_DOWNLOADS_DIR';
+  /// Alias déprécié (avant le renommage eMuleRust).
+  static const String envSionDownloadsDir = 'EMULE_SION_DOWNLOADS_DIR';
 
   /// Resolves the runtime directories using the standard 4-tier cascade:
   /// 1. [customDir] (explicit CLI override), [customDownloadsDir]
-  /// 2. [environment] EMULE_SION_WORKDIR (or legacy MULE_DATA_DIR)
+  /// 2. [environment] EMULERUST_WORKDIR (or deprecated EMULE_SION_WORKDIR,
+  ///    or legacy MULE_DATA_DIR)
   /// 3. portable.flag adjacent to executable or bundle root -> `<bundle_root>/data` & `<bundle_root>/downloads`
-  /// 4. System default (%LOCALAPPDATA%\eMuleRust on Windows, ~/.emule_sion on Unix; %USERPROFILE%\Downloads\eMuleRust)
+  /// 4. System default (%LOCALAPPDATA%\eMuleRust on Windows, ~/.emulerust on Unix; %USERPROFILE%\Downloads\eMuleRust)
   static ResolvedDirectories resolve({
     Directory? customDir,
     Directory? customDownloadsDir,
@@ -50,7 +55,8 @@ class WorkDirectoryResolver {
     if (customDownloadsDir != null) {
       explicitDownloads = customDownloadsDir;
     } else {
-      final envDownloads = env[envDownloadsDir]?.trim();
+      final envDownloads =
+          (env[envDownloadsDir] ?? env[envSionDownloadsDir])?.trim();
       if (envDownloads != null && envDownloads.isNotEmpty) {
         explicitDownloads = Directory(envDownloads);
       }
@@ -74,8 +80,9 @@ class WorkDirectoryResolver {
       );
     }
 
-    // 2. Environment variable: EMULE_SION_WORKDIR (or MULE_DATA_DIR)
-    final envVal = env[envWorkdir]?.trim();
+    // 2. Environment variable: EMULERUST_WORKDIR (or deprecated
+    //    EMULE_SION_WORKDIR, or legacy MULE_DATA_DIR)
+    final envVal = (env[envWorkdir] ?? env[envSionWorkdir])?.trim();
     if (envVal != null && envVal.isNotEmpty) {
       final dir = Directory(envVal);
       final parent = dir.parent;
@@ -157,7 +164,7 @@ class WorkDirectoryResolver {
     } else {
       final home = env['HOME']?.trim();
       if (home != null && home.isNotEmpty) {
-        defaultWorkdir = Directory('$home/.emule_sion');
+        defaultWorkdir = Directory('$home/.emulerust');
         defaultDownloads = explicitDownloads ?? Directory('$home/Downloads/eMuleRust');
       } else {
         defaultWorkdir = Directory('.mule_data');

@@ -1,4 +1,4 @@
-# Notes de Version — eMule-Rust v0.2.0
+# Notes de Version — eMuleRust v0.2.0
 
 **Date de publication :** 23 Septembre 2026
 **Statut :** Release finale — alignement eMule 0.72a, interface web zéro-config, publication open source

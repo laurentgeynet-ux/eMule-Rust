@@ -128,6 +128,7 @@ pub fn add_ed2k_link(
             pending_corruption_bans: Vec::new(),
             persist_dirty: false,
             last_persist_flush: Instant::now(),
+            staged_parts: HashMap::new(),
         },
     );
 
@@ -261,6 +262,7 @@ pub fn resume_download(
             && act.ranges.covered_len() == act.download.total_size
         {
             act.ranges = RangeSet::new();
+            act.staged_parts.clear();
             let _ = db.sync_received_ranges(id, &act.ranges);
         }
         if act.part_file.is_none() {
@@ -532,8 +534,19 @@ fn inject_range_impl(
     // Fsync différé : `sync_data` est batché par `persist_pending_ranges`
     // (cadence `PART_PERSIST_INTERVAL` + points critiques) — pas d'fsync
     // par bloc de 180 Ko. La sync SQLite des ranges plus bas reste par
-    // bloc (contrat crash-resume).
+    // bloc via un delta `INSERT` O(1) (contrat crash-resume).
     act.persist_dirty = true;
+
+    // Staging RAM (eMule `m_tData`, libtorrent staging → hash → flush) :
+    // les octets injectés alimentent le buffer de leur part — la vérification
+    // MD4 à la complétion se fera en mémoire, sans relecture disque.
+    super::staged::stage_range(
+        &mut act.staged_parts,
+        act.download.total_size,
+        ED2K_PART_SIZE_U64,
+        offset,
+        data,
+    );
 
     let was_complete =
         act.download.total_size > 0 && act.ranges.covered_len() == act.download.total_size;
@@ -591,12 +604,23 @@ fn inject_range_impl(
             });
             if let Some(expected_hash) = expected {
                 let part_len = (part_end - part_start) as usize;
-                let verified = act
-                    .part_file
-                    .as_mut()
-                    .and_then(|pf| pf.read_range(part_start, part_len).ok())
-                    .map(|bytes| mule_core::verify_part_hash(&bytes, &expected_hash))
-                    .unwrap_or(false);
+                // Hash depuis le buffer stagé en RAM (zéro `pread`) quand
+                // la part y est entière ; relecture disque en repli
+                // (reprise à mi-part, borne `MAX_STAGED_PARTS` atteinte).
+                let verified = match super::staged::verify_staged(
+                    &mut act.staged_parts,
+                    part_idx as u32,
+                    part_end - part_start,
+                    &expected_hash,
+                ) {
+                    Some(v) => v,
+                    None => act
+                        .part_file
+                        .as_mut()
+                        .and_then(|pf| pf.read_range(part_start, part_len).ok())
+                        .map(|bytes| mule_core::verify_part_hash(&bytes, &expected_hash))
+                        .unwrap_or(false),
+                };
                 if verified {
                     let _ = db.mark_part_verified(id, part_idx as u32);
                     act.corruption_blackbox
@@ -645,12 +669,18 @@ fn inject_range_impl(
                 }
             }
         }
+        // Buffer stagé libéré à la complétion de la part, qu'elle soit
+        // vérifiée, récupérée par AICH ou évincée (libtorrent
+        // `release_pieces_owned_by` — une part requeueée repart à zéro).
+        act.staged_parts.remove(&(part_idx as u32));
     }
 
-    // Bookkeeping des ranges synchronisé à chaque bloc : transaction WAL
-    // sans fsync (`synchronous=NORMAL`), peu coûteuse — et exigée pour le
-    // crash-resume (les ranges doivent survivre à un kill brutal).
-    db.sync_received_ranges(id, &act.ranges)
+    // Bookkeeping des ranges : delta `INSERT` O(1) par bloc (upsert,
+    // les lignes chevauchantes refusionnent au chargement) — exigé pour
+    // le crash-resume. La réécriture complète `sync_received_ranges`
+    // sert de compaction à cadence `PART_PERSIST_INTERVAL` et aux
+    // évictions (suppression de ranges).
+    db.append_received_range(id, offset, end)
         .map_err(|e| DaemonError::Business(format!("DB sync error: {e}")))?;
 
     let is_now_complete =
@@ -667,7 +697,22 @@ fn inject_range_impl(
     }
 
     if is_now_complete && !was_complete {
-        let _ = act.part_file.take();
+        if let Some(pf) = act.part_file.take() {
+            // Bilan I/O du pipeline disque — invariant cible : 0 `pread`
+            // en réception (toutes les vérifs sont passées par le staging
+            // RAM), `pwrite_bytes == total_size`.
+            let s = pf.io_stats();
+            tracing::info!(
+                "[IO_STATS] '{}' : {} writes/{} o écrits, {} reads/{} o relus, {} fsync",
+                act.download.display_name,
+                s.write_ops,
+                s.write_bytes,
+                s.read_ops,
+                s.read_bytes,
+                s.sync_ops
+            );
+        }
+        act.staged_parts.clear();
         act.download.status = DownloadStatus::Verifying;
         act.download.updated_at = now_ms();
         let _ = db.update_status(id, DownloadStatus::Verifying);
@@ -694,13 +739,13 @@ fn inject_range_impl(
 }
 
 /// Point unique de flush batché du chemin de réception : `sync_data` du
-/// `.part` quand `persist_dirty`, suivi d'un rafraîchissement idempotent
-/// de `sync_received_ranges` (filet de sécurité — la sync par bloc reste
-/// la source de vérité). Appelé par `inject_range_impl` (cadence
-/// [`PART_PERSIST_INTERVAL`], complétion de part, fin de fichier), par les
-/// transitions de statut (`pause`, `update_status`), par le backstop
-/// `flush_dirty_downloads` et par `save_active_part_mets` au shutdown —
-/// évite un fsync par bloc de 180 Ko.
+/// `.part` quand `persist_dirty`, suivi d'une réécriture complète
+/// `sync_received_ranges` — rôle de **compaction** (borne la table et
+/// absorbe les deltas) et de filet de sécurité après éviction. Appelé
+/// par `inject_range_impl` (cadence [`PART_PERSIST_INTERVAL`], complétion
+/// de part, fin de fichier), par les transitions de statut (`pause`,
+/// `update_status`), par le backstop `flush_dirty_downloads` et par
+/// `save_active_part_mets` au shutdown — évite un fsync par bloc de 180 Ko.
 pub(crate) fn persist_pending_ranges(
     db: &mut Database,
     act: &mut ActiveDownload,
@@ -766,6 +811,7 @@ pub fn evict_corrupted_parts(
             let _ = act.ranges.remove(start..end);
             mark_part_corrupted(act, part_idx, start, end);
         }
+        act.staged_parts.remove(&part_idx);
         let _ = db.unmark_part_verified(id, part_idx);
     }
 
@@ -907,6 +953,7 @@ pub fn next_aich_recovery(
                 let _ = act.ranges.remove(start..end);
                 mark_part_corrupted(act, part, start, end);
             }
+            act.staged_parts.remove(&part);
             let _ = db.unmark_part_verified(id, part);
             continue;
         }
@@ -967,6 +1014,7 @@ fn evict_part_range(db: &mut Database, act: &mut ActiveDownload, id: &Uuid, part
         let _ = act.ranges.remove(start..end);
         mark_part_corrupted(act, part, start, end);
     }
+    act.staged_parts.remove(&part);
     let _ = db.unmark_part_verified(id, part);
     let _ = db.sync_received_ranges(id, &act.ranges);
     if act.part_file.is_none() {
@@ -1088,6 +1136,7 @@ pub fn apply_aich_recovery(
 
     act.aich_pending.retain(|&(p, _)| p != part);
     act.aich_requested.remove(&part);
+    act.staged_parts.remove(&part);
 
     if corrupted_blocks == 0 {
         let _ = db.mark_part_verified(id, part);
@@ -1476,6 +1525,7 @@ pub fn retry_connection(
             && act.ranges.covered_len() == act.download.total_size
         {
             act.ranges = RangeSet::new();
+            act.staged_parts.clear();
             let _ = db.sync_received_ranges(id, &act.ranges);
         }
         if act.part_file.is_none() {

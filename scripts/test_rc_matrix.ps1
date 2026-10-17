@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    eMule-Rust RC Environment & Supervision Test Matrix Harness.
+    eMuleRust RC Environment & Supervision Test Matrix Harness.
 .DESCRIPTION
     Validates the packaged release candidate against edge cases:
     1. Unicode & Non-ASCII Paths with spaces.
@@ -40,7 +40,7 @@ if (!(Test-Path $SourceBundle)) {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  eMule-Rust RC Environment & Supervision Matrix  " -ForegroundColor Cyan
+Write-Host "  eMuleRust RC Environment & Supervision Matrix  " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # Helper to send JSON-RPC over WebSocket
@@ -87,7 +87,7 @@ try {
     # TEST 1: Unicode, Non-ASCII & Spaced Directory Path
     # -------------------------------------------------------------------------
     Write-Host "`n[1/6] Test: Unicode, Non-ASCII & Spaced Directory Path..." -ForegroundColor Yellow
-    $UnicodeDir = Join-Path $TestRoot "Emule_Sion_Unicode_Test_Spaces"
+    $UnicodeDir = Join-Path $TestRoot "eMuleRust_Unicode_Test_Spaces"
     New-Item -ItemType Directory -Path $UnicodeDir -Force | Out-Null
 
     $UnicodeBundle = Join-Path $UnicodeDir "bundle"
@@ -374,6 +374,7 @@ try {
     $pinfoPort = [System.Diagnostics.ProcessStartInfo]::new($PortDaemonBin)
     $pinfoPort.UseShellExecute = $false
     $pinfoPort.CreateNoWindow = $true
+    $pinfoPort.EnvironmentVariables.Remove("EMULERUST_WORKDIR")
     $pinfoPort.EnvironmentVariables.Remove("EMULE_SION_WORKDIR")
     $pinfoPort.EnvironmentVariables.Remove("MULE_DATA_DIR")
 

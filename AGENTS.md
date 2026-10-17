@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-**eMule-Rust** est une réimplémentation moderne des protocoles P2P **eD2K** et **Kad DHT (Kademlia)** :
+**eMuleRust** est une réimplémentation moderne des protocoles P2P **eD2K** et **Kad DHT (Kademlia)** :
 - Moteur en **Rust** (workspace Cargo, Tokio async, codecs filaires bornés)
 - Interface **Flutter Desktop** (Windows, Clean Architecture MVVM)
 - Serveur **MCP** exposant ~87 outils pour agents IA

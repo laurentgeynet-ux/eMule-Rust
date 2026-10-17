@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Central network policy, address validation, resource budgets and kill switch for eMule-Rust"
+description = "Central network policy, address validation, resource budgets and kill switch for eMuleRust"
 
 [dependencies]
 thiserror.workspace = true

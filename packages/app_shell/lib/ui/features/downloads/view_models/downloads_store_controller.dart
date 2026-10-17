@@ -402,7 +402,7 @@ class DownloadsStoreController extends ChangeNotifier {
     final missingParts = item.parts.where((p) => p.state == 'missing').length;
 
     final buffer = StringBuffer();
-    buffer.writeln('=== eMule-Rust Download Diagnostic (Sanitized) ===');
+    buffer.writeln('=== eMuleRust Download Diagnostic (Sanitized) ===');
     buffer.writeln('Generated: ${DateTime.now().toUtc().toIso8601String()}');
     buffer.writeln(
       'Confinement: Loopback 127.0.0.1 (Zero WAN traffic, secrets redacted)',

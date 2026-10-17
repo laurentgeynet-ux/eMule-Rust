@@ -456,7 +456,7 @@ pub(crate) async fn run_transfer_loop(
             return Ok(0);
         }
         let ranges = dl_svc.get_completed_ranges_by_hash(file_hash_str);
-        // Swarm healing (eMule-Rust `swarm_healing` setting) : biaise le
+        // Swarm healing (eMuleRust `swarm_healing` setting) : biaise le
         // choix de part vers les plus rares du swarm (sources connues).
         let healing = dl_svc
             .get_setting("swarm_healing")
@@ -925,24 +925,38 @@ pub(crate) async fn run_transfer_loop(
                                     flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
                                 }
 
+                                // Les I/O de `inject_range_brief` (pwrite
+                                // `.part` + transaction SQLite) sont
+                                // synchrones : déportées sur le pool
+                                // bloquant Tokio pour ne pas figer
+                                // l'executor sous pression disque.
                                 let (is_complete, injected_dl) = {
-                                    let mut dl_svc = downloads.lock().await;
-                                    if let Some(dl_id) = dl_svc.id_by_ed2k_hash(file_hash_str) {
-                                        let done = if let Ok(snap) = dl_svc.inject_range_brief(
+                                    let downloads = Arc::clone(downloads);
+                                    let file_hash = file_hash_str.to_string();
+                                    let sender = address_str.to_string();
+                                    tokio::task::spawn_blocking(move || {
+                                        let mut dl_svc = downloads.blocking_lock();
+                                        let Some(dl_id) = dl_svc.id_by_ed2k_hash(&file_hash) else {
+                                            return (false, None);
+                                        };
+                                        let done = match dl_svc.inject_range_brief(
                                             &dl_id,
                                             part_start,
                                             &part_data,
-                                            Some(address_str),
+                                            Some(&sender),
                                         ) {
-                                            let s = snap.status.to_lowercase();
-                                            s == "verifying" || s == "completed" || snap.progress >= 1.0
-                                        } else {
-                                            false
+                                            Ok(snap) => {
+                                                let s = snap.status.to_lowercase();
+                                                s == "verifying"
+                                                    || s == "completed"
+                                                    || snap.progress >= 1.0
+                                            }
+                                            Err(_) => false,
                                         };
                                         (done, Some(dl_id))
-                                    } else {
-                                        (false, None)
-                                    }
+                                    })
+                                    .await
+                                    .unwrap_or_default()
                                 };
                                 if let Some(dl_id) = injected_dl {
                                     if apply_corruption_bans(
@@ -1088,24 +1102,40 @@ pub(crate) async fn run_transfer_loop(
                                             flush_download_credit(downloads, sui, &mut credit_pending_bytes).await;
                                         }
                                         let write_at = pending[pi].recv_to;
+                                        // Même déport que le chemin non
+                                        // compressé : I/O synchrones sur le
+                                        // pool bloquant Tokio (`out` est
+                                        // copié — buffer zlib réutilisé).
                                         let (is_complete, injected_dl) = {
-                                            let mut dl_svc = downloads.lock().await;
-                                            if let Some(dl_id) = dl_svc.id_by_ed2k_hash(file_hash_str) {
-                                                let done = if let Ok(snap) = dl_svc.inject_range_brief(
+                                            let downloads = Arc::clone(downloads);
+                                            let file_hash = file_hash_str.to_string();
+                                            let sender = address_str.to_string();
+                                            let chunk = out[..produced].to_vec();
+                                            tokio::task::spawn_blocking(move || {
+                                                let mut dl_svc = downloads.blocking_lock();
+                                                let Some(dl_id) =
+                                                    dl_svc.id_by_ed2k_hash(&file_hash)
+                                                else {
+                                                    return (false, None);
+                                                };
+                                                let done = match dl_svc.inject_range_brief(
                                                     &dl_id,
                                                     write_at,
-                                                    &out[..produced],
-                                                    Some(address_str),
+                                                    &chunk,
+                                                    Some(&sender),
                                                 ) {
-                                                    let s = snap.status.to_lowercase();
-                                                    s == "verifying" || s == "completed" || snap.progress >= 1.0
-                                                } else {
-                                                    false
+                                                    Ok(snap) => {
+                                                        let s = snap.status.to_lowercase();
+                                                        s == "verifying"
+                                                            || s == "completed"
+                                                            || snap.progress >= 1.0
+                                                    }
+                                                    Err(_) => false,
                                                 };
                                                 (done, Some(dl_id))
-                                            } else {
-                                                (false, None)
-                                            }
+                                            })
+                                            .await
+                                            .unwrap_or_default()
                                         };
                                         if let Some(dl_id) = injected_dl {
                                             if apply_corruption_bans(

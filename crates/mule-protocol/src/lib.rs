@@ -5,7 +5,7 @@
 #![deny(missing_docs)]
 
 //! `mule-protocol` provides zero-unsafe, deterministic framing, encoding, decoding,
-//! constants, and decoupled scheduling traits for the eD2K wire protocol in eMule-Rust.
+//! constants, and decoupled scheduling traits for the eD2K wire protocol in eMuleRust.
 
 pub mod ed2k;
 pub mod error;

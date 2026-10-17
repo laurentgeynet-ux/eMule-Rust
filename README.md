@@ -1,89 +1,112 @@
-# eMule-Rust 🚀
+<div align="center">
+
+<img src="Asset/generated-image.png" alt="eMuleRust logo" width="160"/>
+
+# eMuleRust
+
+**A modern, security-hardened reimplementation of the eD2K and Kad (Kademlia) peer-to-peer protocols — Rust engine, Flutter desktop UI, native MCP server for AI agents.**
 
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue.svg)](LICENSE)
-[![CI](https://github.com/VOTRE-USER/emule-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/VOTRE-USER/emule-rust/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/VOTRE-USER/emule-rust)](https://github.com/VOTRE-USER/emule-rust/releases)
+[![CI](https://github.com/laurentgeynet-ux/eMule-Rust/actions/workflows/ci.yml/badge.svg)](https://github.com/laurentgeynet-ux/eMule-Rust/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/laurentgeynet-ux/eMule-Rust?include_prereleases)](https://github.com/laurentgeynet-ux/eMule-Rust/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey)](README.md)
 
-**eMule-Rust** est une réimplémentation moderne, hautement sécurisée et performante des protocoles pair-à-pair historiques **eD2K (eDonkey2000)** et **Kad DHT (Kademlia)**, associée à un serveur natif **Model Context Protocol (MCP)** pour agents d'intelligence artificielle.
+[🇫🇷 Version française](README.fr.md)
 
-Le projet est conçu en **Rust** (moteur de stockage éparse, démon Tokio asynchrone, codecs filaires bornés, allocateur de swarm dynamique) et en **Flutter Desktop** (interface Windows native réactive en Clean Architecture MVVM).
-
----
-
-## ⚡ Caractéristiques Majeures
-
-* **Moteur Rust Moderne & Sûr** : 100 % mémoire sûre (*memory safe*), zéro allocation sauvage, décompression continue zlib (`OP_COMPRESSEDPART`).
-* **Swarm Multi-Sources Autonome** : Algorithme **Weighted Max-Min Fair-Share** (water-filling) distribuant les slots de connexion selon la rareté et les priorités des fichiers.
-* **DHT Kademlia v2 Décentralisée** : Métrique de distance numérique 128-bit conforme à `CUInt128` d'eMule, K-Buckets avec cache LRU, recherche itérative avec convergence vers `SEARCHTOLERANCE`.
-* **Serveur Model Context Protocol (MCP)** : **87 outils MCP natifs** permettant à des assistants IA (Claude Desktop, Cursor, Antigravity) de piloter intégralement le client.
-* **Sécurité Défensive & Anti-SSRF** : Pipeline de contrôle réseau en 7 étapes, isolation loopback par défaut, Kill Switch atomique, filtrage IP rapide (`ipfilter.dat`) et pseudonymisation salée des pairs.
-* **Fidélité Protocolaire eMule** : Interopérabilité validée face aux sources officielles **eMule 0.72a** (`srchybrid`), Source Exchange v4 (SX1/SX2), détection fine des files d'attente distantes (*Queue Ranking*).
+</div>
 
 ---
 
-## 📚 Documentation Complète
+## Overview
 
-L'ensemble de la documentation technique, des guides d'exécution par phase et des spécifications filaires est centralisé dans le répertoire [`docs/`](docs/) :
+eMuleRust is an independent, ground-up reimplementation of the historic **eD2K (eDonkey2000)** and **Kad DHT (Kademlia)** protocols, faithful to the eMule 0.72a reference. The engine is written in **Rust** (sparse storage engine, async Tokio daemon, bounded wire codecs, dynamic swarm allocator) and the interface in **Flutter Desktop** (reactive native Windows UI, Clean Architecture MVVM).
 
-| Section | Description |
-| :--- | :--- |
-| 📖 **[Portail de Documentation](docs/README.md)** | Point d'entrée principal et plan d'orientation complet. |
-| 🧭 **[Walkthroughs par Phase](docs/walkthroughs/README.md)** | Guides d'exécution, d'interopérabilité et de validation technique (Phases 1 à 15). |
-| 🏗️ **[Rapport d'Architecture](docs/architecture/rapport_architecture_et_avancement.md)** | État d'avancement technique et architecture modulaire détaillée. |
-| 🗺️ **[Cartographie des Fichiers](docs/INDEX.md)** | Inventaire exhaustif et rôle de chaque fichier du dépôt. |
-| 📝 **[Journal des Modifications](docs/CHANGELOG.md)** | Historique chronologique des versions et correctifs. |
-| 📦 **[Notes de Version](docs/releases/)** | Notes détaillées de chaque version (`v0.1.0-lab` à `v0.2.0-RC2`). |
-| 🧪 **[Assurance Qualité & Tests](docs/qa/)** | Protocole de réception QA, matrice de compatibilité et vecteurs de test. |
-| 🔌 **[Spécifications eD2K & ADRs](docs/ed2k/)** | Cadrage filaire, catalogue d'opcodes et décisions de conception. |
+> **Disclaimer** — eMuleRust is an independent project. It is **not affiliated with, endorsed by, or connected to** the eMule project (emule-project.net) or the Rust Foundation. « Rust » refers to the implementation language. See [`NOTICE`](NOTICE) for full attribution.
 
----
+## Key Features
 
-## 🚀 Démarrage Rapide & Validation
+- **Safe, modern Rust engine** — 100% memory safe, bounded wire framing, streaming zlib decompression (`OP_COMPRESSEDPART`), zero uncontrolled allocation.
+- **Autonomous multi-source swarm** — *Weighted Max-Min Fair-Share* (water-filling) algorithm distributing connection slots by file rarity and priorities.
+- **Kademlia v2 DHT** — 128-bit numeric distance metric matching eMule's `CUInt128`, LRU-cached K-buckets, iterative lookup converging on `SEARCHTOLERANCE`.
+- **Native MCP server** — **87 MCP tools** letting AI assistants (Claude Desktop, Cursor, Antigravity) drive the client end-to-end.
+- **Local AI assistant** — loopback LLM orchestrator with MCP tool profiles, embedded in the desktop UI.
+- **Defense-in-depth security** — 7-stage anti-SSRF pipeline, loopback isolation by default, atomic kill switch, `ipfilter.dat` IP filtering, salted peer pseudonymization.
+- **eMule protocol fidelity** — validated against the official **eMule 0.72a** sources (`srchybrid`), Source Exchange v4 (SX1/SX2), fine-grained remote queue ranking.
+- **Portable mode** — `portable.flag` beside the executable keeps all state inside the bundle (`data/` + `downloads/`); installed mode uses `%LOCALAPPDATA%\eMuleRust`.
 
-### Prérequis
+## Quick Start
+
+### Download
+
+Grab the latest `eMuleRust-v*-standard-windows-x64.zip` from [**Releases**](https://github.com/laurentgeynet-ux/eMule-Rust/releases), unzip, run `eMuleRust.exe`. Every release ships `SHA256SUMS.txt` and a CycloneDX SBOM.
+
+### Prerequisites (build from source)
+
 - Windows 10/11 (x64)
 - Rust 1.80+ (stable)
-- Flutter 3.24+ (support bureau Windows)
+- Flutter 3.24+ (Windows desktop enabled)
 - Visual Studio C++ Build Tools 2022
 
-### Commandes de Validation (100% Reproductibles Hors-Ligne)
+### Build the portable Windows bundle
+
 ```powershell
-# Compilation et linter Rust
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
+# Self-contained bundle in dist\eMuleRust-Standard-Windows\
+```
+
+### Validation (100% offline, fully reproducible)
+
+```powershell
+# Rust — lint
 cargo check --workspace --all-targets --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-# Suite intégrale des 204+ tests unitaires et d'intégration Rust
+# Rust — full test suite (204+ unit & integration tests, loopback only)
 cargo test --workspace --all-features
 
-# Analyse statique et tests de l'interface Flutter Desktop
+# Flutter — analysis and tests
 cd apps/desktop
 flutter analyze
 flutter test
 ```
 
-### Packaging Windows Autonome
-```powershell
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\build_windows_release.ps1
-```
-Le bundle autonome portable est généré dans `dist/eMuleRust-Windows/`.
+## Repository Layout
 
----
+| Path | Role |
+| :--- | :--- |
+| `crates/mule-protocol` | eD2K/Kad wire codecs, opcodes, framing — reference: eMule 0.72a sources |
+| `crates/mule-daemon` | Tokio services: `kad`, `kad_udp`, `peer_session`, `inbound_listener`, swarm allocator |
+| `crates/mule-core` / `mule-crypto` / `mule-filter` | Domain model, MD4/eD2K hashing, `ipfilter.dat` |
+| `crates/mule-network-policy` | Anti-SSRF pipeline, loopback isolation, kill switch |
+| `crates/mule-mcp` / `mule-assistant` | MCP server (87 tools) and local AI assistant |
+| `packages/app_shell`, `mule_client`, `ui_kit` | Flutter packages: UI shell (MVVM), daemon client, design system |
+| `apps/desktop`, `apps/web` | Flutter applications |
+| `docs/` | Full documentation — specs, ADRs, walkthroughs, QA (mostly 🇫🇷) |
 
-## 🙏 Crédits & Attributions
+## Documentation
 
-eMule-Rust est une réimplémentation indépendante dont la fidélité
-protocolaire s'appuie sur l'étude des sources open source **eMule**
-(© 2002-2026 Merkur / eMule Dev Team) et **aMule** (© aMule Team, Angel
-Vidal, Barry Dunne), toutes deux sous GPL-2.0+. Voir le fichier
-[`NOTICE`](NOTICE) pour l'attribution complète et
-[`docs/ed2k/references.md`](docs/ed2k/references.md) pour la
-correspondance fichier-par-fichier.
+| Section | Contents |
+| :--- | :--- |
+| 📖 [Documentation Portal](docs/README.md) | Main entry point and navigation |
+| 🧭 [Phase Walkthroughs](docs/walkthroughs/README.md) | Execution, interoperability and validation guides |
+| 🏗️ [Architecture Report](docs/architecture/rapport_architecture_et_avancement.md) | Technical status and modular architecture |
+| 🗺️ [File Map](docs/INDEX.md) | Exhaustive inventory of every file in the repo |
+| 📝 [Changelog](docs/CHANGELOG.md) | Version history and fixes |
+| 🔌 [eD2K Specs & ADRs](docs/ed2k/) | Wire framing, opcode catalog, design decisions |
+| 🧪 [QA & Tests](docs/qa/) | Acceptance protocol, compatibility matrix, test vectors |
 
-## 📄 Licence & Auteur
+## Security
 
-Développé par **Laurent Geynet "Loulach"**
-(<Dev.iptvmediacenter@gmail.com>).
+eMuleRust treats its network-facing surface as hostile by default. Please report vulnerabilities **privately** via [GitHub Security Advisories](../../security/advisories) — never in a public issue. See [`SECURITY.md`](SECURITY.md).
 
-Distribué sous **GPL-2.0-or-later** — voir [`LICENSE`](LICENSE) et
-[`AUTHORS`](AUTHORS).
+## Contributing
+
+Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). Note that the codebase and documentation are written in **French**; pull requests must keep the workspace warning-free (`-D warnings`) and all tests offline (loopback only).
+
+## License & Credits
+
+Distributed under **GPL-2.0-or-later** — see [`LICENSE`](LICENSE), [`AUTHORS`](AUTHORS) and [`NOTICE`](NOTICE).
+
+Protocol fidelity is based on the study of the open-source **eMule** (© 2002–2026 Merkur / eMule Dev Team) and **aMule** (© aMule Team, Angel Vidal, Barry Dunne) projects, both GPL-2.0+. File-by-file provenance: [`docs/ed2k/references.md`](docs/ed2k/references.md).
+
+Developed by **Laurent Geynet "Loulach"** (<Dev.iptvmediacenter@gmail.com>).

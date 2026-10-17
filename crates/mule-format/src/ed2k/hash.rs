@@ -155,6 +155,47 @@ impl Ed2kHasher {
     }
 }
 
+/// Dérive la racine eD2K d'un fichier depuis son hashset de parts sans
+/// relire le disque — mêmes règles que [`Ed2kHasher::finalize`] :
+/// fichier < 1 part → la part unique est la racine ; sinon MD4 de la
+/// concaténation des hash de parts, avec `MD4_EMPTY_DIGEST` ajouté aux
+/// multiples exacts de [`ED2K_PART_SIZE`] quand le hashset ne le porte
+/// pas déjà. Retourne `None` quand le hashset ne couvre pas le fichier.
+///
+/// `part_hashes` peut contenir `total_parts` ou `total_parts + 1`
+/// entrées (la part vide eMule) ; toute autre cardinalité est rejetée.
+pub fn ed2k_root_from_part_hashes(total_bytes: u64, part_hashes: &[[u8; 16]]) -> Option<Ed2kHash> {
+    if total_bytes == 0 || part_hashes.is_empty() {
+        return None;
+    }
+
+    if total_bytes < ED2K_PART_SIZE as u64 {
+        return Some(Ed2kHash(*part_hashes.first()?));
+    }
+
+    let real_parts = total_bytes.div_ceil(ED2K_PART_SIZE as u64);
+    let exact_multiple = total_bytes.is_multiple_of(ED2K_PART_SIZE as u64);
+    let len = part_hashes.len() as u64;
+
+    let mut hashes: Vec<[u8; 16]> = part_hashes.to_vec();
+    if exact_multiple {
+        match len {
+            l if l == real_parts => hashes.push(MD4_EMPTY_DIGEST),
+            l if l == real_parts + 1 => {}
+            _ => return None,
+        }
+    } else if len != real_parts {
+        return None;
+    }
+
+    let mut outer_hasher = Md4::new();
+    for ph in &hashes {
+        outer_hasher.update(ph);
+    }
+    let root: [u8; 16] = outer_hasher.finalize().into();
+    Some(Ed2kHash(root))
+}
+
 /// Convenience helper to hash any reader with a specified buffer size.
 pub fn hash_reader<R: Read>(reader: &mut R) -> Result<Ed2kHashResult, FormatError> {
     let mut hasher = Ed2kHasher::new();
@@ -167,4 +208,69 @@ pub fn hash_reader<R: Read>(reader: &mut R) -> Result<Ed2kHashResult, FormatErro
         hasher.update(&buffer[..n]);
     }
     hasher.finalize()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hash_bytes(data: &[u8]) -> Ed2kHashResult {
+        hash_reader(&mut std::io::Cursor::new(data)).expect("hash_reader")
+    }
+
+    fn pattern(len: usize) -> Vec<u8> {
+        (0..len).map(|i| (i % 251) as u8).collect()
+    }
+
+    #[test]
+    fn root_from_part_hashes_sub_part_file() {
+        let data = pattern(1234);
+        let res = hash_bytes(&data);
+        assert_eq!(
+            ed2k_root_from_part_hashes(res.total_bytes, &res.part_hashes),
+            Some(res.root_hash)
+        );
+    }
+
+    #[test]
+    fn root_from_part_hashes_multi_part_with_tail() {
+        let data = pattern(ED2K_PART_SIZE + 123);
+        let res = hash_bytes(&data);
+        assert_eq!(res.part_hashes.len(), 2);
+        assert_eq!(
+            ed2k_root_from_part_hashes(res.total_bytes, &res.part_hashes),
+            Some(res.root_hash)
+        );
+    }
+
+    #[test]
+    fn root_from_part_hashes_exact_multiple_accepts_both_cardinalities() {
+        let data = pattern(ED2K_PART_SIZE * 2);
+        let res = hash_bytes(&data);
+        // eMule-style hashset: trailing MD4(empty) part included.
+        assert_eq!(res.part_hashes.len(), 3);
+        assert_eq!(
+            ed2k_root_from_part_hashes(res.total_bytes, &res.part_hashes),
+            Some(res.root_hash)
+        );
+        // Hashset without the empty tail part → same derived root.
+        let trimmed = &res.part_hashes[..2];
+        assert_eq!(
+            ed2k_root_from_part_hashes(res.total_bytes, trimmed),
+            Some(res.root_hash)
+        );
+    }
+
+    #[test]
+    fn root_from_part_hashes_rejects_incomplete_or_empty_sets() {
+        let data = pattern(ED2K_PART_SIZE + 123);
+        let res = hash_bytes(&data);
+        // Hashset tronqué (1 part au lieu de 2).
+        assert_eq!(
+            ed2k_root_from_part_hashes(res.total_bytes, &res.part_hashes[..1]),
+            None
+        );
+        assert_eq!(ed2k_root_from_part_hashes(res.total_bytes, &[]), None);
+        assert_eq!(ed2k_root_from_part_hashes(0, &res.part_hashes), None);
+    }
 }

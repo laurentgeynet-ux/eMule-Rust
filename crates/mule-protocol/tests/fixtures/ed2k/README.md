@@ -1,6 +1,6 @@
 # Corpus de Fixtures eD2K Passives (Phase 5)
 
-Ce répertoire contient le jeu de fixtures binaires contrôlé pour la validation des décodeurs en lecture seule et le durcissement adverse du protocole eD2K dans eMule-Rust.
+Ce répertoire contient le jeu de fixtures binaires contrôlé pour la validation des décodeurs en lecture seule et le durcissement adverse du protocole eD2K dans eMuleRust.
 
 ---
 

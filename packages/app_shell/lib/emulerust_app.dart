@@ -123,7 +123,7 @@ class _eMuleRustAppState extends State<eMuleRustApp> {
       ],
       child: Consumer(
         builder: (context, ref, _) => MaterialApp.router(
-          title: 'eMule-Rust',
+          title: 'eMuleRust',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.dark(),
           locale: ref.watch(localeControllerProvider).locale,

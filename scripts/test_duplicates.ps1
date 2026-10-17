@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Garde-fou anti-duplication Rust pour eMule-Rust.
+    Garde-fou anti-duplication Rust pour eMuleRust.
 .DESCRIPTION
     Execute scripts/find_duplicates.py (analyse hors-ligne : symboles homonymes,
     corps de fonctions identiques ou identiques apres renommage, fenetres de

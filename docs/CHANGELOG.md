@@ -1,4 +1,4 @@
-# Journal des Modifications — eMule-Rust
+# Journal des Modifications — eMuleRust
 
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce projet adhère à [Semantic Versioning](https://semver.org/lang/fr/).
@@ -8,6 +8,38 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 Couche d'IA locale : un modèle loopback (Ollama/llama.cpp via `/api/chat`)
 pilote le client à travers le registre d'outils MCP existant — aucun
 doublon de logique métier, `mule-daemon` reste l'autorité de sécurité.
+
+- **Pipeline d'écriture disque eD2K optimisé** (`mule-core`,
+  `mule-daemon`, `mule-format`) — inspiré des constats I/O de
+  libtorrent/rqbit :
+  - **Staging RAM des parts** (`downloads/staged.rs`, modèle eMule
+    `m_tData`) : les blocs reçus alimentent un buffer borné par part
+    (`MAX_STAGED_PARTS` = 4, ≈ 37 Mio/download) ; la vérification MD4 à
+    la complétion se fait en mémoire — plus de relecture de 9,28 Mio par
+    part (`pread` ≈ 0 en réception). Libération à la complétion,
+    l'éviction, la récupération AICH et la finalisation.
+  - **Vérification finale sans relecture** : `try_verified_root` dérive
+    la racine eD2K du hashset de parts déjà vérifiées
+    (`ed2k_root_from_part_hashes`, mêmes règles que `Ed2kHasher` — part
+    vide eMule aux multiples exacts) ; repli sur `hash_reader` quand le
+    hashset est inconnu ou contredit. Supprime ~`total_size` de lecture
+    par download.
+  - **I/O synchrones hors executor Tokio** : `inject_range_brief`
+    (chemins compressé et non compressé), le flush périodique
+    (`flush_dirty_downloads` + `decay_stale_rates`) et
+    `save_active_part_mets` passent par `spawn_blocking`/`blocking_lock`
+    — fin du gel possible de l'executor sous pression disque.
+  - **`received_ranges` en delta O(1)** : `append_received_range`
+    (upsert `MAX(end_offset)`) remplace le DELETE+INSERT global par bloc
+    dans le hot path ; la réécriture complète devient une compaction à
+    cadence `PART_PERSIST_INTERVAL`.
+  - **I/O positionnées** : `PartFile::write_segment`/`read_range` via
+    `seek_write`/`seek_read` (boucles anti écritures/lectures
+    partielles), plus de `seek` mutable sur le descripteur partagé ;
+    compteurs `PartFileIoStats` (ops/octets lus, écrits, fsync) logués à
+    la complétion.
+  - **Pragmas SQLite** : `busy_timeout` 5 s, `temp_store=MEMORY`,
+    `cache_size` 20 Mio, `wal_autocheckpoint` ~32 Mio.
 
 - **Profils de filtrage des outils MCP** (`mule-mcp`) :
   - `ToolRisk { Read, Mutate, Destructive }` + `ToolProfile { read, safe,
@@ -66,7 +98,7 @@ doublon de logique métier, `mule-daemon` reste l'autorité de sécurité.
     `AppQuit.onHideToTray`. Nécessaire car le moteur Flutter consomme
     `WM_CLOSE` pour son mécanisme d'exit-request — l'événement `close` ne
     parvient jamais aux listeners `window_manager`.
-  - Menu systray localisé (FR/EN) « Afficher eMule-Rust » / « Quitter » ;
+  - Menu systray localisé (FR/EN) « Afficher eMuleRust » / « Quitter » ;
     clic gauche ou double-clic sur l'icône restaure la fenêtre avec le
     focus ; « Quitter » lève l'interception puis repasse par un close
     classique — l'arrêt gracieux du daemon (`supervisor.stop()` puis
@@ -74,8 +106,8 @@ doublon de logique métier, `mule-daemon` reste l'autorité de sécurité.
   - Toast unique à la première fermeture signalant que l'application
     continue en arrière-plan (flag SharedPreferences persisté).
   - **Icône taskbar générique corrigée** : `local_notifier` déclare
-    l'AUMID `eMule-Rust`, que la taskbar résout via le raccourci
-    `eMule-Rust.lnk` du menu Démarrer — or WinToast ne recrée jamais un
+    l'AUMID `eMuleRust`, que la taskbar résout via le raccourci
+    `eMuleRust.lnk` du menu Démarrer — or WinToast ne recrée jamais un
     raccourci existant : après déplacement du bundle portable, la cible
     morte affichait l'icône générique. `DownloadNotifier` supprime
     désormais le `.lnk` quand il ne contient pas le chemin de
@@ -296,9 +328,9 @@ tests d'interopérabilité live contre le binaire réel.
   persisté (le défaut `true` réactivait le filtre au redémarrage).
   Régression couverte par `filter_rpc_tests.rs`.
 
-- **Branding** : `EMule-Rust` → `eMule-Rust` partout (~122 fichiers :
+- **Branding** : `EMule-Rust` → `eMuleRust` partout (~122 fichiers :
   UI, métadonnées Windows, docs, scripts). Identifiants techniques
-  conservés (`eMuleRust.exe`, `emule-rust`, `PR_EMULE`…) ;
+  conservés (`eMuleRust.exe`, `emulerust`, `PR_EMULE`…) ;
   compatibilité UPnP avec l'ancien préfixe de description conservée
   (`LEGACY_DESCRIPTION_PREFIX`).
 
@@ -321,7 +353,7 @@ tests d'interopérabilité live contre le binaire réel.
 
 - **Build — déploiement automatique** (`scripts`) : l'étape Deploy de
   `build_windows_release.ps1` résout sa cible via `-DeployDir` >
-  `$env:EMULE_DEPLOY_DIR` > fichier `.deploy-dir` à la racine
+  `$env:EMULERUST_DEPLOY_DIR` > fichier `.deploy-dir` à la racine
   (gitignoré, chemin machine) ; les processus lancés depuis la cible
   sont arrêtés avant la copie (exe verrouillés) ; le merge-copy
   préserve `data\`, `downloads\` et `ipfilter*`.
@@ -735,10 +767,10 @@ plus les ajouts suivants.
   nom du serveur eD2K courant (adresse en repli). Le tooltip du mode
   compact résume les trois informations.
 
-- **Pseudo par défaut « eMule-Rust »** (`mule-daemon`, `mule_client`,
+- **Pseudo par défaut « eMuleRust »** (`mule-daemon`, `mule_client`,
   `app_shell`) : `current_nickname()`, `settings.get`, le fallback du
   champ vidé dans Settings et le HELLO firewall-test annoncent
-  « eMule-Rust ». Le `TAG_SPECIAL_NAME` du HELLOANSWER inbound reflète
+  « eMuleRust ». Le `TAG_SPECIAL_NAME` du HELLOANSWER inbound reflète
   désormais le pseudo réellement configuré au lieu d'une constante.
 
 - **Stats d'upload par fichier partagé (onglet Partages)** (`mule-core`,
@@ -934,7 +966,7 @@ plus les ajouts suivants.
     valeurs `config.*` figées au boot ; le nickname réel
     (`current_nickname`) est utilisé dans le failover serveur et les
     hellos pairs (suppression des littéraux `http://emule-project.net`
-    et `eMule-Rust`).
+    et `eMuleRust`).
   - **Dialing de pairs sans serveur (Kad-only)** : le coordinateur
     connecte les sources directes même déconnecté — `client_id=0` dans
     le hello, comme le chemin manuel `sources.connect` ; les sources
@@ -1110,7 +1142,7 @@ plus les ajouts suivants.
     350 ms (≤ 12 paquets, ≤ 300 entrées). ~91 % des résultats keyword
     étaient auparavant jetés comme non sollicités.
 
-- **Options exclusives eMule-Rust** (aucun équivalent eMule/aMule) :
+- **Options exclusives eMuleRust** (aucun équivalent eMule/aMule) :
   - `paranoidMode` : slots d'upload réservés aux pairs **obfusqués avec
     signature Secure Ident vérifiée** — applique le gate devant
     `request_upload_slot` (`OP_STARTUPLOADREQ`, `OP_REQUESTPARTS*`).
@@ -1256,7 +1288,7 @@ plus les ajouts suivants.
 - **Paramètres eMule supplémentaires câblés** (`settings.get`/`settings.set`,
   appliqués à chaud) :
   - **Général** : `nickname` — pseudo annoncé aux serveurs et pairs
-    (remplace les valeurs codées en dur « eMule-Rust »).
+    (remplace les valeurs codées en dur « eMuleRust »).
   - **Connexion → Protocole & limites** : `obfuscationEnabled` /
     `obfuscationRequired` (protocol encryption — listener inbound live via
     `set_obfuscation`, connexions sortantes via `effective_obfuscation()`,
@@ -1463,7 +1495,7 @@ plus les ajouts suivants.
   - Runners **Android** et **iOS** générés (`com.eMuleRust.app`) :
     `AndroidManifest.xml` avec permission `INTERNET` + intent-filter
     `ed2k`, `Info.plist` avec `CFBundleURLSchemes` `ed2k`, nom d'app
-    `eMule-Rust`. Les services desktop (`WindowSetup`, `TraySetup`) sont
+    `eMuleRust`. Les services desktop (`WindowSetup`, `TraySetup`) sont
     déjà no-op hors desktop ; `pickFolder` exclut iOS (pas de picker de
     dossier natif).
 
@@ -1725,7 +1757,7 @@ Release de performance et de fidélité protocolaire eMule : agrégation multi-p
   - Traitement complet des requêtes de téléversement entrantes (`OP_STARTUPLOADREQ`, `OP_ACCEPTUPLOADREQ`) et libération dynamique des slots d'envoi.
   - Logs de diagnostic stratégiques (`[UPLOAD_REQUEST]`, `[UPLOAD_SLOT_GRANTED]`, `[UPLOAD_RELEASED]`).
 - **Cartographie Globale du Dépôt (`INDEX.md`)** :
-  - Inventaire exhaustif et documentation de tous les fichiers versionnés du projet eMule-Rust.
+  - Inventaire exhaustif et documentation de tous les fichiers versionnés du projet eMuleRust.
 
 ---
 
@@ -1734,7 +1766,7 @@ Release de performance et de fidélité protocolaire eMule : agrégation multi-p
 Release de consolidation majeure intégrant l'implémentation complète du protocole eD2K réel (Tier 3.1 à Tier 3.6), l'inspection détaillée et la Part Map (Phase 8.1), l'historique et statistiques locales avec exports caviardés (Phase 8.2), les catégories locales et la hiérarchie de destination à 4 niveaux (Phase 8.3), l'import défensif de fichiers `.part.met` eMule avec rapport d'audit (Phase 8.4), ainsi que le packaging multi-saveurs Windows et la migration de schéma SQLite (Phase 8.5).
 
 > **Formulation d'attestation d'interopérabilité & confinement :**  
-> *« eMule-Rust est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
+> *« eMuleRust est une application de laboratoire locale. Les transferts eD2K, la reprise, la vérification par parties et la finalisation ont été validés contre la référence eMule 0.50a dans un environnement strictement confiné à 127.0.0.1. Aucun serveur eD2K public, nœud Kad, peer externe, trafic UDP ni compression de protocole n’est activé. »*
 
 ### Ajouté
 - **Protocole eD2K Loopback & Qualification eMule 0.50a (Tier 3.1 – 3.6)** :
@@ -1777,7 +1809,7 @@ Release de consolidation majeure intégrant l'implémentation complète du proto
 Release de consolidation intégrant la séparation étanche `data/` vs `downloads/`, la persistance de la suppression SQLite, la sélection personnalisée du dossier de téléchargement, l'enrichissement des diagnostics, et le pipeline QA E2E automatisé Phase 7.3.
 
 > **Formulation d'attestation d'interopérabilité :**  
-> *« eMule-Rust est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
+> *« eMuleRust est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
 
 ### Ajouté
 - **Séparation Étanche de l'État Interne (`data/`) et des Fichiers Finalisés (`downloads/`)** :
@@ -1808,7 +1840,7 @@ Release de consolidation intégrant la séparation étanche `data/` vs `download
 Release Candidate consolidée pour le mode portable (Phase 7.1) et les outils de laboratoire durcis (Phase 7.2).
 
 ### Ajouté
-- **Mode Portable Hybride & Cascade Déterministe** : Résolution unifiée `--workdir` > `EMULE_SION_WORKDIR` > `portable.flag` (`data/`) > `%LOCALAPPDATA%\eMuleRust` (avec alias déprécié `MULE_DATA_DIR`).
+- **Mode Portable Hybride & Cascade Déterministe** : Résolution unifiée `--workdir` > `EMULERUST_WORKDIR` > `portable.flag` (`data/`) > `%LOCALAPPDATA%\eMuleRust` (avec alias déprécié `MULE_DATA_DIR`).
 - **Double Verrouillage du Mode Lab** : Les fonctionnalités de laboratoire (`LabGuideDialog`, injection d'eD2K synthétique, nettoyage sécurisé) requièrent à la fois le mode portable et la feature compilée `lab-tools`.
 - **Taxonomie JSON-RPC 2.0 Étendue** : Formalisation des codes `-32000` (AuthFailed), `-32001` (ProtocolMismatch), `-32002` (ForbiddenInInstalledMode), `-32003` (UnsafeCleanupTarget), `-32004` (FixtureDownloadMismatch), `-32005` (LoopbackPeerUnavailable), `-32010` (BusinessError).
 - **Garantie Zéro Secret dans les Diagnostics** : Redaction systématique des jetons d'authentification (`auth.token`) et des clés privées dans `DiagnosticDialog`.
@@ -1822,7 +1854,7 @@ Release Candidate consolidée pour le mode portable (Phase 7.1) et les outils de
 
 ## [0.1.0-lab] - 2026-09-13
 
-Première release interne de laboratoire pour **eMule-Rust** (client moderne eD2K offline/loopback).
+Première release interne de laboratoire pour **eMuleRust** (client moderne eD2K offline/loopback).
 Cette version fige l'état de validation d'interopérabilité locale, le pipeline de stockage, le protocole borné et la suite d'outils de test.
 
 ### Résumé des Niveaux d'Attestation
@@ -1846,14 +1878,14 @@ Cette version fige l'état de validation d'interopérabilité locale, le pipelin
 
 #### Sécurité Visuelle Unicode & Normalisation
 - Intégration de `unicode-normalization` pour l'application canonique de la forme Unicode NFC sur les chaînes manipulées.
-- Fonction [`sanitize_unicode_for_display`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/reference.rs) : conservation des valeurs brutes pour la comparaison octet par octet et échappement sécurisé en `\u{XXXX}` des caractères trompeurs pour les rapports CI et terminaux :
+- Fonction [`sanitize_unicode_for_display`](file:///d:/Projet/eMuleRust/crates/mule-protocol/src/ed2k/reference.rs) : conservation des valeurs brutes pour la comparaison octet par octet et échappement sécurisé en `\u{XXXX}` des caractères trompeurs pour les rapports CI et terminaux :
   - Overrides et isolats bidirectionnels (`U+202A`..=`U+202E`, `U+2066`..=`U+2069`, `U+061C`, `U+200E`, `U+200F`).
   - Caractères invisibles et espaces de largeur nulle (`U+200B`..=`U+200D`, `U+2060`, `U+FEFF`, `U+00AD`).
   - Caractères de contrôle non graphiques (`c.is_control()`).
 - Détection et rejet automatique dans `TraceRecord::is_clean()` de toute trame contenant des bidi overrides ou des caractères invisibles non échappés.
 
 #### Propriété Formelle de Non-Mutation
-- Structure [`SessionSnapshot`](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/session.rs) et méthode `Ed2kSession::snapshot()` pour figer l'état protocolaire complet d'une session.
+- Structure [`SessionSnapshot`](file:///d:/Projet/eMuleRust/crates/mule-protocol/src/ed2k/session.rs) et méthode `Ed2kSession::snapshot()` pour figer l'état protocolaire complet d'une session.
 - Compteur de diagnostics isolé `unhandled_packets_count`.
 - Garantie formelle et testée : le traitement d'une trame `Raw` (`0xC5 PR_EMULE`, opcode ambigu pour le profil actif, ou opcode inconnu `0xFE`) n'altère en aucun cas l'état de session, le tracker de statut (`status_tracker`), le tracker de blocs (`block_tracker`), la planification de téléchargement, la persistance SQLite, ou les compteurs de progression.
 

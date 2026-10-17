@@ -7,7 +7,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
-import 'package:desktop/services/daemon_supervisor.dart';
+import 'package:emulerust/services/daemon_supervisor.dart';
 
 void main() {
   group('DaemonSupervisor Tests', () {

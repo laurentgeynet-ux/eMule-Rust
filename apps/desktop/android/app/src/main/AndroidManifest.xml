@@ -2,7 +2,7 @@
     <!-- WebSocket connection to the mule-daemon -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="eMule-Rust"
+        android:label="eMuleRust"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

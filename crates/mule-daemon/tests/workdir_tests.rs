@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 use mule_daemon::{
-    WorkDirMode, WorkDirectoryResolver, ENV_DOWNLOADS_DIR, ENV_LEGACY_WORKDIR, ENV_WORKDIR,
-    PORTABLE_FLAG_FILENAME,
+    WorkDirMode, WorkDirectoryResolver, ENV_DOWNLOADS_DIR, ENV_LEGACY_WORKDIR, ENV_SION_WORKDIR,
+    ENV_WORKDIR, PORTABLE_FLAG_FILENAME,
 };
 use std::collections::HashMap;
 use std::fs::File;
@@ -94,6 +94,53 @@ fn test_workdir_priority_tier2_env_var_wins_over_portable_and_default() {
         resolved.default_download_dir,
         PathBuf::from("D:\\Test\\EnvDir\\downloads")
     );
+}
+
+#[test]
+fn test_workdir_priority_tier2_deprecated_emule_sion_workdir_fallback() {
+    let temp = tempdir().unwrap();
+    let bundle_dir = temp.path().join("bundle");
+    std::fs::create_dir_all(&bundle_dir).unwrap();
+
+    let exe_path = bundle_dir.join("mule-daemon.exe");
+
+    let mut env = HashMap::new();
+    env.insert(
+        ENV_SION_WORKDIR.to_string(),
+        "D:\\Test\\SionDir".to_string(),
+    );
+    env.insert("LOCALAPPDATA".to_string(), "C:\\AppData\\Local".to_string());
+
+    let resolved = WorkDirectoryResolver::resolve_with_context(None, None, Some(&exe_path), |k| {
+        env.get(k).cloned()
+    });
+
+    assert_eq!(resolved.mode, WorkDirMode::Environment);
+    assert_eq!(resolved.workdir, PathBuf::from("D:\\Test\\SionDir"));
+}
+
+#[test]
+fn test_workdir_priority_tier2_emulerust_workdir_beats_deprecated_alias() {
+    let temp = tempdir().unwrap();
+    let bundle_dir = temp.path().join("bundle");
+    std::fs::create_dir_all(&bundle_dir).unwrap();
+
+    let exe_path = bundle_dir.join("mule-daemon.exe");
+
+    let mut env = HashMap::new();
+    env.insert(ENV_WORKDIR.to_string(), "D:\\Test\\NewDir".to_string());
+    env.insert(
+        ENV_SION_WORKDIR.to_string(),
+        "D:\\Test\\SionDir".to_string(),
+    );
+    env.insert("LOCALAPPDATA".to_string(), "C:\\AppData\\Local".to_string());
+
+    let resolved = WorkDirectoryResolver::resolve_with_context(None, None, Some(&exe_path), |k| {
+        env.get(k).cloned()
+    });
+
+    assert_eq!(resolved.mode, WorkDirMode::Environment);
+    assert_eq!(resolved.workdir, PathBuf::from("D:\\Test\\NewDir"));
 }
 
 #[test]

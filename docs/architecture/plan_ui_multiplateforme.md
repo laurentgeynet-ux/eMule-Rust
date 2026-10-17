@@ -1,4 +1,4 @@
-# Plan UI/UX multiplateforme — eMule-Rust
+# Plan UI/UX multiplateforme — eMuleRust
 
 Objectif : passer de l'UI de test actuelle à une application sérieuse
 **Windows / Linux / Android / iOS / Web**, toutes pilotées par le même

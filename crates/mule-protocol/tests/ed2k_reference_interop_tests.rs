@@ -461,7 +461,7 @@ fn test_reference_interop_anonymization_adversarial_patterns() {
         opcode_name: opcode_to_str(OP_HELLO),
         payload_len: 50,
         tags_summary: vec![
-            "NAME:Émule-Sion 🌟 現代的なクライアント 🚀".to_string(),
+            "NAME:ÉmuleRust 🌟 現代的なクライアント 🚀".to_string(),
             "DESC:تجربة آمنة وموثوقة".to_string(),
             "VERSION:60".to_string(),
         ],

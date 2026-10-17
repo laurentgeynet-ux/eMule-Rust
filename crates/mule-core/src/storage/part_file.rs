@@ -2,18 +2,44 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+
+#[cfg(unix)]
+use std::os::unix::fs::FileExt;
+#[cfg(windows)]
+use std::os::windows::fs::FileExt;
 
 use crate::error::CoreError;
 
 /// Storage allocation policy for temporary download files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AllocationPolicy {
+    /// Laisse le fichier croître à l'écriture (croissance dynamique —
+    /// le nom « sparse » décrit l'intention : sur NTFS les plages non
+    /// écrites ne consomment pas de clusters tant que le fichier n'est
+    /// pas étendu par `set_len`; aucun marquage `FSCTL_SET_SPARSE` n'est
+    /// réalisé).
     #[default]
     SparseIfSupported,
     Preallocate,
     None,
+}
+
+/// Compteurs d'E/S positionnées d'un [`PartFile`] — instrumentation du
+/// pipeline disque (invariant cible : `pread_bytes ≈ 0` en phase de
+/// téléchargement, `pwrite_bytes == total_size`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PartFileIoStats {
+    /// Nombre d'appels de lecture positionnée (`pread`/`seek_read`).
+    pub read_ops: u64,
+    /// Octets relus depuis le disque.
+    pub read_bytes: u64,
+    /// Nombre d'appels d'écriture positionnée (`pwrite`/`seek_write`).
+    pub write_ops: u64,
+    /// Octets écrits.
+    pub write_bytes: u64,
+    /// Nombre de `sync_data` réels (fsync batché).
+    pub sync_ops: u64,
 }
 
 /// Handle to a physical temporary download file (`.part`).
@@ -21,6 +47,7 @@ pub struct PartFile {
     file: File,
     path: PathBuf,
     total_size: u64,
+    io_stats: PartFileIoStats,
 }
 
 impl PartFile {
@@ -55,6 +82,7 @@ impl PartFile {
             file,
             path: path_buf,
             total_size,
+            io_stats: PartFileIoStats::default(),
         };
 
         match policy {
@@ -77,7 +105,13 @@ impl PartFile {
         self.total_size
     }
 
-    /// Writes a data chunk at an arbitrary byte offset.
+    /// Compteurs d'E/S cumulés depuis l'ouverture du handle.
+    pub fn io_stats(&self) -> PartFileIoStats {
+        self.io_stats
+    }
+
+    /// Écriture positionnée (`pwrite`/`seek_write`, un seul appel système)
+    /// — pas de `seek` mutable sur le descripteur partagé.
     pub fn write_segment(&mut self, offset: u64, data: &[u8]) -> Result<(), CoreError> {
         if offset + data.len() as u64 > self.total_size {
             return Err(CoreError::InvalidRange {
@@ -87,22 +121,78 @@ impl PartFile {
             });
         }
 
-        self.file.seek(SeekFrom::Start(offset))?;
-        self.file.write_all(data)?;
+        positioned_write(&self.file, offset, data)?;
+        self.io_stats.write_ops += 1;
+        self.io_stats.write_bytes += data.len() as u64;
         Ok(())
     }
 
     /// Flushes unwritten buffers to physical disk.
     pub fn flush(&mut self) -> Result<(), CoreError> {
         self.file.sync_data()?;
+        self.io_stats.sync_ops += 1;
         Ok(())
     }
 
-    /// Reads a byte range from the temporary file (e.g. for hash verification).
+    /// Lecture positionnée (`pread`/`seek_read`) d'une plage (vérification
+    /// de hash, récupération AICH) — réservée aux chemins froids : la
+    /// vérification de part en ligne utilise le buffer stagé en RAM.
     pub fn read_range(&mut self, offset: u64, len: usize) -> Result<Vec<u8>, CoreError> {
-        self.file.seek(SeekFrom::Start(offset))?;
         let mut buf = vec![0u8; len];
-        self.file.read_exact(&mut buf)?;
+        positioned_read(&self.file, offset, &mut buf)?;
+        self.io_stats.read_ops += 1;
+        self.io_stats.read_bytes += len as u64;
         Ok(buf)
     }
+}
+
+/// Écriture positionnée complète — les API `seek_write`/`write_at` sont
+/// autorisées à écrire moins que demandé : on boucle (équivalent
+/// `write_all`) sans déplacer le curseur du descripteur.
+#[cfg(windows)]
+fn positioned_write(file: &File, offset: u64, data: &[u8]) -> Result<(), CoreError> {
+    let mut written = 0usize;
+    while written < data.len() {
+        let n = file.seek_write(&data[written..], offset + written as u64)?;
+        if n == 0 {
+            return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "seek_write").into());
+        }
+        written += n;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn positioned_write(file: &File, offset: u64, data: &[u8]) -> Result<(), CoreError> {
+    let mut written = 0usize;
+    while written < data.len() {
+        let n = file.write_at(&data[written..], offset + written as u64)?;
+        if n == 0 {
+            return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "write_at").into());
+        }
+        written += n;
+    }
+    Ok(())
+}
+
+/// Lecture positionnée complète (`read_exact`) — échec explicite si le
+/// fichier ne contient pas assez de données (évite un buffer zero-paddé
+/// silencieux qui fausserait une vérification de hash).
+#[cfg(windows)]
+fn positioned_read(file: &File, offset: u64, buf: &mut [u8]) -> Result<(), CoreError> {
+    let mut read = 0usize;
+    while read < buf.len() {
+        let n = file.seek_read(&mut buf[read..], offset + read as u64)?;
+        if n == 0 {
+            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "seek_read").into());
+        }
+        read += n;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn positioned_read(file: &File, offset: u64, buf: &mut [u8]) -> Result<(), CoreError> {
+    file.read_exact_at(buf, offset)?;
+    Ok(())
 }

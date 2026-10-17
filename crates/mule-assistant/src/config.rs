@@ -38,7 +38,7 @@ pub const DEFAULT_WS_PORT: u16 = 4680;
 
 /// Prompt système : contexte métier et consignes pour le modèle.
 /// Rédigé en français, cohérent avec la langue du projet.
-pub const SYSTEM_PROMPT: &str = "Tu es l'assistant intégré d'eMule-Rust, un client P2P eD2K/Kad. \
+pub const SYSTEM_PROMPT: &str = "Tu es l'assistant intégré d'eMuleRust, un client P2P eD2K/Kad. \
 Tu pilotes l'application via les outils fournis : utilise-les pour obtenir l'état réel \
 (téléchargements, Kad, serveurs) plutôt que de deviner. Enchaîne les appels si nécessaire. \
 Quand une information suffit, réponds directement sans nouvel appel. \

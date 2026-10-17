@@ -4,7 +4,7 @@
 
 Le message `OP_REQUESTPARTS` permet à un client eD2K de demander à un pair distant une ou plusieurs plages d'octets (blocs de 180 KiB = 184 320 octets max) pour un fichier donné, identifié par son hash MD4 de 16 octets.
 
-Dans l'architecture eMule-Rust, ce message est **exclusivement utilisé pour les transferts sur boucle locale fermée (loopback)** via la feature `ed2k-loopback`. Il fait l'objet d'un suivi strict par le composant `BlockRequestTracker` selon une clé composite `[file_hash, start, end]`.
+Dans l'architecture eMuleRust, ce message est **exclusivement utilisé pour les transferts sur boucle locale fermée (loopback)** via la feature `ed2k-loopback`. Il fait l'objet d'un suivi strict par le composant `BlockRequestTracker` selon une clé composite `[file_hash, start, end]`.
 
 ---
 

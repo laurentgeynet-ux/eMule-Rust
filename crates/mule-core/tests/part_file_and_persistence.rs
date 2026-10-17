@@ -297,3 +297,43 @@ fn test_database_delete_download_persists_across_reopen() {
         assert!(parts.is_empty(), "Verified parts must be purged on delete");
     }
 }
+
+/// Delta `append_received_range` (hot path par bloc) : les lignes
+/// chevauchantes doivent refusionner au chargement en le même RangeSet
+/// qu'une réécriture complète `sync_received_ranges`.
+#[test]
+fn test_append_received_range_delta_merges_on_load() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("mule_state.db");
+    let temp_part_path = dir.path().join("002.part");
+
+    let download = Download::new(
+        "delta.bin",
+        20_000,
+        Ed2kHash([0xcd; 16]),
+        None,
+        dir.path().join("delta.bin"),
+        temp_part_path,
+    );
+    let download_id = download.id;
+
+    let mut db = Database::open(&db_path).unwrap();
+    db.insert_download(&download).unwrap();
+
+    // Blocs injectés un par un, comme le hot path `inject_range`.
+    for (start, end) in [(0u64, 5_000u64), (5_000, 10_000), (12_000, 15_000)] {
+        db.append_received_range(&download_id, start, end).unwrap();
+    }
+
+    // Même `start_offset` réécrit (re-bloc recouvrant) : l'upsert étend
+    // au max sans casser la fusion.
+    db.append_received_range(&download_id, 0, 6_000).unwrap();
+
+    let loaded = db.load_received_ranges(&download_id).unwrap();
+    assert_eq!(loaded.ranges(), vec![0..10_000, 12_000..15_000]);
+
+    // La compaction `sync_received_ranges` reste cohérente avec le delta.
+    db.sync_received_ranges(&download_id, &loaded).unwrap();
+    let reloaded = db.load_received_ranges(&download_id).unwrap();
+    assert_eq!(reloaded.ranges(), vec![0..10_000, 12_000..15_000]);
+}

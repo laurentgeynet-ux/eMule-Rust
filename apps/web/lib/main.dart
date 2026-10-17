@@ -9,14 +9,14 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:app_shell/app/app_controller.dart';
-import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/emulerust_app.dart';
 import 'package:app_shell/l10n/generated/app_localizations.dart';
 import 'package:mule_client/mule_client.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import 'daemon_connect_screen.dart';
 
-/// eMule-Rust web remote controller.
+/// eMuleRust web remote controller.
 ///
 /// Connects to an already-running mule-daemon over WebSocket — no local
 /// supervisor. The daemon URL is resolved from, in order:
@@ -139,7 +139,7 @@ class _WebRemoteAppState extends State<WebRemoteApp> {
       return eMuleRustApp(viewModel: _controller!, onChangeDaemon: _disconnect);
     }
     return MaterialApp(
-      title: 'eMule-Rust',
+      title: 'eMuleRust',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
       locale: const Locale('fr'),

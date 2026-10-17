@@ -4,7 +4,7 @@
 
 Le message `OP_SENDINGPART` transporte un bloc de données binaires de fichier d'un pair distant vers le client récepteur, en réponse à une demande préalable formulée par `OP_REQUESTPARTS`.
 
-Dans l'architecture eMule-Rust :
+Dans l'architecture eMuleRust :
 - Ce message est **strictement corrélé** avec une requête en vol enregistrée dans `BlockRequestTracker`.
 - Les octets reçus sont validés puis écrits exclusivement au travers de l'abstraction de stockage `DownloadSink`.
 - La taille du fichier physique `.part` et le calcul du hash eD2K progressent de manière déterministe et atomique via SQLite WAL.

@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
-import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/emulerust_app.dart';
 import 'package:app_shell/app/app_controller.dart';
 import 'package:app_shell/ui/features/servers/views/servers_screen.dart';
 

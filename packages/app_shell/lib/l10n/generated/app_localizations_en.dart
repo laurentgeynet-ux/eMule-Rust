@@ -10,7 +10,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appName => 'eMule-Rust';
+  String get appName => 'eMuleRust';
 
   @override
   String get appTagline => 'Modern eD2K Client';
@@ -1444,7 +1444,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get parDefauteMuleRustEst =>
-      'By default, eMule-Rust is confined to loopback (LocalLab). Switch to PublicEd2kPreview to allow public servers.';
+      'By default, eMuleRust is confined to loopback (LocalLab). Switch to PublicEd2kPreview to allow public servers.';
 
   @override
   String get modifierLeProfil => 'Edit profile';
@@ -1571,7 +1571,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get memeEnModePublicLa =>
-      'Even in public mode, eMule-Rust\'s network policy rigorously blocks all outbound traffic to your private local network addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x) to protect your home devices.';
+      'Even in public mode, eMuleRust\'s network policy rigorously blocks all outbound traffic to your private local network addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x) to protect your home devices.';
 
   @override
   String get fermer => 'Close';
@@ -1681,7 +1681,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get daemonConnectDescription =>
-      'eMule-Rust Web controls a remote mule-daemon. Enter the daemon\'s WebSocket address.';
+      'eMuleRust Web controls a remote mule-daemon. Enter the daemon\'s WebSocket address.';
 
   @override
   String get daemonUrlLabel => 'Daemon address';
@@ -2046,7 +2046,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDailyQuotaHint =>
-      'eMule-Rust option: beyond the quota, no upload slot is granted. Resets daily (UTC).';
+      'eMuleRust option: beyond the quota, no upload slot is granted. Resets daily (UTC).';
 
   @override
   String get settingsAutoPriorityTitle => 'Auto-priority for new downloads';
@@ -2067,10 +2067,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSwarmHealingSub =>
-      'eMule-Rust option: prioritizes the rarest swarm parts (few remaining sources) to become a backup source before they vanish';
+      'eMuleRust option: prioritizes the rarest swarm parts (few remaining sources) to become a backup source before they vanish';
 
   @override
-  String get settingsExclusiveTitle => 'eMule-Rust exclusive options';
+  String get settingsExclusiveTitle => 'eMuleRust exclusive options';
 
   @override
   String get settingsParanoidTitle => 'Paranoid mode';

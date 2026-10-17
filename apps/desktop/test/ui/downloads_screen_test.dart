@@ -6,8 +6,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
-import 'package:app_shell/emule_sion_app.dart';
-import 'package:desktop/services/daemon_supervisor.dart';
+import 'package:app_shell/emulerust_app.dart';
+import 'package:emulerust/services/daemon_supervisor.dart';
 import 'package:app_shell/app/app_controller.dart';
 import 'package:app_shell/ui/features/downloads/widgets/download_row.dart';
 import 'package:app_shell/ui/features/downloads/widgets/downloads_sidebar.dart';
@@ -65,7 +65,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Brand and sidebar
-      expect(find.text('eMule-Rust'), findsOneWidget);
+      expect(find.text('eMuleRust'), findsOneWidget);
       expect(find.text('Tous les téléchargements'), findsAtLeastNWidgets(1));
       expect(
         find.descendant(

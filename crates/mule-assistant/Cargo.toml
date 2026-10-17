@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Assistant IA local pour eMule-Rust : boucle tool-calling LLM loopback → JSON-RPC du daemon"
+description = "Assistant IA local pour eMuleRust : boucle tool-calling LLM loopback → JSON-RPC du daemon"
 
 [dependencies]
 mule-mcp = { path = "../mule-mcp" }

@@ -16,7 +16,7 @@ import 'package:mule_client/mule_client.dart';
 class DownloadNotifier {
   /// Windows AppUserModelID used by the toast notifier. WinToast writes a
   /// `<appName>.lnk` shortcut in the Start Menu under this name.
-  static const _windowsAppName = 'eMule-Rust';
+  static const _windowsAppName = 'eMuleRust';
 
   final MuleDaemonClient _client;
   StreamSubscription<DownloadLifecycleEvent>? _sub;

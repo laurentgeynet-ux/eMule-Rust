@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Automated post-packaging smoke test for the eMule-Rust standalone distribution.
+    Automated post-packaging smoke test for the eMuleRust standalone distribution.
 .DESCRIPTION
     Phase 7.4 — Smoke test post-packaging:
     Executes in a sterile, temporary directory outside the Git repository:
@@ -65,7 +65,7 @@ if ([string]::IsNullOrWhiteSpace($ZipPath)) {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  eMule-Rust Post-Packaging E2E Smoke Test        " -ForegroundColor Cyan
+Write-Host "  eMuleRust Post-Packaging E2E Smoke Test        " -ForegroundColor Cyan
 Write-Host "  Flavor: $ExpectedFlavor                         " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
@@ -143,7 +143,7 @@ try {
 
     $VersionJson = Get-Content $VersionFile -Raw | ConvertFrom-Json
     if ($VersionJson.schemaVersion -ne 1) { throw "Unexpected schemaVersion: $($VersionJson.schemaVersion)" }
-    if ($VersionJson.product -ne "eMule-Rust") { throw "Unexpected product name: $($VersionJson.product)" }
+    if ($VersionJson.product -ne "eMuleRust") { throw "Unexpected product name: $($VersionJson.product)" }
     if ($VersionJson.protocolVersion -ne 1) { throw "Unexpected protocolVersion: $($VersionJson.protocolVersion)" }
     if ($VersionJson.gitCommit.Length -ne 40) { throw "gitCommit must be a full 40-character SHA hash: $($VersionJson.gitCommit)" }
     if (!$VersionJson.toolchains.rustc) { throw "toolchains.rustc missing from version.json" }

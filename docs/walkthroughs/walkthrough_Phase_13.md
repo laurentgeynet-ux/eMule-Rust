@@ -1,6 +1,6 @@
 # Guide d'Exécution & Validation — Phase 13 : Source Exchange v4, Blocs Compressés & Serveur Agent IA (MCP)
 
-Ce document constitue le guide technique de référence pour la **Phase 13** (version `v0.1.6`) du projet **eMule-Rust**, caractérisée par l'achèvement de l'interopérabilité pair-à-pair avancée et l'ouverture aux agents autonomes :
+Ce document constitue le guide technique de référence pour la **Phase 13** (version `v0.1.6`) du projet **eMuleRust**, caractérisée par l'achèvement de l'interopérabilité pair-à-pair avancée et l'ouverture aux agents autonomes :
 * **Source Exchange v4 (SX1 & SX2)** : Protocole décentralisé d'échange de sources entre pairs sans intermédiaire serveur, avec compression zlib et négociation de version via `misc_options1`.
 * **Streaming de Blocs Compressés zlib** : Support natif du paquet `OP_COMPRESSEDPART` (0x40) permettant une réduction drastique de la bande passante lors du transfert de blocs de 180 Ko.
 * **Serveur Model Context Protocol (MCP)** : Création du crate dédié `crates/mule-mcp` exposant **83 outils MCP** pour le pilotage complet du nœud par des agents d'intelligence artificielle.
@@ -12,7 +12,7 @@ Ce document constitue le guide technique de référence pour la **Phase 13** (ve
 ```mermaid
 sequenceDiagram
     autonumber
-    participant NotreClient as eMule-Rust (Local)
+    participant NotreClient as eMuleRust (Local)
     participant Peer as Pair eMule Distant
 
     Note over NotreClient,Peer: Négociation des Capacités lors du Handshake
@@ -26,7 +26,7 @@ sequenceDiagram
     Note over NotreClient: Décompression, Déduplication, Anti-SSRF & Persistance SQLite
 ```
 
-### 1.1 Variantes Supportées ([crates/mule-protocol/src/ed2k/source_exchange/](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/source_exchange/))
+### 1.1 Variantes Supportées ([crates/mule-protocol/src/ed2k/source_exchange/](file:///d:/Projet/eMuleRust/crates/mule-protocol/src/ed2k/source_exchange/))
 
 * **SX1 (Standard)** :
   * Requête : `OP_REQUESTSOURCES` (`0x43`).
@@ -37,7 +37,7 @@ sequenceDiagram
   * Réponse : `OP_ANSWERSOURCES2` (`0x49`).
   * Format : Support des identifiants Kad, des drapeaux de chiffrement cryptographique et de l'UserHash des pairs partagés.
 
-### 1.2 Négociation des Capacités ([peer_info.rs](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/peer_info.rs))
+### 1.2 Négociation des Capacités ([peer_info.rs](file:///d:/Projet/eMuleRust/crates/mule-protocol/src/ed2k/peer_info.rs))
 
 Les capacités de Source Exchange d'un pair sont extraites dynamiquement lors de la réception de `OP_EMULEINFO` ou `OP_HELLO` :
 * Décodage du tag `CTAG_EMULE_MISCOPTIONS1` (`0xFA`) :
@@ -56,7 +56,7 @@ Dans le réseau eDonkey2000 moderne, les clients récents n'émettent plus les d
   * Taille décompressée attendue : 4 octets.
   * Données compressées : flux brut zlib (Deflate).
 
-### Pipeline de Réception en Streaming ([transfer.rs](file:///d:/Projet/eMule-Rust/crates/mule-daemon/src/services/peer_session/transfer.rs))
+### Pipeline de Réception en Streaming ([transfer.rs](file:///d:/Projet/eMuleRust/crates/mule-daemon/src/services/peer_session/transfer.rs))
 1. **Décompression continue en mémoire** : Utilisation du décompresseur `flate2::read::ZlibDecoder` avec protection contre les bombes de décompression (*zip-bombs* : ratio d'expansion plafonné).
 2. **Vérification de taille exacte** : Validation que le nombre d'octets décompressés correspond scrupuleusement à la plage déclarée par le séquenceur de blocs.
 3. **Écriture directe dans le fichier éparse** : Injection immédiate des octets reconstitués dans le fichier temporaire `.part` à l'offset absolu.
@@ -65,7 +65,7 @@ Dans le réseau eDonkey2000 moderne, les clients récents n'émettent plus les d
 
 ## 3. Serveur MCP Natif pour Agents d'Intelligence Artificielle (`crates/mule-mcp`)
 
-Le crate [`crates/mule-mcp`](file:///d:/Projet/eMule-Rust/crates/mule-mcp) intègre une passerelle stdio conforme à la spécification **Model Context Protocol (MCP)**, permettant à un assistant IA d'administrer, surveiller et interagir avec eMule-Rust de manière transparente.
+Le crate [`crates/mule-mcp`](file:///d:/Projet/eMuleRust/crates/mule-mcp) intègre une passerelle stdio conforme à la spécification **Model Context Protocol (MCP)**, permettant à un assistant IA d'administrer, surveiller et interagir avec eMuleRust de manière transparente.
 
 ### 3.1 Architecture du Pont MCP
 ```
@@ -78,7 +78,7 @@ Le crate [`crates/mule-mcp`](file:///d:/Projet/eMule-Rust/crates/mule-mcp) intè
 └───────────────┬───────────────┘
                 │ WebSocket (127.0.0.1:4660/ws + auth.token)
 ┌───────────────▼───────────────┐
-│     crates/mule-daemon        │  Démon eMule-Rust
+│     crates/mule-daemon        │  Démon eMuleRust
 └───────────────────────────────┘
 ```
 

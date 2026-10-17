@@ -6,7 +6,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mule_client/mule_client.dart';
-import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/emulerust_app.dart';
 import 'package:app_shell/app/app_controller.dart';
 import 'package:app_shell/ui/features/history/views/history_view.dart';
 import 'package:app_shell/ui/features/settings/views/settings_view.dart';

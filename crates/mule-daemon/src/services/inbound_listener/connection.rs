@@ -217,7 +217,7 @@ impl InboundListenerService {
                     .ok()
                     .flatten()
                     .filter(|s| !s.trim().is_empty())
-                    .unwrap_or_else(|| "eMule-Rust".to_string());
+                    .unwrap_or_else(|| "eMuleRust".to_string());
                 tags.push(Ed2kTag {
                     name: TagName::Id(TAG_SPECIAL_NAME),
                     value: TagValue::String(nickname),

@@ -101,7 +101,7 @@ abstract class AppLocalizations {
   /// Application brand name.
   ///
   /// In fr, this message translates to:
-  /// **'eMule-Rust'**
+  /// **'eMuleRust'**
   String get appName;
 
   /// No description provided for @appTagline.
@@ -2615,7 +2615,7 @@ abstract class AppLocalizations {
   /// No description provided for @parDefauteMuleRustEst.
   ///
   /// In fr, this message translates to:
-  /// **'Par défaut, eMule-Rust est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.'**
+  /// **'Par défaut, eMuleRust est confiné en boucle locale (LocalLab). Basculez sur PublicEd2kPreview pour autoriser les serveurs publics.'**
   String get parDefauteMuleRustEst;
 
   /// No description provided for @modifierLeProfil.
@@ -2843,7 +2843,7 @@ abstract class AppLocalizations {
   /// No description provided for @memeEnModePublicLa.
   ///
   /// In fr, this message translates to:
-  /// **'Même en mode public, la politique réseau d\'eMule-Rust bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.'**
+  /// **'Même en mode public, la politique réseau d\'eMuleRust bloque rigoureusement tout trafic sortant vers les adresses de votre réseau local privé (192.168.x.x, 10.x.x.x, 172.16-31.x.x) pour protéger vos équipements domestiques.'**
   String get memeEnModePublicLa;
 
   /// No description provided for @fermer.
@@ -3036,7 +3036,7 @@ abstract class AppLocalizations {
   /// No description provided for @daemonConnectDescription.
   ///
   /// In fr, this message translates to:
-  /// **'eMule-Rust Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.'**
+  /// **'eMuleRust Web pilote un mule-daemon distant. Indiquez l\'adresse WebSocket du daemon.'**
   String get daemonConnectDescription;
 
   /// No description provided for @daemonUrlLabel.
@@ -3672,7 +3672,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsDailyQuotaHint.
   ///
   /// In fr, this message translates to:
-  /// **'Option eMule-Rust : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).'**
+  /// **'Option eMuleRust : au-delà du quota, plus aucun slot d\'upload n\'est accordé. Remise à zéro chaque jour (UTC).'**
   String get settingsDailyQuotaHint;
 
   /// No description provided for @settingsAutoPriorityTitle.
@@ -3708,13 +3708,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsSwarmHealingSub.
   ///
   /// In fr, this message translates to:
-  /// **'Option eMule-Rust : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition'**
+  /// **'Option eMuleRust : télécharge en priorité les parts les plus rares du swarm (peu de sources restantes) pour devenir une source de secours avant leur disparition'**
   String get settingsSwarmHealingSub;
 
   /// No description provided for @settingsExclusiveTitle.
   ///
   /// In fr, this message translates to:
-  /// **'Options exclusives eMule-Rust'**
+  /// **'Options exclusives eMuleRust'**
   String get settingsExclusiveTitle;
 
   /// No description provided for @settingsParanoidTitle.

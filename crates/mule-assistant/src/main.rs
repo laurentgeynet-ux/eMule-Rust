@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 //! `mule-assistant` : REPL terminal ou serveur WebSocket pour piloter
-//! eMule-Rust via un LLM local (Ollama loopback par défaut).
+//! eMuleRust via un LLM local (Ollama loopback par défaut).
 
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -24,12 +24,12 @@ use mule_mcp::tools::ToolProfile;
 
 #[derive(Parser, Debug)]
 #[command(name = "mule-assistant")]
-#[command(about = "Assistant IA local pour eMule-Rust (tool-calling LLM → daemon RPC)")]
+#[command(about = "Assistant IA local pour eMuleRust (tool-calling LLM → daemon RPC)")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Explicit WebSocket RPC URL of the eMule-Rust daemon (e.g. ws://127.0.0.1:4660/rpc)
+    /// Explicit WebSocket RPC URL of the eMuleRust daemon (e.g. ws://127.0.0.1:4660/rpc)
     #[arg(long)]
     url: Option<String>,
 
@@ -37,7 +37,7 @@ struct Cli {
     #[arg(long)]
     token: Option<String>,
 
-    /// Path to eMule-Rust workdir where session.json and auth.token reside
+    /// Path to eMuleRust workdir where session.json and auth.token reside
     #[arg(long)]
     workdir: Option<PathBuf>,
 

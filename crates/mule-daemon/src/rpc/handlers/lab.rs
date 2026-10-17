@@ -320,7 +320,7 @@ pub async fn handle_lab_create_fixture(
         }
         "text" => (
             "hello-loopback.txt".to_string(),
-            b"eMule-Rust local test\n".to_vec(),
+            b"eMuleRust local test\n".to_vec(),
         ),
         _ => {
             let size = 1_048_576usize;

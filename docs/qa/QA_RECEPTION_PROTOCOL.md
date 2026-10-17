@@ -1,12 +1,12 @@
-# Protocole de Réception QA & Validation Interne — eMule-Rust RC v0.1.0-lab
+# Protocole de Réception QA & Validation Interne — eMuleRust RC v0.1.0-lab
 
-Ce document définit les vérifications obligatoires à exécuter par tout testeur interne recevant le paquet autonome **eMule-Rust Release Candidate** (`v0.1.0-lab`) sur une machine Windows 10 ou Windows 11 propre.
+Ce document définit les vérifications obligatoires à exécuter par tout testeur interne recevant le paquet autonome **eMuleRust Release Candidate** (`v0.1.0-lab`) sur une machine Windows 10 ou Windows 11 propre.
 
 ---
 
 > [!IMPORTANT]
 > **Périmètre & Confinement Réseau Stricte**  
-> *eMule-Rust* est une application de laboratoire local avec compatibilité eD2K expérimentale.  
+> *eMuleRust* est une application de laboratoire local avec compatibilité eD2K expérimentale.  
 > - **Zéro réseau public** : aucune tentative de connexion vers un serveur eD2K externe, aucun nœud Kad, aucun échange P2P sur Internet.  
 > - **Loopback exclusif** : toutes les communications inter-processus (IPC WebSocket JSON-RPC et pairs de test locaux) sont confinées à l'adresse `127.0.0.1`.  
 > - **Attestation formelle** : *« Compatibilité eD2K expérimentale validée sur corpus statique et pair de référence émulé, en environnement loopback fermé. Le harnais Tier 3 pour un binaire eMule/aMule externe épinglé est disponible, mais son test live reste ignoré par défaut tant qu’un binaire vérifié n’est pas fourni. »*
@@ -66,7 +66,7 @@ Write-Host "✅ Intégrité vérifiée avec succès : 100% des fichiers sont con
 
 1. **Manifeste de version** : ouvrez `.\eMuleRust-Windows\version.json` et vérifiez :
    - `schemaVersion`: `1`
-   - `product`: `"eMule-Rust"`
+   - `product`: `"eMuleRust"`
    - `version`: `"0.1.0-lab"`
    - `gitDirty`: `false` (preuve de construction depuis un commit propre)
    - `signed`: `false` (distribution lab non signée Authenticode commerciale)
@@ -89,7 +89,7 @@ Lancez l'application principale :
 ### 4.2 Comportement Attendu
 1. L'exécutable `eMuleRust.exe` démarre sans privilège administrateur (compte utilisateur Windows standard).
 2. L'interface Flutter Desktop s'affiche instantanément avec le thème sombre eMule moderne.
-3. Le démon d'arrière-plan `bin\mule-daemon.exe` est automatiquement initialisé par le superviseur dans le répertoire utilisateur `%APPDATA%\emule_sion` (ou `.mule_data`).
+3. Le démon d'arrière-plan `bin\mule-daemon.exe` est automatiquement initialisé par le superviseur dans le répertoire utilisateur `%LOCALAPPDATA%\eMuleRust` (ou `.mule_data`).
 4. L'indicateur de statut en haut à droite passe à **« Connecté au démon local »** (vert).
 5. Aucun message d'alerte pare-feu Windows ne doit s'afficher, car le socket écoute exclusivement sur le loopback (`127.0.0.1`).
 
@@ -99,11 +99,11 @@ Lancez l'application principale :
 
 | Scénario | Action QA | Résultat Attendu |
 | :--- | :--- | :--- |
-| **Port 4660 occupé** | Lancer une autre application sur le port TCP 4660 avant d'ouvrir eMule-Rust. | Le démon bascule automatiquement sur un port éphémère loopback (`127.0.0.1:XXXX`). L'UI découvre le port via `session.json` et se connecte sans erreur. |
+| **Port 4660 occupé** | Lancer une autre application sur le port TCP 4660 avant d'ouvrir eMuleRust. | Le démon bascule automatiquement sur un port éphémère loopback (`127.0.0.1:XXXX`). L'UI découvre le port via `session.json` et se connecte sans erreur. |
 | **Deux instances UI simultanées** | Double-cliquer une 2e fois sur `eMuleRust.exe`. | La seconde instance se connecte au démon déjà actif sans tenter d'en lancer un second (`mule.lock` respecté). |
 | **Arrêt inattendu du démon** | Tuer `mule-daemon.exe` depuis le Gestionnaire des tâches. | L'UI affiche l'état « Reconnexion... » avec backoff exponentiel, nettoie le verrou périmé et relance un démon propre. |
-| **Dossier avec espaces/accents** | Déplacer le dossier `eMuleRust-Windows` dans `C:\Test Émule Sion 📁\`. | L'application et son démon enfant démarrent et fonctionnent sans erreur de chemin. |
-| **Fermeture de l'UI** | Fermer la fenêtre principale d'eMule-Rust. | Le démon enfant s'arrête proprement et `session.json` est automatiquement supprimé. |
+| **Dossier avec espaces/accents** | Déplacer le dossier `eMuleRust-Windows` dans `C:\Test ÉmuleRust 📁\`. | L'application et son démon enfant démarrent et fonctionnent sans erreur de chemin. |
+| **Fermeture de l'UI** | Fermer la fenêtre principale d'eMuleRust. | Le démon enfant s'arrête proprement et `session.json` est automatiquement supprimé. |
 
 ---
 

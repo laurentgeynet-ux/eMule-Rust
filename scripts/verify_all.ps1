@@ -3,7 +3,7 @@
 
 <#
 .SYNOPSIS
-    Unified Verification Script for eMule-Rust (Rust backend + Flutter Desktop).
+    Unified Verification Script for eMuleRust (Rust backend + Flutter Desktop).
 .DESCRIPTION
     Runs:
     1. Cargo Clippy on workspace with -D warnings
@@ -20,7 +20,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  eMule-Rust Full Stack Verification (Rust + Dart) " -ForegroundColor Cyan
+Write-Host "  eMuleRust Full Stack Verification (Rust + Dart) " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # 1. Cargo Clippy

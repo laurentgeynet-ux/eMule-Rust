@@ -253,50 +253,50 @@ fn test_upnp_mapping_ownership_inspection() {
 
     let our_endpoint = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 31), 39735);
 
-    // 1. Exact match: identical protocol, port, local client IP, internal port and eMule-Rust prefix
+    // 1. Exact match: identical protocol, port, local client IP, internal port and eMuleRust prefix
     assert_eq!(
         inspect_mapping_entry(
             PortMappingProtocol::TCP,
             39735,
             "192.168.1.31",
             39735,
-            "eMule-Rust eD2K TCP",
+            "eMuleRust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
         ),
         Some(MappingOwnership::ExactMatch)
     );
 
-    // 2. Stale lease: eMule-Rust prefix but old client IP (e.g. DHCP lease change)
+    // 2. Stale lease: eMuleRust prefix but old client IP (e.g. DHCP lease change)
     assert_eq!(
         inspect_mapping_entry(
             PortMappingProtocol::TCP,
             39735,
             "192.168.1.50",
             39735,
-            "eMule-Rust eD2K TCP",
+            "eMuleRust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
         ),
         Some(MappingOwnership::StaleLease)
     );
 
-    // 3. Stale lease: eMule-Rust prefix but changed internal port
+    // 3. Stale lease: eMuleRust prefix but changed internal port
     assert_eq!(
         inspect_mapping_entry(
             PortMappingProtocol::TCP,
             39735,
             "192.168.1.31",
             49662,
-            "eMule-Rust eD2K TCP",
+            "eMuleRust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
         ),
         Some(MappingOwnership::StaleLease)
     );
@@ -312,7 +312,7 @@ fn test_upnp_mapping_ownership_inspection() {
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
         ),
         Some(MappingOwnership::ForeignConflict)
     );
@@ -328,7 +328,7 @@ fn test_upnp_mapping_ownership_inspection() {
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
         ),
         Some(MappingOwnership::ForeignConflict)
     );
@@ -340,11 +340,11 @@ fn test_upnp_mapping_ownership_inspection() {
             39735,
             "192.168.1.31",
             39735,
-            "eMule-Rust Kad UDP",
+            "eMuleRust Kad UDP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
         ),
         None
     );
@@ -356,11 +356,11 @@ fn test_upnp_mapping_ownership_inspection() {
             8080,
             "192.168.1.31",
             8080,
-            "eMule-Rust eD2K TCP",
+            "eMuleRust eD2K TCP",
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
         ),
         None
     );
@@ -377,7 +377,23 @@ fn test_upnp_mapping_ownership_inspection() {
             PortMappingProtocol::TCP,
             39735,
             our_endpoint,
-            "eMule-Rust",
+            "eMuleRust",
+        ),
+        Some(MappingOwnership::StaleLease)
+    );
+
+    // 9. Compatibilité : idem pour le nom intermédiaire « eMule-Rust »
+    assert_eq!(
+        inspect_mapping_entry(
+            PortMappingProtocol::TCP,
+            39735,
+            "192.168.1.50",
+            39735,
+            "eMule-Rust eD2K TCP",
+            PortMappingProtocol::TCP,
+            39735,
+            our_endpoint,
+            "eMuleRust",
         ),
         Some(MappingOwnership::StaleLease)
     );

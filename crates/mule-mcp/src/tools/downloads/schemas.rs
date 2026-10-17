@@ -78,7 +78,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "emule_import_part_met".to_string(),
-            description: "Import a legacy or foreign .part.met file into the active eMule-Rust download queue.".to_string(),
+            description: "Import a legacy or foreign .part.met file into the active eMuleRust download queue.".to_string(),
             input_schema: obj_schema(json!({"met_path": prop("string", "Path to the .part.met file to import"),
                     "part_path": prop("string", "Optional path to the .part data file"),
                     "destination_dir": prop("string", "Optional custom directory for completed file"),

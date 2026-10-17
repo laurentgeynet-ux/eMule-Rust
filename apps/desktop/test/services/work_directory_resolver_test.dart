@@ -4,7 +4,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:desktop/services/work_directory_resolver.dart';
+import 'package:emulerust/services/work_directory_resolver.dart';
 
 void main() {
   group('WorkDirectoryResolver Tests', () {
@@ -42,7 +42,7 @@ void main() {
       expect(resolved.directory.path, explicitDir.path);
     });
 
-    test('Tier 2: EMULE_SION_WORKDIR environment variable overrides portable.flag and default', () {
+    test('Tier 2: EMULERUST_WORKDIR environment variable overrides portable.flag and default', () {
       final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
 
@@ -63,7 +63,50 @@ void main() {
       expect(resolved.directory.path, envPath);
     });
 
-    test('Tier 2: legacy MULE_DATA_DIR fallback works when EMULE_SION_WORKDIR is absent', () {
+    test('Tier 2: deprecated EMULE_SION_WORKDIR alias still resolves', () {
+      final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
+      File('${bundleDir.path}/portable.flag').createSync();
+
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
+      final sionPath = '${tempDir.path}/from_sion_env';
+
+      final env = {
+        WorkDirectoryResolver.envSionWorkdir: sionPath,
+        'LOCALAPPDATA': 'C:\\Users\\QA\\AppData\\Local',
+      };
+
+      final resolved = WorkDirectoryResolver.resolve(
+        executableFile: fakeExe,
+        environment: env,
+      );
+
+      expect(resolved.mode, WorkDirMode.environment);
+      expect(resolved.directory.path, sionPath);
+    });
+
+    test('Tier 2: EMULERUST_WORKDIR takes precedence over deprecated EMULE_SION_WORKDIR', () {
+      final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
+      File('${bundleDir.path}/portable.flag').createSync();
+
+      final fakeExe = File('${bundleDir.path}/eMuleRust.exe');
+      final envPath = '${tempDir.path}/from_env';
+
+      final env = {
+        WorkDirectoryResolver.envWorkdir: envPath,
+        WorkDirectoryResolver.envSionWorkdir: '${tempDir.path}/from_sion_env',
+        'LOCALAPPDATA': 'C:\\Users\\QA\\AppData\\Local',
+      };
+
+      final resolved = WorkDirectoryResolver.resolve(
+        executableFile: fakeExe,
+        environment: env,
+      );
+
+      expect(resolved.mode, WorkDirMode.environment);
+      expect(resolved.directory.path, envPath);
+    });
+
+    test('Tier 2: legacy MULE_DATA_DIR fallback works when EMULERUST_WORKDIR is absent', () {
       final bundleDir = Directory('${tempDir.path}/bundle')..createSync();
       File('${bundleDir.path}/portable.flag').createSync();
 

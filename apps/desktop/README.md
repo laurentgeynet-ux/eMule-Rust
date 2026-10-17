@@ -1,4 +1,4 @@
-# eMule-Rust — Desktop
+# eMuleRust — Desktop
 
 Application Flutter (Windows/Linux) pilotant le daemon `mule-daemon`
 via JSON-RPC/WebSocket. Client et design system vivent dans les packages

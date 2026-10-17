@@ -143,7 +143,7 @@ pub struct AppState {
     /// Whether UDP (Kad + server UDP + client UDP) is enabled at all —
     /// eMule « UDP désactivé » checkbox.
     udp_enabled: Arc<AtomicBool>,
-    /// Gate du quota journalier d'upload (`dailyUploadQuotaGb`, eMule-Rust) :
+    /// Gate du quota journalier d'upload (`dailyUploadQuotaGb`, eMuleRust) :
     /// `false` bloque les nouvelles demandes de slot. Piloté par
     /// `spawn_quota_watcher`.
     upload_quota_gate: Arc<AtomicBool>,
@@ -220,7 +220,7 @@ impl AppState {
             .map(|v| v.clamp(1, 65535) as u16)
             .unwrap_or(config.kad_port);
         let udp_enabled = bool_setting("udp_enabled").unwrap_or(true);
-        // Mode paranoid (eMule-Rust) : slots d'upload réservés aux pairs
+        // Mode paranoid (eMuleRust) : slots d'upload réservés aux pairs
         // obfusqués avec signature SUI vérifiée.
         let paranoid_mode = bool_setting("paranoid_mode").unwrap_or(false);
         let max_upload_queue = get_usize("max_upload_queue");
@@ -713,7 +713,7 @@ impl AppState {
     }
 
     /// Effective nickname announced in eD2K hellos / server login
-    /// (eMule `nick` pref). Default: "eMule-Rust".
+    /// (eMule `nick` pref). Default: "eMuleRust".
     pub async fn current_nickname(&self) -> String {
         self.downloads
             .lock()
@@ -723,7 +723,7 @@ impl AppState {
             .flatten()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "eMule-Rust".to_string())
+            .unwrap_or_else(|| "eMuleRust".to_string())
     }
 
     pub async fn register_task(&self, handle: tokio::task::AbortHandle) {

@@ -1,11 +1,11 @@
-# Notes de Release — eMule-Rust 0.1.2-lab
+# Notes de Release — eMuleRust 0.1.2-lab
 
 ## 1. Vue d'Ensemble & Contexte
 
-La version **0.1.2-lab** d'**eMule-Rust** constitue le jalon de consolidation fonctionnelle et de certification qualité (QA) locale. Cette version transforme le projet en un produit QA portable, reproductible et vérifiable de bout en bout, de la génération de fixtures jusqu'au fichier finalisé, sans recourir à un terminal ni ouvrir de socket réseau sur l'extérieur.
+La version **0.1.2-lab** d'**eMuleRust** constitue le jalon de consolidation fonctionnelle et de certification qualité (QA) locale. Cette version transforme le projet en un produit QA portable, reproductible et vérifiable de bout en bout, de la génération de fixtures jusqu'au fichier finalisé, sans recourir à un terminal ni ouvrir de socket réseau sur l'extérieur.
 
 > **Formulation d'attestation d'interopérabilité :**  
-> *« eMule-Rust est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
+> *« eMuleRust est une application de laboratoire locale. La compatibilité eD2K est validée sur corpus statique et pair de référence émulé en loopback fermé. Aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. »*
 
 ---
 
@@ -123,7 +123,7 @@ Chaque bundle Windows x64 contient exactement **22 fichiers** contrôlés dans `
 - **Capacités RPC annoncées** : `["downloads", "download-events"]`
 - **Routes `lab.*`** : Inactives (rejet avec `-32601 MethodNotFound`).
 - **Texte de diffusion recommandé** :
-  > **eMule-Rust v0.1.2-lab — Standard**  
+  > **eMuleRust v0.1.2-lab — Standard**  
   > Build interne locale sans outils de laboratoire compilés. Elle inclut le démon local, l’interface Flutter Desktop, la séparation `data/` vs `downloads/`, la persistance SQLite et la gestion de téléchargements. Les routes de test, le pair loopback et les fonctions de simulation ne sont pas présents.
 
 #### B. Build QA Loopback
@@ -134,7 +134,7 @@ Chaque bundle Windows x64 contient exactement **22 fichiers** contrôlés dans `
 - **Capacités RPC annoncées** : `["downloads", "download-events", "lab-tools"]`
 - **Routes `lab.*`** : Actives (`lab.status`, `lab.createFixture`, `lab.startLoopbackPeer`, etc.).
 - **Texte de diffusion recommandé** :
-  > **eMule-Rust v0.1.2-lab — QA Loopback**  
+  > **eMuleRust v0.1.2-lab — QA Loopback**  
   > Build interne de validation incluant les outils de laboratoire `lab-tools`. Les échanges de test sont strictement limités à `127.0.0.1` ; aucun serveur eD2K public, nœud Kad ou peer externe n’est contacté. Utiliser pour les scénarios QA guidés et les tests E2E automatisés.
 
 ---
@@ -172,7 +172,7 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts\test_qa_loopba
 ## 7. Scoreboard Final de Validation
 
 ```
-=== SCOREBOARD eMule-Rust 0.1.2-LAB ===
+=== SCOREBOARD eMuleRust 0.1.2-LAB ===
 
 Rust Crates :
   - mule-core           :  12 tests réussis

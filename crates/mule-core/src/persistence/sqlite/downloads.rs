@@ -72,6 +72,9 @@ pub fn update_aich_root(
     Ok(())
 }
 
+/// Réécriture complète des ranges persistées (DELETE + INSERT de tout le
+/// RangeSet). Réservée aux points de compaction/éviction : le hot path de
+/// réception utilise [`append_received_range`] (delta O(1) par bloc).
 pub fn sync_received_ranges(
     conn: &mut Connection,
     download_id: &Uuid,
@@ -97,6 +100,28 @@ pub fn sync_received_ranges(
     }
 
     tx.commit()?;
+    Ok(())
+}
+
+/// Persiste une seule range nouvellement reçue (hot path par bloc) sans
+/// réécrire la table entière : upsert qui étend `end_offset` au maximum
+/// quand une ligne partage déjà `start_offset`. Les lignes résultantes
+/// peuvent se chevaucher — `load_received_ranges` les refusionne via
+/// `RangeSet::insert`, et la réécriture complète ([`sync_received_ranges`],
+/// cadence `PART_PERSIST_INTERVAL` + évictions) recompacte la table.
+pub fn append_received_range(
+    conn: &mut Connection,
+    download_id: &Uuid,
+    start: u64,
+    end: u64,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO received_ranges (download_id, start_offset, end_offset)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(download_id, start_offset)
+         DO UPDATE SET end_offset = MAX(received_ranges.end_offset, excluded.end_offset)",
+        params![download_id.to_string(), start as i64, end as i64],
+    )?;
     Ok(())
 }
 

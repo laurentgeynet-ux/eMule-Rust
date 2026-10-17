@@ -164,7 +164,7 @@ void main() {
       await tester.pump();
 
       expect(copiedText, isNotNull);
-      expect(copiedText, contains('=== eMule-Rust Diagnostics (Full Local) ==='));
+      expect(copiedText, contains('=== eMuleRust Diagnostics (Full Local) ==='));
       expect(copiedText, contains('Workdir Mode: Portable'));
       expect(copiedText, contains(r'Workdir Path: C:\Fake\Portable\data'));
       expect(copiedText, contains('RPC Endpoint: ws://127.0.0.1:4660/rpc'));

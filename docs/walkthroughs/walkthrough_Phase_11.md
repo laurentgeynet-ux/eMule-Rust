@@ -1,6 +1,6 @@
 # Guide d'Exécution & Validation — Phase 11 : Swarm Multi-Sources, Allocateur Équitable & Démarrage Basse Latence
 
-Ce document constitue le guide technique de référence pour la **Phase 11** (versions `v0.1.4` et `v0.1.5`) du projet **eMule-Rust**, dédiée à l'orchestration dynamique d'essaims de pairs et à l'accélération du démarrage des téléchargements :
+Ce document constitue le guide technique de référence pour la **Phase 11** (versions `v0.1.4` et `v0.1.5`) du projet **eMuleRust**, dédiée à l'orchestration dynamique d'essaims de pairs et à l'accélération du démarrage des téléchargements :
 * **SwarmCoordinator Autonome** : Gestion d'essaims multi-sources, auto-découverte cadencée hybride (Serveurs eD2K + Kad DHT) et supervision du cycle de vie des pairs.
 * **Allocateur Dynamique Water-Filling** : Algorithme **Weighted Max-Min Fair-Share** pour la répartition optimale et équitable des connexions réseau globales entre fichiers concurrents.
 * **Optimisation de la Latence de Démarrage** : Détection accélérée des sources (30s / 60s / 300s), tolérance douce aux timeouts de statut (`Tried` avec réessai à 45s) et réinterrogation rapide de la file d'attente (3 min).
@@ -12,7 +12,7 @@ Ce document constitue le guide technique de référence pour la **Phase 11** (ve
 
 ```mermaid
 flowchart TB
-    subgraph Engine ["Démon eMule-Rust (Tokio Runtime)"]
+    subgraph Engine ["Démon eMuleRust (Tokio Runtime)"]
         SC["SwarmCoordinator (Boucle autonome 3s)"]
         SA["SwarmAllocator (Weighted Max-Min Fair-Share Water-filling)"]
         PM["PeerSessionManager (Connexions TCP Parallèles)"]
@@ -46,7 +46,7 @@ flowchart TB
 
 ## 2. Algorithme d'Allocation : Weighted Max-Min Fair-Share Water-Filling
 
-Le module [`crates/mule-daemon/src/services/swarm_allocator.rs`](file:///d:/Projet/eMule-Rust/crates/mule-daemon/src/services/swarm_allocator.rs) résout le problème classique de contention des connexions réseau globales lorsque plusieurs téléchargements tournent simultanément.
+Le module [`crates/mule-daemon/src/services/swarm_allocator.rs`](file:///d:/Projet/eMuleRust/crates/mule-daemon/src/services/swarm_allocator.rs) résout le problème classique de contention des connexions réseau globales lorsque plusieurs téléchargements tournent simultanément.
 
 ### 2.1 Modèle de Demande (`FileDemand`)
 Chaque téléchargement actif déclare sa demande :
@@ -87,13 +87,13 @@ Ces paquets sont désormais interceptés directement dès la phase de handshake,
 
 ## 4. Fidélité Wire & Rétrocompatibilité
 
-### 4.1 Décodage des Chaînes Fixes `TAGTYPE_STR1..n` ([tags.rs](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/ed2k/tags.rs))
+### 4.1 Décodage des Chaînes Fixes `TAGTYPE_STR1..n` ([tags.rs](file:///d:/Projet/eMuleRust/crates/mule-protocol/src/ed2k/tags.rs))
 * **Anomalie historique résolue** : Les serveurs eD2K Lugdunum émettent des paquets `OP_SERVERIDENT` contenant des tags de type `0x11` à `0x7F`. Ces types représentent des chaînes de taille fixe sans préfixe de longueur `u16`.
 * **Règle wire** :  
   $$\text{Taille de la chaîne} = \text{TagType} - 0x10$$
   * Exemple : `0x19` correspond à une chaîne fixe de $0x19 - 0x10 = 9$ octets.
 
-### 4.2 Amorçage Kad Legacy ([codec.rs](file:///d:/Projet/eMule-Rust/crates/mule-protocol/src/kad/codec.rs))
+### 4.2 Amorçage Kad Legacy ([codec.rs](file:///d:/Projet/eMuleRust/crates/mule-protocol/src/kad/codec.rs))
 * Support du paquet historique `KADEMLIA_BOOTSTRAP_REQ_OLD` (`0x00`) assurant la compatibilité avec les clients eMule ancestraux.
 * Parallélisation du bootstrap (`bootstrap_active_contacts`) : interrogation concurrente via `futures_util::future::join_all` ramenant le temps d'amorçage de 50 secondes à **moins de 5 secondes**.
 

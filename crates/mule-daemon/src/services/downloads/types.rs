@@ -183,21 +183,29 @@ pub struct ActiveDownload {
     /// Données reçues non encore fsync'd : le `sync_data` du `.part` est
     /// batché selon [`PART_PERSIST_INTERVAL`] au lieu d'être payé par bloc
     /// de 180 Ko. Le bookkeeping SQLite `received_ranges` reste synchronisé
-    /// à chaque bloc (transaction WAL cheap, `synchronous=NORMAL`) pour le
-    /// crash-resume ; le fsync différé ne risque qu'une perte disque dur —
+    /// à chaque bloc via un delta `INSERT` O(1) (`append_received_range`)
+    /// pour le crash-resume, la réécriture complète servant de compaction
+    /// à cadence ; le fsync différé ne risque qu'une perte disque dur —
     /// les données seraient alors incohérentes mais la part sera
     /// re-vérifiée (hash MD4/AICH) et re-téléchargée si invalide.
     pub persist_dirty: bool,
-    /// Dernier flush disque réel (fsync + sync ranges) des données reçues.
+    /// Dernier flush disque réel (fsync + compaction ranges) des données
+    /// reçues.
     pub last_persist_flush: Instant,
+    /// Buffers RAM des parts en cours de réception (eMule `m_tData`,
+    /// libtorrent staging → hash → flush) : la vérification MD4 de part
+    /// se fait depuis ces buffers sans relecture disque quand ils sont
+    /// complets — voir [`super::staged`].
+    pub staged_parts: std::collections::HashMap<u32, super::staged::StagedPart>,
 }
 
 /// Cadence maximale de flush disque du chemin de réception : `sync_data`
-/// du `.part`. eMule flush son buffer de part (`CPartFile::FlushBuffer`)
-/// périodiquement plutôt qu'à chaque bloc ; même approche ici — les points
-/// critiques (complétion de part, fin de fichier, pause, transition de
-/// statut, shutdown) forcent un flush immédiat. Le `sync_received_ranges`
-/// SQLite n'est PAS batché (exigé par le crash-resume).
+/// du `.part` + compaction complète `received_ranges`. eMule flush son
+/// buffer de part (`CPartFile::FlushBuffer`) périodiquement plutôt qu'à
+/// chaque bloc ; même approche ici — les points critiques (complétion de
+/// part, fin de fichier, pause, transition de statut, shutdown) forcent
+/// un flush immédiat. Le crash-resume par bloc est assuré par le delta
+/// `append_received_range`, pas par la réécriture complète.
 pub(crate) const PART_PERSIST_INTERVAL: Duration = Duration::from_secs(30);
 
 impl ActiveDownload {

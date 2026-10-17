@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Detecteur de duplication pour le workspace Rust eMule-Sion.
+"""Detecteur de duplication pour le workspace Rust eMuleRust.
 
 Trois angles d'analyse, tous hors-ligne :
   A. Symboles homonymes (fn/struct/enum/trait/const definis dans >=2 fichiers)

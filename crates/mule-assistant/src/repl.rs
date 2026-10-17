@@ -30,7 +30,7 @@ pub async fn run_repl(session: &mut Session) -> Result<(), AssistantError> {
     let (events_tx, mut events_rx) = mpsc::unbounded_channel::<AssistantEvent>();
     let (confirm_tx, mut confirm_rx) = mpsc::channel::<ConfirmRequest>(8);
 
-    println!("Assistant eMule-Rust — {} outils visibles. 'quit' pour sortir.", session.visible_tool_count());
+    println!("Assistant eMuleRust — {} outils visibles. 'quit' pour sortir.", session.visible_tool_count());
 
     loop {
         print!("> ");

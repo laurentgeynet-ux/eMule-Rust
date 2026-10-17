@@ -1,6 +1,6 @@
-# Répertoire Maître des Guides & Walkthroughs — eMule-Rust
+# Répertoire Maître des Guides & Walkthroughs — eMuleRust
 
-Ce document constitue la table d'orientation générale et l'index chronologique exhaustif de l'ensemble des guides d'exécution, d'interopérabilité et de validation technique (**walkthroughs**) du projet **eMule-Rust**, de la Phase 1 à la Phase 15 (`v0.1.8`).
+Ce document constitue la table d'orientation générale et l'index chronologique exhaustif de l'ensemble des guides d'exécution, d'interopérabilité et de validation technique (**walkthroughs**) du projet **eMuleRust**, de la Phase 1 à la Phase 15 (`v0.1.8`).
 
 ---
 

@@ -93,7 +93,7 @@ String formatShareableDiagnostics({
       : 'Public (${networkProfile.toKebabCase()})';
 
   final sb = StringBuffer();
-  sb.writeln('=== eMule-Rust Diagnostics (Sanitized) ===');
+  sb.writeln('=== eMuleRust Diagnostics (Sanitized) ===');
   sb.writeln('Workdir Mode: $workdirMode');
   sb.writeln('Workdir Path: $maskedWorkdir');
   sb.writeln('Confinement: $confinement');
@@ -135,7 +135,7 @@ String formatFullDiagnostics({
       : 'Public (${networkProfile.toKebabCase()})';
 
   final sb = StringBuffer();
-  sb.writeln('=== eMule-Rust Diagnostics (Full Local) ===');
+  sb.writeln('=== eMuleRust Diagnostics (Full Local) ===');
   sb.writeln('Workdir Mode: $workdirMode');
   sb.writeln('Workdir Path: $workdirPath');
   sb.writeln('Confinement: $confinement');

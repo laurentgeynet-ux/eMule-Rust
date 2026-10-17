@@ -1,6 +1,6 @@
-# Rapport Détaillé : Architecture & État d'Avancement du Projet eMule-Rust
+# Rapport Détaillé : Architecture & État d'Avancement du Projet eMuleRust
 
-**Projet :** eMule-Rust  
+**Projet :** eMuleRust  
 **Date :** 23 Septembre 2026  
 **Version Workspace :** `v0.2.0-RC1` (Desktop `v0.2.0-RC1+1`)  
 **Auteurs :** Analyse d'ingénierie logicielle & architecture système  
@@ -10,12 +10,12 @@
 
 ## 1. Introduction & Vision du Projet
 
-**eMule-Rust** est une réimplémentation moderne, modulaire et hautement sécurisée des protocoles historiques de partage pair-à-pair **eD2K (eDonkey2000)** et de table de hachage distribuée **Kademlia (Kad DHT)**, ainsi qu'un écosystème outillé pour les agents IA via le protocole **MCP (Model Context Protocol)**.
+**eMuleRust** est une réimplémentation moderne, modulaire et hautement sécurisée des protocoles historiques de partage pair-à-pair **eD2K (eDonkey2000)** et de table de hachage distribuée **Kademlia (Kad DHT)**, ainsi qu'un écosystème outillé pour les agents IA via le protocole **MCP (Model Context Protocol)**.
 
 Le système est architecturé en trois composantes majeures :
 1. **Un moteur bas niveau en Rust (`crates/`)** : gestionnaire de stockage éparse, codecs filaires bornés, machine d'états protocolaire, démon local asynchrone (Tokio), swarm multi-sources conforme eMule, routage DHT Kad v2 avec métrique numérique 128-bit, persistance SQLite WAL, politique réseau défensive en 7 couches avec anti-SSRF et limitation de débit.
 2. **Une interface graphique de bureau en Flutter Desktop (Windows)** : interface réactive Clean Architecture (MVVM), ergonomique et modulaire connectée au démon via une liaison bidirectionnelle WebSocket JSON-RPC 2.0.
-3. **Un serveur d'outils d'agent IA (`mule-mcp`)** : serveur MCP natif exposant l'intégralité du contrôle d'eMule-Rust (téléchargements, swarm, serveurs, Kad DHT, upload/shares, identité et politique réseau) sous forme d'outils invocables par des assistants IA.
+3. **Un serveur d'outils d'agent IA (`mule-mcp`)** : serveur MCP natif exposant l'intégralité du contrôle d'eMuleRust (téléchargements, swarm, serveurs, Kad DHT, upload/shares, identité et politique réseau) sous forme d'outils invocables par des assistants IA.
 
 ### 1.1 Philosophie Fondamentale : Confinement & Déterminisme de Laboratoire
 
@@ -307,7 +307,7 @@ Toutes les exigences issues de l'audit de sécurité des connexions réseau ont 
 
 2. **Couche Kademlia (UDP)** :
    * Filtrage immédiat de chaque datagramme entrant contre la politique anti-SSRF (`classify_ip`) et l'IPFilter.
-   * Limiteur de débit par IP (`IpRateLimiter`) empêchant l'utilisation d'eMule-Rust comme réflecteur d'attaque par déni de service (DRDoS).
+   * Limiteur de débit par IP (`IpRateLimiter`) empêchant l'utilisation d'eMuleRust comme réflecteur d'attaque par déni de service (DRDoS).
    * Bornage strict du conteneur des transactions en vol : timeout de 3 s, cap de 200 entrées, guard RAII `InFlightTxGuard` retirant l'entrée à l'abandon de la future (annulation par timeout externe incluse), et purge des entrées âgées de plus de `timeout+2 s` à chaque insertion — aucune fuite ne peut saturer la map ni détourner une réponse.
    * Invariant de verrouillage : `in_flight` n'est jamais tenu pendant un await sur `routing_table` (handlers `HelloRes`/`BootstrapRes`), et `routing_table` n'est jamais tenu pendant un await sur `in_flight`/`downloads`/`firewall` (`KadService::get_status`) — un cycle d'ordonnancement contraire a gelé le pipeline Kad en session WAN réelle et a été corrigé.
 
@@ -360,22 +360,22 @@ flutter test
 
 ## 9. Inventaire Exhaustif des Guides Techniques & Walkthroughs (`docs/`)
 
-Chaque phase et sous-système d'eMule-Rust dispose d'un guide technique d'exécution et de validation détaillé, accessible via l'index maître [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/INDEX.md) :
+Chaque phase et sous-système d'eMuleRust dispose d'un guide technique d'exécution et de validation détaillé, accessible via l'index maître [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/INDEX.md) :
 
 | Document | Phase Couverte | Contenu Clé |
 | :--- | :--- | :--- |
-| [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/INDEX.md) | **Toutes (1 à 15)** | Index maître, orientation thématique et commandes de validation globales. |
-| [`docs/walkthroughs/walkthrough_Phase_01_a_03c.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_01_a_03c.md) | **Phase 1 à 3C** | Fondations Rust, démon Tokio, UI initiale, durcissement produit, verrous `fs4`, tokens CSPRNG, packaging. |
-| [`docs/walkthroughs/walkthrough_Tier3_eMule050a.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Tier3_eMule050a.md) | **Tier 3.1 à 3.6** | Interopérabilité loopback eMule 0.50a officiel, handshake, bitfields, blocs 9.28 Mo, résidu 1 octet, crash recovery. |
-| [`docs/walkthroughs/walkthrough_Phase_07.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_07.md) | **Phase 7.2** | Mode portable hybride, étanchéité `data/` vs `downloads/`, persistance de suppression SQLite, pipeline QA E2E. |
-| [`docs/walkthroughs/walkthrough_Phase_08.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_08.md) | **Phase 8.1 à 8.5** | Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`, packaging multi-saveurs. |
-| [`docs/walkthroughs/walkthrough_Phase_09.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_09.md) | **Phase 9.0 & 9.1** | Politique réseau défensive (7 couches, permis RAII, Kill Switch), IP Filter (`ipfilter.dat`), Token Bucket, pseudonymisation salée. |
-| [`docs/walkthroughs/walkthrough_Phase_10.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_10.md) | **Phase 10.0 à 10.2** | Local `server.met` parsing, session TCP serveur eD2K réelle (Lugdunum), HighID/LowID, recherche et sources serveur. |
-| [`docs/walkthroughs/walkthrough_Phase_11.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_11.md) | **Phase 11** | Swarm multi-sources, allocateur dynamique Water-Filling Max-Min, démarrage basse latence (30s/60s/300s), tags fixes eD2K. |
-| [`docs/walkthroughs/walkthrough_Phase_12.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_12.md) | **Phase 12** | Fondations Kad DHT, KadId 128-bit, K-Buckets LRU, transport UDP, bootstrap local et écran Kad UI. |
-| [`docs/walkthroughs/walkthrough_Phase_13.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_13.md) | **Phase 13** | Source Exchange v4 (SX1/SX2), blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif MCP (83 outils). |
-| [`docs/walkthroughs/walkthrough_Phase_14.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_14.md) | **Phase 14** | Convergence recherche Kad DHT (CUInt128 DWORDs, opcode 0x3B, anti-stall decay) et refactorisation Clean Architecture. |
-| [`docs/walkthroughs/walkthrough_Phase_15.md`](file:///d:/Projet/eMule-Rust/docs/walkthroughs/walkthrough_Phase_15.md) | **Phase 15** | Téléchargement multi-pairs réel (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue`), logs stratégiques, `INDEX.md`. |
+| [`docs/walkthroughs/INDEX.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/INDEX.md) | **Toutes (1 à 15)** | Index maître, orientation thématique et commandes de validation globales. |
+| [`docs/walkthroughs/walkthrough_Phase_01_a_03c.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_01_a_03c.md) | **Phase 1 à 3C** | Fondations Rust, démon Tokio, UI initiale, durcissement produit, verrous `fs4`, tokens CSPRNG, packaging. |
+| [`docs/walkthroughs/walkthrough_Tier3_eMule050a.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Tier3_eMule050a.md) | **Tier 3.1 à 3.6** | Interopérabilité loopback eMule 0.50a officiel, handshake, bitfields, blocs 9.28 Mo, résidu 1 octet, crash recovery. |
+| [`docs/walkthroughs/walkthrough_Phase_07.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_07.md) | **Phase 7.2** | Mode portable hybride, étanchéité `data/` vs `downloads/`, persistance de suppression SQLite, pipeline QA E2E. |
+| [`docs/walkthroughs/walkthrough_Phase_08.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_08.md) | **Phase 8.1 à 8.5** | Part Map interactive, historique local & stats, catégories hiérarchiques, import défensif `.part.met`, packaging multi-saveurs. |
+| [`docs/walkthroughs/walkthrough_Phase_09.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_09.md) | **Phase 9.0 & 9.1** | Politique réseau défensive (7 couches, permis RAII, Kill Switch), IP Filter (`ipfilter.dat`), Token Bucket, pseudonymisation salée. |
+| [`docs/walkthroughs/walkthrough_Phase_10.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_10.md) | **Phase 10.0 à 10.2** | Local `server.met` parsing, session TCP serveur eD2K réelle (Lugdunum), HighID/LowID, recherche et sources serveur. |
+| [`docs/walkthroughs/walkthrough_Phase_11.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_11.md) | **Phase 11** | Swarm multi-sources, allocateur dynamique Water-Filling Max-Min, démarrage basse latence (30s/60s/300s), tags fixes eD2K. |
+| [`docs/walkthroughs/walkthrough_Phase_12.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_12.md) | **Phase 12** | Fondations Kad DHT, KadId 128-bit, K-Buckets LRU, transport UDP, bootstrap local et écran Kad UI. |
+| [`docs/walkthroughs/walkthrough_Phase_13.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_13.md) | **Phase 13** | Source Exchange v4 (SX1/SX2), blocs compressés zlib (`OP_COMPRESSEDPART`), et serveur Agent IA natif MCP (83 outils). |
+| [`docs/walkthroughs/walkthrough_Phase_14.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_14.md) | **Phase 14** | Convergence recherche Kad DHT (CUInt128 DWORDs, opcode 0x3B, anti-stall decay) et refactorisation Clean Architecture. |
+| [`docs/walkthroughs/walkthrough_Phase_15.md`](file:///d:/Projet/eMuleRust/docs/walkthroughs/walkthrough_Phase_15.md) | **Phase 15** | Téléchargement multi-pairs réel (`sync_transfer_rates`), respect des files eMule (`Disconnected in queue`), logs stratégiques, `INDEX.md`. |
 
 ---
 
@@ -462,7 +462,7 @@ Session centrée sur le pilotage fin de l'upload, la fidélité eMule des limite
 | **Ratio upload/download eMule** | `emule_ud_ratio()` reproduit `Preferences::GetMaxDownloadInBytesPerSec` (« don't be a Lam3r :) ») : upload < 20 Ko/s → download plafonné à 3× (<4 Ko/s), 4× (<10) ou 5× (<20) — un download « illimité » est plafonné aussi. La limite *configurée* n'est jamais réécrite : le plafond est recalculé à chaque application (`limits.set`, `apply_capacity_clamp`, boot) et suit la limite dynamique USS à chaque tick (eMule `bDynamic`). `limits.get` expose `downloadConfiguredBytesPerSec`/`uploadConfiguredBytesPerSec`/`downloadRatioApplied`. |
 | **Interrupteurs Réseau eD2K/Kad** | Settings → Connexion : le sélecteur de profil à 3 options et la carte « Profil Réseau Actuel » sont remplacés par deux switches projetant le `NetworkProfile` — eD2K off → `local-lab`, Kad on → `public-ed2k-kad-preview` (Kad implique eD2K). Contrat de sécurité inchangé. |
 | **Carte daemon enrichie** | La carte en bas de sidebar affiche les pastilles `eD2K` (HighID vert / LowID orange / déconnecté rouge) et `Kad` (connecté/amorçage/arrêté) plus le nom du serveur courant ; tooltip de synthèse en mode compact. |
-| **Pseudo par défaut « eMule-Rust »** | `current_nickname()`, `settings.get`, le fallback du champ vidé et le HELLO firewall-test annoncent « eMule-Rust » ; le `TAG_SPECIAL_NAME` du HELLOANSWER reflète le pseudo réellement configuré. |
+| **Pseudo par défaut « eMuleRust »** | `current_nickname()`, `settings.get`, le fallback du champ vidé et le HELLO firewall-test annoncent « eMuleRust » ; le `TAG_SPECIAL_NAME` du HELLOANSWER reflète le pseudo réellement configuré. |
 | **Localisation FR complète** | `app_fr.arb` contenait ~340 valeurs anglaises — toutes traduites ; valeurs FR égarées dans `app_en.arb` corrigées. ~150 littéraux en dur migrés vers `context.l10n`/`L10nLookup` (accès sans `BuildContext` pour les messages des 9 contrôleurs). `enum_labels.dart` localise les enums de `mule_client`. Correctifs de layout : débordements `Row` liés aux libellés FR plus longs. |
 | **Icône d'application** | `Asset/generated-image.png` déclinée en ICO multi-résolutions (16→256 px, exe + tray), icônes web/maskables/favicon, `AppIcon.appiconset` macOS/iOS. |
 | **Totaux cumulés & graphe upload** | Top bar : sparkline double courbe (download rempli + upload ligne teal) et chip « Σ ↓/↑ » des cumuls depuis l'installation (`lifetime_*_bytes` persistés, `event.statsTick`). |
@@ -488,12 +488,12 @@ Session centrée sur l'accès utilisateur à l'interface web — sans serveur st
 
 ## 14. Conclusion
 
-Le projet **eMule-Rust** a franchi avec succès les jalons de conception les plus exigeants :
+Le projet **eMuleRust** a franchi avec succès les jalons de conception les plus exigeants :
 * L'architecture a atteint le stade **v0.2.0-RC1** avec une séparation modulaire exemplaire (Clean Architecture) sur l'ensemble des crates.
 * Les fonctionnalités de transfert multi-sources, de décompression continue zlib, de Source Exchange v1/v2, et de convergence Kad DHT avec calcul métrique 128 bits eMule sont pleinement opérationnelles.
 * La Phase 16 a ajouté l'interopérabilité réseau essentielle : vérification par hashset, AICH réseau, publication serveur (`OP_OFFERFILES`), callback LowID, écriture `.part.met`, nœud de stockage Kad, upload compressé et multi-slots.
 * La Phase 17 a porté la fidélité comportementale côté utilisateur : partages partiels dès la création, compteurs sidebar temps réel (`shares.changed`, `kad.statusChanged` via maintenance), sélecteurs de fichiers natifs, et barre de parts byte-précise alignée sur `CPartFile::DrawStatusBar` (`receivedMask`, `pendingRanges`, disponibilité `OP_FILESTATUS` réelle).
-* La Phase 18 a consolidé l'expérience utilisateur : débits d'upload réellement mesurés (par slot et par partage), renommage de fichiers (`downloads.rename`/`shares.rename`), ratio anti-leech eMule (`emule_ud_ratio`), interrupteurs réseau eD2K/Kad, pseudo « eMule-Rust », localisation française exhaustive et nouvelle icône applicative.
+* La Phase 18 a consolidé l'expérience utilisateur : débits d'upload réellement mesurés (par slot et par partage), renommage de fichiers (`downloads.rename`/`shares.rename`), ratio anti-leech eMule (`emule_ud_ratio`), interrupteurs réseau eD2K/Kad, pseudo « eMuleRust », localisation française exhaustive et nouvelle icône applicative.
 * La Phase 19 (v0.2.0-RC1) a levé les derniers bridages hérités des versions de test — slots upload alignés sur `MAX_UP_CLIENTS_ALLOWED` (100), pacing de connexions sources au rythme eMule — et rendu l'amorçage Kad résilient via une file de candidats drainée en continu (`s_liBootstrapList`) avec auto-chargement de `nodes.dat`. Côté UI, l'onglet Partages gagne catégories, recherche et statistiques d'upload par fichier.
 * La Phase 20 a rendu l'interface web utilisable par un utilisateur final : le daemon sert lui-même le build Flutter (`ServeDir` + auto-détection du dossier), `session-config.js` authentifie sans saisie en loopback, `Interface Web.bat` lance l'ensemble en un double-clic, et le desktop expose un bouton « Interface web ». La barre de parts adopte une palette désaturée alignée sur le thème.
 * L'intégration d'un serveur **MCP natif** confère au projet une dimension d'observabilité et d'automatisation par intelligence artificielle unique dans le paysage des clients P2P.

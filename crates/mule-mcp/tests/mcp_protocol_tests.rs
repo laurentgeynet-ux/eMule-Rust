@@ -216,5 +216,5 @@ async fn test_unreachable_daemon_error_reporting() {
     .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("Is eMule-Rust running"));
+    assert!(err.contains("Is eMuleRust running"));
 }

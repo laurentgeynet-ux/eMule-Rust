@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'package:app_shell/app/app_controller.dart';
-import 'package:app_shell/emule_sion_app.dart';
+import 'package:app_shell/emulerust_app.dart';
 import 'package:mule_client/mule_client.dart';
 import 'services/daemon_supervisor.dart';
 import 'core/deep_link_handler.dart';

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "emule-rust": {
+    "emulerust": {
       "command": "C:/<chemin-vers-repo>/target/release/mule-mcp.exe",
       "args": [
         "--app",

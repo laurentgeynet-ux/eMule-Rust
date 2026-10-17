@@ -98,7 +98,7 @@ pub struct SwarmLimits {
     pub max_global_peers: usize,
     /// Plafond de sources connectées par fichier (eMule `maxsourceperfile`).
     pub max_peers_per_file: usize,
-    /// Seuil de famine déclenchant un swap A4AF (extension eMule-Rust).
+    /// Seuil de famine déclenchant un swap A4AF (extension eMuleRust).
     pub min_peers_per_file: usize,
 }
 

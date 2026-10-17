@@ -1,6 +1,6 @@
 # Index des fichiers du projet
 
-Index exhaustif des fichiers versionnés du dépôt **eMule-Rust** — un client eDonkey/eMule écrit en Rust (daemon + crates protocolaires) avec une application de bureau Flutter.
+Index exhaustif des fichiers versionnés du dépôt **eMuleRust** — un client eDonkey/eMule écrit en Rust (daemon + crates protocolaires) avec une application de bureau Flutter.
 
 ---
 
@@ -36,8 +36,8 @@ Index exhaustif des fichiers versionnés du dépôt **eMule-Rust** — un client
 | Fichier | Fonction |
 |---|---|
 | `.agents/mcp_config.json` | Configuration du serveur MCP |
-| `.agents/plugins/emule-rust/mcp_config.json` | Configuration MCP du plugin emule-rust |
-| `.agents/plugins/emule-rust/plugin.json` | Manifeste du plugin agent |
+| `.agents/plugins/emulerust/mcp_config.json` | Configuration MCP du plugin emulerust |
+| `.agents/plugins/emulerust/plugin.json` | Manifeste du plugin agent |
 
 ## apps/desktop/ — Application Flutter (Windows)
 
@@ -93,7 +93,7 @@ Package Dart contenant toute l'interface : composition applicative (`lib/app/`),
 | Fichier | Fonction |
 |---|---|
 | `pubspec.yaml` / `analysis_options.yaml` / `l10n.yaml` | Configuration du package (dont génération i18n) |
-| `lib/emule_sion_app.dart` | Widget racine de l'application |
+| `lib/emulerust_app.dart` | Widget racine de l'application |
 | `lib/app/app_controller.dart` | Racine de composition : session daemon + wiring des contrôleurs |
 | `lib/app/providers.dart` | Providers Riverpod de l'application |
 | `lib/app/router.dart` | Routage/navigation entre écrans |

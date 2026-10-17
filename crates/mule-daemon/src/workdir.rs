@@ -4,9 +4,13 @@
 use std::path::{Path, PathBuf};
 
 pub const PORTABLE_FLAG_FILENAME: &str = "portable.flag";
-pub const ENV_WORKDIR: &str = "EMULE_SION_WORKDIR";
+pub const ENV_WORKDIR: &str = "EMULERUST_WORKDIR";
+/// Alias déprécié (avant le renommage eMuleRust), honoré avant `MULE_DATA_DIR`.
+pub const ENV_SION_WORKDIR: &str = "EMULE_SION_WORKDIR";
 pub const ENV_LEGACY_WORKDIR: &str = "MULE_DATA_DIR";
-pub const ENV_DOWNLOADS_DIR: &str = "EMULE_SION_DOWNLOADS_DIR";
+pub const ENV_DOWNLOADS_DIR: &str = "EMULERUST_DOWNLOADS_DIR";
+/// Alias déprécié (avant le renommage eMuleRust).
+pub const ENV_SION_DOWNLOADS_DIR: &str = "EMULE_SION_DOWNLOADS_DIR";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkDirMode {
@@ -33,9 +37,10 @@ pub struct WorkDirectoryResolver;
 impl WorkDirectoryResolver {
     /// Resolves the runtime directories using the deterministic priority cascade:
     /// 1. `--workdir <path>` (explicit CLI argument)
-    /// 2. `EMULE_SION_WORKDIR` (env var, with legacy `MULE_DATA_DIR` fallback)
+    /// 2. `EMULERUST_WORKDIR` (env var, with deprecated `EMULE_SION_WORKDIR`
+    ///    and legacy `MULE_DATA_DIR` fallbacks)
     /// 3. `portable.flag` adjacent to executable or bundle root -> `<bundle_root>/data` & `<bundle_root>/downloads`
-    /// 4. System default (%LOCALAPPDATA%\eMuleRust on Windows, ~/.emule_sion on Unix; downloads in %USERPROFILE%\Downloads\eMuleRust)
+    /// 4. System default (%LOCALAPPDATA%\eMuleRust on Windows, ~/.emulerust on Unix; downloads in %USERPROFILE%\Downloads\eMuleRust)
     pub fn resolve(
         cli_workdir: Option<PathBuf>,
         cli_downloads_dir: Option<PathBuf>,
@@ -63,6 +68,7 @@ impl WorkDirectoryResolver {
             .filter(|p| !p.as_os_str().is_empty())
             .or_else(|| {
                 get_env(ENV_DOWNLOADS_DIR)
+                    .or_else(|| get_env(ENV_SION_DOWNLOADS_DIR))
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .map(PathBuf::from)
@@ -97,8 +103,10 @@ impl WorkDirectoryResolver {
             }
         }
 
-        // 2. Environment variable: EMULE_SION_WORKDIR (or legacy MULE_DATA_DIR)
+        // 2. Environment variable: EMULERUST_WORKDIR (or deprecated
+        //    EMULE_SION_WORKDIR, or legacy MULE_DATA_DIR)
         let env_workdir = get_env(ENV_WORKDIR)
+            .or_else(|| get_env(ENV_SION_WORKDIR))
             .or_else(|| get_env(ENV_LEGACY_WORKDIR))
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -203,7 +211,7 @@ impl WorkDirectoryResolver {
             if let Some(home) = get_env("HOME") {
                 let trimmed = home.trim();
                 if !trimmed.is_empty() {
-                    return PathBuf::from(trimmed).join(".emule_sion");
+                    return PathBuf::from(trimmed).join(".emulerust");
                 }
             }
         }

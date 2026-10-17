@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
 use mule_core::{AllocationPolicy, Database, DownloadCategory, DownloadStatus, PartFile};
-use mule_protocol::ed2k::PartAvailabilityMask;
+use mule_protocol::ed2k::{PartAvailabilityMask, ED2K_PART_SIZE};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,7 @@ pub mod history_categories;
 pub mod operations;
 pub mod part_met;
 pub mod peers_servers;
+pub mod staged;
 pub mod types;
 
 pub use part_met::{import_part_met, inspect_part_met};
@@ -182,6 +183,7 @@ impl DownloadService {
                     pending_corruption_bans: Vec::new(),
                     persist_dirty: false,
                     last_persist_flush: Instant::now(),
+                    staged_parts: HashMap::new(),
                 },
             );
         }
@@ -1076,6 +1078,46 @@ impl DownloadService {
             }
         }
         decayed
+    }
+
+    /// Dérive la racine eD2K d'un download depuis son hashset de parts
+    /// **sans relire le disque** (eMule `PerformFileComplete` —
+    /// `GetFileIdentifier().CalculateIdentifier()` calcule la racine
+    /// depuis les hash de parts, jamais en re-hachant le fichier).
+    /// `Some(root)` seulement quand le hashset est connu ET que chaque
+    /// part réelle est marquée vérifiée (`verified_parts`) ; `None`
+    /// sinon — l'appelant retombe alors sur `hash_reader`.
+    pub fn try_verified_root(&self, id: &Uuid) -> Option<[u8; 16]> {
+        let act = self.active.get(id)?;
+        let total_size = act.download.total_size;
+        if total_size == 0 {
+            return None;
+        }
+        let hash_hex = act.download.ed2k_hash.to_hex().to_lowercase();
+        let part_hashes = self.db.get_part_hashes(&hash_hex).ok()?;
+        if part_hashes.is_empty() {
+            // Fichier < 1 part : aucun hashset n'est persisté, la racine
+            // eD2K est alors le hash du fichier lui-même (MD4 unique).
+            if total_size < ED2K_PART_SIZE as u64 {
+                let verified: std::collections::HashSet<u32> =
+                    self.db.get_verified_parts(id).ok()?.into_iter().collect();
+                if verified.contains(&0) {
+                    return Some(act.download.ed2k_hash.0);
+                }
+            }
+            return None;
+        }
+        let total_parts = total_size.div_ceil(ED2K_PART_SIZE as u64).max(1) as u32;
+        let verified: std::collections::HashSet<u32> = self
+            .db
+            .get_verified_parts(id)
+            .ok()?
+            .into_iter()
+            .collect();
+        if !(0..total_parts).all(|p| verified.contains(&p)) {
+            return None;
+        }
+        mule_format::ed2k::ed2k_root_from_part_hashes(total_size, &part_hashes).map(|h| h.0)
     }
 
     pub fn get_pending_verifications(&mut self) -> Vec<(Uuid, PathBuf, PathBuf, [u8; 16], u64)> {

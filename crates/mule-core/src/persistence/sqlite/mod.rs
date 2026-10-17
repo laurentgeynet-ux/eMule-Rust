@@ -28,6 +28,16 @@ pub mod servers;
 pub mod shares;
 pub mod sources;
 
+/// Délai d'attente d'un verrou SQLite avant `SQLITE_BUSY` — sous
+/// contention disque (AV, checkpoints WAL) une écriture ne doit pas
+/// échouer immédiatement.
+const SQLITE_BUSY_TIMEOUT_MS: i64 = 5_000;
+/// Taille du cache de pages SQLite (négatif = Kio) — 20 Mio.
+const SQLITE_CACHE_SIZE_KIB: i64 = -20_480;
+/// Seuil d'auto-checkpoint du journal WAL en pages (~32 Mio à 4 Kio/page)
+/// — borne la relecture WAL au chargement et l'ampleur d'un checkpoint.
+const SQLITE_WAL_AUTOCHECKPOINT_PAGES: i64 = 8_192;
+
 /// Database persistence manager for mule-core.
 pub struct Database {
     conn: Connection,
@@ -47,6 +57,10 @@ impl Database {
         // Enable WAL mode for high performance and durability against crashes
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "busy_timeout", SQLITE_BUSY_TIMEOUT_MS)?;
+        conn.pragma_update(None, "temp_store", "MEMORY")?;
+        conn.pragma_update(None, "cache_size", SQLITE_CACHE_SIZE_KIB)?;
+        conn.pragma_update(None, "wal_autocheckpoint", SQLITE_WAL_AUTOCHECKPOINT_PAGES)?;
 
         let db = Self { conn };
         db.init_schema()?;
@@ -115,12 +129,25 @@ impl Database {
     }
 
     /// Atomically replaces received ranges for a download in a single transaction.
+    /// Points de compaction/éviction uniquement — le hot path de réception
+    /// utilise [`Self::append_received_range`].
     pub fn sync_received_ranges(
         &mut self,
         download_id: &Uuid,
         ranges: &RangeSet,
     ) -> Result<(), CoreError> {
         downloads::sync_received_ranges(&mut self.conn, download_id, ranges)
+    }
+
+    /// Persiste une range nouvellement reçue en O(1) (upsert, pas de
+    /// DELETE+INSERT global) — voir [`downloads::append_received_range`].
+    pub fn append_received_range(
+        &mut self,
+        download_id: &Uuid,
+        start: u64,
+        end: u64,
+    ) -> Result<(), CoreError> {
+        downloads::append_received_range(&mut self.conn, download_id, start, end)
     }
 
     /// Loads the stored RangeSet for a download.

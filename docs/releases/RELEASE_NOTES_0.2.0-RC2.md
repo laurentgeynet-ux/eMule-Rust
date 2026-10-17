@@ -1,4 +1,4 @@
-# Notes de Version — eMule-Rust v0.2.0-RC2
+# Notes de Version — eMuleRust v0.2.0-RC2
 
 **Date de publication :** 25 Septembre 2026  
 **Statut :** Release Candidate — audit filaire/comportemental eMule 0.72a
