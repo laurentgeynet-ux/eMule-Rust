@@ -54,6 +54,34 @@ doublon de logique métier, `mule-daemon` reste l'autorité de sécurité.
     chat, tuiles d'outils, bannière de confirmation, état hors-ligne avec
     retry ; design tokens uniquement.
 
+- **Bureau Windows — systray et icône taskbar** (`apps/desktop`,
+  `app_shell`) :
+  - **Fermeture vers la zone de notification** (comportement type client
+    P2P) : le bouton de fermeture / Alt+F4 masque la fenêtre dans le
+    systray au lieu de quitter — l'application, l'état Flutter et
+    `mule-daemon` restent actifs.
+  - `setPreventClose` + nouveau coordinateur `AppQuit`
+    (`app_shell/lib/core/app_quit.dart`, Dart pur) : le handler
+    `onExitRequested` répond `cancel` et déclenche le masquage via
+    `AppQuit.onHideToTray`. Nécessaire car le moteur Flutter consomme
+    `WM_CLOSE` pour son mécanisme d'exit-request — l'événement `close` ne
+    parvient jamais aux listeners `window_manager`.
+  - Menu systray localisé (FR/EN) « Afficher eMule-Rust » / « Quitter » ;
+    clic gauche ou double-clic sur l'icône restaure la fenêtre avec le
+    focus ; « Quitter » lève l'interception puis repasse par un close
+    classique — l'arrêt gracieux du daemon (`supervisor.stop()` puis
+    sortie) reste à un seul endroit.
+  - Toast unique à la première fermeture signalant que l'application
+    continue en arrière-plan (flag SharedPreferences persisté).
+  - **Icône taskbar générique corrigée** : `local_notifier` déclare
+    l'AUMID `eMule-Rust`, que la taskbar résout via le raccourci
+    `eMule-Rust.lnk` du menu Démarrer — or WinToast ne recrée jamais un
+    raccourci existant : après déplacement du bundle portable, la cible
+    morte affichait l'icône générique. `DownloadNotifier` supprime
+    désormais le `.lnk` quand il ne contient pas le chemin de
+    l'exécutable courant (recherche ASCII et UTF-16LE), le laissant se
+    recréer avec la bonne cible à chaque lancement.
+
 ## [0.2.0-RC2] - 2026-09-25
 
 Deuxième release candidate — campagne d'audit filaire et comportemental

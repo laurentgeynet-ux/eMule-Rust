@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 Laurent Geynet "Loulach"
 
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'package:ui_kit/ui_kit.dart';
 import 'app/app_controller.dart';
 import 'app/providers.dart';
 import 'app/router.dart';
+import 'core/app_quit.dart';
 import 'core/daemon_lifecycle.dart';
 import 'l10n/generated/app_localizations.dart';
 
@@ -80,6 +82,16 @@ class _eMuleRustAppState extends State<eMuleRustApp> {
   }
 
   Future<AppExitResponse> _handleExitRequested() async {
+    // Mode close-to-tray : un close ne fait que masquer la fenêtre — on
+    // annule la sortie pour que le daemon continue. La vraie sortie passe
+    // par le menu systray « Quitter », qui positionne AppQuit.quitting.
+    if (AppQuit.closeToTray && !AppQuit.quitting) {
+      // Le moteur consomme WM_CLOSE pour cet exit-request : l'événement
+      // « close » n'arrive pas aux listeners window_manager — le masquage
+      // vers le systray se fait donc ici.
+      unawaited(AppQuit.onHideToTray?.call());
+      return AppExitResponse.cancel;
+    }
     if (widget.supervisor != null) {
       await widget.supervisor!.stop();
     }
