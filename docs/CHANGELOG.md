@@ -5,6 +5,34 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/)
 
 ## [Unreleased]
 
+Campagne de validation pré-publication (QA gates A–D) :
+
+- **Rebrand complet eMuleRust** (`e86cc01`) : nom affiché, exe, bundles,
+  identifiants `emulerust*`, variables d'env `EMULERUST_*` (alias
+  dépréciés `EMULE_SION_*` conservés + préfixe UPnP legacy `eMule-Rust`
+  reconnu pour les baux existants).
+- **Interop live Tier 3 vs les 3 références réelles** (`aab2ac9` +
+  adaptateurs) : 7/7 vs eMule 0.50a, 7/7 vs eMule 0.72a, 7/7 vs aMule
+  3.1.0 — SHA-256 épinglés, configs hermétiques, loopback strict.
+- **Anti-SSRF sur `servers.updateFromUrl` / `kad.bootstrapFromUrl`**
+  (`fe729ed`) : validation schéma http/https + rejet des IP résolues
+  interdites par la policy (link-local, privé, public hors profil).
+- **Shutdown daemon borné** (`d0ed8bf`) : unmap UPnP détaché sur
+  `std::thread` + oneshot 500 ms — plus de blocage >5 s sur gateway
+  lente (mesuré : ~100 ms à l'arrêt avec mappings actifs).
+- **Banc fonctionnel Phase B** (`42bd5ed`) : 134 appels RPC couvrant la
+  surface publique + chemins d'erreur, 134 PASS / 0 FAIL sur bundle
+  QA loopback.
+- **Banc réseau réel Phase D** (`8b932a3`) :
+  `test_phase_d_public_network.ps1` — 21 PASS / 0 FAIL contre le vrai
+  réseau (server.met réel, session eD2K établie, 95 contacts Kad,
+  recherches réelles, disconnectAll, UPnP unmap propre).
+- **Fixtures de test mutualisées** (`be66b9b`) : helpers cross-crates
+  déplacés dans `mule-test-support`, 8 groupes de doublons éliminés.
+- **Smoke test packagé** (`7a8a3d7`) : drainage continu stdout/stderr du
+  daemon (blocage pipe ~64 Ko) + crash-test E2E déterministe via
+  `downloads.pause` (`63430e8`).
+
 Couche d'IA locale : un modèle loopback (Ollama/llama.cpp via `/api/chat`)
 pilote le client à travers le registre d'outils MCP existant — aucun
 doublon de logique métier, `mule-daemon` reste l'autorité de sécurité.

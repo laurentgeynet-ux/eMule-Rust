@@ -210,15 +210,32 @@ cargo test -p mule-protocol --test tier3_loopback --features ed2k-reference-loop
 
 ## Phase E — Go/No-Go avant push/release
 
-- [ ] Phase A : 100 % verte sur le commit final
-- [ ] Phase B : aucune anomalie ouverte (ou documentée + acceptée)
-- [ ] Phase C : interop prouvée sur au moins **eMule 0.72a** (référence de
-      vérité) — les autres marquent le niveau d'attestation honnête
-- [ ] Phase D : exécutée uniquement si le mode public est assumé
-      (ADR amendé), sinon la release garde l'attestation loopback
-- [ ] `version.json.gitDirty == false` sur le bundle final
-- [ ] CHANGELOG à jour pour les fixes `d0ed8bf` / `7a8a3d7`
+- [x] Phase A : 100 % verte (`verify_all.ps1`, clippy, tests workspace,
+      Flutter 123/123, matrice RC 7/7, smoke test bundle standard)
+- [x] Phase B : banc fonctionnel **134/134 PASS** (commit `42bd5ed`)
+- [x] Phase C : interop prouvée sur les **3 références** — 7/7 vs
+      eMule 0.50a, 7/7 vs eMule 0.72a, 7/7 vs aMule 3.1.0 (SHA-256
+      épinglés dans `reference_manifest.json`)
+- [x] Phase D partielle : `test_phase_d_public_network.ps1` **21/21 PASS**
+      (import 16 serveurs réels, session eD2K établie en LowID,
+      95 contacts Kad, recherches eD2K+Kad réelles, disconnectAll,
+      UPnP mappé/unmap propre). **Reste non couvert** : D.5
+      téléchargement réel, D.6 upload observé, D.7 soak 2–4 h —
+      à juger au Go/No-Go (session utilisateur prolongée).
+- [x] `version.json.gitDirty == false` sur le bundle final (build
+      `42bd5ed`, SHA-256 `6b48d120…`)
+- [ ] CHANGELOG à jour pour les fixes `d0ed8bf` / `7a8a3d7` / `63430e8`
+      / `fe729ed` / `8b932a3`
 - [ ] `git push -u origin master`
+
+### Observation Phase D — LowID
+
+La session serveur s'est établie en **LowID** (clientId < 0x01000000)
+alors que UPnP rapporte `tcpMapped=true` sur la gateway. Hypothèses :
+test de callback TCP du serveur exécuté avant la fin du mapping, ou
+port externe ≠ interne. Comportement fonctionnellement acceptable pour
+une RC (LowID fonctionne, dégradé), à documenter dans les notes de
+release si confirmé.
 
 ## Notes
 
