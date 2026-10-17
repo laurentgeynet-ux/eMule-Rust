@@ -1,0 +1,120 @@
+name: Packages
+
+# Build des artefacts distribuables sur chaque push master + à la demande.
+# - windows-bundle : réutilise la chaîne locale (ZIP + SBOM + smoke test).
+# - linux-bundle : vérifie la portabilité du code (premier vrai build
+#   Linux — les sources sont portables par conception mais non attestées).
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-bundle:
+    name: Windows x64 bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-pkg-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build standard bundle (unsigned)
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass `
+            -File scripts\build_windows_release.ps1
+
+      - name: Verify packaged bundle (smoke test, no lab.*)
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass `
+            -File scripts\test_packaged_bundle.ps1
+
+      - name: Upload Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: eMuleRust-windows-x64
+          path: |
+            dist/*-standard-windows-x64.zip
+            dist/*-standard-windows-x64.zip.sha256
+          retention-days: 14
+
+  linux-bundle:
+    name: Linux x64 daemon + UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-pkg-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Rust daemon + CLI (release)
+        run: cargo build --release -p mule-daemon -p mule-cli
+
+      - name: Install GTK build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: flutter pub get (workspace packages + desktop)
+        run: |
+          for dir in packages/mule_client packages/ui_kit packages/app_shell apps/desktop; do
+            (cd "$dir" && flutter pub get) || exit 1
+          done
+
+      - name: flutter build linux (desktop)
+        working-directory: apps/desktop
+        run: flutter build linux --release
+
+      - name: Assemble Linux bundle
+        run: |
+          mkdir -p dist/eMuleRust-Linux/bin
+          cp target/release/mule-daemon target/release/mule-cli dist/eMuleRust-Linux/bin/
+          cp -r apps/desktop/build/linux/x64/release/bundle/* dist/eMuleRust-Linux/
+          tar -czf dist/eMuleRust-linux-x64.tar.gz -C dist eMuleRust-Linux
+          (cd dist && sha256sum eMuleRust-linux-x64.tar.gz > eMuleRust-linux-x64.tar.gz.sha256)
+
+      - name: Upload Linux bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: eMuleRust-linux-x64
+          path: |
+            dist/eMuleRust-linux-x64.tar.gz
+            dist/eMuleRust-linux-x64.tar.gz.sha256
+          retention-days: 14
