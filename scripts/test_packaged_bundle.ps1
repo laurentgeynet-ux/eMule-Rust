@@ -215,6 +215,12 @@ try {
     $daemonProcess = [System.Diagnostics.Process]::Start($psi)
     if (!$daemonProcess) { throw "Failed to spawn packaged mule-daemon process" }
 
+    # Drain stdout/stderr continuously — an undrained redirected pipe fills
+    # up (~64 KB) and blocks the daemon mid-write, including during graceful
+    # shutdown logging (process never exits within the 5 s budget).
+    $stdoutTask = $daemonProcess.StandardOutput.ReadToEndAsync()
+    $stderrTask = $daemonProcess.StandardError.ReadToEndAsync()
+
     Write-Host " -> Daemon started (PID: $($daemonProcess.Id)). Awaiting session discovery..." -ForegroundColor Gray
 
     # Await session.json
@@ -227,7 +233,7 @@ try {
         Start-Sleep -Milliseconds 200
         $elapsed += 0.2
         if ($daemonProcess.HasExited) {
-            $err = $daemonProcess.StandardError.ReadToEnd()
+            $err = $stderrTask.Result
             throw "Daemon terminated unexpectedly with exit code $($daemonProcess.ExitCode): $err"
         }
     }
