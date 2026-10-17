@@ -4,6 +4,7 @@
 pub mod audit;
 pub mod budgets;
 pub mod cancellation;
+pub mod fetch_guard;
 pub mod manager;
 pub mod permit;
 pub mod profile;
@@ -15,6 +16,10 @@ pub use audit::{
 };
 pub use budgets::{ResourceBudgets, MAX_PEER_CONNECTIONS_CAP};
 pub use cancellation::CancellationToken;
+pub use fetch_guard::{
+    parse_fetch_url, pinned_ips, validate_fetch_ips, FetchPolicyError, FetchUrl,
+    DEFAULT_HTTP_PORT, DEFAULT_HTTPS_PORT,
+};
 pub use manager::{
     emule_ud_ratio, NetworkPolicyManager, PolicyError, PolicyRateLimiters,
 };

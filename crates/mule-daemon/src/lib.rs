@@ -10,6 +10,7 @@ pub mod error;
 #[cfg(feature = "lab-loopback")]
 pub mod lab;
 pub mod lock;
+pub mod net_fetch;
 pub mod rpc;
 pub mod services;
 pub mod session;

@@ -419,26 +419,12 @@ pub async fn handle_kad_bootstrap_from_url(
         .as_str()
         .unwrap_or("http://upd.emule-security.org/nodes.dat");
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| JsonRpcError::business(format!("HTTP client build error: {e}")))?;
-
-    let response = client.get(url).send().await.map_err(|e| {
-        JsonRpcError::business(format!("Failed to fetch nodes.dat from {url}: {e}"))
-    })?;
-
-    if !response.status().is_success() {
-        return Err(JsonRpcError::business(format!(
-            "HTTP request to {url} returned status {}",
-            response.status()
-        )));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| JsonRpcError::business(format!("Failed to read response body: {e}")))?;
+    // Anti-SSRF : schéma http/https, IP publiques uniquement en profil
+    // public, loopback seul en LocalLab ; redirections désactivées et IP
+    // DNS épinglées (`resolve_to`) — sinon une URL validée pouvait
+    // déléguer vers une cible interne.
+    let (_target, bytes) = crate::net_fetch::fetch_url_bytes(state, url).await?;
+    let url = _target.url.to_string();
 
     let imported_count = state
         .kad
