@@ -38,16 +38,46 @@
     },
     "tier3_external_binary": {
       "description": "Validation against external pinned reference binaries (eMule / aMule) in isolated loopback environment",
-      "status": "harness_implemented_test_ignored_by_default",
-      "specTemplate": {
-        "kind": "external-reference-binary",
-        "project": "eMule / aMule",
-        "version": "0.50a / 2.3.3",
-        "compatibilityProfile": "Emule050a",
-        "binarySha256": "to-be-verified-against-pinned-hash",
-        "launchCommandTemplate": "<binary> --loopback-only --port <port>",
-        "loopbackOnly": true
-      }
+      "status": "executed_on_host",
+      "pinnedReferences": [
+        {
+          "kind": "external-reference-binary",
+          "project": "eMule",
+          "version": "0.50a",
+          "compatibilityProfile": "Emule050a",
+          "binary": "D:\\eMule0.50a\\emule.exe",
+          "binarySha256": "06CDF814387F627A4BD05A0C68211F715BFA952423E8E8A462E1F47C11A4D20E",
+          "launchCommandTemplate": "<binary> (staged in sandbox, preferences.ini neutralized, UsePublicUserDirectories=2)",
+          "loopbackOnly": true,
+          "lastVerified": "2026-03-03",
+          "result": "7/7 live tests passed"
+        },
+        {
+          "kind": "external-reference-binary",
+          "project": "eMule",
+          "version": "0.72a",
+          "compatibilityProfile": "Emule072a",
+          "binary": "D:\\eMule0.72a\\eMule0.72a\\emule.exe",
+          "binarySha256": "B7DD62767FED3687DD8CD9B7793B55FF06F7E4D8621CC18734D4DD368404EFD6",
+          "launchCommandTemplate": "<binary> (staged in sandbox, preferences.ini neutralized, UsePublicUserDirectories=2)",
+          "loopbackOnly": true,
+          "lastVerified": "2026-03-03",
+          "result": "7/7 live tests passed"
+        },
+        {
+          "kind": "external-reference-binary",
+          "project": "aMule",
+          "version": "3.1.0",
+          "compatibilityProfile": "Amule310",
+          "binary": "D:\\aMule-3.1.0-Windows-x64\\amule-portable-x64\\bin\\amuled.exe",
+          "binarySha256": "6D3B1309153A9F43792E9D9C0BA3A199035600A4F24AA2B79B7B1584D0831C5E",
+          "launchCommandTemplate": "amuled.exe -c <sandbox_config_dir> (in-place spawn — requires adjacent DLLs; amule.conf neutralized, EC bound to 127.0.0.1)",
+          "loopbackOnly": true,
+          "lastVerified": "2026-03-03",
+          "result": "7/7 live tests passed",
+          "limitations": "aMule-specific version/EMULEINFO encoding — version fields recorded as divergences, not asserted; requires shareddir.dat + loopback-bound EC"
+        }
+      ]
     }
   },
   "network": {

@@ -15,6 +15,17 @@ use std::io;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
+/// Kind of external reference binary — drives the neutralized config format
+/// (`preferences.ini` for eMule, `amule.conf` for aMule) and the launch style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum ReferenceKind {
+    /// eMule (Windows GUI) — config via `preferences.ini` + registry pin.
+    Emule,
+    /// aMule (`amuled` headless daemon) — config via `amule.conf` + `-c <dir>`.
+    Amule,
+}
+
 /// Represents an isolated execution environment for a reference eMule/aMule binary.
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -30,6 +41,16 @@ pub struct Tier3Environment {
 impl Tier3Environment {
     /// Creates a new isolated environment with neutralized configuration.
     pub fn new(tcp_port: u16, udp_port: u16) -> io::Result<Self> {
+        Self::new_with_kind(ReferenceKind::Emule, tcp_port, udp_port)
+    }
+
+    /// Creates a new isolated environment with neutralized configuration
+    /// adapted to the reference binary kind.
+    pub fn new_with_kind(
+        kind: ReferenceKind,
+        tcp_port: u16,
+        udp_port: u16,
+    ) -> io::Result<Self> {
         let work_dir = tempfile::tempdir()?;
         let work_path = work_dir.path();
 
@@ -50,7 +71,10 @@ impl Tier3Environment {
             udp_port,
         };
 
-        env.write_emule_preferences_ini()?;
+        match kind {
+            ReferenceKind::Emule => env.write_emule_preferences_ini()?,
+            ReferenceKind::Amule => env.write_amule_conf()?,
+        }
         env.write_empty_server_met()?;
 
         Ok(env)
@@ -145,6 +169,84 @@ TempDir={temp}\r\n",
         );
         fs::write(self.config_dir.join("preferences.ini"), &ini_content)?;
         fs::write(self.work_dir.path().join("preferences.ini"), &ini_content)?;
+        Ok(())
+    }
+
+    /// Writes a neutralized aMule `amule.conf` file.
+    ///
+    /// aMule lit `amule.conf` à la racine du répertoire passé par `-c`. Toutes
+    /// les formes d'auto-connexion sont neutralisées ; les clés inconnues sont
+    /// simplement ignorées par wxConfig (défense en profondeur).
+    fn write_amule_conf(&self) -> io::Result<()> {
+        // `amuled` refuse de fonctionner sans Connexions Externes — on active
+        // EC en le confinant strictement à la loopback via `ECAddress`, avec un
+        // port éphémère alloué par l'OS et un mot de passe de test (MD5 hex).
+        let ec_port = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .and_then(|l| l.local_addr().map(|a| a.port()))
+            .unwrap_or(47120);
+        // MD5("tier3ref") — mot de passe EC factice, jamais réutilisé.
+        const EC_PASSWORD_MD5: &str = "c876a623b75f060ad300fff1b90531b0";
+        let conf_content = format!(
+            "[eMule]\r\n\
+AppVersion=3.1.0\r\n\
+Nick=RefPeer\r\n\
+QueueSizePref=50\r\n\
+VerboseDebug=1\r\n\
+Verbose=1\r\n\
+Port={tcp_port}\r\n\
+UDPPort={udp_port}\r\n\
+UDPEnable=1\r\n\
+TempDir={temp}\r\n\
+IncomingDir={incoming}\r\n\
+OnlineSignatureDir={incoming}\r\n\
+ICH=1\r\n\
+AICHTrust=0\r\n\
+CheckDiskspace=0\r\n\
+MinFreeDiskSpace=1\r\n\
+AddNewFilesPaused=0\r\n\
+PreviewPrio=0\r\n\
+ManualHighID=0\r\n\
+ConnectToED2K=0\r\n\
+ConnectToKad=0\r\n\
+Autoconnect=0\r\n\
+Reconnect=0\r\n\
+Serverlist=0\r\n\
+NewVersionCheck=0\r\n\
+UpdateNotify=0\r\n\
+GeoIPEnabled=0\r\n\
+GeoIPAutoUpdate=0\r\n\
+UPnPEnabled=0\r\n\
+FilterLanIPs=0\r\n\
+IPFilterON=0\r\n\
+\r\n\
+[ExternalConnect]\r\n\
+AcceptExternalConnections=1\r\n\
+ECUseTCPPort=1\r\n\
+ECAddress=127.0.0.1\r\n\
+ECPort={ec_port}\r\n\
+ECPassword={EC_PASSWORD_MD5}\r\n\
+UPnPECEnabled=0\r\n\
+\r\n\
+[WebServer]\r\n\
+Enabled=0\r\n\
+\r\n\
+[UPnP]\r\n\
+UPnPEnabled=0\r\n\
+UPnPTCPPort=50000\r\n",
+            tcp_port = self.tcp_port,
+            udp_port = self.udp_port,
+            incoming = self.incoming_dir.display(),
+            temp = self.temp_dir.display(),
+            ec_port = ec_port,
+        );
+        fs::write(self.config_dir.join("amule.conf"), &conf_content)?;
+        fs::write(self.work_dir.path().join("amule.conf"), &conf_content)?;
+
+        // `shareddir.dat` : liste texte des répertoires partagés (une ligne par
+        // chemin) — requis pour qu'aMule indexe les fixtures de `incoming/`.
+        let shareddir = format!("{}\r\n", self.incoming_dir.display());
+        fs::write(self.config_dir.join("shareddir.dat"), &shareddir)?;
+        fs::write(self.work_dir.path().join("shareddir.dat"), &shareddir)?;
         Ok(())
     }
 

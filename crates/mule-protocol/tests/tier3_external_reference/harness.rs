@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-use super::environment::Tier3Environment;
+use super::environment::{ReferenceKind, Tier3Environment};
 
 /// Error conditions encountered during Tier 3 orchestration.
 #[derive(Debug, thiserror::Error)]
@@ -41,6 +41,15 @@ pub enum Tier3HarnessError {
 #[derive(Debug)]
 pub struct Tier3ProcessGuard {
     child: Option<Child>,
+    /// Nom de l'image du processus de référence (ex. `emule.exe`, `amuled.exe`)
+    /// utilisé par le filet de sécurité `taskkill /IM`.
+    #[cfg(windows)]
+    image_name: String,
+    /// `true` si la clé `UsePublicUserDirectories` a été forcée (eMule) et doit
+    /// être restaurée/supprimée au teardown. `false` pour aMule, qui n'a aucun
+    /// concept de répertoires utilisateur publics.
+    #[cfg(windows)]
+    manage_registry: bool,
     #[cfg(windows)]
     previous_registry_val: Option<String>,
     #[cfg(windows)]
@@ -51,11 +60,15 @@ impl Tier3ProcessGuard {
     #[cfg(windows)]
     pub fn new(
         child: Child,
+        image_name: String,
+        manage_registry: bool,
         registry_existed: bool,
         previous_registry_val: Option<String>,
     ) -> Self {
         Self {
             child: Some(child),
+            image_name,
+            manage_registry,
             registry_existed,
             previous_registry_val,
         }
@@ -75,10 +88,14 @@ impl Tier3ProcessGuard {
         #[cfg(windows)]
         {
             let _ = Command::new("taskkill")
-                .args(["/IM", "emule.exe", "/F"])
+                .args(["/IM", &self.image_name, "/F"])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status();
+
+            if !self.manage_registry {
+                return;
+            }
 
             if self.registry_existed {
                 if let Some(ref prev) = self.previous_registry_val {
@@ -158,6 +175,7 @@ pub struct Tier3Harness {
     binary_path: PathBuf,
     binary_sha256: String,
     loopback_addr: SocketAddr,
+    kind: ReferenceKind,
     process_guard: Option<Tier3ProcessGuard>,
 }
 
@@ -180,15 +198,37 @@ impl Tier3Harness {
         }
 
         let binary_sha256 = Tier3BinaryValidator::validate(&binary_path, expected_sha256)?;
-        let environment = Tier3Environment::new(tcp_port, udp_port)?;
+
+        // Dérive la famille du binaire de référence depuis le nom de l'exécutable :
+        // les binaires `amule*` (amuled, amulegui…) partagent le même layout de
+        // configuration `amule.conf`, distinct du `preferences.ini` d'eMule.
+        let kind = binary_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| {
+                if n.to_ascii_lowercase().starts_with("amule") {
+                    ReferenceKind::Amule
+                } else {
+                    ReferenceKind::Emule
+                }
+            })
+            .unwrap_or(ReferenceKind::Emule);
+
+        let environment = Tier3Environment::new_with_kind(kind, tcp_port, udp_port)?;
 
         Ok(Self {
             environment,
             binary_path,
             binary_sha256,
             loopback_addr: addr,
+            kind,
             process_guard: None,
         })
+    }
+
+    /// La famille du binaire de référence épinglé.
+    pub fn kind(&self) -> ReferenceKind {
+        self.kind
     }
 
     /// Mechanical assertion that the harness target is strictly on local loopback.
@@ -207,36 +247,49 @@ impl Tier3Harness {
     ) -> Result<(), Tier3HarnessError> {
         self.assert_loopback_confinement();
 
-        // Stage reference binary into isolated ephemeral environment so Win32 GetAppDir()
-        // resolves directly to the sandboxed workdir, enforcing local preferences.ini loading.
         let exe_name = self
             .binary_path
             .file_name()
-            .unwrap_or_else(|| std::ffi::OsStr::new("emule.exe"));
-        let staged_bin = self.environment.work_path().join(exe_name);
-        if !staged_bin.exists() {
-            fs::copy(&self.binary_path, &staged_bin)?;
-        }
+            .unwrap_or_else(|| std::ffi::OsStr::new("emule.exe"))
+            .to_string_lossy()
+            .into_owned();
 
-        // Also mirror adjacent lang/ resources if present to avoid localization dialogs
-        if let Some(parent) = self.binary_path.parent() {
-            let src_lang = parent.join("lang");
-            let dst_lang = self.environment.work_path().join("lang");
-            if src_lang.is_dir() && !dst_lang.exists() {
-                let _ = fs::create_dir_all(&dst_lang);
-                if let Ok(entries) = fs::read_dir(&src_lang) {
-                    for entry in entries.flatten() {
-                        let _ = fs::copy(entry.path(), dst_lang.join(entry.file_name()));
+        // Le staging du binaire dans le sandbox est spécifique à eMule : il
+        // force `GetAppDir()` à résoudre vers le workdir éphémère. aMule a
+        // besoin de ses DLLs adjacentes (~60 fichiers dans `bin/`) — on le
+        // lance donc en place, l'isolation passant par `-c <config_dir>`.
+        let spawn_path = match self.kind {
+            ReferenceKind::Emule => {
+                let staged_bin = self.environment.work_path().join(&exe_name);
+                if !staged_bin.exists() {
+                    fs::copy(&self.binary_path, &staged_bin)?;
+                }
+
+                // Also mirror adjacent lang/ resources if present to avoid localization dialogs
+                if let Some(parent) = self.binary_path.parent() {
+                    let src_lang = parent.join("lang");
+                    let dst_lang = self.environment.work_path().join("lang");
+                    if src_lang.is_dir() && !dst_lang.exists() {
+                        let _ = fs::create_dir_all(&dst_lang);
+                        if let Ok(entries) = fs::read_dir(&src_lang) {
+                            for entry in entries.flatten() {
+                                let _ = fs::copy(entry.path(), dst_lang.join(entry.file_name()));
+                            }
+                        }
                     }
                 }
+                staged_bin
             }
-        }
+            ReferenceKind::Amule => self.binary_path.clone(),
+        };
 
+        // Neutralisation du registre — eMule uniquement (aMule n'utilise pas
+        // `UsePublicUserDirectories` ; son isolation est portée par `-c`).
         #[cfg(windows)]
-        let (registry_existed, previous_registry_val) = {
+        let (registry_existed, previous_registry_val) = if self.kind == ReferenceKind::Emule {
             // Terminate any orphan emule instance so single-instance lock does not exit early
             let _ = Command::new("taskkill")
-                .args(["/IM", "emule.exe", "/F"])
+                .args(["/IM", &exe_name, "/F"])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status();
@@ -278,14 +331,22 @@ impl Tier3Harness {
                 .status();
 
             (existed, val)
+        } else {
+            // aMule : aucun registre à neutraliser — l'isolation porte sur `-c`.
+            (false, None)
         };
 
-        let mut cmd = Command::new(&staged_bin);
+        let mut cmd = Command::new(&spawn_path);
         cmd.current_dir(self.environment.work_path())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .args(extra_args);
+            .stderr(Stdio::piped());
+
+        if self.kind == ReferenceKind::Amule {
+            // `-c <dir>` pointe aMule vers le `amule.conf` neutralisé du sandbox.
+            cmd.arg("-c").arg(self.environment.config_dir());
+        }
+        cmd.args(extra_args);
 
         // Under Windows or Wine, ensure environment points to isolated temp config
         cmd.env("EMULE_CONFIG_DIR", self.environment.config_dir());
@@ -298,6 +359,8 @@ impl Tier3Harness {
         {
             self.process_guard = Some(Tier3ProcessGuard::new(
                 child,
+                exe_name.clone(),
+                self.kind == ReferenceKind::Emule,
                 registry_existed,
                 previous_registry_val,
             ));

@@ -11,7 +11,7 @@ pub mod harness;
 pub mod report;
 
 #[allow(unused_imports)]
-pub use environment::Tier3Environment;
+pub use environment::{ReferenceKind, Tier3Environment};
 #[allow(unused_imports)]
 pub use harness::{Tier3BinaryValidator, Tier3Harness, Tier3HarnessError, Tier3ProcessGuard};
 #[allow(unused_imports)]

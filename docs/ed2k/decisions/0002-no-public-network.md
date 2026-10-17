@@ -1,7 +1,7 @@
 # ADR 0002 : Interdiction Absolue de Connectivité Réseau eD2K Externe
 
 ## Statut
-Accepté
+Remplacé par [ADR 0004](0004-public-ed2k-kad-production.md) (phase de développement terminée — passage en production)
 
 ## Date
 2026-09-13
@@ -17,3 +17,6 @@ Le réseau public eD2K comporte des serveurs publics hétérogènes, des pairs n
 ## Conséquences
 - **Positives** : Environnement de test 100 % déterministe, zéro fuite d'informations, sécurité absolue pour l'environnement de développement.
 - **Négatives** : Aucune interaction directe avec les pairs du réseau public à ce stade.
+
+## Historique
+Cette interdiction couvrait la phase de construction de l'application. Le point 1 (pureté de `mule-protocol` — zéro I/O réseau dans la crate) **demeure en vigueur** : c'est une propriété architecturale permanente, indépendante du statut réseau du daemon. Les points 2 et 3 sont amendés par l'ADR 0004 qui autorise la connectivité publique en production, sous profil explicite.
