@@ -206,7 +206,10 @@ try {
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $PackagedDaemon
-    $psi.Arguments = "--workdir `"$WorkDir`""
+    # LocalLab + UPnP off : le smoke test doit rester hermetique (aucun
+    # trafic reel, shutdown deterministe — le profil public lance des
+    # connexions sortantes qui retardent l'arret sur les runners CI).
+    $psi.Arguments = "--workdir `"$WorkDir`" --profile LocalLab --upnp false"
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
