@@ -37,7 +37,7 @@ dependencies:
   mule_client:
     path: ../../packages/mule_client
   shared_preferences: ^2.5.5
-  window_manager: 0.5.1
+  window_manager: 0.5.2
   tray_manager: 0.5.3
   app_links: 7.2.1
   local_notifier: 0.1.6
