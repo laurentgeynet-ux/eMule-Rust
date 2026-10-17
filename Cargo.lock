@@ -1119,6 +1119,7 @@ dependencies = [
  "hex",
  "md-5",
  "md4",
+ "mule-test-support",
  "percent-encoding",
  "proptest",
  "sha1",
@@ -1190,7 +1191,9 @@ version = "0.2.0-RC2"
 dependencies = [
  "axum",
  "futures-util",
+ "mule-core",
  "mule-daemon",
+ "mule-format",
  "mule-network-policy",
  "serde_json",
  "tempfile",

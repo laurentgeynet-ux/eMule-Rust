@@ -281,15 +281,7 @@ impl KadEncoder {
         target_file_hash: &KadIdBytes,
         sources: &[KadSourceWire],
     ) -> Bytes {
-        let count = sources.len().min(MAX_KAD_SEARCH_SOURCES);
-        let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
-        buf.put_slice(&[0u8; 16]); // sender Kad ID
-        buf.put_slice(target_file_hash);
-        buf.put_u16_le(count as u16);
-        for s in &sources[..count] {
-            write_source_entry(&mut buf, s);
-        }
-        buf.freeze()
+        encode_search_source_res_impl(target_file_hash, sources.len(), sources.iter())
     }
 
     /// eMule `CIndexed::SendValidSourceResult` (`Indexed.cpp:688`) : packs up
@@ -394,15 +386,7 @@ impl KadEncoder {
         keyword_hash: &KadIdBytes,
         entries: &[KadKeywordEntryWire],
     ) -> Bytes {
-        let count = entries.len().min(MAX_KAD_SEARCH_KEYWORDS);
-        let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
-        buf.put_slice(&[0u8; 16]);
-        buf.put_slice(keyword_hash);
-        buf.put_u16_le(count as u16);
-        for entry in &entries[..count] {
-            write_kw_entry(&mut buf, entry);
-        }
-        buf.freeze()
+        encode_search_keyword_res_impl(keyword_hash, entries.len(), entries.iter())
     }
 
     /// eMule `CIndexed::SendValidKeywordResult` (`Indexed.cpp:601`) : same
@@ -520,12 +504,22 @@ fn encode_search_source_res_refs(
     target_file_hash: &KadIdBytes,
     sources: &[&KadSourceWire],
 ) -> Bytes {
-    let count = sources.len().min(MAX_KAD_SEARCH_SOURCES);
+    encode_search_source_res_impl(target_file_hash, sources.len(), sources.iter().copied())
+}
+
+/// Corps commun des réponses `KADEMLIA2_SEARCH_RES` source : tranche la
+/// liste à `MAX_KAD_SEARCH_SOURCES` puis sérialise `[sender 0][hash][count][entries]`.
+fn encode_search_source_res_impl<'a>(
+    target_file_hash: &KadIdBytes,
+    total: usize,
+    sources: impl Iterator<Item = &'a KadSourceWire>,
+) -> Bytes {
+    let count = total.min(MAX_KAD_SEARCH_SOURCES);
     let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
     buf.put_slice(&[0u8; 16]); // sender Kad ID
     buf.put_slice(target_file_hash);
     buf.put_u16_le(count as u16);
-    for s in &sources[..count] {
+    for s in sources.take(count) {
         write_source_entry(&mut buf, s);
     }
     buf.freeze()
@@ -673,12 +667,22 @@ fn encode_search_keyword_res_refs(
     keyword_hash: &KadIdBytes,
     entries: &[&KadKeywordEntryWire],
 ) -> Bytes {
-    let count = entries.len().min(MAX_KAD_SEARCH_KEYWORDS);
+    encode_search_keyword_res_impl(keyword_hash, entries.len(), entries.iter().copied())
+}
+
+/// Corps commun des réponses `KADEMLIA2_SEARCH_RES` keyword : tranche la
+/// liste à `MAX_KAD_SEARCH_KEYWORDS` puis sérialise `[sender 0][hash][count][entries]`.
+fn encode_search_keyword_res_impl<'a>(
+    keyword_hash: &KadIdBytes,
+    total: usize,
+    entries: impl Iterator<Item = &'a KadKeywordEntryWire>,
+) -> Bytes {
+    let count = total.min(MAX_KAD_SEARCH_KEYWORDS);
     let mut buf = kad_buf(KADEMLIA2_SEARCH_RES, 2 + 34 + count * 64);
     buf.put_slice(&[0u8; 16]);
     buf.put_slice(keyword_hash);
     buf.put_u16_le(count as u16);
-    for entry in &entries[..count] {
+    for entry in entries.take(count) {
         write_kw_entry(&mut buf, entry);
     }
     buf.freeze()

@@ -10,28 +10,11 @@ use std::io::Cursor;
 use mule_core::AllocationPolicy;
 use mule_daemon::services::downloads::DownloadService;
 use mule_format::met::cancelled_mask;
-use mule_format::met::tags::{TAGTYPE_HASH16, TAGTYPE_STRING};
 use mule_format::{MET_HEADER, MET_HEADER_I64TAGS};
+use mule_test_support::met_fixtures::*;
 use tempfile::tempdir;
 
 const CANCELLED_VERSION: u8 = 1;
-
-fn push_tag_id(buf: &mut Vec<u8>, tag_type: u8, name_id: u8) {
-    buf.push(tag_type);
-    buf.extend_from_slice(&1u16.to_le_bytes());
-    buf.push(name_id);
-}
-
-fn push_string_tag(buf: &mut Vec<u8>, name_id: u8, value: &str) {
-    push_tag_id(buf, TAGTYPE_STRING, name_id);
-    buf.extend_from_slice(&(value.len() as u16).to_le_bytes());
-    buf.extend_from_slice(value.as_bytes());
-}
-
-fn push_hash16_tag(buf: &mut Vec<u8>, name_id: u8, value: &[u8; 16]) {
-    push_tag_id(buf, TAGTYPE_HASH16, name_id);
-    buf.extend_from_slice(value);
-}
 
 /// Serializes one `emfriends.met` record (CFriend::LoadFromFile layout).
 fn friend_record(user_hash: &[u8; 16], name: Option<&str>) -> Vec<u8> {
@@ -260,37 +243,7 @@ fn test_identity_import_rejects_degenerate_userhash() {
     assert!(!data_dir.path().join("userhash.dat").exists());
 }
 
-/// Packed `CreditStruct` (0x12, 119 B) — `ClientCredits.h:41-52`.
-fn credit_record(
-    key: &[u8; 16],
-    uploaded: u64,
-    downloaded: u64,
-    last_seen: u32,
-    pubkey: Option<&[u8]>,
-) -> Vec<u8> {
-    let mut rec = Vec::new();
-    rec.extend_from_slice(key);
-    rec.extend_from_slice(&(uploaded as u32).to_le_bytes()); // nUploadedLo
-    rec.extend_from_slice(&(downloaded as u32).to_le_bytes()); // nDownloadedLo
-    rec.extend_from_slice(&last_seen.to_le_bytes()); // tLastSeen
-    rec.extend_from_slice(&((uploaded >> 32) as u32).to_le_bytes()); // nUploadedHi
-    rec.extend_from_slice(&((downloaded >> 32) as u32).to_le_bytes()); // nDownloadedHi
-    rec.extend_from_slice(&0u16.to_le_bytes()); // nReserved3
-    let pubkey = pubkey.unwrap_or(&[]);
-    rec.push(pubkey.len() as u8); // nKeySize
-    rec.extend_from_slice(pubkey); // abySecureIdent[..nKeySize]
-    rec.extend(std::iter::repeat_n(0u8, 80 - pubkey.len()));
-    rec
-}
 
-fn clients_met(version: u8, records: &[Vec<u8>]) -> Vec<u8> {
-    let mut buf = vec![version];
-    buf.extend_from_slice(&(records.len() as u32).to_le_bytes());
-    for r in records {
-        buf.extend_from_slice(r);
-    }
-    buf
-}
 
 #[test]
 fn test_clients_met_import_keys_credits_on_pubkey() {

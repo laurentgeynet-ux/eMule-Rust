@@ -8,7 +8,9 @@ description = "Helpers mutualisés pour les tests d'intégration du workspace (l
 publish = false
 
 [dependencies]
+mule-core = { path = "../mule-core" }
 mule-daemon = { path = "../mule-daemon" }
+mule-format = { path = "../mule-format" }
 mule-network-policy = { path = "../mule-network-policy" }
 axum.workspace = true
 futures-util.workspace = true

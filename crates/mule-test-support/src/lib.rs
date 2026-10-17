@@ -11,6 +11,8 @@
 //! doit être utilisée ni par du code de production ni publiée.
 
 pub mod daemon;
+pub mod met_fixtures;
+pub mod peer_fixtures;
 pub mod rpc;
 pub mod state;
 pub mod ws;

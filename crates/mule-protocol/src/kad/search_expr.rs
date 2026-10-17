@@ -487,19 +487,24 @@ mod tests {
         expr.matches(&KadKeywordSearchView::new(entry))
     }
 
+    fn assert_str_term(term: &str, hit: &str, miss: &str) {
+        let e = KadSearchExpression::parse(PROTO, OP, &str_leaf(term)).unwrap();
+        assert!(eval(&e, &entry(hit, 1, 1, vec![])), "expected match: {hit}");
+        assert!(
+            !eval(&e, &entry(miss, 1, 1, vec![])),
+            "expected no match: {miss}"
+        );
+    }
+
     #[test]
     fn str_term_substring_case_insensitive() {
-        let e = KadSearchExpression::parse(PROTO, OP, &str_leaf("Movie")).unwrap();
-        assert!(eval(&e, &entry("A.MOVIE.2024.x264.mkv", 1, 1, vec![])));
-        assert!(!eval(&e, &entry("other.bin", 1, 1, vec![])));
+        assert_str_term("Movie", "A.MOVIE.2024.x264.mkv", "other.bin");
     }
 
     #[test]
     fn str_term_multiple_words_are_anded() {
         // "a b" behaves as a AND b (substring of the lowercased name).
-        let e = KadSearchExpression::parse(PROTO, OP, &str_leaf("movie x264")).unwrap();
-        assert!(eval(&e, &entry("a.movie.2024.x264.mkv", 1, 1, vec![])));
-        assert!(!eval(&e, &entry("a.movie.2024.mkv", 1, 1, vec![])));
+        assert_str_term("movie x264", "a.movie.2024.x264.mkv", "a.movie.2024.mkv");
     }
 
     #[test]

@@ -9,30 +9,9 @@ use mule_daemon::services::known_met_import::import_known_met;
 use mule_format::ed2k::hash::hash_reader;
 use mule_format::met::tags::*;
 use mule_format::MET_HEADER_I64TAGS;
+use mule_test_support::met_fixtures::*;
 use tempfile::tempdir;
 use tokio::sync::Mutex;
-
-fn push_tag_id(buf: &mut Vec<u8>, tag_type: u8, name_id: u8) {
-    buf.push(tag_type);
-    buf.extend_from_slice(&1u16.to_le_bytes());
-    buf.push(name_id);
-}
-
-fn push_string_tag(buf: &mut Vec<u8>, name_id: u8, value: &str) {
-    push_tag_id(buf, TAGTYPE_STRING, name_id);
-    buf.extend_from_slice(&(value.len() as u16).to_le_bytes());
-    buf.extend_from_slice(value.as_bytes());
-}
-
-fn push_u32_tag(buf: &mut Vec<u8>, name_id: u8, value: u32) {
-    push_tag_id(buf, TAGTYPE_UINT32, name_id);
-    buf.extend_from_slice(&value.to_le_bytes());
-}
-
-fn push_u64_tag(buf: &mut Vec<u8>, name_id: u8, value: u64) {
-    push_tag_id(buf, TAGTYPE_UINT64, name_id);
-    buf.extend_from_slice(&value.to_le_bytes());
-}
 
 /// Serializes a `known.met` record for `payload` (real eD2K hashes).
 fn record_bytes(payload: &[u8], name: &str, extra: &mut dyn FnMut(&mut Vec<u8>)) -> Vec<u8> {

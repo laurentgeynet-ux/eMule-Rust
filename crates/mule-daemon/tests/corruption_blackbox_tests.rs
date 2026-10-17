@@ -6,37 +6,13 @@
 //! tous hors-ligne.
 
 use md4::{Digest, Md4};
-use mule_core::model::{PeerSource, PeerSourceOrigin, PeerSourceStatus};
 use mule_core::AllocationPolicy;
 use mule_daemon::services::downloads::DownloadService;
+use mule_test_support::peer_fixtures::peer_source;
 use tempfile::tempdir;
 
 fn md4_of(data: &[u8]) -> [u8; 16] {
     Md4::digest(data).into()
-}
-
-fn make_source(file_hash: &str, addr: &str) -> PeerSource {
-    PeerSource {
-        file_hash: file_hash.to_string(),
-        address: addr.to_string(),
-        ip: 0,
-        port: 0,
-        origin: PeerSourceOrigin::Server,
-        discovered_at_unix_ms: 0,
-        last_seen_unix_ms: 0,
-        status: PeerSourceStatus::Candidate,
-        fail_count: 0,
-        last_error: None,
-        cooldown_until_unix_ms: None,
-        user_hash: None,
-        crypt_options: 0,
-        buddy_id: None,
-        software: None,
-        availability: None,
-        server_ip: 0,
-        server_port: 0,
-        udp_port: 0,
-    }
 }
 
 /// eMule `WriteToBuffer` : toute donnée touchant une part déjà complète
@@ -109,8 +85,8 @@ fn corrupt_sender_is_banned_and_filtered() {
         .upsert_peer_sources(
             &hex::encode(file_hash),
             &[
-                make_source(&hex::encode(file_hash), "1.2.3.4:49662"),
-                make_source(&hex::encode(file_hash), "5.6.7.8:49662"),
+                peer_source(&hex::encode(file_hash), "1.2.3.4:49662"),
+                peer_source(&hex::encode(file_hash), "5.6.7.8:49662"),
             ],
         )
         .unwrap();

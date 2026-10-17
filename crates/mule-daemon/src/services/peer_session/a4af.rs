@@ -193,7 +193,7 @@ pub(crate) async fn apply_swap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mule_core::model::{PeerSource, PeerSourceOrigin};
+    use mule_test_support::peer_fixtures::peer_source;
 
     #[test]
     fn swap_eligibility() {
@@ -202,30 +202,6 @@ mod tests {
         assert!(!is_swap_eligible(&PeerFailureReason::TimeoutQueue));
         assert!(!is_swap_eligible(&PeerFailureReason::ConnectRefused));
         assert!(!is_swap_eligible(&PeerFailureReason::CorruptedData));
-    }
-
-    fn peer_source(file_hash: &str, addr: &str) -> PeerSource {
-        PeerSource {
-            file_hash: file_hash.to_string(),
-            address: addr.to_string(),
-            ip: 0,
-            port: 0,
-            origin: PeerSourceOrigin::Server,
-            discovered_at_unix_ms: 0,
-            last_seen_unix_ms: 0,
-            status: PeerSourceStatus::Candidate,
-            fail_count: 0,
-            last_error: None,
-            cooldown_until_unix_ms: None,
-            user_hash: None,
-            crypt_options: 0,
-            buddy_id: None,
-            software: None,
-            availability: None,
-            server_ip: 0,
-            server_port: 0,
-            udp_port: 0,
-        }
     }
 
     fn hash_hex(byte: u8) -> String {

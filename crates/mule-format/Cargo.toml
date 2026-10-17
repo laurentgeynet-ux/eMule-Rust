@@ -17,5 +17,6 @@ percent-encoding.workspace = true
 hex.workspace = true
 
 [dev-dependencies]
+mule-test-support = { path = "../mule-test-support" }
 proptest.workspace = true
 md-5.workspace = true

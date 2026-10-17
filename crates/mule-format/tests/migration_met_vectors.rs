@@ -5,29 +5,12 @@
 //! eMule config formats consumed by the migration import.
 
 use md5::Digest;
-use mule_format::met::tags::*;
 use mule_format::{
     cancelled_mask, CancelledEntry, CancelledMetFile, EmfriendsMetFile, MetError,
     CANCELLED_VERSION, MET_HEADER, MET_HEADER_I64TAGS,
 };
+use mule_test_support::met_fixtures::*;
 use std::io::Cursor;
-
-fn push_tag_id(buf: &mut Vec<u8>, tag_type: u8, name_id: u8) {
-    buf.push(tag_type);
-    buf.extend_from_slice(&1u16.to_le_bytes());
-    buf.push(name_id);
-}
-
-fn push_string_tag(buf: &mut Vec<u8>, name_id: u8, value: &str) {
-    push_tag_id(buf, TAGTYPE_STRING, name_id);
-    buf.extend_from_slice(&(value.len() as u16).to_le_bytes());
-    buf.extend_from_slice(value.as_bytes());
-}
-
-fn push_hash_tag(buf: &mut Vec<u8>, name_id: u8, hash: &[u8; 16]) {
-    push_tag_id(buf, TAGTYPE_HASH16, name_id);
-    buf.extend_from_slice(hash);
-}
 
 // ---------- emfriends.met ----------
 
@@ -53,7 +36,7 @@ fn emfriends_record(
         count += 1;
     }
     if let Some(k) = kad_id {
-        push_hash_tag(&mut tags, 0x02, &k);
+        push_hash16_tag(&mut tags, 0x02, &k);
         count += 1;
     }
     rec.extend_from_slice(&count.to_le_bytes());
@@ -144,7 +127,7 @@ fn cancelled_parses_new_format() {
     buf.push(0); // 0 tags
     buf.extend_from_slice(&[0x22; 16]);
     buf.push(1); // 1 skipped tag
-    push_u32_tag_skip(&mut buf, 0x01, 42);
+    push_u32_tag(&mut buf, 0x01, 42);
 
     let parsed = CancelledMetFile::read_from(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(parsed.seed, Some(0xDEAD_BEEF));
@@ -152,11 +135,6 @@ fn cancelled_parses_new_format() {
     assert_eq!(parsed.entries.len(), 2);
     assert_eq!(parsed.entries[0], CancelledEntry::Masked([0x11; 16]));
     assert_eq!(parsed.entries[1], CancelledEntry::Masked([0x22; 16]));
-}
-
-fn push_u32_tag_skip(buf: &mut Vec<u8>, name_id: u8, value: u32) {
-    push_tag_id(buf, TAGTYPE_UINT32, name_id);
-    buf.extend_from_slice(&value.to_le_bytes());
 }
 
 #[test]
@@ -202,37 +180,6 @@ fn cancelled_mask_matches_emule_semantics() {
 }
 
 // ---------- clients.met ----------
-
-fn credit_record(
-    key: &[u8; 16],
-    uploaded: u64,
-    downloaded: u64,
-    last_seen: u32,
-    pubkey: Option<&[u8]>,
-) -> Vec<u8> {
-    let mut rec = Vec::new();
-    rec.extend_from_slice(key);
-    rec.extend_from_slice(&(uploaded as u32).to_le_bytes());
-    rec.extend_from_slice(&(downloaded as u32).to_le_bytes());
-    rec.extend_from_slice(&last_seen.to_le_bytes());
-    rec.extend_from_slice(&((uploaded >> 32) as u32).to_le_bytes());
-    rec.extend_from_slice(&((downloaded >> 32) as u32).to_le_bytes());
-    rec.extend_from_slice(&0u16.to_le_bytes());
-    let pubkey = pubkey.unwrap_or(&[]);
-    rec.push(pubkey.len() as u8);
-    rec.extend_from_slice(pubkey);
-    rec.extend(std::iter::repeat_n(0u8, 80 - pubkey.len()));
-    rec
-}
-
-fn clients_met(version: u8, records: &[Vec<u8>]) -> Vec<u8> {
-    let mut buf = vec![version];
-    buf.extend_from_slice(&(records.len() as u32).to_le_bytes());
-    for r in records {
-        buf.extend_from_slice(r);
-    }
-    buf
-}
 
 #[test]
 fn clients_met_parses_v12_records() {
