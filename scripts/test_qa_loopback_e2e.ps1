@@ -127,6 +127,12 @@ try {
         $proc = [System.Diagnostics.Process]::Start($psi)
         if (!$proc) { throw "Failed to start mule-daemon process" }
 
+        # Drain stdout/stderr en continu : sans cela le pipe (~64 Ko) se
+        # remplit et le daemon se bloque en ecriture (meme fix que
+        # test_packaged_bundle.ps1).
+        $script:DaemonStdoutTask = $proc.StandardOutput.ReadToEndAsync()
+        $script:DaemonStderrTask = $proc.StandardError.ReadToEndAsync()
+
         # Await session.json
         $SessionPath = Join-Path $dataDir "session.json"
         $timeout = 10
@@ -442,7 +448,12 @@ try {
         }
     }
 
-    # Monitor until at least ~4.0 MB (~40-50%)
+    # Wait for the first landed block (received > 0), then freeze the
+    # transfer with downloads.pause: run_ed2k_download checks the paused
+    # status at every loop iteration, so the download deterministically
+    # stops at a partial state before we simulate the crash. Waiting for
+    # a fixed byte threshold is NOT an option on loopback - the full
+    # 9.28 MB transfer completes in ~100 ms, faster than a single poll.
     $sw3 = [System.Diagnostics.Stopwatch]::StartNew()
     $receivedBeforeCrash = 0
     while ($sw3.ElapsedMilliseconds -lt 15000) {
@@ -453,18 +464,41 @@ try {
             params = @{ id = $dl3Id }
         }
         $rec = $get3Resp.result.receivedBytes
-        if ($rec -ge 4000000) {
+        if ($rec -gt 0 -or $get3Resp.result.status -eq "completed") {
             $receivedBeforeCrash = $rec
             break
         }
-        Start-Sleep -Milliseconds 100
     }
 
-    if ($receivedBeforeCrash -lt 4000000) {
-        throw "Failed to reach ~50% transfer before timeout! Got $receivedBeforeCrash bytes."
+    if ($receivedBeforeCrash -le 0) {
+        throw "No bytes received before timeout! Got $receivedBeforeCrash bytes."
     }
+
+    # Freeze the transfer before the kill so the .part is guaranteed
+    # partial on disk.
+    $null = Invoke-WsRpc $ws @{
+        jsonrpc = "2.0"
+        id = 26
+        method = "downloads.pause"
+        params = @{ id = $dl3Id }
+    }
+    $swPause = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($swPause.ElapsedMilliseconds -lt 5000) {
+        $getP = Invoke-WsRpc $ws @{
+            jsonrpc = "2.0"
+            id = 27
+            method = "downloads.get"
+            params = @{ id = $dl3Id }
+        }
+        if ($getP.result.status -eq "paused") { break }
+        Start-Sleep -Milliseconds 50
+    }
+    if ($getP.result.status -eq "completed" -or $getP.result.receivedBytes -ge 9728000) {
+        throw "Transfer completed before pause could land - non-deterministic run, retry."
+    }
+    $receivedBeforeCrash = $getP.result.receivedBytes
     $pct = [math]::Round(($receivedBeforeCrash / 9728000) * 100)
-    Write-Host " -> Transfer reached $receivedBeforeCrash / 9728000 bytes (~$pct%). Simulating crash..." -ForegroundColor Gray
+    Write-Host " -> Transfer frozen at $receivedBeforeCrash / 9728000 bytes (~$pct%, status=$($getP.result.status)). Simulating crash..." -ForegroundColor Gray
 
     # Close WS connection and kill daemon abruptly
     $ws.Dispose()
