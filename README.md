@@ -23,6 +23,12 @@ eMuleRust is an independent, ground-up reimplementation of the historic **eD2K (
 
 > **Disclaimer** — eMuleRust is an independent project. It is **not affiliated with, endorsed by, or connected to** the eMule project (emule-project.net) or the Rust Foundation. « Rust » refers to the implementation language. See [`NOTICE`](NOTICE) for full attribution.
 
+## Screenshot
+
+![eMuleRust downloads view — multi-source swarm transfers on the real eD2K/Kad network](docs/screenshots/downloads.jpg)
+
+*Real-network session: HighID on eD2K, Kad connected, parallel multi-source downloads with per-part progress map.*
+
 ## Key Features
 
 - **Safe, modern Rust engine** — 100% memory safe, bounded wire framing, streaming zlib decompression (`OP_COMPRESSEDPART`), zero uncontrolled allocation.
