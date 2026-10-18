@@ -109,6 +109,12 @@ eMuleRust treats its network-facing surface as hostile by default. Please report
 
 Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). Note that the codebase and documentation are written in **French**; pull requests must keep the workspace warning-free (`-D warnings`) and all tests offline (loopback only).
 
+## More from this forge
+
+- **[OnionBit](https://github.com/laurentgeynet-ux/OnionBit)** — the portable anonymity swiss army knife: anonymous BitTorrent, serverless e2e messaging, `.onion` services, stealth transport
+- **[onionbit-browser](https://github.com/laurentgeynet-ux/onionbit-browser)** — a faithful Rust port of the Dillo web browser; standalone, and OnionBit's embedded `.onion` reader
+- **[BitDeamonRust](https://github.com/laurentgeynet-ux/BitDeamonRust)** — a 100% safe Rust BitTorrent engine, faithful port of libtorrent (Rasterbar) — same wire behavior and `.session` formats, verified against real swarms
+
 ## License & Credits
 
 Distributed under **GPL-2.0-or-later** — see [`LICENSE`](LICENSE), [`AUTHORS`](AUTHORS) and [`NOTICE`](NOTICE).

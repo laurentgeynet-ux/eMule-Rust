@@ -72,6 +72,12 @@ Le bundle autonome portable est généré dans `dist/eMuleRust-Windows/`.
 
 ---
 
+## 🧰 Autres projets de la forge
+
+- **[OnionBit](https://github.com/laurentgeynet-ux/OnionBit)** — le couteau suisse de l'anonymat portable : BitTorrent anonyme, messagerie e2e sans serveur, services `.onion`, transport furtif
+- **[onionbit-browser](https://github.com/laurentgeynet-ux/onionbit-browser)** — un portage Rust fidèle du navigateur Dillo ; autonome, et lecteur `.onion` embarqué d'OnionBit
+- **[BitDeamonRust](https://github.com/laurentgeynet-ux/BitDeamonRust)** — un moteur BitTorrent 100 % Rust safe, portage fidèle de libtorrent (Rasterbar) — même comportement réseau et formats `.session`, validé contre de vrais essaims
+
 ## 🙏 Crédits & Attributions
 
 eMuleRust est une réimplémentation indépendante dont la fidélité
