@@ -52,7 +52,7 @@ jobs:
             -File scripts\test_packaged_bundle.ps1
 
       - name: Upload Windows bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eMuleRust-windows-x64
           path: |
@@ -112,7 +112,7 @@ jobs:
           (cd dist && sha256sum eMuleRust-linux-x64.tar.gz > eMuleRust-linux-x64.tar.gz.sha256)
 
       - name: Upload Linux bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eMuleRust-linux-x64
           path: |
