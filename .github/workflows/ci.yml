@@ -15,7 +15,7 @@ jobs:
     name: Rust (check / clippy / test)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -50,7 +50,7 @@ jobs:
     name: Flutter (analyze / test)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Les tests superviseur/E2E spawent un vrai mule-daemon :
       # ils attendent target/debug/mule-daemon.exe.
